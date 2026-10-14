@@ -21,7 +21,14 @@ import {
 } from "@/lib/messaging";
 import type { UnitType } from "@/lib/billing";
 
-export type SendScope = "reply" | "followup" | "human";
+/**
+ * reminder: a service message about an appointment the customer already has. Not a reply, and not counted against the follow-up allowance.
+ * retention: an approved program message to an existing customer (welcome, check-in, feedback request, re-engagement). It has its own frequency
+ * limit, counted across every channel and program for the contact.
+ */
+export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention";
+/** service: about something the customer has or asked for. marketing: promotional, and needs the customer's explicit marketing consent. */
+export type SendPurpose = "service" | "marketing";
 export type SendActor = { kind: "ai"; agentId: string | null; approvalId?: string | null } | { kind: "human"; userId: string };
 
 export interface SendRequest {
@@ -40,6 +47,7 @@ export interface SendRequest {
   followupStepId?: string | null;
   /** Makes the send at-most-once: a second request with the same key is refused by the database. */
   dedupeKey?: string | null;
+  purpose?: SendPurpose;
 }
 
 export type SendDecision =
@@ -89,7 +97,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
     // While someone is being asked to take over, the AI holds off so it cannot promise a human reply that nobody has accepted.
     const pending = await db.query("select 1 from human_escalations where conversation_id = $1 and status in ('awaiting_owner', 'open')", [req.conversationId]);
     if (pending.rows[0]) return deny("escalation_pending", "A person is being asked to take over this conversation.");
-    const gate = await automationGate(db, { orgId: req.orgId, agentId: req.actor.agentId, scope: req.scope === "followup" ? "followup" : "reply", approvalId: req.actor.approvalId ?? null });
+    const gate = await automationGate(db, { orgId: req.orgId, agentId: req.actor.agentId, scope: req.scope === "followup" || req.scope === "reminder" || req.scope === "retention" ? "followup" : "reply", approvalId: req.actor.approvalId ?? null });
     if (gate.decision === "blocked") {
       const reason = gate.reason === "org_inactive" ? "org_inactive" : ["agent_not_ready", "agent_missing", "agent_disabled"].includes(gate.reason) ? "agent_not_ready" : "automation_paused";
       return deny(reason, gate.detail, { permanent: true });
@@ -105,14 +113,17 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if (!conv.ghl_contact_id) return deny("contact_unreachable", "This contact is not linked to your CRM yet, so the provider cannot deliver to them.");
 
   if (await isSuppressed(db, req.orgId, channel, address)) return deny("suppressed", "This address opted out or bounced, so nothing can be sent to it.", { permanent: true });
-  const consent = await getConsent(db, req.orgId, conv.contact_id, channel, "service");
+  const purpose: SendPurpose = req.purpose ?? "service";
+  const consent = await getConsent(db, req.orgId, conv.contact_id, channel, purpose);
   if (consent === "revoked") return deny("no_consent", "This customer withdrew consent on this channel.", { permanent: true });
+  // Promotional messages need an explicit yes. Anything else needs one on record, or the customer having written to us first.
+  if (purpose === "marketing" && consent !== "granted") return deny("no_consent", "This customer has not agreed to promotional messages on this channel.", { permanent: true });
   if (consent === "unknown" && (req.scope === "followup" || !conv.last_inbound_at)) return deny("no_consent", "There is no consent on record to message this person.", { permanent: true });
 
   const { rows: chan } = await db.query<{ enabled: boolean; sender_identity: string | null }>("select enabled, sender_identity from messaging_channels where org_id = $1 and channel = $2", [req.orgId, channel]);
   if (!chan[0]?.enabled) return deny("channel_not_ready", `${channel === "sms" ? "SMS" : channel === "whatsapp" ? "WhatsApp" : "Email"} is not verified and enabled for this workspace yet.`);
 
-  const { rows: policyRows } = await db.query<{ max_followups_per_contact_30d: number; min_hours_between_followups: number; quiet_hours_start: string; quiet_hours_end: string; whatsapp_window_hours: number }>("select * from messaging_policy");
+  const { rows: policyRows } = await db.query<{ max_followups_per_contact_30d: number; min_hours_between_followups: number; max_retention_per_contact_30d: number; min_hours_between_retention: number; quiet_hours_start: string; quiet_hours_end: string; whatsapp_window_hours: number }>("select * from messaging_policy");
   const policy = policyRows[0];
   if (channel === "whatsapp") {
     if (req.templateId) {
@@ -137,6 +148,20 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
     }
   }
 
+  if (req.scope === "retention") {
+    // One allowance per customer for all retention programs together, whatever channel each message uses.
+    const sent = await db.query<{ n: string; last: Date | null }>(
+      `select count(*)::text as n, max(m.sent_at) as last from conversation_messages m join conversations c on c.id = m.conversation_id
+       where m.org_id = $1 and c.contact_id = $2 and m.scope = 'retention' and m.status in ('sent', 'delivered', 'read') and m.sent_at > $3::timestamptz - interval '30 days'`,
+      [req.orgId, conv.contact_id, now.toISOString()],
+    );
+    if (Number(sent.rows[0].n) >= policy.max_retention_per_contact_30d) return deny("retention_limit", "This customer has reached the limit for program messages in the last 30 days.", { permanent: true });
+    const lastAt = sent.rows[0].last ? new Date(sent.rows[0].last).getTime() : null;
+    if (lastAt && now.getTime() - lastAt < policy.min_hours_between_retention * 3600_000) {
+      return deny("retention_too_soon", "A program message went to this customer very recently.", { retryAt: new Date(lastAt + policy.min_hours_between_retention * 3600_000) });
+    }
+  }
+
   const quantity = channel === "sms" ? Math.max(1, smsSegments(req.body)) : 1;
   const unit = UNIT_FOR[channel];
   const { rows: rate } = await db.query<{ w: string; c: string }>(
@@ -157,10 +182,11 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
 
   // Time rules last: everything else is already known to pass, so waiting is meaningful.
   const tz = conv.contact_tz ?? conv.org_tz;
-  if (req.scope === "followup") {
+  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention") {
     const { rows: s } = await db.query<{ business_hours: unknown }>("select business_hours from messaging_settings where org_id = $1", [req.orgId]);
     const hours = validateBusinessHours(s[0]?.business_hours ?? {});
-    const bhOnly = req.businessHoursOnly !== false;
+    // Follow-ups and program messages default to business hours. A reminder about a booked appointment is useful at any waking hour, so only quiet hours hold it back.
+    const bhOnly = (req.scope === "followup" || req.scope === "retention") && req.businessHoursOnly !== false;
     const quiet = isQuietHours(policy.quiet_hours_start, policy.quiet_hours_end, now, tz);
     const closed = bhOnly && !isWithinBusinessHours(hours, now, conv.org_tz);
     if (quiet || closed) {
@@ -202,10 +228,10 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
   const insert = (status: string, extra: { reason?: string; detail?: string; sendAfter?: Date; reservationId?: string | null }) =>
     db.query(
       `insert into conversation_messages (id, org_id, conversation_id, direction, author_kind, author_user_id, agent_id, body, status, status_detail, blocked_reason, scope,
-         template_id, approval_id, followup_step_id, reservation_id, send_after, dedupe_key, queued_at)
-       values ($1, $2, $3, 'outbound', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, case when $8 = 'queued' then now() end)`,
+         template_id, approval_id, followup_step_id, reservation_id, send_after, dedupe_key, purpose, queued_at)
+       values ($1, $2, $3, 'outbound', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, case when $8 = 'queued' then now() end)`,
       [messageId, req.orgId, req.conversationId, author.kind, author.userId, author.agentId, req.body, status, extra.detail?.slice(0, 300) ?? null, extra.reason ?? null, req.scope,
-        req.templateId ?? null, req.approvalId ?? (req.actor.kind === "ai" ? req.actor.approvalId ?? null : null), req.followupStepId ?? null, extra.reservationId ?? null, extra.sendAfter ?? new Date(), req.dedupeKey ?? null],
+        req.templateId ?? null, req.approvalId ?? (req.actor.kind === "ai" ? req.actor.approvalId ?? null : null), req.followupStepId ?? null, extra.reservationId ?? null, extra.sendAfter ?? new Date(), req.dedupeKey ?? null, req.purpose ?? "service"],
     );
 
   if (!decision.allow) {
@@ -217,7 +243,7 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
         orgId: req.orgId,
         agentId: req.actor.kind === "ai" ? req.actor.agentId : null,
         kind: "follow_up_message",
-        title: req.scope === "followup" ? "Send AI follow-up to a customer" : "Send AI reply to a customer",
+        title: req.scope === "followup" ? "Send AI follow-up to a customer" : req.scope === "retention" ? "Send a program message to a customer" : req.scope === "reminder" ? "Send an appointment reminder" : "Send AI reply to a customer",
         action: { messageId },
         targetType: "conversation",
         targetId: req.conversationId,
@@ -231,7 +257,7 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
       return { messageId, status: "draft", reason: "needs_approval", detail: decision.detail };
     }
     // Time rules wait; everything else is final for now and is recorded so it is visible.
-    if (decision.retryAt && !decision.permanent && ["quiet_hours", "outside_business_hours", "followup_too_soon"].includes(decision.reason)) {
+    if (decision.retryAt && !decision.permanent && ["quiet_hours", "outside_business_hours", "followup_too_soon", "retention_too_soon"].includes(decision.reason)) {
       return queueWithReservation(db, req, messageId, insert, { retryAt: decision.retryAt });
     }
     await insert("blocked", { reason: decision.reason, detail: decision.detail });
@@ -283,6 +309,7 @@ interface MessageRow {
   agent_id: string | null;
   body: string;
   scope: SendScope;
+  purpose: SendPurpose;
   template_id: string | null;
   approval_id: string | null;
   followup_step_id: string | null;
@@ -297,6 +324,7 @@ function requestFor(m: MessageRow, now: Date): SendRequest {
     orgId: m.org_id,
     conversationId: m.conversation_id,
     scope: m.scope,
+    purpose: m.purpose,
     actor: m.author_kind === "ai" ? { kind: "ai", agentId: m.agent_id, approvalId: m.approval_id } : { kind: "human", userId: m.author_user_id ?? "" },
     body: m.body,
     templateId: m.template_id,
@@ -330,7 +358,7 @@ export async function dispatchMessage(messageId: string, deps: { provider?: Chan
     const { rows } = await db.query<MessageRow>(
       `update conversation_messages set status = 'sending', attempt_count = attempt_count + 1, claimed_at = now()
        where id = $1 and status = 'queued' and send_after <= $2
-       returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, template_id, approval_id, followup_step_id, reservation_id, attempt_count,
+       returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, purpose, template_id, approval_id, followup_step_id, reservation_id, attempt_count,
          (select channel from conversations where id = conversation_id) as channel, (select subject from conversations where id = conversation_id) as subject`,
       [messageId, now.toISOString()],
     );
@@ -338,7 +366,7 @@ export async function dispatchMessage(messageId: string, deps: { provider?: Chan
     if (!m) return null;
     const decision = await evaluateSend(db, requestFor(m, now));
     if (!decision.allow) {
-      if (decision.retryAt && !decision.permanent && ["quiet_hours", "outside_business_hours", "followup_too_soon"].includes(decision.reason)) {
+      if (decision.retryAt && !decision.permanent && ["quiet_hours", "outside_business_hours", "followup_too_soon", "retention_too_soon"].includes(decision.reason)) {
         await db.query("update conversation_messages set status = 'queued', send_after = $2, attempt_count = attempt_count - 1 where id = $1", [m.id, decision.retryAt]);
         return { done: "queued" as const };
       }
@@ -428,7 +456,7 @@ export async function cancelPendingAiMessages(db: Queryable, orgId: string, conv
   const { rows } = await db.query<MessageRow>(
     `update conversation_messages set status = 'blocked', blocked_reason = $3, status_detail = 'Stopped before sending.'
      where org_id = $1 and conversation_id = $2 and author_kind = 'ai' and direction = 'outbound' and status in ('draft', 'queued')
-     returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, template_id, approval_id, followup_step_id, reservation_id, attempt_count, 'sms' as channel, null as subject`,
+     returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, purpose, template_id, approval_id, followup_step_id, reservation_id, attempt_count, 'sms' as channel, null as subject`,
     [orgId, conversationId, reason],
   );
   for (const m of rows) {

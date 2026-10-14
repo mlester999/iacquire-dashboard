@@ -6,6 +6,8 @@ import { recordAudit } from "@/server/audit";
 import { AppError } from "@/server/errors";
 import { assertAssignableLocation, setIntegrationStatus } from "@/server/admin/tenants";
 import { verifyGhlIdentity } from "@/server/integrations/inspection";
+import { applyAppointmentEvent } from "@/server/appointments/ledger";
+import { mapAppointmentStatus } from "@/lib/appointments";
 
 /**
  * Read-only LeadConnector (GoHighLevel API v2) adapter.
@@ -115,6 +117,8 @@ interface EventsResponse {
     calendarId: string;
     title?: string;
     appointmentStatus?: string;
+    contactId?: string;
+    assignedUserId?: string;
     startTime: string;
     endTime: string;
     address?: string;
@@ -234,17 +238,31 @@ export async function syncGhl(orgId: string, actorUserId: string | null): Promis
         );
       }
       for (const e of events) {
-        const status = ["new", "confirmed", "cancelled", "showed", "noshow", "invalid"].includes(e.appointmentStatus ?? "") ? e.appointmentStatus : "new";
-        // Only an https meeting address returned by the calendar is treated as a meeting link.
-        const link = e.address && /^https:\/\//.test(e.address) ? e.address.slice(0, 500) : null;
-        await db.query(
-          `insert into appointment_refs (org_id, ghl_appointment_id, ghl_calendar_id, title, status, start_at, end_at, meeting_link, remote_updated_at, synced_at)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
-           on conflict (org_id, ghl_appointment_id) do update set title = excluded.title, status = excluded.status,
-             start_at = excluded.start_at, end_at = excluded.end_at, meeting_link = excluded.meeting_link,
-             remote_updated_at = excluded.remote_updated_at, synced_at = now()`,
-          [orgId, e.id, e.calendarId, (e.title ?? "Appointment").slice(0, 200), status, e.startTime, e.endTime, link, e.dateUpdated ?? null],
-        );
+        // Every calendar snapshot goes through the same ordered ledger as the webhooks, so a stale snapshot can never overwrite a newer change.
+        // A snapshot that carries no timestamp can add an appointment we have not seen but can never change one we have.
+        const startAt = new Date(e.startTime);
+        if (Number.isNaN(startAt.getTime())) continue;
+        const endAt = new Date(e.endTime);
+        await applyAppointmentEvent(db, {
+          orgId,
+          source: "sync",
+          providerEventId: `sync:${e.id}:${e.dateUpdated ?? "none"}`,
+          event: {
+            kind: "update",
+            locationId: mapping.locationId,
+            appointmentId: e.id,
+            calendarId: e.calendarId,
+            contactId: e.contactId ?? null,
+            status: mapAppointmentStatus(e.appointmentStatus),
+            assignedUserId: e.assignedUserId ?? null,
+            title: (e.title ?? "Appointment").slice(0, 200),
+            address: e.address ?? null,
+            startAt,
+            endAt: Number.isNaN(endAt.getTime()) || endAt <= startAt ? new Date(startAt.getTime() + 30 * 60_000) : endAt,
+            eventTime: e.dateUpdated && !Number.isNaN(Date.parse(e.dateUpdated)) ? new Date(e.dateUpdated) : new Date(0),
+            source: "sync",
+          },
+        });
       }
       await setIntegrationStatus(db, orgId, "ghl", "connected", `Synced ${opportunities.length} opportunities`);
       if (mapping.calendarIds.length) await setIntegrationStatus(db, orgId, "ghl_calendar", "connected", `Synced ${events.length} appointments`);

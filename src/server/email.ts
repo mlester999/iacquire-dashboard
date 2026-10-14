@@ -2,7 +2,7 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
 
-export type EmailTemplate = "invitation" | "verify_email" | "password_reset" | "support_reply" | "staff_invitation" | "setup_update" | "escalation_alert";
+export type EmailTemplate = "invitation" | "verify_email" | "password_reset" | "support_reply" | "staff_invitation" | "setup_update" | "escalation_alert" | "notification";
 
 export interface OutgoingEmail {
   to: string;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { Bell, BellRing, Building2, CreditCard, Gauge, LifeBuoy, MessagesSquare, Plug, Shield, Sparkles, Users } from "lucide-react";
+import { Bell, BellRing, Building2, CreditCard, DatabaseBackup, Gauge, LifeBuoy, MessagesSquare, Plug, Shield, Sparkles, Users } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ const ITEMS: Array<{ href: string; label: string; icon: React.ComponentType<{ cl
   { href: "/settings/security", label: "Security", icon: Shield },
   { href: "/settings/usage", label: "Usage", icon: Gauge, permission: "usage.view" },
   { href: "/settings/billing", label: "Billing & credits", icon: CreditCard, permission: "usage.view" },
+  { href: "/settings/data", label: "Your data", icon: DatabaseBackup, permission: "offboarding.view" },
   { href: "/support", label: "Support", icon: LifeBuoy, permission: "support.use" },
 ];
 
@@ -25,7 +26,7 @@ export function SettingsNav({ permissions }: { permissions: Permission[] }) {
   const pathname = usePathname();
   const items = ITEMS.filter((i) => !i.permission || permissions.includes(i.permission));
   return (
-    <nav aria-label="Settings" className="scrollbar-thin -mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
+    <nav aria-label="Settings" className="scrollbar-thin -mx-4 min-w-0 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
       <ul className="flex gap-1 rounded-2xl border border-line bg-surface p-2 lg:flex-col">
         {items.map((i) => {
           const active = i.href === "/settings" ? pathname === "/settings" : pathname.startsWith(i.href);

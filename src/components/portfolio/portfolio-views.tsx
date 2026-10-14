@@ -49,11 +49,18 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
   const shown = projects.filter((p) => filter === "All" || p.categories.includes(filter));
   return (
     <div className="space-y-6">
-      <div role="tablist" aria-label="Project categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-        {["All", ...categories].map((c) => {
+      <div role="tablist" aria-label="Project categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+        {["All", ...categories].map((c, index) => {
           const active = filter === c;
           return (
-            <button key={c} role="tab" aria-selected={active} onClick={() => setFilter(c)} className={cn("relative shrink-0 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}>
+            <button key={c} role="tab" aria-selected={active} tabIndex={active ? 0 : -1} onKeyDown={(event) => {
+              const options = ["All", ...categories];
+              const next = event.key === "ArrowRight" ? (index + 1) % options.length : event.key === "ArrowLeft" ? (index + options.length - 1) % options.length : event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : null;
+              if (next === null) return;
+              event.preventDefault();
+              setFilter(options[next]);
+              event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+            }} onClick={() => setFilter(c)} className={cn("relative shrink-0 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}>
               {active && <motion.span layoutId="pf-filter" className="absolute inset-0 rounded-xl border border-line bg-surface shadow-soft" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
               <span className="relative">{c}</span>
             </button>

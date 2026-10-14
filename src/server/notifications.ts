@@ -2,6 +2,7 @@ import "server-only";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import type { OrgRole } from "@/lib/permissions";
+import { NOTIFICATION_GROUPS } from "@/lib/notification-groups";
 
 export type NotificationKind =
   | "agent_task_completed"
@@ -47,7 +48,14 @@ export type NotificationKind =
   | "incident_opened"
   | "incident_recovered"
   | "integration_reconnect_required"
-  | "account_inactivity_notice";
+  | "account_inactivity_notice"
+  | "booking_cancelled"
+  | "booking_rescheduled"
+  | "booking_conflict"
+  | "booking_needs_action"
+  | "retention_attention"
+  | "fair_use_notice"
+  | "offboarding_update";
 
 export interface NotificationInput {
   kind: NotificationKind;
@@ -122,21 +130,7 @@ export async function hiddenKinds(userId: string, orgId: string | null): Promise
     db.query<{ prefs: Record<string, boolean> }>("select prefs from notification_preferences where user_id = $1 and org_id = $2", [userId, orgId]),
   );
   const prefs = rows[0]?.prefs ?? {};
-  const groups: Record<string, string[]> = {
-    approvals: ["approval_requested", "approval_decided"],
-    leads: ["lead_awaiting_approval"],
-    workforce: ["agent_status", "agent_task_completed"],
-    support: ["support_reply"],
-    knowledge: ["knowledge_update_ready"],
-    usage: ["usage_limit_approaching"],
-    calendar: ["booking_confirmed"],
-    setup: ["setup_milestone", "setup_action_required", "setup_issue", "setup_ready"],
-    projects: ["project_update", "project_message", "maintenance_update"],
-    billing: ["billing_payment_received", "billing_budget_warning", "billing_low_balance"],
-    messaging: ["escalation_fyi", "message_blocked"],
-    websites: ["website_published", "domain_verified"],
-  };
-  return Object.entries(groups).flatMap(([k, kinds]) => (prefs[k] === false ? kinds : []));
+  return NOTIFICATION_GROUPS.flatMap((g) => (prefs[g.key] === false ? [...g.kinds] : []));
 }
 
 export async function listNotifications(userId: string, limit = 30, hidden: string[] = []) {

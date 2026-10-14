@@ -354,7 +354,7 @@ export function ChatWorkspace(props: Props) {
       <section className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
         <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-3 sm:px-6">
-          <button type="button" onClick={() => setRailOpen(true)} className="flex size-10 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open conversations">
+          <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open conversations">
             <MenuIcon className="size-5" />
           </button>
           <AgentAvatar role={meta} size="md" thinking={Boolean(streaming)} />
@@ -551,8 +551,8 @@ function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: Agent
       <p className="mb-5 text-[10px] font-semibold uppercase tracking-[.18em] text-muted">Your dedicated {meta.shortName}</p>
       <div className="flex w-full items-center justify-between gap-5">
         <div className="min-w-0"><h2 className="max-w-md text-[28px] font-semibold leading-[1.1] tracking-[-.035em] text-ink sm:text-[38px]">{headline[0]}<br/><span className="text-primary">{headline[1]}</span></h2><p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{meta.tagline} This conversation stays in your private company workspace.</p></div>
-      <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative">
-        <div aria-hidden className="absolute inset-0 -m-6 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
+      <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
+        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
         <AgentAvatar role={meta} size="xl" className="relative" />
       </motion.div>
       </div>
@@ -775,7 +775,7 @@ function Composer({
               </span>
             </Tooltip>
             <div className="flex items-center gap-2">
-              <span className="hidden text-[11.5px] text-faint sm:inline">{awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
+              <span className="hidden text-[11.5px] text-faint sm:inline">{disabled?"Chat is unavailable until the employee is ready":awaitingFirstToken ? "Waiting for the first words…" : "Enter to send · Shift+Enter for a new line"}</span>
               {streaming ? (
                 <Button type="button" size="icon" variant="secondary" onClick={onStop} disabled={!canStop} aria-label="Stop generating" className="rounded-xl">
                   <Square className="size-3.5 fill-current" />

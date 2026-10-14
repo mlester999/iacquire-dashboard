@@ -6,6 +6,7 @@ import { withSystem, withUser } from "@/server/db";
 import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
+import { assertStorageAllowed } from "@/server/fairuse/service";
 
 export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets";
 export interface PrivateFileInput { userId: string; orgId: string; bucket: PrivateBucket; path: string }
@@ -70,6 +71,8 @@ export async function uploadPrivateFile(input: PrivateFileInput & {
   if (!input.bytes.length || input.bytes.length > 10 * 1024 * 1024 || !MIMES[input.bucket].includes(input.contentType) || !validSignature(input.bytes, input.contentType)) {
     throw new AppError("invalid_input", "Choose a supported file up to 10 MB with contents matching its type.");
   }
+  // Refuses only NEW storage, and only when the agency set a limit and chose to enforce it. Nothing existing is touched.
+  await assertStorageAllowed(input.orgId, input.bytes.length);
   const id = crypto.randomUUID();
   const filename = (input.filename ?? input.path.split("/").at(-1) ?? "document").slice(0, 200);
   await withSystem((db) => db.query(
@@ -140,4 +143,18 @@ export async function removePrivateFile(input: PrivateFileInput) {
     const { error } = await createSupabaseAdminClient().storage.from(input.bucket).remove([input.path]);
     if (error) throw new AppError("integration_unavailable", "Access has been removed; storage cleanup needs another attempt.");
   }
+}
+
+/**
+ * Removes the stored bytes of a file for an offboarding purge that has already been authorized in full. It performs no per-user check, so
+ * it must never be reachable with a file id taken from a request.
+ */
+export async function removeStoredObjectTrusted(file: { orgId: string; bucket: PrivateBucket; storageKey: string }): Promise<void> {
+  const input = { userId: "00000000-0000-0000-0000-000000000000", orgId: file.orgId, bucket: file.bucket, path: file.storageKey };
+  if (localMode()) {
+    await fs.rm(localPath(input), { force: true });
+    return;
+  }
+  const { error } = await createSupabaseAdminClient().storage.from(file.bucket).remove([file.storageKey]);
+  if (error) throw new AppError("integration_unavailable", "A stored file could not be removed.");
 }

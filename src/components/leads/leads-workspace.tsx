@@ -126,11 +126,12 @@ export function LeadsWorkspace(props: {
           { value: "research", label: "Research" },
           { value: "targeting", label: "Targeting rules" },
         ]}
-      />
+      >
       {tab === "review" && <LeadTable leads={pending} canReview={props.canReview} timeZone={props.timeZone} emptyTitle="No leads waiting for review" emptyBody="New research results appear here for you to approve or reject." mode="review" />}
       {tab === "all" && <LeadTable leads={props.leads} canReview={props.canReview} timeZone={props.timeZone} emptyTitle="No leads yet" emptyBody="Run a research request to start building your pipeline." mode="all" />}
       {tab === "research" && <ResearchPanel {...props} />}
       {tab === "targeting" && <TargetingForm targeting={props.targeting} canEdit={props.canResearch} />}
+      </Tabs>
     </div>
   );
 }
@@ -165,22 +166,32 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
 
   const review = async (ids: string[], decision: "approve" | "reject") => {
     setBusy(true);
-    const res = await reviewLeadsAction(ids, decision);
-    setBusy(false);
-    if (!res.ok) return toast.error(res.error);
-    toast.success(`${res.data.updated} lead${res.data.updated === 1 ? "" : "s"} ${decision === "approve" ? "approved" : "rejected"}`);
-    setSelected([]);
-    setOpen(null);
-    router.refresh();
+    try {
+      const res = await reviewLeadsAction(ids, decision);
+      if (!res.ok) return toast.error(res.error);
+      toast.success(`${res.data.updated} lead${res.data.updated === 1 ? "" : "s"} ${decision === "approve" ? "approved" : "rejected"}`);
+      setSelected([]);
+      setOpen(null);
+      router.refresh();
+    } catch {
+      toast.error("We couldn't confirm the review. Refresh to check its status before trying again.");
+    } finally {
+      setBusy(false);
+    }
   };
   const importToCrm = async (ids: string[]) => {
     setBusy(true);
-    const res = await requestCrmImportAction(ids);
-    setBusy(false);
-    if (!res.ok) return toast.error(res.error);
-    toast.success("Import request sent to the Approval Center", { action: { label: "Open", onClick: () => router.push("/approvals") } });
-    setSelected([]);
-    router.refresh();
+    try {
+      const res = await requestCrmImportAction(ids);
+      if (!res.ok) return toast.error(res.error);
+      toast.success("Import request sent to the Approval Center", { action: { label: "Open", onClick: () => router.push("/approvals") } });
+      setSelected([]);
+      router.refresh();
+    } catch {
+      toast.error("We couldn't confirm the import request. Check the Approval Center before trying again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!leads.length) {
@@ -381,10 +392,10 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
               <dt className="text-muted">CRM</dt>
               <dd className="mt-0.5 font-medium">{SYNC_LABEL[lead.crm_sync_status] ?? lead.crm_sync_status}</dd>
             </div>
-            <div className="col-span-2 flex items-center gap-2 rounded-xl bg-surface-2 p-3 text-muted">
-              <ShieldAlert className="size-4 shrink-0" /> Contact consent: unknown · Outreach: blocked until separately approved
-            </div>
           </dl>
+          <p className="flex items-center gap-2 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
+            <ShieldAlert className="size-4 shrink-0" /> Contact consent: unknown · Outreach: blocked until separately approved
+          </p>
           {canReview && (
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               {lead.review_status === "pending" && (

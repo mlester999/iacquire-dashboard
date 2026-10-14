@@ -69,7 +69,7 @@ export function StatTile({
     <motion.div
       style={{ animationDelay: `${index * 40}ms` }}
       whileHover={reduce ? undefined : { y: -2 }}
-      className="card-surface rise-in group relative h-full overflow-hidden rounded-2xl p-4 transition-shadow hover:shadow-float sm:p-5"
+      className="card-surface rise-in group relative h-full min-w-0 overflow-hidden rounded-2xl p-4 transition-shadow hover:shadow-float sm:p-5"
     >
       <div aria-hidden className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-2">
@@ -125,7 +125,7 @@ export function AreaChart({
   };
 
   return (
-    <div>
+    <div ref={ref} className="min-w-0 w-full">
       <div className="mb-2 flex items-center justify-end">
         <button type="button" onClick={() => setShowTable((s) => !s)} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-ink" aria-pressed={showTable}>
           <Table2 className="size-3.5" /> {showTable ? "Chart" : "Table"}
@@ -152,9 +152,9 @@ export function AreaChart({
           </table>
         </div>
       ) : (
-        <div ref={ref} className="relative w-full" style={{ height }}>
+        <div className="relative min-w-0 w-full" style={{ height }}>
           {width > 0 && (
-            <svg width={width} height={height} role="img" aria-label={`${label}: ${formatNumber(total)} ${unit} over ${data.length} days`}>
+            <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="block max-w-full" role="img" aria-label={`${label}: ${formatNumber(total)} ${unit} over ${data.length} days`}>
               <defs>
                 <linearGradient id="area-wash" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0" stopColor="var(--series-1)" stopOpacity="0.16" />
@@ -326,9 +326,9 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
   const band = data.length ? w / data.length : 0;
   const barW = Math.min(24, band * 0.6);
   return (
-    <div ref={ref} className="relative w-full" style={{ height }}>
+    <div ref={ref} className="relative min-w-0 w-full" style={{ height }}>
       {width > 0 && (
-        <svg width={width} height={height} role="img" aria-label={label}>
+        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="block max-w-full" role="img" aria-label={label}>
           {[0, max / 2, max].map((t) => (
             <g key={t}>
               <line x1={pad.l} x2={pad.l + w} y1={pad.t + h - (t / max) * h} y2={pad.t + h - (t / max) * h} stroke="var(--grid)" />

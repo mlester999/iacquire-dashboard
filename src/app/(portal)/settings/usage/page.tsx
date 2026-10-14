@@ -4,6 +4,8 @@ import { withUser } from "@/server/db";
 import { usageSummary } from "@/server/usage";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
 import { formatNumber } from "@/lib/utils";
+import { getClientFairUse } from "@/server/fairuse/service";
+import { FairUseCard } from "@/components/fairuse/fair-use-card";
 
 export const metadata = { title: "Usage" };
 
@@ -25,7 +27,7 @@ function Meter({ label, used, limit, warnAt, hint }: { label: string; used: numb
 
 export default async function UsagePage() {
   const ctx = await requireOrgContext("usage.view");
-  const s = await withUser(ctx.user.id, (db) => usageSummary(db, ctx.org.orgId));
+  const [s, fairUse] = await Promise.all([withUser(ctx.user.id, (db) => usageSummary(db, ctx.org.orgId)), getClientFairUse(ctx)]);
   const l = s.limits;
   return (
     <div className="space-y-6">
@@ -48,6 +50,7 @@ export default async function UsagePage() {
           </p>
         </CardContent>
       </Card>
+      <FairUseCard rows={fairUse} />
     </div>
   );
 }

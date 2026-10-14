@@ -1,15 +1,11 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { env } from "@/server/env";
-import { withSystem } from "@/server/db";
-import { expireStaleReservations } from "@/server/billing/ledger";
-import { dispatchDue } from "@/server/messaging/send";
-import { processDueFollowUps } from "@/server/messaging/followups";
-import { advanceEscalations } from "@/server/messaging/handoff";
-import { respondToPending } from "@/server/messaging/responder";
+import { runScheduledJobs } from "@/server/ops/tick";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 function authorized(req: Request) {
   const secret = env().CRON_SECRET;
@@ -22,25 +18,12 @@ function authorized(req: Request) {
 
 /**
  * Scheduled worker entry point. A scheduler (for example Supabase cron, a hosting cron or an n8n schedule) calls it with
- * `Authorization: Bearer $CRON_SECRET`. Every job is idempotent and safe to run twice, so overlapping ticks cannot double-act.
+ * `Authorization: Bearer $CRON_SECRET`. The jobs live in src/server/ops/tick.ts; each records a heartbeat, and a failure in one
+ * never stops the others.
  */
 export async function POST(req: Request) {
   if (!env().CRON_SECRET) return NextResponse.json({ error: "Worker endpoint is not configured." }, { status: 503 });
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  const ran: Record<string, number | string> = {};
-  // Each job is independent and idempotent: one failing never stops the others, and running twice is harmless.
-  const job = async (name: string, fn: () => Promise<number>) => {
-    try {
-      ran[name] = await fn();
-    } catch (err) {
-      console.error(`[iacquire] worker tick: ${name} failed`, { type: err instanceof Error ? err.name : "unknown" });
-      ran[name] = "failed";
-    }
-  };
-  await job("expiredReservations", () => withSystem((db) => expireStaleReservations(db)));
-  await job("escalationsOpened", () => advanceEscalations());
-  await job("followUpsPrepared", async () => (await processDueFollowUps()).processed);
-  await job("repliesChecked", async () => (await respondToPending()).checked);
-  await job("messagesDispatched", async () => (await dispatchDue()).attempted);
+  const ran = await runScheduledJobs();
   return NextResponse.json({ ok: true, ran }, { headers: { "Cache-Control": "no-store" } });
 }

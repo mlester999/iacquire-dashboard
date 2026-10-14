@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, ExternalLink, List, RefreshCw, Video } from "lucide-react";
+import { AlertTriangle, CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Clock, ExternalLink, List, MoveRight, RefreshCw, Video } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/primitives";
@@ -13,6 +13,9 @@ import { MetricCard } from "@/components/ui/workspace";
 import { refreshCrmAction } from "@/app/actions/records";
 import { AGENT_BY_KEY } from "@/lib/agents";
 import { cn, formatDate, formatTime, relativeTime, sentenceCase, timeZoneLabel } from "@/lib/utils";
+import { BookButton, BookDialog, BookingRules, PendingBookings } from "@/components/appointments/booking-panels";
+import type { PendingBookingRow } from "@/server/appointments/overview";
+import type { PolicyView } from "@/server/appointments/settings";
 
 interface Appt {
   id: string;
@@ -25,6 +28,22 @@ interface Appt {
   meeting_link: string | null;
   contact_label: string | null;
   synced_at: string;
+  late_cancellation?: boolean;
+  reschedule_count?: number;
+  previous_start_at?: string | null;
+  conflict?: boolean;
+  origin?: "sync" | "webhook" | "portal_ai" | "portal_staff";
+  cancelled_at?: string | null;
+}
+
+/** The things worth knowing about an appointment beyond its status, in plain words. */
+function flags(a: Appt) {
+  const out: Array<{ key: string; label: string; tone: "danger" | "warning" | "primary" | "neutral" }> = [];
+  if (a.late_cancellation) out.push({ key: "late", label: "Late cancellation", tone: "warning" });
+  if (a.conflict) out.push({ key: "conflict", label: "Overlaps another", tone: "danger" });
+  if ((a.reschedule_count ?? 0) > 0) out.push({ key: "moved", label: a.reschedule_count === 1 ? "Moved once" : `Moved ${a.reschedule_count} times`, tone: "primary" });
+  if (a.origin === "portal_ai") out.push({ key: "ai", label: "Booked by your AI team", tone: "neutral" });
+  return out;
 }
 
 const STATUS_TONE: Record<string, "success" | "primary" | "danger" | "neutral" | "warning" | "violet"> = {
@@ -40,8 +59,9 @@ function dayKey(d: Date, tz: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
-export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh, setterReady }: { appointments: Appt[]; timeZone: string; lastSync: string | null; canRefresh: boolean; setterReady: boolean }) {
+export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh, setterReady, pending, policy, canBook, canManage, canGoAutonomous }: { appointments: Appt[]; timeZone: string; lastSync: string | null; canRefresh: boolean; setterReady: boolean; pending: PendingBookingRow[]; policy: PolicyView; canBook: boolean; canManage: boolean; canGoAutonomous: boolean }) {
   const router = useRouter();
+  const [booking, setBooking] = React.useState(false);
   const [view, setView] = React.useState<"calendar" | "list">("calendar");
   const [cursor, setCursor] = React.useState(() => {
     const now = new Date();
@@ -53,6 +73,8 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
   const [now] = React.useState(() => Date.now());
   const upcoming = appointments.filter((a) => new Date(a.start_at).getTime() >= now && a.status !== "cancelled");
   const past = appointments.filter((a) => new Date(a.start_at).getTime() < now).reverse();
+  // The list keeps cancelled future appointments (marked as such) so a cancellation, and a late one, is never hidden.
+  const listed = [...appointments.filter((a) => new Date(a.start_at).getTime() >= now), ...past];
   const byDay = React.useMemo(() => {
     const m = new Map<string, Appt[]>();
     for (const a of appointments) {
@@ -72,8 +94,9 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
   const todayKey = dayKey(new Date(), timeZone);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
       <div className="grid gap-3 sm:grid-cols-3 xl:col-span-3"><MetricCard label="Upcoming meetings" value={upcoming.length} detail="Future meetings recorded by your calendar." icon={<CalendarDays className="size-4"/>}/><MetricCard label="Confirmed" value={upcoming.filter(appointment=>appointment.status==="confirmed").length} detail="Confirmed appointments among upcoming meetings." icon={<Video className="size-4"/>} tone="green"/><MetricCard label="Calendar time zone" value={<span className="text-[18px]">{timeZoneLabel(timeZone)}</span>} detail={lastSync?`Last checked ${relativeTime(lastSync)}`:"No synchronization timestamp recorded."} icon={<Clock className="size-4"/>} tone="neutral"/></div>
+      <PendingBookings rows={pending} canBook={canBook} />
       <div className="space-y-4 xl:col-span-2">
         <Card>
           <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
@@ -89,6 +112,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
               </div>
             )}
             <div className="ml-auto flex items-center gap-2">
+              {canBook && <BookButton onClick={() => setBooking(true)} />}
               {canRefresh && (
                 <Button
                   size="sm"
@@ -159,8 +183,8 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             </div>
           ) : (
             <ul className="divide-y divide-line">
-              {[...upcoming, ...past].length === 0 && <li className="p-8 text-center text-[13px] text-muted">No appointments in the synced window.</li>}
-              {[...upcoming, ...past].map((a) => (
+              {listed.length === 0 && <li className="p-8 text-center text-[13px] text-muted">No appointments in the synced window.</li>}
+              {listed.map((a) => (
                 <li key={a.id}>
                   <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-surface-2/50">
                     <div className="w-14 shrink-0 text-center">
@@ -174,7 +198,10 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                         {a.meeting_type ? ` · ${a.meeting_type}` : ""}
                       </p>
                     </div>
-                    <Badge tone={STATUS_TONE[a.status] ?? "neutral"}>{a.status === "noshow" ? "No-show" : sentenceCase(a.status)}</Badge>
+                    <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {flags(a).filter((f) => f.key !== "ai").map((f) => <Badge key={f.key} tone={f.tone}>{f.label}</Badge>)}
+                      <Badge tone={STATUS_TONE[a.status] ?? "neutral"}>{a.status === "noshow" ? "No-show" : sentenceCase(a.status)}</Badge>
+                    </span>
                   </button>
                 </li>
               ))}
@@ -218,7 +245,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="md" />
             <div>
               <p className="text-[14px] font-semibold">Appointment Setter</p>
-              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Ask about availability or prepare a booking, reschedule or cancellation. Changes always go to Approvals first.</p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
               {setterReady ? (
                 <Link href="/chat/appointment-setter" className="mt-2 inline-flex text-[13px] font-medium text-primary hover:underline">
                   Ask the Appointment Setter
@@ -231,10 +258,19 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
         </Card>
       </div>
 
+      {canManage && <BookingRules policy={policy} canGoAutonomous={canGoAutonomous} />}
+      {canBook && <BookDialog open={booking} onOpenChange={setBooking} timeZone={timeZone} />}
+
       <Sheet open={Boolean(open)} onOpenChange={(o) => !o && setOpen(null)} title={open?.title ?? "Appointment"} description={open ? `${formatDate(open.start_at, timeZone)} · ${formatTime(open.start_at, timeZone)} – ${formatTime(open.end_at, timeZone)}` : undefined}>
         {open && (
           <div className="space-y-4 p-5 text-[13.5px]">
-            <Badge tone={STATUS_TONE[open.status] ?? "neutral"}>{open.status === "noshow" ? "No-show" : sentenceCase(open.status)}</Badge>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge tone={STATUS_TONE[open.status] ?? "neutral"}>{open.status === "noshow" ? "No-show" : sentenceCase(open.status)}</Badge>
+              {flags(open).map((f) => <Badge key={f.key} tone={f.tone}>{f.label}</Badge>)}
+            </div>
+            {open.conflict && <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12.5px] text-danger-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />This overlaps another appointment for the same person. Move one of them in your calendar.</p>}
+            {open.status === "cancelled" && open.cancelled_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><CalendarX2 className="mt-0.5 size-4 shrink-0" aria-hidden />Cancelled {relativeTime(open.cancelled_at)}{open.late_cancellation ? ", close to the start time." : "."}</p>}
+            {(open.reschedule_count ?? 0) > 0 && open.previous_start_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><MoveRight className="mt-0.5 size-4 shrink-0" aria-hidden />Moved from {formatDate(open.previous_start_at, timeZone)} at {formatTime(open.previous_start_at, timeZone)}.</p>}
             <dl className="space-y-3">
               <div>
                 <dt className="text-[12px] text-muted">Meeting type</dt>
@@ -261,7 +297,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                 <dd>{timeZoneLabel(timeZone)}</dd>
               </div>
             </dl>
-            <p className="rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">To reschedule or cancel, ask your Appointment Setter — it prepares the change for your approval, and nothing changes in your calendar until it&apos;s approved and confirmed by the calendar.</p>
+            <p className="rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">To reschedule or cancel, change it in your calendar. This page follows the calendar&apos;s own record, so the change appears here once the calendar confirms it.</p>
           </div>
         )}
       </Sheet>

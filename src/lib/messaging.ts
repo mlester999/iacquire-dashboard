@@ -245,3 +245,9 @@ export const DEFAULT_FOLLOWUP_TEXT = (businessName: string, step: number) =>
   step === 1
     ? `Hi, this is the AI assistant for ${businessName}, following up on your enquiry. Is there anything I can help with? Reply STOP to opt out.`
     : `Hi again from the AI assistant at ${businessName}. Just checking whether you still need help. Reply STOP to opt out.`;
+
+/** Adds the AI disclosure to the first message the AI sends in a conversation, whatever the text already says. */
+export function withDisclosure(text: string, disclosure: string, businessName: string, isFirstAiMessage: boolean): string {
+  if (!isFirstAiMessage || /\b(AI|artificial intelligence|virtual assistant|automated)\b/i.test(text)) return text;
+  return `${disclosure.replace("{business}", businessName)} ${text}`;
+}

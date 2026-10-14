@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getDashboard } from "@/server/queries/dashboard";
+import { listIncidentsForClient } from "@/server/ops/incidents";
+import { ServiceNotices } from "@/components/overview/service-notices";
+import { ClosingNotice } from "@/components/offboarding/closing-notice";
+import { getOffboardingForOwner } from "@/server/offboarding/service";
 import { listAgents } from "@/server/workforce/service";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
@@ -45,7 +49,7 @@ function greeting(timeZone: string) {
 
 export default async function OverviewPage() {
   const ctx = await requireOrgContext();
-  const [data, agents] = await Promise.all([getDashboard(ctx), listAgents(ctx.user.id, ctx.org.orgId)]);
+  const [data, agents, notices, closing] = await Promise.all([getDashboard(ctx), listAgents(ctx.user.id, ctx.org.orgId), listIncidentsForClient(ctx), getOffboardingForOwner(ctx)]);
   const first = ctx.user.fullName.split(" ")[0] || "there";
   const setupDone = data.setup.filter((s) => s.done).length;
   const setupPct = Math.round((setupDone / data.setup.length) * 100);
@@ -77,6 +81,9 @@ export default async function OverviewPage() {
             {operationsReady?"Ask your Operations Manager":"Review your AI team"} <ArrowRight className="size-4" />
           </ButtonLink>
         </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-slate-300">Your AI workforce</p><div className="mt-3 flex -space-x-2">{agents.filter(agent=>agent.enabled).map(agent=><span key={agent.id} className="rounded-xl border-2 border-[#11192c]"><AgentAvatar role={AGENT_BY_KEY[agent.role_key]} size="md"/></span>)}</div><p className="mt-4 text-[20px] font-semibold">{agents.filter(agent=>agent.enabled&&["online","busy"].includes(agent.status)).length}<span className="ml-2 text-[13px] font-normal text-slate-300">employees ready to work</span></p><Link href="/workforce" className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-blue-200">Meet your team<ArrowRight className="size-3"/></Link></div>}/>
+
+      <ClosingNotice view={closing} />
+      <ServiceNotices incidents={notices} />
 
       {data.nextActions.length>0&&<section aria-label="What needs your attention" className="control-panel grid gap-3 p-4 md:grid-cols-3">{data.nextActions.map((action,index)=><Link key={action.title} href={action.href} className="flex items-start gap-3 rounded-xl px-2 py-2 transition hover:bg-surface"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-[11px] font-semibold text-primary">0{index+1}</span><span className="min-w-0"><strong className="block text-[13px] font-semibold">{action.title}</strong><span className="mt-1 block text-[12px] leading-relaxed text-muted">{action.body}</span><span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary">{action.cta}<ArrowRight className="size-3"/></span></span></Link>)}</section>}
 
@@ -129,7 +136,7 @@ export default async function OverviewPage() {
 
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+        <Card className="min-w-0 xl:col-span-2">
           <CardHeader>
             <div>
               <CardTitle>AI workforce activity</CardTitle>

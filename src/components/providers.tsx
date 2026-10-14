@@ -36,7 +36,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync from storage after hydration
     setThemeState(saved);
-    setResolved(resolve(saved));
+    const current = resolve(saved);
+    setResolved(current);
+    document.documentElement.dataset.theme = current;
   }, []);
 
   React.useEffect(() => {

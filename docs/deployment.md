@@ -55,6 +55,23 @@ Then, from `/admin`: invite agency staff, create client workspaces (each client 
 invitation), open **Integrations** to connect Hermes/n8n, and open each client's **Integrations** to add
 their GoHighLevel location and employee profiles, following [integrations-setup.md](integrations-setup.md).
 
+## Scheduled work (required)
+
+Messaging, follow-ups, appointment reminders, retention programs, website enquiries, health checks, incident detection, fair-use checks, inactivity
+review and offboarding reminders all run from **one** endpoint, `POST /api/internal/tick`, authorized by `Authorization: Bearer $CRON_SECRET`
+(24+ random characters). Call it every one to two minutes from your host's scheduler. Each job is idempotent, so overlapping or repeated calls
+are safe, and a failing job never stops the others. See [operations-and-incidents.md](operations-and-incidents.md).
+
+| Variable | Purpose |
+| --- | --- |
+| `CRON_SECRET` | Authorizes `/api/internal/*`. Without it the scheduler cannot run and **no queued message is ever sent** |
+| `SCHEDULER_STALE_MINUTES` (default 20) | Minutes without a heartbeat before a "scheduled jobs stopped" incident opens |
+| `OFFBOARDING_PURGE_ENABLED` (default false) | Permanent deletion of a departed client's data. Leave off until a backup restore has been proven (see [offboarding-and-export.md](offboarding-and-export.md)) |
+| `SITES_BASE_DOMAIN`, `SITES_CNAME_TARGET`, `SITES_FORM_SECRET`, `SITES_PROBE_ORIGIN`, `DEPLOYMENT_ROLE` | Website Studio. Serve published sites from their own deployment (`DEPLOYMENT_ROLE=sites`) with wildcard DNS and certificate, see [website-studio.md](website-studio.md) |
+| `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, `PAYMONGO_PAYMENT_METHODS` | Credit top-ups. Start with **test** keys; live checkout needs the live-payments review recorded in `/admin/billing` |
+
+Also point an external uptime monitor at `GET /api/health`: it is where the scheduler-freshness check runs from, because a stopped scheduler cannot report itself.
+
 ## Operations
 
 - **Health:** `GET /api/health` (database connectivity, no secrets) for uptime checks; the agency
@@ -87,19 +104,22 @@ their GoHighLevel location and employee profiles, following [integrations-setup.
 3. **GoHighLevel** — per-location tokens with read scopes; verify and sync each tenant. Design and
    review a write path (lead import, CRM updates, bookings) before enabling `GHL_WRITES_ENABLED`. Marketplace
    appointment webhooks are a separate, not-yet-built connection.
-4. **Appointment booking** — once GHL is connected the portal shows real appointments. The Hermes
-   Appointment Setter does not yet have calendar tools, and creating, rescheduling or cancelling
-   bookings needs the reviewed write path and a production-verified n8n appointment processor (the portal
-   never activates it).
+4. **Appointment booking** — the portal keeps its own appointment event ledger and reads real calendar availability; creating bookings
+   through GHL needs the reviewed write path (`GHL_WRITES_ENABLED`) enabled deliberately for a *test* location first. The n8n Appointment Event
+   Processor is not used and must stay inactive. See [appointments.md](appointments.md).
 5. **Email** — Resend (or another provider) with a verified sending domain. Setup-update emails also need
    each person to opt in under Settings → Notifications.
 6. **Setup Center connectors** — the checks for CRM snapshot, CRM assets, workflows, website/domain, email
    domain and Google Calendar have no connector yet, so those steps need an agency attestation with
    evidence, and a super admin must acknowledge them at activation. See
    [setup-center.md](setup-center.md#connectors-and-provisioning-typed-seams).
-7. **Payments** — the portal only displays the $1,499 one-time setup status entered by an agency admin.
-   No payment collection is built; connect an approved provider if needed.
+7. **Payments** — PayMongo checkout, the credit ledger and the webhook are built and tested with mocks only. Add **test** keys, run a test
+   top-up end to end, reconcile it, then complete the live-payments review before any live key. See [finance-and-billing.md](finance-and-billing.md).
 8. **Document text extraction** — PDF/DOCX uploads are stored securely but only TXT/MD/CSV text is given
    to AI employees today.
 9. **External review** — a penetration test of auth, tenant isolation, uploads and credential handling
    before onboarding real clients.
+10. **Apply migrations 0016–0025** to the development Supabase project first (after a backup), then production, with `npm run db:migrate`.
+11. **Business and legal review** — retention and marketing wording, prepaid-credit treatment, the reserve and tax guidance, fair-use thresholds,
+    the retention period and the licensing text in the data export.
+12. **Backups** — prove one restore of the database and private storage before enabling permanent deletion.

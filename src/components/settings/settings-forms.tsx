@@ -23,6 +23,8 @@ import {
 } from "@/app/actions/settings";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AiPreferences, type ReplyLength } from "@/lib/agent-settings";
 import { grantableRoles, ROLE_DESCRIPTIONS, ROLE_LABELS, type OrgRole } from "@/lib/permissions";
+import type { EmailPreference } from "@/lib/ops";
+import type { NotificationPrefsView } from "@/lib/notification-groups";
 import { cn, relativeTime, timeZoneLabel } from "@/lib/utils";
 
 const ZONES = [
@@ -441,63 +443,82 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
   );
 }
 
-export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }: { groups: Array<{ key: string; label: string; description: string }>; prefs: Record<string, boolean>; emailAvailable?: boolean }) {
+type PrefsPatch = Parameters<typeof saveNotificationPrefsAction>[0];
+const EMAIL_CHOICES: Array<{ value: EmailPreference; label: string; hint: string }> = [
+  { value: "important", label: "Important only", hint: "Things that need you, money, your live website, and anything urgent." },
+  { value: "all", label: "Everything", hint: "An email for every notification you haven't switched off." },
+  { value: "off", label: "Urgent only", hint: "Only critical alerts. Everything else stays in the app." },
+];
+
+export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }: { groups: Array<{ key: string; label: string; description: string }>; prefs: NotificationPrefsView; emailAvailable?: boolean }) {
   const [p, setP] = React.useState(prefs);
+  const save = async (patch: PrefsPatch, apply: (cur: NotificationPrefsView) => NotificationPrefsView) => {
+    const before = p;
+    setP(apply(before));
+    const res = await saveNotificationPrefsAction(patch);
+    if (!res.ok) {
+      setP(before);
+      toast.error(res.error);
+    } else toast.success("Preference saved");
+  };
+  const choice = EMAIL_CHOICES.find((c) => c.value === p.email) ?? EMAIL_CHOICES[0];
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>In-app notifications</CardTitle>
-          <CardDescription>Choose what appears in your notification bell. Critical alerts are always shown.</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="divide-y divide-line">
-        {groups.map((g) => (
-          <label key={g.key} className="flex items-center justify-between gap-4 py-3.5">
-            <span>
-              <span className="block text-[14px] font-medium">{g.label}</span>
-              <span className="block text-[12.5px] text-muted">{g.description}</span>
-            </span>
-            <Switch
-              checked={p[g.key] !== false}
-              aria-label={g.label}
-              onCheckedChange={async (v) => {
-                const next = { ...p, [g.key]: v };
-                setP(next);
-                const res = await saveNotificationPrefsAction(next);
-                if (!res.ok) {
-                  setP(p);
-                  toast.error(res.error);
-                } else toast.success("Preference saved");
-              }}
-            />
-          </label>
-        ))}
-        {emailAvailable ? (
-          <label className="flex items-center justify-between gap-4 py-3.5">
-            <span>
-              <span className="block text-[14px] font-medium">Email me setup updates</span>
-              <span className="block text-[12.5px] text-muted">Milestones and requests while iAcquire sets up your system. Sent only to your verified address; you can turn this off any time.</span>
-            </span>
-            <Switch
-              checked={p.setupEmails === true}
-              aria-label="Email me setup updates"
-              onCheckedChange={async (v) => {
-                const next = { ...p, setupEmails: v };
-                setP(next);
-                const res = await saveNotificationPrefsAction(next);
-                if (!res.ok) {
-                  setP(p);
-                  toast.error(res.error);
-                } else toast.success("Preference saved");
-              }}
-            />
-          </label>
-        ) : (
-          <p className="pt-3.5 text-[12.5px] text-muted">Email updates aren&apos;t available yet. They turn on once the iAcquire team connects an email provider. Account emails (invitations, password resets) are always sent.</p>
-        )}
-      </CardContent>
-    </Card>
+    <div className="space-y-5">
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>In-app notifications</CardTitle>
+            <CardDescription>Choose what appears in your notification bell. Critical alerts are always shown.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="divide-y divide-line">
+          {groups.map((g) => (
+            <label key={g.key} className="flex items-center justify-between gap-4 py-3.5">
+              <span>
+                <span className="block text-[14px] font-medium">{g.label}</span>
+                <span className="block text-[12.5px] text-muted">{g.description}</span>
+              </span>
+              <Switch
+                checked={p.groups[g.key] !== false}
+                aria-label={g.label}
+                onCheckedChange={(v) => save({ groups: { ...p.groups, [g.key]: v } }, (cur) => ({ ...cur, groups: { ...cur.groups, [g.key]: v } }))}
+              />
+            </label>
+          ))}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Email</CardTitle>
+            <CardDescription>Sent only to your verified address. Anything involving a customer&apos;s message arrives as a title and a link; the details stay behind your sign-in.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {emailAvailable ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  <span className="block text-[14px] font-medium">Which notifications to email</span>
+                  <span className="block text-[12.5px] text-muted" id="email-choice-hint">{choice.hint}</span>
+                </span>
+                <Segmented id="email-choice" ariaLabel="Which notifications to email" value={p.email} options={EMAIL_CHOICES.map((c) => ({ value: c.value, label: c.label }))} onChange={(v) => save({ email: v }, (cur) => ({ ...cur, email: v }))} />
+              </div>
+              <label className="flex items-center justify-between gap-4 border-t border-line pt-4">
+                <span>
+                  <span className="block text-[14px] font-medium">Email me setup updates</span>
+                  <span className="block text-[12.5px] text-muted">Milestones and requests while iAcquire sets up your system. You can turn this off any time.</span>
+                </span>
+                <Switch checked={p.setupEmails} aria-label="Email me setup updates" onCheckedChange={(v) => save({ setupEmails: v }, (cur) => ({ ...cur, setupEmails: v }))} />
+              </label>
+              <p className="text-[12.5px] text-muted">Routine email waits until 7am your time if it would arrive between 9pm and 7am. Critical alerts are sent straight away.</p>
+            </>
+          ) : (
+            <p className="text-[12.5px] leading-relaxed text-muted">Email notifications aren&apos;t available yet. They turn on once the iAcquire team connects an email provider. Until then everything appears in the app, and account emails (invitations, password resets) are always sent.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

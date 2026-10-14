@@ -31,11 +31,16 @@ export const PERMISSION_MATRIX = {
   "leads.review": row(...OWNER_ADMIN),
   "leads.export": row(...OWNER_ADMIN),
   "appointments.view": row(...CLIENT, ...STAFF),
+  // Booking policy, the event ledger and approving AI bookings are the owner's and managers'; anyone who works with customers can book for them.
+  "appointments.manage": row(...OWNER_ADMIN),
+  "appointments.book": row(...WORKING),
   "sales.view": row(...CLIENT, ...STAFF),
   "notes.write": row(...WORKING),
   "tasks.manage": row(...WORKING),
   "retention.view": row(...CLIENT, ...STAFF),
   "retention.edit": row(...OWNER_ADMIN),
+  // Switching a customer program on records the owner's approval of its exact wording, so only the owner can do it. Managers can edit and switch off.
+  "retention.activate": row("owner"),
   "analytics.view": row(...CLIENT, ...STAFF),
   "analytics.export": row(...OWNER_ADMIN),
   "approvals.view": row(...CLIENT, ...STAFF),
@@ -89,6 +94,15 @@ export const PERMISSION_MATRIX = {
   "website.domains": row(...OWNER_ADMIN, ...STAFF),
   "website.approve": row("owner"),
   "website.publish": row("owner", "agency_super_admin"),
+  // Service incidents. Clients see only the ones marked client-visible; agency staff acknowledge, annotate and close them.
+  "incidents.view": row(...OWNER_ADMIN, ...STAFF),
+  "incidents.manage": row(...STAFF),
+  // Leaving iAcquire. The owner can see the status, ask to leave and take their data; agency super admins run the shutdown and the deletion.
+  "offboarding.view": row("owner", ...STAFF),
+  "offboarding.request": row("owner"),
+  "offboarding.manage": row("agency_super_admin"),
+  "data.export": row("owner", "agency_super_admin"),
+  "finance.manage": row("agency_super_admin"),
 } as const satisfies Record<string, readonly EffectiveRole[]>;
 
 export type Permission = keyof typeof PERMISSION_MATRIX;

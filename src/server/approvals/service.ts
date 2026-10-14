@@ -16,7 +16,9 @@ export type ApprovalKind =
   | "campaign_activation"
   | "knowledge_change"
   | "tool_action"
-  | "config_change";
+  | "config_change"
+  | "appointment_booking"
+  | "standing_authorization";
 export type Risk = "low" | "medium" | "high" | "critical";
 
 export interface ApprovalRow {
@@ -204,7 +206,11 @@ export async function decideApproval(ctx: OrgContext, approvalId: string, decisi
   let outcome: ExecOutcome | null = null;
   if (decision === "approve") outcome = await executeApproval(ctx.org.orgId, decided.id, ctx.user.id);
   else if (decided.kind === "tool_action") await releaseRejectedToolAction(ctx.org.orgId, decided.agent_instance_id, decided.action);
-  else if (decided.kind === "follow_up_message" && typeof decided.action.messageId === "string") {
+  else if (decided.kind === "appointment_booking" && typeof decided.action.bookingId === "string") {
+    // A rejected proposal releases the held time so someone else can have it.
+    const { releaseRejectedBooking } = await import("@/server/appointments/booking");
+    await releaseRejectedBooking(ctx.org.orgId, decided.action.bookingId);
+  } else if (decided.kind === "follow_up_message" && typeof decided.action.messageId === "string") {
     // Rejecting a draft discards it, so it can never be sent later.
     await withSystem((db) => db.query("update conversation_messages set status = 'blocked', blocked_reason = 'discarded', status_detail = 'Rejected in the Approval Center.' where org_id = $1 and id = $2 and status = 'draft'", [ctx.org.orgId, decided.action.messageId]));
   }
@@ -331,10 +337,50 @@ async function runExecutor(
       const { queueApprovedDraft } = await import("@/server/messaging/inbox");
       return withSystem((db) => queueApprovedDraft(db, { orgId, messageId, approvalId }));
     }
+    case "appointment_booking": {
+      const bookingId = typeof a.action.bookingId === "string" ? a.action.bookingId : null;
+      if (!bookingId) return { status: "failed", detail: "The booking could not be identified." };
+      const { executeApprovedBooking } = await import("@/server/appointments/booking");
+      return executeApprovedBooking(orgId, approvalId, bookingId);
+    }
+    case "standing_authorization":
+      // The decision is the whole effect: the approval itself is what later automated messages are checked against.
+      return { status: "succeeded", detail: "Recorded. Routine automated messages covered by this authorization can now be sent." };
     case "outreach":
     case "campaign_activation":
       return { status: "blocked", detail: BLOCKED_MESSAGING };
     default:
       return { status: "failed", detail: `No executor for ${approvalId}.` };
   }
+}
+
+/**
+ * Records a person's standing permission for a kind of routine automated message (appointment reminders, a retention program).
+ * It is an approval that is already decided by the person making it, so an employee that normally asks first can send those
+ * messages. It expires, is checked every time one is sent, and covers only what its title says.
+ */
+export async function createStandingAuthorization(
+  db: Queryable,
+  a: { orgId: string; userId: string; title: string; reason: string; expectedEffect: string; scopeKey: string; days?: number },
+): Promise<string> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into approval_requests (org_id, requested_by, kind, title, action, target_type, target_id, reason, expected_effect, risk, status, execution_status, expires_at, decided_by, decided_at, executed_at, idempotency_key)
+     values ($1, $2, 'standing_authorization', $3, $4, 'standing_authorization', $5, $6, $7, 'low', 'approved', 'succeeded', now() + make_interval(days => $8::int), $2, now(), now(), $9) returning id`,
+    [a.orgId, a.userId, a.title.slice(0, 200), JSON.stringify({ scope: a.scopeKey }), a.scopeKey.slice(0, 120), a.reason.slice(0, 2000), a.expectedEffect.slice(0, 2000), a.days ?? 90, `standing:${a.orgId}:${a.scopeKey}:${Date.now()}`],
+  );
+  const id = rows[0].id;
+  await db.query("insert into approval_events (approval_id, org_id, actor_user_id, actor_kind, event) values ($1, $2, $3, 'user', 'created'), ($1, $2, $3, 'user', 'approved')", [id, a.orgId, a.userId]);
+  await recordAudit({ orgId: a.orgId, actorUserId: a.userId, actorKind: "user", action: "approval.standing_authorization", targetType: "approval", targetId: id, approvalId: id, result: "success", metadata: { scope: a.scopeKey } }, db);
+  return id;
+}
+
+/** Marks every pending approval whose time has run out as expired. Safe to run repeatedly; it never decides anything. */
+export async function expireAllStaleApprovals(): Promise<number> {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; org_id: string }>(
+      "update approval_requests set status = 'expired' where status = 'pending' and expires_at is not null and expires_at <= now() returning id, org_id",
+    );
+    for (const r of rows) await db.query("insert into approval_events (approval_id, org_id, actor_kind, event) values ($1, $2, 'system', 'expired')", [r.id, r.org_id]);
+    return rows.length;
+  });
 }

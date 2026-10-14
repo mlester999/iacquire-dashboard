@@ -1,0 +1,1061 @@
+[
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 435,
+    "theme": "dark",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 17,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-dark-375-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 375,
+    "theme": "dark",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 23,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-dark-390-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 753,
+    "theme": "dark",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 24,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-dark-768-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1009,
+    "theme": "dark",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 52,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-dark-1024-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1425,
+    "theme": "dark",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 52,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-dark-1440-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1905,
+    "theme": "dark",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 52,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-dark-1920-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 435,
+    "theme": "light",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 16,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review > .relative:nth-child(2)"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-light-375-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 375,
+    "theme": "light",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 22,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-light-390-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 753,
+    "theme": "light",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 23,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-light-768-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1009,
+    "theme": "light",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 51,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-light-1024-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1425,
+    "theme": "light",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 51,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-light-1440-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "pass2",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1905,
+    "theme": "light",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 51,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "aria-valid-attr-value",
+        "impact": "critical",
+        "targets": [
+          [
+            "#radix-_R_eatpesiitmlb_-trigger-review"
+          ]
+        ]
+      },
+      {
+        "id": "region",
+        "impact": "moderate",
+        "targets": [
+          [
+            ".border-violet\\/20"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-leads-light-1920-pass2.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 360,
+    "theme": "dark",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 23,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-dark-375-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 375,
+    "theme": "dark",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 23,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-dark-390-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 753,
+    "theme": "dark",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 24,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-dark-768-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1009,
+    "theme": "dark",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 52,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-dark-1024-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1425,
+    "theme": "dark",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 52,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-dark-1440-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1905,
+    "theme": "dark",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 52,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-dark-1920-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 360,
+    "theme": "light",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 22,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-light-375-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 375,
+    "theme": "light",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 22,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-light-390-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 753,
+    "theme": "light",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 23,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-light-768-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1009,
+    "theme": "light",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 51,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-light-1024-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1425,
+    "theme": "light",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 51,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-light-1440-final.png"
+  },
+  {
+    "page": "client-leads",
+    "pass": "final",
+    "h1": "Find the right fit. Build a stronger pipeline.",
+    "scrollWidth": 1905,
+    "theme": "light",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 51,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-leads-light-1920-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 360,
+    "theme": "dark",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 13,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-dark-375-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 375,
+    "theme": "dark",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 13,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-dark-390-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 753,
+    "theme": "dark",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 14,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-dark-768-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1009,
+    "theme": "dark",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 42,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-dark-1024-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1425,
+    "theme": "dark",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 42,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-dark-1440-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1905,
+    "theme": "dark",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 42,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-dark-1920-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 360,
+    "theme": "light",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 16,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            ".tracking-wider"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(1)"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(2)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(3)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(4)"
+          ],
+          [
+            ".p-5 > .leading-relaxed.text-\\[13px\\]"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-retention-light-375-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 375,
+    "theme": "light",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 16,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            ".tracking-wider"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(1)"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(2)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(3)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(4)"
+          ],
+          [
+            ".p-5 > .leading-relaxed.text-\\[13px\\]"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-retention-light-390-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 753,
+    "theme": "light",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 17,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            ".tracking-wider"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(1)"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(2)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(3)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(4)"
+          ],
+          [
+            ".p-5 > .leading-relaxed.text-\\[13px\\]"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-retention-light-768-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1009,
+    "theme": "light",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 45,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            ".tracking-wider"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(1)"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(2)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(3)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(4)"
+          ],
+          [
+            ".p-5 > .leading-relaxed.text-\\[13px\\]"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-retention-light-1024-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1425,
+    "theme": "light",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 45,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            ".tracking-wider"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(1)"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(2)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(3)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(4)"
+          ],
+          [
+            ".p-5 > .leading-relaxed.text-\\[13px\\]"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-retention-light-1440-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "final",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1905,
+    "theme": "light",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 45,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "targets": [
+          [
+            ".tracking-wider"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(1)"
+          ],
+          [
+            ".gap-y-2 > .gap-1\\.5.inline-flex.items-center:nth-child(2)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(3)"
+          ],
+          [
+            ".gap-1\\.5.inline-flex.items-center:nth-child(4)"
+          ],
+          [
+            ".p-5 > .leading-relaxed.text-\\[13px\\]"
+          ]
+        ]
+      }
+    ],
+    "screenshot": "design-qa/after/client-retention-light-1920-final.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "contrast-fixed",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 482,
+    "theme": "light",
+    "width": 375,
+    "incomplete": [
+      {
+        "count": 14,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-light-375-contrast-fixed.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "contrast-fixed",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 375,
+    "theme": "light",
+    "width": 390,
+    "incomplete": [
+      {
+        "count": 12,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-light-390-contrast-fixed.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "contrast-fixed",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 753,
+    "theme": "light",
+    "width": 768,
+    "incomplete": [
+      {
+        "count": 11,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-light-768-contrast-fixed.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "contrast-fixed",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1009,
+    "theme": "light",
+    "width": 1024,
+    "incomplete": [
+      {
+        "count": 40,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-light-1024-contrast-fixed.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "contrast-fixed",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1425,
+    "theme": "light",
+    "width": 1440,
+    "incomplete": [
+      {
+        "count": 40,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-light-1440-contrast-fixed.png"
+  },
+  {
+    "page": "client-retention",
+    "pass": "contrast-fixed",
+    "h1": "Keep the customers you've worked hard to earn.",
+    "scrollWidth": 1905,
+    "theme": "light",
+    "width": 1920,
+    "incomplete": [
+      {
+        "count": 39,
+        "id": "color-contrast"
+      }
+    ],
+    "violations": [],
+    "screenshot": "design-qa/after/client-retention-light-1920-contrast-fixed.png"
+  }
+]

@@ -28,7 +28,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           ? "An iAcquire team member is handling this"
           : "Waiting for an iAcquire team member";
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto min-w-0 max-w-3xl space-y-5">
       <Link href="/support" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
         <ArrowLeft className="size-3.5" /> Support
       </Link>
@@ -38,7 +38,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <Badge tone={t.status === "resolved" ? "success" : t.status === "closed" ? "neutral" : t.status === "waiting_for_client" ? "warning" : "primary"}>{sentenceCase(t.status)}</Badge>
           <Badge tone="outline">{t.category === "ai_employees" ? "AI employees" : sentenceCase(t.category)}</Badge>
         </div>
-        <h2 className="mt-2 text-[20px] font-semibold tracking-tight">{t.subject}</h2>
+        <h1 className="mt-2 break-words text-[22px] font-semibold tracking-tight">{t.subject}</h1>
         <p className="mt-1 text-[12.5px] text-muted">
           Opened {formatDateTime(t.created_at, ctx.org.timezone)} by {t.created_by_name ?? "someone"} · {progress}
         </p>

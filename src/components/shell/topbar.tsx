@@ -307,9 +307,9 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
 export function DemoBanner() {
   return (
-    <div className="border-b border-violet/20 bg-violet-soft px-4 py-2 text-center text-[12.5px] font-medium text-violet-ink">
+    <aside aria-label="Demo workspace" className="border-b border-violet/20 bg-violet-soft px-4 py-2 text-center text-[12.5px] font-medium text-violet-ink">
       Demo workspace — the records here are fictional sample data for previewing the portal, not live business results.
-    </div>
+    </aside>
   );
 }
 

@@ -79,7 +79,7 @@ export function ChatRail({
         <Link
           href="/overview"
           onClick={onNavigate}
-          className="flex h-9 items-center gap-2.5 rounded-xl px-3 text-[13.5px] font-medium text-muted transition hover:bg-surface-2 hover:text-ink"
+          className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-[13.5px] font-medium text-muted transition hover:bg-surface-2 hover:text-ink"
         >
           <LayoutDashboard className="size-[17px]" /> Dashboard
         </Link>
@@ -129,13 +129,13 @@ export function ChatRail({
             value={search}
             onChange={(e) => onSearch(e.target.value)}
             placeholder="Search chats"
-            className="h-9 w-full rounded-xl border border-line bg-surface pl-8 pr-2 text-[13px] outline-none placeholder:text-faint focus:border-primary focus:ring-4 focus:ring-primary/10"
+            className="h-11 w-full rounded-xl border border-line bg-surface pl-8 pr-2 text-[13px] outline-none placeholder:text-faint focus:border-primary focus:ring-4 focus:ring-primary/10"
           />
         </div>
         <button
           type="button"
           onClick={onNew}
-          className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-ink px-3 text-[13px] font-medium text-surface transition hover:bg-ink/90 active:scale-[0.97]"
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-ink px-3 text-[13px] font-medium text-surface transition hover:bg-ink/90 active:scale-[0.97]"
         >
           <Plus className="size-3.5" /> New
         </button>
@@ -156,7 +156,7 @@ export function ChatRail({
                       onClick={() => onSelect(c.id)}
                       aria-current={c.id === activeId ? "true" : undefined}
                       className={cn(
-                        "flex h-9 w-full items-center rounded-lg pl-3 pr-9 text-left text-[13px] transition",
+                        "flex min-h-11 w-full items-center rounded-lg pl-3 pr-12 sm:pr-9 text-left text-[13px] transition",
                         c.id === activeId ? "bg-surface font-medium text-ink shadow-soft ring-1 ring-line" : "text-ink-2 hover:bg-surface-2",
                       )}
                     >
@@ -166,7 +166,7 @@ export function ChatRail({
                       <MenuTrigger asChild>
                         <button
                           type="button"
-                          className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-0 transition hover:bg-surface-3 hover:text-ink focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+                          className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 sm:size-7 items-center justify-center rounded-md text-muted opacity-100 transition sm:opacity-0 hover:bg-surface-3 hover:text-ink focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
                           aria-label={`Options for ${c.title}`}
                         >
                           <MoreHorizontal className="size-4" />
@@ -193,7 +193,7 @@ export function ChatRail({
         <div className="flex items-center gap-2"><Link href="/settings" onClick={onNavigate} className="flex min-h-11 flex-1 items-center gap-2.5 rounded-xl px-3 text-[13.5px] text-muted transition hover:bg-surface-2 hover:text-ink">
           <Settings className="size-[17px]" /> Settings
         </Link><AuthAppearance/></div>
-        <button type="button" onClick={() => openHelp("chat")} className="flex h-9 w-full items-center gap-2.5 rounded-xl px-3 text-[13.5px] text-muted transition hover:bg-surface-2 hover:text-ink">
+        <button type="button" onClick={() => openHelp("chat")} className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-[13.5px] text-muted transition hover:bg-surface-2 hover:text-ink">
           <LifeBuoy className="size-[17px]" /> Help
         </button>
       </div>

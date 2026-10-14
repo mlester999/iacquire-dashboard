@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, LogOut, Menu as MenuIcon, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
@@ -25,6 +25,7 @@ const NAV = [
   { href: "/admin/setup-templates", label: "Setup templates", icon: ScrollText, superOnly: true, group: "Platform" },
   { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, superOnly: true, group: "Platform" },
   { href: "/admin/health", label: "System health", icon: HeartPulse, group: "Platform" },
+  { href: "/admin/billing", label: "Billing & finance", icon: Landmark, group: "Platform" },
   { href: "/admin/usage", label: "Usage & costs", icon: Wallet, group: "Platform" },
   { href: "/admin/requests", label: "Access requests", icon: UserPlus, superOnly: true, group: "Platform" },
   { href: "/admin/team", label: "Agency team", icon: Users, superOnly: true, group: "Platform" },

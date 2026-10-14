@@ -80,7 +80,7 @@ export function Dialog({
                       <D.Description className="sr-only">Dialog</D.Description>
                     )}
                   </div>
-                  <D.Close className="-mr-1 rounded-lg p-1.5 text-muted transition hover:bg-surface-2 hover:text-ink" aria-label="Close">
+                  <D.Close className="-mr-1 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink sm:size-8" aria-label="Close">
                     <X className="size-4" />
                   </D.Close>
                 </div>
@@ -124,6 +124,7 @@ export function Sheet({
     bottom: "inset-x-0 bottom-0 max-h-[92dvh] rounded-t-3xl border-t",
   }[side];
   const offset = side === "right" ? { x: "100%" } : side === "left" ? { x: "-100%" } : { y: "100%" };
+  const returnFocus = React.useRef<HTMLElement | null>(null);
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -138,7 +139,19 @@ export function Sheet({
                 transition={{ duration: 0.2 }}
               />
             </D.Overlay>
-            <D.Content asChild forceMount>
+            <D.Content
+              asChild
+              forceMount
+              onOpenAutoFocus={() => {
+                if (document.activeElement instanceof HTMLElement) returnFocus.current = document.activeElement;
+              }}
+              onCloseAutoFocus={(event) => {
+                if (returnFocus.current?.isConnected) {
+                  event.preventDefault();
+                  returnFocus.current.focus();
+                }
+              }}
+            >
               <motion.div
                 className={cn("fixed z-50 flex flex-col border-line bg-surface shadow-float outline-none", position, className)}
                 initial={offset}
@@ -154,15 +167,15 @@ export function Sheet({
                 ) : (
                   <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
                     <div className="min-w-0">
-                      <D.Title className="truncate text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
+                      <D.Title className="break-words text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
                       <D.Description className={description ? "mt-1 text-[13px] text-muted" : "sr-only"}>{description ?? "Panel"}</D.Description>
                     </div>
-                    <D.Close className="-mr-1 rounded-lg p-1.5 text-muted transition hover:bg-surface-2 hover:text-ink" aria-label="Close">
+                    <D.Close className="-mr-1 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink sm:size-8" aria-label="Close">
                       <X className="size-4" />
                     </D.Close>
                   </div>
                 )}
-                <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">{children}</div>
+                <div tabIndex={0} role="region" aria-label={typeof title === "string" ? `${title} content` : "Panel content"} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">{children}</div>
               </motion.div>
             </D.Content>
           </D.Portal>
@@ -273,12 +286,14 @@ export function Tabs({
   items,
   className,
   id,
+  children,
 }: {
   value: string;
   onValueChange: (v: string) => void;
   items: Array<{ value: string; label: React.ReactNode; count?: number }>;
   className?: string;
   id: string;
+  children?: React.ReactNode;
 }) {
   return (
     <TB.Root value={value} onValueChange={onValueChange}>
@@ -305,6 +320,11 @@ export function Tabs({
           </TB.Trigger>
         ))}
       </TB.List>
+      {items.map((item) => (
+        <TB.Content key={item.value} value={item.value} forceMount hidden={item.value !== value} className="mt-6 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 focus-visible:ring-offset-bg">
+          {item.value === value ? children : null}
+        </TB.Content>
+      ))}
     </TB.Root>
   );
 }
@@ -324,20 +344,18 @@ export function Segmented<V extends string>({
   size?: "sm" | "md";
   ariaLabel: string;
 }) {
+  const groupName = React.useId();
   return (
     <div role="radiogroup" aria-label={ariaLabel} className="inline-flex rounded-xl border border-line bg-surface-2 p-0.5">
       {options.map((o) => (
-        <button
+        <label
           key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={value === o.value}
-          onClick={() => onChange(o.value)}
           className={cn(
-            "relative rounded-[10px] font-medium text-muted transition-colors hover:text-ink aria-checked:text-ink",
-            size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-8 px-3 text-[13px]",
+            "relative inline-flex cursor-pointer items-center justify-center rounded-[10px] font-medium text-muted transition-colors hover:text-ink has-[:checked]:text-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
+            size === "sm" ? "min-h-11 px-2.5 text-[12.5px] sm:min-h-7" : "min-h-11 px-3 text-[13px] sm:min-h-8",
           )}
         >
+          <input type="radio" name={groupName} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} className="sr-only" />
           {value === o.value && (
             <motion.span
               layoutId={`seg-${id}`}
@@ -346,7 +364,7 @@ export function Segmented<V extends string>({
             />
           )}
           <span className="relative">{o.label}</span>
-        </button>
+        </label>
       ))}
     </div>
   );

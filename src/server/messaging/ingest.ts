@@ -6,6 +6,8 @@ import { getConsent, liftSuppression, recordConsent, resolveContact, suppressAdd
 import { applyDeliveryEvent, cancelPendingAiMessages } from "@/server/messaging/send";
 import { createEscalation } from "@/server/messaging/handoff";
 import { fetchGhlContact, parseGhlMessageEvent, verifyGhlWebhook, type GhlContactInfo } from "@/server/messaging/provider";
+import { applyAppointmentEvent } from "@/server/appointments/ledger";
+import { parseGhlAppointmentEvent } from "@/lib/appointments";
 import { detectOptKeyword, normalizeEmail, normalizePhone, type Channel } from "@/lib/messaging";
 import type { EscalationCategory } from "@/lib/escalation";
 
@@ -160,6 +162,7 @@ export async function handleGhlWebhook(
   const check = verifyGhlWebhook({ rawBody: input.rawBody, signature: input.signature, now: input.now });
   if (!check.ok) return { httpStatus: check.reason === "signature" ? 401 : 400, outcome: "rejected", detail: `Webhook ${check.reason}.` };
   const event = parseGhlMessageEvent(check.payload);
+  const appointment = event ? null : parseGhlAppointmentEvent(check.payload);
 
   const emails: OutgoingEmail[] = [];
   const outcome = await withSystem(async (db): Promise<WebhookOutcome> => {
@@ -169,11 +172,20 @@ export async function handleGhlWebhook(
       await db.query("update webhook_receipts set outcome = $3, detail = $4, org_id = $5 where provider = 'ghl' and external_id = $1 and kind = $2", [check.webhookId, String(check.payload.type ?? "").slice(0, 80), result.outcome === "duplicate" ? "ignored" : result.outcome, result.detail?.slice(0, 300) ?? null, orgId ?? null]);
       return result;
     };
-    if (!event) return finish({ httpStatus: 200, outcome: "ignored", detail: "Event type is not used." });
+    if (!event && !appointment) return finish({ httpStatus: 200, outcome: "ignored", detail: "Event type is not used." });
     // The tenant is whoever owns this location in our own mapping. An unmapped location (including protected ones) is ignored.
-    const loc = await db.query<{ org_id: string }>("select org_id from ghl_location_mappings where location_id = $1 and status <> 'disabled'", [event.locationId]);
+    const loc = await db.query<{ org_id: string; calendar_ids: string[] }>("select org_id, calendar_ids from ghl_location_mappings where location_id = $1 and status <> 'disabled'", [(event ?? appointment)!.locationId]);
     const orgId = loc.rows[0]?.org_id;
     if (!orgId) return finish({ httpStatus: 200, outcome: "ignored", detail: "Location is not connected to a workspace." });
+
+    if (appointment) {
+      // Only calendars this workspace has connected are recorded; an event for any other calendar in the location is not ours to track.
+      const calendars = loc.rows[0].calendar_ids;
+      if (calendars.length && appointment.calendarId && !calendars.includes(appointment.calendarId)) return finish({ httpStatus: 200, outcome: "ignored", detail: "That calendar isn't connected to this workspace." }, orgId);
+      const r = await applyAppointmentEvent(db, { orgId, source: "webhook", providerEventId: check.webhookId, event: appointment });
+      return finish({ httpStatus: 200, outcome: r.outcome === "duplicate" ? "duplicate" : r.outcome === "failed" ? "rejected" : r.outcome === "ignored" || r.outcome === "stale" ? "ignored" : "processed", detail: `Appointment ${r.outcome}.`, orgId }, orgId);
+    }
+    if (!event) return finish({ httpStatus: 200, outcome: "ignored", detail: "Event type is not used." }, orgId);
 
     if (event.kind === "outbound") {
       const status = DELIVERY_STATUS[(event.status ?? "").toLowerCase()];

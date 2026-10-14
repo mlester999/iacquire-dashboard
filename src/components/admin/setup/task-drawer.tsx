@@ -63,11 +63,12 @@ function DrawerBody({ orgId, snapshot, task, act, busy, timeZone }: Props & { ta
           { value: "details", label: "Details" },
           { value: "history", label: "History" },
         ]}
-      />
+      >
       {tab === "status" && <StatusTab {...{ orgId, snapshot, task, act, busy, timeZone }} />}
       {tab === "client" && <ClientTab {...{ orgId, snapshot, task, act, busy, timeZone }} />}
       {tab === "details" && <DetailsTab {...{ orgId, snapshot, task, act, busy, timeZone }} />}
       {tab === "history" && <HistoryTab {...{ orgId, snapshot, task, act, busy, timeZone }} />}
+      </Tabs>
     </div>
   );
 }
@@ -139,7 +140,7 @@ function StatusTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
       ) : (
         <div className="space-y-4 rounded-2xl border border-line bg-surface-2/40 p-4">
           <h3 className="text-[14px] font-semibold text-ink">Change status</h3>
-          {verified && <p className="text-[12.5px] leading-relaxed text-muted">“Completed” isn’t offered here: this step is completed by a passing system check or an evidenced attestation.</p>}
+          {verified && <p className="text-[12.5px] leading-relaxed text-muted">A passing system check completes this step. Agency evidence is retained for review and does not verify the connection.</p>}
           <Field label="New status" htmlFor="ts-status">
             <Select id="ts-status" value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)}>
               {options.map((s) => (

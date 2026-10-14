@@ -145,7 +145,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
               ))}
             </Select>
             <Select aria-label="Filter by responsible team member" className="lg:w-44" value={owner} onChange={(e) => setOwner(e.target.value)}>
-              <option value="all">Anyone responsible</option>
+              <option value="all">Any assignee</option>
               <option value="none">Unassigned</option>
               {owners.map(([id, name]) => (
                 <option key={id} value={id}>

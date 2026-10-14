@@ -101,15 +101,23 @@ export function Marketplace({
       </Card>
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div role="tablist" aria-label="Service categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-          {MARKETPLACE_FILTERS.map((f) => {
+      <div className="flex min-w-0 flex-col gap-3">
+        <div role="tablist" aria-label="Service categories" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+          {MARKETPLACE_FILTERS.map((f, index) => {
             const active = filter === f.id;
             return (
               <button
                 key={f.id}
                 role="tab"
                 aria-selected={active}
+                tabIndex={active ? 0 : -1}
+                onKeyDown={(event) => {
+                  const next = event.key === "ArrowRight" ? (index + 1) % MARKETPLACE_FILTERS.length : event.key === "ArrowLeft" ? (index + MARKETPLACE_FILTERS.length - 1) % MARKETPLACE_FILTERS.length : event.key === "Home" ? 0 : event.key === "End" ? MARKETPLACE_FILTERS.length - 1 : null;
+                  if (next === null) return;
+                  event.preventDefault();
+                  setFilter(MARKETPLACE_FILTERS[next].id);
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+                }}
                 onClick={() => setFilter(f.id)}
                 className={cn("relative shrink-0 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors", active ? "text-ink" : "text-muted hover:text-ink")}
               >
@@ -121,7 +129,7 @@ export function Marketplace({
             );
           })}
         </div>
-        <label className="relative block lg:w-72">
+        <label className="relative block w-full self-end sm:w-80">
           <span className="sr-only">Search services</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
           <input

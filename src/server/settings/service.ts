@@ -8,6 +8,8 @@ import { createConfigVersion, currentSettings } from "@/server/workforce/service
 import { onRoleChanged } from "@/server/staff/service";
 import { aiPreferencesSchema } from "@/lib/agent-settings";
 import { grantableRoles, type OrgRole } from "@/lib/permissions";
+import { NOTIFICATION_GROUPS, type NotificationPrefsView } from "@/lib/notification-groups";
+import { parseEmailPreference } from "@/lib/ops";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // ---------------------------------------------------------------------------
@@ -219,29 +221,28 @@ export async function revokeInvite(ctx: OrgContext, inviteId: string) {
 // Notification preferences
 // ---------------------------------------------------------------------------
 
-export const NOTIFICATION_GROUPS = [
-  { key: "setup", label: "Setup progress", description: "Setup milestones, requests from your team, and final readiness updates.", kinds: ["setup_milestone", "setup_action_required", "setup_issue", "setup_ready"] },
-  { key: "approvals", label: "Approvals", description: "When an AI employee needs your decision, and when decisions are made.", kinds: ["approval_requested", "approval_decided"] },
-  { key: "leads", label: "New leads", description: "Research results waiting for review.", kinds: ["lead_awaiting_approval"] },
-  { key: "workforce", label: "AI workforce status", description: "Employees coming online or becoming unavailable.", kinds: ["agent_status", "agent_task_completed"] },
-  { key: "support", label: "Support replies", description: "Replies and status changes from the iAcquire team.", kinds: ["support_reply"] },
-  { key: "knowledge", label: "Knowledge updates", description: "Reviews of held knowledge or configuration changes.", kinds: ["knowledge_update_ready"] },
-  { key: "usage", label: "Usage alerts", description: "When you approach your workspace limits.", kinds: ["usage_limit_approaching"] },
-  { key: "calendar", label: "Bookings", description: "Confirmed bookings from your calendar.", kinds: ["booking_confirmed"] },
-  { key: "projects", label: "Custom projects & maintenance", description: "Progress updates, messages and maintenance updates. Quotes and your decisions always notify you.", kinds: ["project_update", "project_message", "maintenance_update"] },
-] as const;
+export { NOTIFICATION_GROUPS, type NotificationPrefsView };
 
-export async function getNotificationPrefs(ctx: OrgContext): Promise<Record<string, boolean>> {
+export async function getNotificationPrefs(ctx: OrgContext): Promise<NotificationPrefsView> {
   const { rows } = await withUser(ctx.user.id, (db) =>
-    db.query<{ prefs: Record<string, boolean> }>("select prefs from notification_preferences where user_id = $1 and org_id = $2", [ctx.user.id, ctx.org.orgId]),
+    db.query<{ prefs: Record<string, unknown> }>("select prefs from notification_preferences where user_id = $1 and org_id = $2", [ctx.user.id, ctx.org.orgId]),
   );
   const prefs = rows[0]?.prefs ?? {};
-  // setupEmails is an explicit opt-in (off unless the person turned it on), unlike the in-app groups.
-  return { ...Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, prefs[g.key] !== false])), setupEmails: prefs.setupEmails === true };
+  return { groups: Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, prefs[g.key] !== false])), setupEmails: prefs.setupEmails === true, email: parseEmailPreference(prefs) };
 }
 
-export async function saveNotificationPrefs(ctx: OrgContext, prefs: Record<string, boolean>) {
-  const clean = { ...Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, prefs[g.key] !== false])), setupEmails: prefs.setupEmails === true };
+export const notificationPrefsSchema = z.object({
+  groups: z.record(z.string(), z.boolean()).optional(),
+  setupEmails: z.boolean().optional(),
+  email: z.enum(["important", "all", "off"]).optional(),
+});
+
+/** Changes only what was sent; everything else the person already chose is kept. */
+export async function saveNotificationPrefs(ctx: OrgContext, input: z.input<typeof notificationPrefsSchema>) {
+  const patch = notificationPrefsSchema.parse(input);
+  const current = await getNotificationPrefs(ctx);
+  const groups = Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, patch.groups ? patch.groups[g.key] !== false : current.groups[g.key]]));
+  const clean = { ...groups, setupEmails: patch.setupEmails ?? current.setupEmails, email: patch.email ?? current.email };
   await withUser(ctx.user.id, (db) =>
     db.query(
       `insert into notification_preferences (user_id, org_id, prefs) values ($1, $2, $3)

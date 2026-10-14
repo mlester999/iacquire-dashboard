@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ArrowLeft, Ban, Building2, CheckCircle2, ChevronDown, ClipboardCheck, Globe, Copy, FileCode2, KeyRound, Link2, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, KeyRound, Link2, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
@@ -68,7 +68,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
         <PageHero eyebrow="Client workspace" icon={<Building2 className="size-5"/>} title={data.org.name} description={<span>{data.org.industry??"Industry not set"} · {data.org.timezone.replaceAll("_"," ")}<span className="mt-1 block text-xs">Registered {formatDate(data.org.created_at,timeZone)} · Private, tenant-scoped workspace</span></span>} aside={<div className="flex items-center gap-4"><span className="grid size-16 place-items-center rounded-2xl border border-primary/15 bg-surface/70 text-xl font-semibold text-primary-ink">{initials(data.org.name)}</span><div className="space-y-2"><Badge tone={data.org.status === "active" ? "success" : data.org.status === "suspended" ? "danger" : "primary"}>{sentenceCase(data.org.status)}</Badge>{data.org.is_demo&&<div><Badge tone="violet">Demo data</Badge></div>}</div></div>} action={<><ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
             <ClipboardCheck className="size-4" /> Setup manager
           </ButtonLink>
-          <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="ghost" size="sm">Readiness review</ButtonLink></>}><dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[{label:"Client team",value:data.members.filter(m=>m.status==="active").length},{label:"Included AI employees",value:data.agents.filter(a=>a.enabled).length},{label:"Awaiting review",value:held},{label:"Assigned agency staff",value:data.staff.filter(s=>s.assigned).length}].map(s=><div key={s.label}><dt className="text-xs text-muted">{s.label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-ink">{s.value}</dd></div>)}</dl></PageHero>
+          <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="ghost" size="sm">Readiness review</ButtonLink>{superAdmin&&<ButtonLink href={`/admin/clients/${data.org.id}/offboarding`} variant="ghost" size="sm"><DoorClosed className="size-4" /> Offboarding</ButtonLink>}</>}><dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[{label:"Client team",value:data.members.filter(m=>m.status==="active").length},{label:"Included AI employees",value:data.agents.filter(a=>a.enabled).length},{label:"Awaiting review",value:held},{label:"Assigned agency staff",value:data.staff.filter(s=>s.assigned).length}].map(s=><div key={s.label}><dt className="text-xs text-muted">{s.label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-ink">{s.value}</dd></div>)}</dl></PageHero>
       <Tabs
         id="client-tabs"
         value={tab}
@@ -82,7 +82,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
           { value: "billing", label: "Billing" },
           { value: "team", label: "Team & staff" },
         ]}
-      />
+      >
       <motion.div key={tab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
       {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} />}
       {tab === "workforce" && <WorkforceTab data={data} superAdmin={superAdmin} />}
@@ -92,6 +92,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
       {tab === "billing" && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
       {tab === "team" && <TeamTab data={data} superAdmin={superAdmin} />}
       </motion.div>
+      </Tabs>
     </div>
   );
 }

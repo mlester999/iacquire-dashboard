@@ -141,6 +141,15 @@ Hermes tool approvals resume the paused run; CRM writes and any customer messagi
 | Provisioning & activation | `provisioning_jobs`, `provisioning_job_attempts`, `activation_reviews` |
 | Supabase foundation | `auth_account_migrations`, `auth_recovery_sessions`, `private_files`, `support_attachments`, `schema_migrations` |
 | Ops | `notifications`, `notification_preferences`, `usage_events`, `usage_limits`, `billing_accounts`, `audit_logs` |
+| Operating controls & staff | `automation_pauses` (agency, messaging and outbound stops), `staff_profiles` (client staff availability and escalation preferences) |
+| Billing & credits | `credit_accounts`, `credit_ledger_entries` (append-only, micro-dollars), `usage_reservations`, `metered_usage_events`, `usage_rate_versions`, `usage_unit_rates`, `payments`, `payment_webhook_events`, `provider_fees`, `billing_settings`, `agency_billing_settings` (see [finance-and-billing.md](finance-and-billing.md)) |
+| Messaging | `contacts`, `contact_identities`, `contact_merges`, `contact_memories`, `contact_consent_events`, `suppressions`, `conversations`, `conversation_messages`, `message_delivery_events`, `webhook_receipts`, `messaging_policy`, `messaging_settings`, `messaging_channels`, `approved_test_destinations`, `whatsapp_templates`, `follow_up_plans`, `follow_up_steps`, `human_escalations`, `escalation_recipients`, `conversation_ownership_events` |
+| Onboarding v2 & brand | `onboarding_answers`, `org_assets` (see [onboarding.md](onboarding.md)) |
+| Website Studio | `websites`, `website_versions`, `website_publications`, `website_publication_assets`, `website_asset_blobs`, `website_domains`, `website_form_submissions`, `website_usage_daily` (see [website-studio.md](website-studio.md)) |
+| Operations | `worker_job_runs`, `incidents`, `incident_events`, `notification_deliveries` (see [operations-and-incidents.md](operations-and-incidents.md)) |
+| Appointments | `appointment_settings`, `appointment_events`, `appointment_bookings`, `appointment_reminders` (see [appointments.md](appointments.md)) |
+| Retention programs | `retention_programs`, `retention_enrollments`, `retention_steps` (see [retention.md](retention.md)) |
+| Commercial operations | `agency_finance_entries`, `fair_use_policies`, `fair_use_status`, `account_activity_reviews`, `offboarding_requests`, `offboarding_events` (see [fair-use-and-inactivity.md](fair-use-and-inactivity.md), [offboarding-and-export.md](offboarding-and-export.md)) |
 
 Migrations: `0001_foundation` (identity, tenancy, permission helpers), `0002_workforce` (onboarding,
 knowledge, agents, chat, runs, integrations), `0003_business` (approvals, tasks, leads, CRM refs,
@@ -152,7 +161,12 @@ retention), `0004_support_ops` (notifications, support, help, usage, billing, au
 (connections, checks, Vault references, workflow mappings), `0011_private_storage` (private buckets,
 Storage and Realtime policies, recovery sessions), `0012_provisioning_activation` (resumable jobs,
 attempts, immutable activation reviews), `0013_setup_experience` (extended master checklist, optional
-funnel/website scope, private evidence).
+funnel/website scope, private evidence), `0014_llm_provider`, `0015_custom_projects` (catalog, portfolio,
+projects, maintenance), `0016_operating_controls` (pauses, employee modes), `0017_staff_roles`,
+`0018_billing_credits` (credits ledger, metering, PayMongo), `0019_messaging` (unified inbox, consent,
+follow-ups, handoff), `0020_onboarding_v2`, `0021_websites` (Website Studio and the public site runtime role),
+`0022_operations` (heartbeats, incidents, email delivery), `0023_appointments`, `0024_retention`,
+`0025_commercial_operations` (agency finance, fair use, inactivity, offboarding).
 
 ### Requested table names and their equivalents
 

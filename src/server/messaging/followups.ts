@@ -2,6 +2,7 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { buildSchedule, DEFAULT_FOLLOWUP_TEXT, type Channel, type CustomFollowUp, type FollowUpPreset } from "@/lib/messaging";
 import { queueOutbound } from "@/server/messaging/send";
+import { cancelRetention } from "@/server/retention/cancel";
 
 /** Reasons a follow-up must stop for good rather than wait. */
 export type StopReason =
@@ -22,6 +23,8 @@ const STOP_ON_BLOCK = new Set(["human_owner", "suppressed", "no_consent", "autom
 
 /** Cancels the contact's active plan, its scheduled steps and any follow-up message that has not been sent yet. */
 export async function cancelFollowUps(db: Queryable, input: { orgId: string; contactId: string; reason: StopReason }): Promise<{ cancelledPlans: number; cancelledMessages: number }> {
+  // The same stop conditions end a customer's retention programs (a reply, an opt-out, a person taking over, a pause).
+  await cancelRetention(db, input.orgId, input.contactId, input.reason);
   const plans = await db.query<{ id: string; conversation_id: string }>(
     "update follow_up_plans set status = 'cancelled', cancel_reason = $3, closed_at = now() where org_id = $1 and contact_id = $2 and status = 'active' returning id, conversation_id",
     [input.orgId, input.contactId, input.reason],

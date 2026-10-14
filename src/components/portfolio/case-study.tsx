@@ -36,7 +36,7 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
         </p>
       )}
 
-      {project.assets.length?<ImageGallery assets={project.assets} title={project.title}/>:<ProjectMediaPlaceholder title={project.title} technologies={project.technologies} className="min-h-56 rounded-2xl p-6 sm:aspect-[16/7] sm:p-10"/>}
+      {project.assets.length?<ImageGallery assets={project.assets} title={project.title}/>:<ProjectMediaPlaceholder title={project.title} technologies={project.technologies} className="aspect-auto min-h-56 w-full rounded-2xl p-6 sm:aspect-[16/7] sm:p-10"/>}
 
       <nav aria-label="Case study sections" className="flex flex-wrap gap-2 border-y border-line py-3">
         {project.problem&&<a href="#case-study-problem" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Target className="size-3.5"/>The problem</a>}

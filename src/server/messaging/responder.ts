@@ -6,9 +6,13 @@ import { chargeUsage, getBalance } from "@/server/billing/ledger";
 import { buildRunInstructions, loadConnection } from "@/server/workforce/service";
 import { HermesError, startRun, streamRunEvents } from "@/server/integrations/hermes/client";
 import { createEscalation } from "@/server/messaging/handoff";
+import { getAvailability } from "@/server/appointments/availability";
+import { requestBooking, type BookingResult } from "@/server/appointments/booking";
+import type { AppointmentProvider } from "@/server/appointments/provider";
+import { detectBookingIntent, formatSlot } from "@/lib/appointments";
 import { queueOutbound } from "@/server/messaging/send";
 import { isEscalationCategory, type EscalationCategory } from "@/lib/escalation";
-import type { Channel } from "@/lib/messaging";
+import { withDisclosure, type Channel } from "@/lib/messaging";
 
 export interface ReplyContext {
   orgId: string;
@@ -21,10 +25,18 @@ export interface ReplyContext {
   customerMessage: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   confirmedFacts: string[];
+  /** Present only when the customer is talking about booking: what the real calendar says, or that it could not be read. */
+  availability?: ReplyAvailability;
 }
+
+export type ReplyAvailability =
+  | { state: "slots"; timeZone: string; slots: Array<{ start: string; label: string }> }
+  | { state: "none"; timeZone: string }
+  | { state: "unknown"; reason: string };
 
 export type ReplyOutcome =
   | { kind: "reply"; text: string; usage?: { inputTokens: number | null; outputTokens: number | null } | null }
+  | { kind: "book"; startIso: string; summary: string; usage?: { inputTokens: number | null; outputTokens: number | null } | null }
   | { kind: "escalate"; category: EscalationCategory; summary: string }
   | { kind: "unavailable"; reason: string };
 
@@ -34,7 +46,7 @@ export type ReplyGenerator = (ctx: ReplyContext) => Promise<ReplyOutcome>;
  * Wraps the employee's configuration for a customer-facing run. The model may answer, or it may ask for a person with the
  * escalation protocol below. It is told never to invent facts, and the portal (not the model) guarantees AI disclosure and the cap on length.
  */
-function customerInstructions(base: string, ctx: ReplyContext): string {
+export function customerInstructions(base: string, ctx: ReplyContext): string {
   const facts = ctx.confirmedFacts.length ? `\nConfirmed facts about this customer (from your team, not guesses):\n${ctx.confirmedFacts.map((f) => `- ${f}`).join("\n")}\n` : "";
   return `${base}
 
@@ -43,7 +55,7 @@ You are writing one ${ctx.channel === "email" ? "email" : ctx.channel === "whats
 Be short, clear, natural and friendly. Use only information from the approved knowledge above and this conversation.
 Never invent prices, availability, bookings, policies, results or promises. Never offer discounts or commit to anything legal or financial.
 If you do not know, say you will check with the team.
-${facts}
+${facts}${bookingBlock(ctx)}
 ## When a person must take over
 If the customer asks for a person, wants a refund, is complaining or upset, wants to negotiate or sign anything, wants a phone call, is ready to buy and needs a human closer, or you are unsure or the request is unsafe, do NOT answer.
 Instead reply with exactly one line of JSON and nothing else:
@@ -51,15 +63,40 @@ Instead reply with exactly one line of JSON and nothing else:
 Otherwise reply with the message text only, with no JSON, no preamble and no signature block.`;
 }
 
+/**
+ * What the model may say about appointments. The list is read from the real calendar a moment ago and is the only thing it may offer
+ * or book. Without it, it is told plainly that it cannot see the calendar.
+ */
+function bookingBlock(ctx: ReplyContext): string {
+  const a = ctx.availability;
+  if (!a) return "";
+  if (a.state === "unknown") {
+    return `\n## Booking\nYou cannot see the calendar right now. Do not offer, confirm or promise any appointment time. Say a team member will confirm a time shortly.\n`;
+  }
+  if (a.state === "none") {
+    return `\n## Booking\nThe calendar shows no free times in the next few days. Do not offer or confirm any time. Ask which days suit them, and say the team will confirm.\n`;
+  }
+  const list = a.slots.map((s) => `- ${s.start} (${s.label})`).join("\n");
+  return `\n## Booking
+These are the only times that are really free, read from the calendar just now (shown in ${a.timeZone}). Offer only these exact times, in plain words, never as ISO text:
+${list}
+Never say or imply any other time is available. If the customer clearly chooses one of them, do not reply with text. Reply with exactly one line of JSON and nothing else:
+{"book":"<the exact start value from the list>","summary":"<a short phrase for the team, e.g. Viewing on Tuesday at 2pm>"}
+If none suit them, ask what days they prefer and say the team will confirm. Do not book without a clear choice.\n`;
+}
+
 /** Reads the model's answer. A malformed escalation is never sent to the customer. */
 export function parseReply(raw: string): ReplyOutcome {
   const text = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
   if (!text) return { kind: "unavailable", reason: "The AI employee returned an empty reply." };
-  if (text.startsWith("{") || text.includes('"escalate"')) {
+  if (text.startsWith("{") || text.includes('"escalate"') || text.includes('"book"')) {
     try {
-      const parsed = JSON.parse(text) as { escalate?: unknown; summary?: unknown };
+      const parsed = JSON.parse(text) as { escalate?: unknown; summary?: unknown; book?: unknown };
       if (isEscalationCategory(parsed.escalate) && typeof parsed.summary === "string" && parsed.summary.trim()) {
         return { kind: "escalate", category: parsed.escalate, summary: parsed.summary.trim().slice(0, 600) };
+      }
+      if (typeof parsed.book === "string" && !Number.isNaN(Date.parse(parsed.book))) {
+        return { kind: "book", startIso: new Date(parsed.book).toISOString(), summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 200) : "" };
       }
     } catch {
       /* fall through */
@@ -69,11 +106,7 @@ export function parseReply(raw: string): ReplyOutcome {
   return { kind: "reply", text };
 }
 
-/** Adds the AI disclosure to the first message the AI sends in a conversation, whatever the model wrote. */
-export function withDisclosure(text: string, disclosure: string, businessName: string, isFirstAiMessage: boolean): string {
-  if (!isFirstAiMessage || /\b(AI|artificial intelligence|virtual assistant|automated)\b/i.test(text)) return text;
-  return `${disclosure.replace("{business}", businessName)} ${text}`;
-}
+export { withDisclosure };
 
 const MAX_LENGTH: Record<Channel, number> = { sms: 900, whatsapp: 1500, email: 4000 };
 
@@ -114,7 +147,7 @@ export const hermesReplyGenerator: ReplyGenerator = async (ctx) => {
 };
 
 function attachUsage(outcome: ReplyOutcome, usage: { inputTokens: number | null; outputTokens: number | null } | null): ReplyOutcome {
-  return outcome.kind === "reply" ? { ...outcome, usage: usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : null } : outcome;
+  return outcome.kind === "reply" || outcome.kind === "book" ? { ...outcome, usage: usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : null } : outcome;
 }
 
 export type RespondResult =
@@ -162,7 +195,7 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
  * or credits are exhausted, answers each customer message at most once, and sends nothing itself: the reply goes through the
  * same rule chain as every other outbound message (drafts when approval is required, blocked when anything stops it).
  */
-export async function respondToConversation(orgId: string, conversationId: string, deps: { generate?: ReplyGenerator; now?: Date } = {}): Promise<RespondResult> {
+export async function respondToConversation(orgId: string, conversationId: string, deps: { generate?: ReplyGenerator; now?: Date; provider?: AppointmentProvider } = {}): Promise<RespondResult> {
   const generate = deps.generate ?? hermesReplyGenerator;
   const pre = await withSystem(async (db) => {
     const ctx = await loadContext(db, orgId, conversationId);
@@ -181,7 +214,26 @@ export async function respondToConversation(orgId: string, conversationId: strin
   if ("skip" in pre) return { status: "skipped", reason: pre.skip as string };
   const { ctx } = pre;
 
-  const outcome = await generate(ctx);
+  // Only when the customer is talking about booking: read the real calendar so the employee can offer nothing else.
+  if (detectBookingIntent(ctx.customerMessage, ctx.history.map((h) => h.content))) ctx.availability = await readAvailability(ctx, deps);
+
+  let outcome = await generate(ctx);
+  let bookingNote: BookingResult | null = null;
+  if (outcome.kind === "book") {
+    const chosen = outcome.startIso;
+    const offered = ctx.availability?.state === "slots" ? ctx.availability.slots.find((s) => s.start === chosen) : undefined;
+    if (!offered) {
+      // The employee named a time that was not on the list. Nothing is booked, and a person looks at the conversation.
+      outcome = { kind: "unavailable", reason: "The AI employee chose a time that was not on the calendar's list, so nothing was booked." };
+    } else {
+      const usage = outcome.usage;
+      bookingNote = await requestBooking(
+        { orgId, contactId: ctx.contactId, conversationId, startAt: new Date(chosen), title: outcome.summary || undefined, actor: { kind: "ai", agentId: ctx.agentId }, now: deps.now },
+        { provider: deps.provider },
+      );
+      outcome = { kind: "reply", text: bookingReplyText(bookingNote, offered.label), usage };
+    }
+  }
   const emails: OutgoingEmail[] = [];
   const result = await withSystem(async (db): Promise<RespondResult> => {
     // Re-check after the (possibly slow) generation: a person may have taken over meanwhile.
@@ -198,6 +250,14 @@ export async function respondToConversation(orgId: string, conversationId: strin
       const esc = await createEscalation(db, { orgId, conversationId, category: outcome.category, summary: outcome.summary, sourceMessageId: ctx.inboundMessageId, agentId: ctx.agentId, now: deps.now });
       emails.push(...esc.emails);
       return { status: "escalated", escalationId: esc.escalationId };
+    }
+    if (bookingNote?.status === "booked") {
+      // The booking already queued its own confirmation through the same gate; a second message would only repeat it.
+      const confirm = await db.query<{ id: string; status: string }>("select id, status from conversation_messages where org_id = $1 and dedupe_key = $2", [orgId, `booking-confirm:${bookingNote.bookingId}`]);
+      if (outcome.kind === "reply" && outcome.usage && confirm.rows[0]) await chargeModelUsage(db, orgId, confirm.rows[0].id, outcome.usage);
+      return confirm.rows[0]
+        ? { status: confirm.rows[0].status === "blocked" ? "blocked" : "queued", messageId: confirm.rows[0].id }
+        : { status: "blocked", messageId: "", reason: "booking_confirmation_not_sent" };
     }
     const text = withDisclosure(outcome.text, ctx.aiDisclosure, ctx.businessName, ctx.aiMessageCount === 0).slice(0, MAX_LENGTH[ctx.channel]);
     const queued = await queueOutbound(db, { orgId, conversationId, scope: "reply", actor: { kind: "ai", agentId: ctx.agentId }, body: text, now: deps.now, dedupeKey: `reply-to:${ctx.inboundMessageId}` });
@@ -243,3 +303,33 @@ export async function respondToPending(deps: { generate?: ReplyGenerator; limit?
   return { checked: rows.length };
 }
 
+
+async function readAvailability(ctx: ReplyContext, deps: { now?: Date; provider?: AppointmentProvider }): Promise<ReplyAvailability> {
+  try {
+    const tz = await withSystem(
+      async (db) => (await db.query<{ tz: string }>("select coalesce(k.timezone, o.timezone) as tz from contacts k join organizations o on o.id = k.org_id where k.id = $1 and k.org_id = $2", [ctx.contactId, ctx.orgId])).rows[0]?.tz ?? "UTC",
+    );
+    const res = await getAvailability(ctx.orgId, { timeZone: tz, limit: 8, perDay: 3, now: deps.now, provider: deps.provider });
+    if (!res.ok) return { state: "unknown", reason: res.detail };
+    if (!res.slots.length) return { state: "none", timeZone: tz };
+    return { state: "slots", timeZone: tz, slots: res.slots.map((s) => ({ start: s.start, label: formatSlot(s.start, tz) })) };
+  } catch {
+    return { state: "unknown", reason: "The calendar could not be read." };
+  }
+}
+
+/** What the customer is told after the employee asks to book a time. It never says "booked" unless the calendar confirmed it. */
+export function bookingReplyText(r: BookingResult, label: string): string {
+  switch (r.status) {
+    case "booked":
+      return `You're booked for ${label}.`;
+    case "awaiting_approval":
+      return `Thanks! I've asked the team to confirm ${label}. You'll hear back shortly.`;
+    case "needs_manual":
+      return `Thanks! I've passed ${label} to the team, who will confirm it with you shortly.`;
+    case "unavailable":
+      return r.reason === "slot_taken" ? "Sorry, that time was just taken. Would another time work for you?" : "I can't confirm times right now, so I've asked a team member to follow up with you.";
+    default:
+      return "I couldn't complete that booking, so I've asked a team member to follow up with you.";
+  }
+}

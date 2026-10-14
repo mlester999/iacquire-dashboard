@@ -62,7 +62,8 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
     if (!editing) return;
     setSaving(true);
     const f = editing.form;
-    const res = await saveAccountAction(editing.id, {
+    try {
+      const res = await saveAccountAction(editing.id, {
       customerName: f.customerName,
       status: f.status as Account["status"],
       health: f.health as Account["health"],
@@ -70,12 +71,16 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
       renewalDate: f.renewalDate || "",
       openIssues: Number(f.openIssues || 0),
       repeatOpportunity: f.repeatOpportunity,
-    });
-    setSaving(false);
-    if (!res.ok) return toast.error(res.error);
-    toast.success(editing.id ? "Customer updated" : "Customer added");
-    setEditing(null);
-    router.refresh();
+      });
+      if (!res.ok) return toast.error(res.error);
+      toast.success(editing.id ? "Customer updated" : "Customer added");
+      setEditing(null);
+      router.refresh();
+    } catch {
+      toast.error("We couldn't confirm the save. Refresh to check the customer before trying again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -396,9 +401,10 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
               <p className="text-[13px] font-semibold">Record feedback</p>
               <div className="flex gap-1" role="radiogroup" aria-label="Rating">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} type="button" role="radio" aria-checked={rating === n} onClick={() => setRating(n)} className="text-warning" aria-label={`${n} star${n === 1 ? "" : "s"}`}>
-                    <Star className={cn("size-5", n <= rating ? "fill-current" : "text-surface-3")} />
-                  </button>
+                  <label key={n} className="relative inline-flex size-11 cursor-pointer items-center justify-center rounded-lg text-warning has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary hover:bg-surface-2">
+                    <input type="radio" name="retention-feedback-rating" className="sr-only" checked={rating === n} onChange={() => setRating(n)} value={n} aria-label={`${n} star${n === 1 ? "" : "s"}`} />
+                    <Star aria-hidden className={cn("size-5", n <= rating ? "fill-current" : "text-faint")} />
+                  </label>
                 ))}
               </div>
               <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={2000} placeholder="What did they say?" aria-label="Feedback comment" />

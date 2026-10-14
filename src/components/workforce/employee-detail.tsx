@@ -121,7 +121,7 @@ export function EmployeeDetail(props: Props) {
 
       <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="Configuration versions" value={props.versions.length} detail="Saved changes remain available in history." icon={<History className="size-4"/>} tone="blue"/><MetricCard label="Recorded runs" value={props.runs.length} detail="Activity from this employee's saved run history." icon={<Sparkles className="size-4"/>} tone="violet"/><MetricCard label="Awaiting approval" value={props.pendingApprovals} detail="Customer-facing actions stay under your control." icon={<ShieldCheck className="size-4"/>} tone="amber" href="/approvals"/></div>
 
-      <Tabs id="employee-tabs" value={tab} onValueChange={setTab} items={items} />
+      <Tabs id="employee-tabs" value={tab} onValueChange={setTab} items={items}>
 
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={reduced?false:{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduced?undefined:{ opacity: 0 }} transition={{ duration: reduced?0:0.2 }}>
@@ -137,6 +137,7 @@ export function EmployeeDetail(props: Props) {
           {tab === "activity" && <ActivityTab {...props} />}
         </motion.div>
       </AnimatePresence>
+      </Tabs>
     </div>
   );
 }
@@ -569,8 +570,8 @@ function HistoryTab({ meta, versions, timeZone }: Props) {
   );
 }
 
-function ActivityTab({ runs, timeZone }: Props) {
-  if (!runs.length) return <Card><CardContent className="py-12 text-center text-[13.5px] text-muted">No activity yet. Runs appear here once you start working with this employee.</CardContent></Card>;
+function ActivityTab({ runs, timeZone,meta,agent,canChat:canUse }: Props) {
+  if (!runs.length) return <Card className="surface-tint"><CardContent className="flex flex-col items-start gap-4 py-7 sm:flex-row sm:items-center"><AgentAvatar role={meta} size="lg"/><div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-[.15em] text-primary">Employee activity</p><h3 className="mt-2 text-[19px] font-semibold tracking-tight">No recorded runs yet</h3><p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted">Conversations and tool activity appear here after {agent.displayName} starts working. This view only shows saved run records.</p></div>{canUse&&<ButtonLink href={agent.enabled&&canChat(agent.status)?`/chat/${meta.slug}`:"/setup"} variant="secondary">{agent.enabled&&canChat(agent.status)?"Open chat":"Review setup"}</ButtonLink>}</CardContent></Card>;
   return (
     <Card className="overflow-hidden">
       <div className="scrollbar-thin overflow-x-auto">

@@ -17,9 +17,17 @@ export async function getAppointments(ctx: OrgContext) {
       meeting_link: string | null;
       contact_label: string | null;
       synced_at: Date;
+      late_cancellation: boolean;
+      reschedule_count: number;
+      previous_start_at: Date | null;
+      conflict: boolean;
+      origin: "sync" | "webhook" | "portal_ai" | "portal_staff";
+      cancelled_at: Date | null;
     }>(
-      `select id, title, status, start_at, end_at, timezone, meeting_type, meeting_link, contact_label, synced_at
-       from appointment_refs where org_id = $1 and start_at > now() - interval '90 days' order by start_at`,
+      `select a.id, a.title, a.status, a.start_at, a.end_at, a.timezone, a.meeting_type, a.meeting_link, coalesce(nullif(c.display_name, ''), a.contact_label) as contact_label, a.synced_at,
+         a.late_cancellation, a.reschedule_count, a.previous_start_at, a.conflict, a.origin, a.cancelled_at
+       from appointment_refs a left join contacts c on c.id = a.contact_id and c.org_id = a.org_id
+       where a.org_id = $1 and a.start_at > now() - interval '90 days' order by a.start_at`,
       [ctx.org.orgId],
     );
     const integ = await db.query<{ status: string; detail: string | null; last_checked_at: Date | null }>(

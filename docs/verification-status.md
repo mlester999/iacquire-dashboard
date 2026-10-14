@@ -1,16 +1,44 @@
 # Verification status
 
-## Current checkpoint and historical scope
+## Current checkpoint (2026-10-15)
 
-The foundation audit added credential/tenant authorization, TLS, provider-identity, setup/job and onboarding regression fixes. Its full local checkpoint passed **373 tests in 27 files**, typecheck, lint and production build. These checks used synthetic local PostgreSQL and mocked Auth/provider calls; no hosted acceptance is claimed.
+| Gate | Result |
+| --- | --- |
+| `npm test` | **877 tests in 49 files passed** |
+| `npm run typecheck` | passes |
+| `npm run lint` | 0 errors, **2 warnings** (unused `newSection` and `t` in `tests/website-service.test.ts`, left as they were) |
+| `npm run build` | passes (88 pages, 37 route handlers) |
+| Schema | 25 migrations, 149 public tables; every table with an `org_id` is checked automatically by `tests/tenant-isolation-generic.test.ts` |
 
-The working repository subsequently gained migrations `0016`–`0021` and additional billing, messaging, onboarding and website routes. The product-wide UI review is continuing against that current source. Counts and verification in the older sections below are **historical**, not a final acceptance result for the expanded repository. The final gates and schema/route inventory must be refreshed after the UI work.
+Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the real migrations, RLS policies, services and route handlers, with mocked Supabase Auth and mocked provider HTTP.
+**Nothing has been run against a hosted Supabase project, Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email provider or domain registrar.**
+Migrations `0016`–`0025` have **not** been applied to the hosted Supabase project. No production deployment, push or external mutation has been performed.
 
-Authenticated synthetic browser QA proved a human setup-task edit reaching the client without reload, progress changing 11% → 17%, accurate completion/history and an additional persisted in-app notification. Mobile and desktop setup/integration scans found and corrected ARIA labels, keyboard focus return, reduced-motion hydration and completion-note contrast. Hosted Realtime/Vault/Auth/storage remain live gates.
+### Evidence and honest labels for the all-in-one build
 
-Live Hermes clients now stay **Permission limited** / `setup_required`, with runs refused until a supported complete runtime tool-permission inventory can be proved. Upstream advertised toolsets alone omit potential plugin/MCP tools. See [integration setup](integrations-setup.md). GoHighLevel/n8n operations remain read-only; no external activation or production deployment was performed.
+Labels: *Implemented locally* (works on local PostgreSQL) · *Tested with mocks* (provider calls mocked) · *Blocked awaiting credentials/approval*. None is "Verified end to end".
 
-See [foundation delivery checkpoint](foundation-delivery-report.md) and [UI redesign audit](ui-redesign-audit.md) for the current work streams.
+| Area | Evidence | Label |
+| --- | --- | --- |
+| Operating controls: employee modes, pauses, emergency stops (0016) | Enforced in the execution gate; `tests/automation-controls.test.ts` | Implemented locally |
+| Staff roles (0017) | `tests/staff-roles.test.ts`, permission-matrix drift test | Implemented locally |
+| Credits, metering, PayMongo checkout and webhook (0018) | `tests/billing*.test.ts`: signature, replay, livemode, idempotency, reconciliation. Live checkout is gated by a review flag | Tested with mocks; **blocked awaiting PayMongo test keys** |
+| Unified inbox, consent, autopilot, human takeover (0019) | `tests/messaging-*.test.ts`. Sending is behind `GHL_WRITES_ENABLED=false` | Tested with mocks; **blocked awaiting a GHL test location** |
+| Adaptive onboarding, brand assets (0020) | `tests/onboarding-v2.test.ts`, `assets-and-reader.test.ts`; browser-checked on the sample preview | Implemented locally; live LLM not exercised |
+| Website Studio, publishing, domains, forms, site runtime (0021) | `tests/website-*.test.ts` (six files). Probe, DNS and certificate checks use injected fakes | Tested with mocks; **no real host, DNS, certificate or domain purchase** |
+| Operations: heartbeats, incidents, notification email (0022) | `tests/operations.test.ts` (35). Collectors read recorded state; **no active provider probes** | Implemented locally; email blocked awaiting a sender |
+| Appointments: event ledger, availability, booking, reminders, AI booking (0023) | `tests/appointments.test.ts` (67): ordering, dedupe, stale events, slot re-check, approval gates, reminder gating. The n8n processor is untouched and inactive | Tested with mocks; **GHL writes disabled** |
+| Retention programs (0024) | `tests/retention.test.ts` (28): approval hash, caps, stop conditions, credit release | Tested with mocks; wording and limits **need legal review** |
+| Agency finance statement, billing controls (0018/0025) | `tests/finance.test.ts` (12). Real numbers only; reserve is planning guidance | Implemented locally; **needs accountant review** |
+| Fair use, inactivity review (0025) | `tests/fair-use-inactivity.test.ts` (19). No limit ships | Implemented locally; **thresholds await real cost data** |
+| Offboarding, export, deletion (0025) | `tests/offboarding.test.ts` (23): ZIP integrity, tenant scope, shutdown steps, every deletion guard, atomic purge. Purge is off by default | Implemented locally; **never run against real data** |
+
+### Browser checks for the new screens
+
+Run against the development-only `/dev/operations-preview` (clearly labelled **sample data**), in the in-app browser. axe-core (wcag2a/2aa/21a/21aa/best-practice) reported **no violations
+in the product components** in light and dark for offboarding (agency), "your data" (client) and fair use (client card and agency panel), apart from the preview page's own missing landmark and heading. There was no horizontal
+overflow at 375 px for those views or the finance statement. Limits: authenticated pages were not driven against a live database; keyboard-only walkthroughs were not recorded; the pane freezes CSS transitions, so a
+dark-mode run reads some buttons mid-transition unless transitions are disabled first (done for the final runs).
 
 ## Historical verification record
 

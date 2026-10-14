@@ -12,6 +12,7 @@ import {
   revokeInvite,
   revokeMember,
   saveNotificationPrefs,
+  notificationPrefsSchema,
   updateAiPreferences,
   updateProfile,
   updateUserProfile,
@@ -95,7 +96,7 @@ export async function revokeInviteAction(inviteId: string) {
   }
 }
 
-export async function saveNotificationPrefsAction(prefs: Record<string, boolean>) {
+export async function saveNotificationPrefsAction(prefs: z.input<typeof notificationPrefsSchema>) {
   try {
     const ctx = await requireOrgContextOrThrow();
     await saveNotificationPrefs(ctx, prefs);

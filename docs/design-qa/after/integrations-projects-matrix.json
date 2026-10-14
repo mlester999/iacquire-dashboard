@@ -1,0 +1,1298 @@
+[
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 32,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "admin-integrations",
+    "file": "admin-integrations-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-dark-375-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-dark-390-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-dark-768-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-dark-1024-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-dark-1440-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-dark-1920-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-light-375-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-light-390-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-light-768-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-light-1024-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-light-1440-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/integrations",
+    "name": "hermes-wizard",
+    "file": "hermes-wizard-light-1920-pass2.jpg",
+    "active": "Close",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/clients/27d31440-deda-4dfb-8b5e-a6df00d99cf6/integrations",
+    "name": "admin-client-integrations",
+    "file": "admin-client-integrations-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Your connected ecosystem.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/settings/integrations",
+    "name": "client-integrations",
+    "file": "client-integrations-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Make iAcquire work the way you do.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/services",
+    "name": "admin-services",
+    "file": "admin-services-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Service catalog.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/add-ons",
+    "name": "client-services",
+    "file": "client-services-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Custom Projects & Add-ons",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/portfolio",
+    "name": "admin-portfolio-empty",
+    "file": "admin-portfolio-empty-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Good work deserves a great showcase.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/our-work",
+    "name": "client-portfolio-empty",
+    "file": "client-portfolio-empty-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Selected Work from Our Founder",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=gallery",
+    "name": "portfolio-gallery-preview",
+    "file": "portfolio-gallery-preview-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://127.0.0.1:3200/dev/projects-preview?view=case-study",
+    "name": "portfolio-case-study-preview",
+    "file": "portfolio-case-study-preview-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-light-375-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-light-390-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-light-768-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-light-1024-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-light-1440-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-light-1920-pass2.jpg",
+    "bg": "rgb(245, 246, 250)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "light",
+    "width": 1920
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-dark-375-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 375
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-dark-390-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 390
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-dark-768-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 768
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-dark-1024-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1024
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-dark-1440-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1440
+  },
+  {
+    "route": "http://localhost:3200/admin/maintenance",
+    "name": "admin-maintenance-empty",
+    "file": "admin-maintenance-empty-dark-1920-pass2.jpg",
+    "bg": "rgb(7, 8, 12)",
+    "heading": "Built to last. Supported with care.",
+    "overflow": 0,
+    "theme": "dark",
+    "width": 1920
+  }
+]

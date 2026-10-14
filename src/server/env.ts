@@ -49,6 +49,8 @@ const schema = z.object({
 
   GHL_API_BASE: z.string().url().default("https://services.leadconnectorhq.com"),
   GHL_WRITES_ENABLED: bool,
+  // Permanent deletion of a departed client's data. Off everywhere until it is switched on deliberately, per environment, after a backup has been restored once.
+  OFFBOARDING_PURGE_ENABLED: bool,
   // GoHighLevel's webhook verification key is published and built in; set this only when GoHighLevel rotates it.
   GHL_WEBHOOK_PUBLIC_KEY: z.preprocess(blankToUndefined, z.string().optional()),
   ALLOW_INSECURE_HERMES_URLS: bool,
@@ -60,6 +62,8 @@ const schema = z.object({
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
   // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
   CRON_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
+  // The scheduler is reported as stopped when its last completed run is older than this. Set it to a few times the schedule interval.
+  SCHEDULER_STALE_MINUTES: z.coerce.number().int().min(2).max(1440).default(20),
   // Website Studio. Included sites live at <label>.<SITES_BASE_DOMAIN>; custom domains point (CNAME) at SITES_CNAME_TARGET.
   SITES_BASE_DOMAIN: z.preprocess(blankToUndefined, z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$|^[a-z0-9-]+\.localhost$/i).default("sites.iacquire.com")),
   SITES_CNAME_TARGET: z.preprocess(blankToUndefined, z.string().optional()),

@@ -505,7 +505,7 @@ export async function publishWebsite(ctx: OrgContext, input: { acknowledgeClaims
   return { publicationId: restored ? staged.previousId! : staged.publicationId, number: staged.number, host, health: probe.state, healthDetail: probe.detail, restoredPrevious: restored };
 }
 
-async function primaryHost(orgId: string, websiteId: string, fallback: string): Promise<string> {
+export async function primaryHost(orgId: string, websiteId: string, fallback: string): Promise<string> {
   const { rows } = await withSystem((db) =>
     db.query<{ hostname: string }>("select hostname from website_domains where org_id = $1 and website_id = $2 and removed_at is null and is_primary and status in ('verified', 'active') limit 1", [orgId, websiteId]),
   );

@@ -142,7 +142,7 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
           { value: "pending", label: "Pending", count: pending.length },
           { value: "history", label: "History", count: history.length },
         ]}
-      />
+      >
       {list.length === 0 ? (
         <Card>
           <EmptyState icon={<ShieldCheck className="size-5" />} title={tab === "pending" ? "Nothing waiting for you" : "No decisions yet"} description={tab === "pending" ? "When an AI employee needs your go-ahead, it will appear here and in your notifications." : "Approved, rejected and expired requests will be listed here."} />
@@ -199,6 +199,7 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
         </ul>
       )}
 
+      </Tabs>
       <ApprovalSheet approval={selected} onClose={() => setSelected(null)} timeZone={timeZone} />
 
       <Dialog

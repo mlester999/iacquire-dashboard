@@ -1,6 +1,8 @@
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getAppointments } from "@/server/queries/business";
 import { getAgentByRole } from "@/server/workforce/service";
+import { listPendingBookings } from "@/server/appointments/overview";
+import { getPolicyView } from "@/server/appointments/settings";
 import { AppointmentsView } from "@/components/appointments/appointments-view";
 import { NotConnected } from "@/components/not-connected";
 import { canChat } from "@/lib/agents";
@@ -11,10 +13,15 @@ export const metadata = { title: "Appointments" };
 
 export default async function AppointmentsPage() {
   const ctx = await requireOrgContext("appointments.view");
-  const [data, setter] = await Promise.all([getAppointments(ctx), getAgentByRole(ctx.user.id, ctx.org.orgId, "appointment_setter")]);
+  const [data, setter, pending, policy] = await Promise.all([
+    getAppointments(ctx),
+    getAgentByRole(ctx.user.id, ctx.org.orgId, "appointment_setter"),
+    listPendingBookings(ctx),
+    getPolicyView(ctx),
+  ]);
   return (
     <div className="space-y-6">
-      <PageHero eyebrow="Your meeting schedule" title="Make room for better conversations." description={<>Your calendar&apos;s recorded meetings, confirmations and booking links, shown in {ctx.org.timezone.replace(/_/g," ")}. Your Appointment Setter uses real availability.</>} icon={<CalendarDays className="size-4"/>} tone="neutral"/>
+      <PageHero eyebrow="Your meeting schedule" title="Make room for better conversations." description={<>Your calendar&apos;s recorded meetings, confirmations and booking links, shown in {ctx.org.timezone.replace(/_/g," ")}. Your Appointment Setter only ever offers times your calendar reports as free.</>} icon={<CalendarDays className="size-4"/>} tone="neutral"/>
       {data.connected ? (
         <AppointmentsView
           appointments={JSON.parse(JSON.stringify(data.appointments))}
@@ -22,6 +29,11 @@ export default async function AppointmentsPage() {
           lastSync={data.integration?.last_checked_at ? new Date(data.integration.last_checked_at).toISOString() : null}
           canRefresh={ctx.can("integrations.view") && !ctx.org.isDemo}
           setterReady={Boolean(setter?.enabled && canChat(setter.status))}
+          pending={pending}
+          policy={policy}
+          canBook={ctx.can("appointments.book")}
+          canManage={ctx.can("appointments.manage")}
+          canGoAutonomous={ctx.can("automation.go_autonomous")}
         />
       ) : (
         <NotConnected
@@ -33,4 +45,3 @@ export default async function AppointmentsPage() {
     </div>
   );
 }
-
