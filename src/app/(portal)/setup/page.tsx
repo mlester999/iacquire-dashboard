@@ -8,8 +8,9 @@ import { firstName } from "@/lib/utils";
 
 export const metadata = { title: "Setup" };
 
-export default async function SetupPage() {
+export default async function SetupPage({ searchParams }: { searchParams: Promise<{ onboarded?: string }> }) {
   const ctx = await requireOrgContext("setup.view");
+  const { onboarded } = await searchParams;
 
   if (ctx.org.kind !== "client") {
     return (
@@ -41,5 +42,14 @@ export default async function SetupPage() {
       </Card>
     );
   }
-  return <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />;
+  return (
+    <>
+      {onboarded === "1" && (
+        <div role="status" className="mx-auto mb-4 max-w-6xl rounded-2xl border border-success/30 bg-success-soft/60 p-4 text-[14px] leading-relaxed text-success-ink">
+          <strong className="font-semibold">Your company setup is approved.</strong> Your six AI employees have configurations ready. The iAcquire team now links your CRM and verifies each connection. Nothing contacts your customers until you switch it on.
+        </div>
+      )}
+      <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
+    </>
+  );
 }

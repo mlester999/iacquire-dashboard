@@ -7,7 +7,7 @@ import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
 
-export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets";
+export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets";
 export interface PrivateFileInput { userId: string; orgId: string; bucket: PrivateBucket; path: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIMES: Record<PrivateBucket, string[]> = {
@@ -16,6 +16,7 @@ const MIMES: Record<PrivateBucket, string[]> = {
   "project-files": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg", "text/plain", "text/markdown", "text/csv"],
   "project-uploads": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg", "text/plain", "text/markdown", "text/csv"],
   "portfolio-assets": ["image/png", "image/jpeg", "image/webp"],
+  "brand-assets": ["image/png", "image/jpeg", "image/webp"],
 };
 export function validPrivateFilePath(orgId: string, key: string): boolean {
   const parts = key.split("/");

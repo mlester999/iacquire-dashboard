@@ -60,4 +60,6 @@ export const RATE_LIMITS = {
   maintenanceByUser: { name: "maintenance:user", limit: 10, windowSeconds: 3600 },
   topupByOrg: { name: "billing:topup", limit: 10, windowSeconds: 3600 },
   inboxSendByUser: { name: "inbox:send", limit: 60, windowSeconds: 60 },
+  onboardingAssistByOrg: { name: "onboarding:assist", limit: 25, windowSeconds: 3600 },
+  onboardingSiteReadByOrg: { name: "onboarding:site", limit: 8, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

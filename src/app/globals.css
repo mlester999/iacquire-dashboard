@@ -524,3 +524,15 @@ a.metric-card:hover { transform: translateY(-3px); border-color: var(--line-stro
     scroll-behavior: auto !important;
   }
 }
+
+/* Transparent-image preview (logos with a removed background). */
+.checkerboard {
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(45deg, var(--surface-3) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--surface-3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--surface-3) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--surface-3) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}

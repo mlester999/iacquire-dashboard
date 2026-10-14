@@ -1,11 +1,11 @@
 import { requireOrgContext } from "@/server/tenancy/context";
-import { getOnboarding } from "@/server/onboarding/service";
-import { FocusedOnboarding } from "@/components/onboarding/focused-wizard";
+import { getOnboardingSession, listOnboardingFiles } from "@/server/onboarding/service";
+import { AdaptiveOnboarding } from "@/components/onboarding/adaptive-onboarding";
 
 export const metadata = { title: "Company setup" };
 
 export default async function OnboardingPage() {
   const ctx = await requireOrgContext("workspace.manage_profile");
-  const state = await getOnboarding(ctx);
-  return <FocusedOnboarding initialData={state.data} initialStep={state.step} enabledRoles={state.enabledRoles} completedAt={state.completedAt} resumeKey={`${ctx.org.orgId}:${ctx.user.id}`} />;
+  const [session, files] = await Promise.all([getOnboardingSession(ctx), listOnboardingFiles(ctx)]);
+  return <AdaptiveOnboarding key={`${ctx.org.orgId}:${session.revision}`} session={session} assets={files.assets} documents={files.documents} />;
 }
