@@ -21,6 +21,14 @@
         "mock:hermes"
       ],
       "port": 8787
+    },
+    {
+      "name": "sites-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/sites-qa.mjs"
+      ],
+      "port": 3210
     }
   ]
 }

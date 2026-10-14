@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { ProjectStatusBadge } from "@/components/projects/common";
 import { formatMoney } from "@/lib/projects";
 import { relativeTime } from "@/lib/utils";
+import { PageHero } from "@/components/ui/workspace";
 
 export const metadata = { title: "My projects" };
 
@@ -17,12 +18,7 @@ export default async function ProjectsPage() {
   const sorted = [...projects].sort((a, b) => attention(b) - attention(a));
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <h2 className="text-[26px] font-semibold tracking-[-0.02em]">My projects</h2>
-          <p className="mt-1 max-w-2xl text-[14px] text-muted">Every additional project you&apos;ve requested, from first idea to handover. Your core iAcquire system isn&apos;t listed here.</p>
-        </div>
-        <div className="flex gap-2">
+      <PageHero eyebrow="Ideas / Scope / Delivery" title="My projects" description="Every additional project you've requested, from first idea to handover. Your core iAcquire system isn't listed here." action={<>
           <ButtonLink href="/add-ons" variant="secondary">
             Browse add-ons
           </ButtonLink>
@@ -31,8 +27,7 @@ export default async function ProjectsPage() {
               Request a project <ArrowRight className="size-4" />
             </ButtonLink>
           )}
-        </div>
-      </div>
+      </>} aside={<div className="grid grid-cols-2 gap-5 rounded-2xl border border-primary/15 bg-surface/80 p-5"><div><p className="text-[11px] font-medium text-muted">Active projects</p><p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight">{projects.filter(p=>p.status!=="completed"&&p.status!=="cancelled").length}</p></div><div><p className="text-[11px] font-medium text-muted">Waiting for you</p><p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight">{projects.filter(p=>p.quoteWaiting||p.approvalsWaiting>0||p.infoRequested).length}</p></div></div>}/>
 
       {sorted.length === 0 ? (
         <Card>
@@ -52,8 +47,8 @@ export default async function ProjectsPage() {
           {sorted.map((p) => (
             <li key={p.id}>
               <Link href={`/projects/${p.id}`} className="group block h-full">
-                <Card className="flex h-full flex-col p-5 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-card">
-                  <div className="flex items-start justify-between gap-3">
+                <Card className="flex h-full flex-col border-primary/15 p-5 transition-all duration-200 motion-safe:group-hover:-translate-y-0.5 group-hover:shadow-card">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-mono text-[12px] text-muted">{p.ref}</p>
                       <h3 className="mt-0.5 text-[16px] font-semibold leading-snug tracking-tight">{p.title}</h3>

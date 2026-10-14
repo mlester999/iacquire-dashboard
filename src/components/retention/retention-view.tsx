@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarClock, HeartHandshake, Plus, Repeat, Star, UserPlus } from "lucide-react";
+import { AlertTriangle, CalendarClock, HeartHandshake, Plus, Repeat, Search, Star, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Sheet } from "@/components/ui/overlays";
@@ -47,6 +47,9 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
   const [editing, setEditing] = React.useState<{ id: string | null; form: typeof blank } | null>(null);
   const [open, setOpen] = React.useState<Account | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [healthFilter, setHealthFilter] = React.useState("all");
+  const visibleAccounts = data.accounts.filter((account) => (healthFilter === "all" || account.health === healthFilter) && `${account.customer_name} ${account.status} ${account.repeat_opportunity ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
   const active = data.accounts.filter((a) => a.status === "active").length;
   const onboarding = data.accounts.filter((a) => a.status === "onboarding").length;
   const atRisk = data.accounts.filter((a) => a.status === "at_risk" || a.health === "at_risk").length;
@@ -103,12 +106,13 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
               </Button>
             )}
           </CardHeader>
+          {data.accounts.length > 0 && <div className="flex flex-col gap-3 border-y border-line bg-surface-2/30 px-4 py-3 sm:flex-row sm:items-center"><div className="relative min-w-0 flex-1"><Search aria-hidden className="pointer-events-none absolute left-3 top-3 size-4 text-muted"/><Input aria-label="Search customers" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a customer or repeat-business idea…" className="pl-9"/></div><Select aria-label="Filter customer health" value={healthFilter} onChange={(event) => setHealthFilter(event.target.value)} className="sm:max-w-40"><option value="all">All health</option>{Object.entries(HEALTH).map(([key, definition]) => <option key={key} value={key}>{definition.label}</option>)}</Select><span className="shrink-0 text-[12px] text-muted">{visibleAccounts.length} of {data.accounts.length}</span></div>}
           <CardContent className="px-0 pb-0">
             {data.accounts.length === 0 ? (
               <EmptyState compact icon={<HeartHandshake className="size-5" />} title="No customers tracked yet" description="Add the customers you want to keep a close eye on. CRM-based syncing can be connected by iAcquire later." />
             ) : (
-              <div className="scrollbar-thin overflow-x-auto">
-                <table className="w-full min-w-[640px] text-left text-[13.5px]">
+              <><div className="divide-y divide-line md:hidden">{visibleAccounts.map((account) => <button key={account.id} type="button" onClick={() => setOpen(account)} className="block w-full px-4 py-4 text-left transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-primary"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><span className="block break-words text-[14px] font-semibold text-ink">{account.customer_name}</span><span className="mt-1 block text-[12px] text-muted">{sentenceCase(account.status)} · {account.last_contact_at ? `Contacted ${relativeTime(account.last_contact_at)}` : "No contact recorded"}</span></span><span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1 text-[11.5px]"><span aria-hidden className={cn("size-2 rounded-full",HEALTH[account.health].dot)}/>{HEALTH[account.health].label}</span></span><span className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted"><span>{account.renewal_date ? `Renewal ${formatDate(account.renewal_date,"UTC")}` : "Renewal not recorded"}</span><span className={account.open_issues > 0 ? "text-warning-ink" : ""}>{account.open_issues} open issue{account.open_issues===1?"":"s"}</span></span>{account.onboarding_progress !== null && <span className="mt-3 block"><span className="mb-1 block text-[11px] text-muted">Onboarding {account.onboarding_progress}%</span><ProgressBar value={account.onboarding_progress} label={`${account.customer_name} onboarding`}/></span>}</button>)}</div><div className="scrollbar-thin hidden overflow-x-auto md:block">
+                <table className="workspace-table w-full min-w-[640px] text-left text-[13.5px]">
                   <thead className="border-y border-line bg-surface-2/60 text-[12px] text-muted">
                     <tr>
                       <th className="px-5 py-2.5 font-medium">Customer</th>
@@ -119,10 +123,10 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
-                    {data.accounts.map((a) => (
+                    {visibleAccounts.map((a) => (
                       <tr key={a.id} onClick={() => setOpen(a)} className="cursor-pointer hover:bg-surface-2/50">
                         <td className="px-5 py-3">
-                          <p className="font-medium">{a.customer_name}</p>
+                          <button type="button" onClick={() => setOpen(a)} className="rounded-md text-left font-medium hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{a.customer_name}</button>
                           <p className="text-[12px] text-muted">
                             {sentenceCase(a.status)} · last contact {a.last_contact_at ? relativeTime(a.last_contact_at) : "not recorded"}
                           </p>
@@ -139,7 +143,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>{visibleAccounts.length === 0 && <EmptyState compact icon={<Search className="size-5"/>} title="No matching customers" description="Try another name or health filter." action={<Button variant="secondary" size="sm" onClick={() => { setQuery(""); setHealthFilter("all"); }}>Clear filters</Button>}/>}</>
             )}
           </CardContent>
         </Card>
@@ -181,7 +185,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                 <ul className="space-y-3">
                   {data.feedback.slice(0, 5).map((f) => (
                     <li key={f.id}>
-                      <div className="flex items-center gap-1 text-warning" aria-label={`${f.rating} out of 5`}>
+                      <div role="img" className="flex items-center gap-1 text-warning" aria-label={f.rating === null ? "Rating not recorded" : `${f.rating} out of 5`}>
                         {Array.from({ length: 5 }, (_, i) => (
                           <Star key={i} className={cn("size-3.5", i < (f.rating ?? 0) ? "fill-current" : "text-surface-3")} />
                         ))}

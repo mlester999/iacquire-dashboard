@@ -9,6 +9,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/overla
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { useShell } from "@/components/shell/shell-context";
 import { openHelp } from "@/components/help/help-widget";
+import { AuthAppearance } from "@/components/auth/appearance";
 import { cn } from "@/lib/utils";
 
 export interface ConversationItem {
@@ -189,9 +190,9 @@ export function ChatRail({
       </div>
 
       <div className="space-y-0.5 border-t border-line px-3 py-3">
-        <Link href="/settings" onClick={onNavigate} className="flex h-9 items-center gap-2.5 rounded-xl px-3 text-[13.5px] text-muted transition hover:bg-surface-2 hover:text-ink">
+        <div className="flex items-center gap-2"><Link href="/settings" onClick={onNavigate} className="flex min-h-11 flex-1 items-center gap-2.5 rounded-xl px-3 text-[13.5px] text-muted transition hover:bg-surface-2 hover:text-ink">
           <Settings className="size-[17px]" /> Settings
-        </Link>
+        </Link><AuthAppearance/></div>
         <button type="button" onClick={() => openHelp("chat")} className="flex h-9 w-full items-center gap-2.5 rounded-xl px-3 text-[13.5px] text-muted transition hover:bg-surface-2 hover:text-ink">
           <LifeBuoy className="size-[17px]" /> Help
         </button>

@@ -1,5 +1,19 @@
 # Verification status
 
+## Current checkpoint and historical scope
+
+The foundation audit added credential/tenant authorization, TLS, provider-identity, setup/job and onboarding regression fixes. Its full local checkpoint passed **373 tests in 27 files**, typecheck, lint and production build. These checks used synthetic local PostgreSQL and mocked Auth/provider calls; no hosted acceptance is claimed.
+
+The working repository subsequently gained migrations `0016`–`0021` and additional billing, messaging, onboarding and website routes. The product-wide UI review is continuing against that current source. Counts and verification in the older sections below are **historical**, not a final acceptance result for the expanded repository. The final gates and schema/route inventory must be refreshed after the UI work.
+
+Authenticated synthetic browser QA proved a human setup-task edit reaching the client without reload, progress changing 11% → 17%, accurate completion/history and an additional persisted in-app notification. Mobile and desktop setup/integration scans found and corrected ARIA labels, keyboard focus return, reduced-motion hydration and completion-note contrast. Hosted Realtime/Vault/Auth/storage remain live gates.
+
+Live Hermes clients now stay **Permission limited** / `setup_required`, with runs refused until a supported complete runtime tool-permission inventory can be proved. Upstream advertised toolsets alone omit potential plugin/MCP tools. See [integration setup](integrations-setup.md). GoHighLevel/n8n operations remain read-only; no external activation or production deployment was performed.
+
+See [foundation delivery checkpoint](foundation-delivery-report.md) and [UI redesign audit](ui-redesign-audit.md) for the current work streams.
+
+## Historical verification record
+
 This page separates what was **actually verified** from what was verified **only with mocks or local
 emulation**, and from what is **not verified at all**. Nothing here has been run against a live Supabase
 project, Hermes gateway, GoHighLevel location, n8n instance, email provider or domain. No production

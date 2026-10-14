@@ -71,7 +71,7 @@ export function Marketplace({
   const counts = (id: MarketplaceFilterId) => (id === "all" ? services.length : services.filter((s) => s.tags.includes(id)).length);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Core vs optional */}
       <Card className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-primary-soft/60 via-surface to-surface p-5 sm:p-6">
         <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
@@ -150,9 +150,7 @@ export function Marketplace({
         <Card className="px-6 py-12 text-center">
           <p className="text-[15px] font-semibold">No services match that search</p>
           <p className="mt-1 text-[13.5px] text-muted">Try a different filter, or tell us what you&apos;re after and we&apos;ll scope it with you.</p>
-          <ButtonLink href={requestHref()} variant="brand" className="mt-5">
-            Request a Custom Project <ArrowRight className="size-4" />
-          </ButtonLink>
+          {canRequest?<ButtonLink href={requestHref()} variant="brand" className="mt-5">Request a Custom Project <ArrowRight className="size-4" /></ButtonLink>:<Button variant="secondary" className="mt-5" onClick={()=>{setQuery("");setFilter("all");}}>Show all services</Button>}
         </Card>
       ) : (
         <div className="space-y-10">
@@ -172,7 +170,7 @@ export function Marketplace({
                       <motion.li
                         key={s.id}
                         layout={!reduce}
-                        initial={reduce ? false : { opacity: 0, scale: 0.97, y: 8 }}
+                        initial={false}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={reduce ? undefined : { opacity: 0, scale: 0.97 }}
                         transition={{ type: "spring", stiffness: 420, damping: 36 }}
@@ -223,7 +221,7 @@ function ServiceCard({ service: s, canRequest, onDetails,compact=false }: { serv
   const available = s.availability === "available";
   if(compact)return <Card className="grid w-full gap-4 p-4 sm:grid-cols-[42px_minmax(0,1fr)_auto] sm:items-center"><span className="flex size-10 items-center justify-center rounded-xl bg-primary-soft text-primary"><ServiceIcon tag={s.tags[0]} className="size-5"/></span><div className="min-w-0"><p className="flex flex-wrap items-center gap-2 text-sm font-semibold">{s.name}{s.featured&&<Star className="size-3.5 fill-warning text-warning" aria-label="Featured"/>}</p><p className="mt-1 text-xs leading-relaxed text-muted">{s.tagline}</p><p className="mt-2 text-xs font-medium">{formatPrice(s.price)}<span className="ml-2 font-normal text-muted">{delivery}</span></p></div><div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="secondary" onClick={onDetails}>Details</Button>{available&&canRequest?<ButtonLink href={requestHref(s.slug)} size="sm" variant="primary">Request service <ArrowRight className="size-3.5"/></ButtonLink>:<Button disabled size="sm" variant="soft">{available?"Owner or admin required":AVAILABILITY_LABEL[s.availability]}</Button>}</div></Card>;
   return (
-    <Card className={cn("group flex w-full min-w-0 flex-col p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card", !available && "opacity-80")}>
+    <Card className={cn("group flex w-full min-w-0 flex-col p-5 transition-all duration-200 motion-safe:hover:-translate-y-0.5 hover:shadow-card", !available && "opacity-80")}>
       <div className="flex items-start justify-between gap-3">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary transition-transform duration-200 group-hover:scale-105">
           <ServiceIcon tag={s.tags[0]} className="size-5" />
@@ -240,7 +238,7 @@ function ServiceCard({ service: s, canRequest, onDetails,compact=false }: { serv
       <h3 className="mt-4 text-[16px] font-semibold leading-snug tracking-tight">{s.name}</h3>
       <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{s.tagline}</p>
 
-      <div className="mt-4 flex items-end justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
         <div className="min-w-0">
           <p className="text-[20px] font-semibold tabular-nums tracking-tight">{formatPrice(s.price)}</p>
           <p className="text-[11.5px] leading-snug text-muted">{priceCaption(s)}</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { Info, Table2 } from "lucide-react";
 import { AnimatedNumber } from "@/components/brand";
@@ -61,6 +62,9 @@ export function StatTile({
     success: "bg-success-soft text-success",
     warning: "bg-warning-soft text-warning",
   }[accent];
+  const metric = <><p className="text-[12.5px] font-medium text-muted">{label}</p>{value === null ? (
+    <p className="mt-1 flex items-baseline gap-2"><span className="text-[26px] font-semibold leading-none tracking-tight text-faint">—</span><span className="text-[12px] text-muted">{unavailableReason ?? "Unavailable"}</span></p>
+  ) : <AnimatedNumber value={value} format={format} className="mt-1 block text-[28px] font-semibold leading-none tracking-tight text-ink" />}</>;
   const content = (
     <motion.div
       style={{ animationDelay: `${index * 40}ms` }}
@@ -71,29 +75,15 @@ export function StatTile({
       <div className="flex items-start justify-between gap-2">
         <span className={cn("flex size-9 items-center justify-center rounded-xl", tone)}>{icon}</span>
         <Tooltip content={definition}>
-          <button type="button" className="rounded-md p-1 text-faint hover:text-muted" aria-label={`About ${label}`}>
+          <button type="button" className="relative z-10 flex size-11 items-center justify-center rounded-lg text-faint hover:bg-surface-2 hover:text-muted sm:size-8" aria-label={`About ${label}`}>
             <Info className="size-3.5" />
           </button>
         </Tooltip>
       </div>
-      <p className="mt-3 text-[12.5px] font-medium text-muted">{label}</p>
-      {value === null ? (
-        <p className="mt-1 flex items-baseline gap-2">
-          <span className="text-[26px] font-semibold leading-none tracking-tight text-faint">—</span>
-          <span className="text-[12px] text-muted">{unavailableReason ?? "Unavailable"}</span>
-        </p>
-      ) : (
-        <AnimatedNumber value={value} format={format} className="mt-1 block text-[28px] font-semibold leading-none tracking-tight text-ink" />
-      )}
+      {href ? <Link href={href} className="mt-3 block rounded-lg outline-offset-4 after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-2 focus-visible:outline-primary">{metric}</Link> : <div className="mt-3">{metric}</div>}
     </motion.div>
   );
-  return href ? (
-    <a href={href} className="block h-full rounded-2xl focus-visible:outline-2">
-      {content}
-    </a>
-  ) : (
-    content
-  );
+  return content;
 }
 
 // ---------------------------------------------------------------------------

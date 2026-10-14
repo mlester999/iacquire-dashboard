@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion,useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -93,6 +93,7 @@ const TOOL_COPY: Record<string, string> = {
 
 export function EmployeeDetail(props: Props) {
   const { meta, agent } = props;
+  const reduced=useReducedMotion();
   const [tab, setTab] = React.useState(props.initialTab);
   const ready = agent.enabled && canChat(agent.status);
   const items = [
@@ -112,14 +113,10 @@ export function EmployeeDetail(props: Props) {
         <ArrowLeft className="size-3.5" /> AI Workforce
       </Link>
       <PageHero eyebrow={meta.name} title={agent.displayName} description={props.description} tone="neutral" aside={<div className="flex items-center gap-4 rounded-2xl border border-line bg-surface/70 p-5"><AgentAvatar role={meta} size="xl"/><div><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Dedicated identity</p><p className="mt-2 text-[14px] font-semibold">{meta.shortName}</p><p className="mt-1 text-[12px] text-muted">Private company workspace</p></div></div>} action={<>
-              <AgentStatusBadge status={agent.status} />
+              <AgentStatusBadge status={agent.enabled?agent.status:"disabled"} />
               <span className="text-muted">{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured yet"}</span>
               {agent.lastHealthCheckAt && <span className="text-faint" suppressHydrationWarning>Checked {relativeTime(agent.lastHealthCheckAt)}</span>}
-          {props.canChat && (
-            <ButtonLink href={`/chat/${meta.slug}`} variant={ready ? "brand" : "secondary"} className={cn(!ready && "pointer-events-none opacity-60")} aria-disabled={!ready}>
-              <MessageSquare className="size-4" /> {ready ? "Start a chat" : "Chat unavailable"}
-            </ButtonLink>
-          )}
+          {props.canChat && (ready?<ButtonLink href={`/chat/${meta.slug}`} variant="brand"><MessageSquare className="size-4"/>Start a chat</ButtonLink>:<Button disabled variant="secondary"><MessageSquare className="size-4"/>Chat unavailable</Button>)}
         </>}/>
 
       <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="Configuration versions" value={props.versions.length} detail="Saved changes remain available in history." icon={<History className="size-4"/>} tone="blue"/><MetricCard label="Recorded runs" value={props.runs.length} detail="Activity from this employee's saved run history." icon={<Sparkles className="size-4"/>} tone="violet"/><MetricCard label="Awaiting approval" value={props.pendingApprovals} detail="Customer-facing actions stay under your control." icon={<ShieldCheck className="size-4"/>} tone="amber" href="/approvals"/></div>
@@ -127,7 +124,7 @@ export function EmployeeDetail(props: Props) {
       <Tabs id="employee-tabs" value={tab} onValueChange={setTab} items={items} />
 
       <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+        <motion.div key={tab} initial={reduced?false:{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={reduced?undefined:{ opacity: 0 }} transition={{ duration: reduced?0:0.2 }}>
           {tab === "overview" && (
             <div className="space-y-6">
               {agent.enabled && <OperatingModeCard agentId={agent.id} displayName={agent.displayName} mode={agent.mode} canPause={props.canPause} canGoAutonomous={props.canGoAutonomous} autonomousBlockedReason={props.autonomousBlockedReason} agencyPaused={props.agencyPaused} />}
@@ -145,7 +142,7 @@ export function EmployeeDetail(props: Props) {
 }
 
 function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals, timeZone, meta }: Props) {
-  const online = agent.status === "online" || agent.status === "busy";
+  const online = agent.enabled&&(agent.status === "online" || agent.status === "busy");
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="surface-tint lg:col-span-2">
@@ -185,13 +182,13 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
           <CardHeader>
             <div>
               <CardTitle>Connection</CardTitle>
-              <CardDescription>From the last live check.</CardDescription>
+              <CardDescription>Latest recorded connection check.</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="space-y-2.5 text-[13px]">
-            <AgentStatusBadge status={agent.status} />
+            <AgentStatusBadge status={agent.enabled?agent.status:"disabled"} />
             <p className="text-muted">
-              {online
+              {!agent.enabled?"This employee is not included in your package.":online
                 ? "Running in its own private, secured environment."
                 : agent.status === "setup_required" || agent.status === "provisioning"
                   ? "iAcquire is preparing a dedicated, isolated environment for this employee."

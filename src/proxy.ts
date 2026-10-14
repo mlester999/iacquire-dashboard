@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { readSupabasePublicConfig, resolveAuthProvider } from "@/lib/supabase-config";
+import { routeRequest, siteContentSecurityPolicy, type DeploymentRole, type SiteRoute } from "@/lib/site-routing";
 
 /**
  * Edge-of-app request handling.
@@ -50,8 +51,47 @@ function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null) {
   ].join("; ");
 }
 
+/**
+ * Public customer websites. They are served from the same codebase but never share a session, cookie or privilege with the
+ * portal: every request to a site host is rewritten to the internal site routes and answered with a strict, site-only policy.
+ */
+function siteResponse(req: NextRequest, route: Extract<SiteRoute, { kind: "site" }>) {
+  const notFound = () => new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+  // A Server Function call can never be a legitimate request to a customer's website.
+  if (req.headers.has("next-action")) return notFound();
+  if (!["GET", "HEAD", "POST"].includes(req.method)) return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD, POST" } });
+  if (req.method === "POST" && !route.isForm) return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD" } });
+  const nonce = btoa(crypto.randomUUID());
+  const csp = siteContentSecurityPolicy(nonce, process.env.NODE_ENV !== "production");
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+  requestHeaders.set("x-site-host", route.host);
+  // Whatever cookies or credentials a visitor's browser sends are irrelevant to a public site; do not let them reach it.
+  requestHeaders.delete("cookie");
+  requestHeaders.delete("authorization");
+  const url = req.nextUrl.clone();
+  url.pathname = route.target;
+  const res = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", csp);
+  return res;
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  const role = (["portal", "sites", "both"].includes(process.env.DEPLOYMENT_ROLE ?? "") ? process.env.DEPLOYMENT_ROLE : "portal") as DeploymentRole;
+  let appHost = "";
+  try {
+    appHost = new URL(process.env.APP_URL ?? "http://localhost:3000").hostname;
+  } catch {
+    /* an invalid APP_URL is reported by the environment check elsewhere */
+  }
+  const routing = routeRequest({ role, hostHeader: req.headers.get("host"), pathname, portalHosts: [appHost] });
+  if (routing.kind === "block") return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+  if (routing.kind === "pass") return NextResponse.next();
+  if (routing.kind === "site") return siteResponse(req, routing);
+
+
   const isPublic = PUBLIC.some((re) => re.test(pathname));
   const provider = resolveAuthProvider(process.env);
   const supabase = provider === "supabase" ? readSupabasePublicConfig(process.env) : null;

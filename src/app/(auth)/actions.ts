@@ -44,7 +44,10 @@ export async function loginAction(_: FormState, formData: FormData): Promise<For
   } catch (err) {
     const message = configErrorMessage(err);
     if (message) return { error: message };
-    throw err;
+    if (process.env.NODE_ENV !== "test") {
+      console.error("[iacquire] login action failed", { type: err instanceof Error ? err.name : "unknown" });
+    }
+    return { error: "Sign-in is temporarily unavailable. Please try again in a moment." };
   }
   if (!result.ok) {
     switch (result.reason) {

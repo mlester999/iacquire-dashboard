@@ -1,5 +1,7 @@
 # Portal schema inventory
 
+**Historical checkpoint:** the counts below were verified through migration `0015`. The working repository now includes `0016`–`0021`; their catalog, RLS and table inventory must be included in the final refresh. Do not use the historical count as the current expanded-schema total.
+
 The repository contains **15 versioned migrations**, `0001` through `0015`, declaring **89 public tables**: 88 application tables and the `schema_migrations` bookkeeping table. All **51 original tables** in migrations `0001`–`0004` are preserved. These counts describe the local schema source and disposable PostgreSQL verification; no hosted project has been inspected or migrated.
 
 Supabase-managed `auth`, `storage`, `realtime`, `vault` and CLI migration-history tables are excluded from the public-table count. `supabase/local-compat.sql` emulates managed schemas only for isolated development/tests and must never run against a hosted project.

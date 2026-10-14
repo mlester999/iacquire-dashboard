@@ -63,9 +63,9 @@ export function PortfolioGallery({ projects }: { projects: PortfolioCard[] }) {
       <motion.ul layout={!reduce} className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <AnimatePresence mode="popLayout" initial={false}>
           {shown.map((p,i) => (
-            <motion.li key={p.id} className={cn("min-w-0",p.featured&&i===0&&"md:col-span-2")} layout={!reduce} initial={reduce ? false : { opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={reduce ? undefined : { opacity: 0, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 36 }}>
+            <motion.li key={p.id} className={cn("min-w-0",p.featured&&i===0&&"md:col-span-2")} layout={!reduce} initial={false} animate={{ opacity: 1, scale: 1 }} exit={reduce ? undefined : { opacity: 0, scale: 0.97 }} transition={{ type: "spring", stiffness: 420, damping: 36 }}>
               <Link href={`/our-work/${p.slug}`} className="group block h-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-                <Card className="flex h-full flex-col overflow-hidden transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-card">
+                <Card className="flex h-full flex-col overflow-hidden transition-all duration-200 motion-safe:group-hover:-translate-y-0.5 group-hover:shadow-card">
                   <div className="relative"><Cover id={p.coverAssetId} alt={`${p.title} preview`} className={p.featured&&i===0?"aspect-auto h-60 sm:h-72":undefined}/>{p.featured&&<span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg border border-white/15 bg-black/40 px-2 py-1 text-[10px] font-semibold text-amber-200 backdrop-blur-sm"><Star className="size-3 fill-current"/> Featured work</span>}</div>
                   <div className="flex flex-1 flex-col p-5">
                     <div className="flex flex-wrap items-center gap-1.5">

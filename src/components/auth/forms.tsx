@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useActionState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence,useReducedMotion } from "motion/react";
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/primitives";
@@ -31,14 +31,15 @@ export function AuthHeading({ eyebrow, title, description }: { eyebrow?: string;
 
 export function FormAlert({ state }: { state: FormState }) {
   const message = state?.error ?? state?.success;
+  const reduce=useReducedMotion();
   return (
     <AnimatePresence initial={false}>
       {message && (
         <motion.div
           key={message}
-          initial={{ opacity: 0, y: -6, height: 0 }}
+          initial={reduce?false:{ opacity: 0, y: -6, height: 0 }}
           animate={{ opacity: 1, y: 0, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
+          exit={reduce?undefined:{ opacity: 0, height: 0 }}
           className="overflow-hidden"
         >
           <div
@@ -75,7 +76,7 @@ function PasswordInput({ id, name, autoComplete, invalid, onValue }: { id: strin
       <button
         type="button"
         onClick={() => setShow((s) => !s)}
-        className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink"
+        className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink"
         aria-label={show ? "Hide password" : "Show password"}
         aria-pressed={show}
       >
@@ -132,7 +133,7 @@ export function LoginForm({ next, notice }: { next?: string; notice?: string }) 
         <PasswordInput id="password" name="password" autoComplete="current-password" />
       </Field>
       <div className="flex justify-end">
-        <Link href="/forgot-password" className="text-[13px] font-medium text-primary hover:underline">
+        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline">
           Forgot password?
         </Link>
       </div>

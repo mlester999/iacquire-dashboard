@@ -123,7 +123,7 @@ export function RequestWizard({
           <ArrowLeft className="size-3.5" /> Custom Projects &amp; Add-ons
         </Link>
         <p className="mt-4 text-[10px] font-semibold uppercase tracking-[.16em] text-primary">From your idea to a clear scope</p>
-        <h2 className="mt-2 text-[27px] font-semibold tracking-[-0.025em]">What would make your business work better?</h2>
+        <h1 className="mt-2 text-balance text-[26px] font-semibold leading-tight tracking-[-0.035em] sm:text-[30px]">What would make your business work better?</h1>
         <p className="mt-1 max-w-2xl text-[14px] text-muted">Describe it in your own words. You don&apos;t need to know the technical platforms. We&apos;ll review it, ask anything we&apos;re missing, and send a written quote. Nothing is charged.</p>
       </div>
 
@@ -142,7 +142,7 @@ export function RequestWizard({
         <Card className="p-5 sm:p-6">
           <p className="mb-4 border-b border-line pb-3 text-[11px] font-semibold uppercase tracking-[.1em] text-primary">{STEPS[step]} · Step {step+1} of {STEPS.length}</p>
           {/* Enter-only animation: an exit step would block the next one whenever animations are throttled. */}
-          <motion.div key={step} initial={reduce ? false : { opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }} className="space-y-5">
+          <motion.div key={step} initial={false} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }} className="space-y-5">
               {step === 0 && (
                 <>
                   {reference && (

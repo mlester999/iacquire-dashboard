@@ -1,95 +1,27 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import { CalendarCheck2, ShieldCheck, Sparkles } from "lucide-react";
-import { AgentAvatar, Logo } from "@/components/brand";
+import { motion,useReducedMotion } from "motion/react";
+import { ArrowUpRight,BookOpen,ShieldCheck } from "lucide-react";
+import { AgentAvatar,Logo } from "@/components/brand";
 import { AGENT_ROLES } from "@/lib/agents";
 
-// Positions are relative to the mascot stage above the headline, so nothing overlaps the copy.
-const POSITIONS = [
-  { top: "6%", left: "8%", size: "lg" as const, delay: 0 },
-  { top: "40%", left: "24%", size: "xl" as const, delay: 0.6 },
-  { top: "4%", left: "44%", size: "lg" as const, delay: 1.2 },
-  { top: "44%", left: "58%", size: "lg" as const, delay: 0.3 },
-  { top: "10%", left: "74%", size: "xl" as const, delay: 0.9 },
-  { top: "62%", left: "84%", size: "md" as const, delay: 1.5 },
-];
-
 export function AuthShowcase() {
-  const reduce = useReducedMotion();
-  return (
-    <aside className="relative hidden overflow-hidden bg-[#06070b] text-white lg:flex lg:flex-col">
-      <div
-        aria-hidden
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(900px 600px at 20% 10%, rgba(44,91,255,0.35), transparent 60%), radial-gradient(700px 600px at 90% 80%, rgba(139,92,255,0.28), transparent 60%), radial-gradient(500px 400px at 60% 50%, rgba(18,201,165,0.08), transparent 60%)",
-        }}
-      />
-      <div aria-hidden className="absolute inset-0 opacity-[0.18] [background-image:radial-gradient(rgba(255,255,255,0.35)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
-
-      <div className="relative z-10 flex items-center justify-between px-12 pt-10">
-        <span className="[&_span]:!text-white">
-          <Logo />
-        </span>
-        <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[12px] text-white/70">Client Portal</span>
+  const reduce=useReducedMotion();
+  return <aside className="relative hidden overflow-hidden bg-[#0d1426] text-white lg:flex lg:flex-col">
+    <div aria-hidden className="pointer-events-none absolute inset-0" style={{background:"radial-gradient(ellipse at 0% 0%,#2c5bff40,transparent 65%),radial-gradient(ellipse at 100% 100%,#7658d528,transparent 60%)"}}/>
+    <div aria-hidden className="pointer-events-none absolute inset-0 opacity-15 [background-image:radial-gradient(#c3cfff_1px,transparent_1px)] [background-size:24px_24px]"/>
+    <div className="relative flex items-center justify-between gap-4 px-8 pb-7 pt-9 xl:px-12"><span className="[&_span]:!text-white"><Logo/></span><span className="rounded-full border border-white/20 px-3 py-1 text-[11px] text-slate-300">Client Portal</span></div>
+    <div className="relative flex flex-1 flex-col justify-center gap-8 px-8 pb-10 xl:gap-10 xl:px-12">
+      <motion.div initial={reduce?false:{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{duration:.4}}>
+        <p className="text-[11px] font-semibold uppercase tracking-[.2em] text-blue-200">Built around your business</p>
+        <h2 className="mt-4 max-w-lg text-[38px] font-semibold leading-[1.08] tracking-[-.04em] xl:text-[48px]">A little less busywork.<br/><span className="text-blue-200">A lot more possibility.</span></h2>
+        <p className="mt-5 max-w-lg text-[14px] leading-relaxed text-slate-300">Your company knowledge, specialist AI employees and daily business operations. Together in one iAcquire workspace.</p>
+      </motion.div>
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-3"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-slate-300">Six specialist roles</p><span className="text-[11px] text-blue-200">One shared business context</span></div>
+        <div className="grid grid-cols-2 gap-3">{AGENT_ROLES.map((role,index)=><motion.div key={role.key} initial={reduce?false:{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{duration:.3,delay:reduce?0:index*.04}} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/15 bg-white/[.045] p-3 xl:p-4"><AgentAvatar role={role} size="md"/><div className="min-w-0"><p className="text-[12px] font-medium text-white xl:text-[13px]">{role.shortName}</p><p className="mt-1 text-[10px] text-slate-300">Specialist {String(index+1).padStart(2,"0")}</p></div></motion.div>)}</div>
       </div>
-
-      <div className="relative z-10 flex flex-1 flex-col px-12 pb-14">
-        <div aria-hidden className="pointer-events-none relative my-6 min-h-[220px] flex-1">
-          {AGENT_ROLES.map((role, i) => {
-            const p = POSITIONS[i];
-            return (
-              <motion.div
-                key={role.key}
-                className="absolute"
-                style={{ top: p.top, left: p.left }}
-                initial={{ opacity: 0, scale: 0.6, y: 20 }}
-                animate={reduce ? { opacity: 1, scale: 1, y: 0 } : { opacity: 1, scale: 1, y: [0, -10, 0] }}
-                transition={
-                  reduce
-                    ? { duration: 0.3 }
-                    : { opacity: { duration: 0.6, delay: 0.2 + i * 0.12 }, scale: { type: "spring", stiffness: 160, damping: 14, delay: 0.2 + i * 0.12 }, y: { duration: 5 + i * 0.4, repeat: Infinity, ease: "easeInOut", delay: p.delay } }
-                }
-              >
-                <div className="rounded-[22px] bg-white/[0.06] p-1.5 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10 backdrop-blur-sm">
-                  <AgentAvatar role={role} size={p.size} />
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        <motion.div
-          className="relative max-w-[460px]"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <h1 className="text-[44px] font-semibold leading-[1.04] tracking-[-0.03em]">
-            Your business.
-            <br />
-            Your <span className="font-display text-[50px] font-normal italic tracking-normal text-[#a9b8ff]">AI team.</span>
-            <br />
-            One workspace.
-          </h1>
-          <p className="mt-5 text-[15.5px] leading-relaxed text-white/65">
-            Manage leads, appointments, sales, and customer relationships with a team of AI employees built around your business.
-          </p>
-          <ul className="mt-8 space-y-3 text-[13.5px] text-white/75">
-            <li className="flex items-center gap-3">
-              <Sparkles className="size-4 text-[#a9b8ff]" aria-hidden /> Six specialised AI employees, configured in minutes
-            </li>
-            <li className="flex items-center gap-3">
-              <CalendarCheck2 className="size-4 text-[#a9b8ff]" aria-hidden /> Real availability, real pipeline — nothing invented
-            </li>
-            <li className="flex items-center gap-3">
-              <ShieldCheck className="size-4 text-[#a9b8ff]" aria-hidden /> Every customer-facing action waits for your approval
-            </li>
-          </ul>
-        </motion.div>
-      </div>
-    </aside>
-  );
+      <div className="grid gap-3 border-t border-white/15 pt-5 text-[12px] leading-relaxed text-slate-300"><p className="flex items-center gap-3"><BookOpen className="size-4 shrink-0 text-blue-200" aria-hidden/>Company context follows your team.</p><p className="flex items-center gap-3"><ShieldCheck className="size-4 shrink-0 text-blue-200" aria-hidden/>Scoped access and clear review controls.</p><p className="flex items-center gap-3"><ArrowUpRight className="size-4 shrink-0 text-blue-200" aria-hidden/>Setup progress and real connection status.</p></div>
+    </div>
+  </aside>;
 }

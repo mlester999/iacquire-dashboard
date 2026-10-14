@@ -26,7 +26,7 @@ export function AgencyPauseCard({ orgId, clientName, paused, canLift }: { orgId:
     }
     setOpen(false);
     setReason("");
-    toast.success(next ? `Automation paused for ${clientName}.` : `Automation resumed for ${clientName}.`);
+    toast.success(next ? `Emergency pause enabled for ${clientName}.` : `Emergency pause lifted for ${clientName}.`);
     router.refresh();
   }
 
@@ -35,17 +35,17 @@ export function AgencyPauseCard({ orgId, clientName, paused, canLift }: { orgId:
       <div className="flex items-start gap-3">
         <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${paused ? "bg-danger/15 text-danger-ink" : "bg-surface-2 text-ink-2"}`}>{paused ? <OctagonAlert className="size-4" /> : <ShieldCheck className="size-4" />}</span>
         <div>
-          <h2 className="text-[14px] font-semibold tracking-tight">{paused ? "Emergency pause is active" : "Automation is running normally"}</h2>
+          <h2 className="text-[14px] font-semibold tracking-tight">{paused ? "Emergency pause is active" : "Automation pause is off"}</h2>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
             {paused
-              ? "All customer messages, follow-ups and autonomous jobs for this client are blocked on the server. Private chat still works. Only a super admin can lift this pause."
-              : "Use the emergency pause if a client's automation is behaving unsafely. It blocks sends immediately, including queued ones, and notifies the client's owner and managers."}
+              ? "Customer messages, follow-ups and autonomous jobs for this client are blocked on the server. Client records remain available. Only a super admin can lift this pause."
+              : "No emergency pause is recorded. Integration verification and activation approval still determine whether automation can run. An emergency pause blocks sends, including queued ones, and notifies the client's owner and managers."}
           </p>
         </div>
       </div>
       {paused ? (
         <Button variant="secondary" size="sm" disabled={!canLift} onClick={() => submit(false)} loading={busy} title={canLift ? undefined : "Only a super admin can lift an emergency pause"}>
-          Resume automation
+          Lift emergency pause
         </Button>
       ) : (
         <Button variant="danger" size="sm" onClick={() => setOpen(true)}>

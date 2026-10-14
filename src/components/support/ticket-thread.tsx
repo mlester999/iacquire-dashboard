@@ -53,16 +53,16 @@ export function TicketThread({ ticketId, messages, closed, timeZone, audience }:
           }
           const own = m.author_kind === mine;
           return (
-            <motion.li key={m.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.03 }} className={cn("flex gap-3", own && "flex-row-reverse")}>
+            <motion.li key={m.id} initial={false} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.03 }} className={cn("page-in flex min-w-0 gap-3", own && "flex-row-reverse")}>
               {m.author_kind === "agency" ? (
                 <LogoMark className="size-8 shrink-0" />
               ) : (
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-[11px] font-semibold text-ink-2">{initials(m.author_name)}</span>
               )}
-              <div className={cn("max-w-[85%]", own && "text-right")}>
+              <div className={cn("min-w-0 max-w-[85%]", own && "text-right")}>
                 <div
                   className={cn(
-                    "inline-block whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-[14px] leading-relaxed",
+                    "inline-block max-w-full break-words whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-left text-[14px] leading-relaxed",
                     m.internal ? "border border-dashed border-warning/50 bg-warning-soft/50" : own ? "bg-primary text-white" : "border border-line bg-surface shadow-soft",
                   )}
                 >
@@ -98,7 +98,7 @@ export function TicketThread({ ticketId, messages, closed, timeZone, audience }:
                 <label className="sr-only" htmlFor="reply-status">
                   Set status
                 </label>
-                <Select id="reply-status" value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 w-48 text-[12.5px]">
+                <Select id="reply-status" value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 w-full text-[12.5px] sm:w-48">
                   <option value="">{internal ? "Keep current status" : "Then: waiting for client"}</option>
                   <option value="in_progress">In progress</option>
                   <option value="waiting_for_client">Waiting for client</option>

@@ -259,7 +259,7 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
               <div>
                 <p className="font-medium">Completed {t.completedAt ? formatDate(t.completedAt, timeZone) : ""}</p>
-                {t.completionNote && <p className="mt-0.5 leading-relaxed opacity-90">{t.completionNote}</p>}
+                {t.completionNote && <p className="mt-0.5 leading-relaxed">{t.completionNote}</p>}
               </div>
             </div>
           )}

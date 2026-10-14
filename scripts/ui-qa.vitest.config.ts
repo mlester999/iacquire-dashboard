@@ -11,5 +11,5 @@ export default defineConfig({
       "server-only": path.resolve(import.meta.dirname, "../tests/support/server-only-stub.ts"),
     },
   },
-  test: { environment: "node", include: ["scripts/ui-qa-messaging-seed.qa.ts"], pool: "forks", testTimeout: 120000, hookTimeout: 120000 },
+  test: { environment: "node", include: ["scripts/ui-qa-messaging-seed.qa.ts", "scripts/ui-qa-sites-seed.qa.ts"], pool: "forks", testTimeout: 120000, hookTimeout: 120000 },
 });

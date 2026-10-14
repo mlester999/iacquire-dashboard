@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, FolderKanban, BookOpen, CalendarDays, ChevronDown, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
 import { AGENT_BY_KEY } from "@/lib/agents";
@@ -23,6 +23,7 @@ const MAIN: NavItem[] = [
   { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "analytics.view" },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals.view", badge: "approvals", tour: "approvals" },
   { href: "/knowledge", label: "Knowledge Center", icon: BookOpen, permission: "knowledge.view" },
+  { href: "/website", label: "Website", icon: Globe, permission: "website.view" },
   { href: "/activity", label: "Activity", icon: Activity },
 ];
 const GROW: NavItem[] = [

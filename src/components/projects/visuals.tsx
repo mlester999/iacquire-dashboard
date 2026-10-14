@@ -12,4 +12,4 @@ export function ProjectMediaPlaceholder({title,technologies=[],className}:{title
   </div>;
 }
 
-export function TechnologyPill({name}:{name:string}){return <span className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2 py-1 text-[10.5px] font-medium text-ink-2"><span aria-hidden className={cn("size-1.5 rounded-full",/ai|gpt|anthropic|agent/i.test(name)?"bg-violet":/n8n|make|zapier/i.test(name)?"bg-warning":/supabase|node|python/i.test(name)?"bg-success":"bg-primary")}/>{name}</span>;}
+export function TechnologyPill({name}:{name:string}){return <span className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2 py-1 text-[11px] font-medium text-ink-2"><span aria-hidden className={cn("size-1.5 rounded-full",/ai|gpt|anthropic|agent/i.test(name)?"bg-violet":/n8n|make|zapier/i.test(name)?"bg-warning":/supabase|node|python/i.test(name)?"bg-success":"bg-primary")}/>{name}</span>;}

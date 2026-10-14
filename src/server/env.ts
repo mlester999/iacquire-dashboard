@@ -60,6 +60,15 @@ const schema = z.object({
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
   // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
   CRON_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
+  // Website Studio. Included sites live at <label>.<SITES_BASE_DOMAIN>; custom domains point (CNAME) at SITES_CNAME_TARGET.
+  SITES_BASE_DOMAIN: z.preprocess(blankToUndefined, z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$|^[a-z0-9-]+\.localhost$/i).default("sites.iacquire.com")),
+  SITES_CNAME_TARGET: z.preprocess(blankToUndefined, z.string().optional()),
+  // portal: the authenticated application. sites: the public website runtime only. both: local development.
+  DEPLOYMENT_ROLE: z.preprocess(blankToUndefined, z.enum(["portal", "sites", "both"]).default("portal")),
+  // Signs the spam-control token on site forms. Falls back to APP_ENCRYPTION_KEY, which the sites role should not hold, so set it separately there.
+  SITES_FORM_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
+  // Where the post-publish health check should connect (for example a private load-balancer address); defaults to https://<host>.
+  SITES_PROBE_ORIGIN: z.preprocess(blankToUndefined, z.string().url().optional()),
   HERMES_RUN_TIMEOUT_MS: z.coerce.number().int().min(5000).max(900000).default(180000),
 });
 

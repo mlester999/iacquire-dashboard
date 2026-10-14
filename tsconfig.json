@@ -39,7 +39,9 @@
     ".next-ui-qa/types/**/*.ts",
     ".next-ui-qa/dev/types/**/*.ts",
     ".next-ui-qa-w/types/**/*.ts",
-    ".next-ui-qa-w/dev/types/**/*.ts"
+    ".next-ui-qa-w/dev/types/**/*.ts",
+    ".next-sites-qa/types/**/*.ts",
+    ".next-sites-qa/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

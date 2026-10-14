@@ -82,6 +82,13 @@ export const PERMISSION_MATRIX = {
   "billing.configure": row(...OWNER_ADMIN),
   "billing.agency_view": row(...STAFF),
   "billing.agency_manage": row("agency_super_admin"),
+  // Website Studio. Anyone on the team can see the site; editing and domains are owner/manager (agency staff help build);
+  // approval is the owner's; publishing is the owner's or a super admin acting for a managed client.
+  "website.view": row(...CLIENT, ...STAFF),
+  "website.edit": row(...OWNER_ADMIN, ...STAFF),
+  "website.domains": row(...OWNER_ADMIN, ...STAFF),
+  "website.approve": row("owner"),
+  "website.publish": row("owner", "agency_super_admin"),
 } as const satisfies Record<string, readonly EffectiveRole[]>;
 
 export type Permission = keyof typeof PERMISSION_MATRIX;

@@ -545,11 +545,12 @@ export function ChatWorkspace(props: Props) {
 
 function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: AgentRoleMeta; ready: boolean; status: AgentStatus; statusDetail: string | null; onPick: (p: string) => void }) {
   const reduce = useReducedMotion();
+  const headline={operations_manager:["Turn priorities","into a clear plan."],lead_hunter:["Start with the right","next customer."],appointment_setter:["Make room for","better conversations."],sales_assistant:["Keep opportunities","moving forward."],crm_manager:["Give every customer","a clearer story."],performance_analyst:["See the signal","behind the numbers."]}[meta.key];
   return (
     <div className="flex min-h-[48dvh] flex-col items-start justify-center py-6 text-left sm:py-10">
       <p className="mb-5 text-[10px] font-semibold uppercase tracking-[.18em] text-muted">Your dedicated {meta.shortName}</p>
       <div className="flex w-full items-center justify-between gap-5">
-        <div><h2 className="max-w-md text-[30px] font-semibold leading-[1.1] tracking-[-.035em] text-ink sm:text-[38px]">A little direction.<br/><span className="text-primary">A lot of possibility.</span></h2><p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{meta.tagline} This conversation stays in your private company workspace.</p></div>
+        <div className="min-w-0"><h2 className="max-w-md text-[28px] font-semibold leading-[1.1] tracking-[-.035em] text-ink sm:text-[38px]">{headline[0]}<br/><span className="text-primary">{headline[1]}</span></h2><p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{meta.tagline} This conversation stays in your private company workspace.</p></div>
       <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative">
         <div aria-hidden className="absolute inset-0 -m-6 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
         <AgentAvatar role={meta} size="xl" className="relative" />
@@ -580,15 +581,15 @@ function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: Agent
           </p>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">
             {status === "setup_required" || status === "provisioning"
-              ? "Each AI employee gets its own private, secure environment. Chat opens automatically once it passes a live connection check — we'll notify you."
-              : statusDetail ?? "The last connection check didn't succeed. We've been notified."}
+              ? "Each AI employee gets its own private environment. Chat becomes available after a successful connection check. Follow its progress in Setup Center."
+              : statusDetail ?? "Check the latest setup status or contact iAcquire for help."}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => openHelp("human")}>
               Contact iAcquire
             </Button>
             <ButtonLink size="sm" variant="ghost" href={`/workforce/${meta.slug}`}>
-              View configuration
+              View employee
             </ButtonLink>
           </div>
         </div>

@@ -36,7 +36,7 @@ export default async function IntegrationPreview({ searchParams }: { searchParam
   const { scope, sample, step, connect } = await searchParams;
   const client = scope === "client";
   const withSample = sample === "1";
-  const connections: IntegrationView[] = INTEGRATION_PROVIDERS.map((provider) => {
+  const connections: IntegrationView[] = INTEGRATION_PROVIDERS.filter(provider=>provider!=="llm" || !client).map((provider) => {
     const data = withSample ? SAMPLE[provider] : undefined;
     return {
       id: data ? `sample-${provider}` : null,

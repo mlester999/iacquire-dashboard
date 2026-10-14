@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Check, ExternalLink, Info } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Info,Layers,Target,Workflow } from "lucide-react";
 import { FounderNotice, ImageGallery } from "@/components/portfolio/portfolio-views";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/projects/common";
 import { PORTFOLIO_STATUS_LABEL, formatPrice, type ServiceView } from "@/lib/projects";
 import type { PortfolioDetail } from "@/server/portfolio/service";
-import { ProjectMediaPlaceholder } from "@/components/projects/visuals";
+import { ProjectMediaPlaceholder,TechnologyPill } from "@/components/projects/visuals";
 
 export function CaseStudy({ project, services, canRequest }: { project: PortfolioDetail; services: ServiceView[]; canRequest: boolean }) {
   const firstService = services.find((s) => s.availability === "available") ?? null;
@@ -17,14 +17,15 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
         <ArrowLeft className="size-3.5" /> Selected work
       </Link>
 
-      <header className="space-y-3">
+      <header className="space-y-3 border-l-2 border-primary/45 pl-4 sm:pl-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-primary">Founder project / Case study</p>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={project.status === "built" ? "success" : "warning"}>{project.statusLabel || PORTFOLIO_STATUS_LABEL[project.status]}</Badge>
           {project.categories.map((c) => (
             <Chip key={c}>{c}</Chip>
           ))}
         </div>
-        <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.02em]">{project.title}</h1>
+        <h1 className="text-balance text-[28px] font-semibold leading-[1.16] tracking-[-0.035em] sm:text-[34px]">{project.title}</h1>
         <p className="max-w-3xl text-[15px] leading-relaxed text-ink-2">{project.summary}</p>
         <p className="text-[12.5px] text-muted">{project.attribution} · built by Mark Lester Acak</p>
       </header>
@@ -35,17 +36,23 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
         </p>
       )}
 
-      {project.assets.length?<ImageGallery assets={project.assets} title={project.title}/>:<ProjectMediaPlaceholder title={project.title} technologies={project.technologies} className="aspect-[16/7] rounded-2xl p-6 sm:p-10"/>}
+      {project.assets.length?<ImageGallery assets={project.assets} title={project.title}/>:<ProjectMediaPlaceholder title={project.title} technologies={project.technologies} className="min-h-56 rounded-2xl p-6 sm:aspect-[16/7] sm:p-10"/>}
+
+      <nav aria-label="Case study sections" className="flex flex-wrap gap-2 border-y border-line py-3">
+        {project.problem&&<a href="#case-study-problem" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Target className="size-3.5"/>The problem</a>}
+        {project.solution&&<a href="#case-study-solution" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Workflow className="size-3.5"/>What was built</a>}
+        <a href="#case-study-technology" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Layers className="size-3.5"/>Technology</a>
+      </nav>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-6">
           {project.problem && (
-            <Section title="The problem">
+            <Section id="case-study-problem" title="The problem">
               <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-ink-2">{project.problem}</p>
             </Section>
           )}
           {project.solution && (
-            <Section title="What was built">
+            <Section id="case-study-solution" title="What was built">
               <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed text-ink-2">{project.solution}</p>
             </Section>
           )}
@@ -77,15 +84,15 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
           {project.privacyNote && <p className="rounded-xl bg-surface-2 p-3.5 text-[12.5px] leading-relaxed text-muted">{project.privacyNote}</p>}
         </div>
 
-        <aside className="space-y-5">
-          <Card>
+        <aside className="min-w-0 space-y-5 lg:self-start lg:sticky lg:top-24">
+          <Card id="case-study-technology" className="scroll-mt-24 border-primary/15 bg-primary-soft/15">
             <CardHeader>
               <CardTitle>Technology</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-1.5">
                 {project.technologies.map((t) => (
-                  <Chip key={t}>{t}</Chip>
+                  <TechnologyPill key={t} name={t}/>
                 ))}
               </div>
               {project.publishedOutcome && (
@@ -135,8 +142,8 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ id,title, children }: { id?:string;title: string; children: React.ReactNode }) {
   return (
-    <section className="border-b border-line pb-6"><h2 className="mb-3 flex items-center gap-2 text-[18px] font-semibold tracking-tight"><span className="h-4 w-1 rounded-full bg-primary" aria-hidden/>{title}</h2>{children}</section>
+    <section id={id} className="scroll-mt-24 border-b border-line pb-6"><h2 className="mb-3 flex items-center gap-2 text-[18px] font-semibold tracking-tight"><span className="h-4 w-1 rounded-full bg-primary" aria-hidden/>{title}</h2>{children}</section>
   );
 }

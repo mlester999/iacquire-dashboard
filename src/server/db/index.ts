@@ -199,6 +199,23 @@ export async function withUser<T>(userId: string, fn: (db: Queryable) => Promise
   );
 }
 
+/**
+ * Runs queries as iaq_site_runtime, the role behind the public website runtime. It has no table privileges and can only
+ * execute the few narrow functions defined for it (see the websites migration), so a flaw in the public runtime cannot
+ * expose a draft, another tenant or any customer record.
+ */
+export async function withSiteRuntime<T>(fn: (db: Queryable) => Promise<T>): Promise<T> {
+  const d = await driver();
+  return runTransaction(
+    "withSiteRuntime",
+    async (tx) => {
+      await tx.query("set local role iaq_site_runtime");
+      return fn(tx);
+    },
+    d,
+  );
+}
+
 export async function closeDb() {
   if (!holder.promise) return;
   const d = await holder.promise;

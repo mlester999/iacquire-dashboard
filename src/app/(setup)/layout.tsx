@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { Logo } from "@/components/brand";
+import { AuthAppearance } from "@/components/auth/appearance";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function SetupLayout({ children }: { children: React.ReactN
           <Link href="/overview" className="rounded-lg px-2.5 py-1.5 font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">
             Finish later
           </Link>
+          <AuthAppearance />
         </div>
       </header>
       <div className="relative z-10">{children}</div>

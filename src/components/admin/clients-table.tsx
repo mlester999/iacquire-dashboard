@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, Building2, CheckCircle2, ClipboardCheck, LayoutGrid, List, Search, UserRound, Workflow, X } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { Badge, Card, EmptyState, Input, ProgressBar, Select } from "@/components/ui/primitives";
 import { Tooltip } from "@/components/ui/overlays";
 import { MetricCard } from "@/components/ui/workspace";
@@ -56,7 +56,6 @@ function healthDetail(r: ClientSetupRow) {
 }
 
 export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZone: string }) {
-  const reduce=useReducedMotion();
   const [view,setView]=React.useState<"grid"|"table">("grid");
   const [q, setQ] = React.useState("");
   const [state, setState] = React.useState<"all" | StateKey>("all");
@@ -178,7 +177,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
               type="button"
               aria-pressed={needs[k]}
               onClick={() => setNeeds({ ...needs, [k]: !needs[k] })}
-              className={cn("h-8 rounded-full border px-3 text-[12.5px] font-medium transition", needs[k] ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink")}
+              className={cn("min-h-10 rounded-full border px-3 text-[12.5px] font-medium transition", needs[k] ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink")}
             >
               {label}
             </button>
@@ -275,11 +274,11 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
           </Card>
 
           {/* Mobile cards */}
-          <ul className={view==="grid"?"grid gap-4 sm:grid-cols-2 xl:grid-cols-3":"space-y-3 md:hidden"}>
+          <ul className={view==="grid"?cn("grid gap-4",list.length>1&&"sm:grid-cols-2",list.length>2&&"xl:grid-cols-3"):"space-y-3 md:hidden"}>
             {list.map((r) => {
               const s = STATE[stateOf(r)];
               return (
-                <motion.li key={r.id} initial={reduce?false:{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{duration:.2}}>
+                <motion.li key={r.id} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
                   <Link href={`/admin/clients/${r.id}`} className="group flex h-full flex-col rounded-2xl border border-line bg-surface p-5 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-card active:scale-[0.99]">
                     <div className="flex items-start justify-between gap-3">
                       <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/15 to-violet/15 text-sm font-semibold text-primary-ink">{initials(r.name)}</span>
@@ -308,7 +307,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                     <p className="mt-3 flex items-center gap-1.5 text-[12px] text-muted">
                       <UserRound className="size-3.5" /> {r.responsible ? r.responsible.name : "Unassigned"} · {r.lastActivityAt ? `active ${relativeTime(r.lastActivityAt)}` : "no activity yet"}
                     </p>
-                    <div className="mt-auto flex items-center justify-between border-t border-line pt-4 text-[12.5px] font-medium text-primary"><span>Open client workspace</span><ArrowRight className="size-4 transition group-hover:translate-x-0.5"/></div>
+                    <div className="mt-4 flex items-center justify-between border-t border-line pt-4 text-[12.5px] font-medium text-primary"><span>Open client workspace</span><ArrowRight className="size-4 transition group-hover:translate-x-0.5"/></div>
                   </Link>
                 </motion.li>
               );

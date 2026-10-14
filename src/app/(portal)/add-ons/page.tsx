@@ -16,7 +16,7 @@ export default async function AddOnsPage() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-[.12em] text-primary">Grow with iAcquire</p>
-          <h2 className="text-[26px] font-semibold tracking-[-0.02em]">Custom Projects &amp; Add-ons</h2>
+          <h1 className="text-balance text-[28px] font-semibold tracking-[-0.035em] sm:text-[32px]">Custom Projects &amp; Add-ons</h1>
           <p className="mt-1 max-w-2xl text-[14px] text-muted">
             Extra automations, AI agents, websites and software built around your business. Everything here is optional, and you always see a written quote before anything is built.
           </p>

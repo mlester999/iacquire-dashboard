@@ -59,7 +59,7 @@ export function parsePublicUrl(raw: string): URL {
 }
 
 /** Resolves a name only to public addresses; the check happens inside the socket's own lookup. */
-function safeLookup(hostname: string, options: dns.LookupOptions, callback: (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void) {
+export function safeLookup(hostname: string, options: dns.LookupOptions, callback: (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void) {
   dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
     if (err) return callback(err, "", 0);
     const list = addresses as dns.LookupAddress[];

@@ -156,10 +156,11 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
   const [open, setOpen] = React.useState<Lead | null>(null);
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState("all");
+  const [sort, setSort] = React.useState("newest");
   const [busy, setBusy] = React.useState(false);
   const filtered = leads.filter(
     (l) => (status === "all" || l.review_status === status) && (!query || `${l.business_name} ${l.industry ?? ""} ${l.location ?? ""}`.toLowerCase().includes(query.toLowerCase())),
-  );
+  ).sort((a, b) => sort === "score" ? (b.score ?? -1) - (a.score ?? -1) : sort === "name" ? a.business_name.localeCompare(b.business_name) : new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const review = async (ids: string[], decision: "approve" | "reject") => {
@@ -200,6 +201,9 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </label>
           <Input id={`lead-search-${mode}`} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name, industry or location" className="pl-9" />
         </div>
+        <Select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort leads" className="sm:max-w-44">
+          <option value="newest">Newest research</option><option value="score">Highest fit score</option><option value="name">Business A–Z</option>
+        </Select>
         {mode === "all" && (
           <Segmented
             id="lead-status"
@@ -216,11 +220,12 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           />
         )}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-[12px] text-muted"><span>{filtered.length} of {leads.length} leads</span>{canReview && <label className="flex min-h-11 cursor-pointer items-center gap-2 md:hidden"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={filtered.length > 0 && filtered.every((lead) => selected.includes(lead.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((lead) => lead.id) : [])} /> Select visible leads</label>}</div>
       <AnimatePresence>
         {selected.length > 0 && canReview && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-b border-line bg-primary-soft/40">
             <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-              <span className="text-[13px] font-medium">{selected.length} selected</span>
+              <span className="text-[13px] font-medium">{selected.length} selected{selected.some((id) => !filtered.some((lead) => lead.id === id)) ? " · includes leads hidden by these filters" : ""}</span>
               <div className="ml-auto flex flex-wrap gap-2">
                 {selectedLeads.some((l) => l.review_status === "pending") && (
                   <>
@@ -242,8 +247,9 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="scrollbar-thin overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-[13.5px]">
+      <div className="divide-y divide-line md:hidden">{filtered.map((lead) => <article key={lead.id} className={cn("px-4 py-4", selected.includes(lead.id) && "bg-primary-soft/30")}><div className="flex items-start gap-3">{canReview && <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-2"><input type="checkbox" aria-label={`Select ${lead.business_name}`} className="size-4 accent-[var(--primary)]" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} /></label>}<button type="button" onClick={() => setOpen(lead)} className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"><span className="block break-words text-[14px] font-semibold text-ink">{lead.business_name}</span><span className="mt-1 block text-[12px] text-muted">{lead.industry ?? "Industry unknown"} · {lead.location ?? "Location not recorded"}</span><span className="mt-3 flex flex-wrap items-center gap-2"><ScorePill score={lead.score}/><span className="text-[11px] text-muted">fit score</span><Badge tone={lead.review_status === "approved" ? "success" : lead.review_status === "rejected" ? "neutral" : "warning"}>{sentenceCase(lead.review_status)}</Badge></span><span className="mt-2 block text-[11.5px] text-muted">{relativeTime(lead.created_at)} · {lead.duplicate_status === "no_match" ? "No duplicates found" : sentenceCase(lead.duplicate_status)}</span>{lead.review_status === "approved" && <span className="mt-1 block text-[11.5px] text-primary">{SYNC_LABEL[lead.crm_sync_status] ?? lead.crm_sync_status}</span>}</button></div></article>)}</div>
+      <div className="scrollbar-thin hidden overflow-x-auto md:block">
+        <table className="workspace-table w-full min-w-[760px] text-left text-[13.5px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
             <tr>
               {canReview && (
@@ -274,7 +280,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
                   </td>
                 )}
                 <td className="px-3 py-3">
-                  <p className="font-medium text-ink">{l.business_name}</p>
+                  <button type="button" onClick={() => setOpen(l)} className="rounded-md text-left font-medium text-ink hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{l.business_name}</button>
                   <p className="text-[12px] text-muted">{l.industry ?? "Industry unknown"}</p>
                 </td>
                 <td className="px-3 py-3 text-ink-2">{l.location ?? "—"}</td>
@@ -292,6 +298,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </tbody>
         </table>
       </div>
+      {filtered.length === 0 && <EmptyState compact icon={<Search className="size-5"/>} title="No matching leads" description="Try another search or review status." action={<Button variant="secondary" size="sm" onClick={() => { setQuery(""); setStatus("all"); }}>Clear filters</Button>}/>}
       <LeadSheet lead={open} onClose={() => setOpen(null)} canReview={canReview} timeZone={timeZone} onReview={review} onImport={importToCrm} busy={busy} />
     </Card>
   );
