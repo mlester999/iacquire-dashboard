@@ -1,0 +1,122 @@
+import "server-only";
+import { z } from "zod";
+import { isLocalDatabaseHost } from "@/server/db/tls";
+import { checkSupabaseConfig, databaseMatchesSupabase, resolveAuthProvider, type AuthProviderName } from "@/lib/supabase-config";
+
+const bool = z
+  .enum(["true", "false", "1", "0", ""])
+  .optional()
+  .transform((v) => v === "true" || v === "1");
+
+// Blank values (`VAR=` in .env.local) count as unset.
+const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
+
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  DATABASE_DRIVER: z.enum(["pglite", "pglite-memory", "postgres"]).optional(),
+  DATABASE_URL: z.string().optional(),
+  // Supabase's root CA (PEM text, or a file path) so database TLS can be verified. Required in production.
+  DATABASE_SSL_CA: z.string().optional(),
+  DATABASE_SSL_CA_FILE: z.string().optional(),
+  PGLITE_DATA_DIR: z.string().default(".data/pglite"),
+  APP_ENCRYPTION_KEY: z.string().optional(),
+  // Comma-separated retired keys, decrypt-only, kept while stored secrets are re-encrypted after a rotation.
+  APP_ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
+  SECRET_STORE: z.preprocess(blankToUndefined, z.enum(["vault", "test-memory"]).default("vault")),
+  ALLOW_LEGACY_CREDENTIAL_READS: bool,
+  INTEGRATION_ALLOWED_HOSTS: z.string().optional(),
+  UPLOAD_DIR: z.string().default(".data/uploads"),
+
+  // Supabase is the default. Local identity is explicit and development/test only.
+  AUTH_PROVIDER: z.preprocess(blankToUndefined, z.enum(["local", "supabase"]).optional()),
+  NEXT_PUBLIC_SUPABASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.preprocess(blankToUndefined, z.string().optional()),
+  SUPABASE_SECRET_KEY: z.preprocess(blankToUndefined, z.string().optional()),
+
+  EMAIL_PROVIDER: z.enum(["capture", "resend"]).default("capture"),
+  EMAIL_FROM: z.string().default("iAcquire <no-reply@iacquire.local>"),
+  RESEND_API_KEY: z.string().optional(),
+
+  HELP_LLM_PROVIDER: z.enum(["none", "openai_compatible"]).default("none"),
+  LLM_BASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  LLM_API_KEY: z.string().optional(),
+  LLM_MODEL: z.string().default("deepseek-chat"),
+
+  SLACK_SUPPORT_WEBHOOK_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  N8N_BASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  N8N_API_KEY: z.string().optional(),
+
+  GHL_API_BASE: z.string().url().default("https://services.leadconnectorhq.com"),
+  GHL_WRITES_ENABLED: bool,
+  // GoHighLevel's webhook verification key is published and built in; set this only when GoHighLevel rotates it.
+  GHL_WEBHOOK_PUBLIC_KEY: z.preprocess(blankToUndefined, z.string().optional()),
+  ALLOW_INSECURE_HERMES_URLS: bool,
+
+  // PayMongo: server-only secrets. Key prefixes decide test or live mode; live checkout also needs the review flag in the portal.
+  PAYMONGO_SECRET_KEY: z.preprocess(blankToUndefined, z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, "must be a PayMongo secret key").optional()),
+  PAYMONGO_WEBHOOK_SECRET: z.preprocess(blankToUndefined, z.string().min(8).optional()),
+  // Comma-separated payment_method_types enabled on the merchant account. Cards only until the approved list is confirmed.
+  PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
+  // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
+  CRON_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
+  HERMES_RUN_TIMEOUT_MS: z.coerce.number().int().min(5000).max(900000).default(180000),
+});
+
+export type Env = z.infer<typeof schema> & {
+  DATABASE_DRIVER: "pglite" | "pglite-memory" | "postgres";
+  AUTH_PROVIDER: AuthProviderName;
+};
+
+let cached: Env | null = null;
+
+export function env(): Env {
+  if (cached) return cached;
+  const parsed = schema.safeParse(process.env);
+  if (!parsed.success) {
+    const fields = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
+    throw new Error(`Invalid server environment configuration: ${fields}`);
+  }
+  const value = parsed.data;
+  const authProvider = resolveAuthProvider(process.env);
+  const driver = value.DATABASE_DRIVER ?? (authProvider === "local" ? "pglite" : "postgres");
+  // A secret in a NEXT_PUBLIC_ variable is a leak in every environment, not just production.
+  const leaks = checkSupabaseConfig(process.env, false).filter((p) => p.code === "secret_in_public_var");
+  if (leaks.length) throw new Error(leaks.map((p) => p.message).join(" "));
+  if (value.SECRET_STORE === "test-memory" && value.NODE_ENV !== "test") throw new Error("SECRET_STORE=test-memory is allowed only in tests.");
+  if (value.NODE_ENV === "production") {
+    if (authProvider === "local") {
+      throw new Error(
+        "Production requires Supabase Auth: set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY. " +
+          "AUTH_PROVIDER=local is for synthetic local development and tests only.",
+      );
+    }
+    if (authProvider === "supabase") {
+      const problems = checkSupabaseConfig(process.env, true);
+      if (problems.length) throw new Error(`Supabase is not fully configured: ${problems.map((p) => p.message).join(" ")}`);
+    }
+    if (driver !== "postgres" || !value.DATABASE_URL) {
+      throw new Error("Production requires DATABASE_DRIVER=postgres and DATABASE_URL.");
+    }
+    if (!databaseMatchesSupabase(process.env)) throw new Error("DATABASE_URL must connect to the configured Supabase portal project. The Hostinger appointment database is separate.");
+    if (!isLocalDatabaseHost(value.DATABASE_URL) && !value.DATABASE_SSL_CA?.trim() && !value.DATABASE_SSL_CA_FILE?.trim()) {
+      throw new Error("Production requires verified database TLS: download Supabase's root certificate (Project Settings → Database → SSL configuration) and set DATABASE_SSL_CA_FILE.");
+    }
+    if (value.ALLOW_LEGACY_CREDENTIAL_READS) throw new Error("Legacy credential reads cannot be enabled in production.");
+    if (!value.APP_ENCRYPTION_KEY || value.APP_ENCRYPTION_KEY.length < 32) {
+      throw new Error("Production requires APP_ENCRYPTION_KEY with at least 32 characters.");
+    }
+    if (value.ALLOW_INSECURE_HERMES_URLS) {
+      throw new Error("ALLOW_INSECURE_HERMES_URLS cannot be enabled in production.");
+    }
+  }
+  cached = { ...value, DATABASE_DRIVER: driver, AUTH_PROVIDER: authProvider };
+  return cached;
+}
+
+export const isProduction = () => env().NODE_ENV === "production";
+
+/** Clears the cached configuration. Tests only. */
+export function resetEnvCache() {
+  cached = null;
+}

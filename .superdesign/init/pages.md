@@ -1,0 +1,1122 @@
+# Important page dependencies
+
+## /admin/clients
+
+- src/app/(admin)/admin/clients/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/setup/snapshots.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/server/setup/connectors.ts
+      - src/server/db/index.ts (shared)
+      - src/server/integrations/ghl.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/admin/tenants.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/auth/service.ts (shared)
+          - src/server/workforce/service.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/security/crypto.ts (shared)
+            - src/server/env.ts (shared)
+            - src/lib/agents.ts
+            - src/lib/agent-settings.ts
+            - src/server/workforce/compiler.ts
+              - src/lib/agents.ts (shared)
+              - src/lib/agent-settings.ts (shared)
+              - src/server/workforce/policy.ts
+            - src/server/integrations/hermes/client.ts
+            - src/server/notifications.ts
+              - src/server/db/index.ts (shared)
+              - src/server/env.ts (shared)
+          - src/server/setup/core.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/notifications.ts (shared)
+            - src/server/email.ts (shared)
+            - src/server/env.ts (shared)
+            - src/server/tenancy/context.ts (shared)
+            - src/server/auth/service.ts (shared)
+            - src/server/setup/hub.ts
+            - src/lib/setup.ts
+          - src/server/security/crypto.ts (shared)
+          - src/lib/agents.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/lib/agents.ts (shared)
+      - src/lib/setup.ts (shared)
+    - src/server/setup/core.ts (shared)
+    - src/lib/setup.ts (shared)
+  - src/components/admin/admin-shell.tsx
+    - src/components/brand.tsx
+      - src/lib/utils.ts
+      - src/lib/agents.ts (shared)
+    - src/components/ui/overlays.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/(auth)/actions.ts
+      - src/server/auth/service.ts (shared)
+      - src/server/auth/provider.ts
+        - src/server/env.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/auth/session.ts (shared)
+        - src/server/auth/supabase.ts (shared)
+      - src/server/auth/supabase.ts (shared)
+      - src/server/auth/session.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/db/index.ts (shared)
+      - src/server/security/rate-limit.ts (shared)
+      - src/server/security/crypto.ts (shared)
+      - src/server/notifications.ts (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/admin/create-client.tsx
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/ui/overlays.tsx (shared)
+    - src/components/ui/primitives.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/(admin)/admin/actions.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/audit.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/admin/tenants.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/server/workforce/provisioning.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/lib/agents.ts (shared)
+        - src/server/workforce/policy.ts (shared)
+        - src/server/workforce/compiler.ts (shared)
+        - src/server/workforce/service.ts (shared)
+      - src/server/integrations/ghl.ts (shared)
+      - src/server/support/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/server/tenancy/context.ts (shared)
+        - src/server/auth/service.ts (shared)
+      - src/server/auth/service.ts (shared)
+      - src/server/notifications.ts (shared)
+    - src/lib/agents.ts (shared)
+    - src/components/brand.tsx (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/admin/clients-table.tsx
+    - src/components/ui/primitives.tsx (shared)
+    - src/components/ui/overlays.tsx (shared)
+    - src/server/setup/snapshots.ts (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/ui/primitives.tsx (shared)
+
+## /admin/clients/[id]
+
+- src/app/(admin)/admin/clients/[id]/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/admin/queries.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/usage.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/notifications.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/agents.ts
+  - src/server/errors.ts (shared)
+  - src/components/admin/client-detail.tsx
+    - src/components/brand.tsx
+      - src/lib/utils.ts
+      - src/lib/agents.ts (shared)
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/ui/primitives.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/ui/overlays.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/(admin)/admin/actions.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/audit.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/admin/tenants.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/workforce/service.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/security/crypto.ts (shared)
+          - src/server/env.ts (shared)
+          - src/lib/agents.ts (shared)
+          - src/lib/agent-settings.ts
+          - src/server/workforce/compiler.ts
+            - src/lib/agents.ts (shared)
+            - src/lib/agent-settings.ts (shared)
+            - src/server/workforce/policy.ts
+          - src/server/integrations/hermes/client.ts
+          - src/server/notifications.ts (shared)
+        - src/server/setup/core.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/notifications.ts (shared)
+          - src/server/email.ts (shared)
+          - src/server/env.ts (shared)
+          - src/server/tenancy/context.ts (shared)
+          - src/server/auth/service.ts (shared)
+          - src/server/setup/hub.ts
+          - src/lib/setup.ts
+        - src/server/security/crypto.ts (shared)
+        - src/lib/agents.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/server/workforce/provisioning.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/lib/agents.ts (shared)
+        - src/server/workforce/policy.ts (shared)
+        - src/server/workforce/compiler.ts (shared)
+        - src/server/workforce/service.ts (shared)
+      - src/server/integrations/ghl.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/admin/tenants.ts (shared)
+      - src/server/support/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/server/tenancy/context.ts (shared)
+        - src/server/auth/service.ts (shared)
+      - src/server/auth/service.ts (shared)
+      - src/server/notifications.ts (shared)
+    - src/server/admin/queries.ts (shared)
+    - src/server/workforce/provisioning.ts (shared)
+    - src/lib/agents.ts (shared)
+    - src/lib/utils.ts (shared)
+
+## /admin/clients/[id]/setup
+
+- src/app/(admin)/admin/clients/[id]/setup/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/setup/snapshots.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/server/setup/connectors.ts
+      - src/server/db/index.ts (shared)
+      - src/server/integrations/ghl.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/admin/tenants.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/auth/service.ts (shared)
+          - src/server/workforce/service.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/security/crypto.ts (shared)
+            - src/server/env.ts (shared)
+            - src/lib/agents.ts
+            - src/lib/agent-settings.ts
+            - src/server/workforce/compiler.ts
+              - src/lib/agents.ts (shared)
+              - src/lib/agent-settings.ts (shared)
+              - src/server/workforce/policy.ts
+            - src/server/integrations/hermes/client.ts
+            - src/server/notifications.ts
+              - src/server/db/index.ts (shared)
+              - src/server/env.ts (shared)
+          - src/server/setup/core.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/notifications.ts (shared)
+            - src/server/email.ts (shared)
+            - src/server/env.ts (shared)
+            - src/server/tenancy/context.ts (shared)
+            - src/server/auth/service.ts (shared)
+            - src/server/setup/hub.ts
+            - src/lib/setup.ts
+          - src/server/security/crypto.ts (shared)
+          - src/lib/agents.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/lib/agents.ts (shared)
+      - src/lib/setup.ts (shared)
+    - src/server/setup/core.ts (shared)
+    - src/lib/setup.ts (shared)
+  - src/server/errors.ts (shared)
+  - src/components/admin/setup/manager.tsx
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts
+    - src/components/ui/primitives.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/setup/live-badge.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/setup/progress-ring.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/setup/status.tsx
+      - src/components/ui/primitives.tsx (shared)
+      - src/lib/setup.ts (shared)
+      - src/lib/utils.ts (shared)
+    - src/components/setup/use-live-setup.ts
+    - src/components/admin/setup/dialogs.tsx
+      - src/components/ui/button.tsx (shared)
+      - src/components/ui/primitives.tsx (shared)
+      - src/components/ui/overlays.tsx
+        - src/lib/utils.ts (shared)
+      - src/components/admin/setup/common.tsx
+        - src/components/ui/overlays.tsx (shared)
+        - src/lib/setup.ts (shared)
+        - src/lib/utils.ts (shared)
+      - src/app/(admin)/admin/setup-actions.ts
+        - src/server/tenancy/context.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/setup/agency.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/notifications.ts (shared)
+          - src/server/auth/service.ts (shared)
+          - src/server/setup/automation.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/notifications.ts (shared)
+            - src/server/auth/service.ts (shared)
+            - src/server/setup/connectors.ts (shared)
+            - src/server/setup/core.ts (shared)
+            - src/server/setup/transition.ts
+              - src/server/db/index.ts (shared)
+              - src/server/errors.ts (shared)
+              - src/server/audit.ts (shared)
+              - src/server/setup/core.ts (shared)
+              - src/lib/setup.ts (shared)
+            - src/lib/setup.ts (shared)
+          - src/server/setup/core.ts (shared)
+          - src/server/setup/transition.ts (shared)
+          - src/lib/setup.ts (shared)
+        - src/server/setup/automation.ts (shared)
+        - src/lib/setup.ts (shared)
+      - src/lib/setup.ts (shared)
+    - src/components/admin/setup/common.tsx (shared)
+    - src/components/admin/setup/task-drawer.tsx
+      - src/components/ui/button.tsx (shared)
+      - src/components/ui/primitives.tsx (shared)
+      - src/components/ui/overlays.tsx (shared)
+      - src/components/setup/status.tsx (shared)
+      - src/components/admin/setup/common.tsx (shared)
+      - src/app/(admin)/admin/setup-actions.ts (shared)
+      - src/lib/setup.ts (shared)
+      - src/lib/utils.ts (shared)
+    - src/app/(admin)/admin/setup-actions.ts (shared)
+    - src/lib/setup.ts (shared)
+    - src/lib/utils.ts (shared)
+
+## /admin
+
+- src/app/(admin)/admin/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/admin/queries.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/usage.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/notifications.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/agents.ts
+  - src/server/support/service.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/audit.ts (shared)
+    - src/server/security/rate-limit.ts (shared)
+    - src/server/notifications.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/auth/service.ts (shared)
+  - src/components/admin/admin-shell.tsx
+    - src/components/brand.tsx
+      - src/lib/utils.ts
+      - src/lib/agents.ts (shared)
+    - src/components/ui/overlays.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/(auth)/actions.ts
+      - src/server/auth/service.ts (shared)
+      - src/server/auth/provider.ts
+        - src/server/env.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/auth/session.ts (shared)
+        - src/server/auth/supabase.ts (shared)
+      - src/server/auth/supabase.ts (shared)
+      - src/server/auth/session.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/db/index.ts (shared)
+      - src/server/security/rate-limit.ts (shared)
+      - src/server/security/crypto.ts (shared)
+      - src/server/notifications.ts (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/charts.tsx
+    - src/components/brand.tsx (shared)
+    - src/components/ui/overlays.tsx (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/ui/primitives.tsx
+    - src/lib/utils.ts (shared)
+  - src/components/brand.tsx (shared)
+  - src/lib/agents.ts (shared)
+  - src/lib/utils.ts (shared)
+
+## /admin/workforce
+
+- src/app/(admin)/admin/workforce/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/admin/queries.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/usage.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/notifications.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/agents.ts
+  - src/components/admin/admin-shell.tsx
+    - src/components/brand.tsx
+      - src/lib/utils.ts
+      - src/lib/agents.ts (shared)
+    - src/components/ui/overlays.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/(auth)/actions.ts
+      - src/server/auth/service.ts (shared)
+      - src/server/auth/provider.ts
+        - src/server/env.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/auth/session.ts (shared)
+        - src/server/auth/supabase.ts (shared)
+      - src/server/auth/supabase.ts (shared)
+      - src/server/auth/session.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/db/index.ts (shared)
+      - src/server/security/rate-limit.ts (shared)
+      - src/server/security/crypto.ts (shared)
+      - src/server/notifications.ts (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/brand.tsx (shared)
+  - src/components/ui/primitives.tsx
+    - src/lib/utils.ts (shared)
+  - src/components/admin/health-check-button.tsx
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/(admin)/admin/actions.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/audit.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/admin/tenants.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/workforce/service.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/security/crypto.ts (shared)
+          - src/server/env.ts (shared)
+          - src/lib/agents.ts (shared)
+          - src/lib/agent-settings.ts
+          - src/server/workforce/compiler.ts
+            - src/lib/agents.ts (shared)
+            - src/lib/agent-settings.ts (shared)
+            - src/server/workforce/policy.ts
+          - src/server/integrations/hermes/client.ts
+          - src/server/notifications.ts (shared)
+        - src/server/setup/core.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/notifications.ts (shared)
+          - src/server/email.ts (shared)
+          - src/server/env.ts (shared)
+          - src/server/tenancy/context.ts (shared)
+          - src/server/auth/service.ts (shared)
+          - src/server/setup/hub.ts
+          - src/lib/setup.ts
+        - src/server/security/crypto.ts (shared)
+        - src/lib/agents.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/server/workforce/provisioning.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/lib/agents.ts (shared)
+        - src/server/workforce/policy.ts (shared)
+        - src/server/workforce/compiler.ts (shared)
+        - src/server/workforce/service.ts (shared)
+      - src/server/integrations/ghl.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/admin/tenants.ts (shared)
+      - src/server/support/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/server/tenancy/context.ts (shared)
+        - src/server/auth/service.ts (shared)
+      - src/server/auth/service.ts (shared)
+      - src/server/notifications.ts (shared)
+  - src/lib/agents.ts (shared)
+  - src/lib/utils.ts (shared)
+
+## /overview
+
+- src/app/(portal)/overview/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/queries/dashboard.ts
+    - src/server/db/index.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/lib/agents.ts
+  - src/server/workforce/service.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/audit.ts (shared)
+    - src/server/security/crypto.ts (shared)
+    - src/server/env.ts (shared)
+    - src/lib/agents.ts (shared)
+    - src/lib/agent-settings.ts
+    - src/server/workforce/compiler.ts
+      - src/lib/agents.ts (shared)
+      - src/lib/agent-settings.ts (shared)
+      - src/server/workforce/policy.ts
+    - src/server/integrations/hermes/client.ts
+    - src/server/notifications.ts
+      - src/server/db/index.ts (shared)
+      - src/server/env.ts (shared)
+  - src/components/brand.tsx
+    - src/lib/utils.ts
+    - src/lib/agents.ts (shared)
+  - src/components/ui/primitives.tsx
+    - src/lib/utils.ts (shared)
+  - src/components/ui/button.tsx
+    - src/lib/utils.ts (shared)
+  - src/components/overview/overview-client.tsx
+    - src/components/charts.tsx
+      - src/components/brand.tsx (shared)
+      - src/components/ui/overlays.tsx
+        - src/lib/utils.ts (shared)
+      - src/lib/utils.ts (shared)
+  - src/lib/agents.ts (shared)
+  - src/lib/activity.ts
+  - src/components/setup/setup-nudge.tsx
+    - src/components/ui/primitives.tsx (shared)
+    - src/components/shell/shell-context.tsx
+      - src/server/queries/shell.ts
+        - src/server/db/index.ts (shared)
+        - src/server/tenancy/context.ts (shared)
+        - src/lib/agents.ts (shared)
+        - src/lib/permissions.ts (shared)
+      - src/lib/permissions.ts (shared)
+  - src/lib/utils.ts (shared)
+
+## /settings/integrations
+
+- src/app/(portal)/settings/integrations/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/db/index.ts (shared)
+  - src/components/ui/primitives.tsx
+    - src/lib/utils.ts
+  - src/components/settings/request-connection.tsx
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/actions/support.ts
+      - src/server/tenancy/context.ts (shared)
+      - src/server/support/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/notifications.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/server/tenancy/context.ts (shared)
+        - src/server/auth/service.ts (shared)
+      - src/server/errors.ts (shared)
+  - src/lib/utils.ts (shared)
+
+## /settings
+
+- src/app/(portal)/settings/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/settings/service.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/audit.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/server/workforce/service.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/audit.ts (shared)
+      - src/server/security/crypto.ts (shared)
+      - src/server/env.ts (shared)
+      - src/lib/agents.ts
+      - src/lib/agent-settings.ts
+      - src/server/workforce/compiler.ts
+        - src/lib/agents.ts (shared)
+        - src/lib/agent-settings.ts (shared)
+        - src/server/workforce/policy.ts
+      - src/server/integrations/hermes/client.ts
+      - src/server/notifications.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+    - src/lib/agent-settings.ts (shared)
+    - src/lib/permissions.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+  - src/components/settings/settings-forms.tsx
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts
+    - src/components/ui/primitives.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/ui/overlays.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/shell/guided-tour.tsx
+      - src/components/ui/button.tsx (shared)
+    - src/app/actions/settings.ts
+      - src/server/tenancy/context.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/settings/service.ts (shared)
+      - src/server/auth/provider.ts
+        - src/server/env.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/auth/session.ts (shared)
+        - src/server/auth/supabase.ts (shared)
+      - src/lib/permissions.ts (shared)
+    - src/lib/agent-settings.ts (shared)
+    - src/lib/permissions.ts (shared)
+    - src/lib/utils.ts (shared)
+
+## /setup
+
+- src/app/(portal)/setup/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/setup/snapshots.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/tenancy/context.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/server/setup/connectors.ts
+      - src/server/db/index.ts (shared)
+      - src/server/integrations/ghl.ts
+        - src/server/db/index.ts (shared)
+        - src/server/env.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/admin/tenants.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/auth/service.ts (shared)
+          - src/server/workforce/service.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/security/crypto.ts (shared)
+            - src/server/env.ts (shared)
+            - src/lib/agents.ts
+            - src/lib/agent-settings.ts
+            - src/server/workforce/compiler.ts
+              - src/lib/agents.ts (shared)
+              - src/lib/agent-settings.ts (shared)
+              - src/server/workforce/policy.ts
+            - src/server/integrations/hermes/client.ts
+            - src/server/notifications.ts
+              - src/server/db/index.ts (shared)
+              - src/server/env.ts (shared)
+          - src/server/setup/core.ts
+            - src/server/db/index.ts (shared)
+            - src/server/errors.ts (shared)
+            - src/server/audit.ts (shared)
+            - src/server/notifications.ts (shared)
+            - src/server/email.ts (shared)
+            - src/server/env.ts (shared)
+            - src/server/tenancy/context.ts (shared)
+            - src/server/auth/service.ts (shared)
+            - src/server/setup/hub.ts
+            - src/lib/setup.ts
+          - src/server/security/crypto.ts (shared)
+          - src/lib/agents.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/lib/agents.ts (shared)
+      - src/lib/setup.ts (shared)
+    - src/server/setup/core.ts (shared)
+    - src/lib/setup.ts (shared)
+  - src/components/setup/setup-center.tsx
+    - src/components/ui/button.tsx
+      - src/lib/utils.ts
+    - src/components/ui/primitives.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/ui/overlays.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/help/help-widget.tsx
+      - src/components/brand.tsx
+        - src/lib/utils.ts (shared)
+        - src/lib/agents.ts (shared)
+      - src/components/markdown.tsx
+        - src/lib/utils.ts (shared)
+      - src/components/ui/button.tsx (shared)
+      - src/components/ui/primitives.tsx (shared)
+      - src/app/actions/support.ts
+        - src/server/tenancy/context.ts (shared)
+        - src/server/support/service.ts
+          - src/server/db/index.ts (shared)
+          - src/server/errors.ts (shared)
+          - src/server/audit.ts (shared)
+          - src/server/security/rate-limit.ts (shared)
+          - src/server/notifications.ts (shared)
+          - src/server/tenancy/context.ts (shared)
+          - src/server/auth/service.ts (shared)
+        - src/server/errors.ts (shared)
+      - src/lib/utils.ts (shared)
+    - src/components/setup/progress-ring.tsx
+      - src/lib/utils.ts (shared)
+    - src/components/setup/status.tsx
+      - src/components/ui/primitives.tsx (shared)
+      - src/lib/setup.ts (shared)
+      - src/lib/utils.ts (shared)
+    - src/components/setup/use-live-setup.ts
+    - src/components/setup/live-badge.tsx
+      - src/lib/utils.ts (shared)
+    - src/app/actions/setup.ts
+      - src/server/tenancy/context.ts (shared)
+      - src/server/setup/client.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/server/tenancy/context.ts (shared)
+        - src/server/setup/core.ts (shared)
+        - src/lib/setup.ts (shared)
+      - src/server/errors.ts (shared)
+    - src/lib/setup.ts (shared)
+    - src/lib/utils.ts (shared)
+  - src/components/ui/button.tsx (shared)
+  - src/components/ui/primitives.tsx (shared)
+  - src/lib/utils.ts (shared)
+
+## /workforce
+
+- src/app/(portal)/workforce/page.tsx
+  - src/server/tenancy/context.ts
+    - src/server/db/index.ts
+      - src/server/env.ts
+        - src/lib/supabase-config.ts
+    - src/server/errors.ts
+    - src/server/auth/session.ts
+      - src/server/env.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/auth/service.ts
+        - src/server/db/index.ts (shared)
+        - src/server/security/crypto.ts
+          - src/server/env.ts (shared)
+        - src/server/security/rate-limit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/audit.ts
+          - src/server/db/index.ts (shared)
+        - src/server/email.ts
+          - src/server/db/index.ts (shared)
+          - src/server/env.ts (shared)
+        - src/lib/permissions.ts
+      - src/server/auth/supabase.ts
+        - src/server/db/index.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/email.ts (shared)
+        - src/server/security/crypto.ts (shared)
+        - src/server/security/rate-limit.ts (shared)
+        - src/server/auth/service.ts (shared)
+        - src/server/supabase/config.ts
+          - src/lib/supabase-config.ts (shared)
+        - src/server/supabase/clients.ts
+          - src/server/supabase/config.ts (shared)
+        - src/lib/permissions.ts (shared)
+    - src/server/auth/service.ts (shared)
+    - src/lib/permissions.ts (shared)
+  - src/server/workforce/service.ts
+    - src/server/db/index.ts (shared)
+    - src/server/errors.ts (shared)
+    - src/server/audit.ts (shared)
+    - src/server/security/crypto.ts (shared)
+    - src/server/env.ts (shared)
+    - src/lib/agents.ts
+    - src/lib/agent-settings.ts
+    - src/server/workforce/compiler.ts
+      - src/lib/agents.ts (shared)
+      - src/lib/agent-settings.ts (shared)
+      - src/server/workforce/policy.ts
+    - src/server/integrations/hermes/client.ts
+    - src/server/notifications.ts
+      - src/server/db/index.ts (shared)
+      - src/server/env.ts (shared)
+  - src/components/brand.tsx
+    - src/lib/utils.ts
+    - src/lib/agents.ts (shared)
+  - src/components/ui/button.tsx
+    - src/lib/utils.ts (shared)
+  - src/components/ui/primitives.tsx
+    - src/lib/utils.ts (shared)
+  - src/components/workforce/request-setup.tsx
+    - src/components/ui/button.tsx (shared)
+    - src/app/actions/workforce.ts
+      - src/server/db/index.ts (shared)
+      - src/server/errors.ts (shared)
+      - src/server/tenancy/context.ts (shared)
+      - src/server/workforce/service.ts (shared)
+      - src/server/workforce/compiler.ts (shared)
+      - src/server/workforce/provisioning.ts
+        - src/server/db/index.ts (shared)
+        - src/server/errors.ts (shared)
+        - src/server/audit.ts (shared)
+        - src/server/notifications.ts (shared)
+        - src/lib/agents.ts (shared)
+        - src/server/workforce/policy.ts (shared)
+        - src/server/workforce/compiler.ts (shared)
+        - src/server/workforce/service.ts (shared)
+      - src/lib/agent-settings.ts (shared)
+      - src/lib/agents.ts (shared)
+  - src/lib/agents.ts (shared)
+  - src/server/db/index.ts (shared)
+

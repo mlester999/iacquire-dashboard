@@ -1,0 +1,270 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, ExternalLink, List, RefreshCw, Video } from "lucide-react";
+import { AgentAvatar } from "@/components/brand";
+import { Button } from "@/components/ui/button";
+import { Badge, Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/primitives";
+import { Segmented, Sheet } from "@/components/ui/overlays";
+import { MetricCard } from "@/components/ui/workspace";
+import { refreshCrmAction } from "@/app/actions/records";
+import { AGENT_BY_KEY } from "@/lib/agents";
+import { cn, formatDate, formatTime, relativeTime, sentenceCase, timeZoneLabel } from "@/lib/utils";
+
+interface Appt {
+  id: string;
+  title: string;
+  status: string;
+  start_at: string;
+  end_at: string;
+  timezone: string | null;
+  meeting_type: string | null;
+  meeting_link: string | null;
+  contact_label: string | null;
+  synced_at: string;
+}
+
+const STATUS_TONE: Record<string, "success" | "primary" | "danger" | "neutral" | "warning" | "violet"> = {
+  confirmed: "success",
+  new: "primary",
+  cancelled: "danger",
+  showed: "violet",
+  noshow: "warning",
+  invalid: "neutral",
+};
+
+function dayKey(d: Date, tz: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh, setterReady }: { appointments: Appt[]; timeZone: string; lastSync: string | null; canRefresh: boolean; setterReady: boolean }) {
+  const router = useRouter();
+  const [view, setView] = React.useState<"calendar" | "list">("calendar");
+  const [cursor, setCursor] = React.useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [open, setOpen] = React.useState<Appt | null>(null);
+  const [refreshing, setRefreshing] = React.useState(false);
+  // Fixed at first render so the upcoming/past split is stable across re-renders.
+  const [now] = React.useState(() => Date.now());
+  const upcoming = appointments.filter((a) => new Date(a.start_at).getTime() >= now && a.status !== "cancelled");
+  const past = appointments.filter((a) => new Date(a.start_at).getTime() < now).reverse();
+  const byDay = React.useMemo(() => {
+    const m = new Map<string, Appt[]>();
+    for (const a of appointments) {
+      const k = dayKey(new Date(a.start_at), timeZone);
+      m.set(k, [...(m.get(k) ?? []), a]);
+    }
+    return m;
+  }, [appointments, timeZone]);
+
+  const monthStart = cursor;
+  const startWeekday = monthStart.getDay();
+  const daysInMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+  const cells = Array.from({ length: Math.ceil((startWeekday + daysInMonth) / 7) * 7 }, (_, i) => {
+    const day = i - startWeekday + 1;
+    return day >= 1 && day <= daysInMonth ? new Date(cursor.getFullYear(), cursor.getMonth(), day, 12) : null;
+  });
+  const todayKey = dayKey(new Date(), timeZone);
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 xl:col-span-3"><MetricCard label="Upcoming meetings" value={upcoming.length} detail="Future meetings recorded by your calendar." icon={<CalendarDays className="size-4"/>}/><MetricCard label="Confirmed" value={upcoming.filter(appointment=>appointment.status==="confirmed").length} detail="Confirmed appointments among upcoming meetings." icon={<Video className="size-4"/>} tone="green"/><MetricCard label="Calendar time zone" value={<span className="text-[18px]">{timeZoneLabel(timeZone)}</span>} detail={lastSync?`Last checked ${relativeTime(lastSync)}`:"No synchronization timestamp recorded."} icon={<Clock className="size-4"/>} tone="neutral"/></div>
+      <div className="space-y-4 xl:col-span-2">
+        <Card>
+          <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
+            {view === "calendar" && (
+              <div className="flex items-center gap-1">
+                <Button size="icon-sm" variant="ghost" aria-label="Previous month" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <p className="min-w-36 text-center text-[15px] font-semibold">{cursor.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
+                <Button size="icon-sm" variant="ghost" aria-label="Next month" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              {canRefresh && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={refreshing}
+                  onClick={async () => {
+                    setRefreshing(true);
+                    const res = await refreshCrmAction();
+                    setRefreshing(false);
+                    if (!res.ok) return toast.error(res.error);
+                    toast.success("Calendar refreshed");
+                    router.refresh();
+                  }}
+                >
+                  <RefreshCw className="size-3.5" /> Refresh
+                </Button>
+              )}
+              <Segmented
+                id="appt-view"
+                ariaLabel="View"
+                size="sm"
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "calendar", label: <span className="flex items-center gap-1.5"><CalendarDays className="size-3.5" />Calendar</span> },
+                  { value: "list", label: <span className="flex items-center gap-1.5"><List className="size-3.5" />List</span> },
+                ]}
+              />
+            </div>
+          </div>
+          {view === "calendar" ? (
+            <div className="p-3 sm:p-4">
+              <div className="grid grid-cols-7 gap-1 pb-2 text-center text-[11.5px] font-medium text-faint">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                  <span key={d}>
+                    <span className="sm:hidden">{d[0]}</span>
+                    <span className="hidden sm:inline">{d}</span>
+                  </span>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {cells.map((d, i) => {
+                  if (!d) return <div key={i} className="min-h-14 rounded-xl sm:min-h-24" />;
+                  // Grid cells are calendar dates; appointments are bucketed by their date in the workspace time zone.
+                  const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                  const items = byDay.get(k) ?? [];
+                  return (
+                    <div key={i} className={cn("min-h-14 rounded-xl border p-1 sm:min-h-24 sm:p-1.5", k === todayKey ? "border-primary/40 bg-primary-soft/30" : "border-line bg-surface")}>
+                      <p className={cn("text-[11.5px] font-medium", k === todayKey ? "text-primary" : "text-muted")}>{d.getDate()}</p>
+                      <div className="mt-0.5 space-y-0.5">
+                        {items.slice(0, 2).map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => setOpen(a)}
+                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[10.5px] font-medium sm:text-[11px]", a.status === "cancelled" ? "bg-surface-2 text-faint line-through" : "bg-primary-soft text-primary-ink hover:bg-primary/15")}
+                          >
+                            <span className="hidden sm:inline">{formatTime(a.start_at, timeZone)} </span>
+                            {a.title}
+                          </button>
+                        ))}
+                        {items.length > 2 && <p className="px-1 text-[10.5px] text-muted">+{items.length - 2} more</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {[...upcoming, ...past].length === 0 && <li className="p-8 text-center text-[13px] text-muted">No appointments in the synced window.</li>}
+              {[...upcoming, ...past].map((a) => (
+                <li key={a.id}>
+                  <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-surface-2/50">
+                    <div className="w-14 shrink-0 text-center">
+                      <p className="text-[11px] font-medium uppercase text-muted">{new Date(a.start_at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
+                      <p className="text-[20px] font-semibold leading-none">{new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone }).format(new Date(a.start_at))}</p>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-medium">{a.title}</p>
+                      <p className="text-[12.5px] text-muted">
+                        {formatTime(a.start_at, timeZone)} – {formatTime(a.end_at, timeZone)}
+                        {a.meeting_type ? ` · ${a.meeting_type}` : ""}
+                      </p>
+                    </div>
+                    <Badge tone={STATUS_TONE[a.status] ?? "neutral"}>{a.status === "noshow" ? "No-show" : sentenceCase(a.status)}</Badge>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <p className="flex items-center gap-2 text-[12px] text-muted">
+          <Clock className="size-3.5" /> Times shown in {timeZoneLabel(timeZone)}. {lastSync ? `Last synced ${relativeTime(lastSync)}.` : ""}
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Upcoming</CardTitle>
+              <CardDescription>Next confirmed and new bookings.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {upcoming.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-muted">No upcoming appointments.</p>
+            ) : (
+              <ul className="space-y-2">
+                {upcoming.slice(0, 6).map((a) => (
+                  <li key={a.id}>
+                    <button type="button" onClick={() => setOpen(a)} className="w-full rounded-xl border border-line p-3 text-left transition hover:border-line-strong hover:shadow-soft">
+                      <p className="truncate text-[13.5px] font-medium">{a.title}</p>
+                      <p className="text-[12px] text-muted">
+                        {formatDate(a.start_at, timeZone)} · {formatTime(a.start_at, timeZone)}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-start gap-3 pt-5">
+            <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="md" />
+            <div>
+              <p className="text-[14px] font-semibold">Appointment Setter</p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Ask about availability or prepare a booking, reschedule or cancellation. Changes always go to Approvals first.</p>
+              {setterReady ? (
+                <Link href="/chat/appointment-setter" className="mt-2 inline-flex text-[13px] font-medium text-primary hover:underline">
+                  Ask the Appointment Setter
+                </Link>
+              ) : (
+                <p className="mt-2 text-[12.5px] text-faint">Available once it&apos;s online.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Sheet open={Boolean(open)} onOpenChange={(o) => !o && setOpen(null)} title={open?.title ?? "Appointment"} description={open ? `${formatDate(open.start_at, timeZone)} · ${formatTime(open.start_at, timeZone)} – ${formatTime(open.end_at, timeZone)}` : undefined}>
+        {open && (
+          <div className="space-y-4 p-5 text-[13.5px]">
+            <Badge tone={STATUS_TONE[open.status] ?? "neutral"}>{open.status === "noshow" ? "No-show" : sentenceCase(open.status)}</Badge>
+            <dl className="space-y-3">
+              <div>
+                <dt className="text-[12px] text-muted">Meeting type</dt>
+                <dd>{open.meeting_type ?? "Not specified"}</dd>
+              </div>
+              <div>
+                <dt className="text-[12px] text-muted">Contact</dt>
+                <dd>{open.contact_label ?? "Not shared by the calendar"}</dd>
+              </div>
+              <div>
+                <dt className="text-[12px] text-muted">Meeting link</dt>
+                <dd>
+                  {open.meeting_link ? (
+                    <a href={open.meeting_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+                      <Video className="size-4" /> Join meeting <ExternalLink className="size-3" />
+                    </a>
+                  ) : (
+                    <span className="text-muted">No link was returned by the calendar.</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[12px] text-muted">Time zone</dt>
+                <dd>{timeZoneLabel(timeZone)}</dd>
+              </div>
+            </dl>
+            <p className="rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">To reschedule or cancel, ask your Appointment Setter — it prepares the change for your approval, and nothing changes in your calendar until it&apos;s approved and confirmed by the calendar.</p>
+          </div>
+        )}
+      </Sheet>
+    </div>
+  );
+}

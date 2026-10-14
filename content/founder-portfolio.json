@@ -1,0 +1,1221 @@
+{
+  "_comment": "Verified import from https://www.automatewithmarky.com (read 2026-10-14). Imported as 'pending review': an admin must review, confirm public disclosure and publish each project. Image entries are references to the source site and are not copied into iAcquire storage until an admin imports or uploads them. Results are quoted statements from the source, not measured metrics.",
+  "attribution": "Selected Work from Our Founder",
+  "projects": [
+    {
+      "slug": "homeveal-bathroom-remodeling-ai-lead-to-appointment-system",
+      "title": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System",
+      "anonymizedTitle": "Home remodeling: AI lead-to-appointment system",
+      "problem": "HomeVeal needed more than a simple form or chatbot: a connected system that captures remodeling inquiries, collects the information required for qualification, prevents unsuitable appointments, and helps eligible leads move toward a scheduled consultation. Leads can arrive with incomplete details, outside the service area, or through different channels with inconsistent context.",
+      "solution": "A lead-to-appointment system combining a conversion-focused landing page, GoHighLevel CRM and pipeline management, n8n workflow orchestration, a Vapi AI voice agent, AI-assisted qualification, service-area validation, appointment scheduling, reminders, and follow-up automation.",
+      "publishedOutcome": "A reusable lead-to-appointment foundation connecting the website, AI agents, CRM, workflows, service-area rules, calendar, and follow-up.",
+      "privacyNote": "Private client system. Screenshots and examples are anonymized where necessary. Private webhook URLs, credentials and exact service-area details are omitted.",
+      "limitations": [],
+      "featured": true,
+      "sortOrder": 10,
+      "services": [
+        "lead-capture-qualification",
+        "high-converting-landing-page",
+        "custom-automation-system",
+        "custom-ai-agent"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "HomeVeal serves homeowners looking for remodeling and home improvement services in Northeast Ohio, including the Cleveland, Akron, and Canton market. This project focused on building a reliable customer journey from first inquiry to qualified appointment.",
+          "items": [
+            "Lead capture: landing page and intake flows collect the details needed for follow-up",
+            "AI qualification: voice and chat agents gather missing details and keep conversations on track",
+            "Service-area validation: configured area checks keep booking focused on eligible locations",
+            "CRM and pipeline management in GoHighLevel: contacts, tags, custom fields, and lead progress",
+            "Appointment booking: preferred times are checked against availability before a booking is treated as confirmed",
+            "Automated follow-up: confirmations, reminders, and follow-up keep eligible leads moving"
+          ]
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Leads may submit incomplete information",
+            "Some contacts may only provide a first name",
+            "Address, ZIP code, phone number, email, service request, or preferred schedule may be missing",
+            "Leads outside the configured service area should not be allowed to book",
+            "The AI agent must not ask customers to repeat information already available",
+            "Appointment availability must be checked before confirming a booking",
+            "Different channels, including voice and SMS, should use consistent customer context",
+            "The team needs a reusable structure that can later support additional markets"
+          ]
+        },
+        {
+          "heading": "System architecture",
+          "items": [
+            "Homeowner",
+            "Landing page, chatbot, or voice call",
+            "Vapi AI voice agent and AI qualification",
+            "n8n webhook and workflow processing",
+            "GoHighLevel contact, tags, custom fields, and pipeline",
+            "Required-information and service-area checks",
+            "Calendar availability",
+            "Appointment booking",
+            "Confirmation, reminders, and follow-up"
+          ]
+        },
+        {
+          "heading": "Conversation safeguards",
+          "body": "Tony, the HomeVeal AI voice agent, collects or confirms name, phone, email, address, ZIP code, requested service and preferred appointment time.",
+          "items": [
+            "Uses known customer information and avoids asking for the same information again",
+            "Asks for missing information when required and confirms the full name before important actions",
+            "Does not claim that an appointment is booked until the booking result is confirmed"
+          ]
+        },
+        {
+          "heading": "Qualification and service-area protection",
+          "items": [
+            "If information is missing, the AI asks for the missing details",
+            "If the address or ZIP code is outside the service area, the lead is marked appropriately and should not be allowed to book",
+            "If the lead is eligible and the information is complete, the system can continue toward scheduling"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Designed the overall lead-to-appointment system and mapped the customer journey",
+            "Built and configured the landing page and lead capture flow",
+            "Designed GoHighLevel CRM and pipeline logic",
+            "Built n8n workflow orchestration",
+            "Configured the Vapi AI voice agent, Tony",
+            "Designed qualification and missing-information behavior and added service-area protection logic",
+            "Connected appointment scheduling and follow-up",
+            "Created workflow documentation and structured the system for future replication across markets",
+            "Tested edge cases such as incomplete contact information, duplicate information, outside-service-area leads, and booking-state errors"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: landing page and lead capture, GoHighLevel CRM and pipeline setup, n8n orchestration, Vapi voice agent, required-information checks, service-area validation, availability checks and booking-state protection, confirmation and reminder flows, chatbot intake path",
+            "In progress: A2P SMS registration and carrier approval as an operational deployment requirement; final client acceptance and production rollout coordination",
+            "Planned: replication of the same foundation across additional markets"
+          ]
+        }
+      ],
+      "summary": "A connected growth and booking system that helps a remodeling company capture leads, collect complete customer information, qualify service requests, validate service areas, manage contacts in GoHighLevel, and guide eligible leads toward appointments.",
+      "technologies": [
+        "GoHighLevel",
+        "n8n",
+        "Vapi",
+        "AI Voice",
+        "AI Chatbot"
+      ],
+      "categories": [
+        "AI Automation",
+        "AI Agents"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/homeveal-bathroom-remodeling-ai-lead-to-appointment-system",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/project-homeveal-Bu3hndPB.png",
+          "alt": "HomeVeal Bathroom Remodeling: AI Lead-to-Appointment System cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-ghl-new-lead-workflow-D4jUZgZP.png",
+          "alt": "GoHighLevel Homeowner Website Workflow for new website leads",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-vapi-tony-assistant-KUG3FXyH.png",
+          "alt": "Vapi dashboard for Tony, the HomeVeal AI voice assistant",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-vapi-call-logs-DBTqyKIY.png",
+          "alt": "Vapi call logs for HomeVeal Tony inbound voice conversations",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-n8n-inbound-ai-router-dgQK53_5.png",
+          "alt": "n8n inbound AI router workflow for HomeVeal SMS and CRM events",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-n8n-appointment-manager-DLwB113G.png",
+          "alt": "n8n appointment manager workflow checking calendar availability and booking state",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-n8n-crm-sync-DzL1diU9.png",
+          "alt": "n8n CRM sync workflow keeping GoHighLevel contacts and opportunities updated",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-n8n-follow-up-sequence-DOGRBjQY.png",
+          "alt": "n8n cross-channel lead follow-up sequence for HomeVeal",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-n8n-conversation-context-D4Xnxc5S.png",
+          "alt": "n8n unified conversation context workflow for shared customer memory",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-n8n-vapi-call-followup-CSus85nO.png",
+          "alt": "n8n Vapi call follow-up workflow sending post-call SMS through GoHighLevel",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/homeveal-ghl-conversation-followup-xv1DNdp5.png",
+          "alt": "GoHighLevel conversation view showing Tony follow-up messages after voice calls",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "aivanza-academy-ai-learning-platform-admin-portal",
+      "title": "AIvanza Academy: AI Learning Platform and Admin Portal",
+      "anonymizedTitle": "AI learning platform and admin portal",
+      "problem": "The platform needed more than a marketing page: a reliable internal system to manage academy operations. Students should not create accounts without payment confirmation, pending payments need review, access must be granted only after confirmation, and courses, modules and lessons must be manageable without editing code.",
+      "solution": "A public academy landing page paired with a protected admin portal for manual payment review, student access control, course/module/lesson management, Basic/Plus/Pro tier access, and an admin dashboard, built on Supabase authentication and database.",
+      "publishedOutcome": "A connected academy experience with public marketing, manual payment processing, protected administration, course management, and controlled student access.",
+      "privacyNote": "Private product project. Screenshots and data are anonymized where necessary.",
+      "limitations": [],
+      "featured": true,
+      "sortOrder": 20,
+      "services": [
+        "custom-web-saas-shopify"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "AIvanza Academy combines two connected product surfaces: a public landing page that presents the academy and its programs, and a protected admin portal that manages payments, students, courses, lessons, access tiers, and enrollment.",
+          "items": [
+            "Academy landing page: a front door that explains the bootcamp, seats, schedule, and enrollment path",
+            "Manual payment management: learners submit proof of payment; admins review, confirm, reject, or refund",
+            "Student access control: access stays locked until payment confirmation and account activation",
+            "Course and lesson management: courses, modules, lessons, active or soft-deleted states",
+            "Tier-based enrollment: Basic, Plus, and Pro control which courses learners can reach",
+            "Admin dashboard: operations metrics for users, payments, revenue, and tier distribution"
+          ]
+        },
+        {
+          "heading": "The product challenge",
+          "items": [
+            "Students should not freely create accounts without payment confirmation",
+            "Pending payments should remain under review",
+            "Administrators need to approve, reject, or refund payments",
+            "Access must be granted only after payment confirmation",
+            "Courses, modules, and lessons need to be manageable without editing code",
+            "Different plans or tiers may have different course access",
+            "Admin routes and data must be protected"
+          ]
+        },
+        {
+          "heading": "Enrollment and payment workflow",
+          "items": [
+            "Interested learner",
+            "Public academy landing page",
+            "Payment submission",
+            "Pending payment record",
+            "Admin review",
+            "Confirmed payment",
+            "Account and enrollment activation",
+            "One-time setup link and password creation",
+            "Active student access"
+          ]
+        },
+        {
+          "heading": "Security and authentication",
+          "items": [
+            "Protected admin routes and role-aware admin access",
+            "Supabase authentication with database-backed profiles, payments, courses, and enrollments",
+            "Controlled account activation after payment confirmation",
+            "One-time invitation links for secure password setup",
+            "Server-side handling for sensitive AI provider configuration"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Designed the public academy landing page and the product structure across public and admin surfaces",
+            "Built the admin portal for academy operations and designed payment-review workflows",
+            "Implemented user, course, module and lesson management and tier-based access logic",
+            "Connected Supabase authentication and database functionality and protected admin routes",
+            "Designed responsive light and dark interfaces with loading, empty, error, and confirmation states"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: public landing page, manual seat reservation and payment proof submission, admin dashboard, payment confirmation/rejection/refund, learner directory, course/module/lesson management, Basic/Plus/Pro tier model, protected admin authentication, student portal foundation, admin AI assistant configuration",
+            "In progress: content completion for additional modules and lessons; ongoing enrollment operations; continued hardening of invite email and deployment configuration",
+            "Planned: expanded course catalog, richer student community and resources, deeper analytics"
+          ]
+        }
+      ],
+      "summary": "A premium learning platform for practical AI, automation, websites, and business systems, supported by a secure admin portal for payments, students, courses, lessons, and tier-based access.",
+      "technologies": [
+        "Supabase",
+        "Authentication",
+        "Database",
+        "Admin Dashboard",
+        "Payment Management",
+        "Course Management"
+      ],
+      "categories": [
+        "SaaS",
+        "Full-Stack",
+        "Admin Portal",
+        "Education Platform"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/aivanza-academy-ai-learning-platform-admin-portal",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/aivanza-landing-hero-Dt6y0UgD.png",
+          "alt": "AIvanza Academy: AI Learning Platform and Admin Portal cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/aivanza-payment-reservation-ZhuGDFPe.png",
+          "alt": "AIvanza Academy manual seat reservation and payment proof submission page",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/aivanza-admin-dashboard-CarZTWDA.png",
+          "alt": "AIvanza Academy admin operations dashboard with student and payment metrics",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/aivanza-admin-users-oO0iluir.png",
+          "alt": "AIvanza Academy admin learner directory with search, filters, and tier status",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/aivanza-admin-courses-DIAOKVTY.png",
+          "alt": "AIvanza Academy admin courses console showing tier access and course status",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "tony-ai-trainable-negotiation-conversation-platform",
+      "title": "Tony AI: Trainable AI Negotiation and Conversation Platform",
+      "anonymizedTitle": "Trainable AI negotiation and conversation platform",
+      "problem": "Generic AI assistants often respond in a neutral and inconsistent way, do not automatically understand how a specific person thinks, talks, or negotiates, and rarely handle objections, business decisions, or roleplay with a stable character.",
+      "solution": "A character-based conversational AI with chat and voice modes sharing one AI brain, a teaching mode, stored corrections, long-term memory, and a business knowledge base. Improvements come from stored corrections, memories and instructions retrieved into future responses, not from retraining the underlying model.",
+      "publishedOutcome": "A reusable AI brain that combines chat, voice, stored corrections, long-term memory, business knowledge, and character-based responses.",
+      "privacyNote": "Private experimental AI product. Screenshots and internal configuration have been anonymized where necessary. Counters shown in screenshots are sample UI state, not production performance metrics.",
+      "limitations": [
+        "Tony is a training and conversation partner. It does not replace a human negotiator or make guaranteed business decisions.",
+        "Tony does not permanently retrain the underlying AI model from every conversation; corrections and memories are retrieved into future responses.",
+        "Memory is retrieved based on relevance, not perfect recall of every past chat."
+      ],
+      "featured": true,
+      "sortOrder": 30,
+      "services": [
+        "ai-inquiry-appointment-agent",
+        "custom-ai-agent"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "Tony AI was built as a standalone trainable AI platform for realistic conversations, negotiation practice, sales training, and business-specific AI behavior. It is separate from HomeVeal, where a Tony voice agent was later applied inside a remodeling workflow.",
+          "items": [
+            "Chat conversations with negotiation starters and a character-driven reply style",
+            "Voice interaction using the same Tony Brain",
+            "Teaching mode that lets users shape how Tony thinks while they talk",
+            "Stored corrections: preferred responses saved and retrieved later",
+            "Long-term memory for important facts and instructions",
+            "Business knowledge: guide content, niches, and knowledge-base layers"
+          ]
+        },
+        {
+          "heading": "The problem",
+          "items": [
+            "Generic AI assistants often respond in a neutral and inconsistent way",
+            "They do not automatically understand how a specific person thinks, talks, or negotiates",
+            "They rarely handle objections, business decisions, or roleplay with a stable character"
+          ]
+        },
+        {
+          "heading": "Corrections learned",
+          "items": [
+            "User gives a message",
+            "Tony generates a response",
+            "User provides a correction or preferred response",
+            "The correction is stored with its context",
+            "Relevant corrections are retrieved in future conversations",
+            "Tony uses the correction as part of its response guidance"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Designed the Tony AI product concept and the character-based AI experience",
+            "Built the chat interface and built or configured voice interaction",
+            "Created teaching mode, the correction workflow, and stored memory behavior",
+            "Connected business knowledge and system instructions",
+            "Connected backend AI processing and configured persistence for corrections and memories"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: chat mode with conversation starters, voice mode, teaching mode toggle, corrections workflow, long-term memory, Tony Brain / Guide, knowledge base with Brain and Business modes",
+            "In progress: continued refinement of retrieval quality and voice interaction; confirming exact persistence and provider stack details against the private repository",
+            "Planned: more specialized business niches, stronger analytics around corrections and memory usefulness"
+          ]
+        }
+      ],
+      "summary": "A conversational AI platform with chat, voice, teaching mode, corrections, long-term memory, and a consistent character personality for realistic negotiation and business conversations.",
+      "technologies": [
+        "AI Agents",
+        "Chat AI",
+        "Voice AI",
+        "Memory",
+        "Knowledge Retrieval",
+        "Supabase"
+      ],
+      "categories": [
+        "AI Agents",
+        "Voice AI",
+        "AI Training",
+        "Conversational AI",
+        "Full-Stack"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/tony-ai-trainable-negotiation-conversation-platform",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/tony-ai-chat-teach-XuHjt-C_.png",
+          "alt": "Tony AI: Trainable AI Negotiation and Conversation Platform cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/tony-ai-voice-mode-DiRuO0gK.png",
+          "alt": "Tony AI voice mode ready to talk with shared teaching controls",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/tony-ai-negotiation-starters-C6XLIMmC.png",
+          "alt": "Tony AI negotiation conversation starter interface",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/tony-ai-voice-thinking-Bg_WDlXL.png",
+          "alt": "Tony AI voice session showing live response thinking state",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/tony-ai-knowledge-base-DiL4qqpk.png",
+          "alt": "Tony AI knowledge base with Brain mode and reply briefing layers",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "zorivelle-realty-chatbot-rag-powered-document-q-a",
+      "title": "Zorivelle Realty Chatbot: RAG-Powered Document Q&A",
+      "anonymizedTitle": "RAG-powered real estate document assistant",
+      "problem": "Property information is spread across files and can change. A generic chatbot may answer fluently without using the correct project details.",
+      "solution": "An n8n ingestion process reads Google Drive documents, chunks and embeds their content, and stores vectors in Supabase pgvector. A webhook agent retrieves relevant passages for each question and passes them to Gemini as constrained context for the final answer.",
+      "publishedOutcome": "Sales information becomes searchable through conversation while source documents remain the grounding layer.",
+      "privacyNote": null,
+      "limitations": [
+        "Answers are only as current as the indexed documents.",
+        "Retrieval reduces unsupported answers but does not eliminate model error."
+      ],
+      "featured": true,
+      "sortOrder": 40,
+      "services": [
+        "customer-support-ai-assistant",
+        "internal-ai-knowledge-assistant",
+        "custom-ai-agent"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "An n8n ingestion process reads Google Drive documents, chunks and embeds their content, and stores vectors in Supabase pgvector. A webhook agent retrieves context for each question."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Ingest source documents consistently",
+            "Create searchable semantic chunks",
+            "Retrieve context relevant to each question",
+            "Keep responses tied to supplied material"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Read files from Google Drive",
+            "Split documents into useful chunks",
+            "Create and store vector embeddings",
+            "Receive a question by webhook",
+            "Search Supabase for relevant passages",
+            "Generate a grounded Gemini response"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Built the n8n ingestion workflow",
+            "Configured Supabase pgvector",
+            "Designed retrieval prompts",
+            "Created the webhook question flow"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: Drive document ingestion, chunking and embedding, Supabase vector search, Gemini answer generation"
+          ]
+        }
+      ],
+      "summary": "RAG-based chatbot that indexes real estate documents into a Supabase vector store and serves AI answers via webhook-triggered agent.",
+      "technologies": [
+        "n8n",
+        "Supabase",
+        "Google Gemini",
+        "Google Drive",
+        "OpenAI"
+      ],
+      "categories": [
+        "AI Agents",
+        "n8n"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/zorivelle-realty-chatbot-rag-powered-document-q-a",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/project-chatbot-CZNUQZFP.png",
+          "alt": "Zorivelle Realty Chatbot: RAG-Powered Document Q&A cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/zorivelle-realty-chat-B78vH-tZ.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/zorivelle-realty-database-B5ZlHkiZ.png",
+          "alt": "",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "ai-email-agent-classification-kb-reply-human-in-the-loop",
+      "title": "AI Email Agent: Classification, Knowledge Reply, and Human Review",
+      "anonymizedTitle": "AI email agent with human review",
+      "problem": "Repetitive questions consume inbox time, but automatic responses become risky when the model lacks confidence or the request falls outside known guidance.",
+      "solution": "Zapier coordinates Gmail, OpenAI, a Google Sheets knowledge base, and Slack. Each email receives a category and confidence assessment. Eligible messages use knowledge-base material to draft a reply, while low-confidence cases are summarized in Slack with a suggested response for a person to decide.",
+      "publishedOutcome": "Predictable questions follow an automated route while nuanced messages remain visible to a reviewer.",
+      "privacyNote": null,
+      "limitations": [
+        "Confidence scores are model signals, not guarantees.",
+        "Sensitive or novel requests should always remain with a person."
+      ],
+      "featured": false,
+      "sortOrder": 50,
+      "services": [
+        "custom-ai-agent"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "Zapier coordinates Gmail, OpenAI, a Google Sheets knowledge base, and Slack. Classification output determines whether a message can proceed or needs review."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Classify incoming messages",
+            "Retrieve approved answer material",
+            "Separate routine and uncertain cases",
+            "Give reviewers enough context to decide"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Receive a new Gmail message",
+            "Classify intent and confidence",
+            "Look up relevant knowledge entries",
+            "Draft a grounded response",
+            "Route uncertain cases to Slack",
+            "Send or approve the final reply"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Designed the confidence gate",
+            "Structured the knowledge base",
+            "Built Gmail reply actions",
+            "Created Slack review alerts"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: email classification, knowledge lookup, draft generation, Slack human-review route"
+          ]
+        }
+      ],
+      "summary": "Zapier email agent that classifies inbound emails by AI confidence, auto-replies via knowledge-base lookup, and flags low-confidence cases to Slack.",
+      "technologies": [
+        "Zapier",
+        "OpenAI",
+        "Google Sheets",
+        "Gmail",
+        "Slack"
+      ],
+      "categories": [
+        "AI Agents",
+        "Zapier"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/ai-email-agent-classification-kb-reply-human-in-the-loop",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/project-email-agent-BeNIzaY1.png",
+          "alt": "AI Email Agent: Classification, Knowledge Reply, and Human Review cover",
+          "kind": "cover"
+        }
+      ]
+    },
+    {
+      "slug": "4br-guest-follow-up-qr-check-in-conditional-sequences",
+      "title": "4BR Guest Follow-Up: QR Check-In and Conditional Sequences",
+      "anonymizedTitle": "QR check-in guest follow-up system",
+      "problem": "Event follow-up becomes confusing when attendance records are delayed or contacts enter conflicting campaigns. Continued messages after a reply can also harm the experience.",
+      "solution": "A GoHighLevel attendance system: a QR-triggered webhook applies attendance state, router conditions and exclusion checks choose one nurture branch (attended or no-show), and reply events remove contacts from active messaging.",
+      "publishedOutcome": "Attendees and no-shows receive distinct communication, with reply handling designed to stop unnecessary messages.",
+      "privacyNote": null,
+      "limitations": [
+        "Missed or duplicate scans can affect attendance state.",
+        "Staff need a correction process for inaccurate check-ins."
+      ],
+      "featured": false,
+      "sortOrder": 60,
+      "services": [
+        "ai-follow-up-appointment-reminders",
+        "custom-automation-system"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "Guests scan a QR code at check-in, which updates their GoHighLevel contact. A router evaluates attendance tags and sends the contact into an attended or no-show sequence."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Capture attendance at the event",
+            "Update the correct contact record",
+            "Prevent entry into competing sequences",
+            "Stop follow-up once a guest responds"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Scan the event QR code",
+            "Locate or update the GHL contact",
+            "Apply the attendance tag",
+            "Evaluate attended versus no-show rules",
+            "Enter one follow-up sequence",
+            "Stop messages when the contact replies"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Configured QR check-in",
+            "Built the GHL router",
+            "Created attended and no-show sequences",
+            "Added dual-entry prevention and reply stops"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: QR webhook intake, attendance tagging, conditional router, stop-on-reply logic"
+          ]
+        }
+      ],
+      "summary": "Complete GHL system: QR check-in tags attendance, then a router workflow drives the right follow-up sequence, preventing dual entry and stopping on reply.",
+      "technologies": [
+        "GoHighLevel"
+      ],
+      "categories": [
+        "Workflow",
+        "GoHighLevel"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/4br-guest-follow-up-qr-check-in-conditional-sequences",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/4br-checkin-tagger-CRfYw_Ai.png",
+          "alt": "4BR Guest Follow-Up: QR Check-In and Conditional Sequences cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/4br-router-workflow-Dg3yroQh.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/4br-attended-followup-DPWNob4_.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/4br-noshow-followup-CvoBzFvB.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/4br-qr-checkin-Ci4nDVKI.png",
+          "alt": "",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "ai-linkedin-content-publishing-approval-posting-via-slack",
+      "title": "AI LinkedIn Content Publishing: Slack Approval and Automated Posting",
+      "anonymizedTitle": "AI LinkedIn publishing with Slack approval",
+      "problem": "Automated content can save production work, but publishing without review risks brand errors. Approval decisions also need a traceable record.",
+      "solution": "n8n coordinates AI-generated drafts, Slack action buttons, Google Sheets records, and LinkedIn publishing, including multi-image carousel posts. Drafts arrive in Slack with interactive controls; approved content is recorded in Sheets and published.",
+      "publishedOutcome": "Automation handles preparation and delivery while a visible approval gate protects the final publishing decision.",
+      "privacyNote": null,
+      "limitations": [
+        "Reviewers remain responsible for factual and brand checks.",
+        "LinkedIn API permissions can constrain publishing features."
+      ],
+      "featured": false,
+      "sortOrder": 70,
+      "services": [
+        "custom-automation-system"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "n8n coordinates AI-generated drafts, Slack action buttons, Google Sheets records, and LinkedIn publishing, including multi-image carousel posts."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Present drafts where reviewers already work",
+            "Support approve, reject, and edit choices",
+            "Keep a publishing audit record",
+            "Handle carousel media with the post"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Generate or receive a LinkedIn draft",
+            "Send the draft to Slack",
+            "Collect approve, reject, or edit input",
+            "Update the Google Sheets record",
+            "Prepare text and carousel media",
+            "Publish approved content to LinkedIn"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Designed the approval state flow",
+            "Built Slack button handling",
+            "Created Sheets tracking",
+            "Configured LinkedIn publishing"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: draft review messages, approve/reject/edit actions, Google Sheets audit log, LinkedIn carousel publishing"
+          ]
+        }
+      ],
+      "summary": "n8n automation that turns AI-generated content into reviewed LinkedIn posts via Slack approval buttons, tracked in Google Sheets, and auto-published with multi-image carousels.",
+      "technologies": [
+        "n8n",
+        "Slack",
+        "Google Sheets",
+        "LinkedIn",
+        "OpenAI"
+      ],
+      "categories": [
+        "AI Automation",
+        "n8n"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/ai-linkedin-content-publishing-approval-posting-via-slack",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/linkedin-workflow-DuzsxrQ2.png",
+          "alt": "AI LinkedIn Content Publishing: Slack Approval and Automated Posting cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/linkedin-slack-s3tvGFeR.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/linkedin-posts-IuXHA_nj.jpeg",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/linkedin-sheets-r8ozLF4J.png",
+          "alt": "",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "mitchy-dental-lounge-ai-voice-receptionist",
+      "title": "Mitchy Dental Lounge: AI Voice Receptionist",
+      "anonymizedTitle": "AI voice receptionist for a dental clinic",
+      "problem": "Appointment calls interrupt clinical work, but a scheduling agent must check real availability, collect accurate details, and avoid unsafe calendar changes.",
+      "solution": "ElevenLabs provides the voice experience, OpenAI supports conversational understanding, and n8n connects the agent to Google Calendar and Airtable records. The receptionist interprets intent, asks for required details, checks availability, performs the authorized scheduling action, and logs the result.",
+      "publishedOutcome": "Patients can ask about availability and manage routine scheduling requests through a natural voice interaction.",
+      "privacyNote": null,
+      "limitations": [
+        "Complex clinical questions require staff involvement.",
+        "Calendar accuracy depends on staff maintaining the connected schedule."
+      ],
+      "featured": true,
+      "sortOrder": 80,
+      "services": [
+        "ai-voice-receptionist",
+        "custom-ai-agent"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "ElevenLabs provides the voice experience, OpenAI supports conversational understanding, and n8n connects the agent to Google Calendar and Airtable records."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Understand spoken booking requests",
+            "Check current calendar availability",
+            "Create or update appointments",
+            "Record the interaction for staff visibility"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Answer the inbound call",
+            "Identify booking or update intent",
+            "Collect patient and timing details",
+            "Check Google Calendar availability",
+            "Create, confirm, or reschedule the event",
+            "Log the interaction in Airtable"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Designed the call flow",
+            "Connected ElevenLabs and OpenAI",
+            "Built n8n calendar actions",
+            "Configured Airtable call records"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: voice receptionist flow, availability lookup, appointment create and update actions, call outcome logging"
+          ]
+        }
+      ],
+      "summary": "AI-powered voice receptionist that handles appointment scheduling, slot availability checks, booking confirmations, and updates through natural voice, integrated with Google Calendar.",
+      "technologies": [
+        "n8n",
+        "ElevenLabs",
+        "Google Calendar",
+        "OpenAI",
+        "Airtable"
+      ],
+      "categories": [
+        "AI Agents",
+        "n8n"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/mitchy-dental-lounge-ai-voice-receptionist",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/project-mitchy-dental-CV99_Ont.png",
+          "alt": "Mitchy Dental Lounge: AI Voice Receptionist cover",
+          "kind": "cover"
+        }
+      ]
+    },
+    {
+      "slug": "vtl-sleep-spray-custom-shopify-liquid-storefront",
+      "title": "VTL Sleep Spray: Custom Shopify Liquid Storefront",
+      "anonymizedTitle": "Custom Shopify storefront",
+      "problem": "A single-product storefront must explain formulation, use, trust, and purchase options without becoming difficult to scan, especially on mobile.",
+      "solution": "A mobile-first Shopify product experience assembled from custom Liquid sections, snippets, styling, and interaction code: a custom product page, bundle selector, promotional bar, ingredient education, review carousel, comparison content, accordions, and a guarantee section.",
+      "publishedOutcome": "The storefront presents the full product story through reusable theme components rather than a page-builder template.",
+      "privacyNote": null,
+      "limitations": [
+        "Health-related copy and customer claims require substantiation.",
+        "Theme changes should be tested against Shopify updates and mobile browsers."
+      ],
+      "featured": false,
+      "sortOrder": 90,
+      "services": [
+        "shopify-starter-system",
+        "custom-web-saas-shopify"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "The build includes a custom product detail page, bundle selector, promotional bar, ingredient education, review carousel, comparison content, accordions, and a guarantee section."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Create a clear product hierarchy",
+            "Support bundle selection",
+            "Explain ingredients and benefits",
+            "Build reusable sections without a premium theme"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Open the product page",
+            "Review the core offer and bundle options",
+            "Explore benefits and ingredients",
+            "Compare the product approach",
+            "Read customer review content",
+            "Select a bundle and continue to checkout"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Developed the custom theme structure",
+            "Built the product page sections",
+            "Implemented bundle interactions",
+            "Created responsive styling and scripts"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: custom Liquid product page, bundle selector, ingredient and comparison sections, review carousel and benefit accordions"
+          ]
+        }
+      ],
+      "summary": "Built the entire VTL Sleep Spray storefront from scratch in Shopify using custom Liquid, sections, and snippets. Includes a conversion-focused PDP with bundle-and-save selector, sticky promo bar, ingredient science section, real-customer review carousel, comparison table, benefits accordion, and a 30-night risk-free guarantee block.",
+      "technologies": [
+        "Shopify",
+        "Liquid",
+        "HTML",
+        "CSS",
+        "JavaScript"
+      ],
+      "categories": [
+        "Shopify",
+        "Integration"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/vtl-sleep-spray-custom-shopify-liquid-storefront",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-2-BCbIzHCp.png",
+          "alt": "VTL Sleep Spray: Custom Shopify Liquid Storefront cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-1-DTpLKUro.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-3-D4LG9Da1.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-4-Bvc_C3Og.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-5-Dngthx5a.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-6-CeThL4Ff.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-7-TsPhDKDq.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/vtl-8--iz9SPde.png",
+          "alt": "",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "avouria-vip-membership-custom-find-my-size-quiz-a-b-testing",
+      "title": "Avouria: Shopify Membership, Size Quiz, and A/B Testing",
+      "anonymizedTitle": "Shopify membership, size quiz and A/B testing",
+      "problem": "The store needed to guide shoppers toward sizing while reducing reliance on a separate quiz subscription. Membership enrollment also had to fit the checkout journey clearly.",
+      "solution": "Custom quiz logic evaluates weight, height, body type, and fit preference using Liquid and JavaScript. Shopify Functions and Recharge handle the VIP Comfort Club membership (first month free, then $19.99 per month as stated on the project), while selected funnel elements are compared through controlled A/B tests.",
+      "publishedOutcome": "The storefront replaces the previous Octane AI quiz dependency with custom sizing logic while connecting membership and testing features.",
+      "privacyNote": null,
+      "limitations": [
+        "Sizing output is guidance, not a guarantee of fit.",
+        "Tests require sufficient clean data before drawing conclusions."
+      ],
+      "featured": false,
+      "sortOrder": 100,
+      "services": [
+        "custom-web-saas-shopify"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "Avouria includes a VIP Comfort Club membership, a Liquid and JavaScript Find My Size quiz, Recharge integration, Shopify Functions, and A/B test setup."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Collect useful fit preferences",
+            "Map answers to a product tier and size",
+            "Present membership terms transparently",
+            "Create measurable storefront test variants"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Enter the Find My Size quiz",
+            "Provide body and fit preferences",
+            "Evaluate the sizing rules",
+            "Return a product and size recommendation",
+            "Offer the VIP Comfort Club terms",
+            "Continue to Shopify checkout and assigned test variant"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Built the custom quiz",
+            "Implemented Shopify Functions",
+            "Connected Recharge membership",
+            "Configured funnel A/B tests"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: Find My Size questions and rules, product and size recommendation, VIP Comfort Club integration, A/B test variants"
+          ]
+        }
+      ],
+      "summary": "Built a custom Shopify storefront for Avouria featuring a VIP Comfort Club membership (free first month, then $19.99/month recurring) auto-added at checkout, plus an in-house Find My Size quiz (weight, height, body type, etc.) that recommends the best tier and exact size, replacing a costly Octane AI subscription. Also set up A/B testing across the funnel to optimize conversions.",
+      "technologies": [
+        "Shopify",
+        "Shopify Functions",
+        "Liquid",
+        "Recharge",
+        "A/B Testing"
+      ],
+      "categories": [
+        "Shopify",
+        "Integration"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/avouria-vip-membership-custom-find-my-size-quiz-a-b-testing",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/avouria-1-8iuvgykU.png",
+          "alt": "Avouria: Shopify Membership, Size Quiz, and A/B Testing cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/avouria-2-Bx3xg88G.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/avouria-4-DJnm06Ty.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/avouria-5-gbMhMopv.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/avouria-3-CChVNCkT.png",
+          "alt": "",
+          "kind": "screenshot"
+        }
+      ]
+    },
+    {
+      "slug": "ai-series-masterclass-learning-management-system-for-viral-stories-ph",
+      "title": "AI Series Masterclass: Learning Management System for Viral Stories PH",
+      "anonymizedTitle": "Learning management system for a content brand",
+      "problem": "A course business needs more than landing pages. Payment verification, account access, structured lessons, progress state, and content protection must work together.",
+      "solution": "A React and TypeScript application separating public and student surfaces. Supabase manages authentication and stored progress, with a GCash enrollment flow, protected course delivery, lesson progress tracking and community access.",
+      "publishedOutcome": "The public sales journey and authenticated learning workspace operate as one end-to-end LMS foundation.",
+      "privacyNote": null,
+      "limitations": [
+        "Manual payment review requires operational oversight.",
+        "Client-side deterrents cannot fully prevent redistribution of viewed content."
+      ],
+      "featured": false,
+      "sortOrder": 110,
+      "services": [
+        "custom-web-saas-shopify"
+      ],
+      "sections": [
+        {
+          "heading": "Project overview",
+          "body": "The system uses React, TypeScript, TanStack tools, Supabase, and a GCash enrollment flow. Students can browse courses, open lessons, mark progress, and access community links."
+        },
+        {
+          "heading": "The challenge",
+          "items": [
+            "Present enrollment and course value",
+            "Handle proof-based GCash payment",
+            "Protect authenticated learning content",
+            "Persist lesson and course progress"
+          ]
+        },
+        {
+          "heading": "How it works",
+          "items": [
+            "Review the public masterclass page",
+            "Begin the GCash enrollment flow",
+            "Complete payment review and account access",
+            "Sign into the student dashboard",
+            "Browse courses and lessons",
+            "Record lesson completion and open community resources"
+          ]
+        },
+        {
+          "heading": "My contribution",
+          "items": [
+            "Built the React and TypeScript application",
+            "Integrated Supabase auth and data",
+            "Created GCash enrollment handling",
+            "Developed course and lesson experiences"
+          ]
+        },
+        {
+          "heading": "Project status",
+          "body": "As published by the founder.",
+          "items": [
+            "Built: public enrollment site, GCash payment flow, authenticated dashboard, course delivery and progress tracking"
+          ]
+        }
+      ],
+      "summary": "Premium learning management system built for Viral Stories Ph' (315K+ Facebook followers) to sell and deliver AI content creation courses. Modern dark-themed landing page with urgency-driven design, GCash enrollment flow, and a full student dashboard with course browsing, lesson viewing, progress tracking, and community access.",
+      "technologies": [
+        "React",
+        "TypeScript",
+        "Vite",
+        "TanStack Router",
+        "TanStack Query",
+        "Supabase",
+        "Tailwind CSS",
+        "shadcn/ui",
+        "Vercel"
+      ],
+      "categories": [
+        "SaaS",
+        "Integration"
+      ],
+      "status": "built",
+      "statusLabel": "Built",
+      "clientNamePublic": true,
+      "sourceUrl": "https://www.automatewithmarky.com/projects/ai-series-masterclass-learning-management-system-for-viral-stories-ph",
+      "assets": [
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/ai-masterclass-hero-BdtHof_o.png",
+          "alt": "AI Series Masterclass: Learning Management System for Viral Stories PH cover",
+          "kind": "cover"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/ai-masterclass-1-D0VFEzIK.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/ai-masterclass-2-BcPOyb6M.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/ai-masterclass-3-CHO4k9m4.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/ai-masterclass-4-CY3nJ6JA.png",
+          "alt": "",
+          "kind": "screenshot"
+        },
+        {
+          "sourceUrl": "https://www.automatewithmarky.com/assets/ai-masterclass-5-wm-EchwT.png",
+          "alt": "",
+          "kind": "screenshot"
+        }
+      ]
+    }
+  ]
+}

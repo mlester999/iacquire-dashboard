@@ -1,0 +1,14 @@
+node_modules
+.next
+.next-ui-qa
+out
+build
+.data
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+next-env.d.ts
+coverage
+
+.next-*
