@@ -18,7 +18,7 @@ import { useDraft } from "./hooks";
 import { FieldEditor, showField } from "./fields";
 import { FocalPoint } from "./focal-point";
 import { templateImageUrl } from "@/lib/website/template-image-assets";
-import { FONTS, FONT_KEYS } from "@/lib/website/font-keys";
+import { FONTS, FONT_KEYS, type FontKey } from "@/lib/website/font-keys";
 import { AdvancedGroup } from "./inspector-advanced";
 import { AnimationEditor, SectionInspector } from "./inspector-section";
 
@@ -93,7 +93,7 @@ function StyleControls({ doc, id, type, device, actions }: { doc: SiteContent; i
         <Group title="Text">
           <Row label="Font" tag={tag("font")} onReset={reset("font")}>
             <SelectControl label="Font family" value={t.get<string>("font")} onChange={(v) => t.set("font", v)} options={[
-              ...(["heading", "body", "accent", "mono"] as const).map((role) => ({ value: role, label: `${role[0].toUpperCase() + role.slice(1)} style · ${FONTS[design.fonts[role]].label}` })),
+              ...(["heading", "body", "accent", "mono"] as const).map((role) => ({ value: role, label: `${role[0].toUpperCase() + role.slice(1)} style · ${FONTS[design.fonts[role] as FontKey].label}` })),
               ...FONT_KEYS.map((key) => ({ value: key, label: FONTS[key].label })),
             ]} />
           </Row>
