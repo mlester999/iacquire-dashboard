@@ -43,7 +43,8 @@ function ColumnView({ col, ctx }: { col: Column; ctx: RenderCtx }) {
   );
 }
 
-export function SectionView({ sec, ctx, role, shared }: { sec: Section; ctx: RenderCtx; role?: "header" | "footer"; shared?: string }) {
+export function SectionView({ sec, ctx: outer, role, shared }: { sec: Section; ctx: RenderCtx; role?: "header" | "footer"; shared?: string }) {
+  const ctx: RenderCtx = role ? { ...outer, region: role } : outer;
   const Tag = role === "header" ? "header" : role === "footer" ? "footer" : "section";
   const l = sec.layout;
   const cls = ["iq-sec", role ? `iq-${role}` : "", l.inset ? "iq-inset" : "", l.sticky ? "iq-sticky" : "", l.float ? "iq-float" : "", `x-${sec.id}`].filter(Boolean).join(" ");

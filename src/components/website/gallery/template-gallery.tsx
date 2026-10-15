@@ -44,7 +44,7 @@ function Tags({ card, limit = 3 }: { card: GalleryCard; limit?: number }) {
   return (
     <ul className="flex flex-wrap gap-1" aria-label="Style">
       <li className={cn("rounded-full px-2 py-0.5 text-[10.5px] font-semibold", card.mode === "dark" ? "bg-ink text-surface" : "bg-surface-3 text-ink-2")}>{card.mode === "dark" ? "Dark" : "Light"}</li>
-      {card.tags.filter((t) => t !== "light" && t !== "dark").slice(0, limit - 1).map((t) => <li key={t} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted">{t}</li>)}
+      {card.tags.filter((t) => t !== "light" && t !== "dark").slice(0, limit - 1).map((t) => <li key={t} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-ink-2">{t}</li>)}
     </ul>
   );
 }

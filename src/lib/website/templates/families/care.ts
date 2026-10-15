@@ -4,7 +4,7 @@ import type { Design, ElementNode } from "../../doc";
 import {
   aboutSection, areasSection, contactSection, ctaSection, faqSection, gallerySection, heroCentered, heroSplit, introSection, pageTitle, processSection, servicesSection, statsSection, teamSection, testimonialsSection,
 } from "../blocks";
-import { footerCentered, footerColumns, headerBar, headerCentered, headerFloating, headerMinimal } from "../chrome";
+import { footerCentered, footerColumns, headerBar, headerFloating, headerMinimal } from "../chrome";
 import { compact, innerPages } from "../pages";
 import { SAMPLES } from "../samples";
 import type { FamilyDef, Recipe, TemplateCtx, VariationDef } from "../types";
@@ -24,7 +24,6 @@ function bookingCard(ctx: TemplateCtx): ElementNode[] {
 
 // 1. Haven: sage and cream, an arch-shaped room, soft shapes.
 const haven = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "6xl", pt: "2xl", bg: { kind: "color", color: "primarySoft" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "iconCards", cols: "3", title: "Care for the whole of you", eyebrow: "Treatments", align: "center" });
   const about = aboutSection(ctx, { title: "Time to listen, and a plan that makes sense", image: art("clinic", "light", 3), frame: "arch", aspect: "4/5", reverse: true });
@@ -83,7 +82,6 @@ const clinic = (ctx: TemplateCtx): Recipe => {
 
 // 3. Bloom: blush and botanicals, soft cards.
 const bloom = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "6xl", pt: "2xl", bg: { kind: "image", src: art("botanical", "light", 6), overlay: { color: "bg", opacity: 25, dir: "flat" }, pos: { x: 50, y: 50 }, parallax: false } });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "Gentle, effective care", eyebrow: "Services", align: "center" });
   const about = aboutSection(ctx, { title: "Care that begins with a conversation", image: art("botanical", "light", 3), frame: "soft", aspect: "4/5" });
@@ -138,7 +136,6 @@ const serene = (ctx: TemplateCtx): Recipe => {
 
 // 5. Family: warm yellow and cream, rounded, welcoming, with a photo collage.
 const family = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "6xl", pt: "2xl", bg: { kind: "color", color: "accentSoft" } });
   const services = servicesSection(ctx, { icons: ICONS, style: ctx.sample ? "imageCards" : "iconCards", images: [art("clinic", "light", 2), art("calm", "light", 3), art("garden", "light", 4), art("botanical", "light", 5), art("neighborhood", "light", 6)], cols: "3", title: "Care for every age", eyebrow: "Services" });
   const about = aboutSection(ctx, { title: "A friendly clinic for the whole family", collage: { layout: "trio", images: [art("clinic", "light", 7), art("garden", "light", 8), art("calm", "light", 9)] } });

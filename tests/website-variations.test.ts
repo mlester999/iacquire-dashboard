@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eachElement, parseContent } from "@/lib/website/doc";
 import { checkReadiness } from "@/lib/website/lint";
 import { ALL_TEMPLATE_KEYS, FAMILIES, sampleSite } from "@/lib/website/templates";
+import type { Section } from "@/lib/website/doc";
 import { CHARACTER, distance, signature } from "./helpers/variation-signature";
 
 // "Fifty variations" has to mean fifty designs a person would not confuse, not one design in fifty colours. Each design is reduced to the
@@ -53,6 +54,22 @@ describe("the fifty designs", () => {
     expect(count("pair")).toBeGreaterThanOrEqual(30);
     expect(count("rhythm")).toBeGreaterThanOrEqual(30);
     expect(count("headingFont")).toBeGreaterThanOrEqual(15);
+  });
+
+  it("never put a floating light-text header over a light first section, on any page", () => {
+    // A header that floats over the page, with no backing of its own and light text, is only readable over something dark.
+    const bad: string[] = [];
+    for (const key of KEYS) {
+      const d = sampleSite(key);
+      const h = d.header;
+      if (!h || !h.layout.float || h.bg.kind !== "none" || h.tone !== "dark") continue;
+      for (const p of d.pages) {
+        const first = p.items.map((i) => (i.type === "ref" ? d.globals[i.ref] : (i as Section))).find(Boolean);
+        const dark = first && (first.tone === "dark" || ["image", "mesh"].includes(first.bg.kind));
+        if (!dark) bad.push(`${key} / ${p.slug}`);
+      }
+    }
+    expect(bad, bad.join(", ")).toEqual([]);
   });
 
   it("show only built-in artwork, never a photograph, a logo or a real person", () => {

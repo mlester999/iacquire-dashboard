@@ -123,7 +123,7 @@ export function MediaLibrary({
             const isUsed = used(a.id);
             return (
               <li key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-surface">
-                <button type="button" disabled={!onPick} onClick={() => onPick?.(a)} aria-label={onPick ? `Use image: ${a.altText || "untitled"}` : undefined} aria-pressed={selectedId === a.id} className={cn("relative block aspect-square w-full overflow-hidden bg-surface-3", onPick && "cursor-pointer hover:opacity-90")}>
+                <button type="button" disabled={!onPick} onClick={() => onPick?.(a)} aria-label={onPick ? `Use image: ${a.altText || "untitled"}` : `Image: ${a.altText || "untitled"}`} aria-pressed={selectedId === a.id} className={cn("relative block aspect-square w-full overflow-hidden bg-surface-3", onPick && "cursor-pointer hover:opacity-90")}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={assetUrl(a.id)} alt="" loading="lazy" className="size-full object-cover" />
                   {a.kind === "logo" && <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-white">Logo</span>}

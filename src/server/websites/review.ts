@@ -141,11 +141,17 @@ export async function acquireEditLock(ctx: OrgContext, opts: { takeOver?: boolea
   if (!ctx.can("website.edit")) throw new AppError("forbidden", "Only owners and managers can edit the website.");
   const name = isAgency(ctx) ? `${ctx.user.fullName} (iAcquire)` : ctx.user.fullName;
   return withSystem(async (db) => {
+    const before = (await db.query<{ id: string; edit_lock_user: string | null; edit_lock_expires: Date | null }>("select id, edit_lock_user, edit_lock_expires from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId])).rows[0];
     const got = await db.query<{ edit_lock_expires: Date }>(
       `update websites set edit_lock_user = $2, edit_lock_name = $3, edit_lock_expires = now() + ($4 || ' seconds')::interval
        where org_id = $1 and kind = 'website' and (edit_lock_user is null or edit_lock_user = $2 or edit_lock_expires is null or edit_lock_expires < now() or $5::boolean)
        returning edit_lock_expires`, [ctx.org.orgId, ctx.user.id, name.slice(0, 120), String(LOCK_SECONDS), opts.takeOver === true]);
-    if (got.rows[0]) return { held: true, by: null, until: new Date(got.rows[0].edit_lock_expires).toISOString() };
+    if (got.rows[0]) {
+      // An agency person starting to work in a client's editor is recorded once per visit (not on every keep-alive).
+      const fresh = !before || before.edit_lock_user !== ctx.user.id || !before.edit_lock_expires || new Date(before.edit_lock_expires) < new Date();
+      if (isAgency(ctx) && fresh && before) await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "agency", action: "website.agency_edit", targetType: "website", targetId: before.id, result: "success", metadata: { takeOver: opts.takeOver === true } }, db);
+      return { held: true, by: null, until: new Date(got.rows[0].edit_lock_expires).toISOString() };
+    }
     const cur = (await db.query<{ edit_lock_name: string | null; edit_lock_expires: Date | null }>("select edit_lock_name, edit_lock_expires from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId])).rows[0];
     return { held: false, by: cur?.edit_lock_name ?? "someone else", until: cur?.edit_lock_expires ? new Date(cur.edit_lock_expires).toISOString() : null };
   });

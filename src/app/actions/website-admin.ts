@@ -9,6 +9,7 @@ import {
   type TemplateMeta, type TemplateStatus,
 } from "@/server/websites/templates";
 import { createWebsite } from "@/server/websites/service";
+import { setPatternStatus, type PatternStatus } from "@/server/websites/components";
 import { studioContext } from "@/server/websites/studio-ctx";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -123,5 +124,14 @@ export async function getTemplateVersionAction(id: string, version: number) {
   return guard(async () => {
     needUuid(id);
     return { content: await getTemplateVersionContent(await requireAgencyOrThrow(), id, Number(version)) };
+  });
+}
+
+export async function setPatternStatusAction(id: string, status: PatternStatus) {
+  return guard(async () => {
+    needUuid(id);
+    await setPatternStatus(await requireAgencyOrThrow(), id, status);
+    refresh();
+    return {};
   });
 }

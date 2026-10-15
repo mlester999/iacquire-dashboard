@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Grain, Hills, Sky, palette, rng } from "./scenes-shared";
+import { Grain, Hills, RectField, Sky, n1, palette, rng, type RectSpec } from "./scenes-shared";
 import type { SceneProps } from "./art";
 import { Tree } from "./scenes-a";
 
@@ -110,6 +110,19 @@ export function Skyline({ id, tone, seed }: SceneProps) {
     }
     return out;
   });
+  // Windows are worked out first, in the same order as before, so every scene looks as it always did.
+  const windows = layers.map((_, li) => {
+    const out: RectSpec[] = [];
+    if (li === 0) return out;
+    for (const t of towers[li]) {
+      for (let row = 0; row < Math.floor(t.h / 30); row += 1) {
+        for (let c = 0; c < Math.max(1, Math.floor(t.w / 18)); c += 1) {
+          if (r() > (p.glow > 0 ? 0.62 : 0.8)) out.push({ x: t.x + 6 + c * 18, y: horizon - t.h + 10 + row * 30, w: 8, h: 12, o: 0.5 + r() * 0.5 });
+        }
+      }
+    }
+    return out;
+  });
   return (
     <>
       <Sky id={id} p={p} horizon={horizon} seed={seed} />
@@ -119,22 +132,13 @@ export function Skyline({ id, tone, seed }: SceneProps) {
       </defs>
       {layers.map((l, li) => (
         <g key={li} opacity={l.op}>
-          {towers[li].map((t, i) => (
-            <g key={i}>
-              <rect x={t.x} y={horizon - t.h} width={t.w} height={t.h + 4} fill={l.color} />
-              {t.spire && <rect x={t.x + t.w / 2 - 2} y={horizon - t.h - 60} width="4" height="62" fill={l.color} />}
-              {li > 0 && Array.from({ length: Math.floor(t.h / 30) }, (_, row) =>
-                Array.from({ length: Math.max(1, Math.floor(t.w / 18)) }, (_, c) =>
-                  r() > (p.glow > 0 ? 0.62 : 0.8) ? <rect key={`${row}-${c}`} x={t.x + 6 + c * 18} y={horizon - t.h + 10 + row * 30} width="8" height="12" fill={p.glass[0]} opacity={0.5 + r() * 0.5} /> : null,
-                ),
-              )}
-            </g>
-          ))}
+          <path fill={l.color} d={towers[li].map((t) => `M${n1(t.x)} ${n1(horizon - t.h)}h${n1(t.w)}v${n1(t.h + 4)}h${-n1(t.w)}z${t.spire ? `M${n1(t.x + t.w / 2 - 2)} ${n1(horizon - t.h - 60)}h4v62h-4z` : ""}`).join("")} />
+          <RectField rects={windows[li]} fill={p.glass[0]} bands={[0.55, 0.7, 0.85, 1]} />
         </g>
       ))}
       <rect y={horizon} width="1600" height="360" fill={`url(#${id}-w)`} />
       <g opacity=".35" transform={`translate(0 ${horizon * 2 + 4}) scale(1 -1)`} filter={`url(#${id}-soft)`}>
-        {towers[2].map((t, i) => <rect key={i} x={t.x} y={horizon - t.h * 0.55} width={t.w} height={t.h * 0.55} fill={p.glass[1]} opacity={p.glow > 0 ? 0.35 : 0.12} />)}
+        <path fill={p.glass[1]} opacity={p.glow > 0 ? 0.35 : 0.12} d={towers[2].map((t) => `M${n1(t.x)} ${n1(horizon - t.h * 0.55)}h${n1(t.w)}v${n1(t.h * 0.55)}h${-n1(t.w)}z`).join("")} />
       </g>
       <g stroke="#fff" strokeWidth="1.5" opacity=".14">{Array.from({ length: 12 }, (_, i) => <line key={i} x1={r() * 1400} y1={horizon + 20 + i * 24} x2={r() * 1400 + 200} y2={horizon + 20 + i * 24} />)}</g>
       <Grain id={id} opacity={0.08} />
@@ -205,6 +209,14 @@ export function Facade({ id, tone, seed }: SceneProps) {
   const rows = 6;
   const cw = 1600 / cols;
   const rh = 1000 / rows;
+  // One entry per window pane, worked out in the same order as before.
+  const panes: Array<RectSpec & { lit: boolean }> = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const lit = p.glow > 0 && r() > 0.55;
+      panes.push({ x: c * cw + 22, y: row * rh + 24, w: cw - 44, h: rh - 48, o: lit ? 0.9 : 0.55 + r() * 0.3, lit });
+    }
+  }
   return (
     <>
       <defs>
@@ -213,20 +225,10 @@ export function Facade({ id, tone, seed }: SceneProps) {
         <linearGradient id={`${id}-sun`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={p.sun} stopOpacity=".5" /><stop offset=".5" stopColor={p.sun} stopOpacity="0" /></linearGradient>
       </defs>
       <rect width="1600" height="1000" fill={`url(#${id}-wall)`} />
-      {Array.from({ length: rows }, (_, row) =>
-        Array.from({ length: cols }, (_, c) => {
-          const lit = p.glow > 0 && r() > 0.55;
-          const x = c * cw;
-          const y = row * rh;
-          return (
-            <g key={`${row}-${c}`}>
-              <rect x={x + 22} y={y + 24} width={cw - 44} height={rh - 48} fill={lit ? p.glass[1] : p.glass[0]} opacity={lit ? 0.9 : 0.55 + r() * 0.3} />
-              <rect x={x + 22} y={y + 24} width={cw - 44} height={(rh - 48) * 0.4} fill="#fff" opacity=".12" />
-              <rect x={x + 22} y={y + 24} width={cw - 44} height={rh - 48} fill="none" stroke={p.ink} strokeWidth="4" opacity=".55" />
-            </g>
-          );
-        }),
-      )}
+      <RectField rects={panes.filter((q) => !q.lit)} fill={p.glass[0]} bands={[0.55, 0.65, 0.75, 0.85]} />
+      <RectField rects={panes.filter((q) => q.lit)} fill={p.glass[1]} bands={[0.9]} />
+      <path d={panes.map((q) => `M${n1(q.x)} ${n1(q.y)}h${n1(q.w)}v${n1(q.h * 0.4)}h${-n1(q.w)}z`).join("")} fill="#fff" opacity=".12" />
+      <path d={panes.map((q) => `M${n1(q.x)} ${n1(q.y)}h${n1(q.w)}v${n1(q.h)}h${-n1(q.w)}z`).join("")} fill="none" stroke={p.ink} strokeWidth="4" opacity=".55" />
       {Array.from({ length: cols + 1 }, (_, c) => <rect key={c} x={c * cw - 6} y="0" width="12" height="1000" fill={p.roof} opacity=".85" />)}
       {Array.from({ length: rows + 1 }, (_, row) => <rect key={row} x="0" y={row * rh - 5} width="1600" height="10" fill={p.roof} opacity=".7" />)}
       <rect width="1600" height="1000" fill={`url(#${id}-sh)`} />

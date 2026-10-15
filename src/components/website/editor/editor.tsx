@@ -25,6 +25,7 @@ import { IconButton, SelectControl } from "./controls";
 import { EditorServicesContext, type EditorServices } from "./context";
 import { CommentsPanel } from "./comments-panel";
 import { AssistantPanel } from "./assistant-panel";
+import { TemplateUpdateCard } from "./template-update-card";
 import { CheckpointDialog, ConflictDialog, PreviewOverlay, SaveComponentDialog, ShortcutsDialog, VersionsDialog } from "./dialogs";
 import { DragProvider, useDrag, type DragSource, type DropTarget } from "./drag";
 import { Inspector } from "./inspector";
@@ -129,9 +130,10 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   }, [api]);
   React.useEffect(() => {
     if (!api.acquireLock) return;
-    void takeLock(false);
+    const first = window.setTimeout(() => void takeLock(false), 0);
     const timer = window.setInterval(() => void takeLock(false), 45_000);
     return () => {
+      window.clearTimeout(first);
       window.clearInterval(timer);
       void api.releaseLock?.();
     };
@@ -454,6 +456,13 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     return true;
   };
 
+  const deleteSaved = async (s: SavedSection) => {
+    const res = await api.deleteComponent?.(s.id);
+    if (!res?.ok) return void toast.error(res?.error ?? "That couldn't be removed.");
+    setSaved((list) => list.filter((x) => x.id !== s.id));
+    toast.success(`Removed “${s.name}” from your saved sections.`);
+  };
+
   /** Goes to an element on whichever page it lives, and selects it. */
   const jumpTo = React.useCallback((id: string) => {
     const n = findNode(docRef.current, id);
@@ -548,10 +557,10 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           </nav>
           <aside aria-label={`${LEFT_TABS.find((t) => t.id === leftTab)!.label} panel`} className={cn("flex min-h-0 shrink-0 flex-col border-r border-line bg-surface", narrow ? "w-60" : "w-[18.5rem]")}>
             {leftTab === "pages" && <PagesPanel doc={ed.doc} pageId={ed.pageId} setPage={(id) => dispatch({ type: "page", id })} commit={commit} announce={announce} />}
-            {leftTab === "add" && <AddPanel key={addSub + String(insertAfter)} doc={ed.doc} initialSub={addSub} onInsert={(s) => insertSource(s)} saved={saved} canSave />}
+            {leftTab === "add" && <AddPanel key={addSub + String(insertAfter)} doc={ed.doc} initialSub={addSub} onInsert={(s) => insertSource(s)} saved={saved} canSave onDeleteSaved={api.deleteComponent && !readOnly ? (s) => void deleteSaved(s) : undefined} canDeleteShared={agency === true} />}
             {leftTab === "layers" && <LayersPanel doc={ed.doc} pageId={ed.pageId} selection={ed.selection} actions={actions} />}
             {leftTab === "media" && <MediaLibrary assets={assets} onAssetsChange={setAssets} usedIds={usedIds} />}
-            {leftTab === "design" && <div className="min-h-0 flex-1 overflow-y-auto"><DesignPanel doc={ed.doc} commit={commit} /></div>}
+            {leftTab === "design" && <div className="min-h-0 flex-1 overflow-y-auto">{mode === "site" && <TemplateUpdateCard doc={ed.doc} commit={(d) => commit(d)} checkpoint={(note) => saveCheckpoint(note, "checkpoint")} readOnly={readOnly} />}<DesignPanel doc={ed.doc} commit={commit} /></div>}
             {leftTab === "settings" && <div className="min-h-0 flex-1 overflow-y-auto"><SettingsPanel doc={ed.doc} commit={commit} /></div>}
           </aside>
 

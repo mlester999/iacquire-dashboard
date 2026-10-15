@@ -14,6 +14,8 @@ import {
 } from "@/server/websites/domains";
 import { markSubmissionSpam } from "@/server/websites/forms";
 import { suggestWithAi } from "@/server/websites/assistant";
+import { deleteComponent, listComponents, saveComponent } from "@/server/websites/components";
+import { templateUpdateFor } from "@/server/websites/template-update";
 import { acquireEditLock, addComment, listComments, releaseEditLock, requestChanges, resolveComment, reviewSummary, setArchived } from "@/server/websites/review";
 import type { Issue } from "@/lib/website/lint";
 
@@ -315,4 +317,25 @@ export async function suggestEditAction(request: string, brief: unknown, orgId?:
     const ctx = await studioContext(orgId, "website.edit");
     return suggestWithAi(ctx, { request: String(request ?? ""), brief });
   });
+}
+
+export async function listComponentsAction(orgId?: string) {
+  return guard(async () => listComponents(await studioContext(orgId, "website.view")));
+}
+
+export async function saveComponentAction(name: string, section: unknown, scope: "site" | "agency", orgId?: string) {
+  return guard(async () => saveComponent(await studioContext(orgId, "website.view"), { name: String(name ?? ""), section, scope: scope === "agency" ? "agency" : "site" }));
+}
+
+export async function deleteComponentAction(id: string, orgId?: string) {
+  return guard(async () => {
+    needUuid(id);
+    await deleteComponent(await studioContext(orgId, "website.view"), id);
+    return {};
+  });
+}
+
+/** Whether the template this website began as has a newer look the owner can choose to take. */
+export async function templateUpdateAction(orgId?: string) {
+  return guard(async () => templateUpdateFor(await studioContext(orgId, "website.view")));
 }

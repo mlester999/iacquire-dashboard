@@ -350,6 +350,12 @@ const sectionSchema = sectionShape.transform((s, ctx) => {
   return { ...rest, columns } as Section;
 });
 
+/** Checks one section on its own (for example a saved component) against the same rules as a section inside a page. */
+export function parseSection(raw: unknown): { ok: true; section: Section } | { ok: false; error: string } {
+  const r = sectionSchema.safeParse(raw);
+  return r.success ? { ok: true, section: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "That section isn't valid." };
+}
+
 const refSchema = z.object({ id: z.string().regex(NODE_ID), type: z.literal("ref"), ref: z.string().regex(NODE_ID) });
 /** A page item is either a shared-section reference or a section. They are told apart by `type` so a mistake inside a section is reported where it is. */
 const pageItemSchema = z.unknown().transform((raw, ctx): PageItem => {

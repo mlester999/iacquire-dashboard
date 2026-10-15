@@ -256,7 +256,7 @@ export function Gallery({ el, ctx, p, index }: P) {
   const layout = s(p.layout) || "grid";
   const aspect = s(p.aspect) || "4/3";
   return (
-    <div {...rootProps(el, ctx, "iq-gal", index)} data-layout={layout} data-cols={s(p.cols) || "3"} data-gap={s(p.gap) || "s"} style={{ ...((rootProps(el, ctx, "", index).style as object) ?? {}), "--ar": aspect === "auto" ? "4 / 3" : aspect.replace("/", " / ") } as React.CSSProperties}>
+    <div {...rootProps(el, ctx, "iq-gal", index)} {...(layout === "strip" && ctx.mode !== "edit" ? { tabIndex: 0, role: "region", "aria-label": "Gallery. Scrolls sideways; use the arrow keys." } : {})} data-layout={layout} data-cols={s(p.cols) || "3"} data-gap={s(p.gap) || "s"} style={{ ...((rootProps(el, ctx, "", index).style as object) ?? {}), "--ar": aspect === "auto" ? "4 / 3" : aspect.replace("/", " / ") } as React.CSSProperties}>
       {items.map((it, i) => (
         <figure key={i} className="iq-gi" data-i={i % 9} style={layout === "mosaic" && i === items.length - 1 && i > 0 ? { gridColumn: `span ${mosaicTail(items.length)}` } : undefined} {...(isIllustration(it.src) ? { "data-illustration": "" } : {})}>
           <div className="iq-gi-in"><ImageEl ctx={ctx} o={{ src: it.src, alt: it.alt || it.caption, className: "iq-fill", sizes: "(max-width: 768px) 80vw, 33vw" }} /></div>
@@ -419,7 +419,7 @@ export function Nav({ el, ctx, p, index }: P) {
   ));
   const ctaEl = showCta ? <a className="iq-btn" data-v="primary" data-s="s" href={cta.href || "/contact"}><span className="iq-btn-l">{cta.label}</span></a> : null;
   return (
-    <nav {...rootProps(el, ctx, "iq-nav", index)} aria-label="Main" data-style={s(p.style) || "links"} data-align={s(p.align) || "end"}>
+    <nav {...rootProps(el, ctx, "iq-nav", index)} aria-label={ctx.region === "footer" ? "Footer" : "Main"} data-style={s(p.style) || "links"} data-align={s(p.align) || "end"}>
       <ul className="iq-nav-list">
         {items}
         {ctaEl && <li className="iq-nav-cta">{ctaEl}</li>}

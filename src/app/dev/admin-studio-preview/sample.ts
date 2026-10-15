@@ -4,6 +4,7 @@ import type { DomainsOverview } from "@/components/website/admin/domains-view";
 import type { ReviewQueues } from "@/components/website/admin/reviews-view";
 import type { ManagedWebsite, StudioOverview } from "@/server/websites/admin";
 import type { TemplateView } from "@/server/websites/templates";
+import type { PatternView } from "@/server/websites/components";
 import type { CommentView, ReviewSummary } from "@/server/websites/review";
 import type { Preflight, PublicationView, WebsiteSummary } from "@/server/websites/service";
 import { FAMILIES, templateKey } from "@/lib/website/templates";
@@ -96,3 +97,9 @@ export const SAMPLE_PREFLIGHT: Preflight = {
   blockers: [{ code: "placeholder", message: "\"[Your answer]\" looks like placeholder text. Replace it with your own words.", where: "Home › FAQ" }],
   warnings: [{ code: "missing_alt", message: "One image has no description for screen readers.", where: "Home › Hero" }], needsAcknowledgement: [], canPublishNow: false,
 };
+
+export const SAMPLE_PATTERNS: PatternView[] = [
+  { id: id(501), name: "Studio hero with trust row", status: "published", createdByName: "Dana (agency)", updatedAt: ago(40) },
+  { id: id(502), name: "Three-step process", status: "draft", createdByName: "Sam (agency)", updatedAt: ago(6) },
+  { id: id(503), name: "Old pricing table", status: "archived", createdByName: "Dana (agency)", updatedAt: ago(900) },
+];

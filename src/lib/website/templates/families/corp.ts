@@ -110,7 +110,6 @@ const ledger = (ctx: TemplateCtx): Recipe => {
 
 // 4. Atlas: a wide landscape band, a centred promise and three pillars.
 const atlas = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "6xl", pt: "2xl", tone: "dark", image: art("mountains", "cool", 3) });
   const services = servicesSection(ctx, { icons: ICONS, style: "iconCards", cols: "3", title: "Three pillars of the practice", eyebrow: "What we do", align: "center" });
   const about = aboutSection(ctx, { title: "Perspective, not just process", image: art("mountains", "light", 2), frame: "soft", aspect: "4/3", reverse: true });

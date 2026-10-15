@@ -90,7 +90,7 @@ export function Seg<T extends string>({ value, options, onChange, label, size = 
         return (
           <button
             key={o.value} type="button" role="radio" aria-checked={on} aria-label={o.icon ? o.label : undefined} title={o.icon ? o.label : undefined} onClick={() => onChange(o.value)}
-            className={cn("flex min-w-0 flex-1 items-center justify-center rounded-md px-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", size === "sm" ? "h-6 text-[11px]" : "h-7 text-[12px]", on ? "bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}
+            className={cn("flex min-w-0 flex-1 items-center justify-center rounded-md px-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", size === "sm" ? "h-6 text-[11px]" : "h-7 text-[12px]", on ? "bg-surface text-ink shadow-soft" : "text-ink-2 hover:text-ink")}
           >
             {o.icon ?? <span className="truncate">{o.label}</span>}
           </button>

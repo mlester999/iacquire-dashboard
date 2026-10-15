@@ -1,10 +1,10 @@
 # Portal schema inventory
 
-**Current checkpoint:** the repository contains **25 versioned migrations**, `0001` through `0025`, declaring **149 public tables**: 148 application tables and the
+**Current checkpoint:** the repository contains **26 versioned migrations**, `0001` through `0026`, declaring **154 public tables**: 153 application tables and the
 `schema_migrations` bookkeeping table (counted from the migration source; the generic isolation test checks every table with an `org_id` against the real
 migrated schema on each run). The first 89 tables (migrations `0001`–`0015`) are unchanged from the earlier verified inventory, and all **51 original tables** in
-`0001`–`0004` are preserved. Migrations `0016`–`0025` add 60 tables, listed below. These counts describe the local schema source and disposable PostgreSQL
-verification; **no hosted project has been inspected or migrated, and migrations `0016`–`0025` have not been applied to the hosted Supabase project.**
+`0001`–`0004` are preserved. Migrations `0016`–`0026` add 65 tables, listed below. These counts describe the local schema source and disposable PostgreSQL
+verification; **no hosted project has been inspected or migrated, and migrations `0016`–`0026` have not been applied to the hosted Supabase project.**
 
 Supabase-managed `auth`, `storage`, `realtime`, `vault` and CLI migration-history tables are excluded from the public-table count. `supabase/local-compat.sql` emulates managed schemas only for isolated development/tests and must never run against a hosted project.
 
@@ -30,7 +30,7 @@ Legacy authentication and credential tables remain restricted rollback data. Ret
 | `0012_provisioning_activation.sql` — resumable jobs and readiness reviews | 3 | provisioning_jobs, provisioning_job_attempts, activation_reviews |
 | `0015_custom_projects.sql` — services, portfolio, custom projects and maintenance | 18 | service_categories, service_catalog, service_price_versions, portfolio_projects, portfolio_assets, service_portfolio_links, client_project_requests, project_requirements, project_review_tasks, project_quotes, quote_approvals, client_projects, project_milestones, project_updates, project_files, project_messages, maintenance_subscriptions, maintenance_requests |
 
-## Tables added in migrations 0016–0025: 60
+## Tables added in migrations 0016–0026: 65
 
 | Migration / area | Count | Tables |
 | --- | ---: | --- |
@@ -44,6 +44,7 @@ Legacy authentication and credential tables remain restricted rollback data. Ret
 | `0023_appointments.sql` — event ledger, bookings, reminders | 4 | appointment_settings, appointment_events, appointment_bookings, appointment_reminders |
 | `0024_retention.sql` — customer programs | 3 | retention_programs, retention_enrollments, retention_steps |
 | `0025_commercial_operations.sql` — agency finance, fair use, inactivity, offboarding | 6 | agency_finance_entries, fair_use_policies, fair_use_status, account_activity_reviews, offboarding_requests, offboarding_events |
+| `0026_website_studio_admin.sql` — template library, shared and saved sections, review comments | 5 | website_templates, website_template_versions, website_patterns, website_components, website_comments |
 
 The public site runtime role `iaq_site_runtime` (0021) has no table privileges; it reaches data only through `SECURITY DEFINER` functions. `credit_ledger_entries`,
 `incident_events` and `offboarding_events` have no update or delete path in the application code (append-only by use).

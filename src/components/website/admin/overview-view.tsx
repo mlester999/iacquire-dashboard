@@ -81,7 +81,7 @@ export function OverviewView({ o, superAdmin }: { o: StudioOverview; superAdmin:
       {superAdmin && (
         <section aria-label="Setup" className="space-y-3">
           <SectionLabel title="Hosting setup" description="What has to exist outside this application before a website can be served on its own address." />
-          <Card><CardContent className="flex items-start gap-3 pt-5 text-[13.5px] leading-relaxed text-muted"><ServerCog className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden /><p>Included addresses (<code className="rounded bg-surface-3 px-1">name.sites…</code>) need a wildcard DNS record and certificate for the sites domain, and a separate sites deployment. Until those exist, websites stay <strong className="font-semibold text-ink">Pending</strong> and are marked as such. See Domains and hosting for the exact records.</p></CardContent></Card>
+          <Card><CardContent className="flex items-start gap-3 pt-5 text-[13.5px] leading-relaxed text-muted"><ServerCog className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden /><p>Included addresses (<code className="rounded bg-surface-3 px-1 text-ink-2">name.sites…</code>) need a wildcard DNS record and certificate for the sites domain, and a separate sites deployment. Until those exist, websites stay <strong className="font-semibold text-ink">Pending</strong> and are marked as such. See Domains and hosting for the exact records.</p></CardContent></Card>
         </section>
       )}
     </div>

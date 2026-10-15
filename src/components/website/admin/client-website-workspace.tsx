@@ -81,7 +81,7 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 text-[13px]">
                 <div><dt className="text-muted">Draft last edited</dt><dd className="font-medium">{formatDateTime(site.draftUpdatedAt, timeZone)}</dd></div>
                 <div><dt className="text-muted">Live version</dt><dd className="font-medium">{site.published ? `#${site.published.number} · ${relativeTime(site.published.publishedAt)}` : "Nothing is live"}</dd></div>
-                <div><dt className="text-muted">Owner's approval</dt><dd className="font-medium capitalize">{site.approval.replace("_", " ")}</dd></div>
+                <div><dt className="text-muted">Owner&apos;s approval</dt><dd className="font-medium capitalize">{site.approval.replace("_", " ")}</dd></div>
               </dl>
               {site.approvalNote && <p className="rounded-xl bg-surface-2 p-3 text-[13px] leading-relaxed text-ink-2"><span className="font-semibold">Note: </span>{site.approvalNote}</p>}
               {site.warnings.length > 0 && <ul className="space-y-1.5">{site.warnings.map((w) => <li key={w} className="flex items-start gap-2 text-[13px] text-warning-ink"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />{w}</li>)}</ul>}
@@ -155,7 +155,7 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
               {open.length === 0 && done.length === 0 && <p className="text-[13px] text-muted">No comments yet.</p>}
               <ul className="space-y-3">
                 {[...open, ...done].map((c) => (
-                  <li key={c.id} className={c.resolvedAt ? "opacity-60" : undefined}>
+                  <li key={c.id} className={c.resolvedAt ? "rounded-lg bg-surface-2 p-2" : undefined}>
                     <p className="text-[13px] leading-relaxed">{c.body}</p>
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted">
                       <span>{c.authorName ?? "Someone"} · {c.authorKind === "agency" ? "iAcquire" : "Client"} · {relativeTime(c.createdAt)}</span>

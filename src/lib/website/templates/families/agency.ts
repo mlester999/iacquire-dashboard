@@ -4,7 +4,7 @@ import type { Design } from "../../doc";
 import {
   aboutSection, contactSection, ctaSection, faqSection, gallerySection, heroCentered, heroSplit, introSection, logosStrip, pageTitle, pricingSection, processSection, servicesSection, statsSection, teamSection, testimonialsSection, wordBand,
 } from "../blocks";
-import { footerBig, footerCentered, footerColumns, footerMinimal, headerBar, headerCentered, headerMinimal, headerSplit } from "../chrome";
+import { footerBig, footerCentered, footerColumns, headerBar, headerMinimal, headerSplit } from "../chrome";
 import { compact, innerPages } from "../pages";
 import { SAMPLES } from "../samples";
 import type { FamilyDef, Recipe, TemplateCtx, VariationDef } from "../types";
@@ -48,7 +48,6 @@ const thesis = (ctx: TemplateCtx): Recipe => {
 
 // 2. Works: case-study cards with a picture and a result for each service.
 const works = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "7xl", pt: "2xl", tone: "dark", bg: { kind: "gradient", from: "dark", to: "primary", angle: 160 } });
   const services = servicesSection(ctx, { icons: ICONS, style: ctx.sample ? "imageCards" : "iconCards", images: [art("mountains", "cool", 2), art("rings", "dark", 3), art("shapes", "light", 4), art("grid3d", "dark", 5), art("cityblocks", "light", 6)], cols: "3", title: "Selected engagements", eyebrow: "Work" });
   const about = aboutSection(ctx, { title: "Specialists, not generalists", image: art("mountains", "cool", 7), frame: "soft", aspect: "4/3", reverse: true });
@@ -76,7 +75,6 @@ const works = (ctx: TemplateCtx): Recipe => {
 
 // 3. Method: process first, with a large ring graphic and engagement models.
 const method = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "7xl", pt: "2xl", tone: "dark", image: art("rings", "dark", 4) });
   const services = servicesSection(ctx, { icons: ICONS, style: "rows", layout: "side", title: "Ways to work together", eyebrow: "Engagements" });
   const about = aboutSection(ctx, { title: "Built for decisions", image: art("rings", "dark", 5), frame: "circle", aspect: "1/1" });
@@ -103,7 +101,6 @@ const method = (ctx: TemplateCtx): Recipe => {
 
 // 4. Counsel: serif, advisory, restrained. Words first.
 const counsel = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "2xl" });
   const services = servicesSection(ctx, { icons: ICONS, style: "list", title: "Where we advise", eyebrow: "Practice", layout: "side" });
   const about = aboutSection(ctx, { title: "Advice you can act on", image: art("townhouse", "light", 3), frame: "none", aspect: "3/4" });
@@ -130,7 +127,6 @@ const counsel = (ctx: TemplateCtx): Recipe => {
 
 // 5. Launch: a growth agency, bright and energetic, numbers up front.
 const launch = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "7xl", pt: "2xl", tone: "dark", bg: { kind: "mesh", colors: ["primary", "accent"], seed: 5, base: "dark" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "Growth, end to end", eyebrow: "Services", align: "center" });
   const about = aboutSection(ctx, { title: "Operators who like numbers", image: art("mesh", "dark", 4), frame: "soft", aspect: "4/3" });

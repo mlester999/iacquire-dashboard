@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Glass, Grain, Hills, Sky, palette, rng, Stars } from "./scenes-shared";
+import { Glass, Grain, Hills, RectField, Sky, n1, palette, rng, Stars, type RectSpec } from "./scenes-shared";
 import type { SceneProps } from "./art";
 import { Tree } from "./scenes-a";
 
@@ -160,7 +160,7 @@ export function Botanical({ id, tone, seed }: SceneProps) {
   );
 }
 
-export function Streets({ id, tone, seed }: SceneProps) {
+export function Streets({ tone, seed }: SceneProps) {
   const dark = tone === "dark";
   const r = rng(seed + 66);
   const base = dark ? "#10151c" : "#f1eee6";
@@ -177,7 +177,7 @@ export function Streets({ id, tone, seed }: SceneProps) {
   );
 }
 
-export function Cityblocks({ id, tone, seed }: SceneProps) {
+export function Cityblocks({ tone, seed }: SceneProps) {
   const dark = tone === "dark";
   const r = rng(seed + 18);
   const ink = dark ? "#f1f1ee" : "#0b0b0b";
@@ -187,12 +187,16 @@ export function Cityblocks({ id, tone, seed }: SceneProps) {
     <>
       <rect width="1600" height="1000" fill={paper} />
       <circle cx="1260" cy="260" r="120" fill={ACCENT} />
-      {blocks.map((b, i) => (
-        <g key={i}>
-          <rect x={b.x} y={1000 - b.h} width={b.w} height={b.h} fill={i % 4 === 1 ? ink : i % 4 === 2 ? "none" : paper} stroke={ink} strokeWidth="4" />
-          {Array.from({ length: Math.floor(b.h / 46) }, (_, row) => Array.from({ length: Math.floor(b.w / 34) }, (_, col) => <rect key={`${row}-${col}`} x={b.x + 14 + col * 34} y={1000 - b.h + 20 + row * 46} width="16" height="22" fill={i % 4 === 1 ? paper : ink} opacity={r() > 0.4 ? 0.9 : 0.15} />))}
-        </g>
-      ))}
+      {blocks.map((b, i) => {
+        const windows: RectSpec[] = [];
+        for (let row = 0; row < Math.floor(b.h / 46); row += 1) for (let col = 0; col < Math.floor(b.w / 34); col += 1) windows.push({ x: b.x + 14 + col * 34, y: 1000 - b.h + 20 + row * 46, w: 16, h: 22, o: r() > 0.4 ? 0.9 : 0.15 });
+        return (
+          <g key={i}>
+            <rect x={n1(b.x)} y={n1(1000 - b.h)} width={n1(b.w)} height={n1(b.h)} fill={i % 4 === 1 ? ink : i % 4 === 2 ? "none" : paper} stroke={ink} strokeWidth="4" />
+            <RectField rects={windows} fill={i % 4 === 1 ? paper : ink} bands={[0.15, 0.9]} />
+          </g>
+        );
+      })}
       <rect y="990" width="1600" height="10" fill={ink} />
     </>
   );
@@ -288,8 +292,7 @@ export function Clinic({ id, tone, seed }: SceneProps) {
   );
 }
 
-export function Table({ id, tone, seed }: SceneProps) {
-  const p = palette(tone === "auto" ? "dark" : tone, "dark");
+export function Table({ id, seed }: SceneProps) {
   const r = rng(seed + 12);
   return (
     <>

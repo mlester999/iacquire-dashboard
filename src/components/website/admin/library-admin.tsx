@@ -104,7 +104,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
                   <p className="text-[11.5px] text-muted">
                     Version {t.version}{t.unpublishedChanges ? " · unpublished changes" : ""}{t.updatedAt ? ` · updated ${relativeTime(t.updatedAt)}` : ""}{t.updatedByName ? ` by ${t.updatedByName}` : ""} · {t.sitesUsing} website{t.sitesUsing === 1 ? "" : "s"} started from it
                   </p>
-                  {t.tags.length > 0 && <ul className="flex flex-wrap gap-1" aria-label="Tags">{t.tags.slice(0, 5).map((x) => <li key={x} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted">{x}</li>)}</ul>}
+                  {t.tags.length > 0 && <ul className="flex flex-wrap gap-1" aria-label="Tags">{t.tags.slice(0, 5).map((x) => <li key={x} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-ink-2">{x}</li>)}</ul>}
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                     <Button size="sm" variant="secondary" onClick={() => setPreview(t)}><Eye className="size-3.5" /> Preview</Button>
                     {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15"><PencilRuler className="size-3.5" aria-hidden /> Design</Link>}

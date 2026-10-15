@@ -37,7 +37,6 @@ function productCards(ctx: TemplateCtx, kind: "dashboard" | "inbox" | "terminal"
 
 // 1. Nova: a dark mesh, a centred promise and a glass dashboard.
 const nova = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "3xl", bg: { kind: "mesh", colors: ["primary", "accent"], seed: 3, base: "bg" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "One workspace. Every customer touchpoint.", eyebrow: "Platform", align: "center" });
   const about = aboutSection(ctx, { title: "Built by people who ran service businesses", image: art("grid3d", "dark", 2), frame: "soft", aspect: "4/3" });
@@ -66,7 +65,6 @@ const nova = (ctx: TemplateCtx): Recipe => {
 
 // 2. Lattice: light, a dotted grid, a split hero with product cards and a bento of features.
 const lattice = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "7xl", pt: "3xl", bg: { kind: "pattern", pattern: "dots", color: "line", opacity: 100, base: "bg" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "Everything in one calm place", eyebrow: "Features", layout: "stacked" });
   const about = aboutSection(ctx, { title: "A small team that listens", image: art("mesh", "light", 4), frame: "soft", aspect: "4/3", reverse: true });
@@ -123,7 +121,6 @@ const vector = (ctx: TemplateCtx): Recipe => {
 
 // 4. Signal: a bright gradient, an integrations marquee and loud pricing.
 const signal = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "3xl", tone: "dark", bg: { kind: "gradient", from: "primary", via: "accent", to: "dark", angle: 140 } });
   const services = servicesSection(ctx, { icons: ICONS, style: "iconCards", title: "Features that earn their place", eyebrow: "Product", align: "center" });
   const about = aboutSection(ctx, { title: "Made for busy teams", image: art("shapes", "dark", 2), frame: "soft", aspect: "1/1" });

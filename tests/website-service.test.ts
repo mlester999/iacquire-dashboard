@@ -249,7 +249,7 @@ describe("publishing", () => {
     const publicationProbe: ProbeFetcher = async () => ({ status: 200, body: `<div data-site-publication="${liveId}"></div>` });
     // The id is only known after publishing, so let the probe read whatever the database says is live.
     const live = async () => (await withSystem((db) => db.query<{ id: string }>("select published_publication_id as id from websites where org_id = $1", [org.id]))).rows[0].id;
-    const out = await publishWebsite(as(owner), { acknowledgeClaims: true, note: "First launch" }, { probe: async (t) => ({ status: 200, body: `<div data-site-publication="${await live()}"></div>` }) });
+    const out = await publishWebsite(as(owner), { acknowledgeClaims: true, note: "First launch" }, { probe: async () => ({ status: 200, body: `<div data-site-publication="${await live()}"></div>` }) });
     void publicationProbe;
     liveId = out.publicationId;
     expect(out).toMatchObject({ number: 1, health: "healthy", restoredPrevious: false, host: "roof-co.sites.test.example" });

@@ -8,7 +8,6 @@ import { HistoryView } from "@/components/website/portal/history-view";
 import { NewWebsite } from "@/components/website/portal/new-website";
 import { OverviewView } from "@/components/website/portal/overview-view";
 import { WebsiteSubnav } from "@/components/website/portal/website-subnav";
-import type { SiteDetails } from "@/lib/website/details";
 import { builtInCards } from "@/lib/website/gallery-data";
 import type { DnsInstructions } from "@/server/websites/domains";
 import type { SubmissionView } from "@/server/websites/forms";
@@ -28,13 +27,6 @@ const domain = (p: Partial<DomainView>): DomainView => ({
   id: crypto.randomUUID(), hostname: "x.test", kind: "custom", status: "pending_dns", verificationToken: "a1b2c3d4e5f60718293a4b5c6d7e8f90", verifiedAt: null, dnsCheckedAt: null, dnsDetail: null,
   routingOk: null, sslStatus: "unknown", sslDetail: null, liveOk: null, liveCheckedAt: null, isPrimary: false, acquisition: "existing", registrar: null, renewsAt: null, purchaseCostMicros: null, ...p,
 });
-
-const DETAILS: SiteDetails = {
-  businessName: "Brightside Roofing", industry: "home_services", tagline: "Roof repairs and replacements across Austin",
-  description: "We repair and replace roofs for homeowners in Austin.", services: [{ title: "Roof repair" }, { title: "Roof replacement" }, { title: "Storm damage" }],
-  phone: "+15125550100", email: "hello@brightside.test", address: "100 Sample Street, Austin", hours: "Mon–Fri 8:00–17:00", areas: ["Austin", "Round Rock"], primary: "#c2410c", accent: "#0f766e",
-  pages: ["home", "about", "services", "faq", "contact"], primaryAction: "call",
-};
 
 function sampleSite(state: string): WebsiteSummary {
   const live = state !== "draft";

@@ -8,7 +8,7 @@ import {
   LETTER_SPACINGS, LINE_HEIGHTS, SIZES, WIDTHS, isRef, type Column, type ElementNode, type NodeStyle, type Override, type Page, type Section, type SiteContent,
 } from "@/lib/website/doc";
 import type { Device } from "@/lib/website/editor/state";
-import { ancestors, describeNode, findNode, getColumn, getElement, getPage, getSection, newId, setColumnCount, setHide, setProp, setResponsive, setStyle, updateColumn, updateElement, updatePage, updateSection } from "@/lib/website/ops";
+import { ancestors, describeNode, findNode, getColumn, getElement, getPage, getSection, newId, patchProps, setColumnCount, setHide, setProp, setResponsive, setStyle, updateColumn, updateElement, updatePage, updateSection } from "@/lib/website/ops";
 import { collectIds } from "@/lib/website/doc";
 import { cn } from "@/lib/utils";
 import type { CanvasActions } from "./canvas";
@@ -16,6 +16,8 @@ import { ColorControl, Group, IconButton, NumberControl, Row, Seg, SelectControl
 import { useServices } from "./context";
 import { useDraft } from "./hooks";
 import { FieldEditor, showField } from "./fields";
+import { FocalPoint } from "./focal-point";
+import { AdvancedGroup } from "./inspector-advanced";
 import { AnimationEditor, SectionInspector } from "./inspector-section";
 
 export interface InspectorProps {
@@ -55,7 +57,6 @@ function useStyleTarget(doc: SiteContent, id: string, device: Device, commit: Ca
     },
   };
 }
-type Target = ReturnType<typeof useStyleTarget>;
 
 // ---------------------------------------------------------------------------
 // Which style controls make sense for which element
@@ -217,6 +218,9 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
   const def = ELEMENT_DEFS[el.type];
   const [tab, setTab] = React.useState<Tab>("content");
   const set = (key: string, value: unknown) => actions.commit(setProp(doc, el.id, key, value), { coalesce: `prop:${el.id}:${key}` });
+  const { assetUrl } = useServices();
+  const imageSrc = el.type === "image" ? (el.props.src as { kind?: string; id?: string } | null) : null;
+  const focalAsset = imageSrc?.kind === "asset" && imageSrc.id ? imageSrc.id : null;
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
@@ -235,7 +239,15 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
       {tab === "content" && (
         <Group title="Content">
           {def.fields.filter((f) => showField(f, el.props)).map((f) => (
-            <FieldEditor key={f.key} spec={f} scope={`el-${el.id}`} value={el.props[f.key]} onChange={(v) => set(f.key, v)} />
+            <React.Fragment key={f.key}>
+              <FieldEditor spec={f} scope={`el-${el.id}`} value={el.props[f.key]} onChange={(v) => set(f.key, v)} />
+              {el.type === "image" && f.key === "fit" && focalAsset && (
+                <Row label="Focal point">
+                  <FocalPoint label="Image focal point" url={assetUrl(focalAsset)} x={typeof el.props.posX === "number" ? el.props.posX : 50} y={typeof el.props.posY === "number" ? el.props.posY : 50}
+                    onChange={(x, y) => actions.commit(patchProps(doc, el.id, { posX: x, posY: y }), { coalesce: `prop:${el.id}:focal` })} />
+                </Row>
+              )}
+            </React.Fragment>
           ))}
           {def.fields.length === 0 && <p className="text-[12px] text-muted">Nothing to set here.</p>}
         </Group>
@@ -393,7 +405,6 @@ function Crumbs({ doc, selection, actions }: { doc: SiteContent; selection: stri
 // ---------------------------------------------------------------------------
 
 export function Inspector({ doc, selection, pageId, device, actions, advanced }: InspectorProps) {
-  void advanced;
   const node = selection ? findNode(doc, selection) : null;
   const page = getPage(doc, pageId) ?? doc.pages[0];
   if (!node || !selection) return <div className="min-h-0 flex-1 overflow-y-auto"><PageInspector page={page} doc={doc} actions={actions} /></div>;
@@ -427,7 +438,12 @@ export function Inspector({ doc, selection, pageId, device, actions, advanced }:
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Crumbs doc={doc} selection={selection} actions={actions} />
-      <div className="min-h-0 flex-1 overflow-y-auto">{body ?? <p className="p-4 text-[12.5px] text-muted">That item is no longer on the page.</p>}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {body ?? <p className="p-4 text-[12.5px] text-muted">That item is no longer on the page.</p>}
+        {advanced && body && (node.kind === "section" || node.kind === "element") && (
+          <AdvancedGroup key={selection} doc={doc} id={selection} onReplaceSection={(s) => actions.commit(updateSection(doc, selection, (old) => ({ ...s, id: old.id })))} />
+        )}
+      </div>
     </div>
   );
 }

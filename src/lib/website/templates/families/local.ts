@@ -2,7 +2,7 @@
 import { art } from "../../build";
 import type { Design, ElementNode } from "../../doc";
 import {
-  aboutSection, areasSection, badgeRow, contactSection, ctaSection, faqSection, gallerySection, heroFull, heroSplit, introSection, pageTitle, processSection, servicesSection, statsSection, testimonialsSection, wordBand,
+  aboutSection, areasSection, badgeRow, contactSection, ctaSection, faqSection, gallerySection, heroFull, heroSplit, pageTitle, processSection, servicesSection, statsSection, testimonialsSection, wordBand,
 } from "../blocks";
 import { footerCentered, footerColumns, headerBar, headerCentered, headerFloating } from "../chrome";
 import { compact, innerPages } from "../pages";
@@ -16,7 +16,7 @@ const base: Partial<Design> = { scale: "regular", spacing: "regular", motion: "s
 function quickForm(ctx: TemplateCtx, title = "Get a free quote"): ElementNode[] {
   const { b } = ctx;
   return [b.card([
-    b.heading(title, { level: 3, style: { size: "2xl" } }),
+    b.heading(title, { level: 2, style: { size: "2xl" } }),
     b.small("Tell us what you need and we'll call you back, usually the same day."),
     b.el("form", { purpose: "lead", submitLabel: ctx.action === "book" ? "Request appointment" : "Request my quote", layout: "plain", phone: "optional", message: "optional", service: ctx.d.services.length >= 2 ? "optional" : "hidden", services: ctx.d.services.slice(0, 12).map((s) => s.title.slice(0, 60)), helper: "" }),
   ], { surface: "elevated", pad: "m", gap: "s" })];
@@ -85,7 +85,6 @@ const dispatch = (ctx: TemplateCtx): Recipe => {
 
 // 3. Crew: a hero with a photograph, image cards for each service and a sticky call button.
 const crew = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "6xl", pt: "2xl", image: art("neighborhood", "warm", 4), tone: "dark" });
   const services = servicesSection(ctx, { icons: ICONS, style: ctx.sample ? "imageCards" : "iconCards", images: [art("workshop", "warm", 2), art("neighborhood", "light", 3), art("storefront", "warm", 4), art("townhouse", "light", 5), art("garden", "light", 6), art("interior", "warm", 7)], cols: "3", title: "Work we do", eyebrow: "Services" });
   const about = aboutSection(ctx, { title: "Your neighbours in the trade", collage: { layout: "trio", images: [art("workshop", "warm", 5), art("neighborhood", "light", 6), art("storefront", "warm", 7)] } });

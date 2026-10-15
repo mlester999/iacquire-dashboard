@@ -3,6 +3,8 @@ import type { ElementNode, SiteContent, SitePage } from "@/lib/website/doc";
 
 export interface ResolvedAsset {
   src: string;
+  /** Other sizes of the same picture, so the browser can fetch only what it needs. */
+  srcSet?: string;
   width: number | null;
   height: number | null;
   alt: string;
@@ -39,6 +41,8 @@ export interface RenderCtx {
   hrefFor: (slug: string) => string;
   /** Drawn inside another page (editor, thumbnails): no landmarks or skip link of its own. */
   embedded: boolean;
+  /** Which part of the page an element is drawn in, so repeated landmarks (the header and footer menus) can have distinct names. */
+  region?: "header" | "footer";
   /** The one heading drawn as the page's h1. Any other level-1 heading is drawn as an h2, so a page never has two. */
   h1Id: string | null;
   edit?: EditBridge;

@@ -4,7 +4,7 @@ import * as React from "react";
 import {
   acquireLockAction, addCommentAction, listCommentsAction, releaseLockAction, resolveCommentAction,
   deleteAssetAction, getDraftAction, listAssetsAction, listVersionsAction, preflightAction, previewVersionAction, publishAction, regenerateDraftAction, restoreVersionAction, saveDraftAction, saveVersionAction,
-  setAssetAltAction, submitForApprovalAction, suggestEditAction,
+  setAssetAltAction, submitForApprovalAction, suggestEditAction, templateUpdateAction, listComponentsAction, saveComponentAction, deleteComponentAction,
 } from "@/app/actions/website";
 import type { SaveOutcome } from "@/lib/website/draft-saver";
 import type { Section, SiteContent } from "@/lib/website/doc";
@@ -14,6 +14,7 @@ import type { Preflight, PublishOutcome, VersionView } from "@/server/websites/s
 import type { CommentView, LockResult } from "@/server/websites/review";
 import type { Brief } from "@/lib/website/assistant/brief";
 import type { Plan } from "@/lib/website/assistant/ops";
+import type { TemplateUpdate } from "@/server/websites/template-update";
 
 export type Res<T> = { ok: true; data: T } | { ok: false; error: string; code?: string };
 export type PublishResult = { ok: true; data: PublishOutcome } | { ok: false; error: string; code?: string; blockers?: Issue[]; needsAcknowledgement?: Issue[] };
@@ -53,6 +54,8 @@ export interface StudioApi {
   deleteComponent?(id: string): Promise<Res<Record<string, never>>>;
   /** Asks the connected AI provider for suggested edits. Null means none is available, and the built-in assistant answers instead. Optional. */
   suggestEdit?(request: string, brief: Brief): Promise<Res<Plan | null>>;
+  /** A newer look from the template this site began as, when there is one. Optional. */
+  getTemplateUpdate?(): Promise<Res<TemplateUpdate | null>>;
   /** Collaboration. Optional: an editor without them is simply on its own. */
   acquireLock?(takeOver: boolean): Promise<Res<LockResult>>;
   releaseLock?(): Promise<Res<Record<string, never>>>;
@@ -71,6 +74,10 @@ export function createServerStudioApi(orgId?: string): StudioApi {
     getDraft: () => getDraftAction(orgId),
     saveVersion: (note, source) => saveVersionAction(note, orgId, source),
     suggestEdit: (request, brief) => suggestEditAction(request, brief, orgId),
+    getTemplateUpdate: () => templateUpdateAction(orgId),
+    listComponents: () => listComponentsAction(orgId),
+    saveComponent: (name, section, scope) => saveComponentAction(name, section, scope, orgId),
+    deleteComponent: (id) => deleteComponentAction(id, orgId),
     listVersions: () => listVersionsAction(orgId),
     previewVersion: (id) => previewVersionAction(id, orgId),
     restoreVersion: (id, revision) => restoreVersionAction(id, revision, orgId),

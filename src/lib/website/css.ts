@@ -1,7 +1,7 @@
 // Turns a site's design tokens and each node's validated style into CSS. Nothing here reads free-form text: every value comes from a
 // fixed vocabulary or a validated hex colour, so the stylesheet cannot carry anything an owner typed. Responsive rules use container
 // queries on the site's own root, so a narrow editor frame, a thumbnail and a real phone all break at exactly the same widths.
-import { contrast, ensureContrast, ensureContrastAll, mix, readableOn } from "./color";
+import { ensureContrast, ensureContrastAll, ensureContrastFollowing, mix, readableOn } from "./color";
 import { SPACES } from "./catalog";
 import type { Bg, Column, ColorRef, Design, ElementNode, NodeStyle, Override, Section, SiteContent, SitePage } from "./doc";
 import { resolveItem } from "./doc";
@@ -110,7 +110,7 @@ function build(bg: string, surface: string, surface2: string, ink: string, muted
   const p = isDark ? ensureContrast(primary, bg, 3) : primary;
   const a = isDark ? ensureContrast(accent, bg, 3) : accent;
   return {
-    bg, surface, surface2, ink, muted: ensureContrast(muted, bg, 4.5), line,
+    bg, surface, surface2, ink, muted: ensureContrastFollowing(muted, [bg, surface, surface2], 4.55), line,
     p, onP: readableOn(p), pText: ensureContrastAll(primary, [bg, surface, surface2], 4.5), pSoft: mix(bg, primary, isDark ? 0.22 : 0.1),
     a, onA: readableOn(a), aText: ensureContrastAll(accent, [bg, surface, surface2], 4.5), aSoft: mix(bg, accent, isDark ? 0.22 : 0.12), dark: isDark,
   };

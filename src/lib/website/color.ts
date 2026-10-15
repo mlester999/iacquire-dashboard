@@ -35,10 +35,16 @@ export function readableOn(bg: string): string {
   return contrast(PAPER, bg) >= contrast("#000000", bg) ? PAPER : "#000000";
 }
 
+/** Black or white, whichever reads better on these backgrounds. Mid-tone backgrounds (an orange or a teal) read better with black than a simple light/dark split suggests. */
+function bestExtreme(bgs: string[]): "#000000" | "#ffffff" {
+  const sum = (c: string) => bgs.reduce((n, b) => n + contrast(c, b), 0);
+  return sum("#000000") >= sum("#ffffff") ? "#000000" : "#ffffff";
+}
+
 /** Moves a colour toward black or white until it reaches the contrast ratio against its background. */
 export function ensureContrast(fg: string, bg: string, min = 4.5): string {
   if (contrast(fg, bg) >= min) return fg;
-  const target = luminance(bg) > 0.5 ? "#000000" : "#ffffff";
+  const target = bestExtreme([bg]);
   for (let t = 0.1; t <= 1.0001; t += 0.05) {
     const candidate = mix(fg, target, t);
     if (contrast(candidate, bg) >= min) return candidate;
@@ -50,8 +56,22 @@ export function ensureContrast(fg: string, bg: string, min = 4.5): string {
 export function ensureContrastAll(fg: string, bgs: string[], min = 4.5): string {
   const worst = (c: string) => Math.min(...bgs.map((b) => contrast(c, b)));
   if (worst(fg) >= min) return fg;
-  const avg = bgs.reduce((n, b) => n + luminance(b), 0) / bgs.length;
-  const target = avg > 0.5 ? "#000000" : "#ffffff";
+  const target = bestExtreme(bgs);
+  for (let t = 0.05; t <= 1.0001; t += 0.05) {
+    const candidate = mix(fg, target, t);
+    if (worst(candidate) >= min) return candidate;
+  }
+  return target;
+}
+
+/**
+ * Like ensureContrastAll, but the direction it moves in follows the first background (the page's own), so a colour never flips to the opposite
+ * extreme just because the other surfaces sit between the two. Used for body-weight text that can sit on any of a site's surfaces.
+ */
+export function ensureContrastFollowing(fg: string, bgs: string[], min = 4.5): string {
+  const worst = (c: string) => Math.min(...bgs.map((b) => contrast(c, b)));
+  if (worst(fg) >= min) return fg;
+  const target = bestExtreme([bgs[0]]);
   for (let t = 0.05; t <= 1.0001; t += 0.05) {
     const candidate = mix(fg, target, t);
     if (worst(candidate) >= min) return candidate;

@@ -34,7 +34,7 @@ type TextProps = React.ComponentProps<EditBridge["Text"]>;
  * shows the inline marks (**bold**, *emphasis*) as typed. The page's own markup never enters the document: only plain text does.
  */
 function EditableText(props: TextProps) {
-  const { nodeId, path, value, as: Tag = "span", className, multiline, rootProps, placeholder, plain } = props;
+  const { nodeId, path, value, as: Tag = "span", className, rootProps, placeholder, plain } = props;
   const state = React.useContext(EditContext);
   const key = `${nodeId}::${path}`;
   const cn2 = [className, rootProps?.className].filter(Boolean).join(" ") || undefined;
@@ -298,7 +298,7 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
   }, [reveal, find]);
 
   // --- Editing -------------------------------------------------------------
-  const stopEditing = React.useCallback(() => setEditingKey(null), []);
+  const stopEditing = React.useCallback(() => setEditingKey(null), [setEditingKey]);
   const lastKey = React.useRef<string | null>(null);
   const editState = React.useMemo<EditState>(
     () => ({

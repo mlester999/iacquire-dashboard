@@ -49,7 +49,6 @@ const riot = (ctx: TemplateCtx): Recipe => {
 
 // 2. Pop: colour blocks in yellow and coral, rounded everything, pill buttons.
 const pop = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "8xl", pt: "2xl", tone: "accent", bg: { kind: "color", color: "accent" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "Five ways to get noticed", eyebrow: "Services" });
   const about = aboutSection(ctx, { title: "A small studio with a big voice", image: art("shapes", "light", 8), frame: "soft", aspect: "4/3" });
@@ -111,7 +110,6 @@ const brutal = (ctx: TemplateCtx): Recipe => {
 
 // 4. Kinetic: dark with a neon accent, a giant outlined marquee and rolling type.
 const kinetic = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "8xl", pt: "2xl", tone: "dark" });
   const services = servicesSection(ctx, { icons: ICONS, style: "rows", title: "Capabilities", eyebrow: "What we do", layout: "side" });
   const about = aboutSection(ctx, { title: "Motion first, always", image: art("mesh", "dark", 6), frame: "soft", aspect: "4/3" });

@@ -15,10 +15,10 @@ Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email prov
 
 | Item | Value |
 | --- | --- |
-| Git | Local only (`main`, no remote, nothing pushed). `.env`, `.data`, build output are ignored. Checkpoints: `6ebe000` (Wave 0 baseline), `fa76674` (adaptive onboarding v2, brand assets, isolation guard), `fb75e3c` (Website Studio, redesign passes). **Everything after `fb75e3c` (operations, appointments, retention, commercial operations, docs) is uncommitted in the working tree** until you approve a commit |
+| Git | Branch `master` with a remote (`origin`) that you added; it matched `origin/master` when last checked. **This work never pushed.** `.env`, `.data`, build output are ignored. Checkpoints: `6ebe000` (Wave 0 baseline), `fa76674` (adaptive onboarding v2, brand assets, isolation guard), `fb75e3c` (Website Studio, redesign passes). **Everything after `fb75e3c` (operations, appointments, retention, commercial operations, docs) is uncommitted in the working tree** until you approve a commit |
 | Filesystem backups | `../iAcquire-backups/`: `…wave0-baseline-…`, `…wave0b-messaging-complete-20261014-1930.tar.gz` (excludes `node_modules`, `.next*`). No backup has been taken since the operations/commercial work |
 | Baseline at the first checkpoint | typecheck, lint, build clean; 536 tests / 34 files; 96 routes; migrations 0001–0019 |
-| Current (2026-10-15) | typecheck clean; lint 0 errors, 2 pre-existing warnings (`tests/website-service.test.ts`); build passes; **877 tests / 49 files**; 88 pages + 37 route handlers; **migrations 0001–0025, 149 tables** |
+| Current (2026-10-15) | typecheck clean; lint **0 errors, 0 warnings**; build passes; **957 tests / 58 files**; **migrations 0001–0026, 154 tables** (0026 not applied to the hosted project) |
 
 ## Completion matrix (brief section → status)
 
@@ -40,7 +40,7 @@ Legend: ✅ implemented and tested locally · 🟡 partial · ⬜ not started ·
 | 13 | CRM / lead pipeline views | 🟡 | Read views exist; **GHL writes disabled; write-path audit not done** |
 | 14 | Appointments + portal-side event ledger | ✅ 🔒 | Migration 0023: ledger, availability, booking, reminders, AI booking. n8n processor untouched and inactive. Provider booking is blocked until GHL writes are enabled for a test location. [appointments.md](appointments.md) |
 | 15 | Retention automation | ✅ 🔒 | Migration 0024: five approved, capped, stoppable programs. Wording and limits need legal review. [retention.md](retention.md) |
-| 16 | Website Studio (50 variations) | ✅ 🔒 | Migration 0021: shared renderer, Studio, versions, approval, publication, domains, forms, isolated runtime. No real host, DNS or certificate. [website-studio.md](website-studio.md) |
+| 16 | Website Studio (50 variations) | ✅ 🔒 | Rebuilt 2026-10-15 (migration 0026): structured document model and one renderer, 50 genuinely distinct designs, visual editor, agency Studio (overview, client websites, template library and designer, reviews, domains, media), optional AI assistant, publishing checks, versions and rollback. No real host, DNS, certificate, AI provider or signed-in browser run. [website-studio.md](website-studio.md), [apply plan](website-studio-migration-0026.md) |
 | 17 | PayMongo, credit ledger, metered usage, 30% markup | ✅ 🔒 | Migration 0018 plus `/admin/billing` (new): FX, live-payments review, unit rates, credit adjustments, provider fees. No PayMongo keys. [finance-and-billing.md](finance-and-billing.md) |
 | 17 | Agency financial reporting (reserve, markup vs profit) | ✅ | Migration 0025: statement keeps cash, usage, fees, costs, tax and reserve distinct; reserve is internal planning only. Needs accountant review |
 | 18 | Optional $299 maintenance | 🟡 | Eligibility and opt-in built earlier. **A recurring monthly PayMongo checkout for maintenance is not built** |

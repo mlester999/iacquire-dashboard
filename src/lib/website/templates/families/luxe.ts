@@ -1,10 +1,10 @@
 // Luxury editorial: elegant serif type, large photography, hairline rules and a great deal of room.
 import { art } from "../../build";
-import type { Design, PageItem } from "../../doc";
+import type { Design } from "../../doc";
 import {
   aboutSection, contactSection, ctaSection, faqSection, gallerySection, heroCentered, heroFull, heroSplit, introSection, pageTitle, processSection, servicesSection, statsSection, testimonialsSection, pick,
 } from "../blocks";
-import { footerCentered, footerColumns, footerMinimal, headerBar, headerCentered, headerFloating, headerMinimal, headerSplit } from "../chrome";
+import { footerCentered, footerColumns, footerMinimal, headerBar, headerCentered, headerFloating, headerMinimal } from "../chrome";
 import { compact, innerPages } from "../pages";
 import { SAMPLES } from "../samples";
 import type { FamilyDef, Recipe, TemplateCtx, VariationDef } from "../types";
@@ -16,8 +16,8 @@ const ivory = { primary: "#2e2a24", accent: "#b89458", bg: "#f6f1e8", surface: "
 
 // 1. Maison: the logo centred, a full-bleed room, a single italic sentence.
 const maison = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
-  const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "2xl" });
+  // The header floats over the first section, in light text, so every page opens on a dark picture, not just the home page.
+  const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "2xl", tone: "dark", image: art("interior", "warm", 9) });
   const services = servicesSection(ctx, { icons: ICONS, style: "numbered", cols: "2", title: "Our work", eyebrow: "Disciplines" });
   const about = aboutSection(ctx, { title: "A studio that works slowly, on purpose", image: art("interior", "warm", 3), frame: "arch", aspect: "4/5", reverse: true });
   const process = processSection(ctx, { style: "vertical", side: true, title: "How we work" });
@@ -40,7 +40,6 @@ const maison = (ctx: TemplateCtx): Recipe => {
 
 // 2. Atelier: type on the left, a tall arched photograph on the right, vertical rhythm.
 const atelier = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "7xl", pt: "2xl", tone: "light", bg: { kind: "color", color: "surface2" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "rows", layout: "side", title: "What we make", eyebrow: "Services" });
   const about = aboutSection(ctx, { title: "Made by hand, slowly", collage: { layout: "tall", images: [art("calm", "light", 2), art("botanical", "light", 3), art("interior", "light", 4)] }, eyebrow: "The atelier" });

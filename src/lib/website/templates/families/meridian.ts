@@ -1,6 +1,6 @@
 // Architecture and real estate. Photography-led, unhurried, with a strong sense of place.
 import { art } from "../../build";
-import type { Design, PageItem } from "../../doc";
+import type { Design } from "../../doc";
 import {
   aboutSection, contactSection, ctaSection, faqSection, gallerySection, heroEditorial, heroCentered, heroFull, heroSplit, pageTitle, processSection, servicesSection, statsSection, testimonialsSection, pick,
 } from "../blocks";

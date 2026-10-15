@@ -4,15 +4,35 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **877 tests in 49 files passed** |
+| `npm test` | **957 tests in 58 files passed** (877 in 49 before the Website Studio rebuild) |
 | `npm run typecheck` | passes |
-| `npm run lint` | 0 errors, **2 warnings** (unused `newSection` and `t` in `tests/website-service.test.ts`, left as they were) |
-| `npm run build` | passes (88 pages, 37 route handlers) |
-| Schema | 25 migrations, 149 public tables; every table with an `org_id` is checked automatically by `tests/tenant-isolation-generic.test.ts` |
+| `npm run lint` | **0 errors, 0 warnings** |
+| `npm run build` | passes (Turbopack; TypeScript clean). Run with local database settings, not the hosted ones |
+| Schema | 26 migrations, 154 public tables (`0026` adds five); every table with an `org_id` is checked automatically by `tests/tenant-isolation-generic.test.ts` |
 
 Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the real migrations, RLS policies, services and route handlers, with mocked Supabase Auth and mocked provider HTTP.
 **Nothing has been run against a hosted Supabase project, Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email provider or domain registrar.**
-Migrations `0016`–`0025` have **not** been applied to the hosted Supabase project. No production deployment, push or external mutation has been performed.
+Migrations `0016`–`0026` have **not** been applied to the hosted Supabase project. This work made no deployment, push or external mutation. (The repository now has a remote and `master` matches `origin/master`; those commits were made by you, not by this work.)
+
+### Website Studio rebuild (2026-10-15, migration 0026)
+
+Details and the honest scope are in [website-studio.md](website-studio.md); the apply plan is [website-studio-migration-0026.md](website-studio-migration-0026.md).
+
+| Area | Evidence | Label |
+| --- | --- | --- |
+| Document model, operations, history, drag geometry, diff, section library, publish checks, legacy upgrade | `tests/website-editor-logic.test.ts` (23), `tests/website-templates.test.ts` | Implemented locally |
+| 50 designs are distinct and honest | `tests/website-variations.test.ts` (8), `tests/website-art.test.ts` (3: scene weight budget, no script or external address, deterministic): every pair of the 50 differs on ≥4 of 6 character dimensions (three quarters differ on all six), no light-text floating header over a light section, built-in artwork only, sample content blocks publishing | Implemented locally |
+| AI assistant | `tests/website-assistant.test.ts` (25): closed edit vocabulary, claim guard, built-in planner, model-reply parsing, one undoable step; `tests/website-admin.test.ts` covers its server boundary with the model **mocked** (outline only, no contact details, rate limit, permission) | Tested with mocks; **no real AI provider was called** |
+| Agency Studio server modules | `tests/website-admin.test.ts` (29): template lifecycle and permissions, template changes never alter a client's site, agency scoping (staff vs super admin), comments, edit lock, archive, saved and shared sections, template-update offer, audit | Implemented locally |
+| Migration 0026 and its rollback | `tests/website-migration-0026.test.ts` (3): the rollback script runs on a fully migrated local database inside a rolled-back transaction, removes and restores everything it should, and refuses when data would be lost | Implemented locally; **never run on the hosted project** |
+| Renderer security | `tests/website-security.test.ts` (11): hostile text is drawn as text, unsafe links and styles are refused by the model, no scripts or third-party hosts in published output | Implemented locally |
+| Responsive pictures, advanced paste | `tests/website-images.test.ts` (5), `tests/website-advanced.test.ts` (4) | Implemented locally |
+| Editor, gallery, agency screens in a real browser | `/dev/studio-preview`, `/dev/gallery-preview`, `/dev/admin-studio-preview` (labelled **sample data**, in-memory API, no sign-in). Selection, inline editing, drag reorder and insert, **keyboard-only reorder, duplicate, delete, undo and redo**, device switching (columns stack on a phone), autosave state, assistant propose, apply and undo | Browser-checked on sample data |
+| All 50 public designs, real renderer, isolated frames | **No horizontal overflow** on the home page at 390, 768, 1024 and 1440 px and on all six pages at 390 px (500 loads). **axe-core (WCAG 2.0/2.1/2.2 A and AA plus best practice): 0 violations** on all six pages of every design at 1440 px (300 loads) and on home, services and contact at 390 px (150 loads). Fixes made on the way: duplicate menu landmarks, strip galleries not keyboard-scrollable, one muted-text contrast, one skipped heading level, a floating header unreadable over a light page title, mid-tone palettes choosing white text | Browser-checked on sample content |
+| Agency screens and editor panels, accessibility | axe on all six agency preview views and on the editor (every left tab, the assistant with a proposal, the shortcuts and save-version dialogs): 0 violations apart from the preview scaffold's own missing landmark/heading and its dev-only theme button | Browser-checked on sample data |
+| Public site payload | The sites runtime route's client chunks contain none of the editor's code (marker search of the built chunks). Built-in artwork was slimmed (skyline 78 → 24 KB, city blocks 43 → 12 KB, facade 26 → 8 KB) | Measured locally |
+
+**Not verified:** signed-in client and agency flows against a real database in a browser (the agency screens were driven only on invented sample data); hosted Supabase; real DNS, certificates, domain purchase or publishing to a real host; the AI provider (mocked); screen-reader walkthroughs by a person; touch hardware; dark theme of the new screens; text that sits on images or gradients (axe reports it as "incomplete").
 
 ### Evidence and honest labels for the all-in-one build
 

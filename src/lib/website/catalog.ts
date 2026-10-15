@@ -43,7 +43,6 @@ export const ICONS = [
   "handshake", "message-circle", "search", "pen-tool", "scissors", "baby", "paw-print", "sprout", "flame", "snowflake", "wifi", "monitor", "palette", "brush",
 ] as const;
 export type IconName = (typeof ICONS)[number];
-const iconOptions = ICONS.map((i) => ({ value: i, label: i.replace(/-/g, " ") }));
 
 export const ASPECTS = ["auto", "1/1", "5/4", "4/3", "3/2", "16/10", "16/9", "21/9", "4/5", "3/4", "2/3", "9/16"] as const;
 export const aspectOptions: Option[] = ASPECTS.map((a) => ({ value: a, label: a === "auto" ? "Natural" : a.replace("/", ":") }));

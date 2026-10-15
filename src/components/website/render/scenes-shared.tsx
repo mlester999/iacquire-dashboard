@@ -2,6 +2,24 @@
 import * as React from "react";
 import type { ArtTone } from "@/lib/website/art-keys";
 
+/** One decimal is plenty for artwork drawn on a 1600-wide canvas, and keeps the markup small. */
+export const n1 = (v: number) => Math.round(v * 10) / 10;
+
+export interface RectSpec { x: number; y: number; w: number; h: number; o: number }
+/**
+ * Many small rectangles (windows) drawn as a few paths, one per opacity band, instead of one element each. A skyline with a thousand windows
+ * goes from tens of kilobytes of markup to a few, and looks the same.
+ */
+export function RectField({ rects, fill, bands = [0.5, 0.65, 0.8, 0.95] }: { rects: RectSpec[]; fill: string; bands?: number[] }) {
+  const d: string[] = bands.map(() => "");
+  for (const r of rects) {
+    let best = 0;
+    for (let i = 1; i < bands.length; i += 1) if (Math.abs(bands[i] - r.o) < Math.abs(bands[best] - r.o)) best = i;
+    d[best] += `M${n1(r.x)} ${n1(r.y)}h${n1(r.w)}v${n1(r.h)}h${-n1(r.w)}z`;
+  }
+  return <>{bands.map((o, i) => (d[i] ? <path key={i} d={d[i]} fill={fill} opacity={o} /> : null))}</>;
+}
+
 export function rng(seed: number) {
   let s = (seed + 7) * 2654435761;
   return () => {

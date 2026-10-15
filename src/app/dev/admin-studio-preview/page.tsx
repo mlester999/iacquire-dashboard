@@ -24,7 +24,7 @@ export default async function AdminStudioPreview({ searchParams }: { searchParam
   const { view: raw } = await searchParams;
   const view: View = (VIEWS as readonly string[]).includes(raw ?? "") ? (raw as View) : "overview";
   return (
-    <div className="mx-auto max-w-[1500px] space-y-5 p-4 sm:p-8">
+    <main className="mx-auto max-w-[1500px] space-y-5 p-4 sm:p-8">
       <PreviewTheme />
       <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-muted">Design preview · invented sample data · {VIEWS.map((v) => <a key={v} href={`?view=${v}`} className={v === view ? "ml-3 text-ink underline" : "ml-3 hover:text-ink"}>{v}</a>)}</p>
       <StudioNav />
@@ -32,7 +32,7 @@ export default async function AdminStudioPreview({ searchParams }: { searchParam
       {view === "reviews" && <ReviewsView q={SAMPLE_QUEUES} />}
       {view === "domains" && <DomainsView o={SAMPLE_DOMAINS} timeZone="UTC" baseDomain="sites.example" cnameTarget="cname.sites.example" />}
       {(view === "websites" || view === "workspace" || view === "library") && <Client view={view} />}
-    </div>
+    </main>
   );
 }
 

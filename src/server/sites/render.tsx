@@ -5,6 +5,7 @@ import { SiteRenderer } from "@/components/website/render/site-renderer";
 import type { ResolvedAsset } from "@/components/website/render/ctx";
 import { createBuilder } from "@/lib/website/build";
 import { findPage, pagePath, type SiteContent, type SitePage } from "@/lib/website/doc";
+import { srcSetFor } from "@/lib/website/responsive-image";
 import { issueFormToken } from "@/server/sites/form-token";
 import { normalizeHost, resolveSite, siteAssets, type LiveSite, type SiteAsset } from "@/server/sites/runtime";
 
@@ -23,7 +24,7 @@ export function assetResolver(map: Map<string, SiteAsset>): (id: string | null |
   return (id) => {
     if (!id) return null;
     const a = map.get(id.toLowerCase());
-    return a ? { src: `/_a/${a.sha256}`, width: a.width, height: a.height, alt: a.alt } : null;
+    return a ? { src: `/_a/${a.sha256}`, srcSet: srcSetFor(`/_a/${a.sha256}`, a.width), width: a.width, height: a.height, alt: a.alt } : null;
   };
 }
 

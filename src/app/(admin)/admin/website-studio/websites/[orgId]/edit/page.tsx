@@ -5,6 +5,7 @@ import { listAssets } from "@/server/assets/service";
 import { getDraft, getWebsite } from "@/server/websites/service";
 import { studioContext } from "@/server/websites/studio-ctx";
 import { assistantAiAvailable } from "@/server/websites/assistant";
+import { listComponents } from "@/server/websites/components";
 import { SiteEditor } from "@/components/website/editor/editor";
 
 export const metadata = { title: "Edit client website" };
@@ -23,7 +24,7 @@ export default async function AgencyEditPage({ params }: { params: Promise<{ org
   }
   const [site, draft] = await Promise.all([getWebsite(ctx), getDraft(ctx)]);
   if (!site || !draft) redirect(`/admin/website-studio/websites/${orgId}`);
-  const [assets, aiAvailable] = await Promise.all([listAssets(ctx), assistantAiAvailable()]);
+  const [assets, aiAvailable, saved] = await Promise.all([listAssets(ctx), assistantAiAvailable(), listComponents(ctx).catch(() => [])]);
   const primary = site.domains.find((d) => d.isPrimary && d.status === "active") ?? null;
   return (
     <SiteEditor
@@ -38,6 +39,7 @@ export default async function AgencyEditPage({ params }: { params: Promise<{ org
       canApprove={ctx.can("website.approve")}
       canUpload={ctx.can("workspace.manage_profile")}
       assistant={{ ai: aiAvailable }}
+      initialSaved={JSON.parse(JSON.stringify(saved))}
       backHref={`/admin/website-studio/websites/${orgId}`}
     />
   );

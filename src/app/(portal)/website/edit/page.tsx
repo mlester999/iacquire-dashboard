@@ -3,6 +3,7 @@ import { requireOrgContext } from "@/server/tenancy/context";
 import { getDraft, getWebsite } from "@/server/websites/service";
 import { listAssets } from "@/server/assets/service";
 import { assistantAiAvailable } from "@/server/websites/assistant";
+import { listComponents } from "@/server/websites/components";
 import { SiteEditor } from "@/components/website/editor/editor";
 
 export const metadata = { title: "Edit website" };
@@ -11,7 +12,7 @@ export default async function EditWebsitePage() {
   const ctx = await requireOrgContext("website.edit");
   const [site, draft] = await Promise.all([getWebsite(ctx), getDraft(ctx)]);
   if (!site || !draft) redirect("/website/new");
-  const [assets, aiAvailable] = await Promise.all([listAssets(ctx), assistantAiAvailable()]);
+  const [assets, aiAvailable, saved] = await Promise.all([listAssets(ctx), assistantAiAvailable(), listComponents(ctx).catch(() => [])]);
   const primary = site.domains.find((d) => d.isPrimary && d.status === "active") ?? null;
   return (
     <SiteEditor
@@ -24,6 +25,7 @@ export default async function EditWebsitePage() {
       canApprove={ctx.can("website.approve")}
       canUpload={ctx.can("workspace.manage_profile")}
       assistant={{ ai: aiAvailable }}
+      initialSaved={JSON.parse(JSON.stringify(saved))}
       backHref="/website"
     />
   );

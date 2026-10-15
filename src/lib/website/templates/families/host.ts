@@ -4,7 +4,7 @@ import type { Design } from "../../doc";
 import {
   aboutSection, contactSection, ctaSection, faqSection, gallerySection, heroCentered, heroFull, heroSplit, introSection, pageTitle, processSection, servicesSection, statsSection, testimonialsSection, wordBand,
 } from "../blocks";
-import { footerCentered, footerColumns, footerMinimal, headerBar, headerCentered, headerFloating, headerMinimal, headerSplit } from "../chrome";
+import { footerCentered, footerColumns, footerMinimal, headerBar, headerFloating, headerSplit } from "../chrome";
 import { compact, innerPages } from "../pages";
 import { SAMPLES } from "../samples";
 import type { FamilyDef, Recipe, TemplateCtx, VariationDef } from "../types";
@@ -38,7 +38,6 @@ const terrace = (ctx: TemplateCtx): Recipe => {
 
 // 2. Cellar: deep wine and gold, a menu-like list, candlelight.
 const cellar = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, size: "7xl", pt: "2xl", tone: "dark", bg: { kind: "color", color: "dark" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "list", title: "From the kitchen", eyebrow: "The menu", layout: "side" });
   const about = aboutSection(ctx, { title: "Cooked slowly, served simply", image: art("table", "dark", 3), frame: "none", aspect: "4/3" });
@@ -93,7 +92,6 @@ const bistro = (ctx: TemplateCtx): Recipe => {
 
 // 4. Resort: airy and bright, a wide seascape, bento experiences.
 const resort = (ctx: TemplateCtx): Recipe => {
-  const { b } = ctx;
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "3xl", tone: "dark", image: art("terrace", "cool", 3) });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "Experiences", eyebrow: "Stay & dine", align: "center" });
   const about = aboutSection(ctx, { title: "Slow days by the sea", image: art("terrace", "light", 4), frame: "soft", aspect: "4/3" });

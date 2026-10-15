@@ -13,22 +13,26 @@ import { AdminMedia } from "@/components/website/admin/admin-media";
 
 export const metadata = { title: "Media library" };
 
+type Loaded = { ok: true; assets: Awaited<ReturnType<typeof listAssets>>; usedIds: string[]; canUpload: boolean } | { ok: false; message: string };
+
+/** Reads one client's images. A refusal (not assigned, no access) becomes a message, never a thrown page. */
+async function loadClientMedia(orgId: string): Promise<Loaded> {
+  try {
+    const ctx = await studioContext(orgId, "workspace.view");
+    const [assets, draft] = await Promise.all([listAssets(ctx), getDraft(ctx).catch(() => null)]);
+    return { ok: true, assets, usedIds: draft ? referencedAssetIds(draft.content) : [], canUpload: ctx.can("workspace.manage_profile") };
+  } catch (err) {
+    if (err instanceof AppError) return { ok: false, message: err.message };
+    throw err;
+  }
+}
+
 export default async function MediaPage({ searchParams }: { searchParams: Promise<{ org?: string }> }) {
   const user = await requireAgency();
   const { org } = await searchParams;
   const clients = await managedClients(user);
   const selected = clients.find((c) => c.id === org) ?? null;
-  let body: React.ReactNode = <Card className="px-6 py-12 text-center text-[13.5px] text-muted">Choose a client to see and manage their images.</Card>;
-  if (selected) {
-    try {
-      const ctx = await studioContext(selected.id, "workspace.view");
-      const [assets, draft] = await Promise.all([listAssets(ctx), getDraft(ctx).catch(() => null)]);
-      body = <AdminMedia key={selected.id} orgId={selected.id} initialAssets={JSON.parse(JSON.stringify(assets))} usedIds={draft ? referencedAssetIds(draft.content) : []} canUpload={ctx.can("workspace.manage_profile")} />;
-    } catch (err) {
-      if (!(err instanceof AppError)) throw err;
-      body = <Card className="px-6 py-12 text-center text-[13.5px] text-warning-ink">{err.message}</Card>;
-    }
-  }
+  const loaded = selected ? await loadClientMedia(selected.id) : null;
   return (
     <div className="module-stack">
       <PageHero eyebrow="Website Studio" icon={<ImageIcon className="size-5" />} title="Media library"
@@ -40,7 +44,13 @@ export default async function MediaPage({ searchParams }: { searchParams: Promis
         ))}
         {clients.length === 0 && <p className="text-[13px] text-muted">You have no clients assigned yet.</p>}
       </nav>
-      {body}
+      {!selected || !loaded ? (
+        <Card className="px-6 py-12 text-center text-[13.5px] text-muted">Choose a client to see and manage their images.</Card>
+      ) : loaded.ok ? (
+        <AdminMedia key={selected.id} orgId={selected.id} initialAssets={JSON.parse(JSON.stringify(loaded.assets))} usedIds={loaded.usedIds} canUpload={loaded.canUpload} />
+      ) : (
+        <Card className="px-6 py-12 text-center text-[13.5px] text-warning-ink">{loaded.message}</Card>
+      )}
     </div>
   );
 }

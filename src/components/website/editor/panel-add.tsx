@@ -94,8 +94,9 @@ function LazyPreview({ build, scope, base }: { build: () => Section | null; scop
 type Sub = "sections" | "layouts" | "elements" | "saved";
 
 export function AddPanel({
-  doc, onInsert, saved, canSave, initialSub,
-}: { doc: SiteContent; onInsert: (source: DragSource) => void; saved: SavedSection[]; canSave: boolean; initialSub?: Sub }) {
+  doc, onInsert, saved, canSave, initialSub, onDeleteSaved, canDeleteShared = false,
+}: { doc: SiteContent; onInsert: (source: DragSource) => void; saved: SavedSection[]; canSave: boolean; initialSub?: Sub; onDeleteSaved?: (s: SavedSection) => void; canDeleteShared?: boolean }) {
+  const [removing, setRemoving] = React.useState<string | null>(null);
   const [sub, setSub] = React.useState<Sub>(initialSub ?? "sections");
   const [q, setQ] = React.useState("");
   const drag = useDrag();
@@ -223,6 +224,19 @@ export function AddPanel({
                         <LazyPreview build={() => s.section} scope={`sv-${s.id}`} base={base} />
                         <span className="flex items-center justify-between px-2.5 py-2"><span className="truncate text-[12.5px] font-semibold">{s.name}</span><span className="rounded bg-surface-3 px-1.5 py-px text-[10px] font-medium text-muted">{s.scope === "agency" ? "From iAcquire" : "Yours"}</span></span>
                       </button>
+                      {onDeleteSaved && (s.scope === "site" || canDeleteShared) && (
+                        <div className="mt-1 flex justify-end">
+                          {removing === s.id ? (
+                            <span className="flex items-center gap-2 text-[11.5px]">
+                              <span className="text-muted">Pages already using it keep their copy.</span>
+                              <button type="button" onClick={() => { setRemoving(null); onDeleteSaved(s); }} className="rounded-md bg-danger-soft px-2 py-0.5 font-medium text-danger-ink">Remove</button>
+                              <button type="button" onClick={() => setRemoving(null)} className="font-medium text-muted hover:text-ink">Keep</button>
+                            </span>
+                          ) : (
+                            <button type="button" onClick={() => setRemoving(s.id)} className="text-[11.5px] font-medium text-muted hover:text-danger-ink" aria-label={`Remove saved section ${s.name}`}>Remove from my sections</button>
+                          )}
+                        </div>
+                      )}
                     </li>
                   );
                 })}

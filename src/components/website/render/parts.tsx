@@ -120,8 +120,8 @@ export function ImageEl({ ctx, o }: { ctx: RenderCtx; o: ImageOpts }) {
       return (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={a.src} width={a.width ?? undefined} height={a.height ?? undefined} alt={alt || a.alt || ""}
-          loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes}
+          src={a.src} srcSet={a.srcSet} width={a.width ?? undefined} height={a.height ?? undefined} alt={alt || a.alt || ""}
+          loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={a.srcSet ? (sizes ?? "100vw") : sizes}
           className={["iq-photo", className].filter(Boolean).join(" ")}
           style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }}
         />
