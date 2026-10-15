@@ -1,4 +1,7 @@
 import "server-only";
+import fs from "node:fs";
+import path from "node:path";
+import { SUPABASE_PROD_ROOT_CA } from "@/server/db/supabase-root-ca";
 
 /**
  * How the app talks TLS to PostgreSQL.
@@ -36,6 +39,29 @@ export function isLocalDatabaseHost(connectionString: string): boolean {
 /** Accepts a PEM pasted into an environment variable with literal `\n` sequences. */
 export function normalizePem(value: string): string {
   return value.includes("\\n") ? value.replace(/\\n/g, "\n") : value;
+}
+
+export function loadDatabaseCa(input: {
+  caFile?: string;
+  inlinePem?: string;
+  cwd?: string;
+}): { pem?: string; source: "file" | "environment" | "bundled" | "none" } {
+  const caFile = input.caFile?.trim();
+  if (caFile) {
+    try {
+      return { pem: fs.readFileSync(path.resolve(/* turbopackIgnore: true */ input.cwd ?? process.cwd(), caFile), "utf8"), source: "file" };
+    } catch (error) {
+      const isMissingFile = typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+      const normalizedFile = caFile.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+      if (isMissingFile && normalizedFile === "certs/prod-ca-2021.crt") {
+        return { pem: SUPABASE_PROD_ROOT_CA, source: "bundled" };
+      }
+      throw error;
+    }
+  }
+  return input.inlinePem?.trim()
+    ? { pem: input.inlinePem, source: "environment" }
+    : { source: "none" };
 }
 
 export function planPostgresTls(input: { connectionString: string; caPem?: string | null; requireVerified?: boolean }): TlsPlan {

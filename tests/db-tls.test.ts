@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isLocalDatabaseHost, normalizePem, planPostgresTls } from "@/server/db/tls";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { isLocalDatabaseHost, loadDatabaseCa, normalizePem, planPostgresTls } from "@/server/db/tls";
+import { SUPABASE_PROD_ROOT_CA } from "@/server/db/supabase-root-ca";
 import { env, resetEnvCache } from "@/server/env";
 
 const POOLER = "postgresql://postgres.portalref:p%40ss%2Fword@aws-0-region.pooler.supabase.com:5432/postgres";
@@ -77,6 +81,31 @@ describe("database TLS planning", () => {
       expect(isLocalDatabaseHost(plan.connectionString)).toBe(true);
     }
     expect(isLocalDatabaseHost(POOLER)).toBe(false);
+  });
+});
+
+describe("database CA loading", () => {
+  it("keeps the bundled fallback synchronized with the checked-in Supabase root certificate", () => {
+    const certificate = readFileSync(path.resolve(process.cwd(), "certs/prod-ca-2021.crt"), "utf8").replace(/\r\n/g, "\n").trim();
+    expect(SUPABASE_PROD_ROOT_CA.trim()).toBe(certificate);
+  });
+
+  it("uses the bundled public root when Vercel cannot resolve the traced CA file", () => {
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "iacquire-ca-test-"));
+    try {
+      const loaded = loadDatabaseCa({ caFile: "certs/prod-ca-2021.crt", cwd });
+      expect(loaded).toEqual({ pem: SUPABASE_PROD_ROOT_CA, source: "bundled" });
+      expect(planPostgresTls({ connectionString: POOLER, caPem: loaded.pem, requireVerified: true })).toMatchObject({
+        verified: true,
+        ssl: { ca: SUPABASE_PROD_ROOT_CA, rejectUnauthorized: true },
+      });
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("does not replace an unrelated missing CA path with the bundled certificate", () => {
+    expect(() => loadDatabaseCa({ caFile: "private/custom-ca.crt", cwd: os.tmpdir() })).toThrow();
   });
 });
 

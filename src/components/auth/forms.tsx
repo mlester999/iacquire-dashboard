@@ -115,12 +115,14 @@ function StrengthMeter({ value }: { value: string }) {
 
 export function LoginForm({ next, notice }: { next?: string; notice?: string }) {
   const [state, action, pending] = useActionState(loginAction, notice ? { success: notice } : undefined);
+  const [hasEmail, setHasEmail] = React.useState(false);
+  const [hasPassword, setHasPassword] = React.useState(false);
   return (
     <form action={action} className="space-y-4" noValidate>
       <FormAlert state={state} />
       <input type="hidden" name="next" value={next ?? "/"} />
       <Field label="Work email" htmlFor="email">
-        <Input id="email" name="email" type="email" autoComplete="email" inputMode="email" required autoFocus placeholder="you@company.com" maxLength={254} />
+        <Input id="email" name="email" type="email" autoComplete="email" inputMode="email" required autoFocus placeholder="you@company.com" maxLength={254} onChange={(event) => setHasEmail(Boolean(event.currentTarget.value.trim()))} />
       </Field>
       <Field
         label={
@@ -130,14 +132,14 @@ export function LoginForm({ next, notice }: { next?: string; notice?: string }) 
         }
         htmlFor="password"
       >
-        <PasswordInput id="password" name="password" autoComplete="current-password" />
+        <PasswordInput id="password" name="password" autoComplete="current-password" onValue={(value) => setHasPassword(Boolean(value.trim()))} />
       </Field>
       <div className="flex justify-end">
         <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline">
           Forgot password?
         </Link>
       </div>
-      <Button type="submit" variant="brand" size="lg" className="w-full" loading={pending}>
+      <Button type="submit" variant="brand" size="lg" className="w-full" loading={pending} disabled={!hasEmail || !hasPassword}>
         Sign in
       </Button>
     </form>

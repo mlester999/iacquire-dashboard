@@ -24,7 +24,7 @@ See `.env.example` for every variable. In production the app refuses to start un
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The approved project's URL and publishable key (browser-safe) |
 | `SUPABASE_SECRET_KEY` | Server-only secret key. Never prefix with `NEXT_PUBLIC_` |
 | `DATABASE_DRIVER` / `DATABASE_URL` | `postgres` and that **same** Supabase project's connection string, with `sslmode=require`. A mismatched project, or the Hostinger appointment database, is rejected |
-| `DATABASE_SSL_CA_FILE` | Relative to the project root, for example `certs/prod-ca-2021.crt`. Vercel's server-function file trace includes this public root CA; do not set a path from a developer workstation |
+| `DATABASE_SSL_CA_FILE` | Relative to the project root, for example `certs/prod-ca-2021.crt`. Keep this public certificate synchronized with the bundled Supabase Root 2021 fallback used when a serverless function cannot resolve the traced file |
 | `APP_ENCRYPTION_KEY` | 32+ random characters. Used for audit IP hashing and for decrypting earlier-release credentials during migration only; new integration secrets use Supabase Vault. Keep it in secure settings, separate from the database, and back it up |
 | `ALLOW_LEGACY_CREDENTIAL_READS` | must be unset/false |
 | `ALLOW_INSECURE_HERMES_URLS` | must be unset/false |

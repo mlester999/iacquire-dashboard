@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "@/server/env";
 import { SupabaseConfigError, supabaseConfigStatus } from "@/server/supabase/config";
-import { planPostgresTls } from "@/server/db/tls";
+import { loadDatabaseCa, planPostgresTls } from "@/server/db/tls";
 import { OperationFailure } from "@/server/diagnostics";
 
 export interface QueryResult<T> {
@@ -61,10 +61,14 @@ async function createPostgresDriver(connectionString: string): Promise<Driver> {
   const { Pool } = await import("pg");
   const e = env();
   const caFile = e.DATABASE_SSL_CA_FILE?.trim();
-  // A missing or unreadable CA file is a configuration error, never a silent downgrade.
+  // A missing or unreadable CA file never downgrades TLS; the known production root has a bundled fallback.
   let caPem: string | undefined;
   try {
-    caPem = caFile ? fs.readFileSync(path.resolve(/* turbopackIgnore: true */ process.cwd(), caFile), "utf8") : e.DATABASE_SSL_CA;
+    const ca = loadDatabaseCa({ caFile, inlinePem: e.DATABASE_SSL_CA });
+    caPem = ca.pem;
+    if (ca.source === "bundled") {
+      console.warn("[iacquire] configured Supabase root CA file was absent from the function path; using the bundled Supabase Root 2021 CA");
+    }
   } catch (cause) {
     throw new OperationFailure("database.read_tls_ca_file", cause);
   }
