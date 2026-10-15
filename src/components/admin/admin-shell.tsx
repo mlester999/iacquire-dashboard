@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/admin/clients", label: "Clients", icon: Building2, group: "Operations" },
   { href: "/admin/workforce", label: "AI Workforce", icon: Sparkles, group: "Operations" },
   { href: "/admin/support", label: "Support inbox", icon: Inbox, group: "Operations" },
+  { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, group: "Client experience" },
   { href: "/admin/projects", label: "Custom projects", icon: FolderKanban, group: "Client experience" },
   { href: "/admin/maintenance", label: "Maintenance", icon: Wrench, group: "Client experience" },
   { href: "/admin/services", label: "Service catalog", icon: Boxes, superOnly: true, group: "Client experience" },

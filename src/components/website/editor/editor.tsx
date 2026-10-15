@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/overlays";
 import { PublishDialog } from "@/components/website/studio/publish-dialog";
-import { StudioApiProvider, serverStudioApi, type SavedComponent, type StudioApi } from "@/components/website/studio/studio-api";
+import { StudioApiProvider, createServerStudioApi, serverStudioApi, type SavedComponent, type StudioApi } from "@/components/website/studio/studio-api";
 import { createDraftSaver, type DraftSaver, type SaverState } from "@/lib/website/draft-saver";
 import { collectIds, findPage, isRef, referencedAssetIds, type ImageSrc, type Section, type SiteContent } from "@/lib/website/doc";
 import { buildLayout, buildPreset, LAYOUT_PRESETS, newElement, SECTION_PRESETS } from "@/lib/website/editor/library";
@@ -23,6 +23,8 @@ import type { AssetView } from "@/server/assets/service";
 import { Canvas, pageItemFor, type CanvasActions } from "./canvas";
 import { IconButton, SelectControl } from "./controls";
 import { EditorServicesContext, type EditorServices } from "./context";
+import { CommentsPanel } from "./comments-panel";
+import { AssistantPanel } from "./assistant-panel";
 import { CheckpointDialog, ConflictDialog, PreviewOverlay, SaveComponentDialog, ShortcutsDialog, VersionsDialog } from "./dialogs";
 import { DragProvider, useDrag, type DragSource, type DropTarget } from "./drag";
 import { Inspector } from "./inspector";
@@ -59,17 +61,10 @@ export interface SiteEditorProps {
   initialSaved?: SavedSection[];
   /** A notice shown above the editor, for example in the development preview. */
   notice?: string;
-  /** What the right-hand panel offers besides editing (the AI assistant). */
-  assistant?: (ctx: AssistantContext) => React.ReactNode;
-}
-
-export interface AssistantContext {
-  doc: SiteContent;
-  pageId: string;
-  selection: string | null;
-  commit: CanvasActions["commit"];
-  setPage: (id: string) => void;
-  select: (id: string | null) => void;
+  /** The assistant tab. On unless turned off; `ai` says whether an AI provider is connected (the built-in assistant works either way). */
+  assistant?: false | { ai: boolean };
+  /** Editing a template in the agency's library rather than a client's website. */
+  mode?: "site" | "template";
 }
 
 type LeftTab = "pages" | "add" | "layers" | "media" | "design" | "settings";
@@ -80,7 +75,8 @@ const LEFT_TABS: Array<{ id: LeftTab; label: string; icon: React.ComponentType<{
 const DEVICE_ICON: Record<Device, React.ComponentType<{ className?: string }>> = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
 
 export function SiteEditor(props: SiteEditorProps) {
-  const api = props.api ?? serverStudioApi;
+  const orgId = props.site.orgId;
+  const api = React.useMemo(() => props.api ?? (orgId ? createServerStudioApi(orgId) : serverStudioApi), [props.api, orgId]);
   return (
     <StudioApiProvider value={api}>
       <DragProvider onAnnounce={(m) => toast(m)}>
@@ -90,7 +86,7 @@ export function SiteEditor(props: SiteEditorProps) {
   );
 }
 
-function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backHref, api, initialSaved, notice, assistant }: SiteEditorProps & { api: StudioApi }) {
+function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backHref, api, initialSaved, notice, assistant, mode = "site" }: SiteEditorProps & { api: StudioApi }) {
   const router = useRouter();
   const drag = useDrag();
   const [ed, dispatch] = React.useReducer(reducer, site.content, (c) => initialState(c));
@@ -119,6 +115,27 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   const [conflictBusy, setConflictBusy] = React.useState(false);
   const [saverState, setSaverState] = React.useState<SaverState>({ status: "idle", error: null, revision: site.revision, savedAt: null });
   const [narrow, setNarrow] = React.useState(false);
+  // Who else is in the editor. Not being able to take the lock puts this window in view-only mode, until the person takes over.
+  const [lock, setLock] = React.useState<{ other: boolean; by: string }>({ other: false, by: "" });
+  const lockOn = Boolean(api.acquireLock);
+  const readOnly = lockOn && lock.other;
+  const readOnlyRef = React.useRef(readOnly);
+  React.useLayoutEffect(() => {
+    readOnlyRef.current = readOnly;
+  }, [readOnly]);
+  const takeLock = React.useCallback(async (takeOver: boolean) => {
+    const r = await api.acquireLock?.(takeOver);
+    if (r) setLock(r.ok && r.data.held ? { other: false, by: "" } : { other: true, by: r.ok ? r.data.by ?? "Someone else" : "Someone else" });
+  }, [api]);
+  React.useEffect(() => {
+    if (!api.acquireLock) return;
+    void takeLock(false);
+    const timer = window.setInterval(() => void takeLock(false), 45_000);
+    return () => {
+      window.clearInterval(timer);
+      void api.releaseLock?.();
+    };
+  }, [api, takeLock]);
 
   const announce = React.useCallback((m: string) => {
     setLive("");
@@ -171,7 +188,10 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   }, []);
 
   // --- Actions -------------------------------------------------------------
-  const commit: CanvasActions["commit"] = React.useCallback((doc, o) => dispatch({ type: "commit", doc, coalesce: o?.coalesce, select: o?.select, page: o?.page }), []);
+  const commit: CanvasActions["commit"] = React.useCallback((doc, o) => {
+    if (readOnlyRef.current) return;
+    dispatch({ type: "commit", doc, coalesce: o?.coalesce, select: o?.select, page: o?.page });
+  }, []);
   const select = React.useCallback((id: string | null) => dispatch({ type: "select", id }), []);
   const doUndo = React.useCallback(() => { setCloseEdit((n) => n + 1); dispatch({ type: "undo" }); }, []);
   const doRedo = React.useCallback(() => { setCloseEdit((n) => n + 1); dispatch({ type: "redo" }); }, []);
@@ -389,9 +409,9 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     if (ok) toast.success("All changes saved.");
     else toast.error("Your changes couldn't be saved yet. We'll keep trying.");
   }, [flush]);
-  const saveCheckpoint = React.useCallback(async (note: string) => {
+  const saveCheckpoint = React.useCallback(async (note: string, source: "checkpoint" | "ai" = "checkpoint") => {
     if (!(await flush())) { toast.error("Wait for your changes to be saved, then try again."); return false; }
-    const res = await api.saveVersion(note);
+    const res = await api.saveVersion(note, source);
     if (!res.ok) { toast.error(res.error); return false; }
     toast.success(res.data.created ? `Saved as version ${res.data.version}.` : `Nothing has changed since version ${res.data.version}.`);
     return true;
@@ -433,6 +453,16 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     toast.success(`Saved “${name}”. Find it under Add → Saved.`);
     return true;
   };
+
+  /** Goes to an element on whichever page it lives, and selects it. */
+  const jumpTo = React.useCallback((id: string) => {
+    const n = findNode(docRef.current, id);
+    if (!n) return;
+    const home = n.home;
+    if (home?.type === "page") dispatch({ type: "page", id: home.pageId });
+    select(id);
+    withReveal(id);
+  }, [select]);
 
   // --- Keyboard ------------------------------------------------------------
   React.useEffect(() => {
@@ -486,17 +516,23 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           <IconButton label="Undo (Ctrl+Z)" onClick={doUndo} disabled={!canUndo(ed)}><Undo2 className="size-4" /></IconButton>
           <IconButton label="Redo (Ctrl+Shift+Z)" onClick={doRedo} disabled={!canRedo(ed)}><Redo2 className="size-4" /></IconButton>
           <SaveStatus state={saverState} onRetry={() => void saver.flush()} onResolve={() => undefined} />
-          <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setCheckpoint(true)}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>
+          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
           <IconButton label="Version history" onClick={() => setVersions(true)}><History className="size-4" /></IconButton>
           <IconButton label="Keyboard shortcuts" onClick={() => setShortcuts(true)}><Keyboard className="size-4" /></IconButton>
           <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={async () => { await flush(); setPreview(true); }}><Eye className="size-3.5" /> Preview</Button>
           {canPublish ? (
-            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("publish")}><Globe className="size-3.5" /> Publish</Button>
+            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
           ) : (
-            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("approval")}><Send className="size-3.5" /> Send for approval</Button>
+            <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("approval")} disabled={readOnly}><Send className="size-3.5" /> {mode === "template" ? "Send for review" : "Send for approval"}</Button>
           )}
         </header>
 
+        {readOnly && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-soft px-4 py-2 text-[12.5px] text-warning-ink">
+            <span><strong className="font-semibold">{lock.by}</strong> is editing this website right now. You can look around, but changes are switched off so nothing is overwritten.</span>
+            <button type="button" onClick={() => void takeLock(true)} className="font-semibold underline">Take over editing</button>
+          </div>
+        )}
         {narrow && <p className="border-b border-line bg-primary-soft px-4 py-1.5 text-[11.5px] text-primary-ink">The visual editor works best on a laptop or larger screen. You can still edit here, but the panels are tight.</p>}
 
         <div className="flex min-h-0 flex-1">
@@ -527,19 +563,18 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
                 <button type="button" onClick={() => setInsertAfter(null)} className="font-medium underline">Cancel</button>
               </div>
             )}
-            <Canvas doc={ed.doc} pageSlug={page.slug} device={ed.device} zoom={zoom} selection={ed.selection} resolveAsset={resolveAsset} actions={actions} onScale={setScale} closeEditSignal={closeEdit} reveal={reveal} />
+            <Canvas doc={ed.doc} pageSlug={page.slug} device={ed.device} zoom={zoom} selection={ed.selection} resolveAsset={resolveAsset} actions={actions} onScale={setScale} closeEditSignal={closeEdit} reveal={reveal} readOnly={readOnly} />
           </main>
 
           {/* Right panel */}
           <aside aria-label="Settings for the selected item" className={cn("flex min-h-0 shrink-0 flex-col border-l border-line bg-surface", narrow ? "w-64" : "w-80")}>
-            {assistant ? (
-              <RightTabs
-                inspector={<Inspector doc={ed.doc} selection={ed.selection} pageId={ed.pageId} device={ed.device} actions={actions} advanced={agency === true} />}
-                assistant={assistant({ doc: ed.doc, pageId: ed.pageId, selection: ed.selection, commit, setPage: (id) => dispatch({ type: "page", id }), select })}
-              />
-            ) : (
-              <Inspector doc={ed.doc} selection={ed.selection} pageId={ed.pageId} device={ed.device} actions={actions} advanced={agency === true} />
-            )}
+            <RightTabs
+              tabs={[
+                { id: "edit", label: "Edit", node: <Inspector doc={ed.doc} selection={ed.selection} pageId={ed.pageId} device={ed.device} actions={actions} advanced={agency === true} /> },
+                ...(api.listComments ? [{ id: "comments", label: "Comments", node: <CommentsPanel doc={ed.doc} selection={ed.selection} pageSlug={page.slug} active onJump={jumpTo} /> }] : []),
+                ...(assistant !== false ? [{ id: "assistant", label: "Assistant", node: <AssistantPanel doc={ed.doc} pageId={ed.pageId} pageSlug={page.slug} selection={ed.selection} commit={(d) => commit(d)} undo={doUndo} checkpoint={(note) => saveCheckpoint(note, "ai")} ai={assistant?.ai === true} readOnly={readOnly} /> }] : []),
+              ]}
+            />
           </aside>
         </div>
 
@@ -552,7 +587,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
         <ConflictDialog open={conflict} onReload={() => void reloadLatest()} onKeepMine={() => void keepMine()} busy={conflictBusy} />
         <SaveComponentDialog open={componentFor !== null} onOpenChange={(o) => !o && setComponentFor(null)} defaultName={componentFor ? describeNode(ed.doc, componentFor) : "Section"} onSave={saveComponent} canShareWithAgency={agency === true} />
         {publishMode && (
-          <PublishDialog open onClose={() => setPublishMode(null)} mode={publishMode} host={hostLabel} flush={flush}
+          <PublishDialog open onClose={() => setPublishMode(null)} mode={publishMode} host={hostLabel} flush={flush} noun={mode === "template" ? "template" : "website"}
             onDone={() => { if (publishMode === "publish") { setIsLive(true); setBaseUnpublished(false); setPublishedRev(ed.rev); } else setApproval("submitted"); router.refresh(); }} />
         )}
         {preview && <PreviewOverlay doc={ed.doc} resolveAsset={resolveAsset} initialPage={page.slug} onClose={() => setPreview(false)} />}
@@ -561,17 +596,17 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   );
 }
 
-function RightTabs({ inspector, assistant }: { inspector: React.ReactNode; assistant: React.ReactNode }) {
-  const [tab, setTab] = React.useState<"edit" | "assistant">("edit");
+function RightTabs({ tabs }: { tabs: Array<{ id: string; label: string; node: React.ReactNode }> }) {
+  const [tab, setTab] = React.useState(tabs[0].id);
+  if (tabs.length === 1) return <>{tabs[0].node}</>;
   return (
     <>
       <div className="flex border-b border-line p-1.5" role="tablist" aria-label="Right panel">
-        {([["edit", "Edit"], ["assistant", "Assistant"]] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn("h-7 flex-1 rounded-md text-[12px] font-medium", tab === id ? "bg-primary-soft text-primary-ink" : "text-muted hover:text-ink")}>{label}</button>
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-7 flex-1 rounded-md text-[12px] font-medium", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:text-ink")}>{t.label}</button>
         ))}
       </div>
-      <div className={cn("min-h-0 flex-1 flex-col", tab === "edit" ? "flex" : "hidden")}>{inspector}</div>
-      <div className={cn("min-h-0 flex-1 flex-col", tab === "assistant" ? "flex" : "hidden")}>{assistant}</div>
+      {tabs.map((t) => <div key={t.id} role="tabpanel" className={cn("min-h-0 flex-1 flex-col", tab === t.id ? "flex" : "hidden")}>{t.node}</div>)}
     </>
   );
 }

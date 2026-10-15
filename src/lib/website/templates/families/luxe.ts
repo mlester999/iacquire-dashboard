@@ -106,7 +106,7 @@ const gallery = (ctx: TemplateCtx): Recipe => {
   const cta = ctaSection(ctx, { style: "image", title: "Tell us about the room.", body: null, image: art("interior", "warm", 6), eyebrow: "Commission us" });
   return {
     design: { ...base, colors: { ...ivory, primary: "#2c3a2f", accent: "#b0894f" }, fonts: { heading: "fraunces", body: "dmsans", accent: "dmsans", mono: "dmmono" }, heading: { weight: 300, ls: "tighter", lh: "none", transform: "none", emphasis: "both" }, buttons: { style: "solid", caps: false, hover: "lift", weight: 500 } },
-    header: headerBar(ctx, { navStyle: "underline", pad: "m" }),
+    header: headerMinimal(ctx, { navStyle: "underline", pad: "m", sticky: true }),
     footer: footerColumns(ctx, { tone: "dark" }),
     home: compact([
       b.section({ id: "hero", name: "Hero", layout: { pt: "xl", pb: "xl", width: "wide", gap: "m", valign: "center", minH: "90" } }, [

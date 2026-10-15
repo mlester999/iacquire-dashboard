@@ -121,7 +121,7 @@ const neighbor = (ctx: TemplateCtx): Recipe => {
   const process = processSection(ctx, { style: "numbered", title: "Easy as one, two, three", align: "center" });
   const cta = ctaSection(ctx, { style: "card", title: "Let's get it sorted.", body: "Call or message. We'll find a time that suits you." });
   return {
-    design: { ...base, colors: { primary: "#e0613d", accent: "#2a9d8f", bg: "#fff8f2", surface: "#ffffff", surface2: "#ffe9db", ink: "#2b1a14", muted: "#6a5249", line: "#f0d8c9", dark: "#2b1a14" }, fonts: { heading: "bricolage", body: "figtree", accent: "figtree", mono: "jetbrains" }, heading: { weight: 700, ls: "tight", lh: "tight", transform: "none", emphasis: "both" }, radius: "pill", buttons: { style: "solid", caps: false, hover: "lift", weight: 700 } },
+    design: { ...base, colors: { primary: "#e0613d", accent: "#2a9d8f", bg: "#fff8f2", surface: "#ffffff", surface2: "#ffe9db", ink: "#2b1a14", muted: "#6a5249", line: "#f0d8c9", dark: "#2b1a14" }, fonts: { heading: "jakarta", body: "albert", accent: "albert", mono: "jetbrains" }, heading: { weight: 700, ls: "tight", lh: "tight", transform: "none", emphasis: "both" }, radius: "pill", buttons: { style: "solid", caps: false, hover: "lift", weight: 700 } },
     header: headerCentered(ctx, { navStyle: "pills" }),
     footer: footerCentered(ctx, { tone: "dark" }),
     home: compact([

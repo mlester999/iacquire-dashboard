@@ -56,7 +56,7 @@ const works = (ctx: TemplateCtx): Recipe => {
   const cta = ctaSection(ctx, { style: "image", title: "Let's look at your challenge.", body: null, image: art("mountains", "dark", 8), buttonVariant: "light" });
   return {
     design: { ...base, colors: { primary: "#243b6b", accent: "#f2b441", bg: "#f7f8fb", surface: "#ffffff", surface2: "#e9edf5", ink: "#111a30", muted: "#515b75", line: "#d6dcea", dark: "#0c1530" }, fonts: { heading: "fraunces", body: "dmsans", accent: "dmsans", mono: "jetbrains" }, heading: { weight: 400, ls: "tight", lh: "tight", transform: "none", emphasis: "italic" }, radius: "soft", buttons: { style: "solid", caps: false, hover: "lift", weight: 600 } },
-    header: headerBar(ctx, { navStyle: "underline", pad: "m", sticky: true, bg: { kind: "color", color: "bg" } }),
+    header: headerMinimal(ctx, { navStyle: "minimal", pad: "m", sticky: true, bg: { kind: "color", color: "bg" } }),
     footer: footerColumns(ctx, { tone: "dark" }),
     home: compact([
       heroSplit(ctx, {

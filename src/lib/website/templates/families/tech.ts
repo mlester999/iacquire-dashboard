@@ -130,7 +130,7 @@ const signal = (ctx: TemplateCtx): Recipe => {
   const process = processSection(ctx, { style: "numbered", title: "Three steps", align: "center" });
   const cta = ctaSection(ctx, { style: "image", title: "Ready in a day, loved for years.", body: null, image: art("mesh", "dark", 8), buttonVariant: "light" });
   return {
-    design: { ...base, spacing: "regular", scale: "display", colors: { ...light, primary: "#6d28d9", accent: "#f472b6", dark: "#14072e" }, fonts: { heading: "bricolage", body: "dmsans", accent: "jetbrains", mono: "jetbrains" }, heading: { weight: 700, ls: "tighter", lh: "none", transform: "none", emphasis: "both" }, radius: "round", buttons: { style: "gradient", caps: false, hover: "shine", weight: 700 } },
+    design: { ...base, spacing: "regular", scale: "display", colors: { ...light, primary: "#6d28d9", accent: "#f472b6", dark: "#14072e" }, fonts: { heading: "urbanist", body: "inter", accent: "jetbrains", mono: "jetbrains" }, heading: { weight: 700, ls: "tighter", lh: "none", transform: "none", emphasis: "both" }, radius: "round", buttons: { style: "gradient", caps: false, hover: "shine", weight: 700 } },
     header: headerBar(ctx, { navStyle: "pills", pad: "s" }),
     footer: footerBig(ctx, { tone: "dark" }),
     home: compact([

@@ -59,7 +59,11 @@ create table website_templates (
   status text not null default 'draft' check (status in ('draft', 'in_review', 'published', 'hidden', 'archived')),
   featured boolean not null default false,
   version integer not null default 1 check (version > 0),
+  -- What clients are offered: the last published copy (null until first published). Never edited in place.
   content jsonb check (content is null or pg_column_size(content) <= 300000),
+  -- The designer's working copy. Publishing copies it into `content` and records a version.
+  draft_content jsonb check (draft_content is null or pg_column_size(draft_content) <= 300000),
+  draft_revision integer not null default 0 check (draft_revision >= 0),
   based_on text check (char_length(based_on) <= 80),
   -- An optional picture shown on the template's card instead of the rendered thumbnail.
   preview_image bytea check (preview_image is null or octet_length(preview_image) <= 600000),
@@ -69,7 +73,8 @@ create table website_templates (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   published_at timestamptz,
-  check ((kind = 'custom') = (content is not null)),
+  check (kind = 'builtin' or draft_content is not null),
+  check (status <> 'published' or kind = 'builtin' or content is not null),
   check ((preview_image is null) = (preview_mime is null))
 );
 create index website_templates_status_idx on website_templates (status, featured desc, updated_at desc);

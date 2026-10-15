@@ -62,4 +62,5 @@ export const RATE_LIMITS = {
   inboxSendByUser: { name: "inbox:send", limit: 60, windowSeconds: 60 },
   onboardingAssistByOrg: { name: "onboarding:assist", limit: 25, windowSeconds: 3600 },
   onboardingSiteReadByOrg: { name: "onboarding:site", limit: 8, windowSeconds: 3600 },
+  websiteAssistByOrg: { name: "website:assist", limit: 40, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

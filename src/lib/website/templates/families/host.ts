@@ -21,7 +21,7 @@ const terrace = (ctx: TemplateCtx): Recipe => {
   const cta = ctaSection(ctx, { style: "image", title: "Reserve your table.", body: null, image: art("terrace", "warm", 7), buttonVariant: "light" });
   return {
     design: { ...base, colors: { primary: "#c8704a", accent: "#e8c48a", bg: "#17110d", surface: "#211812", surface2: "#2b2018", ink: "#f4eadb", muted: "#b4a58f", line: "#3a2d22", dark: "#0f0a07" }, mode: "dark", fonts: { heading: "playfair", body: "jost", accent: "jost", mono: "jetbrains" }, heading: { weight: 500, ls: "tight", lh: "tight", transform: "none", emphasis: "italic" }, radius: "square", buttons: { style: "outline", caps: true, hover: "invert", weight: 500 } },
-    header: headerCentered(ctx, { tone: "dark", float: true, navStyle: "minimal", bg: { kind: "none" } }),
+    header: headerSplit(ctx, { tone: "dark", float: true, navStyle: "minimal", bg: { kind: "none" } }),
     footer: footerCentered(ctx, { tone: "dark" }),
     home: compact([
       heroFull(ctx, { image: art("terrace", "warm", 1), align: "center", valign: "center", size: "8xl", eyebrow: ctx.has.areas ? ctx.d.areas![0] : "Restaurant & bar", overlay: { opacity: 45, dir: "flat" }, ctaVariant: ["light", "outline"], minH: "100", pt: "3xl", headingStyle: { w: "l" } }),

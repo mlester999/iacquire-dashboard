@@ -32,7 +32,7 @@ const ELEMENT_ICONS: Partial<Record<ElementType, React.ComponentType<{ className
 
 const VIRTUAL = 1100;
 
-function ScaledPreview({ content, scope, maxHeight = 132 }: { content: SiteContent; scope: string; maxHeight?: number }) {
+export function ScaledPreview({ content, scope, maxHeight = 132, pageSlug = "home" }: { content: SiteContent; scope: string; maxHeight?: number; pageSlug?: string }) {
   const outer = React.useRef<HTMLDivElement>(null);
   const inner = React.useRef<HTMLDivElement>(null);
   const [scale, setScale] = React.useState(0.24);
@@ -55,7 +55,7 @@ function ScaledPreview({ content, scope, maxHeight = 132 }: { content: SiteConte
   return (
     <div ref={outer} className="relative w-full overflow-hidden bg-white" style={{ height: h }} aria-hidden>
       <div ref={inner} className="pointer-events-none absolute left-0 top-0 origin-top-left" style={{ width: VIRTUAL, transform: `scale(${scale})` }}>
-        <SiteRenderer content={content} pageSlug="home" resolveAsset={() => null} mode="preview" formAction={null} hrefFor={() => "#"} embedded viewportHeight={760} scope={scope} />
+        <SiteRenderer content={content} pageSlug={pageSlug} resolveAsset={() => null} mode="preview" formAction={null} hrefFor={() => "#"} embedded viewportHeight={760} scope={scope} />
       </div>
     </div>
   );

@@ -1,0 +1,250 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Archive, Copy, Eye, EyeOff, History, ImagePlus, Pencil, PencilRuler, Plus, Rocket, Search, Send, Star } from "lucide-react";
+import {
+  createTemplateAction, duplicateTemplateAction, listTemplateVersionsAction, restoreTemplateVersionAction, setTemplateStatusAction, updateTemplateMetaAction,
+} from "@/app/actions/website-admin";
+import { Button } from "@/components/ui/button";
+import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/overlays";
+import { Badge, Card } from "@/components/ui/primitives";
+import { AreaControl, Row, SelectControl, TextControl } from "@/components/website/editor/controls";
+import { useResetOnOpen } from "@/components/website/editor/hooks";
+import { FrameThumb } from "@/components/website/frame/frame-thumb";
+import { SitePreviewOverlay } from "@/components/website/admin/site-preview-overlay";
+import { INDUSTRY_FILTERS } from "@/lib/website/gallery";
+import { relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import type { TemplateStatus, TemplateView } from "@/server/websites/templates";
+
+type Tab = "all" | "published" | "working" | "hidden" | "archived";
+const TABS: Array<{ id: Tab; label: string; match: (s: TemplateStatus) => boolean }> = [
+  { id: "all", label: "All", match: () => true }, { id: "published", label: "Published", match: (s) => s === "published" },
+  { id: "working", label: "Drafts & review", match: (s) => s === "draft" || s === "in_review" }, { id: "hidden", label: "Hidden", match: (s) => s === "hidden" }, { id: "archived", label: "Archived", match: (s) => s === "archived" },
+];
+const STATUS_LABEL: Record<TemplateStatus, string> = { draft: "Draft", in_review: "In review", published: "Published", hidden: "Hidden", archived: "Archived" };
+const STATUS_TONE: Record<TemplateStatus, "neutral" | "warning" | "success" | "outline" | "danger"> = { draft: "neutral", in_review: "warning", published: "success", hidden: "outline", archived: "outline" };
+
+interface Props {
+  templates: TemplateView[];
+  canPublish: boolean;
+  openNew?: boolean;
+  /** Where template pictures are drawn from. The design preview supplies a sample frame that needs no sign-in. */
+  frameBase?: string;
+}
+
+export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/frame/template" }: Props) {
+  const router = useRouter();
+  const [tab, setTab] = React.useState<Tab>("all");
+  const [q, setQ] = React.useState("");
+  const [family, setFamily] = React.useState("all");
+  const [creating, setCreating] = React.useState(Boolean(openNew));
+  const [editing, setEditing] = React.useState<TemplateView | null>(null);
+  const [history, setHistory] = React.useState<TemplateView | null>(null);
+  const [preview, setPreview] = React.useState<TemplateView | null>(null);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const families = [...new Map(templates.map((t) => [t.familyId, t.familyName])).entries()];
+  const list = templates.filter((t) => TABS.find((x) => x.id === tab)!.match(t.status) && (family === "all" || t.familyId === family) && (!q.trim() || `${t.name} ${t.familyName} ${t.description} ${t.tags.join(" ")}`.toLowerCase().includes(q.toLowerCase())));
+
+  const run = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, success: string) => {
+    setBusy(key);
+    const res = await fn();
+    setBusy(null);
+    if (!res.ok) return void toast.error(res.error ?? "That didn't work.");
+    toast.success(success);
+    router.refresh();
+  };
+  const frameSrc = (t: TemplateView, thumb: boolean) => `${frameBase}?key=${encodeURIComponent(t.key)}${thumb ? "&thumb=1" : ""}${t.kind === "custom" ? "&draft=1" : ""}`;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[14rem] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
+          <input type="search" aria-label="Search templates" placeholder="Search by name, family or tag" value={q} onChange={(e) => setQ(e.target.value)} className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-3 text-[14px] shadow-soft placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-primary/30" />
+        </div>
+        <select aria-label="Design family" value={family} onChange={(e) => setFamily(e.target.value)} className="h-11 rounded-xl border border-line bg-surface px-3 text-[13px] shadow-soft">
+          <option value="all">All families</option>{families.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+        <Button variant="brand" onClick={() => setCreating(true)}><Plus className="size-4" /> New template</Button>
+      </div>
+      <div role="tablist" aria-label="Status" className="scrollbar-thin flex gap-1.5 overflow-x-auto">
+        {TABS.map((t) => {
+          const n = templates.filter((x) => t.match(x.status)).length;
+          return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-9 shrink-0 rounded-full border px-3.5 text-[13px] font-medium", tab === t.id ? "border-primary bg-primary text-white" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{t.label} · {n}</button>;
+        })}
+      </div>
+
+      {list.length === 0 ? (
+        <Card className="px-6 py-14 text-center"><p className="text-[15px] font-semibold">No templates here</p><p className="mt-1 text-[13px] text-muted">Change the filters, or create a template.</p></Card>
+      ) : (
+        <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" aria-label="Templates">
+          {list.map((t) => (
+            <li key={t.key}>
+              <Card className="flex h-full flex-col overflow-hidden">
+                <div className="relative">
+                  {t.hasPreviewImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`/api/website-templates/${encodeURIComponent(t.key)}/preview`} alt="" className="aspect-[16/10] w-full object-cover" />
+                  ) : <FrameThumb src={frameSrc(t, true)} title={`${t.name} template`} />}
+                  <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
+                    {t.featured && <span className="inline-flex items-center gap-1 rounded-full bg-ink/85 px-2 py-1 text-[10.5px] font-semibold text-white"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
+                    {t.kind === "custom" && <span className="rounded-full bg-primary px-2 py-1 text-[10.5px] font-semibold text-white">Agency design</span>}
+                  </div>
+                </div>
+                <div className="flex flex-1 flex-col gap-2.5 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0"><p className="truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{t.familyName}</p><h3 className="truncate text-[16px] font-semibold tracking-tight">{t.name}</h3></div>
+                    <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
+                  </div>
+                  <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted">{t.description || "No description yet."}</p>
+                  <p className="text-[11.5px] text-muted">
+                    Version {t.version}{t.unpublishedChanges ? " · unpublished changes" : ""}{t.updatedAt ? ` · updated ${relativeTime(t.updatedAt)}` : ""}{t.updatedByName ? ` by ${t.updatedByName}` : ""} · {t.sitesUsing} website{t.sitesUsing === 1 ? "" : "s"} started from it
+                  </p>
+                  {t.tags.length > 0 && <ul className="flex flex-wrap gap-1" aria-label="Tags">{t.tags.slice(0, 5).map((x) => <li key={x} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-muted">{x}</li>)}</ul>}
+                  <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+                    <Button size="sm" variant="secondary" onClick={() => setPreview(t)}><Eye className="size-3.5" /> Preview</Button>
+                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15"><PencilRuler className="size-3.5" aria-hidden /> Design</Link>}
+                    {t.kind === "builtin" && <Button size="sm" variant="soft" loading={busy === `dup-${t.key}`} onClick={() => void run(`dup-${t.key}`, async () => { const r = await duplicateTemplateAction(t.key); if (r.ok) router.push(`/admin/website-studio/templates/${r.data.id}`); return r; }, "Created an editable copy.")}><Copy className="size-3.5" /> Customize a copy</Button>}
+                    <Menu>
+                      <MenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`More for ${t.name}`}>More</Button></MenuTrigger>
+                      <MenuContent align="end">
+                        <MenuItem onSelect={() => setEditing(t)}><Pencil className="mr-2 size-3.5" /> Edit details</MenuItem>
+                        <MenuItem onSelect={() => void run(`dup-${t.key}`, async () => { const r = await duplicateTemplateAction(t.key); if (r.ok) router.push(`/admin/website-studio/templates/${r.data.id}`); return r; }, "Duplicated as a draft.")}><Copy className="mr-2 size-3.5" /> Duplicate</MenuItem>
+                        {t.kind === "custom" && <MenuItem onSelect={() => setHistory(t)}><History className="mr-2 size-3.5" /> Version history</MenuItem>}
+                        {t.kind === "custom" && t.status === "draft" && <MenuItem onSelect={() => void run(`rev-${t.key}`, () => setTemplateStatusAction(t.key, "in_review"), "Sent for review.")}><Send className="mr-2 size-3.5" /> Send for review</MenuItem>}
+                        <MenuSeparator />
+                        {canPublish && t.kind === "custom" && t.status !== "published" && <MenuItem onSelect={() => void run(`pub-${t.key}`, () => setTemplateStatusAction(t.key, "published"), "Published to the client library.")}><Rocket className="mr-2 size-3.5" /> Publish to clients</MenuItem>}
+                        {canPublish && t.kind === "custom" && t.status === "published" && t.unpublishedChanges && <MenuItem onSelect={() => void run(`pub-${t.key}`, () => setTemplateStatusAction(t.key, "published"), "Published the latest changes.")}><Rocket className="mr-2 size-3.5" /> Publish latest changes</MenuItem>}
+                        {canPublish && <MenuItem onSelect={() => void run(`feat-${t.key}`, () => updateTemplateMetaAction(t.key, { featured: !t.featured }), t.featured ? "No longer featured." : "Featured.")}><Star className="mr-2 size-3.5" /> {t.featured ? "Remove from featured" : "Feature"}</MenuItem>}
+                        {canPublish && (t.status === "published" ? <MenuItem onSelect={() => void run(`hide-${t.key}`, () => setTemplateStatusAction(t.key, "hidden"), "Hidden from clients.")}><EyeOff className="mr-2 size-3.5" /> Hide from clients</MenuItem> : t.status === "hidden" && (t.kind === "builtin" || t.unpublishedChanges === false) ? <MenuItem onSelect={() => void run(`show-${t.key}`, () => setTemplateStatusAction(t.key, "published"), "Visible to clients again.")}><Eye className="mr-2 size-3.5" /> Show to clients</MenuItem> : null)}
+                        {canPublish && t.status !== "archived" && <MenuItem destructive onSelect={() => void run(`arc-${t.key}`, () => setTemplateStatusAction(t.key, "archived"), "Archived.")}><Archive className="mr-2 size-3.5" /> Archive</MenuItem>}
+                        {canPublish && t.status === "archived" && <MenuItem onSelect={() => void run(`un-${t.key}`, () => setTemplateStatusAction(t.key, t.kind === "builtin" ? "published" : "draft"), "Restored.")}>Restore</MenuItem>}
+                      </MenuContent>
+                    </Menu>
+                  </div>
+                </div>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[12px] leading-relaxed text-muted">A template is a starting point. When a client picks one, their website gets its own copy, so changing, hiding or archiving a template never changes a website that already exists.</p>
+
+      <CreateDialog open={creating} onOpenChange={setCreating} templates={templates} onCreated={(id) => router.push(`/admin/website-studio/templates/${id}`)} />
+      {editing && <EditDialog t={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />}
+      {history && <HistoryDialog t={history} onClose={() => setHistory(null)} onRestored={() => { setHistory(null); router.refresh(); }} />}
+      {preview && <SitePreviewOverlay title={`${preview.familyName} · ${preview.name}`} note={preview.kind === "custom" ? "working copy" : "sample content"} src={frameSrc(preview, false)} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function CreateDialog({ open, onOpenChange, templates, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; templates: TemplateView[]; onCreated: (id: string) => void }) {
+  const [name, setName] = React.useState("");
+  const [from, setFrom] = React.useState("blank");
+  const [busy, setBusy] = React.useState(false);
+  useResetOnOpen(open, () => {
+    setName("");
+    setFrom("blank");
+  });
+  const create = async () => {
+    setBusy(true);
+    const src = templates.find((t) => t.key === from);
+    const res = await createTemplateAction({ name, from: from === "blank" ? { kind: "blank" } : src?.kind === "custom" ? { kind: "custom", key: from } : { kind: "builtin", key: from }, industries: src?.industries, tags: src?.tags.slice(0, 6) });
+    setBusy(false);
+    if (!res.ok) return void toast.error(res.error);
+    onOpenChange(false);
+    onCreated(res.data.id);
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} size="md" title="New template" description="Start from a blank page, or from any existing design, then change everything in the Template Designer. It stays a draft until a super admin publishes it."
+      footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="brand" loading={busy} disabled={name.trim().length < 2} onClick={() => void create()}>Create and open the designer</Button></>}>
+      <div className="space-y-4">
+        <Row label="Name" htmlFor="nt-name"><TextControl id="nt-name" autoFocus value={name} maxLength={80} placeholder="For example: Coastal Realty" onChange={(e) => setName(e.target.value)} /></Row>
+        <Row label="Start from">
+          <SelectControl<string> label="Start from" value={from} onChange={setFrom} options={[{ value: "blank", label: "A blank page" }, ...templates.filter((t) => t.status !== "archived").map((t) => ({ value: t.key, label: `${t.familyName} · ${t.name}` }))]} />
+        </Row>
+      </div>
+    </Dialog>
+  );
+}
+
+function EditDialog({ t, onClose, onSaved }: { t: TemplateView; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = React.useState(t.name);
+  const [description, setDescription] = React.useState(t.description);
+  const [industries, setIndustries] = React.useState(t.industries);
+  const [tags, setTags] = React.useState(t.tags.join(", "));
+  const [busy, setBusy] = React.useState(false);
+  const [file, setFile] = React.useState<File | null>(null);
+  const save = async () => {
+    setBusy(true);
+    const res = await updateTemplateMetaAction(t.key, { ...(t.kind === "custom" ? { name, description } : {}), industries, tags: tags.split(",").map((x) => x.trim()).filter(Boolean) });
+    if (!res.ok) {
+      setBusy(false);
+      return void toast.error(res.error);
+    }
+    if (file) {
+      const form = new FormData();
+      form.set("file", file);
+      const up = await fetch(`/api/admin/website-templates/${encodeURIComponent(t.key)}/preview`, { method: "POST", body: form });
+      if (!up.ok) {
+        setBusy(false);
+        return void toast.error(((await up.json().catch(() => ({}))) as { error?: string }).error ?? "The preview image couldn't be saved.");
+      }
+    }
+    setBusy(false);
+    toast.success("Saved.");
+    onSaved();
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Details: ${t.name}`} description={t.kind === "builtin" ? "Built-in designs keep their name and description. You can tag them and choose which industries they're shown for." : "How this template appears in the library."}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="brand" loading={busy} onClick={() => void save()}>Save</Button></>}>
+      <div className="space-y-4">
+        {t.kind === "custom" && <Row label="Name" htmlFor="ed-name"><TextControl id="ed-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></Row>}
+        {t.kind === "custom" && <Row label="Short description" htmlFor="ed-desc"><AreaControl id="ed-desc" rows={2} value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} /></Row>}
+        <Row label="Industries">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Industries">
+            {INDUSTRY_FILTERS.map((i) => (
+              <button key={i.id} type="button" aria-pressed={industries.includes(i.id)} onClick={() => setIndustries((c) => (c.includes(i.id) ? c.filter((x) => x !== i.id) : [...c, i.id]))} className={cn("h-8 rounded-full border px-3 text-[12px] font-medium", industries.includes(i.id) ? "border-primary bg-primary text-white" : "border-line bg-surface text-ink-2")}>{i.label}</button>
+            ))}
+          </div>
+        </Row>
+        <Row label="Tags" hint="Comma separated, for search and filters." htmlFor="ed-tags"><TextControl id="ed-tags" value={tags} maxLength={200} placeholder="luxury, serif, coastal" onChange={(e) => setTags(e.target.value)} /></Row>
+        <Row label="Card picture" hint="Optional. Shown instead of the rendered thumbnail. PNG, JPG or WebP; it is re-encoded and resized.">
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line-strong px-3 py-2.5 text-[12.5px] text-ink-2 hover:bg-surface-2"><ImagePlus className="size-4 text-muted" aria-hidden /> {file ? file.name : t.hasPreviewImage ? "Replace the picture" : "Choose a picture"}
+            <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+        </Row>
+      </div>
+    </Dialog>
+  );
+}
+
+function HistoryDialog({ t, onClose, onRestored }: { t: TemplateView; onClose: () => void; onRestored: () => void }) {
+  const [list, setList] = React.useState<Array<{ version: number; note: string | null; createdAt: string; createdByName: string | null }> | null>(null);
+  const [busy, setBusy] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    if (t.id) void listTemplateVersionsAction(t.id).then((r) => { if (live && r.ok) setList(r.data); });
+    return () => { live = false; };
+  }, [t.id]);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Versions of ${t.name}`} description="Each publication is kept. Restoring one puts it into the working copy; it isn't offered to clients until it is published again.">
+      {!list ? <p className="text-[13px] text-muted" role="status">Loading…</p> : list.length === 0 ? <p className="text-[13px] text-muted">Not published yet, so there are no versions.</p> : (
+        <ul className="divide-y divide-line">
+          {list.map((v) => (
+            <li key={v.version} className="flex items-center justify-between gap-3 py-3">
+              <div><p className="text-[14px] font-semibold">Version {v.version}</p><p className="text-[12.5px] text-muted">{relativeTime(v.createdAt)}{v.createdByName ? ` · ${v.createdByName}` : ""}{v.note ? ` · “${v.note}”` : ""}</p></div>
+              <Button size="sm" variant="secondary" loading={busy === v.version} onClick={async () => { setBusy(v.version); const r = await restoreTemplateVersionAction(t.id!, v.version); setBusy(null); if (!r.ok) return void toast.error(r.error); toast.success(`Version ${v.version} is back in the working copy.`); onRestored(); }}>Restore to working copy</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  );
+}

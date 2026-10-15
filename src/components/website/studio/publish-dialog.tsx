@@ -29,7 +29,8 @@ function IssueList({ items, tone }: { items: Issue[]; tone: "danger" | "warning"
  * The last stop before a website goes live or is sent for approval. It lists what must be fixed, makes the owner read every
  * claim we cannot verify, and reports the real outcome, including whether the live site was actually confirmed.
  */
-export function PublishDialog({ open, onClose, mode, host, onDone, flush }: { open: boolean; onClose: () => void; mode: "publish" | "approval"; host: string; onDone: () => void; flush?: () => Promise<boolean> }) {
+export function PublishDialog({ open, onClose, mode, host, onDone, flush, noun = "website" }: { open: boolean; onClose: () => void; mode: "publish" | "approval"; host: string; onDone: () => void; flush?: () => Promise<boolean>; noun?: "website" | "template" }) {
+  const isTemplate = noun === "template";
   const api = useStudioApi();
   const [stage, setStage] = React.useState<Stage>("loading");
   const [pf, setPf] = React.useState<Preflight | null>(null);
@@ -105,8 +106,8 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush }: { op
     <Dialog
       open={open}
       onOpenChange={(o) => !o && stage !== "working" && onClose()}
-      title={mode === "publish" ? "Publish your website" : "Send for approval"}
-      description={mode === "publish" ? `This makes your site live at ${host}. Everything you've written is saved as a version you can restore.` : "The business owner will be asked to review the preview and approve it."}
+      title={mode === "publish" ? (isTemplate ? "Publish this template" : "Publish your website") : isTemplate ? "Send for review" : "Send for approval"}
+      description={mode === "publish" ? (isTemplate ? "This makes the working copy the design clients are offered. Websites already made from it keep their own copy and are never changed." : `This makes your site live at ${host}. Everything you've written is saved as a version you can restore.`) : isTemplate ? "A super admin will be asked to review the template and publish it." : "The business owner will be asked to review the preview and approve it."}
       size="lg"
       footer={
         stage === "done" ? (
@@ -119,7 +120,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush }: { op
               Cancel
             </Button>
             <Button variant="brand" onClick={() => void go()} disabled={!canGo} loading={stage === "working"}>
-              {mode === "publish" ? "Publish now" : "Send for approval"}
+              {mode === "publish" ? (isTemplate ? "Publish template" : "Publish now") : isTemplate ? "Send for review" : "Send for approval"}
             </Button>
           </>
         )
@@ -189,7 +190,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush }: { op
       )}
       {stage === "done" && mode === "approval" && (
         <p className="flex items-start gap-2 text-[14px]" role="status">
-          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden /> Sent. The owner has been notified and can review it from the Website page.
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden /> {isTemplate ? "Sent for review. A super admin can publish it from the template library." : "Sent. The owner has been notified and can review it from the Website page."}
         </p>
       )}
       {stage === "done" && outcome && (
@@ -199,7 +200,7 @@ export function PublishDialog({ open, onClose, mode, host, onDone, flush }: { op
             {outcome.restoredPrevious ? "That update couldn't be served, so your previous version is still live." : `Published as version ${outcome.number}.`}
           </p>
           <p className="rounded-xl border border-line bg-surface-2/60 p-3 text-[13.5px] leading-relaxed text-ink-2">
-            {outcome.restoredPrevious
+            {isTemplate ? outcome.healthDetail : outcome.restoredPrevious
               ? `${outcome.healthDetail} Nothing was lost; your edits are still in the editor.`
               : outcome.health === "healthy"
                 ? `Confirmed live at ${outcome.host}.`

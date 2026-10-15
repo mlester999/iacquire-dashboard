@@ -13,6 +13,8 @@ import {
   addCustomDomain, approveDomainPurchase, changeSubdomain, checkLive, checkSsl, removeDomain, requestDomainPurchase, setPrimaryDomain, verifyDomain,
 } from "@/server/websites/domains";
 import { markSubmissionSpam } from "@/server/websites/forms";
+import { suggestWithAi } from "@/server/websites/assistant";
+import { acquireEditLock, addComment, listComments, releaseEditLock, requestChanges, resolveComment, reviewSummary, setArchived } from "@/server/websites/review";
 import type { Issue } from "@/lib/website/lint";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,10 +54,10 @@ export async function regenerateDraftAction(expectedRevision: number, templateKe
   });
 }
 
-export async function saveVersionAction(note: string, orgId?: string) {
+export async function saveVersionAction(note: string, orgId?: string, source?: "checkpoint" | "ai") {
   return guard(async () => {
     const ctx = await studioContext(orgId, "website.edit");
-    const res = await saveVersion(ctx, { note: String(note ?? "").slice(0, 300) });
+    const res = await saveVersion(ctx, { note: String(note ?? "").slice(0, 300), source: source === "ai" ? "ai" : "checkpoint" });
     refresh();
     return res;
   });
@@ -250,5 +252,67 @@ export async function markEnquirySpamAction(id: string, orgId?: string) {
     await markSubmissionSpam(await studioContext(orgId, "contacts.edit"), id);
     refresh();
     return {};
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Review, comments, archive and the edit lock
+// ---------------------------------------------------------------------------
+
+export async function listCommentsAction(orgId?: string) {
+  return guard(async () => listComments(await studioContext(orgId, "website.view")));
+}
+export async function addCommentAction(body: string, nodeId: string | null, pageSlug: string | null, orgId?: string) {
+  return guard(async () => {
+    const res = await addComment(await studioContext(orgId, "website.view"), { body: String(body ?? ""), nodeId: nodeId ? String(nodeId) : null, pageSlug: pageSlug ? String(pageSlug) : null });
+    refresh();
+    return res;
+  });
+}
+export async function resolveCommentAction(id: string, resolved: boolean, orgId?: string) {
+  return guard(async () => {
+    needUuid(id);
+    await resolveComment(await studioContext(orgId, "website.view"), id, resolved === true);
+    refresh();
+    return {};
+  });
+}
+export async function reviewSummaryAction(orgId?: string) {
+  return guard(async () => reviewSummary(await studioContext(orgId, "website.view")));
+}
+export async function requestChangesAction(note: string, orgId?: string) {
+  return guard(async () => {
+    await requestChanges(await studioContext(orgId, "website.review"), String(note ?? ""));
+    refresh();
+    revalidatePath("/admin/website-studio", "layout");
+    return {};
+  });
+}
+export async function setArchivedAction(archived: boolean, orgId?: string) {
+  return guard(async () => {
+    await setArchived(await studioContext(orgId, "website.publish"), archived === true);
+    refresh();
+    revalidatePath("/admin/website-studio", "layout");
+    return {};
+  });
+}
+export async function acquireLockAction(takeOver: boolean, orgId?: string) {
+  return guard(async () => acquireEditLock(await studioContext(orgId, "website.edit"), { takeOver: takeOver === true }));
+}
+export async function releaseLockAction(orgId?: string) {
+  return guard(async () => {
+    await releaseEditLock(await studioContext(orgId, "website.edit"));
+    return {};
+  });
+}
+
+/**
+ * Asks the connected AI provider for suggested edits. Returns null data when none is connected, so the browser falls back to the built-in
+ * assistant. What comes back is still only a proposal: the browser checks every edit and nothing is applied without the person's say-so.
+ */
+export async function suggestEditAction(request: string, brief: unknown, orgId?: string) {
+  return guard(async () => {
+    const ctx = await studioContext(orgId, "website.edit");
+    return suggestWithAi(ctx, { request: String(request ?? ""), brief });
   });
 }

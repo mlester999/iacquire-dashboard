@@ -10,7 +10,7 @@ import { readAuthorizedPrivateFile } from "@/server/storage/private";
 import { parseContent, referencedAssetIds, type SiteContent } from "@/lib/website/doc";
 import { parseStoredContent } from "@/lib/website/legacy";
 import { checkReadiness, warningNeedsAcknowledgement, type Issue } from "@/lib/website/lint";
-import { buildSite, resolveTemplate } from "@/lib/website/templates";
+import { buildFromTemplate } from "@/server/websites/templates";
 import { buildSiteDetails } from "@/server/websites/details";
 import { contentHash, sha256Hex } from "@/server/websites/hash";
 import { probeSite, type ProbeFetcher } from "@/server/websites/probe";
@@ -154,7 +154,7 @@ async function nextVersion(db: Queryable, websiteId: string) {
   return Number(rows[0].n);
 }
 
-async function snapshot(db: Queryable, input: { orgId: string; websiteId: string; templateKey: string; content: SiteContent; source: "editor" | "generated" | "submit" | "publish" | "rollback"; note?: string; userId: string | null }) {
+async function snapshot(db: Queryable, input: { orgId: string; websiteId: string; templateKey: string; content: SiteContent; source: "editor" | "generated" | "submit" | "publish" | "rollback" | "checkpoint" | "ai"; note?: string; userId: string | null }) {
   const hash = contentHash(input.content);
   const { rows: last } = await db.query<{ id: string; content_hash: string; template_key: string }>("select id, content_hash, template_key from website_versions where website_id = $1 order by version desc limit 1", [input.websiteId]);
   if (last[0] && last[0].content_hash === hash && last[0].template_key === input.templateKey && input.source !== "generated") return { id: last[0].id, created: false };
@@ -176,9 +176,8 @@ function requireEdit(ctx: OrgContext) {
 export async function createWebsite(ctx: OrgContext, input: { templateKey: string }): Promise<{ websiteId: string; subdomain: string }> {
   requireEdit(ctx);
   if (ctx.org.kind !== "client") throw new AppError("invalid_input", "Websites are built inside a client workspace.");
-  if (!resolveTemplate(input.templateKey)) throw new AppError("invalid_input", "Choose one of the templates.");
   const details = await buildSiteDetails(ctx);
-  const content = buildSite(input.templateKey, details);
+  const content = (await buildFromTemplate(input.templateKey, details)).content;
   const result = await withSystem(async (db) => {
     const existing = await db.query("select 1 from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId]);
     if (existing.rows.length) throw new AppError("conflict", "Your workspace already has a website.");
@@ -232,8 +231,11 @@ export async function saveDraft(ctx: OrgContext, input: { content: unknown; expe
 /** Replaces the draft with a fresh one built from the business details. The current draft is saved as a version first, so nothing is lost. */
 export async function regenerateDraft(ctx: OrgContext, input: { expectedRevision: number; templateKey?: string }): Promise<{ revision: number }> {
   requireEdit(ctx);
-  if (input.templateKey !== undefined && !resolveTemplate(input.templateKey)) throw new AppError("invalid_input", "Choose one of the templates.");
   const details = await buildSiteDetails(ctx);
+  const own = (await withSystem((db) => db.query<{ template_key: string }>("select template_key from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId]))).rows[0]?.template_key;
+  if (!own) throw new AppError("not_found", "Create your website first.");
+  // The new draft is built before the transaction starts, so the template lookup never runs inside it.
+  const built = await buildFromTemplate(input.templateKey ?? own, details, { requireOffered: input.templateKey !== undefined });
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; draft_content: unknown; template_key: string; draft_revision: number }>(
       "select id, draft_content, template_key, draft_revision from websites where org_id = $1 and kind = 'website' for update", [ctx.org.orgId]);
@@ -242,8 +244,8 @@ export async function regenerateDraft(ctx: OrgContext, input: { expectedRevision
     if (w.draft_revision !== input.expectedRevision) throw new DraftConflictError();
     const current = parseStoredContent(w.draft_content, w.template_key);
     if (current.ok) await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: current.content, source: "editor", note: "Saved before rebuilding from your business details", userId: ctx.user.id });
-    const templateKey = input.templateKey ?? w.template_key;
-    const fresh = buildSite(templateKey, details);
+    const templateKey = built.templateKey;
+    const fresh = built.content;
     await assertAssetsOwned(db, ctx.org.orgId, referencedAssetIds(fresh));
     const updated = await db.query<{ draft_revision: number }>(
       `update websites set draft_content = $2, template_key = $4, draft_revision = draft_revision + 1, draft_updated_by = $3, draft_updated_at = now(),
@@ -262,7 +264,7 @@ export async function regenerateDraft(ctx: OrgContext, input: { expectedRevision
 
 export interface VersionView { id: string; version: number; templateKey: string; source: string; note: string | null; createdAt: string; createdByName: string | null; isLive: boolean }
 
-export async function saveVersion(ctx: OrgContext, input: { note?: string }): Promise<{ version: number; created: boolean }> {
+export async function saveVersion(ctx: OrgContext, input: { note?: string; source?: "editor" | "checkpoint" | "ai" }): Promise<{ version: number; created: boolean }> {
   requireEdit(ctx);
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; draft_content: unknown; template_key: string }>("select id, draft_content, template_key from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId]);
@@ -270,7 +272,7 @@ export async function saveVersion(ctx: OrgContext, input: { note?: string }): Pr
     if (!w) throw new AppError("not_found", "Create your website first.");
     const parsed = parseStoredContent(w.draft_content, w.template_key);
     if (!parsed.ok) throw new AppError("invalid_input", parsed.error);
-    const snap = await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: parsed.content, source: "editor", note: input.note, userId: ctx.user.id });
+    const snap = await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: parsed.content, source: input.source ?? "editor", note: input.note, userId: ctx.user.id });
     const v = await db.query<{ version: number }>("select version from website_versions where id = $1", [snap.id]);
     return { version: v.rows[0].version, created: snap.created };
   });

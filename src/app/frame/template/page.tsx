@@ -7,6 +7,6 @@ export const metadata: Metadata = { title: "Template preview", robots: { index: 
 
 /** A template's sample site, for the gallery's thumbnails and previews. Signed-in users only; shown inside the portal's own pages. */
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requireUser();
-  return <TemplateFrame q={await searchParams} base="/frame/template" />;
+  const viewer = await requireUser();
+  return <TemplateFrame q={await searchParams} base="/frame/template" viewer={viewer} />;
 }

@@ -23,6 +23,20 @@ export function formatNumber(n: number | null | undefined, opts?: { compact?: bo
   return opts?.compact && Math.abs(n) >= 10000 ? compact.format(n) : whole.format(n);
 }
 
+/** A byte count in the largest sensible unit (1.4 MB, 820 KB). */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0 B";
+  if (n < 1024) return `${Math.round(n)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+}
+
 export function formatCurrency(n: number | null | undefined, currency = "USD") {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: n % 1 === 0 ? 0 : 2 }).format(n);
