@@ -79,7 +79,7 @@ async function createPostgresDriver(connectionString: string): Promise<Driver> {
     throw new OperationFailure("database.configure_tls", cause);
   }
   if (tls.warning) console.warn(`[iacquire] ${tls.warning}`);
-  const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: 10, idleTimeoutMillis: 30000 });
+  const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: Math.max(1, Number(process.env.DATABASE_POOL_MAX) || 4), idleTimeoutMillis: 10000 });
   const query = async <T>(operation: string, run: () => Promise<T>): Promise<T> => {
     try {
       return await run();
