@@ -225,16 +225,21 @@ export function styleDecls(st: Partial<NodeStyle> & Partial<Override>, opts: { b
   }
   if (st.size) d.push(`font-size:${sizeValue(st.size)}`);
   if (st.weight) d.push(`font-weight:${st.weight}`);
-  if (st.font) d.push(`font-family:var(--f-${st.font === "heading" ? "h" : st.font === "body" ? "b" : st.font === "accent" ? "a" : "m"})`);
+  if (st.font) {
+    const roles = { heading: "h", body: "b", accent: "a", mono: "m" } as const;
+    d.push(`font-family:${st.font in roles ? `var(--f-${roles[st.font as keyof typeof roles]})` : fontVar(st.font)}`);
+  }
   if (st.ls) d.push(`letter-spacing:${LS[st.ls]}`);
   if (st.lh) d.push(`line-height:${LH[st.lh]}`);
   if (st.transform) d.push(`text-transform:${st.transform}`);
   if (st.italic !== undefined) d.push(`font-style:${st.italic ? "italic" : "normal"}`);
   if (st.color) d.push(`color:${textColor(st.color)}`);
   if (opts.box !== false) {
-    if (st.bg) d.push(`background-color:${fillColor(st.bg)}`);
+    // An explicit fill replaces the component's gradient/image as well as its
+    // colour. Otherwise the inspector's background appears to do nothing.
+    if (st.bg) d.push(`background:${fillColor(st.bg)}`);
     if (st.radius) d.push(`border-radius:${RADIUS_NODE[st.radius]}`);
-    if (st.border && st.border !== "none") d.push(`border:${st.border === "thin" ? 1 : 3}px solid ${st.borderColor ? fillColor(st.borderColor) : "var(--line)"}`);
+    if (st.border) d.push(st.border === "none" ? "border:0" : `border:${st.border === "thin" ? 1 : 3}px solid ${st.borderColor ? fillColor(st.borderColor) : "var(--line)"}`);
     if (st.shadow) d.push(`box-shadow:${SHADOW_NODE[st.shadow]}`);
     if (st.opacity !== undefined) d.push(`opacity:${st.opacity / 100}`);
     if (st.rotate) d.push(`rotate:${st.rotate}deg`);

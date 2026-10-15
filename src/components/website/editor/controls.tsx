@@ -84,12 +84,19 @@ export function SelectControl<T extends string>({ value, options, onChange, id, 
 /** A compact row of choices. A choice may be an icon with a text label for screen readers. */
 export function Seg<T extends string>({ value, options, onChange, label, size = "md" }: { value: T | undefined; options: Array<{ value: T; label: string; icon?: React.ReactNode }>; onChange: (v: T) => void; label: string; size?: "sm" | "md" }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-lg bg-surface-3 p-0.5">
-      {options.map((o) => {
+    <div role="radiogroup" aria-label={label} className="flex rounded-lg bg-surface-3 p-0.5" onKeyDown={(e) => {
+      const at = options.findIndex((o) => o.value === value);
+      const next = e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % options.length : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at - 1 + options.length) % options.length : e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      onChange(options[next].value);
+      e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=radio]")[next]?.focus();
+    }}>
+      {options.map((o, i) => {
         const on = o.value === value;
         return (
           <button
-            key={o.value} type="button" role="radio" aria-checked={on} aria-label={o.icon ? o.label : undefined} title={o.icon ? o.label : undefined} onClick={() => onChange(o.value)}
+            key={o.value} type="button" role="radio" aria-checked={on} tabIndex={on || (value === undefined && i === 0) ? 0 : -1} aria-label={o.icon ? o.label : undefined} title={o.icon ? o.label : undefined} onClick={() => onChange(o.value)}
             className={cn("flex min-w-0 flex-1 items-center justify-center rounded-md px-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", size === "sm" ? "h-6 text-[11px]" : "h-7 text-[12px]", on ? "bg-surface text-ink shadow-soft" : "text-ink-2 hover:text-ink")}
           >
             {o.icon ?? <span className="truncate">{o.label}</span>}

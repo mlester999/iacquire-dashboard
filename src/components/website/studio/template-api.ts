@@ -7,7 +7,7 @@ import type { VersionView } from "@/server/websites/service";
 /**
  * The editor's server calls when it is editing one of the agency's templates instead of a client's website. A template's "versions" are its
  * published versions; "publish" makes the working copy the one clients are offered; "send for approval" asks a super admin to publish it.
- * Templates use built-in artwork only, so there is no image library.
+ * Templates use generated starter images and built-in artwork. Client websites can replace them in their own editor.
  */
 export function createTemplateStudioApi(id: string, key: string): StudioApi {
   return {
@@ -60,7 +60,7 @@ export function createTemplateStudioApi(id: string, key: string): StudioApi {
       return { ok: true, data: [] };
     },
     async uploadAsset() {
-      return { ok: false, error: "Templates use built-in artwork only." };
+      return { ok: false, error: "Template images are shared starter assets. Replace images on the client's website instead." };
     },
     async setAssetAlt() {
       return { ok: true, data: {} };

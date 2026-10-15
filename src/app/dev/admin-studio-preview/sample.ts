@@ -7,7 +7,9 @@ import type { TemplateView } from "@/server/websites/templates";
 import type { PatternView } from "@/server/websites/components";
 import type { CommentView, ReviewSummary } from "@/server/websites/review";
 import type { Preflight, PublicationView, WebsiteSummary } from "@/server/websites/service";
-import { FAMILIES, templateKey } from "@/lib/website/templates";
+import { FAMILIES, sampleSite, templateKey } from "@/lib/website/templates";
+import { INDUSTRY_FILTERS } from "@/lib/website/gallery";
+import { contentFacets } from "@/lib/website/gallery-facets";
 
 // A fixed moment, not the clock: the server and the browser both build this data, and they must agree on every timestamp.
 const NOW = Date.parse("2026-10-15T08:00:00.000Z");
@@ -69,9 +71,10 @@ export const SAMPLE_TEMPLATES: TemplateView[] = (() => {
     const [fam, v] = key.split(".");
     const f = FAMILIES.find((x) => x.id === fam)!;
     const variation = f.variations.find((x) => templateKey(f.id, x.id) === key)!;
+    const content = sampleSite(key);
     return {
-      id: null, key, kind: "builtin", name: variation.name, description: variation.description, familyId: f.id, familyName: f.name, industries: [], tags: variation.tags, status: i === 9 ? "hidden" : "published", featured: i < 6, version: 1,
-      basedOn: null, mode: variation.tags.includes("dark") ? "dark" : "light", updatedAt: null, publishedAt: null, updatedByName: null, hasPreviewImage: false, unpublishedChanges: false, sitesUsing: [4, 2, 1, 3, 0, 1, 0, 2, 5, 1, 0, 1][i],
+      ...contentFacets(content), id: null, key, kind: "builtin", name: variation.name, description: variation.description, familyId: f.id, familyName: f.name, industries: INDUSTRY_FILTERS.filter((industry) => industry.families.includes(f.id)).map((industry) => industry.id), tags: variation.tags, status: i === 9 ? "hidden" : "published", featured: i < 6, version: content.origin.version,
+      basedOn: null, mode: content.design.mode, updatedAt: null, publishedAt: null, updatedByName: null, hasPreviewImage: false, unpublishedChanges: false, sitesUsing: [4, 2, 1, 3, 0, 1, 0, 2, 5, 1, 0, 1][i],
     } satisfies TemplateView;
     void v;
   });

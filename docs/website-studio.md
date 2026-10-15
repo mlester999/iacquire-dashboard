@@ -18,7 +18,7 @@ real host, no DNS record, certificate or domain purchase exists, nothing has bee
 | Overview | Counts from real records only: managed, published and draft websites, waiting for owner approval, domains needing attention, failed publications, 30-day hosting usage, recent activity. Actions: create a website, browse templates, manage client websites, open the Template Designer, review pending changes |
 | Client websites | Search, filter and sort every site you may see, with a still of the current draft, template, status, domain, last edit, last publication, warnings and who is editing. Preview, Edit, Review |
 | Client website | Compare the draft with what is live, ask for changes, comment, publish (super admin or owner), roll back, archive and restore, domain status, and open the editor on that client's site. Every action is audited |
-| Template library | Create (blank or from any design), duplicate, rename, describe, set industries and tags, set a card picture, feature, hide, publish, archive, version history and restore. Only published templates are ever offered to clients |
+| Template library | Create (blank or from any design), duplicate, rename, describe, set industries and tags, feature, hide, publish, archive, version history and restore. Thumbnails come from the canonical template renderer. Only published templates are ever offered to clients |
 | Template Designer | The same visual editor on the agency's own template. Working copy and published copy are separate; publishing is a super-admin action and runs template checks |
 | Reviews and publishing | Waiting for the owner, approved, changes requested, needs attention, open comments |
 | Domains and hosting | Every domain with its separate DNS, routing, certificate and live-check results, hosting usage, and the exact records that must exist outside the application |
@@ -42,10 +42,7 @@ builders, not recoloured copies. `tests/website-variations.test.ts` reduces each
 structure, shape of the first screen, what is on it, the rhythm of sections down the page, colour) and requires every pair of the 50, including siblings,
 to differ on at least four; today about three quarters of all pairs differ on all six. This measures structure; it is not a substitute for looking.
 
-**Imagery is honest.** Templates use built-in illustrated scenes, never photographs, logos or people. Anywhere an illustration is shown, the editor says
-so; an illustration used as proof (gallery, collage, team, testimonials) blocks publishing, and any other illustration in use needs the owner to
-acknowledge it. Templates may not reference one client's uploaded images. **Meridian Estate** is an image-led real-estate design; until the client's own
-approved photographs replace the illustrations, publication is gated as above. Nothing is scraped or hotlinked.
+**Every design has its own editable starter photography.** The 50 built-in variations ship with 50 locally served WebP hero images; supporting photo slots use a varied set from the same design family. Nothing is scraped or hotlinked, and the files don't contain client uploads. Portrait artwork remains visibly illustrated rather than inventing customers or staff. A starter photo makes a template preview feel complete, but it is not evidence of the client's work, location or people: the editor labels it as a starter and lets the owner replace it or restore it later. Starter images in ordinary sections or backgrounds require the owner to acknowledge the warning before publication. Images used as proof (gallery, collage, team, testimonials) block publication until replaced with the client's own images.
 
 ## The document model
 
@@ -73,8 +70,7 @@ several sites can share a page. Editor code is never part of a public site's bun
 - Autosave with an explicit status (Saving, Saved, Not saved · Retry, Changed elsewhere), manual save, undo/redo (coalesced, 120 steps), named versions,
   version history with preview and compare, restore (as a new draft, history is never rewritten), and a **revision check** on every save so two editors
   never silently overwrite each other. A soft edit lock tells the second person who is already in, and read-only mode follows until they take over.
-- Design panel: colours, fonts, type scale, corners, buttons, spacing, shadows, motion, light/dark. Image fields have a focal-point picker (click, drag or
-  arrow keys) and the media library handles upload, alt text and delete protection (an image still used on the site can't be removed; swap it on the site first). Logos can use an optional background-removed copy, with the original as the fallback.
+- Design panel: colours, fonts, type scale, corners, buttons, spacing, shadows, motion, light/dark. Image fields label starter, uploaded and built-in artwork sources, preserve a starter when an upload replaces it, and offer **Restore default**. A failed upload falls back to that starter; if both sources fail, the slot shows a styled placeholder. Image fields and section backgrounds have a focal-point picker (click, drag or arrow keys). The media library handles upload, alt text and delete protection (an image still used on the site can't be removed; swap it on the site first). Logos can use an optional background-removed copy, with the original as the fallback.
 
 Keyboard shortcuts are listed in the editor (the `?` button).
 
@@ -106,7 +102,7 @@ preview of the page) before anything happens. Apply saves a restore point (versi
 | Version | Immutable snapshot (`editor`, `generated`, `checkpoint`, `ai`, `submit`, `publish`, `rollback`). Restoring makes a version the new draft |
 | Lifecycle | Draft → Ready for review → Changes requested or Approved → Published, or Publication failed, or Archived. Separate from domain verification. Publishing is one database transaction followed by a probe, so there is no long-running "Publishing" state: a publication whose probe has not succeeded yet reads as "not yet confirmed" |
 | Approval | The business owner approves an exact draft; any later edit resets approval. The owner may publish directly. Anyone else, including a super admin acting for a managed client, needs the owner's approval of that exact draft |
-| Readiness | `checkReadiness` **blocks** on sample or placeholder text (including `[brackets]` and `{{tokens}}`), unconfirmed or unattributed testimonials, empty testimonial sections, dead internal links and anchors, a disabled or hidden enquiry form, no way to reach the business, and an illustration used as proof. It **warns** about claims, illustrations in use, missing alt text and missing search description; claim and illustration warnings must be acknowledged |
+| Readiness | `checkReadiness` **blocks** on sample or placeholder text (including `[brackets]` and `{{tokens}}`), unconfirmed or unattributed testimonials, empty testimonial sections, dead internal links and anchors, a disabled or hidden enquiry form, no way to reach the business, and generated starter imagery or built-in art used as proof. It **warns** about claims, starter imagery or illustrations in ordinary sections and backgrounds, missing alt text and missing search description; claim and imagery warnings must be acknowledged |
 | Publication | Immutable and numbered, with its own copy of the content and every image. **Rollback** republishes an earlier one as a new one |
 | "Live" | Claimed only after a post-publish probe finds the publication's own marker. The scheduler re-checks live sites and opens an incident when one stops answering |
 
@@ -150,7 +146,7 @@ The platform never buys a domain and never assumes wildcard DNS exists.
 
 - Wildcard DNS and certificate for `SITES_BASE_DOMAIN`, a separate sites deployment and a CNAME target. Until then, sites exist only locally.
 - An AI provider connection if the assistant should handle open-ended requests.
-- Approved photography for each client before an image-led design is published. Without it the design stays gated.
+- The client should replace starter photography with approved images before using galleries, collages, team photos or testimonials as proof. Starter imagery in ordinary sections can be reviewed and explicitly acknowledged.
 - Whether and how to resell domains. Nothing is priced in code.
 
 Sample data: `/dev/studio-preview`, `/dev/gallery-preview`, `/dev/admin-studio-preview`, `/dev/website-preview` (all 404 in production).

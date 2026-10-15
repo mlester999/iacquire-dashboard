@@ -2,7 +2,7 @@ import * as React from "react";
 import { isExternalHref } from "@/lib/website/doc";
 import type { ImageSrc } from "@/lib/website/doc";
 import { Icon } from "./icons";
-import { ImageEl, imageShows, isIllustration, Paras, rootProps, Txt } from "./parts";
+import { ImageEl, imageShows, isIllustration, isTemplateStarter, Paras, rootProps, Txt } from "./parts";
 import type { ElementProps } from "./ctx";
 
 type S = (v: unknown) => string;
@@ -35,7 +35,7 @@ export function ImageNode({ el, ctx, p, index }: ElementProps & { index?: number
   const overlay = parseInt(s(p.overlay) || "0", 10);
   const root = rootProps(el, ctx, "iq-img", index);
   return (
-    <figure {...root} data-frame={frame} data-aspect={aspect} {...(isIllustration(src) ? { "data-illustration": "" } : {})}>
+    <figure {...root} data-frame={frame} data-aspect={aspect} {...(isIllustration(src) ? { "data-illustration": "" } : {})} {...(isTemplateStarter(src) ? { "data-starter-image": "" } : {})}>
       <div className="iq-img-in">
         <ImageEl ctx={ctx} o={{ src, alt: s(p.alt), fit: s(p.fit) === "contain" ? "contain" : "cover", posX: n(p.posX, 50), posY: n(p.posY, 50), priority: p.priority === true, sizes: "(max-width: 768px) 100vw, 50vw", className: "iq-fill" }} />
         {overlay > 0 && <span className="iq-tint" aria-hidden style={{ opacity: overlay / 100 }} />}

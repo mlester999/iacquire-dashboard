@@ -57,7 +57,7 @@ const summit = (ctx: TemplateCtx): Recipe => {
     header: headerBar(ctx, { tone: "dark", float: true, navStyle: "minimal", pad: "m" }),
     footer: footerColumns(ctx, { tone: "dark" }),
     home: compact([
-      heroFull(ctx, { image: art("skyline", "dark", 1), eyebrow: ctx.has.areas ? `${ctx.d.areas![0]} · Established practice` : "Established practice", size: "7xl", overlay: { opacity: 62, dir: "left" }, align: "start", valign: "center", ctaVariant: ["primary", "outline"], minH: "90",
+      heroFull(ctx, { image: art("skyline", "dark", 1), eyebrow: ctx.has.areas ? `${ctx.d.areas![0]} · Advisory practice` : "Advisory practice", size: "7xl", overlay: { opacity: 62, dir: "left" }, align: "start", valign: "center", ctaVariant: ["primary", "outline"], minH: "75",
         after: ctx.has.stats ? [b.el("stats", { style: "lines", items: ctx.d.stats!.slice(0, 3).map((s) => ({ value: s.value, prefix: "", suffix: s.suffix ?? "", label: s.label })), countUp: false }, { style: { mt: "l" } })] : [] }),
       introSection(ctx, { layout: "two", eyebrow: "The firm", title: "Considered advice, delivered personally.", size: "4xl" }),
       services,

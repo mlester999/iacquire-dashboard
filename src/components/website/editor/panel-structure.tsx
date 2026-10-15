@@ -10,7 +10,8 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from 
 import { ELEMENT_DEFS, type ElementType } from "@/lib/website/catalog";
 import { LIMITS, isRef, type ElementNode, type Section, type SiteContent } from "@/lib/website/doc";
 import { PAGE_STARTERS, pageStarter, type PageStarterKind } from "@/lib/website/editor/library";
-import { addPage, describeNode, duplicatePage, movePage, removeNode, setHomePage, updatePage } from "@/lib/website/ops";
+import { addPage, ancestors, describeNode, duplicatePage, movePage, removeNode, setHomePage, updatePage } from "@/lib/website/ops";
+import { layerCommand } from "@/lib/website/editor/interaction";
 import { cn } from "@/lib/utils";
 import type { CanvasActions } from "./canvas";
 import { IconButton, Row, SelectControl, TextControl } from "./controls";
@@ -177,23 +178,42 @@ function rowsFor(doc: SiteContent, pageId: string, collapsed: Set<string>): Row[
 
 export function LayersPanel({ doc, pageId, selection, actions }: { doc: SiteContent; pageId: string; selection: string | null; actions: CanvasActions }) {
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
-  const rows = React.useMemo(() => rowsFor(doc, pageId, collapsed), [doc, pageId, collapsed]);
-  const toggle = (id: string) => setCollapsed((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Selecting on the canvas reveals the complete layer path even if its
+  // ancestors were collapsed. The user's other collapsed branches stay closed.
+  const selectedParents = React.useMemo(() => new Set(selection ? ancestors(doc, selection).filter((n) => n.id !== selection).map((n) => n.id) : []), [doc, selection]);
+  const effectiveCollapsed = React.useMemo(() => new Set([...collapsed].filter((id) => !selectedParents.has(id))), [collapsed, selectedParents]);
+  const rows = React.useMemo(() => rowsFor(doc, pageId, effectiveCollapsed), [doc, pageId, effectiveCollapsed]);
+  const toggle = (id: string) => {
+    if (selectedParents.has(id)) actions.select(id);
+    setCollapsed((c) => { const n = new Set(c); if (effectiveCollapsed.has(id)) n.delete(id); else n.add(id); return n; });
+  };
   // Make sure the selected item is visible in the tree.
   const listRef = React.useRef<HTMLUListElement>(null);
   React.useEffect(() => {
     listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selection]);
   const onKey = (e: React.KeyboardEvent, i: number) => {
+    if ((e.target as HTMLElement).closest("button") && e.target !== e.currentTarget) return;
     const r = rows[i];
-    if (e.key === "ArrowDown") { e.preventDefault(); (listRef.current?.querySelectorAll<HTMLElement>("[role=treeitem]")[i + 1])?.focus(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); (listRef.current?.querySelectorAll<HTMLElement>("[role=treeitem]")[i - 1])?.focus(); }
-    else if (e.key === "ArrowRight" && r.hasChildren && collapsed.has(r.id)) { e.preventDefault(); toggle(r.id); }
-    else if (e.key === "ArrowLeft" && r.hasChildren && !collapsed.has(r.id)) { e.preventDefault(); toggle(r.id); }
-    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); actions.select(r.id); }
-    else if (e.altKey && e.key === "ArrowUp" && r.kind !== "header" && r.kind !== "footer") { e.preventDefault(); actions.nudge(r.actOn, -1); }
-    else if (e.altKey && e.key === "ArrowDown" && r.kind !== "header" && r.kind !== "footer") { e.preventDefault(); actions.nudge(r.actOn, 1); }
-    else if (e.key === "Delete") { e.preventDefault(); actions.remove(r.actOn); }
+    const command = layerCommand(e.key, e.altKey);
+    if (!command) return;
+    e.preventDefault();
+    const treeItems = listRef.current?.querySelectorAll<HTMLElement>("[role=treeitem]");
+    const movable = r.kind !== "header" && r.kind !== "footer";
+    if (command === "move-up" && movable) actions.nudge(r.actOn, -1);
+    else if (command === "move-down" && movable) actions.nudge(r.actOn, 1);
+    else if (command === "previous") treeItems?.[i - 1]?.focus();
+    else if (command === "next") treeItems?.[i + 1]?.focus();
+    else if (command === "first") treeItems?.[0]?.focus();
+    else if (command === "last") treeItems?.[treeItems.length - 1]?.focus();
+    else if (command === "expand" && r.hasChildren && effectiveCollapsed.has(r.id)) toggle(r.id);
+    else if (command === "expand" && r.hasChildren) treeItems?.[i + 1]?.focus();
+    else if (command === "collapse" && r.hasChildren && !effectiveCollapsed.has(r.id)) toggle(r.id);
+    else if (command === "collapse") {
+      const parent = rows.slice(0, i).findLastIndex((candidate) => candidate.depth < r.depth);
+      if (parent >= 0) treeItems?.[parent]?.focus();
+    } else if (command === "select") actions.select(r.id);
+    else if (command === "remove" && movable) actions.remove(r.actOn);
   };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -204,10 +224,10 @@ export function LayersPanel({ doc, pageId, selection, actions }: { doc: SiteCont
           const movable = r.kind !== "header" && r.kind !== "footer";
           return (
             <li key={`${r.id}-${i}`} role="none">
-              <div role="treeitem" aria-selected={on} aria-level={r.depth + 1} tabIndex={0} onKeyDown={(e) => onKey(e, i)} onClick={() => actions.select(r.id)}
+              <div role="treeitem" aria-label={r.label} aria-selected={on} aria-level={r.depth + 1} aria-expanded={r.hasChildren ? !effectiveCollapsed.has(r.id) : undefined} tabIndex={0} onKeyDown={(e) => onKey(e, i)} onClick={() => actions.select(r.id)}
                 className={cn("group flex h-8 cursor-default items-center gap-1 rounded-lg pr-1 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-primary", on ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2")} style={{ paddingLeft: 4 + r.depth * 14 }}>
                 {r.hasChildren ? (
-                  <button type="button" tabIndex={-1} aria-label={collapsed.has(r.id) ? "Expand" : "Collapse"} onClick={(e) => { e.stopPropagation(); toggle(r.id); }} className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-surface-3"><ChevronRight className={cn("size-3 transition-transform", !collapsed.has(r.id) && "rotate-90")} /></button>
+                  <button type="button" tabIndex={-1} aria-label={effectiveCollapsed.has(r.id) ? "Expand" : "Collapse"} onClick={(e) => { e.stopPropagation(); toggle(r.id); }} className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-surface-3"><ChevronRight className={cn("size-3 transition-transform", !effectiveCollapsed.has(r.id) && "rotate-90")} /></button>
                 ) : <span className="size-5 shrink-0" />}
                 <r.icon className="size-3.5 shrink-0 opacity-70" />
                 <span className={cn("min-w-0 flex-1 truncate", r.hidden && "opacity-50 line-through")}>{r.label}</span>
@@ -216,10 +236,17 @@ export function LayersPanel({ doc, pageId, selection, actions }: { doc: SiteCont
                   <span className="flex shrink-0">
                     <IconButton label="Move up" onClick={(e) => { e.stopPropagation(); actions.nudge(r.actOn, -1); }} className="size-6"><ArrowUp className="size-3" /></IconButton>
                     <IconButton label="Move down" onClick={(e) => { e.stopPropagation(); actions.nudge(r.actOn, 1); }} className="size-6"><ArrowDown className="size-3" /></IconButton>
-                    {r.kind === "element" && <IconButton label="Move out of its container" onClick={(e) => { e.stopPropagation(); actions.nudgeAcross(r.actOn, -1); }} className="size-6"><CornerLeftUp className="size-3" /></IconButton>}
-                    {r.kind === "element" && <IconButton label="Move into the next container" onClick={(e) => { e.stopPropagation(); actions.nudgeAcross(r.actOn, 1); }} className="size-6"><CornerRightDown className="size-3" /></IconButton>}
-                    <IconButton label="Duplicate" onClick={(e) => { e.stopPropagation(); actions.duplicate(r.actOn); }} className="size-6"><Copy className="size-3" /></IconButton>
-                    <IconButton label="Delete" onClick={(e) => { e.stopPropagation(); actions.remove(r.actOn); }} className="size-6"><Trash2 className="size-3" /></IconButton>
+                    <Menu>
+                      <MenuTrigger asChild><button type="button" aria-label={`Options for ${r.label}`} onClick={(e) => e.stopPropagation()} className="flex size-6 items-center justify-center rounded-lg hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-primary"><MoreHorizontal className="size-3.5" /></button></MenuTrigger>
+                      <MenuContent align="end">
+                        {r.kind === "element" && <MenuItem onSelect={() => actions.nudgeAcross(r.actOn, -1)}><CornerLeftUp className="size-3.5" /> Move out of container</MenuItem>}
+                        {r.kind === "element" && <MenuItem onSelect={() => actions.nudgeAcross(r.actOn, 1)}><CornerRightDown className="size-3.5" /> Move to next container</MenuItem>}
+                        {r.kind === "section" && <MenuItem onSelect={() => actions.toggleHidden(r.id)}><EyeOff className="size-3.5" /> {r.hidden ? "Show section" : "Hide section"}</MenuItem>}
+                        <MenuItem onSelect={() => actions.duplicate(r.actOn)}><Copy className="size-3.5" /> Duplicate</MenuItem>
+                        <MenuSeparator />
+                        <MenuItem destructive onSelect={() => actions.remove(r.actOn)}><Trash2 className="size-3.5" /> Delete</MenuItem>
+                      </MenuContent>
+                    </Menu>
                   </span>
                 )}
               </div>

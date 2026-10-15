@@ -5,7 +5,9 @@ import type { ElementNode, ImageSrc } from "@/lib/website/doc";
 import { isExternalHref } from "@/lib/website/doc";
 import { parseInline, paragraphs, type Inline } from "@/lib/website/markup";
 import { Art } from "./art";
+import { SafeImage } from "./safe-image";
 import { nodeAttrs, type RenderCtx } from "./ctx";
+import { templateImageUrl } from "@/lib/website/template-image-assets";
 
 // ---------------------------------------------------------------------------
 // Text
@@ -114,38 +116,46 @@ export function ImageEl({ ctx, o }: { ctx: RenderCtx; o: ImageOpts }) {
   if (src && src.kind === "art") {
     return <Art scene={src.scene} tone={src.tone} seed={src.seed} posX={posX} posY={posY} className={["iq-art", className].filter(Boolean).join(" ")} />;
   }
+  if (src && src.kind === "template") {
+    const url = templateImageUrl(src.id);
+    return <SafeImage key={url} src={url} alt={alt} width={1440} height={860} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes} className={["iq-photo", className].filter(Boolean).join(" ")} style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }} />;
+  }
   if (src && src.kind === "asset") {
     const a = ctx.resolveAsset(src.id);
     if (a) {
+      const fallbackSrc = src.default ? templateImageUrl(src.default.id) : undefined;
       return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={a.src} srcSet={a.srcSet} width={a.width ?? undefined} height={a.height ?? undefined} alt={alt || a.alt || ""}
+        <SafeImage key={`${a.src}:${fallbackSrc ?? ""}`} src={a.src} fallbackSrc={fallbackSrc} srcSet={a.srcSet} width={a.width ?? undefined} height={a.height ?? undefined} alt={alt || a.alt || ""}
           loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={a.srcSet ? (sizes ?? "100vw") : sizes}
           className={["iq-photo", className].filter(Boolean).join(" ")}
           style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }}
         />
       );
     }
+    if (src.default) {
+      const url = templateImageUrl(src.default.id);
+      return <SafeImage key={url} src={url} alt={alt} width={1440} height={860} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes} className={["iq-photo", className].filter(Boolean).join(" ")} style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }} />;
+    }
   }
-  if (ctx.mode === "published") return null;
+  if (ctx.mode !== "edit") return null;
   return <div className={["iq-ph", className].filter(Boolean).join(" ")} role="img" aria-label={placeholder ?? "Image placeholder"}><span>{placeholder ?? "Add an image"}</span></div>;
 }
 
 /** Whether an image source will draw anything on a live page. */
 export function imageShows(ctx: RenderCtx, src: ImageSrc): boolean {
   if (!src) return false;
-  if (src.kind === "art") return true;
-  return ctx.resolveAsset(src.id) !== null;
+  if (src.kind === "art" || src.kind === "template") return true;
+  return ctx.resolveAsset(src.id) !== null || Boolean(src.default);
 }
 
 export const isIllustration = (src: ImageSrc) => Boolean(src && src.kind === "art" && artKind(src.scene) === "illustration");
+export const isTemplateStarter = (src: ImageSrc) => Boolean(src && src.kind === "template");
 
 /** An image used as a background fills its parent and is never announced. */
-export function BgImage({ ctx, src, posX, posY, parallax }: { ctx: RenderCtx; src: ImageSrc; posX: number; posY: number; parallax: boolean }) {
+export function BgImage({ ctx, src, posX, posY, parallax, strength = 100 }: { ctx: RenderCtx; src: ImageSrc; posX: number; posY: number; parallax: boolean; strength?: number }) {
   if (!imageShows(ctx, src)) return null;
   return (
-    <div className="iq-bgimg" aria-hidden data-parallax={parallax ? "" : undefined} {...(isIllustration(src) ? { "data-illustration": "" } : {})}>
+    <div className="iq-bgimg" aria-hidden data-parallax={parallax ? "" : undefined} {...(isIllustration(src) ? { "data-illustration": "" } : {})} {...(isTemplateStarter(src) ? { "data-starter-image": "" } : {})} style={{ opacity: strength / 100 }}>
       <ImageEl ctx={ctx} o={{ src, alt: "", posX, posY, className: "iq-fill", sizes: "100vw" }} />
     </div>
   );

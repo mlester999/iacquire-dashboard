@@ -10,7 +10,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   // Isolated local visual QA must not overwrite the running application's build output.
-  distDir: process.env.NODE_ENV !== "production" && process.env.IAQ_DIST_DIR?.startsWith(".next-") ? process.env.IAQ_DIST_DIR : process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production" ? ".next-ui-qa" : ".next",
+  distDir: process.env.IAQ_DIST_DIR?.startsWith(".next-") ? process.env.IAQ_DIST_DIR : process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production" ? ".next-ui-qa" : ".next",
   poweredByHeader: false,
   // DATABASE_SSL_CA_FILE is read through an environment-derived filesystem path, so the static
   // tracer cannot discover it from fs.readFileSync. Keep the public root CA in every Node function.
@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
       // Website previews are drawn inside an iframe on a portal page (same origin only), which keeps a site's styles away from the editor.
       { source: "/frame/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
       { source: "/dev/frame/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+      { source: "/website-thumbnails/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
     ];
   },
 };

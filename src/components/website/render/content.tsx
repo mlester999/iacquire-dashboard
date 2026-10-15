@@ -3,7 +3,7 @@ import { isExternalHref, pagePath, type ImageSrc } from "@/lib/website/doc";
 import { Icon, SocialIcon } from "./icons";
 import { CountUp, VideoFacade } from "./islands";
 import { Art } from "./art";
-import { displayPhone, ImageEl, imageShows, isIllustration, pad2, Paras, rootProps, telHref, Txt } from "./parts";
+import { displayPhone, ImageEl, imageShows, isIllustration, isTemplateStarter, pad2, Paras, rootProps, telHref, Txt } from "./parts";
 import { Inline_ } from "./parts";
 import type { ElementProps, RenderCtx } from "./ctx";
 
@@ -12,7 +12,7 @@ const list = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 type P = ElementProps & { index?: number };
 
 function Empty({ el, ctx, index, label }: { el: P["el"]; ctx: RenderCtx; index?: number; label: string }) {
-  if (ctx.mode === "published") return null;
+  if (ctx.mode !== "edit") return null;
   return <div {...rootProps(el, ctx, "iq-empty-el", index)}>{label}</div>;
 }
 
@@ -42,7 +42,7 @@ export function Services({ el, ctx, p, index }: P) {
       {items.map((it, i) => (
         <article key={i} className="iq-svc" data-i={i % 12}>
           {showImage && imageShows(ctx, it.image) && (
-            <div className="iq-svc-img" {...(isIllustration(it.image) ? { "data-illustration": "" } : {})}>
+            <div className="iq-svc-img" {...(isIllustration(it.image) ? { "data-illustration": "" } : {})} {...(isTemplateStarter(it.image) ? { "data-starter-image": "" } : {})}>
               <ImageEl ctx={ctx} o={{ src: it.image, alt: "", className: "iq-fill", sizes: "(max-width: 768px) 100vw, 40vw" }} />
             </div>
           )}
@@ -258,7 +258,7 @@ export function Gallery({ el, ctx, p, index }: P) {
   return (
     <div {...rootProps(el, ctx, "iq-gal", index)} {...(layout === "strip" && ctx.mode !== "edit" ? { tabIndex: 0, role: "region", "aria-label": "Gallery. Scrolls sideways; use the arrow keys." } : {})} data-layout={layout} data-cols={s(p.cols) || "3"} data-gap={s(p.gap) || "s"} style={{ ...((rootProps(el, ctx, "", index).style as object) ?? {}), "--ar": aspect === "auto" ? "4 / 3" : aspect.replace("/", " / ") } as React.CSSProperties}>
       {items.map((it, i) => (
-        <figure key={i} className="iq-gi" data-i={i % 9} style={layout === "mosaic" && i === items.length - 1 && i > 0 ? { gridColumn: `span ${mosaicTail(items.length)}` } : undefined} {...(isIllustration(it.src) ? { "data-illustration": "" } : {})}>
+        <figure key={i} className="iq-gi" data-i={i % 9} style={layout === "mosaic" && i === items.length - 1 && i > 0 ? { gridColumn: `span ${mosaicTail(items.length)}` } : undefined} {...(isIllustration(it.src) ? { "data-illustration": "" } : {})} {...(isTemplateStarter(it.src) ? { "data-starter-image": "" } : {})}>
           <div className="iq-gi-in"><ImageEl ctx={ctx} o={{ src: it.src, alt: it.alt || it.caption, className: "iq-fill", sizes: "(max-width: 768px) 80vw, 33vw" }} /></div>
           {(it.caption || ctx.edit) && <Txt ctx={ctx} id={el.id} path={`items.${i}.caption`} value={it.caption} as="figcaption" className="iq-cap" plain placeholder="Caption" />}
         </figure>
@@ -273,7 +273,7 @@ export function Collage({ el, ctx, p, index }: P) {
   return (
     <div {...rootProps(el, ctx, "iq-collage", index)} data-layout={s(p.layout) || "trio"} data-n={items.length}>
       {items.map((it, i) => (
-        <div key={i} className="iq-ci" data-i={i} {...(isIllustration(it.src) ? { "data-illustration": "" } : {})}>
+        <div key={i} className="iq-ci" data-i={i} {...(isIllustration(it.src) ? { "data-illustration": "" } : {})} {...(isTemplateStarter(it.src) ? { "data-starter-image": "" } : {})}>
           <ImageEl ctx={ctx} o={{ src: it.src, alt: it.alt, className: "iq-fill", sizes: "(max-width: 768px) 70vw, 30vw", priority: i === 0 }} />
         </div>
       ))}

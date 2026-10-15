@@ -1,0 +1,410 @@
+{
+  "rendererRevision": "studio-2026-10-15-v2",
+  "rendererHash": "bffeae46ee468612d5a00dfda311c6d32e0a3a7530ffe89a56c4fe91163c3a00",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "templates": {
+    "luxe.maison": {
+      "src": "/website-thumbnails/luxe.maison.f62156f2b7c7.bffeae46.webp",
+      "srcSet": "/website-thumbnails/luxe.maison.f62156f2b7c7.bffeae46.webp 720w, /website-thumbnails/luxe.maison.f62156f2b7c7.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "f62156f2b7c7fa5b5197da9a8302d21125ca7a570d2dded4294a3fed6985e5fe",
+      "version": 2
+    },
+    "luxe.atelier": {
+      "src": "/website-thumbnails/luxe.atelier.2960a58e73ad.bffeae46.webp",
+      "srcSet": "/website-thumbnails/luxe.atelier.2960a58e73ad.bffeae46.webp 720w, /website-thumbnails/luxe.atelier.2960a58e73ad.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "2960a58e73ad2d6e8035faaa6caa57f5c9c8c431c907cd961e9b079ecdd92289",
+      "version": 2
+    },
+    "luxe.noir": {
+      "src": "/website-thumbnails/luxe.noir.78bba71a6769.bffeae46.webp",
+      "srcSet": "/website-thumbnails/luxe.noir.78bba71a6769.bffeae46.webp 720w, /website-thumbnails/luxe.noir.78bba71a6769.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "78bba71a6769878bdb8cff37ab74ce5f7ac259936a88892f6bdf5f024231aa4d",
+      "version": 2
+    },
+    "luxe.gallery": {
+      "src": "/website-thumbnails/luxe.gallery.b928d209baa3.bffeae46.webp",
+      "srcSet": "/website-thumbnails/luxe.gallery.b928d209baa3.bffeae46.webp 720w, /website-thumbnails/luxe.gallery.b928d209baa3.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "b928d209baa34a2fd4deaa2cd8ceb7c5eed4b7eec4921843aa0126d9ce857b42",
+      "version": 2
+    },
+    "luxe.salon": {
+      "src": "/website-thumbnails/luxe.salon.a68c093a71ea.bffeae46.webp",
+      "srcSet": "/website-thumbnails/luxe.salon.a68c093a71ea.bffeae46.webp 720w, /website-thumbnails/luxe.salon.a68c093a71ea.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "a68c093a71eaa39df3cb7712d0072a88430b415e727e7f2748b267227d329b4e",
+      "version": 2
+    },
+    "tech.nova": {
+      "src": "/website-thumbnails/tech.nova.49931eee74aa.bffeae46.webp",
+      "srcSet": "/website-thumbnails/tech.nova.49931eee74aa.bffeae46.webp 720w, /website-thumbnails/tech.nova.49931eee74aa.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "49931eee74aa3665854c9616ce20a1f2929638788464962f162ba5aab1fbd71e",
+      "version": 2
+    },
+    "tech.lattice": {
+      "src": "/website-thumbnails/tech.lattice.c1fced8e20e6.bffeae46.webp",
+      "srcSet": "/website-thumbnails/tech.lattice.c1fced8e20e6.bffeae46.webp 720w, /website-thumbnails/tech.lattice.c1fced8e20e6.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "c1fced8e20e6d0acab629ca6638601043e9677554163fdcae76da887b261fefb",
+      "version": 2
+    },
+    "tech.vector": {
+      "src": "/website-thumbnails/tech.vector.55aef47f6b02.bffeae46.webp",
+      "srcSet": "/website-thumbnails/tech.vector.55aef47f6b02.bffeae46.webp 720w, /website-thumbnails/tech.vector.55aef47f6b02.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "55aef47f6b02dc1c7374bed48e2758f993ceae7ca87ad080a92ef5b3ddb86e8f",
+      "version": 2
+    },
+    "tech.signal": {
+      "src": "/website-thumbnails/tech.signal.a968b6034989.bffeae46.webp",
+      "srcSet": "/website-thumbnails/tech.signal.a968b6034989.bffeae46.webp 720w, /website-thumbnails/tech.signal.a968b6034989.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "a968b6034989dde21e7361d71eada65b33b68be7cd8321a35700bea9fc5ba419",
+      "version": 2
+    },
+    "tech.orbit": {
+      "src": "/website-thumbnails/tech.orbit.2adef690c75c.bffeae46.webp",
+      "srcSet": "/website-thumbnails/tech.orbit.2adef690c75c.bffeae46.webp 720w, /website-thumbnails/tech.orbit.2adef690c75c.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "2adef690c75c787b8812e9c1cc8024174786795709d192cb24e0c08ec08b6299",
+      "version": 2
+    },
+    "bold.riot": {
+      "src": "/website-thumbnails/bold.riot.e8c3218b6eb0.bffeae46.webp",
+      "srcSet": "/website-thumbnails/bold.riot.e8c3218b6eb0.bffeae46.webp 720w, /website-thumbnails/bold.riot.e8c3218b6eb0.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "e8c3218b6eb06485bfdadbf9daca793a7128356aed837c2ddc3383df385cbe6b",
+      "version": 2
+    },
+    "bold.pop": {
+      "src": "/website-thumbnails/bold.pop.bca0481a5412.bffeae46.webp",
+      "srcSet": "/website-thumbnails/bold.pop.bca0481a5412.bffeae46.webp 720w, /website-thumbnails/bold.pop.bca0481a5412.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "bca0481a541207cb41539de92226fd301fa140536dd53cebb7006ebca210d326",
+      "version": 2
+    },
+    "bold.brutal": {
+      "src": "/website-thumbnails/bold.brutal.32e044f796f8.bffeae46.webp",
+      "srcSet": "/website-thumbnails/bold.brutal.32e044f796f8.bffeae46.webp 720w, /website-thumbnails/bold.brutal.32e044f796f8.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "32e044f796f81b17e8b43962d626a0a5f911339e0842854411aae19548804cf0",
+      "version": 2
+    },
+    "bold.kinetic": {
+      "src": "/website-thumbnails/bold.kinetic.b47f63b37a27.bffeae46.webp",
+      "srcSet": "/website-thumbnails/bold.kinetic.b47f63b37a27.bffeae46.webp 720w, /website-thumbnails/bold.kinetic.b47f63b37a27.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "b47f63b37a275a372412c121cf979a315629d6442eca913185f7c5020d19a284",
+      "version": 2
+    },
+    "bold.collage": {
+      "src": "/website-thumbnails/bold.collage.9fb1ef0a3f16.bffeae46.webp",
+      "srcSet": "/website-thumbnails/bold.collage.9fb1ef0a3f16.bffeae46.webp 720w, /website-thumbnails/bold.collage.9fb1ef0a3f16.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "9fb1ef0a3f16c1248e4c02d94fe4dac533be3aec68e21922b9d6595ea2a310bb",
+      "version": 2
+    },
+    "corp.charter": {
+      "src": "/website-thumbnails/corp.charter.fc9cd9824200.bffeae46.webp",
+      "srcSet": "/website-thumbnails/corp.charter.fc9cd9824200.bffeae46.webp 720w, /website-thumbnails/corp.charter.fc9cd9824200.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "fc9cd9824200889d72a4e9479fbe2c9a9a58ce6d0565492f2cd1ecd69935ee52",
+      "version": 2
+    },
+    "corp.summit": {
+      "src": "/website-thumbnails/corp.summit.c583ebdcc257.bffeae46.webp",
+      "srcSet": "/website-thumbnails/corp.summit.c583ebdcc257.bffeae46.webp 720w, /website-thumbnails/corp.summit.c583ebdcc257.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "c583ebdcc25722c2c78cdba17ed147dc093cef3887425d540939ae33c3f7f746",
+      "version": 2
+    },
+    "corp.ledger": {
+      "src": "/website-thumbnails/corp.ledger.93f7d146d39d.bffeae46.webp",
+      "srcSet": "/website-thumbnails/corp.ledger.93f7d146d39d.bffeae46.webp 720w, /website-thumbnails/corp.ledger.93f7d146d39d.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "93f7d146d39d6777008f90059b7ae67487e1a558c09ba0ea643b1ef9b10020a5",
+      "version": 2
+    },
+    "corp.atlas": {
+      "src": "/website-thumbnails/corp.atlas.dd579488ee60.bffeae46.webp",
+      "srcSet": "/website-thumbnails/corp.atlas.dd579488ee60.bffeae46.webp 720w, /website-thumbnails/corp.atlas.dd579488ee60.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "dd579488ee604bf4cff67c0f7ca89722c3332b08f11da90056cd48d9888acfd5",
+      "version": 2
+    },
+    "corp.forum": {
+      "src": "/website-thumbnails/corp.forum.0247d2ea56a5.bffeae46.webp",
+      "srcSet": "/website-thumbnails/corp.forum.0247d2ea56a5.bffeae46.webp 720w, /website-thumbnails/corp.forum.0247d2ea56a5.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "0247d2ea56a592f36b46f06549eaf63e43addfb1cbe45ea649c27d64e56daec8",
+      "version": 2
+    },
+    "minimal.quiet": {
+      "src": "/website-thumbnails/minimal.quiet.f6f7d9bf8492.bffeae46.webp",
+      "srcSet": "/website-thumbnails/minimal.quiet.f6f7d9bf8492.bffeae46.webp 720w, /website-thumbnails/minimal.quiet.f6f7d9bf8492.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "f6f7d9bf8492d00e271d249e42f7449dedc0047f388fe6e5f4ff8c6e6e691250",
+      "version": 2
+    },
+    "minimal.frame": {
+      "src": "/website-thumbnails/minimal.frame.6822adbecbd8.bffeae46.webp",
+      "srcSet": "/website-thumbnails/minimal.frame.6822adbecbd8.bffeae46.webp 720w, /website-thumbnails/minimal.frame.6822adbecbd8.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "6822adbecbd8d0fde6c7a8e94f013bcf202df0984962712a3a1a4a669f81a08f",
+      "version": 2
+    },
+    "minimal.index": {
+      "src": "/website-thumbnails/minimal.index.14c8e80c04f0.bffeae46.webp",
+      "srcSet": "/website-thumbnails/minimal.index.14c8e80c04f0.bffeae46.webp 720w, /website-thumbnails/minimal.index.14c8e80c04f0.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "14c8e80c04f0cb063edeaf5e7fb76caebdf6a1c20cea50eab7a6032c57c1788b",
+      "version": 2
+    },
+    "minimal.paper": {
+      "src": "/website-thumbnails/minimal.paper.814298d6c417.bffeae46.webp",
+      "srcSet": "/website-thumbnails/minimal.paper.814298d6c417.bffeae46.webp 720w, /website-thumbnails/minimal.paper.814298d6c417.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "814298d6c4174a5bd7311caa6943cd37d131a3d41dad530c820eed17d0ae12d1",
+      "version": 2
+    },
+    "minimal.mono": {
+      "src": "/website-thumbnails/minimal.mono.f5111ead44cc.bffeae46.webp",
+      "srcSet": "/website-thumbnails/minimal.mono.f5111ead44cc.bffeae46.webp 720w, /website-thumbnails/minimal.mono.f5111ead44cc.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "f5111ead44cce4e87f0d30f1b84579bfef8d26aff56178c473a04f518c8ff204",
+      "version": 2
+    },
+    "local.corner": {
+      "src": "/website-thumbnails/local.corner.145761556454.bffeae46.webp",
+      "srcSet": "/website-thumbnails/local.corner.145761556454.bffeae46.webp 720w, /website-thumbnails/local.corner.145761556454.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "14576155645406f4a7237e179cf3a24e4358552e0e9a9e5598bf6de00297a239",
+      "version": 2
+    },
+    "local.dispatch": {
+      "src": "/website-thumbnails/local.dispatch.acf28d28edfe.bffeae46.webp",
+      "srcSet": "/website-thumbnails/local.dispatch.acf28d28edfe.bffeae46.webp 720w, /website-thumbnails/local.dispatch.acf28d28edfe.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "acf28d28edfe504f1e6b92112c813bea137ccafd2c157b145497c5d040fba902",
+      "version": 2
+    },
+    "local.crew": {
+      "src": "/website-thumbnails/local.crew.ad39376da0e3.bffeae46.webp",
+      "srcSet": "/website-thumbnails/local.crew.ad39376da0e3.bffeae46.webp 720w, /website-thumbnails/local.crew.ad39376da0e3.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "ad39376da0e3410cbe27e973652f422df75777ed36caef9428a9084fd0729fc4",
+      "version": 2
+    },
+    "local.neighbor": {
+      "src": "/website-thumbnails/local.neighbor.5707dfb7a8f4.bffeae46.webp",
+      "srcSet": "/website-thumbnails/local.neighbor.5707dfb7a8f4.bffeae46.webp 720w, /website-thumbnails/local.neighbor.5707dfb7a8f4.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "5707dfb7a8f4fe3a582033f21dfb707c29bda58c4cedc3686b51644e16702192",
+      "version": 2
+    },
+    "local.rapid": {
+      "src": "/website-thumbnails/local.rapid.ec6001ac7a96.bffeae46.webp",
+      "srcSet": "/website-thumbnails/local.rapid.ec6001ac7a96.bffeae46.webp 720w, /website-thumbnails/local.rapid.ec6001ac7a96.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "ec6001ac7a966531b4f5f0e713c34561d29985fb7c6f061f8f66383fc622a140",
+      "version": 2
+    },
+    "care.haven": {
+      "src": "/website-thumbnails/care.haven.eae7df7c203a.bffeae46.webp",
+      "srcSet": "/website-thumbnails/care.haven.eae7df7c203a.bffeae46.webp 720w, /website-thumbnails/care.haven.eae7df7c203a.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "eae7df7c203a40d76a11cd2519920065549b7f98d170b4a073545519c575e2af",
+      "version": 2
+    },
+    "care.clinic": {
+      "src": "/website-thumbnails/care.clinic.484b56d464f8.bffeae46.webp",
+      "srcSet": "/website-thumbnails/care.clinic.484b56d464f8.bffeae46.webp 720w, /website-thumbnails/care.clinic.484b56d464f8.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "484b56d464f8814bedc9f9f47f24e2570628a2887871d7279dad1f13f34e734a",
+      "version": 2
+    },
+    "care.bloom": {
+      "src": "/website-thumbnails/care.bloom.630d8ed66c94.bffeae46.webp",
+      "srcSet": "/website-thumbnails/care.bloom.630d8ed66c94.bffeae46.webp 720w, /website-thumbnails/care.bloom.630d8ed66c94.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "630d8ed66c941cf8d3cb972e9b44e27ec7b8a5af2be161ea553ca5ec33c4d59a",
+      "version": 2
+    },
+    "care.serene": {
+      "src": "/website-thumbnails/care.serene.9acb79bcee7b.bffeae46.webp",
+      "srcSet": "/website-thumbnails/care.serene.9acb79bcee7b.bffeae46.webp 720w, /website-thumbnails/care.serene.9acb79bcee7b.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "9acb79bcee7b8cc0fef168e87c5f34793cc101f89e25a976ea9da88446ff1473",
+      "version": 2
+    },
+    "care.family": {
+      "src": "/website-thumbnails/care.family.3715f28346ee.bffeae46.webp",
+      "srcSet": "/website-thumbnails/care.family.3715f28346ee.bffeae46.webp 720w, /website-thumbnails/care.family.3715f28346ee.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "3715f28346eee47d38c58524d72bfb626f3ea3c184ba13cb450256e04b71bb6d",
+      "version": 2
+    },
+    "meridian.estate": {
+      "src": "/website-thumbnails/meridian.estate.29c4606f974a.bffeae46.webp",
+      "srcSet": "/website-thumbnails/meridian.estate.29c4606f974a.bffeae46.webp 720w, /website-thumbnails/meridian.estate.29c4606f974a.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "29c4606f974a3c2dbde5130b24665c35c8aaccd7ac74ac8e37c51ccec910a74e",
+      "version": 2
+    },
+    "meridian.skyline": {
+      "src": "/website-thumbnails/meridian.skyline.7734365f52b8.bffeae46.webp",
+      "srcSet": "/website-thumbnails/meridian.skyline.7734365f52b8.bffeae46.webp 720w, /website-thumbnails/meridian.skyline.7734365f52b8.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "7734365f52b8439639509f3dd8fc1b578cd445c695e97d03f27815090d247688",
+      "version": 2
+    },
+    "meridian.harbor": {
+      "src": "/website-thumbnails/meridian.harbor.e16a26b3ed54.bffeae46.webp",
+      "srcSet": "/website-thumbnails/meridian.harbor.e16a26b3ed54.bffeae46.webp 720w, /website-thumbnails/meridian.harbor.e16a26b3ed54.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "e16a26b3ed541c14f24a42046169811566d10bb586e4d504dfaec4b86acbfd93",
+      "version": 2
+    },
+    "meridian.heritage": {
+      "src": "/website-thumbnails/meridian.heritage.9163fd055cdb.bffeae46.webp",
+      "srcSet": "/website-thumbnails/meridian.heritage.9163fd055cdb.bffeae46.webp 720w, /website-thumbnails/meridian.heritage.9163fd055cdb.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "9163fd055cdbb76929f1c610a9ed14f68a1d20244ff4cf6d0e9a028d1a44c4a9",
+      "version": 2
+    },
+    "meridian.metro": {
+      "src": "/website-thumbnails/meridian.metro.3b8b426e9bd3.bffeae46.webp",
+      "srcSet": "/website-thumbnails/meridian.metro.3b8b426e9bd3.bffeae46.webp 720w, /website-thumbnails/meridian.metro.3b8b426e9bd3.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "3b8b426e9bd3b333f7dd5a06bc15b9f8974c31b315d4579ffe647f002f0331c3",
+      "version": 2
+    },
+    "host.terrace": {
+      "src": "/website-thumbnails/host.terrace.fdcd48c91af0.bffeae46.webp",
+      "srcSet": "/website-thumbnails/host.terrace.fdcd48c91af0.bffeae46.webp 720w, /website-thumbnails/host.terrace.fdcd48c91af0.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "fdcd48c91af05633da5a05f6d868196c60974f13fcb759ddd12cec7c9eb25f9c",
+      "version": 2
+    },
+    "host.cellar": {
+      "src": "/website-thumbnails/host.cellar.9047c0e8311f.bffeae46.webp",
+      "srcSet": "/website-thumbnails/host.cellar.9047c0e8311f.bffeae46.webp 720w, /website-thumbnails/host.cellar.9047c0e8311f.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "9047c0e8311f3d77b9b0b9aed7283cb004b42ab258997221958d083adf95e57d",
+      "version": 2
+    },
+    "host.bistro": {
+      "src": "/website-thumbnails/host.bistro.d518906be873.bffeae46.webp",
+      "srcSet": "/website-thumbnails/host.bistro.d518906be873.bffeae46.webp 720w, /website-thumbnails/host.bistro.d518906be873.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "d518906be873e902e4130225432c0e3b77c995353830df52f6323721dd786e1e",
+      "version": 2
+    },
+    "host.resort": {
+      "src": "/website-thumbnails/host.resort.53d200bda505.bffeae46.webp",
+      "srcSet": "/website-thumbnails/host.resort.53d200bda505.bffeae46.webp 720w, /website-thumbnails/host.resort.53d200bda505.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "53d200bda505e69d65b6efa18b08235cbdc6a747e8b2d0f88a97154b39dfaed5",
+      "version": 2
+    },
+    "host.studio": {
+      "src": "/website-thumbnails/host.studio.9edd5cca0b10.bffeae46.webp",
+      "srcSet": "/website-thumbnails/host.studio.9edd5cca0b10.bffeae46.webp 720w, /website-thumbnails/host.studio.9edd5cca0b10.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "9edd5cca0b101e326bf6c4f1b9bcd856dd4d916b4b323f18bad80a9caa6b6170",
+      "version": 2
+    },
+    "agency.thesis": {
+      "src": "/website-thumbnails/agency.thesis.005d61260ff9.bffeae46.webp",
+      "srcSet": "/website-thumbnails/agency.thesis.005d61260ff9.bffeae46.webp 720w, /website-thumbnails/agency.thesis.005d61260ff9.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "005d61260ff9e2e67cd3fdfb972b56ec0f1fa02c112e43bfcac5a330f85ebd21",
+      "version": 2
+    },
+    "agency.works": {
+      "src": "/website-thumbnails/agency.works.0a8ec2913eab.bffeae46.webp",
+      "srcSet": "/website-thumbnails/agency.works.0a8ec2913eab.bffeae46.webp 720w, /website-thumbnails/agency.works.0a8ec2913eab.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "0a8ec2913eab3338c1c963f8e877d355e70beb6ed7a8696e0759a633d34f000a",
+      "version": 2
+    },
+    "agency.method": {
+      "src": "/website-thumbnails/agency.method.4154be06b8f9.bffeae46.webp",
+      "srcSet": "/website-thumbnails/agency.method.4154be06b8f9.bffeae46.webp 720w, /website-thumbnails/agency.method.4154be06b8f9.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "4154be06b8f993ae7a66d2878e23a2e719af2ab8bcbafd95298a1c03f8462903",
+      "version": 2
+    },
+    "agency.counsel": {
+      "src": "/website-thumbnails/agency.counsel.3a15863d10f3.bffeae46.webp",
+      "srcSet": "/website-thumbnails/agency.counsel.3a15863d10f3.bffeae46.webp 720w, /website-thumbnails/agency.counsel.3a15863d10f3.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "3a15863d10f3fd60202442c0340a71d5f4306e2e9b69be2babf64c63769c23cb",
+      "version": 2
+    },
+    "agency.launch": {
+      "src": "/website-thumbnails/agency.launch.201dc363f078.bffeae46.webp",
+      "srcSet": "/website-thumbnails/agency.launch.201dc363f078.bffeae46.webp 720w, /website-thumbnails/agency.launch.201dc363f078.bffeae46@2x.webp 1080w",
+      "width": 720,
+      "height": 450,
+      "signature": "201dc363f078b79ac6d59ed66bfaab2601275c82811529dc904a914eb3977345",
+      "version": 2
+    }
+  }
+}

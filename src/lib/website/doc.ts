@@ -3,6 +3,7 @@
 // published site cannot carry anything executable by construction, and every style value comes from a fixed vocabulary.
 import { z } from "zod";
 import { ART_KEYS, ART_TONES } from "./art-keys";
+import { TEMPLATE_IMAGE_IDS } from "./template-image-assets";
 import { ELEMENT_DEFS, ELEMENT_TYPES, CONTAINER_TYPES, MAX_CONTAINER_DEPTH, ICONS, SPACES, type ElementType, type FieldSpec } from "./catalog";
 import { FONT_KEYS } from "./font-keys";
 
@@ -76,12 +77,14 @@ const hrefSchema = z.string().default("").transform((v, ctx) => {
 });
 const linkSchema = z.object({ label: textOr(60), href: hrefSchema }).default({ label: "", href: "" });
 
-// Images are either one of the owner's uploads or built-in artwork.
+// Images are an owner's upload, a generated template starter, or built-in artwork.
+const templateImageRef = z.object({ kind: z.literal("template"), id: z.enum(TEMPLATE_IMAGE_IDS), label: z.string().max(80).default("Starter image") });
 const imageSrc = z
   .union([
     z.null(),
-    z.object({ kind: z.literal("asset"), id: z.string().regex(UUID, "Choose an image from your library.") }),
-    z.object({ kind: z.literal("art"), scene: z.enum(ART_KEYS), tone: z.enum(ART_TONES).default("auto"), seed: z.number().int().min(0).max(999).default(0) }),
+    templateImageRef,
+    z.object({ kind: z.literal("asset"), id: z.string().regex(UUID, "Choose an image from your library."), default: templateImageRef.optional() }),
+    z.object({ kind: z.literal("art"), scene: z.enum(ART_KEYS), tone: z.enum(ART_TONES).default("auto"), seed: z.number().int().min(0).max(999).default(0), default: templateImageRef.optional() }),
   ])
   .default(null);
 export type ImageSrc = z.output<typeof imageSrc>;
@@ -96,7 +99,7 @@ const styleSchema = z.object({
   w: z.enum(WIDTHS).optional(),
   size: z.enum(SIZES).optional(),
   weight: z.number().int().min(100).max(900).optional(),
-  font: z.enum(["heading", "body", "accent", "mono"]).optional(),
+  font: z.enum(["heading", "body", "accent", "mono", ...FONT_KEYS]).optional(),
   ls: z.enum(LETTER_SPACINGS).optional(),
   lh: z.enum(LINE_HEIGHTS).optional(),
   transform: z.enum(["none", "uppercase"]).optional(),
@@ -150,19 +153,26 @@ export const NO_ANIM: Anim = { preset: "none", delay: 0, speed: "normal", stagge
 // Backgrounds and decoration
 // ---------------------------------------------------------------------------
 
-const bgSchema = z.discriminatedUnion("kind", [
+const bgBaseSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("none") }),
   z.object({ kind: z.literal("color"), color: colorRef }),
   z.object({ kind: z.literal("gradient"), from: colorRef, to: colorRef, via: colorRef.optional(), angle: z.number().int().min(0).max(360).default(135) }),
+  z.object({ kind: z.literal("mesh"), colors: z.array(colorRef).min(2).max(4), seed: z.number().int().min(0).max(99).default(0), base: colorRef.default("dark") }),
+  z.object({ kind: z.literal("pattern"), pattern: z.enum(["grid", "dots", "lines", "diagonal", "noise", "waves", "topo"]), color: colorRef.default("line"), base: colorRef.optional(), opacity: z.number().int().min(4).max(100).default(60) }),
+]);
+const bgSchema = z.union([
+  bgBaseSchema,
   z.object({
     kind: z.literal("image"),
     src: imageSrc,
     overlay: z.object({ color: colorRef.default("dark"), opacity: z.number().int().min(0).max(95).default(40), dir: z.enum(["flat", "bottom", "top", "left", "right", "vignette"]).default("flat") }).default({ color: "dark", opacity: 40, dir: "flat" }),
     pos: z.object({ x: z.number().int().min(0).max(100).default(50), y: z.number().int().min(0).max(100).default(50) }).default({ x: 50, y: 50 }),
     parallax: z.boolean().default(false),
+    /** An optional color or pattern layer beneath a photo, used when a photo is added to a text-led hero. */
+    base: bgBaseSchema.optional(),
+    /** Photo strength over the underlying design layer. */
+    strength: z.number().int().min(10).max(100).optional(),
   }),
-  z.object({ kind: z.literal("mesh"), colors: z.array(colorRef).min(2).max(4), seed: z.number().int().min(0).max(99).default(0), base: colorRef.default("dark") }),
-  z.object({ kind: z.literal("pattern"), pattern: z.enum(["grid", "dots", "lines", "diagonal", "noise", "waves", "topo"]), color: colorRef.default("line"), base: colorRef.optional(), opacity: z.number().int().min(4).max(100).default(60) }),
 ]);
 export type Bg = z.output<typeof bgSchema>;
 export const NO_BG: Bg = { kind: "none" };

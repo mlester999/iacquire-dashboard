@@ -12,11 +12,20 @@ import { meridian } from "./families/meridian";
 import { minimal } from "./families/minimal";
 import { tech } from "./families/tech";
 import { SAMPLES } from "./samples";
+import { BUILTIN_TEMPLATE_REVISION, templateStarter } from "./starter-content-catalog";
 import type { FamilyDef, SiteDetails, VariationDef } from "./types";
 
 export type { FamilyDef, SiteDetails, VariationDef } from "./types";
 
-export const FAMILIES: FamilyDef[] = [luxe, tech, bold, corp, minimal, local, care, meridian, host, agency];
+export { BUILTIN_TEMPLATE_REVISION } from "./starter-content-catalog";
+
+export const FAMILIES: FamilyDef[] = [luxe, tech, bold, corp, minimal, local, care, meridian, host, agency].map((family) => ({
+  ...family,
+  variations: family.variations.map((variation) => ({
+    ...variation,
+    description: templateStarter(`${family.id}.${variation.id}`)?.description ?? variation.description,
+  })),
+}));
 
 export const TEMPLATE_KEY = /^[a-z][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
 export const templateKey = (family: string, variation: string) => `${family}.${variation}`;
@@ -42,21 +51,23 @@ export const ALL_TEMPLATE_KEYS = (): string[] => FAMILIES.flatMap((f) => f.varia
 export function buildSite(key: string, details: SiteDetails, opts: { sample?: boolean; idPrefix?: string } = {}): SiteContent {
   const t = resolveTemplate(key) ?? resolveTemplate(DEFAULT_TEMPLATE_KEY)!;
   const ctx = makeCtx(details, { sample: opts.sample === true, idPrefix: opts.idPrefix });
-  return assemble(ctx, t.variation.build(ctx), { key: t.key, family: t.family, variation: t.variation });
+  const built = assemble(ctx, t.variation.build(ctx), { key: t.key, family: t.family, variation: t.variation });
+  return { ...built, origin: { ...built.origin, version: BUILTIN_TEMPLATE_REVISION } };
 }
 
 const SAMPLE_CACHE = new Map<string, SiteContent>();
 
 /**
- * The template shown with its family's fictional business, clearly marked as sample content. Documents are never changed in place, so one
+ * The template shown with its own fictional business, clearly marked as sample content. Documents are never changed in place, so one
  * built copy per template is shared by every request.
  */
 export function sampleSite(key: string): SiteContent {
   const t = resolveTemplate(key) ?? resolveTemplate(DEFAULT_TEMPLATE_KEY)!;
-  const hit = SAMPLE_CACHE.get(t.key);
+  const cacheKey = `${t.key}@${BUILTIN_TEMPLATE_REVISION}`;
+  const hit = SAMPLE_CACHE.get(cacheKey);
   if (hit) return hit;
-  const built = buildSite(t.key, t.family.sample ?? SAMPLES.meridian, { sample: true });
-  SAMPLE_CACHE.set(t.key, built);
+  const built = buildSite(t.key, templateStarter(t.key)?.sample ?? t.family.sample ?? SAMPLES.meridian, { sample: true });
+  SAMPLE_CACHE.set(cacheKey, built);
   return built;
 }
 

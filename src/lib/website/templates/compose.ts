@@ -1,6 +1,8 @@
 // Turns a template's recipe and a business's facts into a complete website document.
 import { createBuilder } from "../build";
 import { contentShape, parseContent, type Design, type Page, type PageItem, type Section, type SiteContent } from "../doc";
+import { applyTemplateImages } from "../template-images";
+import { applyTemplateStarterContent } from "./starter-content";
 import type { FamilyDef, Has, Recipe, SiteDetails, TemplateCtx, VariationDef } from "./types";
 
 const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
@@ -104,7 +106,9 @@ export function assemble(ctx: TemplateCtx, recipe: Recipe, meta: { key: string; 
   const doc = { ...base, design, header: recipe.header, footer: recipe.footer, globals, pages };
   const parsed = parseContent(doc);
   if (!parsed.ok) throw new Error(`Template ${meta.key} built an invalid site: ${parsed.error} (${parsed.path})`);
-  return parsed.content;
+  const withImages = parseContent(applyTemplateImages(applyTemplateStarterContent(parsed.content, meta.key), meta.key));
+  if (!withImages.ok) throw new Error(`Template ${meta.key} has invalid starter images: ${withImages.error} (${withImages.path})`);
+  return withImages.content;
 }
 
 export type { Section };

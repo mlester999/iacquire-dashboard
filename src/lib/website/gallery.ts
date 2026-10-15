@@ -48,26 +48,78 @@ export interface GalleryCard {
   mode: "light" | "dark";
   /** ISO date the template was added, for "recently added". Null when unknown. */
   addedAt: string | null;
+  updatedAt?: string | null;
+  version?: number;
+  revision?: number;
+  thumbnail?: import("./thumbnail-contract").TemplateThumbnail;
+  layout?: string;
+  typography?: string;
   pages: Array<{ slug: string; title: string }>;
 }
 
-export type GallerySort = "featured" | "name" | "recent";
+export type GallerySort = "featured" | "name" | "recent" | "updated";
 
-export function filterCards(cards: GalleryCard[], o: { q?: string; industry?: string; style?: string; sort?: GallerySort; preferIndustry?: string }): GalleryCard[] {
-  const q = (o.q ?? "").trim().toLowerCase();
+export const LAYOUT_FILTERS = [{ id: "immersive", label: "Immersive hero" }, { id: "split", label: "Split composition" }, { id: "centered", label: "Centered" }, { id: "stacked", label: "Stacked" }];
+export const TYPOGRAPHY_FILTERS = [{ id: "serif", label: "Editorial serif" }, { id: "sans", label: "Clean sans serif" }, { id: "display", label: "Expressive display" }, { id: "mono", label: "Monospaced" }];
+
+export interface GalleryFilters {
+  q: string;
+  industry: string;
+  family: string;
+  style: string;
+  theme: string;
+  layout: string;
+  typography: string;
+  sort: GallerySort;
+}
+export const EMPTY_GALLERY_FILTERS: GalleryFilters = { q: "", industry: "all", family: "all", style: "all", theme: "all", layout: "all", typography: "all", sort: "featured" };
+
+/** Shared discovery fields. Counts and results always use the same permission-scoped input. */
+export interface DiscoverableTemplate {
+  key: string; name: string; description: string; familyId: string; familyName: string; familyTagline?: string;
+  industries: string[]; tags: string[]; styles?: string[]; featured: boolean; mode: string;
+  addedAt?: string | null; updatedAt?: string | null; layout?: string; typography?: string;
+}
+
+export function templateIndustries(card: DiscoverableTemplate): string[] {
+  return card.industries;
+}
+
+export function templateStyles(card: DiscoverableTemplate): string[] {
+  return card.styles ?? STYLE_FILTERS.filter((s) => s.tags.some((t) => card.tags.includes(t))).map((s) => s.id);
+}
+
+export function hasGalleryFilters(filters: GalleryFilters): boolean {
+  return Boolean(filters.q.trim()) || [filters.industry, filters.family, filters.style, filters.theme, filters.layout, filters.typography].some((value) => value !== "all");
+}
+
+export function discoverTemplates<T extends DiscoverableTemplate>(cards: T[], o: Partial<GalleryFilters> & { preferIndustry?: string } = {}): T[] {
+  const words = (o.q ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const chosen = (value: string | undefined) => Boolean(value && value !== "all");
   const out = cards.filter((c) => {
-    if (o.industry && o.industry !== "all" && !c.industries.includes(o.industry)) return false;
-    if (o.style && o.style !== "all" && !c.styles.includes(o.style)) return false;
-    if (!q) return true;
-    return `${c.name} ${c.familyName} ${c.familyTagline} ${c.description} ${c.tags.join(" ")}`.toLowerCase().includes(q);
+    const industries = templateIndustries(c);
+    if (chosen(o.industry) && !industries.includes(o.industry!)) return false;
+    if (chosen(o.family) && c.familyId !== o.family) return false;
+    if (chosen(o.style) && !templateStyles(c).includes(o.style!)) return false;
+    if (chosen(o.theme) && c.mode !== o.theme) return false;
+    if (chosen(o.layout) && c.layout !== o.layout) return false;
+    if (chosen(o.typography) && c.typography !== o.typography) return false;
+    const industryNames = INDUSTRY_FILTERS.filter((i) => industries.includes(i.id)).map((i) => i.label).join(" ");
+    const haystack = `${c.name} ${c.familyName} ${c.familyTagline ?? ""} ${c.description} ${industryNames} ${industries.join(" ")} ${c.tags.join(" ")}`.toLocaleLowerCase();
+    return words.every((word) => haystack.includes(word));
   });
-  const rank = (c: GalleryCard) => (o.preferIndustry && c.industries.includes(o.preferIndustry) ? 0 : 1);
-  const byName = (a: GalleryCard, b: GalleryCard) => `${a.familyName} ${a.name}`.localeCompare(`${b.familyName} ${b.name}`);
+  const byName = (a: T, b: T) => a.name.localeCompare(b.name) || a.familyName.localeCompare(b.familyName) || a.key.localeCompare(b.key);
+  const rank = (c: T) => o.preferIndustry && templateIndustries(c).includes(o.preferIndustry) ? 0 : 1;
   switch (o.sort ?? "featured") {
     case "name": return out.sort(byName);
     case "recent": return out.sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? "") || byName(a, b));
-    default: return out.sort((a, b) => rank(a) - rank(b) || Number(b.featured) - Number(a.featured) || byName(a, b));
+    case "updated": return out.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || byName(a, b));
+    default: return out.sort((a, b) => Number(b.featured) - Number(a.featured) || rank(a) - rank(b) || byName(a, b));
   }
+}
+
+export function filterCards(cards: GalleryCard[], o: Partial<GalleryFilters> & { preferIndustry?: string }): GalleryCard[] {
+  return discoverTemplates(cards, o);
 }
 
 /** The industry filter that best matches an onboarding industry, so a business sees its own sector first. */

@@ -112,14 +112,22 @@ export function VideoFacade({ provider, videoId, title, children }: { provider: 
 
 /** Closes the phone menu when one of its links is chosen (same-page links don't reload, so it would otherwise stay open). */
 export function MenuCloser() {
+  const anchor = React.useRef<HTMLSpanElement>(null);
   React.useEffect(() => {
+    const root = anchor.current?.closest<HTMLElement>(".iq-site");
+    if (!root) return;
+    const header = root.querySelector<HTMLElement>(".iq-header.iq-sticky");
+    const measure = () => root.style.setProperty("--anchor-offset", `${(header?.offsetHeight ?? 0) + 16}px`);
+    const observer = new ResizeObserver(measure);
+    if (header) observer.observe(header);
+    measure();
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest("a");
       const menu = (e.target as HTMLElement).closest("details.iq-menu");
       if (a && menu) menu.removeAttribute("open");
     };
-    document.addEventListener("click", onClick);
-    return () => document.removeEventListener("click", onClick);
+    root.addEventListener("click", onClick);
+    return () => { root.removeEventListener("click", onClick); observer.disconnect(); };
   }, []);
-  return null;
+  return <span ref={anchor} hidden aria-hidden />;
 }

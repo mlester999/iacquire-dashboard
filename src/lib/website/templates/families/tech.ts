@@ -18,6 +18,7 @@ const light = { primary: "#4f46e5", accent: "#0ea5a4", bg: "#fbfbfe", surface: "
 
 /** A small "product" made of cards, so a hero can show what the software feels like without a screenshot. */
 function productCards(ctx: TemplateCtx, kind: "dashboard" | "inbox" | "terminal"): ElementNode[] {
+  if (!ctx.sample) return [];
   const { b } = ctx;
   if (kind === "terminal") {
     return [b.card([
@@ -40,7 +41,7 @@ const nova = (ctx: TemplateCtx): Recipe => {
   const title = (t: string, lede?: string) => pageTitle(ctx, { title: t, lede, eyebrow: ctx.name, align: "center", size: "7xl", pt: "3xl", bg: { kind: "mesh", colors: ["primary", "accent"], seed: 3, base: "bg" } });
   const services = servicesSection(ctx, { icons: ICONS, style: "bento", title: "One workspace. Every customer touchpoint.", eyebrow: "Platform", align: "center" });
   const about = aboutSection(ctx, { title: "Built by people who ran service businesses", image: art("grid3d", "dark", 2), frame: "soft", aspect: "4/3" });
-  const process = processSection(ctx, { style: "cards", title: "Live in a day", align: "center" });
+  const process = processSection(ctx, { style: "cards", title: "Plan your setup", align: "center" });
   const cta = ctaSection(ctx, { style: "card", title: "See it with your own customers.", body: "A short walkthrough, tailored to how you work." });
   return {
     design: { ...base, mode: "dark", colors: dark, fonts: { heading: "sora", body: "inter", accent: "jetbrains", mono: "jetbrains" }, heading: { weight: 600, ls: "tighter", lh: "tight", transform: "none", emphasis: "accent" }, radius: "round", buttons: { style: "gradient", caps: false, hover: "shine", weight: 600 }, grain: true },
@@ -48,14 +49,14 @@ const nova = (ctx: TemplateCtx): Recipe => {
     footer: footerBig(ctx, { tone: "dark" }),
     home: compact([
       heroCentered(ctx, {
-        badge: "New: automations for appointments", size: "7xl", pt: "3xl", pb: "l", tone: "dark", bg: { kind: "mesh", colors: ["primary", "accent", "primary"], seed: 5, base: "bg" }, ctaVariant: ["primary", "outline"],
+        badge: ctx.sample ? "Product concept" : undefined, size: "7xl", pt: "3xl", pb: "l", tone: "dark", bg: { kind: "mesh", colors: ["primary", "accent", "primary"], seed: 5, base: "bg" }, ctaVariant: ["primary", "outline"],
         below: productCards(ctx, "dashboard").map((c) => ({ ...c, style: { mt: "l" }, anim: { preset: "up" as const, delay: 300, speed: "normal" as const, stagger: false } })),
         decor: [{ kind: "grid", at: "c", size: "xl", color: "line", opacity: 40 }],
       }),
       logosStrip(ctx, { names: NAMES, style: "marquee", tone: "dark" }),
       services,
       statsSection(ctx, { style: "cards", head: true, title: "Results teams see in the first month", eyebrow: "Impact", align: "center" }),
-      processSection(ctx, { style: "line", title: "From connect to live in a day", align: "center" }),
+      processSection(ctx, { style: "line", title: "The steps to getting started", align: "center" }),
       pricingSection(ctx, {}),
       cta,
     ]),
@@ -125,14 +126,14 @@ const signal = (ctx: TemplateCtx): Recipe => {
   const services = servicesSection(ctx, { icons: ICONS, style: "iconCards", title: "Features that earn their place", eyebrow: "Product", align: "center" });
   const about = aboutSection(ctx, { title: "Made for busy teams", image: art("shapes", "dark", 2), frame: "soft", aspect: "1/1" });
   const process = processSection(ctx, { style: "numbered", title: "Three steps", align: "center" });
-  const cta = ctaSection(ctx, { style: "image", title: "Ready in a day, loved for years.", body: null, image: art("mesh", "dark", 8), buttonVariant: "light" });
+  const cta = ctaSection(ctx, { style: "image", title: "Discuss what getting started involves.", body: null, image: art("mesh", "dark", 8), buttonVariant: "light" });
   return {
     design: { ...base, spacing: "regular", scale: "display", colors: { ...light, primary: "#6d28d9", accent: "#f472b6", dark: "#14072e" }, fonts: { heading: "urbanist", body: "inter", accent: "jetbrains", mono: "jetbrains" }, heading: { weight: 700, ls: "tighter", lh: "none", transform: "none", emphasis: "both" }, radius: "round", buttons: { style: "gradient", caps: false, hover: "shine", weight: 700 } },
     header: headerBar(ctx, { navStyle: "pills", pad: "s" }),
     footer: footerBig(ctx, { tone: "dark" }),
     home: compact([
       heroCentered(ctx, {
-        badge: "Now with smart scheduling", size: "8xl", pt: "2xl", pb: "l", tone: "dark", bg: { kind: "gradient", from: "primary", via: "accent", to: "dark", angle: 140 }, ctaVariant: ["light", "outline"],
+        badge: ctx.sample ? "Platform concept" : undefined, size: "8xl", pt: "2xl", pb: "l", tone: "dark", bg: { kind: "gradient", from: "primary", via: "accent", to: "dark", angle: 140 }, ctaVariant: ["light", "outline"],
         below: [ctx.b.img(art("mesh", "dark", 11), { aspect: "21/9", frame: "soft", style: { mt: "l" }, anim: "reveal" })],
         decor: [{ kind: "orb", at: "tl", size: "l", color: "accent", opacity: 40 }],
       }),

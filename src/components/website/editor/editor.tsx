@@ -1,14 +1,15 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  AlertCircle, ArrowLeft, Check, CheckCircle2, Cloud, FileText, History, Image as ImageIcon, Keyboard, Layers, Loader2, Monitor, Palette, Plus, Redo2, Save, Settings2, Smartphone, Tablet, Undo2, Eye, Send, Globe,
+  AlertCircle, ArrowLeft, Check, CheckCircle2, Cloud, FileText, History, Image as ImageIcon, Keyboard, Layers, Loader2, Monitor, Palette, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Redo2, Save, Settings2, Smartphone, Tablet, Undo2, Eye, Send, Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/overlays";
+import { Sheet, Tooltip } from "@/components/ui/overlays";
 import { PublishDialog } from "@/components/website/studio/publish-dialog";
 import { StudioApiProvider, createServerStudioApi, serverStudioApi, type SavedComponent, type StudioApi } from "@/components/website/studio/studio-api";
 import { createDraftSaver, type DraftSaver, type SaverState } from "@/lib/website/draft-saver";
@@ -33,6 +34,7 @@ import { AddPanel, type SavedSection } from "./panel-add";
 import { MediaLibrary, MediaPickerDialog } from "./panel-media";
 import { DesignPanel, SettingsPanel } from "./panel-site";
 import { LayersPanel, PagesPanel } from "./panel-structure";
+import { useMounted } from "./hooks";
 
 export interface EditorSite {
   name: string;
@@ -76,18 +78,23 @@ const LEFT_TABS: Array<{ id: LeftTab; label: string; icon: React.ComponentType<{
 const DEVICE_ICON: Record<Device, React.ComponentType<{ className?: string }>> = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
 
 export function SiteEditor(props: SiteEditorProps) {
+  const mounted = useMounted();
   const orgId = props.site.orgId;
   const api = React.useMemo(() => props.api ?? (orgId ? createServerStudioApi(orgId) : serverStudioApi), [props.api, orgId]);
-  return (
+  // The portal shell animates its page with a transform. Rendering the fixed
+  // studio below that ancestor confines it to the page instead of the viewport.
+  if (!mounted) return <p role="status" className="p-6 text-[13px] text-muted">Opening website editor…</p>;
+  return createPortal(
     <StudioApiProvider value={api}>
       <DragProvider onAnnounce={(m) => toast(m)}>
         <EditorInner {...props} api={api} />
       </DragProvider>
-    </StudioApiProvider>
+    </StudioApiProvider>, document.body,
   );
 }
 
 function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backHref, api, initialSaved, notice, assistant, mode = "site" }: SiteEditorProps & { api: StudioApi }) {
+  const rootRef = React.useRef<HTMLDivElement>(null);
   const router = useRouter();
   const drag = useDrag();
   const [ed, dispatch] = React.useReducer(reducer, site.content, (c) => initialState(c));
@@ -95,6 +102,9 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   const [assets, setAssets] = React.useState(initialAssets);
   const [saved, setSaved] = React.useState<SavedSection[]>(initialSaved ?? []);
   const [leftTab, setLeftTab] = React.useState<LeftTab>("pages");
+  const [leftOpen, setLeftOpen] = React.useState(true);
+  const [rightOpen, setRightOpen] = React.useState(true);
+  const [mobilePanel, setMobilePanel] = React.useState<"left" | "right" | null>(null);
   const [addSub, setAddSub] = React.useState<"sections" | "layouts" | "elements" | "saved">("sections");
   const [zoom, setZoom] = React.useState<"fit" | number>("fit");
   const [scale, setScale] = React.useState(1);
@@ -121,6 +131,22 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   const lockOn = Boolean(api.acquireLock);
   const readOnly = lockOn && lock.other;
   const readOnlyRef = React.useRef(readOnly);
+  React.useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const backgrounds = [...document.querySelectorAll<HTMLElement>(".app-backdrop")].filter((element) => !element.contains(rootRef.current));
+    const previous = backgrounds.map((element) => ({ element, inert: element.inert, hidden: element.getAttribute("aria-hidden"), visibility: element.style.visibility }));
+    backgrounds.forEach((element) => { element.inert = true; element.setAttribute("aria-hidden", "true"); element.style.visibility = "hidden"; });
+    rootRef.current?.focus({ preventScroll: true });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previous.forEach(({ element, inert, hidden, visibility }) => {
+        element.inert = inert;
+        element.style.visibility = visibility;
+        if (hidden === null) element.removeAttribute("aria-hidden"); else element.setAttribute("aria-hidden", hidden);
+      });
+    };
+  }, []);
   React.useLayoutEffect(() => {
     readOnlyRef.current = readOnly;
   }, [readOnly]);
@@ -182,7 +208,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     return () => window.removeEventListener("beforeunload", warn);
   }, [saver]);
   React.useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
+    const mq = window.matchMedia("(max-width: 1199px)");
     const on = () => setNarrow(mq.matches);
     on();
     mq.addEventListener("change", on);
@@ -194,9 +220,15 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     if (readOnlyRef.current) return;
     dispatch({ type: "commit", doc, coalesce: o?.coalesce, select: o?.select, page: o?.page });
   }, []);
-  const select = React.useCallback((id: string | null) => dispatch({ type: "select", id }), []);
-  const doUndo = React.useCallback(() => { setCloseEdit((n) => n + 1); dispatch({ type: "undo" }); }, []);
-  const doRedo = React.useCallback(() => { setCloseEdit((n) => n + 1); dispatch({ type: "redo" }); }, []);
+  const select = React.useCallback((id: string | null) => {
+    dispatch({ type: "select", id });
+    if (id) {
+      setRightOpen(true);
+      if (narrow) setMobilePanel("right");
+    }
+  }, [narrow]);
+  const doUndo = React.useCallback(() => { if (readOnlyRef.current) return; setCloseEdit((n) => n + 1); dispatch({ type: "undo" }); }, []);
+  const doRedo = React.useCallback(() => { if (readOnlyRef.current) return; setCloseEdit((n) => n + 1); dispatch({ type: "redo" }); }, []);
   const page = ed.doc.pages.find((p) => p.id === ed.pageId) ?? ed.doc.pages[0];
   const unpublished = baseUnpublished || ed.rev > publishedRev;
   // Handlers read the latest document, page and selection through refs, which are brought up to date right after each render.
@@ -255,6 +287,8 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     addBelow: (id) => {
       setInsertAfter(id);
       setLeftTab("add");
+      setLeftOpen(true);
+      if (narrow) setMobilePanel("left");
       setAddSub("sections");
       announce("Choose a section to add below.");
     },
@@ -276,7 +310,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     },
     saveAsComponent: (id) => setComponentFor(id),
     announce,
-  }), [select, commit, announce, doUndo]);
+  }), [select, commit, announce, doUndo, narrow]);
 
   // --- Insertion -----------------------------------------------------------
   const build = React.useCallback((d: SiteContent, source: DragSource): { kind: "section"; section: Section; place: "page" | "header" | "footer" } | { kind: "element"; el: ReturnType<typeof newElement> } | null => {
@@ -412,6 +446,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
     else toast.error("Your changes couldn't be saved yet. We'll keep trying.");
   }, [flush]);
   const saveCheckpoint = React.useCallback(async (note: string, source: "checkpoint" | "ai" = "checkpoint") => {
+    if (readOnlyRef.current) return false;
     if (!(await flush())) { toast.error("Wait for your changes to be saved, then try again."); return false; }
     const res = await api.saveVersion(note, source);
     if (!res.ok) { toast.error(res.error); return false; }
@@ -494,19 +529,46 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   const liveLabel = isLive ? (unpublished ? "Live · unpublished changes" : "Live") : "Not live";
   const hostLabel = site.liveHost ?? site.platformHost;
   const conflict = saverState.status === "conflict";
+  const leftLabel = LEFT_TABS.find((t) => t.id === leftTab)!.label;
+  const openLeftTab = (tab: LeftTab) => {
+    setLeftTab(tab);
+    if (narrow) setMobilePanel("left");
+    else setLeftOpen(tab === leftTab ? !leftOpen : true);
+  };
+  const setPage = (id: string) => { dispatch({ type: "page", id }); setMobilePanel(null); };
+  const leftPanel = (
+    <>
+      {leftTab === "pages" && <PagesPanel doc={ed.doc} pageId={ed.pageId} setPage={setPage} commit={commit} announce={announce} />}
+      {leftTab === "add" && <AddPanel key={addSub + String(insertAfter)} doc={ed.doc} initialSub={addSub} onInsert={(s) => { insertSource(s); setMobilePanel(null); }} saved={saved} canSave onDeleteSaved={api.deleteComponent && !readOnly ? (s) => void deleteSaved(s) : undefined} canDeleteShared={agency === true} />}
+      {leftTab === "layers" && <LayersPanel doc={ed.doc} pageId={ed.pageId} selection={ed.selection} actions={actions} />}
+      {leftTab === "media" && <MediaLibrary assets={assets} onAssetsChange={setAssets} usedIds={usedIds} />}
+      {leftTab === "design" && <div className="min-h-0 flex-1 overflow-y-auto">{mode === "site" && <TemplateUpdateCard doc={ed.doc} commit={(d) => commit(d)} checkpoint={(note) => saveCheckpoint(note, "checkpoint")} readOnly={readOnly} />}<DesignPanel doc={ed.doc} commit={commit} /></div>}
+      {leftTab === "settings" && <div className="min-h-0 flex-1 overflow-y-auto"><SettingsPanel doc={ed.doc} commit={commit} /></div>}
+    </>
+  );
+  const rightPanel = (
+    <RightTabs
+      selection={ed.selection}
+      tabs={[
+        { id: "edit", label: "Properties", node: <Inspector doc={ed.doc} selection={ed.selection} pageId={ed.pageId} device={ed.device} actions={actions} advanced={agency === true} /> },
+        ...(api.listComments ? [{ id: "comments", label: "Comments", node: <CommentsPanel doc={ed.doc} selection={ed.selection} pageSlug={page.slug} active onJump={jumpTo} /> }] : []),
+        ...(assistant !== false ? [{ id: "assistant", label: "Assistant", node: <AssistantPanel doc={ed.doc} pageId={ed.pageId} pageSlug={page.slug} selection={ed.selection} commit={(d) => commit(d)} undo={doUndo} checkpoint={(note) => saveCheckpoint(note, "ai")} ai={assistant?.ai === true} readOnly={readOnly} /> }] : []),
+      ]}
+    />
+  );
 
   return (
     <EditorServicesContext.Provider value={services}>
-      <div className="fixed inset-0 z-40 flex flex-col bg-bg text-ink" data-studio="">
+      <div ref={rootRef} tabIndex={-1} role="region" aria-label="Website editor" className="studio-editor fixed inset-0 z-40 flex flex-col bg-bg text-ink outline-none" data-studio="">
         {notice && <p className="border-b border-warning/20 bg-warning-soft px-4 py-1.5 text-center text-[11.5px] font-medium text-warning-ink">{notice}</p>}
         {/* Toolbar */}
-        <header className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-3 py-1.5">
-          <Link href={backHref} onClick={async (e) => { e.preventDefault(); await flush(); router.push(backHref); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
+        <header className="studio-editor-toolbar flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-3 py-1.5">
+          <Link href={backHref} aria-label="Save and exit editor" onClick={async (e) => { e.preventDefault(); if (await flush()) router.push(backHref); else toast.error("Your changes have not been saved. Retry saving before leaving the editor."); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
           <div className="min-w-0">
             <p className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight">{site.name}</p>
             <p className="max-w-[14rem] truncate text-[10.5px] leading-tight text-muted">{site.clientName ? `${site.clientName} · ` : ""}{lifecycle.label} · {liveLabel}</p>
           </div>
-          <div className="w-44 shrink-0"><SelectControl<string> label="Page" value={page.id} onChange={(id) => dispatch({ type: "page", id })} options={ed.doc.pages.map((p) => ({ value: p.id, label: p.title }))} /></div>
+          <div className="studio-editor-page w-44 shrink-0"><SelectControl<string> label="Page" value={page.id} onChange={setPage} options={ed.doc.pages.map((p) => ({ value: p.id, label: p.title }))} /></div>
           <span className="flex-1" />
           <div role="radiogroup" aria-label="Preview size" className="flex rounded-lg bg-surface-3 p-0.5">
             {DEVICES.map((d) => {
@@ -522,13 +584,14 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
             <SelectControl<string> label="Zoom" value={zoom === "fit" ? "fit" : String(zoom)} onChange={(v) => setZoom(v === "fit" ? "fit" : Number(v))} options={[{ value: "fit", label: `Fit · ${Math.round(scale * 100)}%` }, { value: "1", label: "100%" }, { value: "0.75", label: "75%" }, { value: "0.5", label: "50%" }]} />
           </div>
           <span className="flex-1" />
-          <IconButton label="Undo (Ctrl+Z)" onClick={doUndo} disabled={!canUndo(ed)}><Undo2 className="size-4" /></IconButton>
-          <IconButton label="Redo (Ctrl+Shift+Z)" onClick={doRedo} disabled={!canRedo(ed)}><Redo2 className="size-4" /></IconButton>
-          <SaveStatus state={saverState} onRetry={() => void saver.flush()} onResolve={() => undefined} />
+          <IconButton label="Undo (Ctrl+Z)" onClick={doUndo} disabled={readOnly || !canUndo(ed)}><Undo2 className="size-4" /></IconButton>
+          <IconButton label="Redo (Ctrl+Shift+Z)" onClick={doRedo} disabled={readOnly || !canRedo(ed)}><Redo2 className="size-4" /></IconButton>
+          <IconButton label="Save draft (Ctrl+S)" onClick={() => void saveNow()} disabled={readOnly || saverState.status === "saving"}><Save className="size-4" /></IconButton>
+          <SaveStatus state={saverState} onRetry={() => void saver.flush()} />
           {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
           <IconButton label="Version history" onClick={() => setVersions(true)}><History className="size-4" /></IconButton>
-          <IconButton label="Keyboard shortcuts" onClick={() => setShortcuts(true)}><Keyboard className="size-4" /></IconButton>
-          <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={async () => { await flush(); setPreview(true); }}><Eye className="size-3.5" /> Preview</Button>
+          <IconButton label="Keyboard shortcuts" className="studio-editor-extra" onClick={() => setShortcuts(true)}><Keyboard className="size-4" /></IconButton>
+          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden sm:inline">Preview</span></Button>
           {canPublish ? (
             <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
           ) : (
@@ -542,30 +605,26 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
             <button type="button" onClick={() => void takeLock(true)} className="font-semibold underline">Take over editing</button>
           </div>
         )}
-        {narrow && <p className="border-b border-line bg-primary-soft px-4 py-1.5 text-[11.5px] text-primary-ink">The visual editor works best on a laptop or larger screen. You can still edit here, but the panels are tight.</p>}
-
         <div className="flex min-h-0 flex-1">
           {/* Left rail + panel */}
           <nav aria-label="Editor tools" className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-2">
             {LEFT_TABS.map((t) => (
               <Tooltip key={t.id} content={t.label} side="right">
-                <button type="button" aria-label={t.label} aria-pressed={leftTab === t.id} onClick={() => setLeftTab(t.id)} className={cn("flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl text-[9.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", leftTab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
+                <button type="button" aria-label={t.label} aria-expanded={narrow ? mobilePanel === "left" && leftTab === t.id : leftOpen && leftTab === t.id} aria-controls="studio-left-panel" aria-pressed={leftTab === t.id && (narrow ? mobilePanel === "left" : leftOpen)} onClick={() => openLeftTab(t.id)} className={cn("flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-xl text-[9.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", leftTab === t.id && (narrow ? mobilePanel === "left" : leftOpen) ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>
                   <t.icon className="size-[18px]" aria-hidden />{t.label}
                 </button>
               </Tooltip>
             ))}
           </nav>
-          <aside aria-label={`${LEFT_TABS.find((t) => t.id === leftTab)!.label} panel`} className={cn("flex min-h-0 shrink-0 flex-col border-r border-line bg-surface", narrow ? "w-60" : "w-[18.5rem]")}>
-            {leftTab === "pages" && <PagesPanel doc={ed.doc} pageId={ed.pageId} setPage={(id) => dispatch({ type: "page", id })} commit={commit} announce={announce} />}
-            {leftTab === "add" && <AddPanel key={addSub + String(insertAfter)} doc={ed.doc} initialSub={addSub} onInsert={(s) => insertSource(s)} saved={saved} canSave onDeleteSaved={api.deleteComponent && !readOnly ? (s) => void deleteSaved(s) : undefined} canDeleteShared={agency === true} />}
-            {leftTab === "layers" && <LayersPanel doc={ed.doc} pageId={ed.pageId} selection={ed.selection} actions={actions} />}
-            {leftTab === "media" && <MediaLibrary assets={assets} onAssetsChange={setAssets} usedIds={usedIds} />}
-            {leftTab === "design" && <div className="min-h-0 flex-1 overflow-y-auto">{mode === "site" && <TemplateUpdateCard doc={ed.doc} commit={(d) => commit(d)} checkpoint={(note) => saveCheckpoint(note, "checkpoint")} readOnly={readOnly} />}<DesignPanel doc={ed.doc} commit={commit} /></div>}
-            {leftTab === "settings" && <div className="min-h-0 flex-1 overflow-y-auto"><SettingsPanel doc={ed.doc} commit={commit} /></div>}
-          </aside>
+          {!narrow && leftOpen && <aside id="studio-left-panel" aria-label={`${leftLabel} panel`} className="flex min-h-0 w-[18.5rem] shrink-0 flex-col border-r border-line bg-surface">{leftPanel}</aside>}
 
           {/* Canvas */}
           <main className="flex min-w-0 flex-1 flex-col">
+            <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface px-2">
+              <IconButton label={leftOpen && !narrow ? "Collapse tools panel" : "Open tools panel"} onClick={() => narrow ? setMobilePanel("left") : setLeftOpen((o) => !o)}>{leftOpen && !narrow ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}</IconButton>
+              <p className="min-w-0 truncate text-[11.5px] text-muted">{ed.selection ? describeNode(ed.doc, ed.selection) : `${page.title} · Select an element to edit`}</p>
+              <IconButton label={rightOpen && !narrow ? "Collapse properties panel" : "Open properties panel"} onClick={() => narrow ? setMobilePanel("right") : setRightOpen((o) => !o)}>{rightOpen && !narrow ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}</IconButton>
+            </div>
             {insertAfter && (
               <div className="flex items-center justify-between gap-3 border-b border-primary/20 bg-primary-soft px-4 py-1.5 text-[12px] text-primary-ink">
                 <span>Adding below <strong>{describeNode(ed.doc, insertAfter)}</strong>. Pick a section from the Add panel.</span>
@@ -576,22 +635,18 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           </main>
 
           {/* Right panel */}
-          <aside aria-label="Settings for the selected item" className={cn("flex min-h-0 shrink-0 flex-col border-l border-line bg-surface", narrow ? "w-64" : "w-80")}>
-            <RightTabs
-              tabs={[
-                { id: "edit", label: "Edit", node: <Inspector doc={ed.doc} selection={ed.selection} pageId={ed.pageId} device={ed.device} actions={actions} advanced={agency === true} /> },
-                ...(api.listComments ? [{ id: "comments", label: "Comments", node: <CommentsPanel doc={ed.doc} selection={ed.selection} pageSlug={page.slug} active onJump={jumpTo} /> }] : []),
-                ...(assistant !== false ? [{ id: "assistant", label: "Assistant", node: <AssistantPanel doc={ed.doc} pageId={ed.pageId} pageSlug={page.slug} selection={ed.selection} commit={(d) => commit(d)} undo={doUndo} checkpoint={(note) => saveCheckpoint(note, "ai")} ai={assistant?.ai === true} readOnly={readOnly} /> }] : []),
-              ]}
-            />
-          </aside>
+          {!narrow && rightOpen && <aside id="studio-right-panel" aria-label="Settings for the selected item" className="flex min-h-0 w-80 shrink-0 flex-col border-l border-line bg-surface">{rightPanel}</aside>}
         </div>
+
+        <Sheet open={narrow && mobilePanel !== null} onOpenChange={(open) => !open && setMobilePanel(null)} side={mobilePanel === "left" ? "left" : "right"} title={mobilePanel === "left" ? leftLabel : "Properties"} description={mobilePanel === "left" ? "Organize and build your website." : "Edit the selected item, then close this panel to return to the canvas."} className="!w-[min(360px,100vw)]">
+          <div id={mobilePanel === "left" ? "studio-left-panel" : "studio-right-panel"} className="flex min-h-full flex-col">{mobilePanel === "left" ? leftPanel : rightPanel}</div>
+        </Sheet>
 
         <div className="sr-only" role="status" aria-live="polite">{live}</div>
 
         <MediaPickerDialog open={picker !== null} onOpenChange={(o) => !o && setPicker(null)} current={picker?.current ?? null} onPick={(s) => picker?.onPick(s)} assets={assets} onAssetsChange={setAssets} usedIds={usedIds} title={picker?.title} />
         <CheckpointDialog open={checkpoint} onOpenChange={setCheckpoint} onSave={saveCheckpoint} />
-        <VersionsDialog open={versions} onOpenChange={setVersions} currentDoc={ed.doc} revision={saverState.revision} resolveAsset={resolveAsset} onRestored={adoptRemote} canEdit flush={flush} />
+        <VersionsDialog open={versions} onOpenChange={setVersions} currentDoc={ed.doc} revision={saverState.revision} resolveAsset={resolveAsset} onRestored={adoptRemote} canEdit={!readOnly} flush={flush} />
         <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
         <ConflictDialog open={conflict} onReload={() => void reloadLatest()} onKeepMine={() => void keepMine()} busy={conflictBusy} />
         <SaveComponentDialog open={componentFor !== null} onOpenChange={(o) => !o && setComponentFor(null)} defaultName={componentFor ? describeNode(ed.doc, componentFor) : "Section"} onSave={saveComponent} canShareWithAgency={agency === true} />
@@ -605,23 +660,31 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   );
 }
 
-function RightTabs({ tabs }: { tabs: Array<{ id: string; label: string; node: React.ReactNode }> }) {
-  const [tab, setTab] = React.useState(tabs[0].id);
+function RightTabs({ tabs, selection }: { tabs: Array<{ id: string; label: string; node: React.ReactNode }>; selection: string | null }) {
+  const [chosen, setChosen] = React.useState({ id: tabs[0].id, selection });
+  const tab = chosen.selection === selection && tabs.some((t) => t.id === chosen.id) ? chosen.id : tabs[0].id;
+  const id = React.useId();
   if (tabs.length === 1) return <>{tabs[0].node}</>;
   return (
     <>
-      <div className="flex border-b border-line p-1.5" role="tablist" aria-label="Right panel">
+      <div className="flex border-b border-line p-1.5" role="tablist" aria-label="Right panel" onKeyDown={(e) => {
+        const at = tabs.findIndex((t) => t.id === tab);
+        const next = e.key === "ArrowRight" ? (at + 1) % tabs.length : e.key === "ArrowLeft" ? (at - 1 + tabs.length) % tabs.length : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
+        if (next < 0) return;
+        e.preventDefault();
+        setChosen({ id: tabs[next].id, selection });
+        e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+      }}>
         {tabs.map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-7 flex-1 rounded-md text-[12px] font-medium", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:text-ink")}>{t.label}</button>
+          <button key={t.id} id={`${id}-${t.id}`} type="button" role="tab" aria-controls={`${id}-panel-${t.id}`} aria-selected={tab === t.id} tabIndex={tab === t.id ? 0 : -1} onClick={() => setChosen({ id: t.id, selection })} className={cn("h-8 flex-1 rounded-md text-[12px] font-medium focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:text-ink")}>{t.label}</button>
         ))}
       </div>
-      {tabs.map((t) => <div key={t.id} role="tabpanel" className={cn("min-h-0 flex-1 flex-col", tab === t.id ? "flex" : "hidden")}>{t.node}</div>)}
+      {tabs.map((t) => <div key={t.id} id={`${id}-panel-${t.id}`} role="tabpanel" aria-labelledby={`${id}-${t.id}`} hidden={tab !== t.id} className={cn("min-h-0 flex-1 flex-col", tab === t.id ? "flex" : "hidden")}>{t.node}</div>)}
     </>
   );
 }
 
-function SaveStatus({ state, onRetry, onResolve }: { state: SaverState; onRetry: () => void; onResolve: () => void }) {
-  void onResolve;
+function SaveStatus({ state, onRetry }: { state: SaverState; onRetry: () => void }) {
   const base = "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium";
   if (state.status === "saving") return <span className={cn(base, "text-muted")} role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Saving…</span>;
   if (state.status === "dirty") return <span className={cn(base, "text-muted")} role="status"><Cloud className="size-3.5" aria-hidden /> Unsaved changes</span>;

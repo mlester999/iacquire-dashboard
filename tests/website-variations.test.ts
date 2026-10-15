@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eachElement, parseContent } from "@/lib/website/doc";
 import { checkReadiness } from "@/lib/website/lint";
 import { ALL_TEMPLATE_KEYS, FAMILIES, sampleSite } from "@/lib/website/templates";
+import { templateImageForId } from "@/lib/website/template-image-assets";
 import type { Section } from "@/lib/website/doc";
 import { CHARACTER, distance, signature } from "./helpers/variation-signature";
 
@@ -72,12 +73,13 @@ describe("the fifty designs", () => {
     expect(bad, bad.join(", ")).toEqual([]);
   });
 
-  it("show only built-in artwork, never a photograph, a logo or a real person", () => {
+  it("use only built-in artwork or validated project-local template imagery", () => {
     for (const key of KEYS) {
       eachElement(sampleSite(key), (e) => {
         if (e.type !== "image") return;
-        const src = e.props.src as { kind?: string } | null;
-        expect(src === null || src.kind === "art", `${key}: an image points at something other than built-in art`).toBe(true);
+        const src = e.props.src as { kind?: string; id?: string } | null;
+        const knownTemplate = src?.kind === "template" && typeof src.id === "string" && templateImageForId(src.id) !== null;
+        expect(src === null || src.kind === "art" || knownTemplate, `${key}: an image points outside the validated built-in asset catalog`).toBe(true);
       });
     }
   });

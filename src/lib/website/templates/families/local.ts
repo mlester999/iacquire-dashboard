@@ -13,11 +13,11 @@ const ICONS = ["wrench", "droplets", "hammer", "zap", "home", "clock"];
 const base: Partial<Design> = { scale: "regular", spacing: "regular", motion: "smooth" };
 
 /** An enquiry card that sits in a hero, so a visitor can reach out without scrolling. */
-function quickForm(ctx: TemplateCtx, title = "Get a free quote"): ElementNode[] {
+function quickForm(ctx: TemplateCtx, title = "Ask about the job"): ElementNode[] {
   const { b } = ctx;
   return [b.card([
     b.heading(title, { level: 2, style: { size: "2xl" } }),
-    b.small("Tell us what you need and we'll call you back, usually the same day."),
+    b.small("Share the job details and a callback number so we can discuss what is needed."),
     b.el("form", { purpose: "lead", submitLabel: ctx.action === "book" ? "Request appointment" : "Request my quote", layout: "plain", phone: "optional", message: "optional", service: ctx.d.services.length >= 2 ? "optional" : "hidden", services: ctx.d.services.slice(0, 12).map((s) => s.title.slice(0, 60)), helper: "" }),
   ], { surface: "elevated", pad: "m", gap: "s" })];
 }
@@ -31,7 +31,7 @@ const corner = (ctx: TemplateCtx): Recipe => {
   const services = servicesSection(ctx, { icons: ICONS, style: "iconCards", cols: "3", title: "What we do", eyebrow: "Services", align: "center" });
   const about = aboutSection(ctx, { title: "Local, honest and easy to deal with", image: art("neighborhood", "light", 3), frame: "soft", aspect: "4/3" });
   const process = processSection(ctx, { style: "cards", title: "How it works", align: "center" });
-  const cta = ctaSection(ctx, { style: "band", tone: "brand", title: ctx.action === "call" ? "Need help? Call now." : "Ready to get started?", body: "Free, clear quotes. No pressure." });
+  const cta = ctaSection(ctx, { style: "band", tone: "brand", title: ctx.action === "call" ? "Need help? Call now." : "Ready to get started?", body: "Describe what you need and ask about the next steps." });
   return {
     design: { ...base, colors: { primary: "#0b5fff", accent: "#ff8a1f", bg: "#f7f9fc", surface: "#ffffff", surface2: "#e8eef8", ink: "#0f1b33", muted: "#4a5873", line: "#d5def0", dark: "#0b1f4d" }, fonts: { heading: "figtree", body: "figtree", accent: "figtree", mono: "jetbrains" }, heading: { weight: 800, ls: "tight", lh: "tight", transform: "none", emphasis: "accent" }, radius: "round", buttons: { style: "solid", caps: false, hover: "lift", weight: 700 } },
     header: headerBar(ctx, { navStyle: "links", sticky: true, bg: { kind: "color", color: "surface" }, ctaVariant: "accent" }),
@@ -50,7 +50,7 @@ const corner = (ctx: TemplateCtx): Recipe => {
       areasSection(ctx, {}),
       cta,
     ]),
-    ...innerPages(ctx, { title, services, about, process, faq: faqSection(ctx, { style: "cards", align: "center" }), gallery: gallerySection(ctx, { images: [art("workshop", "warm", 1), art("neighborhood", "light", 2), art("storefront", "warm", 3), art("townhouse", "light", 4)], layout: "grid", cols: "2", aspect: "16/10" }), cta, contact: contactSection(ctx, { style: "split", title: "Get a free quote", purpose: "lead" }) }),
+    ...innerPages(ctx, { title, services, about, process, faq: faqSection(ctx, { style: "cards", align: "center" }), gallery: gallerySection(ctx, { images: [art("workshop", "warm", 1), art("neighborhood", "light", 2), art("storefront", "warm", 3), art("townhouse", "light", 4)], layout: "grid", cols: "2", aspect: "16/10" }), cta, contact: contactSection(ctx, { style: "split", title: "Request a quote", purpose: "lead" }) }),
   };
 };
 
@@ -69,7 +69,7 @@ const dispatch = (ctx: TemplateCtx): Recipe => {
     home: compact([
       heroFull(ctx, {
         image: art("workshop", "warm", 1), tone: "dark", align: "start", valign: "center", size: "7xl", minH: "90", overlay: { opacity: 70, dir: "left" }, eyebrow: ctx.has.areas ? `Local to ${ctx.d.areas!.slice(0, 2).join(" & ")}` : "Local specialists", ctaVariant: ["primary", "outline"], ctas: "primary",
-        after: [...(ctx.phoneLink ? [b.group([b.badge("Emergencies: call any time", { variant: "dot" })], { style: { mt: "s" } })] : [])],
+        after: [...(ctx.phoneLink ? [b.group([b.badge("Call to discuss availability", { variant: "dot" })], { style: { mt: "s" } })] : [])],
       }),
       badgeRow(ctx, { tone: "dark" }),
       services,

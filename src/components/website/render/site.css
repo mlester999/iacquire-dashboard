@@ -1,3 +1,4 @@
+@layer iq-site-defaults {
 /* ==========================================================================
    iAcquire website renderer. Everything is scoped under .iq-site, so nothing here can touch the portal around it.
    Colours, fonts, spacing and radii come from custom properties set on .iq-site by the site's design tokens (see lib/website/css.ts).
@@ -20,6 +21,7 @@
   color-scheme: light;
 }
 .iq-site[data-mode="dark"] { color-scheme: dark; }
+.iq-site :where(section[id], main[id]) { scroll-margin-top: var(--anchor-offset, 6rem); }
 .iq-site *, .iq-site *::before, .iq-site *::after { box-sizing: border-box; }
 .iq-site :where(h1, h2, h3, h4, p, ul, ol, dl, dd, figure, blockquote, hr, pre) { margin: 0; padding: 0; }
 .iq-site :where(ul, ol) { list-style: none; }
@@ -57,6 +59,7 @@
 .iq-col[data-surface="brand"] { background: var(--c-primary); color: var(--on-p); --ink: var(--on-p); --muted: color-mix(in srgb, var(--on-p) 78%, transparent); }
 
 .iq-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.iq-bg-under { position: absolute; inset: 0; }
 .iq-bgimg { position: absolute; inset: 0; will-change: transform; }
 .iq-bgimg[data-parallax] { inset: -8% 0; }
 .iq-ov { position: absolute; inset: 0; }
@@ -65,6 +68,7 @@
 .iq-float { position: absolute; top: 0; left: 0; right: 0; z-index: 60; background: transparent; }
 .iq-float.iq-sticky { position: absolute; }
 .iq-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.iq-photo-fallback { display: block; width: 100%; height: 100%; min-height: 4rem; background: linear-gradient(135deg, color-mix(in srgb, var(--surface2) 82%, var(--p-soft)), color-mix(in srgb, var(--surface) 86%, var(--a-soft))); }
 .iq-art { width: 100%; height: 100%; display: block; }
 .iq-ph { display: grid; place-items: center; width: 100%; height: 100%; min-height: 6rem; background: repeating-linear-gradient(45deg, var(--surface2), var(--surface2) 10px, var(--surface) 10px, var(--surface) 20px); color: var(--muted); font-size: .85rem; text-align: center; padding: 1rem; }
 .iq-empty-slot, .iq-empty-el { display: grid; place-items: center; min-height: 4.5rem; padding: 1rem; border: 1.5px dashed var(--line); border-radius: var(--r); color: var(--muted); font-size: .875rem; text-align: center; background: color-mix(in srgb, var(--surface) 60%, transparent); }
@@ -485,6 +489,8 @@
 .iq-menu-panel li a:not(.iq-btn) { display: block; padding: .9rem 0; font-family: var(--f-h); font-size: 1.3rem; font-weight: var(--hw); letter-spacing: var(--hls); border-bottom: 1px solid var(--line); }
 .iq-menu-panel .iq-btn { align-self: stretch; }
 @container (max-width: 1023px) { .iq-nav-list { display: none; } .iq-menu { display: block; } }
+.iq-footer .iq-nav-list { display: flex; flex-wrap: wrap; justify-content: inherit; gap: .35rem 1.25rem; }
+.iq-footer .iq-menu { display: none; }
 
 /* ---------- Forms --------------------------------------------------------- */
 .iq-form { width: 100%; }
@@ -559,4 +565,6 @@
   .iq-logos[data-style="grid"] .iq-logos-track { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .iq-list[data-cols] { grid-template-columns: 1fr; }
   .iq-qa summary { font-size: var(--fs-lg); }
+}
+
 }

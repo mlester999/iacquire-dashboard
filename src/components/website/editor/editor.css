@@ -5,6 +5,9 @@
   background-image: radial-gradient(color-mix(in srgb, var(--ink, #101828) 9%, transparent) 1px, transparent 1.2px);
   background-size: 18px 18px;
   outline: none;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  touch-action: pan-x pan-y;
 }
 .editor-canvas-bg:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary, #3b5bdb) 55%, transparent); }
 
@@ -44,6 +47,16 @@
 .iq-site[data-edit] .iq-video-play, .iq-site[data-edit] iframe { pointer-events: none; }
 .iq-site[data-edit] details > summary { pointer-events: none; }
 .iq-site[data-edit] details[open] > *:not(summary) { pointer-events: none; }
+
+.studio-editor { height: 100dvh; }
+.studio-editor-toolbar > * { flex-shrink: 0; }
+@media (max-width: 639px) {
+  .studio-editor-toolbar { column-gap: 4px; padding-inline: 6px; }
+  .studio-editor-toolbar .studio-editor-extra { display: none; }
+  .studio-editor-page { width: 8rem; margin-left: auto; }
+  .studio-editor-toolbar > span.flex-1 { display: none; }
+  .studio-editor-toolbar p.max-w-\[14rem\] { max-width: 10rem; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .editor-selected, .editor-hover { transition: none; }

@@ -11,6 +11,7 @@ import { useServices } from "./context";
 import { FieldEditor } from "./fields";
 import { FocalPoint } from "./focal-point";
 import type { ImageSrc } from "@/lib/website/doc";
+import { templateImageUrl } from "@/lib/website/template-image-assets";
 
 type Patch = (fn: (s: Section) => Section, coalesce?: string) => void;
 
@@ -62,6 +63,7 @@ export function BackgroundEditor({ bg, onChange, label = "Background" }: { bg: B
               options={[{ value: "flat", label: "Even" }, { value: "bottom", label: "Darker at the bottom" }, { value: "top", label: "Darker at the top" }, { value: "left", label: "Darker on the left" }, { value: "right", label: "Darker on the right" }, { value: "vignette", label: "Vignette" }]} />
           </Row>
           {bg.src?.kind === "asset" && <Row label="Focal point"><FocalPoint label="Background focal point" url={assetUrl(bg.src.id)} x={bg.pos.x} y={bg.pos.y} onChange={(x, y) => onChange({ ...bg, pos: { x, y } })} /></Row>}
+          {bg.src?.kind === "template" && <Row label="Focal point"><FocalPoint label="Background focal point" url={templateImageUrl(bg.src.id)} x={bg.pos.x} y={bg.pos.y} onChange={(x, y) => onChange({ ...bg, pos: { x, y } })} /></Row>}
           <Row label="Focus: left to right"><NumberControl label="Focus horizontal" value={bg.pos.x} min={0} max={100} unit="%" onChange={(v) => onChange({ ...bg, pos: { ...bg.pos, x: v } })} /></Row>
           <Row label="Focus: top to bottom"><NumberControl label="Focus vertical" value={bg.pos.y} min={0} max={100} unit="%" onChange={(v) => onChange({ ...bg, pos: { ...bg.pos, y: v } })} /></Row>
           <Toggle label="Gentle parallax" hint="The picture drifts slowly as visitors scroll. It is switched off for anyone who prefers reduced motion." checked={bg.parallax} onChange={(v) => onChange({ ...bg, parallax: v })} />

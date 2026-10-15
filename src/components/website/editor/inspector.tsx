@@ -5,7 +5,7 @@ import { AlignCenter, AlignLeft, AlignRight, ChevronRight, Copy, Trash2 } from "
 import { Icon } from "@/components/website/render/icons";
 import { ELEMENT_DEFS, SPACES, type ElementType } from "@/lib/website/catalog";
 import {
-  LETTER_SPACINGS, LINE_HEIGHTS, SIZES, WIDTHS, isRef, type Column, type ElementNode, type NodeStyle, type Override, type Page, type Section, type SiteContent,
+  LETTER_SPACINGS, LINE_HEIGHTS, SIZES, WIDTHS, isRef, type Column, type ElementNode, type ImageSrc, type NodeStyle, type Override, type Page, type Section, type SiteContent,
 } from "@/lib/website/doc";
 import type { Device } from "@/lib/website/editor/state";
 import { ancestors, describeNode, findNode, getColumn, getElement, getPage, getSection, newId, patchProps, setColumnCount, setHide, setProp, setResponsive, setStyle, updateColumn, updateElement, updatePage, updateSection } from "@/lib/website/ops";
@@ -17,6 +17,8 @@ import { useServices } from "./context";
 import { useDraft } from "./hooks";
 import { FieldEditor, showField } from "./fields";
 import { FocalPoint } from "./focal-point";
+import { templateImageUrl } from "@/lib/website/template-image-assets";
+import { FONTS, FONT_KEYS } from "@/lib/website/font-keys";
 import { AdvancedGroup } from "./inspector-advanced";
 import { AnimationEditor, SectionInspector } from "./inspector-section";
 
@@ -63,11 +65,11 @@ function useStyleTarget(doc: SiteContent, id: string, device: Device, commit: Ca
 // ---------------------------------------------------------------------------
 
 type StyleGroup = "type" | "color" | "spacing" | "width" | "box" | "media" | "hover";
-const TEXTY: StyleGroup[] = ["type", "color", "spacing", "width"];
+const TEXTY: StyleGroup[] = ["type", "color", "spacing", "width", "box"];
 const BLOCK: StyleGroup[] = ["spacing", "width", "color", "box"];
 const STYLE_GROUPS: Record<ElementType, StyleGroup[]> = {
   heading: TEXTY, text: TEXTY, list: TEXTY, badge: ["color", "spacing", "box"], marquee: TEXTY, contactInfo: TEXTY, social: ["color", "spacing"],
-  button: ["spacing", "box", "hover"], icon: ["color", "spacing"], divider: ["color", "spacing", "width"], spacer: [],
+  button: ["type", "color", "spacing", "width", "box", "hover"], icon: ["color", "spacing"], divider: ["color", "spacing", "width"], spacer: [],
   image: ["spacing", "width", "media", "hover"], gallery: ["spacing", "width", "media"], collage: ["spacing", "width", "media"], video: ["spacing", "width", "media"], logo: ["spacing"], map: ["spacing", "width", "box"],
   group: ["spacing", "width", "box"], card: ["spacing", "width", "box", "hover"],
   services: BLOCK, steps: BLOCK, faq: BLOCK, testimonials: BLOCK, stats: BLOCK, logos: BLOCK, team: BLOCK, pricing: BLOCK, nav: ["spacing", "color"], form: BLOCK,
@@ -90,10 +92,15 @@ function StyleControls({ doc, id, type, device, actions }: { doc: SiteContent; i
       {groups.includes("type") && (
         <Group title="Text">
           <Row label="Font" tag={tag("font")} onReset={reset("font")}>
-            <Seg label="Font" value={t.get<string>("font")} onChange={(v) => t.set("font", v)} options={[{ value: "heading", label: "Heading" }, { value: "body", label: "Body" }, { value: "accent", label: "Accent" }, { value: "mono", label: "Mono" }]} size="sm" />
+            <SelectControl label="Font family" value={t.get<string>("font")} onChange={(v) => t.set("font", v)} options={[
+              ...(["heading", "body", "accent", "mono"] as const).map((role) => ({ value: role, label: `${role[0].toUpperCase() + role.slice(1)} style · ${FONTS[design.fonts[role]].label}` })),
+              ...FONT_KEYS.map((key) => ({ value: key, label: FONTS[key].label })),
+            ]} />
           </Row>
           {sel("size", "Size", SIZES.map((s) => ({ value: s, label: SIZE_LABEL[s] })))}
-          {sel("weight", "Weight", [100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: `${w}${w === 400 ? " · Regular" : w === 700 ? " · Bold" : ""}` })).map((o) => ({ ...o })))}
+          <Row label="Weight" tag={tag("weight")} onReset={reset("weight")}>
+            <SelectControl label="Weight" value={t.get<number>("weight")?.toString()} onChange={(v) => t.set("weight", Number(v))} options={[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => ({ value: String(w), label: `${w}${w === 400 ? " · Regular" : w === 700 ? " · Bold" : ""}` }))} />
+          </Row>
           {sel("lh", "Line height", LINE_HEIGHTS.map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) })))}
           {sel("ls", "Letter spacing", LETTER_SPACINGS.map((s) => ({ value: s, label: s[0].toUpperCase() + s.slice(1) })))}
           <Row label="Alignment" tag={tag("align")} onReset={reset("align")}>
@@ -219,8 +226,8 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
   const [tab, setTab] = React.useState<Tab>("content");
   const set = (key: string, value: unknown) => actions.commit(setProp(doc, el.id, key, value), { coalesce: `prop:${el.id}:${key}` });
   const { assetUrl } = useServices();
-  const imageSrc = el.type === "image" ? (el.props.src as { kind?: string; id?: string } | null) : null;
-  const focalAsset = imageSrc?.kind === "asset" && imageSrc.id ? imageSrc.id : null;
+  const imageSrc = el.type === "image" ? (el.props.src as ImageSrc) : null;
+  const focalUrl = imageSrc?.kind === "asset" ? assetUrl(imageSrc.id) : imageSrc?.kind === "template" ? templateImageUrl(imageSrc.id) : null;
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
@@ -241,9 +248,9 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
           {def.fields.filter((f) => showField(f, el.props)).map((f) => (
             <React.Fragment key={f.key}>
               <FieldEditor spec={f} scope={`el-${el.id}`} value={el.props[f.key]} onChange={(v) => set(f.key, v)} />
-              {el.type === "image" && f.key === "fit" && focalAsset && (
+              {el.type === "image" && f.key === "fit" && focalUrl && (
                 <Row label="Focal point">
-                  <FocalPoint label="Image focal point" url={assetUrl(focalAsset)} x={typeof el.props.posX === "number" ? el.props.posX : 50} y={typeof el.props.posY === "number" ? el.props.posY : 50}
+                  <FocalPoint label="Image focal point" url={focalUrl} x={typeof el.props.posX === "number" ? el.props.posX : 50} y={typeof el.props.posY === "number" ? el.props.posY : 50}
                     onChange={(x, y) => actions.commit(patchProps(doc, el.id, { posX: x, posY: y }), { coalesce: `prop:${el.id}:focal` })} />
                 </Row>
               )}

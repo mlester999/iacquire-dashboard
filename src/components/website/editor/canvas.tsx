@@ -9,7 +9,8 @@ import type { EditBridge, RenderCtx } from "@/components/website/render/ctx";
 import { ELEMENT_DEFS } from "@/lib/website/catalog";
 import { findPage, isRef, type Section, type SiteContent } from "@/lib/website/doc";
 import { axisOf, pickSlot, slotLine, spanFromPixels, type Axis, type Point, type Rect } from "@/lib/website/editor/dnd";
-import { deviceWidth, type Device } from "@/lib/website/editor/state";
+import type { Device } from "@/lib/website/editor/state";
+import { canvasGeometry } from "@/lib/website/editor/interaction";
 import { canInsertElement, canPlace, describeNode, findNode, getColumn, getSection, setColumnSpans, setProp, updateSection } from "@/lib/website/ops";
 import { cn } from "@/lib/utils";
 import { IconButton } from "./controls";
@@ -214,9 +215,7 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
   const page = findPage(doc, pageSlug) ?? doc.pages[0];
 
   // --- Size and scale ------------------------------------------------------
-  const frameW = device === "desktop" ? Math.max(1100, Math.min(1440, avail - 48)) : deviceWidth(device);
-  const fit = Math.min(1, (avail - 40) / frameW);
-  const scale = zoom === "fit" ? fit : zoom;
+  const { width: frameW, scale } = canvasGeometry(device, avail, zoom);
   React.useEffect(() => onScale?.(scale), [scale, onScale]);
   const vh = device === "desktop" ? 900 : device === "tablet" ? 1024 : 844;
 
@@ -297,6 +296,21 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
     return () => window.clearTimeout(id);
   }, [reveal, find]);
 
+  // A layer selection must reveal its real element too. Device switches can
+  // substantially change its position, so measure again after responsive layout.
+  React.useEffect(() => {
+    if (!selection) return;
+    const request = requestAnimationFrame(() => {
+      const el = find(selection);
+      const sc = scrollRef.current;
+      if (!el || !sc) return;
+      const r = el.getBoundingClientRect();
+      const s = sc.getBoundingClientRect();
+      if (r.bottom < s.top + 48 || r.top > s.bottom - 48) sc.scrollTop += r.top - s.top - 72;
+    });
+    return () => cancelAnimationFrame(request);
+  }, [selection, device, find]);
+
   // --- Editing -------------------------------------------------------------
   const stopEditing = React.useCallback(() => setEditingKey(null), [setEditingKey]);
   const lastKey = React.useRef<string | null>(null);
@@ -349,6 +363,7 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
     }
   };
   const raf = React.useRef(0);
+  React.useEffect(() => () => cancelAnimationFrame(raf.current), []);
   const onPointerMove = (e: React.PointerEvent) => {
     if (drag.active || readOnly) return;
     const { target } = e;
@@ -361,6 +376,7 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
 
   // --- Keyboard ------------------------------------------------------------
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (readOnly) return;
     if ((e.target as HTMLElement).closest("[data-editing]")) return;
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "z") return; // handled by the shell
@@ -519,10 +535,12 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       actions.announce(`Column is now ${getColumn(docRef.current, columnId)?.span ?? span0} of 12 wide.`);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   const MIN_STEPS = ["auto", "40", "60", "75", "90", "100"] as const;
@@ -552,9 +570,11 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   // --- Overlay pieces ------------------------------------------------------
@@ -570,9 +590,10 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
-        ref={scrollRef} className="editor-canvas-bg relative min-h-0 flex-1 overflow-auto" tabIndex={0} role="application" aria-label="Website canvas. Select an item, then use the toolbar or keyboard to change it."
+        ref={scrollRef} className="editor-canvas-bg relative min-h-0 flex-1 overflow-auto" tabIndex={0} role="region" aria-label="Website canvas" aria-describedby="studio-canvas-help"
         onKeyDown={onKeyDown}
       >
+        <p id="studio-canvas-help" className="sr-only">Click an item to edit its properties. Select text twice to type directly. Use Alt and arrow keys to reorder. Page Up, Page Down, Home and End scroll the canvas.</p>
         <div ref={stageRef} className="relative mx-auto" style={{ width: frameW * scale, height: contentH * scale + 96, marginTop: 24, marginBottom: 24 }}>
           <div className="absolute left-0 top-0 origin-top-left shadow-[0_8px_40px_-12px_rgb(16_24_40/.35)]" style={{ width: frameW, transform: `scale(${scale})`, background: "var(--bg, #fff)" }}>
             <div ref={frameRef} onClickCapture={onClickCapture} onDoubleClickCapture={onDoubleClickCapture} onPointerMove={onPointerMove} onPointerLeave={() => setHover(null)} onDragStart={(e) => e.preventDefault()} data-canvas-frame="" data-device={device}>

@@ -24,7 +24,8 @@ function Backdrop({ bg, ctx }: { bg: Bg; ctx: RenderCtx }) {
   if (bg.kind === "image") {
     return (
       <div className="iq-bg" aria-hidden>
-        <BgImage ctx={ctx} src={bg.src} posX={bg.pos.x} posY={bg.pos.y} parallax={bg.parallax} />
+        {bg.base && <div className="iq-bg-under" data-bg={bg.base.kind} style={bgCss(bg.base)} />}
+        <BgImage ctx={ctx} src={bg.src} posX={bg.pos.x} posY={bg.pos.y} parallax={bg.parallax} strength={bg.strength} />
         <div className="iq-ov" style={{ background: overlayCss(bg.overlay) }} />
       </div>
     );

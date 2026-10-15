@@ -26,7 +26,9 @@ const rhythm = (home: Section[]) => home.slice(1).map((s) => {
 
 export function signature(key: string): Sig {
   const d: SiteContent = sampleSite(key);
-  const home = d.pages[0].items.filter((i): i is Section => !isRef(i));
+  // Shared sections are part of the actual rendered page. Dropping refs made this metric
+  // ignore most service/about/CTA blocks and misreport the visitor's section sequence.
+  const home = d.pages[0].items.map((item) => isRef(item) ? d.globals[item.ref] : item).filter((item): item is Section => Boolean(item));
   const hero = home[0];
   return {
     key, family: key.split(".")[0],

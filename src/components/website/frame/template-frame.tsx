@@ -4,6 +4,7 @@ import { findPage } from "@/lib/website/doc";
 import { resolveTemplate, sampleSite } from "@/lib/website/templates";
 import type { SessionUser } from "@/server/auth/service";
 import { isCustomKey, templateContentForFrame } from "@/server/websites/templates";
+import { contentHash } from "@/server/websites/hash";
 
 /**
  * A bare page that draws one template, with its sample content, using the same renderer as a published site. It is shown inside an iframe in the
@@ -20,7 +21,7 @@ export async function TemplateFrame({ q, base, viewer }: { q: Record<string, str
   const thumb = q.thumb === "1";
   const qs = (slug: string) => `${base}?key=${encodeURIComponent(key)}&p=${slug}${q.draft === "1" ? "&draft=1" : ""}`;
   return (
-    <div style={thumb ? { height: "100vh", overflow: "hidden", pointerEvents: "none", background: "#fff" } : { background: "#fff" }} aria-hidden={thumb ? true : undefined} data-template-frame={key}>
+    <div style={thumb ? { height: "100vh", overflow: "hidden", pointerEvents: "none", background: "#fff" } : { background: "#fff" }} aria-hidden={thumb ? true : undefined} data-template-frame={key} data-template-version={content.origin.version} data-template-signature={contentHash(content)}>
       <SiteRenderer content={content} pageSlug={page} resolveAsset={() => null} mode="preview" formAction={null} hrefFor={qs} limitSections={thumb ? 4 : undefined} year={2026} />
     </div>
   );

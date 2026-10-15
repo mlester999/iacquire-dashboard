@@ -7,6 +7,9 @@ import { Icon } from "@/components/website/render/icons";
 import { Art } from "@/components/website/render/art";
 import { defaultsFor, ICONS, type FieldSpec } from "@/lib/website/catalog";
 import { safeHref, type ImageSrc } from "@/lib/website/doc";
+import { templateImageDefault, withTemplateImageDefault } from "@/lib/website/template-images";
+import { templateImageUrl } from "@/lib/website/template-image-assets";
+import { SafeImage } from "@/components/website/render/safe-image";
 import { pagePath } from "@/lib/website/doc";
 import { cn } from "@/lib/utils";
 import { AreaControl, ColorControl, IconButton, NumberControl, Row, Seg, SelectControl, TextControl, Toggle } from "./controls";
@@ -94,23 +97,29 @@ export function ImageThumb({ src, className }: { src: ImageSrc; className?: stri
   if (!src) return <span className={cn("flex items-center justify-center bg-surface-3 text-faint", className)}><ImageIcon className="size-4" aria-hidden /></span>;
   if (src.kind === "asset") {
     const a = assets.find((x) => x.id.toLowerCase() === src.id.toLowerCase());
-    // eslint-disable-next-line @next/next/no-img-element
-    return a ? <img src={assetUrl(a.id)} alt="" className={cn("object-cover", className)} /> : <span className={cn("flex items-center justify-center bg-warning-soft text-[9px] text-warning-ink", className)}>Missing</span>;
+    if (a) return <SafeImage key={a.id} src={assetUrl(a.id)} fallbackSrc={src.default ? templateImageUrl(src.default.id) : undefined} alt="" className={cn("object-cover", className)} />;
+    if (src.default) return <SafeImage key={src.default.id} src={templateImageUrl(src.default.id)} alt="" className={cn("object-cover", className)} />;
+    return <span className={cn("flex items-center justify-center bg-warning-soft text-[9px] text-warning-ink", className)}>Missing</span>;
   }
+  if (src.kind === "template") return <SafeImage key={src.id} src={templateImageUrl(src.id)} alt="" className={cn("object-cover", className)} />;
   return <span className={cn("block overflow-hidden", className)} style={{ ["--c-primary" as string]: design.colors.primary, ["--c-accent" as string]: design.colors.accent }}><Art scene={src.scene} tone={src.tone} seed={src.seed} className="size-full" /></span>;
 }
 
 function ImageField({ value, onChange, label }: { value: ImageSrc; onChange: (v: ImageSrc) => void; label: string }) {
   const { openMedia } = useServices();
+  const fallback = templateImageDefault(value);
+  const fieldLabel = fallback?.label ?? label;
   const art = value?.kind === "art";
+  const starter = value?.kind === "template";
   return (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface p-2">
       <ImageThumb src={value} className="size-14 shrink-0 rounded-lg" />
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="truncate text-[12px] font-medium text-ink-2">{!value ? "No image yet" : art ? "Built-in artwork" : "Your image"}</p>
+        <p className="truncate text-[12px] font-medium text-ink-2">{!value ? "No image yet" : starter ? `Starter image · ${fieldLabel}` : art ? `Built-in artwork · ${fieldLabel}` : `Your image · ${fieldLabel}`}</p>
         <div className="flex flex-wrap gap-1.5">
-          <button type="button" aria-label={`${label}: ${value ? "replace" : "choose"} image`} onClick={() => openMedia({ current: value, onPick: onChange, title: label })} className="h-6 rounded-md bg-primary-soft px-2 text-[11.5px] font-medium text-primary-ink hover:bg-primary/15">{value ? "Replace" : "Choose image"}</button>
-          {value && <button type="button" onClick={() => onChange(null)} className="h-6 rounded-md px-2 text-[11.5px] font-medium text-muted hover:bg-surface-3 hover:text-ink">Remove</button>}
+          <button type="button" aria-label={`${fieldLabel}: ${value ? "replace" : "choose"} image`} onClick={() => openMedia({ current: value, onPick: (picked) => onChange(withTemplateImageDefault(picked, value)), title: fieldLabel })} className="h-6 rounded-md bg-primary-soft px-2 text-[11.5px] font-medium text-primary-ink hover:bg-primary/15">{value ? "Replace" : "Choose image"}</button>
+          {fallback && !starter && <button type="button" onClick={() => onChange(fallback)} className="h-6 rounded-md px-2 text-[11.5px] font-medium text-primary-ink hover:bg-primary-soft">Restore default</button>}
+          {value && !fallback && <button type="button" onClick={() => onChange(null)} className="h-6 rounded-md px-2 text-[11.5px] font-medium text-muted hover:bg-surface-3 hover:text-ink">Remove</button>}
         </div>
       </div>
     </div>

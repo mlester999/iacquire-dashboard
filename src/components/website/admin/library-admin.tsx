@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, Copy, Eye, EyeOff, History, ImagePlus, Pencil, PencilRuler, Plus, Rocket, Search, Send, Star } from "lucide-react";
+import { Archive, Copy, Eye, EyeOff, History, Pencil, PencilRuler, Plus, Rocket, Send, Star } from "lucide-react";
 import {
   createTemplateAction, duplicateTemplateAction, listTemplateVersionsAction, restoreTemplateVersionAction, setTemplateStatusAction, updateTemplateMetaAction,
 } from "@/app/actions/website-admin";
@@ -13,17 +13,18 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from 
 import { Badge, Card } from "@/components/ui/primitives";
 import { AreaControl, Row, SelectControl, TextControl } from "@/components/website/editor/controls";
 import { useResetOnOpen } from "@/components/website/editor/hooks";
-import { FrameThumb } from "@/components/website/frame/frame-thumb";
+import { TemplateThumb } from "@/components/website/gallery/template-thumbnail";
+import { GalleryFilters } from "@/components/website/gallery/gallery-filters";
 import { SitePreviewOverlay } from "@/components/website/admin/site-preview-overlay";
-import { INDUSTRY_FILTERS } from "@/lib/website/gallery";
+import { EMPTY_GALLERY_FILTERS, INDUSTRY_FILTERS, discoverTemplates, type GalleryFilters as FilterState } from "@/lib/website/gallery";
 import { relativeTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { TemplateStatus, TemplateView } from "@/server/websites/templates";
 
-type Tab = "all" | "published" | "working" | "hidden" | "archived";
-const TABS: Array<{ id: Tab; label: string; match: (s: TemplateStatus) => boolean }> = [
-  { id: "all", label: "All", match: () => true }, { id: "published", label: "Published", match: (s) => s === "published" },
-  { id: "working", label: "Drafts & review", match: (s) => s === "draft" || s === "in_review" }, { id: "hidden", label: "Hidden", match: (s) => s === "hidden" }, { id: "archived", label: "Archived", match: (s) => s === "archived" },
+type Tab = "all" | "featured" | "published" | "working" | "hidden" | "archived";
+const TABS: Array<{ id: Tab; label: string; match: (t: TemplateView) => boolean }> = [
+  { id: "all", label: "All templates", match: () => true }, { id: "featured", label: "Featured", match: (t) => t.featured }, { id: "published", label: "Published", match: (t) => t.status === "published" },
+  { id: "working", label: "Drafts & review", match: (t) => t.status === "draft" || t.status === "in_review" }, { id: "hidden", label: "Hidden", match: (t) => t.status === "hidden" }, { id: "archived", label: "Archived", match: (t) => t.status === "archived" },
 ];
 const STATUS_LABEL: Record<TemplateStatus, string> = { draft: "Draft", in_review: "In review", published: "Published", hidden: "Hidden", archived: "Archived" };
 const STATUS_TONE: Record<TemplateStatus, "neutral" | "warning" | "success" | "outline" | "danger"> = { draft: "neutral", in_review: "warning", published: "success", hidden: "outline", archived: "outline" };
@@ -39,76 +40,72 @@ interface Props {
 export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/frame/template" }: Props) {
   const router = useRouter();
   const [tab, setTab] = React.useState<Tab>("all");
-  const [q, setQ] = React.useState("");
-  const [family, setFamily] = React.useState("all");
+  const [filters, setFilters] = React.useState<FilterState>({ ...EMPTY_GALLERY_FILTERS });
   const [creating, setCreating] = React.useState(Boolean(openNew));
   const [editing, setEditing] = React.useState<TemplateView | null>(null);
   const [history, setHistory] = React.useState<TemplateView | null>(null);
   const [preview, setPreview] = React.useState<TemplateView | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
-  const families = [...new Map(templates.map((t) => [t.familyId, t.familyName])).entries()];
-  const list = templates.filter((t) => TABS.find((x) => x.id === tab)!.match(t.status) && (family === "all" || t.familyId === family) && (!q.trim() || `${t.name} ${t.familyName} ${t.description} ${t.tags.join(" ")}`.toLowerCase().includes(q.toLowerCase())));
+  const scope = React.useMemo(() => discoverTemplates(templates, filters), [templates, filters]);
+  const list = scope.filter((t) => TABS.find((x) => x.id === tab)!.match(t));
 
   const run = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, success: string) => {
     setBusy(key);
-    const res = await fn();
-    setBusy(null);
-    if (!res.ok) return void toast.error(res.error ?? "That didn't work.");
-    toast.success(success);
-    router.refresh();
+    try {
+      const res = await fn();
+      if (!res.ok) return void toast.error(res.error ?? "That didn't work.");
+      toast.success(success);
+      router.refresh();
+    } catch {
+      toast.error("We couldn't save that change. Please try again.");
+    } finally {
+      setBusy(null);
+    }
   };
   const frameSrc = (t: TemplateView, thumb: boolean) => `${frameBase}?key=${encodeURIComponent(t.key)}${thumb ? "&thumb=1" : ""}${t.kind === "custom" ? "&draft=1" : ""}`;
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[14rem] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-          <input type="search" aria-label="Search templates" placeholder="Search by name, family or tag" value={q} onChange={(e) => setQ(e.target.value)} className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-3 text-[14px] shadow-soft placeholder:text-faint focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-primary/30" />
+      <GalleryFilters cards={templates} value={filters} onChange={setFilters} actions={<Button variant="brand" className="h-11" onClick={() => setCreating(true)}><Plus className="size-4" /> New template</Button>} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="group" aria-label="Template collection" className="scrollbar-thin flex max-w-full gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
+          {TABS.map((t) => {
+            const n = scope.filter(t.match).length;
+            return <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className={cn("inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary", tab === t.id ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}>{t.id === "featured" && <Star className="size-3.5" aria-hidden />}{t.label}<span className={cn("rounded-md px-1.5 py-0.5 text-[10px] tabular-nums", tab === t.id ? "bg-primary/10" : "bg-surface-3")}>{n}</span></button>;
+          })}
         </div>
-        <select aria-label="Design family" value={family} onChange={(e) => setFamily(e.target.value)} className="h-11 rounded-xl border border-line bg-surface px-3 text-[13px] shadow-soft">
-          <option value="all">All families</option>{families.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
-        <Button variant="brand" onClick={() => setCreating(true)}><Plus className="size-4" /> New template</Button>
-      </div>
-      <div role="tablist" aria-label="Status" className="scrollbar-thin flex gap-1.5 overflow-x-auto">
-        {TABS.map((t) => {
-          const n = templates.filter((x) => t.match(x.status)).length;
-          return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("h-9 shrink-0 rounded-full border px-3.5 text-[13px] font-medium", tab === t.id ? "border-primary bg-primary text-white" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{t.label} · {n}</button>;
-        })}
+        <p role="status" className="text-[12px] text-muted">{list.length} template{list.length === 1 ? "" : "s"} <span className="text-faint">· counts match your filters</span></p>
       </div>
 
       {list.length === 0 ? (
-        <Card className="px-6 py-14 text-center"><p className="text-[15px] font-semibold">No templates here</p><p className="mt-1 text-[13px] text-muted">Change the filters, or create a template.</p></Card>
+        <Card className="border-dashed px-6 py-14 text-center"><p className="text-[16px] font-semibold">A fresh perspective awaits</p><p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-muted">No templates match this collection and these filters. Try another collection or clear your filters.</p><Button className="mt-4" variant="secondary" onClick={() => { setFilters({ ...EMPTY_GALLERY_FILTERS }); setTab("all"); }}>Clear filters</Button></Card>
       ) : (
         <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" aria-label="Templates">
-          {list.map((t) => (
+          {list.map((t, index) => (
             <li key={t.key}>
-              <Card className="flex h-full flex-col overflow-hidden">
+              <Card className="group flex h-full flex-col overflow-hidden rounded-[20px] transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-md motion-reduce:transition-none focus-within:border-primary/50">
                 <div className="relative">
-                  {t.hasPreviewImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`/api/website-templates/${encodeURIComponent(t.key)}/preview`} alt="" className="aspect-[16/10] w-full object-cover" />
-                  ) : <FrameThumb src={frameSrc(t, true)} title={`${t.name} template`} />}
+                  <button type="button" aria-label={`Preview ${t.name}`} onClick={() => setPreview(t)} className="block w-full cursor-zoom-in overflow-hidden border-b border-line bg-surface-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
+                    <TemplateThumb card={t} frameBase={frameBase} priority={index < 3} draft={t.kind === "custom"} />
+                  </button>
                   <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
                     {t.featured && <span className="inline-flex items-center gap-1 rounded-full bg-ink/85 px-2 py-1 text-[10.5px] font-semibold text-white"><Star className="size-3 fill-current" aria-hidden /> Featured</span>}
                     {t.kind === "custom" && <span className="rounded-full bg-primary px-2 py-1 text-[10.5px] font-semibold text-white">Agency design</span>}
                   </div>
                 </div>
-                <div className="flex flex-1 flex-col gap-2.5 p-4">
+                <div className="flex flex-1 flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0"><p className="truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{t.familyName}</p><h3 className="truncate text-[16px] font-semibold tracking-tight">{t.name}</h3></div>
+                    <div className="min-w-0"><p className="truncate text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{t.familyName}</p><h2 className="mt-1 truncate text-[19px] font-semibold tracking-tight">{t.name}</h2></div>
                     <Badge tone={STATUS_TONE[t.status]}>{STATUS_LABEL[t.status]}</Badge>
                   </div>
                   <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted">{t.description || "No description yet."}</p>
-                  <p className="text-[11.5px] text-muted">
-                    Version {t.version}{t.unpublishedChanges ? " · unpublished changes" : ""}{t.updatedAt ? ` · updated ${relativeTime(t.updatedAt)}` : ""}{t.updatedByName ? ` by ${t.updatedByName}` : ""} · {t.sitesUsing} website{t.sitesUsing === 1 ? "" : "s"} started from it
-                  </p>
-                  {t.tags.length > 0 && <ul className="flex flex-wrap gap-1" aria-label="Tags">{t.tags.slice(0, 5).map((x) => <li key={x} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-ink-2">{x}</li>)}</ul>}
-                  <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+                  {t.industries.length > 0 && <p className="text-[11px] font-medium text-ink-2">{t.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).join(" · ")}</p>}
+                  {t.unpublishedChanges && <p className="text-[11.5px] font-medium text-warning-ink">Changes awaiting publication</p>}
+                  {t.tags.length > 0 && <ul className="flex flex-wrap gap-1" aria-label="Tags">{t.tags.slice(0, 3).map((x) => <li key={x} className="rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-medium capitalize text-ink-2">{x}</li>)}</ul>}
+                  <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-4">
                     <Button size="sm" variant="secondary" onClick={() => setPreview(t)}><Eye className="size-3.5" /> Preview</Button>
-                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15"><PencilRuler className="size-3.5" aria-hidden /> Design</Link>}
-                    {t.kind === "builtin" && <Button size="sm" variant="soft" loading={busy === `dup-${t.key}`} onClick={() => void run(`dup-${t.key}`, async () => { const r = await duplicateTemplateAction(t.key); if (r.ok) router.push(`/admin/website-studio/templates/${r.data.id}`); return r; }, "Created an editable copy.")}><Copy className="size-3.5" /> Customize a copy</Button>}
+                    {t.kind === "custom" && t.id && <Link href={`/admin/website-studio/templates/${t.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15"><PencilRuler className="size-3.5" aria-hidden /> Customize</Link>}
+                    {t.kind === "builtin" && <Button size="sm" variant="soft" loading={busy === `dup-${t.key}`} onClick={() => void run(`dup-${t.key}`, async () => { const r = await duplicateTemplateAction(t.key); if (r.ok) router.push(`/admin/website-studio/templates/${r.data.id}`); return r; }, "Created an editable copy.")}><Copy className="size-3.5" /> Customize</Button>}
                     <Menu>
                       <MenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`More for ${t.name}`}>More</Button></MenuTrigger>
                       <MenuContent align="end">
@@ -137,7 +134,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
       <CreateDialog open={creating} onOpenChange={setCreating} templates={templates} onCreated={(id) => router.push(`/admin/website-studio/templates/${id}`)} />
       {editing && <EditDialog t={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />}
       {history && <HistoryDialog t={history} onClose={() => setHistory(null)} onRestored={() => { setHistory(null); router.refresh(); }} />}
-      {preview && <SitePreviewOverlay title={`${preview.familyName} · ${preview.name}`} note={preview.kind === "custom" ? "working copy" : "sample content"} src={frameSrc(preview, false)} onClose={() => setPreview(null)} />}
+      {preview && <SitePreviewOverlay title={`${preview.familyName} · ${preview.name}`} note={preview.kind === "custom" ? "Working copy" : "Template preview"} src={frameSrc(preview, false)} onClose={() => setPreview(null)} />}
     </div>
   );
 }
@@ -180,22 +177,12 @@ function EditDialog({ t, onClose, onSaved }: { t: TemplateView; onClose: () => v
   const [industries, setIndustries] = React.useState(t.industries);
   const [tags, setTags] = React.useState(t.tags.join(", "));
   const [busy, setBusy] = React.useState(false);
-  const [file, setFile] = React.useState<File | null>(null);
   const save = async () => {
     setBusy(true);
     const res = await updateTemplateMetaAction(t.key, { ...(t.kind === "custom" ? { name, description } : {}), industries, tags: tags.split(",").map((x) => x.trim()).filter(Boolean) });
     if (!res.ok) {
       setBusy(false);
       return void toast.error(res.error);
-    }
-    if (file) {
-      const form = new FormData();
-      form.set("file", file);
-      const up = await fetch(`/api/admin/website-templates/${encodeURIComponent(t.key)}/preview`, { method: "POST", body: form });
-      if (!up.ok) {
-        setBusy(false);
-        return void toast.error(((await up.json().catch(() => ({}))) as { error?: string }).error ?? "The preview image couldn't be saved.");
-      }
     }
     setBusy(false);
     toast.success("Saved.");
@@ -205,6 +192,13 @@ function EditDialog({ t, onClose, onSaved }: { t: TemplateView; onClose: () => v
     <Dialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Details: ${t.name}`} description={t.kind === "builtin" ? "Built-in designs keep their name and description. You can tag them and choose which industries they're shown for." : "How this template appears in the library."}
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="brand" loading={busy} onClick={() => void save()}>Save</Button></>}>
       <div className="space-y-4">
+        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-xl border border-line bg-surface-2 p-4 text-[12px]">
+          <div><dt className="text-muted">Publication</dt><dd className="mt-1 font-medium">{STATUS_LABEL[t.status]}{t.featured ? " · Featured" : ""}</dd></div>
+          <div><dt className="text-muted">Current version</dt><dd className="mt-1 font-medium">{t.version || "Unpublished"}</dd></div>
+          <div><dt className="text-muted">Websites created</dt><dd className="mt-1 font-medium">{t.sitesUsing}</dd></div>
+          <div><dt className="text-muted">Last updated</dt><dd className="mt-1 font-medium">{t.updatedAt ? relativeTime(t.updatedAt) : "Built-in collection"}{t.updatedByName ? ` by ${t.updatedByName}` : ""}</dd></div>
+          <div className="col-span-2"><dt className="text-muted">Template reference</dt><dd className="mt-1 break-all font-mono text-[11px]">{t.key}</dd></div>
+        </dl>
         {t.kind === "custom" && <Row label="Name" htmlFor="ed-name"><TextControl id="ed-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} /></Row>}
         {t.kind === "custom" && <Row label="Short description" htmlFor="ed-desc"><AreaControl id="ed-desc" rows={2} value={description} maxLength={300} onChange={(e) => setDescription(e.target.value)} /></Row>}
         <Row label="Industries">
@@ -215,11 +209,7 @@ function EditDialog({ t, onClose, onSaved }: { t: TemplateView; onClose: () => v
           </div>
         </Row>
         <Row label="Tags" hint="Comma separated, for search and filters." htmlFor="ed-tags"><TextControl id="ed-tags" value={tags} maxLength={200} placeholder="luxury, serif, coastal" onChange={(e) => setTags(e.target.value)} /></Row>
-        <Row label="Card picture" hint="Optional. Shown instead of the rendered thumbnail. PNG, JPG or WebP; it is re-encoded and resized.">
-          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line-strong px-3 py-2.5 text-[12.5px] text-ink-2 hover:bg-surface-2"><ImagePlus className="size-4 text-muted" aria-hidden /> {file ? file.name : t.hasPreviewImage ? "Replace the picture" : "Choose a picture"}
-            <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </label>
-        </Row>
+        <p className="rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted">The card thumbnail is generated from the website preview so clients see the same design when they open it.</p>
       </div>
     </Dialog>
   );

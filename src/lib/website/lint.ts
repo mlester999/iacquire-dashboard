@@ -175,17 +175,19 @@ export function checkReadiness(content: SiteContent): Readiness {
   if (!homeHasHero) warnings.push({ code: "no_hero", message: "Your home page has no headline, so visitors won't see what you do straight away.", where: "Home" });
   if (!content.seo.description) warnings.push({ code: "no_meta", message: "Add a short description so search engines can describe your site.", where: "Search" });
 
-  // Pictures. A drawn illustration is honest artwork, not a photo of the owner's work, team or places.
+  // Generated starters look complete in previews, but they are not evidence of this owner's work, place or people.
   const noAlt = new Set<string>();
   // One note per element, however many pictures it holds (a services section with three picture cards is one thing to fix, not three).
   const noted = new Set<string>();
   for (const u of imageUses(content)) {
-    if (u.src && u.src.kind === "art" && artKind(u.src.scene) === "illustration" && !noted.has(u.nodeId)) {
+    const generatedStarter = u.src?.kind === "template";
+    const builtInIllustration = u.src?.kind === "art" && artKind(u.src.scene) === "illustration";
+    if (u.src && (generatedStarter || builtInIllustration) && !noted.has(u.nodeId)) {
       noted.add(u.nodeId);
       if (u.type === "gallery" || u.type === "collage" || u.type === "team" || u.type === "testimonials") {
-        blockers.push({ code: "illustration_as_proof", message: "This shows built-in artwork where visitors expect a real photo of your work or people. Replace it with your own image.", where: u.where, nodeId: u.nodeId });
+        blockers.push({ code: "illustration_as_proof", message: generatedStarter ? "This shows generated starter imagery where visitors expect real photos of your work or people. Replace it with your own images before publishing." : "This shows built-in artwork where visitors expect a real photo of your work or people. Replace it with your own image.", where: u.where, nodeId: u.nodeId });
       } else {
-        warnings.push({ code: "illustration_in_use", message: "This uses a built-in illustration rather than your own photograph. Replace it with your own image, or keep the artwork if you prefer.", where: u.where, nodeId: u.nodeId });
+        warnings.push({ code: "illustration_in_use", message: generatedStarter ? "This uses a generated template starter image, not a photo supplied by your business. Replace it with your own image or confirm it is appropriate before publishing." : "This uses a built-in illustration rather than your own photograph. Replace it with your own image, or keep the artwork if you prefer.", where: u.where, nodeId: u.nodeId });
       }
     }
     if (u.src && u.type === "image" && !u.alt.trim() && !noAlt.has(u.nodeId)) {
@@ -195,12 +197,12 @@ export function checkReadiness(content: SiteContent): Readiness {
   }
   const sectionBgIllustrations: string[] = [];
   const bgCheck = (name: string, s: { bg: { kind: string; src?: ImageSrc } }) => {
-    if (s.bg.kind === "image" && s.bg.src && s.bg.src.kind === "art" && artKind(s.bg.src.scene) === "illustration") sectionBgIllustrations.push(name);
+    if (s.bg.kind === "image" && s.bg.src && (s.bg.src.kind === "template" || (s.bg.src.kind === "art" && artKind(s.bg.src.scene) === "illustration"))) sectionBgIllustrations.push(name);
   };
   if (content.header) bgCheck("Header", content.header);
   content.pages.forEach((p) => p.items.forEach((i) => !isRef(i) && bgCheck(p.title, i)));
   for (const w of new Set(sectionBgIllustrations)) {
-    warnings.push({ code: "illustration_in_use", message: "A background on this page uses a built-in illustration rather than your own photograph. Replace it with your own image, or keep the artwork if you prefer.", where: w });
+    warnings.push({ code: "illustration_in_use", message: "A background uses a generated template starter image, not a photo supplied by your business. Replace it with your own image or confirm it is appropriate before publishing.", where: w });
   }
 
   if (eachHas(content, "stats")) warnings.push({ code: "claim_figure", message: "Your site shows figures. Check each one is accurate today.", where: "Numbers" });

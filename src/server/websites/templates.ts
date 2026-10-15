@@ -8,8 +8,9 @@ import { roleHasPermission, type Permission } from "@/lib/permissions";
 import { eachElement, parseContent, referencedAssetIds, type SiteContent } from "@/lib/website/doc";
 import { ELEMENT_DEFS } from "@/lib/website/catalog";
 import { tokenValues } from "@/lib/website/instantiate";
-import { builtInCards } from "@/lib/website/gallery-data";
-import { INDUSTRY_FILTERS, type GalleryCard } from "@/lib/website/gallery";
+import { builtInCards, contentFacets } from "@/lib/website/gallery-data";
+import { INDUSTRY_FILTERS, STYLE_FILTERS, type GalleryCard } from "@/lib/website/gallery";
+import type { TemplateThumbnail } from "@/lib/website/thumbnail-contract";
 import { blankTemplateContent, instantiateTemplate, type Origin } from "@/lib/website/instantiate";
 import { buildSite, resolveTemplate, sampleSite } from "@/lib/website/templates";
 import type { SiteDetails } from "@/lib/website/templates/types";
@@ -34,6 +35,10 @@ export interface TemplateView {
   mode: "light" | "dark";
   updatedAt: string | null;
   publishedAt: string | null;
+  addedAt?: string | null;
+  layout?: string;
+  typography?: string;
+  thumbnail?: TemplateThumbnail;
   updatedByName: string | null;
   hasPreviewImage: boolean;
   /** The working copy has changes that clients don't see yet. */
@@ -48,10 +53,11 @@ const need = (user: SessionUser, permission: Permission) => {
 
 interface Row {
   id: string; key: string; kind: "builtin" | "custom"; name: string; description: string; family: string; industries: string[]; tags: string[]; status: TemplateStatus; featured: boolean;
-  version: number; based_on: string | null; updated_at: Date; published_at: Date | null; updated_name: string | null; has_preview: boolean; unpublished: boolean;
+  version: number; based_on: string | null; updated_at: Date; created_at: Date; published_at: Date | null; updated_name: string | null; has_preview: boolean; unpublished: boolean; discovery_content: unknown;
 }
 
-const SELECT = `t.id, t.key, t.kind, t.name, t.description, t.family, t.industries, t.tags, t.status, t.featured, t.version, t.based_on, t.updated_at, t.published_at, u.full_name as updated_name,
+const SELECT = `t.id, t.key, t.kind, t.name, t.description, t.family, t.industries, t.tags, t.status, t.featured, t.version, t.based_on, t.updated_at, t.created_at, t.published_at, u.full_name as updated_name,
+  case when t.kind = 'custom' then coalesce(t.draft_content, t.content) else null end as discovery_content,
   (t.preview_image is not null) as has_preview, (t.kind = 'custom' and t.draft_content is not null and t.draft_content is distinct from t.content) as unpublished`;
 
 async function usage(db: Queryable): Promise<Map<string, number>> {
@@ -71,15 +77,18 @@ export async function listLibrary(user: SessionUser): Promise<TemplateView[]> {
       const o = byKey.get(c.key);
       out.push({
         id: o?.id ?? null, key: c.key, kind: "builtin", name: c.name, description: c.description, familyId: c.familyId, familyName: c.familyName,
-        industries: c.industries, tags: [...new Set([...c.tags, ...(o?.tags ?? [])])], status: o?.status ?? "published", featured: o ? o.featured : c.featured, version: o?.version ?? 1,
+        industries: o?.industries ?? c.industries, tags: [...new Set([...c.tags, ...(o?.tags ?? [])])], status: o?.status ?? "published", featured: o?.featured ?? false, version: c.version ?? 1,
+        addedAt: c.addedAt, layout: c.layout, typography: c.typography, thumbnail: c.thumbnail,
         basedOn: null, mode: c.mode, updatedAt: o ? new Date(o.updated_at).toISOString() : null, publishedAt: o?.published_at ? new Date(o.published_at).toISOString() : null,
         updatedByName: o?.updated_name ?? null, hasPreviewImage: o?.has_preview ?? false, unpublishedChanges: false, sitesUsing: used.get(c.key) ?? 0,
       });
     }
     for (const r of rows.filter((x) => x.kind === "custom")) {
+      const parsed = parseContent(r.discovery_content);
       out.push({
         id: r.id, key: r.key, kind: "custom", name: r.name, description: r.description, familyId: r.family, familyName: r.family === "custom" ? "Agency design" : r.family, industries: r.industries, tags: r.tags,
-        status: r.status, featured: r.featured, version: r.version, basedOn: r.based_on, mode: "light", updatedAt: new Date(r.updated_at).toISOString(), publishedAt: r.published_at ? new Date(r.published_at).toISOString() : null,
+        status: r.status, featured: r.featured, version: r.version, basedOn: r.based_on, mode: parsed.ok ? parsed.content.design.mode : "light", updatedAt: new Date(r.updated_at).toISOString(), publishedAt: r.published_at ? new Date(r.published_at).toISOString() : null,
+        addedAt: new Date(r.created_at).toISOString(), ...(parsed.ok ? contentFacets(parsed.content) : {}),
         updatedByName: r.updated_name, hasPreviewImage: r.has_preview, unpublishedChanges: r.unpublished, sitesUsing: used.get(r.key) ?? 0,
       });
     }
@@ -93,14 +102,20 @@ export async function listPublishedCards(): Promise<GalleryCard[]> {
   const overlay = new Map(rows.filter((r) => r.kind === "builtin").map((r) => [r.key, r]));
   const hidden = new Set([...overlay.values()].filter((r) => r.status !== "published").map((r) => r.key));
   const featured = new Set([...overlay.values()].filter((r) => r.featured).map((r) => r.key));
-  const noOverlayFeatured = builtInCards().filter((c) => c.featured && !overlay.has(c.key)).map((c) => c.key);
-  const cards = builtInCards({ hidden, featured: new Set([...featured, ...noOverlayFeatured]), added: new Map() });
+  const cards = builtInCards({ hidden, featured, added: new Map() }).map((card) => {
+    const row = overlay.get(card.key);
+    if (!row) return card;
+    const tags = [...new Set([...card.tags, ...row.tags])];
+    return { ...card, industries: row.industries, tags, updatedAt: new Date(row.updated_at).toISOString(), styles: STYLE_FILTERS.filter((style) => style.tags.some((tag) => tags.includes(tag))).map((style) => style.id) };
+  });
   for (const r of rows.filter((x) => x.kind === "custom" && x.status === "published")) {
     const sample = await withSystem(async (db) => (await db.query<{ content: unknown }>("select content from website_templates where id = $1", [r.id])).rows[0]?.content);
     const parsed = parseContent(sample);
     cards.push({
       key: r.key, source: "custom", familyId: r.family, familyName: r.family === "custom" ? "Agency design" : r.family, familyTagline: "", name: r.name, description: r.description, tags: r.tags,
-      industries: r.industries.filter((i) => INDUSTRY_FILTERS.some((f) => f.id === i)), styles: [], featured: r.featured, mode: "light", addedAt: new Date(r.published_at ?? r.updated_at).toISOString(),
+      industries: r.industries.filter((i) => INDUSTRY_FILTERS.some((f) => f.id === i)), styles: STYLE_FILTERS.filter((style) => style.tags.some((tag) => r.tags.includes(tag))).map((style) => style.id), featured: r.featured,
+      mode: parsed.ok ? parsed.content.design.mode : "light", addedAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString(), version: r.version,
+      ...(parsed.ok ? contentFacets(parsed.content) : {}),
       pages: parsed.ok ? parsed.content.pages.map((p) => ({ slug: p.slug, title: p.navLabel || p.title })) : [{ slug: "home", title: "Home" }],
     });
   }
@@ -219,7 +234,7 @@ export async function saveTemplateDraft(user: SessionUser, id: string, input: { 
   const parsed = parseContent(input.content);
   if (!parsed.ok) throw new AppError("invalid_input", `${parsed.error}${parsed.path ? ` (${parsed.path})` : ""}`);
   // A template is shared with every client, so it can never point at one tenant's uploaded image.
-  if (referencedAssetIds(parsed.content).length > 0) throw new AppError("invalid_input", "A template can use built-in artwork only. Remove uploaded images from it: they belong to one client.");
+  if (referencedAssetIds(parsed.content).length > 0) throw new AppError("invalid_input", "A shared template can use generated starter images or built-in artwork, but not one client's uploads.");
   const { rows } = await withSystem((db) =>
     db.query<{ draft_revision: number }>(
       "update website_templates set draft_content = $2, draft_revision = draft_revision + 1, updated_by = $4, updated_at = now() where id = $1 and kind = 'custom' and draft_revision = $3 returning draft_revision",
@@ -262,8 +277,8 @@ async function ensureRow(db: Queryable, key: string, user: SessionUser): Promise
   const t = resolveTemplate(key);
   if (!t) throw new AppError("not_found", "Template not found.");
   const ins = await db.query<{ id: string }>(
-    "insert into website_templates (key, kind, name, description, family, status, created_by, updated_by) values ($1, 'builtin', $2, $3, $4, 'published', $5, $5) returning id",
-    [key, t.variation.name, t.variation.description, t.family.id, user.id]);
+    "insert into website_templates (key, kind, name, description, family, industries, status, created_by, updated_by) values ($1, 'builtin', $2, $3, $4, $6, 'published', $5, $5) returning id",
+    [key, t.variation.name, t.variation.description, t.family.id, user.id, builtInCards().find((card) => card.key === key)?.industries ?? []]);
   return ins.rows[0].id;
 }
 
@@ -368,7 +383,7 @@ const KNOWN_TOKENS = new Set(Object.keys(tokenValues({ businessName: "x", indust
 export function checkTemplate(content: SiteContent): TemplateCheck {
   const blockers: TemplateCheck["blockers"] = [];
   const warnings: TemplateCheck["warnings"] = [];
-  if (referencedAssetIds(content).length) blockers.push({ code: "uploaded_image", message: "This template uses an uploaded image. Templates can use built-in artwork only.", where: "Images" });
+  if (referencedAssetIds(content).length) blockers.push({ code: "uploaded_image", message: "This template uses a client's uploaded image. Shared templates can use generated starter images or built-in artwork only.", where: "Images" });
   if (!content.pages.some((p) => p.slug === "home")) blockers.push({ code: "no_home", message: "A template needs a home page.", where: "Pages" });
   const unknown = new Set<string>();
   let hasForm = false;

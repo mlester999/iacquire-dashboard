@@ -9,6 +9,7 @@ import { Art } from "@/components/website/render/art";
 import { useStudioApi } from "@/components/website/studio/studio-api";
 import { ART_SCENES, ART_TONES, type ArtScene, type ArtTone } from "@/lib/website/art-keys";
 import type { ImageSrc } from "@/lib/website/doc";
+import { templateImageDefault } from "@/lib/website/template-images";
 import { cn } from "@/lib/utils";
 import type { AssetView } from "@/server/assets/service";
 import { IconButton, NumberControl, Row, Seg, TextControl } from "./controls";
@@ -165,6 +166,7 @@ export function MediaPickerDialog({
   const [tone, setTone] = React.useState<ArtTone>(current?.kind === "art" ? current.tone : "auto");
   const [seed, setSeed] = React.useState(current?.kind === "art" ? current.seed : 0);
   const { design } = useServices();
+  const hasTemplateDefault = Boolean(templateImageDefault(current));
   useResetOnOpen(open, () => {
     setTab(current?.kind === "art" ? "art" : "mine");
     if (current?.kind === "art") {
@@ -180,7 +182,7 @@ export function MediaPickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="xl" title={title ? `Choose an image: ${title}` : "Choose an image"} description="Use one of your own images, or a piece of built-in artwork while you're still gathering photos."
       footer={<>
-        {current && <Button variant="ghost" onClick={() => { onPick(null); onOpenChange(false); }}>Remove image</Button>}
+        {current && !hasTemplateDefault && <Button variant="ghost" onClick={() => { onPick(null); onOpenChange(false); }}>Remove image</Button>}
         <span className="flex-1" />
         <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
         {tab === "art" && <Button variant="brand" onClick={() => { onPick({ kind: "art", scene, tone, seed }); onOpenChange(false); }}>Use this artwork</Button>}
