@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHero } from "@/components/ui/workspace";
 import { WebsitesTable } from "@/components/website/admin/websites-table";
 
-export const metadata = { title: "Client websites" };
+export const metadata = { title: "Client Websites" };
 
 export default async function ClientWebsitesPage() {
   const user = await requireAgency();
@@ -17,7 +17,7 @@ export default async function ClientWebsitesPage() {
   return (
     <div className="module-stack">
       <PageHero
-        eyebrow="Website Studio" icon={<Globe className="size-5" />} title="Client websites"
+        eyebrow="Website Studio" icon={<Globe className="size-5" />} title="Client Websites"
         description={user.platformRole === "agency_super_admin" ? "Every client website, with its status, domain and what needs a person's attention." : "The websites of the clients you are assigned to, with their status, domain and what needs attention."}
       />
       {without.length > 0 && (

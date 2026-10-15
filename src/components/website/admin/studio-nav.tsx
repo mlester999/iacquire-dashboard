@@ -2,16 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { STUDIO_SECTIONS } from "@/lib/admin-breadcrumb";
 import { cn } from "@/lib/utils";
 
-const ITEMS = [
-  { href: "/admin/website-studio", label: "Overview", exact: true },
-  { href: "/admin/website-studio/websites", label: "Client websites" },
-  { href: "/admin/website-studio/templates", label: "Template library" },
-  { href: "/admin/website-studio/reviews", label: "Reviews & publishing" },
-  { href: "/admin/website-studio/domains", label: "Domains & hosting" },
-  { href: "/admin/website-studio/media", label: "Media library" },
-] as const;
+const ITEMS = STUDIO_SECTIONS;
 
 /** The sections of the agency's Website Studio. */
 export function StudioNav() {

@@ -193,6 +193,20 @@ export function SectionInspector({ sec, role, shared, patch, onColumns, readOnly
         <Row label="Name" htmlFor={`sn-${sec.id}`}><TextControl id={`sn-${sec.id}`} value={sec.name} maxLength={40} placeholder="For your own reference" onChange={(e) => patch((s) => ({ ...s, name: e.target.value }), `name:${sec.id}`)} /></Row>
         <Row label="Colour mood" hint="Auto follows the site. Dark, Brand and Accent re-colour text and buttons inside so they stay readable."><Seg label="Colour mood" value={sec.tone} options={TONES.map((t) => ({ ...t }))} onChange={(v) => patch((s) => ({ ...s, tone: v }))} size="sm" /></Row>
         {role === "section" && <Toggle label="Hide this section" hint="It stays here, but visitors don't see it." checked={sec.hidden} onChange={(v) => patch((s) => ({ ...s, hidden: v }))} />}
+        {role === "section" && !sec.hidden && (
+          <Row label="Show on" hint="Hidden screens still show the section, dimmed, while you edit. Visitors on those screens won't see it.">
+            <div className="space-y-1">
+              {([["d", "Desktop"], ["t", "Tablet"], ["m", "Phone"]] as const).map(([screen, name]) => (
+                <Toggle key={screen} label={name} checked={sec.hide?.[screen] !== true} onChange={(v) => patch((s) => {
+                  const hide = { ...(s.hide ?? {}), [screen]: v ? undefined : true };
+                  const { hide: _unused, ...rest } = s;
+                  void _unused;
+                  return Object.values(hide).some(Boolean) ? { ...rest, hide: Object.fromEntries(Object.entries(hide).filter(([, on]) => on)) } : rest;
+                })} />
+              ))}
+            </div>
+          </Row>
+        )}
       </Group>
       <Group title="Layout">
         <Row label="Columns"><Seg label="Columns" value={String(Math.min(sec.columns.length, 4))} onChange={(v) => onColumns(Number(v))} options={["1", "2", "3", "4"].map((n) => ({ value: n, label: n }))} /></Row>
@@ -207,6 +221,8 @@ export function SectionInspector({ sec, role, shared, patch, onColumns, readOnly
         <Toggle label="Reverse order when stacked" checked={l.reverse} onChange={(v) => setLayout({ reverse: v })} />
         <Toggle label="Padding at the sides" checked={l.gutter} onChange={(v) => setLayout({ gutter: v })} />
         <Toggle label="Set in as a rounded panel" checked={l.inset} onChange={(v) => setLayout({ inset: v })} />
+        <Row label="Border" hint={l.inset ? "A line around the panel." : "A line above and below the section."}><Seg label="Section border" value={l.border} onChange={(v) => setLayout({ border: v })} options={[{ value: "none", label: "None" }, { value: "thin", label: "Thin" }, { value: "bold", label: "Bold" }]} /></Row>
+        <Row label="Shadow" hint="Shows best on a panel."><Seg label="Section shadow" value={l.shadow} onChange={(v) => setLayout({ shadow: v })} options={[{ value: "none", label: "None" }, { value: "s", label: "S" }, { value: "m", label: "M" }, { value: "l", label: "L" }]} /></Row>
         {role === "header" && (
           <>
             <Toggle label="Stay at the top while scrolling" checked={l.sticky} onChange={(v) => setLayout({ sticky: v })} />

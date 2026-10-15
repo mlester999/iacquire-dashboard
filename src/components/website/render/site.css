@@ -56,7 +56,7 @@
 .iq-col[data-surface="tinted"] { background: var(--p-soft); }
 .iq-col[data-surface="glass"] { background: color-mix(in srgb, var(--surface) 55%, transparent); backdrop-filter: blur(16px) saturate(1.3); border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); }
 .iq-col[data-surface="dark"] { background: var(--c-dark); color: var(--c-on-dark); --ink: var(--c-on-dark); --muted: color-mix(in srgb, var(--c-on-dark) 70%, transparent); --line: color-mix(in srgb, var(--c-on-dark) 18%, transparent); }
-.iq-col[data-surface="brand"] { background: var(--c-primary); color: var(--on-p); --ink: var(--on-p); --muted: color-mix(in srgb, var(--on-p) 78%, transparent); }
+.iq-col[data-surface="brand"] { background: var(--c-primary); color: var(--on-p); --ink: var(--on-p); --muted: var(--on-p); }
 
 .iq-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
 .iq-bg-under { position: absolute; inset: 0; }
@@ -66,6 +66,8 @@
 .iq-decor { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .iq-sticky { position: sticky; top: 0; z-index: 60; }
 .iq-float { position: absolute; top: 0; left: 0; right: 0; z-index: 60; background: transparent; }
+/* The header floats over the first section, whose content starts below it (NavFit measures the header). */
+.iq-header.iq-float ~ main > .iq-sec:first-child { padding-top: max(var(--pt, var(--sp-xl)), calc(var(--header-h, 0px) + var(--sp-s))); }
 .iq-float.iq-sticky { position: absolute; }
 .iq-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .iq-photo-fallback { display: block; width: 100%; height: 100%; min-height: 4rem; background: linear-gradient(135deg, color-mix(in srgb, var(--surface2) 82%, var(--p-soft)), color-mix(in srgb, var(--surface) 86%, var(--a-soft))); }
@@ -96,6 +98,9 @@
 .iq-decor-i[data-kind="orb"] { border-radius: 50%; background: radial-gradient(circle at 50% 50%, currentColor 0, transparent 68%); filter: blur(24px); }
 
 /* ---------- Typography ---------------------------------------------------- */
+/* The longest word of a heading (--lw, from its text) has to fit the room the heading has: its section's content width less the side padding, taken at
+   the column's true fraction of the row (--cf) less its share of the gaps, with a small margin. --cw is the heading font's character width in em. */
+.iq-h { --fit: calc(((var(--ww, 100cqw) - 2 * var(--gut-x, 0px)) * var(--cf, 1) - var(--gap, 0px) * (1 - var(--cf, 1))) * .94 / (var(--lw, 1) * var(--cw, .6))); }
 .iq-h { font-family: var(--f-h); font-weight: var(--hw); letter-spacing: var(--hls); line-height: var(--hlh); text-transform: var(--htt); text-wrap: balance; color: var(--ink); overflow-wrap: break-word; }
 .iq-h[data-lvl="1"] { font-size: calc(var(--fs-6xl) * var(--ts)); }
 .iq-h[data-lvl="2"] { font-size: calc(var(--fs-4xl) * var(--ts)); }
@@ -114,6 +119,11 @@
 .iq-body p + p { margin-top: 1.05em; }
 .iq-lede { font-size: clamp(1.08rem, .7cqw + .95rem, 1.3rem); line-height: 1.6; color: var(--muted); text-wrap: pretty; }
 .iq-eyebrow { font-family: var(--f-a); font-size: .76rem; font-weight: 600; letter-spacing: .17em; text-transform: uppercase; color: var(--p-text); line-height: 1.4; }
+/* Over a photograph the brand colour cannot be relied on to stand out from whatever is behind it; small print takes the section's own text colour there. */
+.iq-sec[data-bgkind="image"] .iq-eyebrow { color: var(--ink); }
+.iq-sec[data-bgkind="image"] :is(.iq-lede, .iq-caption, .iq-cap, .iq-small, .iq-note) { color: color-mix(in srgb, var(--ink) 92%, transparent); }
+/* A phone gives the words most of the picture, so the photograph takes an extra veil there. */
+@container (max-width: 700px) { .iq-sec[data-bgkind="image"] > .iq-bg::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 24%, transparent); pointer-events: none; } }
 .iq-quote { font-family: var(--f-h); font-size: clamp(1.35rem, 1.6cqw + 1rem, 2rem); line-height: 1.32; letter-spacing: -.01em; text-wrap: balance; }
 .iq-caption, .iq-cap { font-size: .85rem; line-height: 1.45; color: var(--muted); margin-top: .65rem; }
 .iq-small { font-size: .8125rem; color: var(--muted); line-height: 1.5; }
@@ -123,13 +133,14 @@
 /* ---------- Buttons ------------------------------------------------------- */
 .iq-btn {
   --bh: 3rem; position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: .55em;
-  min-height: var(--bh); padding: 0 1.5em; border: 1.5px solid transparent; border-radius: var(--r-btn);
-  font-family: var(--f-b); font-weight: var(--bw, 600); font-size: 1rem; line-height: 1; letter-spacing: .005em; white-space: nowrap; cursor: pointer; text-decoration: none;
+  min-height: var(--bh); max-width: 100%; padding: .6em 1.5em; border: 1.5px solid transparent; border-radius: var(--r-btn);
+  /* A label wider than its column wraps and centres (the button grows taller) instead of being clipped; short labels stay on one line as before. */
+  font-family: var(--f-b); font-weight: var(--bw, 600); font-size: 1rem; line-height: 1.2; letter-spacing: .005em; text-align: center; text-wrap: balance; overflow-wrap: break-word; cursor: pointer; text-decoration: none;
   transition: transform .28s cubic-bezier(.2, .7, .2, 1), box-shadow .28s, background-color .2s, color .2s, border-color .2s, filter .2s;
   background: var(--p); color: var(--on-p); align-self: flex-start;
 }
-.iq-btn[data-s="s"] { --bh: 2.5rem; font-size: .9rem; padding: 0 1.15em; }
-.iq-btn[data-s="l"] { --bh: 3.5rem; font-size: 1.0625rem; padding: 0 1.9em; }
+.iq-btn[data-s="s"] { --bh: 2.5rem; font-size: .9rem; padding: .5em 1.15em; }
+.iq-btn[data-s="l"] { --bh: 3.5rem; font-size: 1.0625rem; padding: .65em 1.9em; }
 .iq-btn[data-full] { width: 100%; align-self: stretch; }
 .iq-btn-ic { width: 1.1em; height: 1.1em; flex: none; }
 .iq-btn-arrow { transition: transform .28s cubic-bezier(.2, .7, .2, 1); }
@@ -175,7 +186,7 @@
 .iq-card[data-surface="tinted"] { background: var(--p-soft); border-color: transparent; }
 .iq-card[data-surface="glass"] { background: color-mix(in srgb, var(--surface) 52%, transparent); backdrop-filter: blur(18px) saturate(1.3); border-color: color-mix(in srgb, var(--ink) 14%, transparent); }
 .iq-card[data-surface="dark"] { background: var(--c-dark); border-color: transparent; color: var(--c-on-dark); --ink: var(--c-on-dark); --muted: color-mix(in srgb, var(--c-on-dark) 70%, transparent); --line: color-mix(in srgb, var(--c-on-dark) 18%, transparent); }
-.iq-card[data-surface="brand"] { background: var(--c-primary); border-color: transparent; color: var(--on-p); --ink: var(--on-p); --muted: color-mix(in srgb, var(--on-p) 80%, transparent); --p-text: var(--on-p); }
+.iq-card[data-surface="brand"] { background: var(--c-primary); border-color: transparent; color: var(--on-p); --ink: var(--on-p); --muted: var(--on-p); --p-text: var(--on-p); }
 .iq-card[data-align="center"] { text-align: center; align-items: center; }
 .iq-card[data-align="end"] { text-align: right; align-items: flex-end; }
 [data-hover="lift"]:hover { transform: translateY(-5px); box-shadow: var(--sh-l); }
@@ -317,7 +328,7 @@
 .iq-services[data-style="bento"] { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: minmax(11rem, auto); gap: var(--sp-s); }
 .iq-services[data-style="bento"] .iq-svc { grid-column: span 2; padding: var(--sp-m); border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); justify-content: space-between; transition: transform .35s, box-shadow .35s; }
 .iq-services[data-style="bento"] .iq-svc:hover { transform: translateY(-3px); box-shadow: var(--sh-m); }
-.iq-services[data-style="bento"] .iq-svc[data-i="0"] { grid-column: span 3; grid-row: span 2; background: var(--p); color: var(--on-p); border-color: transparent; --ink: var(--on-p); --muted: color-mix(in srgb, var(--on-p) 82%, transparent); --p-text: var(--on-p); }
+.iq-services[data-style="bento"] .iq-svc[data-i="0"] { grid-column: span 3; grid-row: span 2; background: var(--p); color: var(--on-p); border-color: transparent; --ink: var(--on-p); --muted: var(--on-p); --p-text: var(--on-p); }
 .iq-services[data-style="bento"] .iq-svc[data-i="0"] .iq-svc-ic { background: rgb(255 255 255 / .16); color: var(--on-p); }
 .iq-services[data-style="bento"] .iq-svc[data-i="0"] .iq-svc-t { font-size: var(--fs-3xl); }
 .iq-services[data-style="bento"] .iq-svc[data-i="1"], .iq-services[data-style="bento"] .iq-svc[data-i="2"] { grid-column: span 3; }
@@ -391,7 +402,8 @@
 .iq-logo-i { display: grid; place-items: center; min-height: 2.75rem; }
 .iq-logo-img { position: relative; max-height: 2.75rem; width: auto; max-width: 9.5rem; object-fit: contain; }
 .iq-logo-t { font-family: var(--f-h); font-weight: var(--hw); font-size: 1.25rem; letter-spacing: var(--hls); color: var(--muted); }
-.iq-logos[data-gray] .iq-logo-i { opacity: .62; filter: grayscale(1); transition: opacity .3s, filter .3s; } .iq-logos[data-gray] .iq-logo-i:hover { opacity: 1; filter: none; }
+/* Only pictures are muted. Text names (a capability list, or logos not yet supplied) keep full strength so they stay readable. */
+.iq-logos[data-gray] .iq-logo-img { opacity: .62; filter: grayscale(1); transition: opacity .3s, filter .3s; } .iq-logos[data-gray] .iq-logo-i:hover .iq-logo-img { opacity: 1; filter: none; }
 .iq-logos[data-style="grid"] .iq-logos-track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .iq-logos[data-style="grid"] .iq-logo-i { min-height: 5.5rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 1rem; }
 .iq-logos[data-style="marquee"] { overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
@@ -414,7 +426,7 @@
 .iq-pricing[data-n="1"] { --pn: 1; max-width: 26rem; } .iq-pricing[data-n="2"] { --pn: 2; } .iq-pricing[data-n="3"] { --pn: 3; } .iq-pricing[data-n="4"] { --pn: 4; }
 .iq-plans { --pn: inherit; } .iq-pricing[data-n="4"] .iq-plans { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .iq-plan { display: flex; flex-direction: column; gap: 1rem; padding: var(--sp-m); border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
-.iq-plan[data-featured] { background: var(--p); color: var(--on-p); border-color: transparent; --ink: var(--on-p); --muted: color-mix(in srgb, var(--on-p) 82%, transparent); --p-text: var(--on-p); --line: color-mix(in srgb, var(--on-p) 25%, transparent); box-shadow: var(--sh-l); }
+.iq-plan[data-featured] { background: var(--p); color: var(--on-p); border-color: transparent; --ink: var(--on-p); --muted: var(--on-p); --p-text: var(--on-p); --line: color-mix(in srgb, var(--on-p) 25%, transparent); box-shadow: var(--sh-l); }
 .iq-plan[data-featured] .iq-btn[data-v="primary"] { background: var(--on-p); color: var(--p); }
 .iq-plan[data-featured] .iq-li-ic { background: rgb(255 255 255 / .18); color: var(--on-p); }
 .iq-plan-n { font-family: var(--f-h); font-weight: calc(var(--hw) - 100); font-size: var(--fs-xl); }
@@ -489,6 +501,10 @@
 .iq-menu-panel li a:not(.iq-btn) { display: block; padding: .9rem 0; font-family: var(--f-h); font-size: 1.3rem; font-weight: var(--hw); letter-spacing: var(--hls); border-bottom: 1px solid var(--line); }
 .iq-menu-panel .iq-btn { align-self: stretch; }
 @container (max-width: 1023px) { .iq-nav-list { display: none; } .iq-menu { display: block; } }
+/* A header's links take the width their text needs and never wrap, the call to action included. When that does not fit beside the logo, the NavFit island sets
+   data-collapsed and the links fold into the menu, as on a phone. */
+.iq-header .iq-nav-list { flex: none; width: max-content; } .iq-header .iq-nav-list * { white-space: nowrap; }
+.iq-nav[data-collapsed] .iq-nav-list { display: none; } .iq-nav[data-collapsed] .iq-menu { display: block; }
 .iq-footer .iq-nav-list { display: flex; flex-wrap: wrap; justify-content: inherit; gap: .35rem 1.25rem; }
 .iq-footer .iq-menu { display: none; }
 

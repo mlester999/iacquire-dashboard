@@ -3,7 +3,7 @@ import { siteCss, styleDecls } from "@/lib/website/css";
 import { eachElement, parseContent, type ElementNode } from "@/lib/website/doc";
 import { canvasGeometry, layerCommand } from "@/lib/website/editor/interaction";
 import { initialState, reducer } from "@/lib/website/editor/state";
-import { getElement, setProp, setResponsive, setStyle } from "@/lib/website/ops";
+import { getElement, setProp, setResponsive, setStyle, updateSection } from "@/lib/website/ops";
 import { sampleSite } from "@/lib/website/templates";
 import { createMemoryApi, newControl } from "@/components/website/studio/memory-api";
 
@@ -107,5 +107,63 @@ describe("contextual properties through validation, save and rendering", () => {
     expect(styleDecls({ bg: "#112233", border: "none" })).toBe("background:#112233;border:0");
     expect(styleDecls({ border: "thin", borderColor: "#112233" })).toBe("border:1px solid #112233");
     expect(styleDecls({ bg: "#112233", border: "none" }, { box: false })).toBe("");
+  });
+});
+
+describe("section border, shadow and per-screen visibility", () => {
+  const firstSection = (doc: ReturnType<typeof sampleSite>) => doc.pages[0].items.find((item) => item.type === "section") as Extract<ReturnType<typeof sampleSite>["pages"][number]["items"][number], { type: "section" }>;
+  const ruleFor = (css: string, id: string) => css.split("}").find((chunk) => chunk.includes(`.x-${id}{`)) ?? "";
+
+  it("adds nothing to a section that uses none of them, and parses sections saved before these existed", () => {
+    const original = sampleSite("luxe.maison");
+    const section = firstSection(original);
+    const css = siteCss(original, original.pages[0], { scope: "plain" });
+    expect(ruleFor(css, section.id)).not.toMatch(/border|box-shadow/);
+    // A document written before border, shadow and hide existed has none of those keys.
+    const legacy = JSON.parse(JSON.stringify(original));
+    const raw = legacy.pages[0].items.find((item: { type: string }) => item.type === "section");
+    delete raw.layout.border; delete raw.layout.shadow; delete raw.hide;
+    const parsed = parseContent(legacy);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      const reopened = firstSection(parsed.content);
+      expect(reopened.layout).toMatchObject({ border: "none", shadow: "none" });
+      expect(reopened.hide).toBeUndefined();
+    }
+  });
+
+  it("draws a chosen border and shadow: lines above and below a full-width section, all round a panel", () => {
+    const original = sampleSite("luxe.maison");
+    const id = firstSection(original).id;
+    const set = (patch: Record<string, unknown>) => updateSection(original, id, (s) => ({ ...s, layout: { ...s.layout, ...patch } } as typeof s));
+    const fullDoc = set({ border: "thin", shadow: "m" });
+    const full = siteCss(fullDoc, fullDoc.pages[0], { scope: "x" });
+    expect(ruleFor(full, id)).toContain("border-block:1px solid var(--line)");
+    expect(ruleFor(full, id)).toContain("box-shadow:var(--sh-m)");
+    const panelDoc = set({ inset: true, border: "bold", shadow: "l" });
+    const panel = siteCss(panelDoc, panelDoc.pages[0], { scope: "x" });
+    expect(ruleFor(panel, id)).toContain("border:3px solid var(--line)");
+    expect(ruleFor(panel, id)).not.toContain("border-block");
+    expect(ruleFor(panel, id)).toContain("box-shadow:var(--sh-l)");
+    for (const bad of [{ border: "huge" }, { shadow: "xl" }, { border: "1px solid red; background:url(x)" }]) expect(parseContent(set(bad)).ok).toBe(false);
+  });
+
+  it("hides a section on chosen screens only, dims it while editing, and keeps the choice through save and reopen", async () => {
+    const original = sampleSite("luxe.maison");
+    const id = firstSection(original).id;
+    const draft = updateSection(original, id, (s) => ({ ...s, hide: { m: true, t: true } }));
+    const published = siteCss(draft, draft.pages[0], { scope: "h" });
+    const mobile = published.slice(published.indexOf("@container (max-width:639px)"));
+    expect(mobile).toContain(`.x-${id}{display:none!important}`);
+    expect(siteCss(original, original.pages[0], { scope: "h" })).not.toContain(`.x-${id}{display:none!important}`);
+    const editing = siteCss(draft, draft.pages[0], { scope: "h", edit: true });
+    expect(editing).toContain(`.x-${id}{opacity:.28!important`);
+    expect(editing).not.toContain(`.x-${id}{display:none!important}`);
+    const api = createMemoryApi(original, { control: newControl(), owner: true });
+    expect(await api.saveDraft(draft, 1)).toMatchObject({ ok: true });
+    const reopened = await api.getDraft();
+    if (!reopened.ok) throw new Error(reopened.error);
+    expect(firstSection(reopened.data.content).hide).toEqual({ m: true, t: true });
+    expect(parseContent(updateSection(original, id, (s) => ({ ...s, hide: { m: "yes" as unknown as boolean } }))).ok).toBe(false);
   });
 });

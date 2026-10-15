@@ -5,14 +5,14 @@ import { z } from "zod";
 import { ANIM_PRESETS, collectIds, isRef, parseContent, SIZES, type Design, type ElementNode, type Section, type SiteContent } from "../doc";
 import { ELEMENT_DEFS, SPACES } from "../catalog";
 import { SECTION_PRESETS, buildPreset, pageStarter, PAGE_STARTERS, type PageStarterKind } from "../editor/library";
-import { FONT_KEYS } from "../font-keys";
+import { FONT_KEYS, type FontKey } from "../font-keys";
 import { plainText } from "../markup";
 import { addPage, getElement, getPage, getSection, insertSection, moveNode, newId, removeNode, setColumnCount, setHide, setProp, setResponsive, setStyle, updateSection } from "../ops";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/).transform((v) => v.toLowerCase());
 const id = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
 const space = z.enum(SPACES);
-const font = z.enum(FONT_KEYS as [string, ...string[]]);
+const font = z.enum(FONT_KEYS as [FontKey, ...FontKey[]]);
 const minH = z.enum(["auto", "40", "60", "75", "90", "100"]);
 const stack = z.enum(["mobile", "tablet", "never"]);
 

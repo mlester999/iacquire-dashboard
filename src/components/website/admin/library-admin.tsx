@@ -15,6 +15,7 @@ import { AreaControl, Row, SelectControl, TextControl } from "@/components/websi
 import { useResetOnOpen } from "@/components/website/editor/hooks";
 import { TemplateThumb } from "@/components/website/gallery/template-thumbnail";
 import { GalleryFilters } from "@/components/website/gallery/gallery-filters";
+import { useUrlState } from "@/components/website/gallery/use-url-state";
 import { SitePreviewOverlay } from "@/components/website/admin/site-preview-overlay";
 import { EMPTY_GALLERY_FILTERS, INDUSTRY_FILTERS, discoverTemplates, type GalleryFilters as FilterState } from "@/lib/website/gallery";
 import { relativeTime } from "@/lib/utils";
@@ -29,6 +30,11 @@ const TABS: Array<{ id: Tab; label: string; match: (t: TemplateView) => boolean 
 const STATUS_LABEL: Record<TemplateStatus, string> = { draft: "Draft", in_review: "In review", published: "Published", hidden: "Hidden", archived: "Archived" };
 const STATUS_TONE: Record<TemplateStatus, "neutral" | "warning" | "success" | "outline" | "danger"> = { draft: "neutral", in_review: "warning", published: "success", hidden: "outline", archived: "outline" };
 
+// The collection and filters the agency chose live in the address, so returning from the Template Designer or a refresh keeps the same view.
+type LibraryUrlState = { [K in keyof FilterState]: string } & { collection: string };
+const URL_DEFAULTS: LibraryUrlState = { ...EMPTY_GALLERY_FILTERS, collection: "all" };
+const URL_ALLOWED = { sort: ["featured", "name", "recent", "updated"], theme: ["all", "light", "dark"], collection: TABS.map((t) => t.id) } as const;
+
 interface Props {
   templates: TemplateView[];
   canPublish: boolean;
@@ -39,8 +45,11 @@ interface Props {
 
 export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/frame/template" }: Props) {
   const router = useRouter();
-  const [tab, setTab] = React.useState<Tab>("all");
-  const [filters, setFilters] = React.useState<FilterState>({ ...EMPTY_GALLERY_FILTERS });
+  const [url, setUrl] = useUrlState<LibraryUrlState>(URL_DEFAULTS, URL_ALLOWED);
+  const tab = url.collection as Tab;
+  const setTab = (next: Tab) => setUrl({ collection: next });
+  const filters = React.useMemo<FilterState>(() => ({ q: url.q, industry: url.industry, family: url.family, style: url.style, theme: url.theme, layout: url.layout, typography: url.typography, sort: url.sort as FilterState["sort"] }), [url]);
+  const setFilters = (next: FilterState) => setUrl(next);
   const [creating, setCreating] = React.useState(Boolean(openNew));
   const [editing, setEditing] = React.useState<TemplateView | null>(null);
   const [history, setHistory] = React.useState<TemplateView | null>(null);
@@ -132,7 +141,7 @@ export function LibraryAdmin({ templates, canPublish, openNew, frameBase = "/fra
       <p className="text-[12px] leading-relaxed text-muted">A template is a starting point. When a client picks one, their website gets its own copy, so changing, hiding or archiving a template never changes a website that already exists.</p>
 
       <CreateDialog open={creating} onOpenChange={setCreating} templates={templates} onCreated={(id) => router.push(`/admin/website-studio/templates/${id}`)} />
-      {editing && <EditDialog t={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />}
+      {editing && <EditDialog t={editing} showUsage={canPublish} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); router.refresh(); }} />}
       {history && <HistoryDialog t={history} onClose={() => setHistory(null)} onRestored={() => { setHistory(null); router.refresh(); }} />}
       {preview && <SitePreviewOverlay title={`${preview.familyName} · ${preview.name}`} note={preview.kind === "custom" ? "Working copy" : "Template preview"} src={frameSrc(preview, false)} onClose={() => setPreview(null)} />}
     </div>
@@ -171,7 +180,7 @@ function CreateDialog({ open, onOpenChange, templates, onCreated }: { open: bool
   );
 }
 
-function EditDialog({ t, onClose, onSaved }: { t: TemplateView; onClose: () => void; onSaved: () => void }) {
+function EditDialog({ t, showUsage, onClose, onSaved }: { t: TemplateView; /** Usage is counted across every client, so only someone who can see every client is shown it. */ showUsage: boolean; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = React.useState(t.name);
   const [description, setDescription] = React.useState(t.description);
   const [industries, setIndustries] = React.useState(t.industries);
@@ -195,7 +204,7 @@ function EditDialog({ t, onClose, onSaved }: { t: TemplateView; onClose: () => v
         <dl className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-xl border border-line bg-surface-2 p-4 text-[12px]">
           <div><dt className="text-muted">Publication</dt><dd className="mt-1 font-medium">{STATUS_LABEL[t.status]}{t.featured ? " · Featured" : ""}</dd></div>
           <div><dt className="text-muted">Current version</dt><dd className="mt-1 font-medium">{t.version || "Unpublished"}</dd></div>
-          <div><dt className="text-muted">Websites created</dt><dd className="mt-1 font-medium">{t.sitesUsing}</dd></div>
+          {showUsage && <div><dt className="text-muted">Websites started from it</dt><dd className="mt-1 font-medium">{t.sitesUsing} <span className="font-normal text-muted">across all clients</span></dd></div>}
           <div><dt className="text-muted">Last updated</dt><dd className="mt-1 font-medium">{t.updatedAt ? relativeTime(t.updatedAt) : "Built-in collection"}{t.updatedByName ? ` by ${t.updatedByName}` : ""}</dd></div>
           <div className="col-span-2"><dt className="text-muted">Template reference</dt><dd className="mt-1 break-all font-mono text-[11px]">{t.key}</dd></div>
         </dl>

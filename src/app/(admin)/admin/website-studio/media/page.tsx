@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/primitives";
 import { PageHero } from "@/components/ui/workspace";
 import { AdminMedia } from "@/components/website/admin/admin-media";
 
-export const metadata = { title: "Media library" };
+export const metadata = { title: "Media Library" };
 
 type Loaded = { ok: true; assets: Awaited<ReturnType<typeof listAssets>>; usedIds: string[]; canUpload: boolean } | { ok: false; message: string };
 
@@ -35,7 +35,7 @@ export default async function MediaPage({ searchParams }: { searchParams: Promis
   const loaded = selected ? await loadClientMedia(selected.id) : null;
   return (
     <div className="module-stack">
-      <PageHero eyebrow="Website Studio" icon={<ImageIcon className="size-5" />} title="Media library"
+      <PageHero eyebrow="Website Studio" icon={<ImageIcon className="size-5" />} title="Media Library"
         description="Each client's images are private to that client's workspace. You can add, describe and remove images for the clients you are assigned to. An image still used on a website can't be removed." />
       <nav aria-label="Clients" className="flex flex-wrap gap-2">
         {clients.map((c) => (

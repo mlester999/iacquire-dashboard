@@ -84,6 +84,12 @@ export function plainText(src: string): string {
   return walk(parseInline(src)).replace(/\s+/g, " ").trim();
 }
 
+/** The characters in the longest word of some text as it will be read (marks removed). A line may break at a space or a hyphen, so those end a word. */
+export function longestWord(src: string): number {
+  const words = plainText(src).split(/[\s-]+/).map((w) => w.length);
+  return Math.min(40, Math.max(1, ...words));
+}
+
 /** Splits free text into paragraphs at blank lines. */
 export const paragraphs = (src: string): string[] => (src ?? "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
 

@@ -8,7 +8,7 @@ import { assistantAiAvailable } from "@/server/websites/assistant";
 import { listComponents } from "@/server/websites/components";
 import { SiteEditor } from "@/components/website/editor/editor";
 
-export const metadata = { title: "Edit client website" };
+export const metadata = { title: "Website Editor" };
 
 /** An agency user in a client's editor. Access is the same as the client team's, scoped to the clients they are assigned to. */
 export default async function AgencyEditPage({ params }: { params: Promise<{ orgId: string }> }) {

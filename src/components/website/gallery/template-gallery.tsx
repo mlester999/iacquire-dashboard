@@ -5,6 +5,7 @@ import { Check, Eye, LayoutGrid, List, Sparkles, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EMPTY_GALLERY_FILTERS, INDUSTRY_FILTERS, filterCards, type GalleryCard, type GalleryFilters as FilterState } from "@/lib/website/gallery";
 import { GalleryFilters } from "./gallery-filters";
+import { useUrlState } from "./use-url-state";
 import { PreviewShell } from "@/components/website/frame/preview-shell";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +94,11 @@ export function TemplatePreview({ card, frameBase, onClose, onChoose, chooseLabe
 // The gallery
 // ---------------------------------------------------------------------------
 
+// The view the reader chose lives in the address (see useUrlState), so returning from a preview, an editor or a refresh keeps it.
+type GalleryUrlState = { [K in keyof FilterState]: string } & { collection: string; view: string };
+const URL_DEFAULTS: GalleryUrlState = { ...EMPTY_GALLERY_FILTERS, collection: "all", view: "grid" };
+const URL_ALLOWED = { sort: ["featured", "name", "recent", "updated"], theme: ["all", "light", "dark"], collection: ["all", "featured"], view: ["grid", "list"] } as const;
+
 export interface TemplateGalleryProps {
   cards: GalleryCard[];
   frameBase: string;
@@ -108,9 +114,13 @@ export interface TemplateGalleryProps {
 }
 
 export function TemplateGallery({ cards, frameBase, onChoose, chooseLabel = "Use this template", preferIndustry, selectedKey, onSelect, cardExtra, emptyHint }: TemplateGalleryProps) {
-  const [filters, setFilters] = React.useState<FilterState>({ ...EMPTY_GALLERY_FILTERS });
-  const [collection, setCollection] = React.useState<"all" | "featured">("all");
-  const [view, setView] = React.useState<"grid" | "list">("grid");
+  const [url, setUrl] = useUrlState<GalleryUrlState>(URL_DEFAULTS, URL_ALLOWED);
+  const filters = React.useMemo<FilterState>(() => ({ q: url.q, industry: url.industry, family: url.family, style: url.style, theme: url.theme, layout: url.layout, typography: url.typography, sort: url.sort as FilterState["sort"] }), [url]);
+  const collection = url.collection as "all" | "featured";
+  const view = url.view as "grid" | "list";
+  const setFilters = (next: FilterState) => setUrl(next);
+  const setCollection = (next: "all" | "featured") => setUrl({ collection: next });
+  const setView = (next: "grid" | "list") => setUrl({ view: next });
   const [preview, setPreview] = React.useState<string | null>(null);
   const [localSel, setLocalSel] = React.useState<string | null>(null);
   const sel = selectedKey !== undefined ? selectedKey : localSel;

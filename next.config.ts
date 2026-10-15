@@ -41,6 +41,9 @@ const nextConfig: NextConfig = {
       { source: "/frame/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
       { source: "/dev/frame/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
       { source: "/website-thumbnails/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+      // The starter photographs keep their file names when replaced, so they may be reused for a day and revalidated quietly for a week after that.
+      { source: "/template-images/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }] },
+      { source: "/template-images-sized/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }] },
     ];
   },
 };

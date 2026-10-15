@@ -7,7 +7,7 @@ import { parseInline, paragraphs, type Inline } from "@/lib/website/markup";
 import { Art } from "./art";
 import { SafeImage } from "./safe-image";
 import { nodeAttrs, type RenderCtx } from "./ctx";
-import { templateImageUrl } from "@/lib/website/template-image-assets";
+import { templateImageSrcSet, templateImageUrl } from "@/lib/website/template-image-assets";
 
 // ---------------------------------------------------------------------------
 // Text
@@ -118,7 +118,7 @@ export function ImageEl({ ctx, o }: { ctx: RenderCtx; o: ImageOpts }) {
   }
   if (src && src.kind === "template") {
     const url = templateImageUrl(src.id);
-    return <SafeImage key={url} src={url} alt={alt} width={1440} height={860} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes} className={["iq-photo", className].filter(Boolean).join(" ")} style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }} />;
+    return <SafeImage key={url} src={url} srcSet={templateImageSrcSet(src.id)} alt={alt} width={1440} height={860} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes ?? "100vw"} className={["iq-photo", className].filter(Boolean).join(" ")} style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }} />;
   }
   if (src && src.kind === "asset") {
     const a = ctx.resolveAsset(src.id);
@@ -134,7 +134,7 @@ export function ImageEl({ ctx, o }: { ctx: RenderCtx; o: ImageOpts }) {
     }
     if (src.default) {
       const url = templateImageUrl(src.default.id);
-      return <SafeImage key={url} src={url} alt={alt} width={1440} height={860} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes} className={["iq-photo", className].filter(Boolean).join(" ")} style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }} />;
+      return <SafeImage key={url} src={url} srcSet={templateImageSrcSet(src.default.id)} alt={alt} width={1440} height={860} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : undefined} sizes={sizes ?? "100vw"} className={["iq-photo", className].filter(Boolean).join(" ")} style={{ objectFit: fit, objectPosition: `${posX}% ${posY}%` }} />;
     }
   }
   if (ctx.mode !== "edit") return null;

@@ -104,6 +104,45 @@ describe("authored built-in starter content", () => {
     }
   });
 
+  it("never repeats prose-length visible copy between templates", () => {
+    // Walks everything a visitor can read in every page, the header and the footer. Editor-only fields (layer names, image-source labels, style
+    // settings) are skipped. Short stock labels such as "Get in touch" may repeat; anything sentence-length (20+ characters, 3+ words) may not, apart from the opening-hours
+    // line each family of five shares on purpose.
+    const editorOnly = new Set(["id", "style", "responsive", "r", "origin", "design", "seo", "anim", "key", "kind", "type", "src", "name", "href", "image", "icon", "layout", "ref", "bg", "tone", "at", "size", "scene", "default"]);
+    const allowed = new Set(STARTER_IDENTITIES.map((entry) => normalise(entry.sample.hours!)));
+    const owners = new Map<string, string>();
+    const collect = (value: unknown, found: string[]) => {
+      if (typeof value === "string") { if (value.length >= 20 && value.trim().split(/\s+/).length >= 3 && !/^(https?:|\/|#|mailto:|tel:)/.test(value)) found.push(value); return; }
+      if (Array.isArray(value)) { for (const item of value) collect(item, found); return; }
+      if (value && typeof value === "object") for (const [name, child] of Object.entries(value)) if (!editorOnly.has(name)) collect(child, found);
+    };
+    for (const key of ALL_TEMPLATE_KEYS()) {
+      const site = sampleSite(key);
+      const found: string[] = [];
+      collect({ pages: site.pages.map((page) => page.items), header: site.header, footer: site.footer, globals: site.globals, business: site.business }, found);
+      expect(found.length, key).toBeGreaterThan(20);
+      for (const text of new Set(found)) {
+        const id = normalise(text);
+        if (!id || allowed.has(id)) continue;
+        expect(owners.get(id), `${key} repeats '${text}'`).toSatisfy((owner: string | undefined) => owner === undefined || owner === key);
+        owners.set(id, key);
+      }
+    }
+  });
+
+  it("gives every design its own contact details", () => {
+    const phones = new Set<string>();
+    const addresses = new Set<string>();
+    for (const entry of STARTER_IDENTITIES) {
+      expect(entry.sample.phone, entry.key).toMatch(/^\+1512555\d{4}$/);
+      phones.add(entry.sample.phone!);
+      addresses.add(entry.sample.address!);
+      expect(entry.sample.address, entry.key).toContain(entry.sample.businessName);
+    }
+    expect(phones.size).toBe(50);
+    expect(addresses.size).toBe(50);
+  });
+
   it("does not invent operational metrics, endorsements, or availability for real customer builds", () => {
     for (const key of ALL_TEMPLATE_KEYS()) {
       const site = buildSite(key, {

@@ -7,6 +7,12 @@ import { displayPhone, ImageEl, imageShows, isIllustration, isTemplateStarter, p
 import { Inline_ } from "./parts";
 import type { ElementProps, RenderCtx } from "./ctx";
 
+/** An address with a place to break after the "@", so a narrow column splits it there and never in the middle of a word. */
+function emailText(email: string): React.ReactNode {
+  const at = email.indexOf("@");
+  return at < 1 ? email : <>{email.slice(0, at)}@<wbr />{email.slice(at + 1)}</>;
+}
+
 const s = (v: unknown) => (typeof v === "string" ? v : "");
 const list = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 type P = ElementProps & { index?: number };
@@ -311,7 +317,7 @@ export function ContactInfo({ el, ctx, p, index }: P) {
   const b = ctx.content.business;
   const rows = [
     p.phone === true && b.phone && { key: "phone", icon: "phone", label: "Phone", node: <a href={telHref(b.phone)}>{displayPhone(b.phone)}</a> },
-    p.email === true && b.email && { key: "email", icon: "mail", label: "Email", node: <a href={`mailto:${b.email}`}>{b.email}</a> },
+    p.email === true && b.email && { key: "email", icon: "mail", label: "Email", node: <a href={`mailto:${b.email}`}>{emailText(b.email)}</a> },
     p.address === true && b.address && { key: "address", icon: "map-pin", label: "Address", node: <span className="iq-pre">{b.address}</span> },
     p.hours === true && b.hours && { key: "hours", icon: "clock", label: "Hours", node: <span className="iq-pre">{b.hours}</span> },
   ].filter(Boolean) as Array<{ key: string; icon: string; label: string; node: React.ReactNode }>;

@@ -19,7 +19,7 @@ import { addMember, createOrg, createUser, ctxFor } from "../tests/support/fixtu
 
 const QA_DIR = path.resolve(".data/studio-premium-qa");
 const CREDENTIALS = path.join(QA_DIR, "credentials.json");
-type AccountKey = "admin" | "owner" | "editor" | "staff" | "unassignedStaff" | "otherOwner";
+type AccountKey = "admin" | "owner" | "editor" | "staff" | "unassignedStaff" | "otherOwner" | "freshOwner";
 type Account = { id: string; email: string; password: string; sessionToken: string; cookieHeader: string; user: SessionUser };
 
 async function account(key: AccountKey, platformRole: "none" | "agency_staff" | "agency_super_admin", existing: Partial<Record<AccountKey, Account>>) {
@@ -58,18 +58,28 @@ it("seeds isolated real auth, tenant, draft, template and media fixtures", async
     let previous: { accounts?: Partial<Record<AccountKey, Account>> } = {};
     try { previous = JSON.parse(await fs.readFile(CREDENTIALS, "utf8")); } catch { /* first run */ }
     const accounts = {} as Record<AccountKey, Account>;
-    for (const [key, role] of [["admin", "agency_super_admin"], ["owner", "none"], ["editor", "none"], ["staff", "agency_staff"], ["unassignedStaff", "agency_staff"], ["otherOwner", "none"]] as const) {
+    for (const [key, role] of [["admin", "agency_super_admin"], ["owner", "none"], ["editor", "none"], ["staff", "agency_staff"], ["unassignedStaff", "agency_staff"], ["otherOwner", "none"], ["freshOwner", "none"]] as const) {
       accounts[key] = await account(key, role, previous.accounts ?? {});
     }
     const main = await organization("Studio QA Maison Interiors");
     const other = await organization("Studio QA Harbor Homecare");
+    // A client who has finished onboarding but has no website yet, so the "choose a design" flow can be driven for real.
+    const fresh = await organization("Studio QA Fresh Start Co.");
     await member(main.id, accounts.owner.id, "owner");
     await member(main.id, accounts.editor.id, "admin");
     await member(other.id, accounts.otherOwner.id, "owner");
+    await member(fresh.id, accounts.freshOwner.id, "owner");
+    await saveOnboardingStep(ctxFor(accounts.freshOwner, fresh, "owner"), { answers: {
+      "a.business_name": { value: fresh.name }, "a.industry": { value: "real_estate" }, "a.business_model": { value: "local" },
+      "a.description": { value: `${fresh.name} is a fictional local QA business with no website yet.` },
+      "a.contact_phone": { value: "+6565550101" }, "a.contact_email": { value: accounts.freshOwner.email }, "a.territories": { value: "Singapore" },
+      "b.services": { value: "Property search, Viewings, Moving support" },
+    } });
     await withSystem((db) => db.query("insert into staff_assignments (org_id, user_id) values ($1, $2) on conflict do nothing", [main.id, accounts.staff.id]));
     accounts.owner.cookieHeader += `; iaq_org=${main.id}`;
     accounts.editor.cookieHeader += `; iaq_org=${main.id}`;
     accounts.otherOwner.cookieHeader += `; iaq_org=${other.id}`;
+    accounts.freshOwner.cookieHeader += `; iaq_org=${fresh.id}`;
 
     const existingTemplate = await withSystem(async (db) => (await db.query<{ id: string; key: string }>("select id, key from website_templates where name = 'Studio QA Master' and kind = 'custom'", [])).rows[0]);
     const master = existingTemplate ?? await createTemplate(accounts.admin.user, { name: "Studio QA Master", description: "An isolated versioning fixture for local Website Studio verification.", from: { kind: "builtin", key: "meridian.estate" }, industries: ["real_estate"], tags: ["Editorial", "QA"] });
@@ -127,7 +137,7 @@ it("seeds isolated real auth, tenant, draft, template and media fixtures", async
     expect((await getDraft(ownerContext))!.content).toEqual(before.content);
 
     await fs.mkdir(QA_DIR, { recursive: true });
-    await fs.writeFile(CREDENTIALS, JSON.stringify({ baseUrl: "http://localhost:3210", createdAt: new Date().toISOString(), scope: "Isolated local QA only; never hosted", accounts, master, fixtures, routes: { gallery: "/admin/website-studio/templates", templateEditor: `/admin/website-studio/templates/${master.id}`, clientEditor: "/website/edit", agencyEditor: `/admin/website-studio/websites/${main.id}/edit`, deniedAgencyEditor: `/admin/website-studio/websites/${other.id}/edit` } }, null, 2));
+    await fs.writeFile(CREDENTIALS, JSON.stringify({ baseUrl: "http://localhost:3210", createdAt: new Date().toISOString(), scope: "Isolated local QA only; never hosted", accounts, master, freshOrganization: fresh, fixtures, routes: { gallery: "/admin/website-studio/templates", templateEditor: `/admin/website-studio/templates/${master.id}`, clientEditor: "/website/edit", agencyEditor: `/admin/website-studio/websites/${main.id}/edit`, deniedAgencyEditor: `/admin/website-studio/websites/${other.id}/edit` } }, null, 2));
   } finally {
     await closeDb();
   }

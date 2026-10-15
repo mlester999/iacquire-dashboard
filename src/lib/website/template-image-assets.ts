@@ -77,3 +77,12 @@ export function templateImagesForFamily(family: string): TemplateImageAsset[] {
 export function templateImageUrl(id: TemplateImageId): string {
   return `/template-images/${id}.webp`;
 }
+
+/** The widths of the smaller copies made by scripts/generate-template-image-sizes.mjs; the original (1536px) is the largest candidate. */
+export const TEMPLATE_IMAGE_SIZES = [640, 1024] as const;
+export const TEMPLATE_IMAGE_FULL_WIDTH = 1536;
+
+/** What a browser chooses from, so a phone is not sent the full-size photograph. Same picture at every width, only fewer pixels. */
+export function templateImageSrcSet(id: TemplateImageId): string {
+  return [...TEMPLATE_IMAGE_SIZES.map((w) => `/template-images-sized/${id}-${w}.webp ${w}w`), `${templateImageUrl(id)} ${TEMPLATE_IMAGE_FULL_WIDTH}w`].join(", ");
+}

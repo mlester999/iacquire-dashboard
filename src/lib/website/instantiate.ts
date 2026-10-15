@@ -3,7 +3,7 @@
 // a template cannot pull anything in that the client didn't provide. A token with no fact behind it is left as it is, where the publish
 // check will refuse it.
 import { ELEMENT_DEFS, type FieldSpec } from "./catalog";
-import { parseContent, tidy, type ContentResult, type ElementNode, type Section, type SiteContent } from "./doc";
+import { LAYOUT_DEFAULTS, parseContent, tidy, type ContentResult, type ElementNode, type Section, type SiteContent } from "./doc";
 import { escapeMarkup } from "./markup";
 import { footerMinimal, headerBar } from "./templates/chrome";
 import { makeCtx } from "./templates/compose";
@@ -95,7 +95,7 @@ export function instantiateTemplate(template: SiteContent, details: SiteDetails,
 export function blankTemplateContent(name: string): SiteContent {
   const sec = (id: string, nm: string, body: string): Section => ({
     id, type: "section", name: nm, hidden: false, tone: "auto", bg: { kind: "none" },
-    layout: { width: "regular", pt: "xl", pb: "xl", gutter: true, minH: "auto", valign: "center", gap: "l", stack: "mobile", reverse: false, sticky: false, float: false, inset: false },
+    layout: { ...LAYOUT_DEFAULTS },
     decor: [], anim: { preset: "none", delay: 0, speed: "normal", stagger: false },
     columns: [{ id: `${id}c`, span: 12, gap: "s", pad: "0", surface: "none", elements: [
       { id: `${id}h`, type: "heading", props: { text: body, level: id === "hero" ? "1" : "2" }, style: { size: id === "hero" ? "6xl" : "4xl" } },

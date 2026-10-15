@@ -5,7 +5,7 @@ import { z } from "zod";
 import { ART_KEYS, ART_TONES } from "./art-keys";
 import { TEMPLATE_IMAGE_IDS } from "./template-image-assets";
 import { ELEMENT_DEFS, ELEMENT_TYPES, CONTAINER_TYPES, MAX_CONTAINER_DEPTH, ICONS, SPACES, type ElementType, type FieldSpec } from "./catalog";
-import { FONT_KEYS } from "./font-keys";
+import { FONT_KEYS, type FontKey } from "./font-keys";
 
 export const CONTENT_SCHEMA_VERSION = 2;
 /** totalBytes stays under the database's 300 KB cap on a stored document, so an oversized save is refused with a clear message instead of a database error. */
@@ -236,6 +236,10 @@ const layoutSchema = z.object({
   float: z.boolean().default(false),
   /** Draws the section as a rounded panel set in from the page edges. */
   inset: z.boolean().default(false),
+  /** A line around a panel, or above and below a full-width section. */
+  border: z.enum(["none", "thin", "bold"]).default("none"),
+  /** The shadow cast by the section. It shows best on a panel. */
+  shadow: z.enum(["none", "s", "m", "l"]).default("none"),
 });
 export type Layout = z.output<typeof layoutSchema>;
 export const LAYOUT_DEFAULTS: Layout = layoutSchema.parse({});
@@ -245,6 +249,8 @@ const sectionShape = z.object({
   type: z.literal("section"),
   name: textOr(40),
   hidden: z.boolean().default(false),
+  /** Hidden on particular screens only. `hidden` hides it everywhere. */
+  hide: hideSchema.optional(),
   tone: z.enum(["auto", "light", "dark", "brand", "accent"]).default("auto"),
   bg: bgSchema.default(NO_BG),
   layout: layoutSchema.default(() => layoutSchema.parse({})),
@@ -404,7 +410,7 @@ export const designSchema = z.object({
     primary: hex.default("#2c5bff"), accent: hex.default("#12c9a5"), bg: hex.default("#ffffff"), surface: hex.default("#ffffff"), surface2: hex.default("#f5f6f8"),
     ink: hex.default("#0f1419"), muted: hex.default("#4b5563"), line: hex.default("#e3e6eb"), dark: hex.default("#0e1320"),
   }).default({ primary: "#2c5bff", accent: "#12c9a5", bg: "#ffffff", surface: "#ffffff", surface2: "#f5f6f8", ink: "#0f1419", muted: "#4b5563", line: "#e3e6eb", dark: "#0e1320" }),
-  fonts: z.object({ heading: z.enum(FONT_KEYS as [string, ...string[]]).default("inter"), body: z.enum(FONT_KEYS as [string, ...string[]]).default("inter"), accent: z.enum(FONT_KEYS as [string, ...string[]]).default("inter"), mono: z.enum(FONT_KEYS as [string, ...string[]]).default("jetbrains") })
+  fonts: z.object({ heading: z.enum(FONT_KEYS as [FontKey, ...FontKey[]]).default("inter"), body: z.enum(FONT_KEYS as [FontKey, ...FontKey[]]).default("inter"), accent: z.enum(FONT_KEYS as [FontKey, ...FontKey[]]).default("inter"), mono: z.enum(FONT_KEYS as [FontKey, ...FontKey[]]).default("jetbrains") })
     .default({ heading: "inter", body: "inter", accent: "inter", mono: "jetbrains" }),
   heading: z.object({
     weight: z.number().int().min(100).max(900).default(700),

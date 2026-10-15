@@ -3,7 +3,7 @@ import { domainsOverview } from "@/server/websites/admin";
 import { env } from "@/server/env";
 import { DomainsView } from "@/components/website/admin/domains-view";
 
-export const metadata = { title: "Domains and hosting" };
+export const metadata = { title: "Domains & Hosting" };
 
 export default async function DomainsPage() {
   const user = await requireAgency();

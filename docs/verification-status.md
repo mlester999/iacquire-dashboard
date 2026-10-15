@@ -4,10 +4,10 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **958 tests in 58 files passed** (877 in 49 before the Website Studio rebuild) |
+| `npm test` | **1,018 tests in 67 files passed** (958 in 58 before the premium pass of 2026-10-15; 877 in 49 before the Website Studio rebuild) |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
-| `npm run build` | passes (Turbopack; TypeScript clean). Run with local database settings, not the hosted ones |
+| `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
 | Schema | 26 migrations, 154 public tables (`0026` adds five); every table with an `org_id` is checked automatically by `tests/tenant-isolation-generic.test.ts` |
 
 Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the real migrations, RLS policies, services and route handlers, with mocked Supabase Auth and mocked provider HTTP.
@@ -33,6 +33,19 @@ Details and the honest scope are in [website-studio.md](website-studio.md); the 
 | Public site payload | The sites runtime route's client chunks contain none of the editor's code (marker search of the built chunks). Built-in artwork was slimmed (skyline 78 → 24 KB, city blocks 43 → 12 KB, facade 26 → 8 KB) | Measured locally |
 
 **Not verified:** signed-in client and agency flows against a real database in a browser (the agency screens were driven only on invented sample data); the hosted application (the schema is applied but the hosted database is still empty, so nothing exercises it); real DNS, certificates, domain purchase or publishing to a real host; the AI provider (mocked); screen-reader walkthroughs by a person; touch hardware; dark theme of the new screens; text that sits on images or gradients (axe reports it as "incomplete").
+
+### Website Studio premium pass (2026-10-15, no schema change)
+
+No migration was added or applied; Featured uses the existing `0026` column. Nothing was pushed, deployed or published to a real host, and no hosted service was contacted. Details, commands and the measured effect are in [website-studio-premium-qa.md](website-studio-premium-qa.md).
+
+| Area | Evidence | Label |
+| --- | --- | --- |
+| Preview scrolling, 50 designs, four widths, real flow | `npm run studio:qa:preview-scroll`: 50 of 50, including device switching that keeps the reader's place (an intermittent loss of place under load was reproduced, root-caused to a stale restore overriding the reader, fixed, and then passed 18 of 18 under load) | Verified locally in a real browser |
+| Text fit and colour contrast, 1,200 views | `npm run studio:qa:text-fit` with axe: 0 failing | Verified locally in a real browser |
+| Text over photographs, anchors under pinned headers, screenshot against preview, axe (104 views), published runtime (54 checks), agency Template Library (11), editor (17) | the `studio:qa:*` suites listed in the QA doc, each with a negative control where one is possible | Verified locally in a real browser, isolated database |
+| Gallery and image loading | 50 of 50 cards use a current screenshot (was 0); gallery payload 48.7 MB to 7.9 MB (development servers, comparison only); image weight per design page 652 KB to 228 KB at 390 px | Measured locally |
+
+**Not verified in this pass:** anything against hosted Supabase or a real host; publishing a site that still has starter photographs in a gallery (refused by design); production-build timings of the gallery; touch on hardware; a screen reader.
 
 ### Evidence and honest labels for the all-in-one build
 

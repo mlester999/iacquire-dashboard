@@ -54,6 +54,32 @@ function sourceLabel(ctx: WalkContext, path: string, n: number): string {
  * in the same family, keeping galleries coherent and avoiding a single repeated photo on each site.
  */
 export function applyTemplateImages(content: SiteContent, key: string): SiteContent {
+  return withLegibleBackdrops(placeTemplateImages(content, key));
+}
+
+/**
+ * The overlays in the recipes were tuned for the drawn artwork the photographs replace, which was dark and flat. A photograph is not: a bright window
+ * behind white words leaves them unreadable. So wherever a starter photograph is a section's background, its overlay is at least this strong and even
+ * (a gradient is strongest at one edge and fades under the words), measured in a real browser against the text laid over it
+ * (scripts/studio-image-text-qa.mjs). Only the starter photographs are touched; a client's own picture keeps whatever overlay they choose.
+ */
+export const BACKDROP_OVERLAY_FLOOR = { dark: 70, other: 60 } as const;
+
+export function withLegibleBackdrops(content: SiteContent): SiteContent {
+  const veil = (section: Section | null | undefined) => {
+    const bg = section?.bg;
+    if (!section || !bg || bg.kind !== "image" || bg.src?.kind !== "template") return;
+    const floor = bg.overlay.color === "dark" ? BACKDROP_OVERLAY_FLOOR.dark : BACKDROP_OVERLAY_FLOOR.other;
+    bg.overlay = { ...bg.overlay, opacity: Math.max(bg.overlay.opacity, floor), dir: "flat" };
+  };
+  veil(content.header);
+  veil(content.footer);
+  Object.values(content.globals).forEach(veil);
+  for (const page of content.pages) for (const item of page.items) if (item.type === "section") veil(item);
+  return content;
+}
+
+function placeTemplateImages(content: SiteContent, key: string): SiteContent {
   const own = templateImageForKey(key);
   if (!own) return content;
   const pool = templateImagesForFamily(own.family);

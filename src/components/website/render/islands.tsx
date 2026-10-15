@@ -131,3 +131,57 @@ export function MenuCloser() {
   }, []);
   return <span ref={anchor} hidden aria-hidden />;
 }
+
+/**
+ * Keeps a header from crowding itself. It folds the links into the menu button when they, with the button beside them, cannot fit on one line without
+ * running into the logo or out of the header, and it tells the stylesheet how tall a floating header is so the first section starts below it.
+ *
+ * Phones already get the menu from the stylesheet. This covers the widths in between, where a long business name, a few more pages or a longer button
+ * label than the sample would otherwise squeeze the call to action into a tall, broken stack, print the links over the logo, or hide the first line of
+ * the page under the header. The stylesheet lays the links out at the width their text needs, in the real font, and this looks for a collision, so it
+ * holds for whatever the client types and leaves a header alone that already fits. It checks again when the width, the fonts or the header change.
+ */
+export function NavFit() {
+  const anchor = React.useRef<HTMLSpanElement>(null);
+  React.useEffect(() => {
+    const root = anchor.current?.closest<HTMLElement>(".iq-site");
+    if (!root) return;
+    const GAP = 16;
+    const fit = () => {
+      for (const nav of root.querySelectorAll<HTMLElement>(".iq-header .iq-nav")) {
+        const header = nav.closest<HTMLElement>(".iq-header");
+        const list = nav.querySelector<HTMLElement>(".iq-nav-list");
+        if (!header || !list || !nav.querySelector(".iq-menu")) continue;
+        nav.removeAttribute("data-collapsed");
+        if (getComputedStyle(list).display === "none") continue; // the stylesheet already folds it on narrow screens
+        const links = list.getBoundingClientRect();
+        const wrap = (header.querySelector<HTMLElement>(".iq-wrap") ?? header);
+        const edge = wrap.getBoundingClientRect();
+        const pad = getComputedStyle(wrap);
+        const left = edge.left + (parseFloat(pad.paddingLeft) || 0), right = edge.right - (parseFloat(pad.paddingRight) || 0);
+        // What the links must stay clear of. A logo's link box stretches across its whole column, so it is the mark and the name inside it that count.
+        const others = Array.from(header.querySelectorAll<HTMLElement>(".iq-logo-mark, .iq-logo-name, .iq-logo-tag, .iq-btn, img")).filter((el) => !nav.contains(el) && !el.closest("details:not([open]) > :not(summary)"));
+        const crowded = links.left < left - 1 || links.right > right + 1 || others.some((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && links.left < r.right + GAP && links.right > r.left - GAP && links.top < r.bottom && links.bottom > r.top;
+        });
+        if (crowded) nav.setAttribute("data-collapsed", "");
+      }
+      // A floating header lies over the top of the first section, so that section's content must start below it however tall the header turned out.
+      const floating = root.querySelector<HTMLElement>(".iq-header.iq-float");
+      root.style.setProperty("--header-h", floating ? `${Math.ceil(floating.getBoundingClientRect().bottom - root.getBoundingClientRect().top)}px` : "0px");
+    };
+    let frame = 0;
+    const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit); };
+    const resize = new ResizeObserver(later);
+    resize.observe(root);
+    root.querySelectorAll(".iq-header").forEach((h) => resize.observe(h));
+    const edits = new MutationObserver(later);
+    root.querySelectorAll(".iq-header").forEach((h) => edits.observe(h, { childList: true, subtree: true, characterData: true }));
+    // Text widths depend on the fonts, so the first answer that counts is the one after they have loaded; tools that photograph the page wait for this mark.
+    void (document.fonts?.ready ?? Promise.resolve()).then(() => { fit(); root.setAttribute("data-nav-fit", "ready"); });
+    fit();
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); edits.disconnect(); };
+  }, []);
+  return <span ref={anchor} hidden aria-hidden />;
+}

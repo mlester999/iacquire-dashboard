@@ -26,8 +26,9 @@ export function headerBar(ctx: TemplateCtx, o: HeaderOpts = {}): Section {
   return b.section(
     { id: "header", name: "Header", tone: o.tone, bg: o.bg, layout: { pt: o.pad ?? "s", pb: o.pad ?? "s", width: o.width ?? "wide", sticky: o.sticky ?? false, float: o.float ?? false, inset: o.inset ?? false, valign: "center", gap: "s", stack: "never" } },
     [
-      b.col(5, [b.el("logo", { variant: "auto", size: o.size ?? "m", tagline: o.tagline === true })]),
-      b.col(7, [b.group([b.el("nav", { style: o.navStyle ?? "links", showCta: o.cta !== false, cta: ctaLink(ctx), align: "end" })], { justify: "end", wrap: false })], { valign: "center" }),
+      // On a phone only the menu button sits opposite the logo, so a long business name gets the room instead of stacking on three lines.
+      b.col(5, [b.el("logo", { variant: "auto", size: o.size ?? "m", tagline: o.tagline === true })], { r: { m: { span: 9 } } }),
+      b.col(7, [b.group([b.el("nav", { style: o.navStyle ?? "links", showCta: o.cta !== false, cta: ctaLink(ctx), align: "end" })], { justify: "end", wrap: false })], { valign: "center", r: { m: { span: 3 } } }),
     ],
   );
 }
@@ -39,8 +40,9 @@ export function headerSplit(ctx: TemplateCtx, o: HeaderOpts = {}): Section {
     { id: "header", name: "Header", tone: o.tone, bg: o.bg, layout: { pt: o.pad ?? "s", pb: o.pad ?? "s", width: o.width ?? "wide", sticky: o.sticky ?? false, float: o.float ?? false, inset: o.inset ?? false, valign: "center", gap: "s", stack: "never" } },
     [
       b.col(4, [b.el("nav", { style: o.navStyle ?? "minimal", showCta: false, align: "start" })], { valign: "center", r: { m: { span: 3 } } }),
-      b.col(4, [b.el("logo", { variant: "auto", size: o.size ?? "m" }, { style: { align: "center" } })], { valign: "center", r: { m: { span: 5 } } }),
-      b.col(4, [b.group([b.btn(ctx.primaryLabel, ctx.primaryHref, { variant: o.ctaVariant ?? "outline", size: "s" })], { justify: "end" })], { valign: "center", r: { m: { span: 4 } } }),
+      b.col(4, [b.el("logo", { variant: "auto", size: o.size ?? "m" }, { style: { align: "center" } })], { valign: "center", r: { m: { span: 6 } } }),
+      // On a phone the same action is the first button of the page beneath, and a header button there would have to stack its label on three lines.
+      b.col(4, [b.group([b.btn(ctx.primaryLabel, ctx.primaryHref, { variant: o.ctaVariant ?? "outline", size: "s", hide: { m: true } })], { justify: "end" })], { valign: "center", r: { m: { span: 3 } } }),
     ],
   );
 }
@@ -68,8 +70,8 @@ export function headerFloating(ctx: TemplateCtx, o: HeaderOpts = {}): Section {
       layout: { pt: "xs", pb: "xs", width: "regular", float: true, inset: true, valign: "center", gap: "s", stack: "never" },
     },
     [
-      b.col(4, [b.el("logo", { variant: "auto", size: "s" })], { valign: "center" }),
-      b.col(8, [b.group([b.el("nav", { style: o.navStyle ?? "pills", showCta: o.cta !== false, cta: ctaLink(ctx), align: "end" })], { justify: "end", wrap: false })], { valign: "center" }),
+      b.col(4, [b.el("logo", { variant: "auto", size: "s" })], { valign: "center", r: { m: { span: 9 } } }),
+      b.col(8, [b.group([b.el("nav", { style: o.navStyle ?? "pills", showCta: o.cta !== false, cta: ctaLink(ctx), align: "end" })], { justify: "end", wrap: false })], { valign: "center", r: { m: { span: 3 } } }),
     ],
   );
 }
@@ -80,8 +82,8 @@ export function headerMinimal(ctx: TemplateCtx, o: HeaderOpts = {}): Section {
   return b.section(
     { id: "header", name: "Header", tone: o.tone, bg: o.bg, layout: { pt: o.pad ?? "m", pb: o.pad ?? "m", width: o.width ?? "wide", sticky: o.sticky ?? false, float: o.float ?? false, valign: "center", gap: "s", stack: "never" } },
     [
-      b.col(6, [b.el("logo", { variant: "auto", size: o.size ?? "m" })], { valign: "center" }),
-      b.col(6, [b.group([b.el("nav", { style: o.navStyle ?? "minimal", showCta: false, align: "end" })], { justify: "end", wrap: false })], { valign: "center" }),
+      b.col(6, [b.el("logo", { variant: "auto", size: o.size ?? "m" })], { valign: "center", r: { m: { span: 9 } } }),
+      b.col(6, [b.group([b.el("nav", { style: o.navStyle ?? "minimal", showCta: false, align: "end" })], { justify: "end", wrap: false })], { valign: "center", r: { m: { span: 3 } } }),
     ],
   );
 }

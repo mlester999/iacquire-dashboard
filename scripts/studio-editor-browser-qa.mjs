@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import assert from "node:assert/strict";
-const playwrightModule = process.env.PLAYWRIGHT_MODULE ?? "file:///C:/Users/ZEPHY/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs";
+const playwrightModule = process.env.PLAYWRIGHT_MODULE ?? "playwright";
 const { chromium } = await import(playwrightModule);
 const credentials = JSON.parse(await fs.readFile(".data/studio-premium-qa/credentials.json", "utf8"));
 assert.equal(credentials.baseUrl, "http://localhost:3210", "This QA script only runs on the isolated local server.");
@@ -22,7 +22,7 @@ const passed = (check, evidence = {}) => { results.push({ check, passed: true, .
 const properties = () => page.getByRole("complementary", { name: "Settings for the selected item" });
 const save = async () => {
   await page.getByRole("button", { name: "Save draft (Ctrl+S)", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: /^(Saved|All changes saved)$/ }).first().waitFor({ timeout: 60000 });
+  await page.getByRole("status").filter({ hasText: /^\s*(Saved|All changes saved)\.?\s*$/ }).first().waitFor({ timeout: 60000 });
 };
 const styleOf = (id) => page.locator(`[data-canvas-frame] [data-nid="${id}"]`).evaluate((element) => {
   const style = getComputedStyle(element);
@@ -116,7 +116,9 @@ try {
   const originalOrder = await sections.evaluateAll((elements) => elements.map((element) => element.dataset.nid));
   const section = sections.first();
   const sectionId = await section.getAttribute("data-nid");
-  await section.click({ position: { x: 8, y: 8 } });
+  // The hero is overlaid by a floating header at its top, so aim at its bottom-left corner: what a person would click to select the section itself.
+  const sectionBox = await section.boundingBox();
+  await section.click({ position: { x: 8, y: Math.max(8, Math.round(sectionBox.height) - 12) } });
   await properties().getByRole("radiogroup", { name: "Background type", exact: true }).getByRole("radio", { name: "Colour", exact: true }).click();
   await properties().getByLabel("Background colour: hex code", { exact: true }).fill("#e1dbd1");
   assert.equal(await section.locator(":scope > .iq-bg").evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(225, 219, 209)");
@@ -131,6 +133,36 @@ try {
   await save();
   await screenshot("section-background-layers");
   passed("section custom background, keyboard reorder, undo and redo act on the real document");
+
+  // Section border, shadow and per-screen visibility: inspector -> canvas -> save -> reload.
+  const frameDevice = (label) => page.getByRole("radio", { name: new RegExp(`^${label}`) }).first().click();
+  const hero = page.locator(`[data-canvas-frame] [data-nid="${sectionId}"]`);
+  const heroBox = await hero.boundingBox();
+  await hero.click({ position: { x: 8, y: Math.max(8, Math.round(heroBox.height) - 12) } });
+  await properties().getByRole("radiogroup", { name: "Section border", exact: true }).getByRole("radio", { name: "Thin", exact: true }).click();
+  await properties().getByRole("radiogroup", { name: "Section shadow", exact: true }).getByRole("radio", { name: "M", exact: true }).click();
+  const framed = () => hero.evaluate((element) => { const style = getComputedStyle(element); return { top: style.borderTopWidth, bottom: style.borderBottomWidth, left: style.borderLeftWidth, shadow: style.boxShadow, opacity: style.opacity }; });
+  const framedNow = await framed();
+  assert.equal(framedNow.top, "1px");
+  assert.equal(framedNow.bottom, "1px");
+  assert.equal(framedNow.left, "0px");
+  assert.notEqual(framedNow.shadow, "none");
+  await properties().getByRole("switch", { name: "Phone", exact: true }).click();
+  await frameDevice("Phone");
+  assert.equal((await framed()).opacity, "0.28", "a section hidden on phones is dimmed on the phone canvas");
+  await frameDevice("Desktop");
+  assert.equal((await framed()).opacity, "1", "the same section is fully shown on the desktop canvas");
+  await save();
+  await screenshot("section-border-shadow-visibility");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(`[data-canvas-frame] [data-nid="${sectionId}"]`).first().waitFor();
+  const reopenedHero = await page.locator(`[data-canvas-frame] [data-nid="${sectionId}"]`).evaluate((element) => { const style = getComputedStyle(element); return { top: style.borderTopWidth, shadow: style.boxShadow }; });
+  assert.equal(reopenedHero.top, "1px");
+  assert.notEqual(reopenedHero.shadow, "none");
+  await frameDevice("Phone");
+  assert.equal((await page.locator(`[data-canvas-frame] [data-nid="${sectionId}"]`).evaluate((element) => getComputedStyle(element).opacity)), "0.28");
+  await frameDevice("Desktop");
+  passed("section border, shadow and hide-on-phone render in the canvas and survive real save/refresh", { framed: framedNow });
 
   const about = credentials.fixtures[0].pages.find((candidate) => candidate.slug === "about");
   await page.getByLabel("Page", { exact: true }).selectOption(about.id);
@@ -213,8 +245,12 @@ try {
     try {
       const response = await scopedPage.goto(`${credentials.baseUrl}${route}`, { waitUntil: "domcontentloaded", timeout: 120000 });
       if (expected === "denied") {
-        assert.ok([403, 404].includes(response.status()));
+        // Admin pages stream behind a loading boundary, so a refusal arrives as a not-found screen with status 200 rather than a 404 status.
+        // What matters: no editor, a clear not-found message, and no trace of the client in the document.
+        await scopedPage.getByRole("heading", { name: "We couldn't find that page" }).waitFor({ timeout: 60000 });
         assert.equal(await scopedPage.locator("[data-studio]").count(), 0);
+        const refused = await (await scoped.request.get(`${credentials.baseUrl}${route}`)).text();
+        for (const fixture of credentials.fixtures) assert.ok(!refused.includes(fixture.organization.name), `refusal leaked ${fixture.organization.name}`);
       } else {
         await scopedPage.locator("[data-studio]").waitFor({ timeout: 120000 });
         if (expected === "approval") {
@@ -227,14 +263,14 @@ try {
           await masterHeading.click();
           await scopedPage.getByRole("complementary", { name: "Settings for the selected item" }).getByLabel("Text", { exact: true }).fill("Master-only local QA headline");
           await scopedPage.getByRole("button", { name: "Save draft (Ctrl+S)", exact: true }).click();
-          await scopedPage.getByRole("status").filter({ hasText: /^(Saved|All changes saved)$/ }).first().waitFor({ timeout: 60000 });
+          await scopedPage.getByRole("status").filter({ hasText: /^\s*(Saved|All changes saved)\.?\s*$/ }).first().waitFor({ timeout: 60000 });
           await page.reload({ waitUntil: "domcontentloaded" });
           await page.locator(`[data-canvas-frame] [data-nid="${headingId}"]`).waitFor();
           assert.equal((await page.locator(`[data-canvas-frame] [data-nid="${headingId}"]`).textContent()).trim(), originalHeading);
           await scopedPage.screenshot({ path: path.join(output, "master-draft-isolation.jpg"), type: "jpeg", quality: 85 });
           await scopedPage.getByRole("button", { name: "Undo (Ctrl+Z)", exact: true }).click();
           await scopedPage.getByRole("button", { name: "Save draft (Ctrl+S)", exact: true }).click();
-          await scopedPage.getByRole("status").filter({ hasText: /^(Saved|All changes saved)$/ }).first().waitFor({ timeout: 60000 });
+          await scopedPage.getByRole("status").filter({ hasText: /^\s*(Saved|All changes saved)\.?\s*$/ }).first().waitFor({ timeout: 60000 });
           assert.equal((await masterHeading.textContent()).trim(), previousText);
           passed("saved master-template draft edits do not modify the client's approved template copy; master change undone and saved");
         }

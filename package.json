@@ -23,7 +23,21 @@
     "studio:qa:matrix": "node --conditions=react-server --import tsx scripts/studio-browser-qa.mjs",
     "studio:qa:build": "node scripts/studio-qa-build.mjs",
     "thumbnails:generate": "node --conditions=react-server --import tsx scripts/generate-template-thumbnails.mjs",
-    "studio:qa:editor": "node scripts/studio-editor-browser-qa.mjs"
+    "studio:qa:editor": "node scripts/studio-editor-browser-qa.mjs",
+    "studio:qa:preview-scroll": "node scripts/studio-preview-scroll-qa.mjs",
+    "studio:qa:visual": "node scripts/studio-visual-review.mjs",
+    "studio:qa:library": "node scripts/studio-library-qa.mjs",
+    "studio:qa:text-fit": "node scripts/studio-text-fit-qa.mjs",
+    "studio:qa:fresh-seed": "node scripts/run-studio-qa-fresh.mjs",
+    "studio:qa:publish-seed": "node scripts/run-studio-qa-publish.mjs",
+    "studio:qa:inspect": "node scripts/run-studio-qa-inspect.mjs",
+    "studio:qa:published": "node scripts/studio-published-site-qa.mjs",
+    "studio:qa:image-text": "node scripts/studio-image-text-qa.mjs",
+    "studio:qa:a11y": "node scripts/studio-a11y-qa.mjs",
+    "studio:qa:anchors": "node scripts/studio-anchor-qa.mjs",
+    "studio:qa:thumbnails": "node scripts/studio-thumbnail-compare.mjs",
+    "studio:qa:perf": "node scripts/studio-gallery-perf.mjs",
+    "studio:qa:frame-weight": "node scripts/studio-frame-weight.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",

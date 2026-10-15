@@ -1,11 +1,11 @@
 // Turns a site's design tokens and each node's validated style into CSS. Nothing here reads free-form text: every value comes from a
 // fixed vocabulary or a validated hex colour, so the stylesheet cannot carry anything an owner typed. Responsive rules use container
 // queries on the site's own root, so a narrow editor frame, a thumbnail and a real phone all break at exactly the same widths.
-import { ensureContrast, ensureContrastAll, ensureContrastFollowing, mix, readableOn } from "./color";
+import { contrast, ensureContrast, ensureContrastAll, ensureContrastFollowing, mix, readableOn } from "./color";
 import { SPACES } from "./catalog";
 import type { Bg, Column, ColorRef, Design, ElementNode, NodeStyle, Override, Section, SiteContent, SitePage } from "./doc";
 import { resolveItem } from "./doc";
-import { FONTS, type FontKey } from "./font-keys";
+import { charEm, FONTS, type FontKey } from "./font-keys";
 
 export const BREAKPOINT = { tablet: 1023, mobile: 639 } as const;
 const Q_TABLET = `@container (max-width:${BREAKPOINT.tablet}px)`;
@@ -88,6 +88,16 @@ export function fillColor(ref: ColorRef): string {
     default: return ref;
   }
 }
+/**
+ * A colour used for a section's own backdrop. Brand colours here are the real brand colours, not the shades re-derived for the section's tone:
+ * a section whose tone is built around the accent colour ("accent" tone) would otherwise paint a "accent" backdrop in the primary colour (the tone
+ * swaps the two), leaving its text, which was chosen for the accent, on the wrong background.
+ */
+function backdropColor(ref: ColorRef): string {
+  if (ref === "primary") return "var(--c-primary)";
+  if (ref === "accent") return "var(--c-accent)";
+  return fillColor(ref);
+}
 /** A colour used for text: brand colours are swapped for the readable shade on the surface they sit on. */
 export function textColor(ref: ColorRef): string {
   if (ref === "primary") return "var(--p-text)";
@@ -109,10 +119,14 @@ function build(bg: string, surface: string, surface2: string, ink: string, muted
   const isDark = luminanceOf(bg) < 0.25;
   const p = isDark ? ensureContrast(primary, bg, 3) : primary;
   const a = isDark ? ensureContrast(accent, bg, 3) : accent;
+  // Brand-coloured text also sits on the soft tint of its own colour (an active navigation pill, a badge, a page-title band), which is darker than
+  // the page, so it has to read there as well as on the surfaces.
+  const pSoft = mix(bg, primary, isDark ? 0.22 : 0.1);
+  const aSoft = mix(bg, accent, isDark ? 0.22 : 0.12);
   return {
     bg, surface, surface2, ink, muted: ensureContrastFollowing(muted, [bg, surface, surface2], 4.55), line,
-    p, onP: readableOn(p), pText: ensureContrastAll(primary, [bg, surface, surface2], 4.5), pSoft: mix(bg, primary, isDark ? 0.22 : 0.1),
-    a, onA: readableOn(a), aText: ensureContrastAll(accent, [bg, surface, surface2], 4.5), aSoft: mix(bg, accent, isDark ? 0.22 : 0.12), dark: isDark,
+    p, onP: readableOn(p), pText: ensureContrastAll(primary, [bg, surface, surface2, pSoft], 4.5), pSoft,
+    a, onA: readableOn(a), aText: ensureContrastAll(accent, [bg, surface, surface2, aSoft], 4.5), aSoft, dark: isDark,
   };
 }
 const luminanceOf = (hex: string) => {
@@ -120,6 +134,15 @@ const luminanceOf = (hex: string) => {
   const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 };
+
+/** A faint band on a brand-coloured surface, in the surface's own readable text colour: as strong as it can be while that text still reads on it. */
+function softBand(bg: string, on: string): string {
+  for (const t of [0.14, 0.11, 0.08, 0.05]) {
+    const band = mix(bg, on, t);
+    if (contrast(on, band) >= 4.5) return band;
+  }
+  return mix(bg, on, 0.05);
+}
 
 export function paletteFor(design: Design, tone: Section["tone"]): PaletteSet {
   const c = design.colors;
@@ -141,14 +164,14 @@ export function paletteFor(design: Design, tone: Section["tone"]): PaletteSet {
       const on = readableOn(bg);
       const light = on === "#ffffff";
       const set = build(bg, mix(bg, light ? "#ffffff" : "#000000", 0.1), mix(bg, light ? "#ffffff" : "#000000", 0.18), on, mix(on, bg, 0.22), mix(bg, on, 0.28), on, c.accent);
-      return { ...set, p: on, onP: bg, pText: on, pSoft: mix(bg, on, 0.14), a: c.accent, onA: readableOn(c.accent) };
+      return { ...set, p: on, onP: bg, pText: on, pSoft: softBand(bg, on), a: c.accent, onA: readableOn(c.accent) };
     }
     case "accent": {
       const bg = c.accent;
       const on = readableOn(bg);
       const light = on === "#ffffff";
       const set = build(bg, mix(bg, light ? "#ffffff" : "#000000", 0.1), mix(bg, light ? "#ffffff" : "#000000", 0.18), on, mix(on, bg, 0.22), mix(bg, on, 0.28), on, c.primary);
-      return { ...set, p: on, onP: bg, pText: on, pSoft: mix(bg, on, 0.14), a: c.primary, onA: readableOn(c.primary) };
+      return { ...set, p: on, onP: bg, pText: on, pSoft: softBand(bg, on), a: c.primary, onA: readableOn(c.primary) };
     }
     default: return design.mode === "dark" ? darkSet() : lightSet();
   }
@@ -172,6 +195,13 @@ const SHADOW_SETS: Record<Design["shadow"], [string, string, string]> = {
 
 const fontVar = (k: string) => `var(${FONTS[k as FontKey].variable}),${FONTS[k as FontKey].fallback}`;
 
+/**
+ * Type sizes are fractions of the site's width, but text sits in a column. Beside another column it has half the room, so a size chosen for the
+ * full page overflows. Columns therefore re-declare the larger sizes with their own width share (`--cs`, 1 for a full-width or stacked column),
+ * which keeps a heading proportionate to the space it actually has. A full-width column is unchanged.
+ */
+const columnSizes = () => Object.entries(SIZE_VALUE).filter(([, v]) => v.includes("cqw")).map(([k, v]) => `--fs-${k}:${v.replace(/([\d.]+)cqw/g, "calc($1cqw * var(--cs,1))")};`).join("");
+
 /** The CSS custom properties for a site's design. They sit on the site's root element. */
 export function rootCss(design: Design, scope = ""): string {
   const S = scopeAttr(scope);
@@ -185,13 +215,17 @@ export function rootCss(design: Design, scope = ""): string {
   const spaces = SPACES.map((s) => `--sp-${s}:${s === "0" ? "0px" : `calc(${SPACE_VALUE[s]} * ${sp})`};`).join("");
   const hw = design.heading;
   const dark = paletteFor(design, "dark");
+  // How wide one character of a heading is, in em. A heading's size is capped so its longest word fits its column (see sizeValue and .iq-h).
+  const lsEm: Record<string, number> = { tighter: -0.045, tight: -0.022, normal: 0, wide: 0.04, wider: 0.1, widest: 0.2 };
+  const cw = charEm(design.fonts.heading) + (hw.transform === "uppercase" ? 0.13 : 0) + (hw.weight >= 800 ? 0.05 : hw.weight >= 700 ? 0.03 : hw.weight >= 500 ? 0.01 : 0) + (lsEm[hw.ls] ?? 0) + 0.03;
   return (
     `.iq-site${S}{${paletteVars(base)}` +
     `--c-dark:${dark.bg};--c-on-dark:${dark.ink};--c-primary:${c.primary};--c-accent:${c.accent};` +
     `--f-h:${fontVar(design.fonts.heading)};--f-b:${fontVar(design.fonts.body)};--f-a:${fontVar(design.fonts.accent)};--f-m:${fontVar(design.fonts.mono)};` +
-    `--hw:${hw.weight};--hls:${LS[hw.ls]};--hlh:${LH[hw.lh]};--htt:${hw.transform};--ts:${ts};` +
+    `--cw:${cw.toFixed(3)};--hw:${hw.weight};--hls:${LS[hw.ls]};--hlh:${LH[hw.lh]};--htt:${hw.transform};--ts:${ts};` +
     `--r:${r[0]};--r-lg:${r[1]};--r-btn:${r[2]};--sh-s:${sh[0]};--sh-m:${sh[1]};--sh-l:${sh[2]};` +
     `--bw:${design.buttons.weight};--gut:clamp(1.25rem,4.6cqw,3.25rem);${sizes}${spaces}}` +
+    `.iq-site${S} .iq-col{${columnSizes()}}` +
     (["dark", "light", "brand", "accent"] as const).map((t) => `.iq-site${S} [data-tone="${t}"]{${paletteVars(paletteFor(design, t))}}`).join("")
   );
 }
@@ -202,7 +236,11 @@ export function rootCss(design: Design, scope = ""): string {
 
 const sizeValue = (s: string) => {
   const big = ["3xl", "4xl", "5xl", "6xl", "7xl", "8xl"].includes(s);
-  return big ? `calc(var(--fs-${s}) * var(--ts))` : `var(--fs-${s})`;
+  if (!big) return `var(--fs-${s})`;
+  const wanted = `calc(var(--fs-${s}) * var(--ts))`;
+  // A heading publishes the length of its longest word (--lw) and the room it has (--fit, in site.css). Never grow past what makes that word fit,
+  // and never shrink below a still-readable 1.6rem to get there. Anything that is not a heading has no --fit and is unaffected.
+  return `max(min(${wanted},1.6rem),min(${wanted},var(--fit,999rem)))`;
 };
 
 /** CSS declarations for the style keys that may be set on any node. */
@@ -295,7 +333,11 @@ function columnRules(col: Column, index: number, count: number, sec: Section, ou
   const desktop = col.span;
   const tablet = col.r?.t?.span ?? (stack === "tablet" ? 12 : desktop);
   const mobile = col.r?.m?.span ?? (stack === "never" ? tablet : 12);
-  const decl = [`grid-column:span ${desktop}`];
+  // Half the room means half the type scale, but never less than half, however narrow the column.
+  const share = (span: number) => Number(Math.min(1, Math.max(0.5, span / 12)).toFixed(2));
+  // --cf is the column's true fraction of the row, used to work out how wide its text can be. (--cs above is gentler: it only scales type.)
+  const fraction = (span: number) => Number(Math.min(1, span / 12).toFixed(3));
+  const decl = [`grid-column:span ${desktop}`, `--cs:${share(desktop)}`, `--cf:${fraction(desktop)}`];
   if (col.valign) decl.push(`align-self:${VALIGN[col.valign]}`);
   if (col.align) decl.push(`text-align:${col.align === "start" ? "left" : col.align === "end" ? "right" : "center"}`);
   decl.push(`--cg:${space(col.gap)}`, `--cp:${space(col.pad)}`);
@@ -305,8 +347,8 @@ function columnRules(col: Column, index: number, count: number, sec: Section, ou
   out.base.push(rule(sel, decl.join(";")));
   const t: string[] = [];
   const m: string[] = [];
-  if (tablet !== desktop) t.push(`grid-column:span ${tablet}`);
-  if (mobile !== tablet) m.push(`grid-column:span ${mobile}`);
+  if (tablet !== desktop) t.push(`grid-column:span ${tablet}`, `--cs:${share(tablet)}`, `--cf:${fraction(tablet)}`);
+  if (mobile !== tablet) m.push(`grid-column:span ${mobile}`, `--cs:${share(mobile)}`, `--cf:${fraction(mobile)}`);
   // When columns stack, "reverse" shows them last-first.
   if (sec.layout.reverse && stack === "tablet") t.push(`order:${count - 1 - index}`);
   if (sec.layout.reverse && stack === "mobile") m.push(`order:${count - 1 - index}`);
@@ -328,10 +370,17 @@ function sectionRules(sec: Section, design: Design, out: Out) {
   const sel = clsOf(out, sec.id);
   const l = sec.layout;
   const decl = [
-    `--w:${SECTION_WIDTH[design.width][l.width]}`, `--pt:${space(l.pt)}`, `--pb:${space(l.pb)}`, `--mh:${MIN_H[l.minH]}`, `--gap:${space(l.gap)}`, `--va:${VALIGN[l.valign]}`,
+    `--w:${SECTION_WIDTH[design.width][l.width]}`, `--ww:${SECTION_WIDTH[design.width][l.width] === "none" ? "100cqw" : `min(100cqw,${SECTION_WIDTH[design.width][l.width]})`}`, `--pt:${space(l.pt)}`, `--pb:${space(l.pb)}`, `--mh:${MIN_H[l.minH]}`, `--gap:${space(l.gap)}`, `--va:${VALIGN[l.valign]}`,
     `--gut-x:${l.gutter ? "var(--gut)" : "0px"}`,
   ];
+  // A line and a shadow are drawn only when chosen, so a section that uses neither produces exactly the CSS it always did.
+  if (l.border !== "none") {
+    const line = `${l.border === "thin" ? 1 : 3}px solid var(--line)`;
+    decl.push(l.inset ? `border:${line}` : `border-block:${line}`);
+  }
+  if (l.shadow !== "none") decl.push(`box-shadow:${SHADOW_NODE[l.shadow]}`);
   out.base.push(rule(sel, decl.join(";")));
+  pushHide(out, sec.id, sec.hide);
   const screen = (o: Out["tablet"], r: NonNullable<Section["r"]>["t"]) => {
     if (!r) return;
     const d: string[] = [];
@@ -389,9 +438,9 @@ function seeded(seed: number) {
 /** The CSS `background` value for gradient, mesh and pattern backgrounds. Colours are references, never raw input. */
 export function bgCss(bg: Bg): { background?: string; backgroundColor?: string; backgroundSize?: string } {
   switch (bg.kind) {
-    case "color": return { backgroundColor: fillColor(bg.color) };
+    case "color": return { backgroundColor: backdropColor(bg.color) };
     case "gradient": {
-      const stops = [fillColor(bg.from), ...(bg.via ? [fillColor(bg.via)] : []), fillColor(bg.to)].join(",");
+      const stops = [backdropColor(bg.from), ...(bg.via ? [backdropColor(bg.via)] : []), backdropColor(bg.to)].join(",");
       return { background: `linear-gradient(${bg.angle}deg,${stops})` };
     }
     case "mesh": {
@@ -400,13 +449,13 @@ export function bgCss(bg: Bg): { background?: string; backgroundColor?: string; 
         const x = Math.round(10 + rnd() * 80);
         const y = Math.round(10 + rnd() * 80);
         const spread = 44 + Math.round(rnd() * 22);
-        return `radial-gradient(${60 + i * 4}% ${spread + 16}% at ${x}% ${y}%,${fillColor(c)} 0,transparent ${spread + 18}%)`;
+        return `radial-gradient(${60 + i * 4}% ${spread + 16}% at ${x}% ${y}%,${backdropColor(c)} 0,transparent ${spread + 18}%)`;
       });
-      return { background: `${layers.join(",")},${fillColor(bg.base)}` };
+      return { background: `${layers.join(",")},${backdropColor(bg.base)}` };
     }
     case "pattern": {
-      const col = `color-mix(in srgb,${fillColor(bg.color)} ${bg.opacity}%,transparent)`;
-      const base = bg.base ? fillColor(bg.base) : "transparent";
+      const col = `color-mix(in srgb,${backdropColor(bg.color)} ${bg.opacity}%,transparent)`;
+      const base = bg.base ? backdropColor(bg.base) : "transparent";
       switch (bg.pattern) {
         case "grid": return { background: `linear-gradient(${col} 1px,transparent 1px),linear-gradient(90deg,${col} 1px,transparent 1px),${base}`, backgroundSize: "44px 44px" };
         case "dots": return { background: `radial-gradient(${col} 1.4px,transparent 1.6px),${base}`, backgroundSize: "26px 26px" };

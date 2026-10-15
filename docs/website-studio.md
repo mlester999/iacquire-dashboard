@@ -5,9 +5,9 @@ review comments, archive and edit lock, per-form enquiry details). Code: `src/li
 editor logic, assistant), `src/components/website/*` (renderer, editor, gallery, agency screens), `src/server/websites/*`, `src/app/(portal)/website/*`,
 `src/app/(admin)/admin/website-studio/*`, `src/app/site-runtime/*`.
 
-**Status: implemented locally, tested with mocks and an in-memory PostgreSQL, and browser-checked on labelled sample data.** Nothing has been served from a
+**Status: implemented locally, tested with mocks and an in-memory PostgreSQL, and browser-checked on labelled sample data and, since the premium pass of 2026-10-15, with real signed-in sessions against an isolated embedded database.** Nothing has been served from a
 real host, no DNS record, certificate or domain purchase exists, nothing has been published for a real client, the hosted Supabase project now has migrations `0001`–`0026` (`0026` applied 2026-10-15, see
-`docs/website-studio-migration-0026.md`; the hosted database is still empty, so no hosted data exercises it), and the agency screens have **not** been driven in a browser while signed in (see "What was and wasn't verified").
+`docs/website-studio-migration-0026.md`; the hosted database is still empty, so no hosted data exercises it), and nothing has been driven against the hosted application (see "What was and wasn't verified").
 
 ## The two sides
 
@@ -43,6 +43,20 @@ structure, shape of the first screen, what is on it, the rhythm of sections down
 to differ on at least four; today about three quarters of all pairs differ on all six. This measures structure; it is not a substitute for looking.
 
 **Every design has its own editable starter photography.** The 50 built-in variations ship with 50 locally served WebP hero images; supporting photo slots use a varied set from the same design family. Nothing is scraped or hotlinked, and the files don't contain client uploads. Portrait artwork remains visibly illustrated rather than inventing customers or staff. A starter photo makes a template preview feel complete, but it is not evidence of the client's work, location or people: the editor labels it as a starter and lets the owner replace it or restore it later. Starter images in ordinary sections or backgrounds require the owner to acknowledge the warning before publication. Images used as proof (gallery, collage, team, testimonials) block publication until replaced with the client's own images.
+
+## Readability and responsiveness rules the renderer enforces
+
+These came from browser audits of all 50 designs at 390, 768, 1024 and 1440 pixels, not from reading code (see `docs/website-studio-premium-qa.md`):
+
+- **Headings fit their column.** A heading publishes the length of its longest word, and the type scale caps a large size so that word fits the column it is really in, accounting for the heading font's width (`font-keys.ts`), the column's share of the row and the content width. Words are never split mid-word, and an e-mail address breaks after the `@`.
+- **Buttons wrap, they don't clip.** A label wider than its column wraps and centres, and breaks a word only as a last resort.
+- **Brand text reads on its own tint.** Brand-coloured text is held to 4.5:1 on the soft tint of its own colour (active navigation pill, badge, page-title band) as well as on the page surfaces; the faint band on a brand-coloured surface is capped so its text keeps its contrast.
+- **A backdrop is the real brand colour.** A section backdrop of "accent" or "primary" no longer takes the swapped shade that the accent and brand tones give those names, which had painted pale text on the wrong colour in one design.
+- **Text over a photograph is readable.** Wherever a starter photograph is a section's background its overlay is even and at least 70% (dark) or 60% (light), measured against the pixels behind the text; the recipes' older overlays were tuned for the dark drawn artwork the photographs replaced. Small print and secondary text over a photograph take the section's text colour at near full strength, and a phone adds a further veil. A client's own picture keeps whatever overlay they choose.
+- **Headers never crowd themselves.** A header whose links, with its button, cannot fit beside the logo folds them into the menu, as on a phone (`NavFit`, measured in the loaded fonts, so it holds for whatever the client types). A floating header's height is measured so the first section starts below it. On a phone the logo gets the room and a split header drops the button that could not fit; the same action is the first button of the page.
+- **Sections can carry a border and shadow and be hidden per screen**, from the inspector, and they render and persist like every other control.
+- **Anchors land below a pinned header** (`--anchor-offset`, measured), and the preview keeps the reader in the same section when the device width changes.
+- **The built-in photographs are responsive** (640, 1024 and 1536 pixels) and cached.
 
 ## The document model
 
@@ -140,7 +154,8 @@ The platform never buys a domain and never assumes wildcard DNS exists.
 | --- | --- |
 | Unit and integration tests (local PostgreSQL, mocks) | Document model, operations, history, geometry, diff, presets, publish checks, legacy upgrade, assistant (validation, claim guard, planners, model-reply parsing, AI boundary), server modules (template lifecycle and permissions, client independence, agency scoping, comments, lock, archive, saved sections, template-update, responsive pictures), 50-design differentiation, runtime and domains |
 | Browser, sample data, no sign-in | `/dev/studio-preview` (editor with an in-memory API): selection, inline editing, drag reorder and insertion, undo/redo, autosave state, assistant propose/apply/undo and removal confirmation. `/dev/gallery-preview`. `/dev/admin-studio-preview?view=overview|websites|workspace|library|reviews|domains` (agency screens with invented data). Every one of the 50 designs loaded in an isolated frame at 390, 768, 1024 and 1440 px with **no horizontal overflow** |
-| **Not verified** | Signed-in agency and client flows against a real database in a browser; real hosted Supabase; real DNS, certificates, domain purchases, publishing to a real host; the AI provider (mocked only); screen-reader walkthroughs by a person; touch hardware |
+| Browser, isolated local app with real sessions, an embedded database and the real service calls (premium pass, 2026-10-15; commands and evidence in `docs/website-studio-premium-qa.md`) | **Preview scrolling, all 50 designs** at 1440, 1024, 768 and 390 px in the real flow (gallery, Preview, framed site): a wheel over the site and beside it, Page Down, End and Home, device switching that keeps the reader's place (and gives way to a reader who scrolls), all pages to their footers, Escape and focus return: 0 failing. **Text fit and colour contrast**, every page of every design at four widths (1,200 views, axe for contrast): 0 failing. **Text over photographs** measured against the pixels (300 views, 98 with text over a picture): 0 failing. **Anchors under a pinned header** (100 views, 38 with one): 0 failing. **Screenshot against preview** for all 50: 0 flagged, worst real pair 1.0% against 6.9% for the closest wrong pair. **axe, WCAG A and AA plus best practice**, gallery, Preview dialog and every design at two widths (104 views): 0 violations. **Published runtime**: three sites published through the real service calls, driven as a visitor at four widths (54 checks): 0 failing. **Agency Template Library** (filters, Featured, permissions, details panel) and a client's gallery and website creation: 11 of 11. **Editor** with signed-in sessions (properties, images, save and refresh, versions, tenant boundaries): 17 of 17 |
+| **Not verified** | Any of the above against the hosted application or hosted Supabase; real DNS, certificates, domain purchases, publishing to a real host; the AI provider (mocked only); screen-reader walkthroughs by a person; touch hardware. The published fixture sites had their gallery, collage, team and testimonial sections removed first, because the publish check refuses starter photographs there, so publishing a site that still has them is not covered |
 
 ## Needs your decision or access
 

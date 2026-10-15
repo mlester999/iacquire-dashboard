@@ -11,7 +11,6 @@ import type { FamilyDef, Recipe, TemplateCtx, VariationDef } from "../types";
 
 const ICONS = ["paintbrush", "camera", "pen-tool", "rocket", "sparkles", "lightbulb"];
 const base: Partial<Design> = { scale: "display", spacing: "regular", motion: "dramatic" };
-const WORDS = ["Identity", "Campaigns", "Film", "Digital", "Packaging"];
 
 const warm = { primary: "#ff4d2e", accent: "#ffd23f", bg: "#f4f0e6", surface: "#fffdf7", surface2: "#ebe5d5", ink: "#111111", muted: "#4f4c45", line: "#d9d2bf", dark: "#111111" };
 
@@ -36,7 +35,7 @@ const riot = (ctx: TemplateCtx): Recipe => {
         b.col(5, [b.lede(ctx.lede || "We make brands people remember.", { style: { color: "ink" } }), b.group([b.btn(ctx.primaryLabel, ctx.primaryHref, { size: "l", icon: "arrow-right" }), ...(ctx.secondary ? [b.btn(ctx.secondary.label, ctx.secondary.href, { variant: "outline", size: "l" })] : [])], { gap: "s", style: { mt: "s" } })], { gap: "m", valign: "start" }),
         b.col(7, [b.img(art("shapes", "light", 2), { aspect: "16/10", frame: "tilt", priority: true, anim: { preset: "scale", delay: 120 } })], { valign: "start" }),
       ]),
-      wordBand(ctx, { style: "outline", size: "7xl", words: ctx.sample ? WORDS : undefined, tone: "dark", speed: "fast", pt: "m", pb: "m" }),
+      wordBand(ctx, { style: "outline", size: "7xl", tone: "dark", speed: "fast", pt: "m", pb: "m" }),
       services,
       statsSection(ctx, { style: "big", tone: "brand" }),
       gallerySection(ctx, { images: [art("shapes", "light", 4), art("cityblocks", "light", 5), art("rings", "light", 6), art("mesh", "light", 7)], layout: "masonry", title: "Recent noise", eyebrow: "Work" }),
@@ -64,7 +63,7 @@ const pop = (ctx: TemplateCtx): Recipe => {
         collage: { layout: "stack", images: [art("shapes", "light", 3), art("rings", "light", 4), art("mesh", "light", 5)] },
         decor: [{ kind: "blob", at: "bl", size: "l", color: "primary", opacity: 60 }, { kind: "ring", at: "tr", size: "m", color: "ink", opacity: 50 }],
       }),
-      wordBand(ctx, { style: "badge", words: ctx.sample ? WORDS : undefined, tone: "light" }),
+      wordBand(ctx, { style: "badge", tone: "light" }),
       introSection(ctx, { layout: "statement", title: "We make brands that bounce.", size: "6xl", body: ctx.lede }),
       services,
       statsSection(ctx, { style: "cards" }),
@@ -97,7 +96,7 @@ const brutal = (ctx: TemplateCtx): Recipe => {
         ], { gap: "m", valign: "center", r: { t: { span: 12 } } }),
         b.col(4, [b.card([b.img(art("cityblocks", "light", 9), { aspect: "3/4", frame: "none" }), b.small("Fig. 01 / Selected work")], { surface: "outlined", pad: "s", gap: "xs", style: { border: "thick", borderColor: "ink", shadow: "l" } })], { valign: "center", r: { t: { span: 12 } } }),
       ]),
-      wordBand(ctx, { style: "text", words: ctx.sample ? WORDS : undefined, tone: "dark", size: "3xl", speed: "normal" }),
+      wordBand(ctx, { style: "text", tone: "dark", size: "3xl", speed: "normal" }),
       services,
       statsSection(ctx, { style: "lines" }),
       gallerySection(ctx, { images: [art("cityblocks", "light", 3), art("shapes", "light", 4), art("rings", "light", 5), art("streets", "light", 6)], layout: "grid", cols: "4", aspect: "1/1", title: "Selected work", eyebrow: "04" }),
@@ -124,7 +123,7 @@ const kinetic = (ctx: TemplateCtx): Recipe => {
         tone: "dark", badge: "Studio / Motion / Brand", size: "7xl", pt: "2xl", pb: "l", minH: "90", valign: "center", ctaVariant: ["primary", "outline"], bg: { kind: "mesh", colors: ["primary", "accent"], seed: 8, base: "bg" },
         decor: [{ kind: "grid", at: "c", size: "xl", color: "line", opacity: 30 }],
       }),
-      wordBand(ctx, { style: "outline", size: "8xl", words: ctx.sample ? WORDS : undefined, tone: "dark", speed: "slow", pt: "m", pb: "l" }),
+      wordBand(ctx, { style: "outline", size: "8xl", tone: "dark", speed: "slow", pt: "m", pb: "l" }),
       services,
       statsSection(ctx, { style: "big", tone: "dark" }),
       gallerySection(ctx, { images: [art("mesh", "dark", 1), art("rings", "dark", 2), art("grid3d", "dark", 3), art("shapes", "dark", 4)], layout: "strip", aspect: "4/5", title: "In motion", eyebrow: "Reel", width: "full" }),

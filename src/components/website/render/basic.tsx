@@ -1,6 +1,7 @@
 import * as React from "react";
 import { isExternalHref } from "@/lib/website/doc";
 import type { ImageSrc } from "@/lib/website/doc";
+import { longestWord } from "@/lib/website/markup";
 import { Icon } from "./icons";
 import { ImageEl, imageShows, isIllustration, isTemplateStarter, Paras, rootProps, Txt } from "./parts";
 import type { ElementProps } from "./ctx";
@@ -13,7 +14,10 @@ export function Heading({ el, ctx, p, index }: ElementProps & { index?: number }
   let level = Math.min(4, Math.max(1, parseInt(s(p.level) || "2", 10) || 2));
   if (level === 1 && el.id !== ctx.h1Id) level = 2;
   const Tag = `h${level}` as "h1";
-  return <Txt ctx={ctx} id={el.id} path="text" value={s(p.text)} as={Tag} className="iq-h" multiline rootProps={{ ...rootProps(el, ctx, "iq-heading", index), "data-lvl": String(level) }} placeholder="Heading" />;
+  const root = rootProps(el, ctx, "iq-heading", index);
+  // The stylesheet caps the size so this word fits its column (see sizeValue in css.ts), whatever the text is.
+  root.style = { ...(root.style as Record<string, string | number> | undefined), "--lw": longestWord(s(p.text)) };
+  return <Txt ctx={ctx} id={el.id} path="text" value={s(p.text)} as={Tag} className="iq-h" multiline rootProps={{ ...root, "data-lvl": String(level) }} placeholder="Heading" />;
 }
 
 export function TextEl({ el, ctx, p, index }: ElementProps & { index?: number }) {

@@ -11,7 +11,7 @@ import { PageHero } from "@/components/ui/workspace";
 import { ClientWebsiteWorkspace } from "@/components/website/admin/client-website-workspace";
 import { CreateForClient } from "@/components/website/admin/create-for-client";
 
-export const metadata = { title: "Client website" };
+export const metadata = { title: "Client Website" };
 
 export default async function ClientWebsitePage({ params }: { params: Promise<{ orgId: string }> }) {
   const { orgId } = await params;

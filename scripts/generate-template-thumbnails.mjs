@@ -36,6 +36,8 @@ try {
     const signature = contentHash(content);
     await page.goto(`${base}/dev/frame/template?key=${encodeURIComponent(key)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
     await page.locator(`[data-template-signature="${signature}"]`).waitFor({ timeout: 30000 });
+    // The header folds its links into the menu once its scripts have measured them in the loaded fonts; photograph the page after that.
+    await page.locator('.iq-site[data-nav-fit="ready"]').waitFor({ state: "attached", timeout: 30000 });
     await page.evaluate(async () => {
       await document.fonts.ready;
       const images = [...document.images].filter((image) => image.getBoundingClientRect().top < innerHeight);
@@ -51,5 +53,10 @@ try {
     console.log(`Captured ${key} v${content.origin.version}`);
   }
   await fs.writeFile("src/lib/website/template-thumbnails.json", JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`Generated ${Object.keys(manifest.templates).length} canonical thumbnails.`);
+  // The manifest is complete, so anything it does not reference is a superseded screenshot. Removing those keeps stale pictures from lingering in
+  // the repository or being served; the file names change whenever content or the renderer does, so no live URL is ever replaced in place.
+  const keep = new Set(Object.values(manifest.templates).flatMap((entry) => [entry.src, entry.srcSet.split(",")[1].trim().split(" ")[0]].map((url) => url.replace("/website-thumbnails/", ""))));
+  let pruned = 0;
+  for (const name of await fs.readdir(out)) if (name.endsWith(".webp") && !keep.has(name)) { await fs.rm(`${out}/${name}`); pruned++; }
+  console.log(`Generated ${Object.keys(manifest.templates).length} canonical thumbnails; removed ${pruned} superseded file${pruned === 1 ? "" : "s"}.`);
 } finally { await browser.close(); }

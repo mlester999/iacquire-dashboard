@@ -13,7 +13,7 @@ export function DomainsView({ o, timeZone, baseDomain, cnameTarget }: { o: Domai
   const attention = o.domains.filter((d) => d.needsAttention);
   return (
     <div className="module-stack">
-      <PageHero eyebrow="Website Studio" icon={<Globe className="size-5" />} title="Domains and hosting"
+      <PageHero eyebrow="Website Studio" icon={<Globe className="size-5" />} title="Domains & Hosting"
         description="Included addresses, customers' own domains, and how each is verified, routed and secured. A domain is only called connected once the live check has passed." />
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Server className="size-4" aria-hidden /> Hosting setup</CardTitle><CardDescription>What must exist outside this application before a website answers on its own address. Nothing here changes DNS for you.</CardDescription></CardHeader>

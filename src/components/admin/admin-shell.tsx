@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { adminDetailLabel } from "@/lib/admin-breadcrumb";
+import { adminCrumbs } from "@/lib/admin-breadcrumb";
 import { motion } from "motion/react";
 import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
 import { Logo } from "@/components/brand";
@@ -65,7 +65,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
   const superAdmin = user.platformRole === "agency_super_admin";
   const pathname = usePathname();
   const router = useRouter();
-  const current = NAV.find((n) => n.exact ? pathname === n.href : pathname.startsWith(n.href));
+  const crumbs = adminCrumbs(pathname);
   const visibleNav = NAV.filter((n) => (!n.superOnly || superAdmin) && n.label.toLowerCase().includes(query.toLowerCase()));
   React.useEffect(() => {
     const shortcut = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCommandOpen((s) => !s); } };
@@ -89,7 +89,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
     <div className="min-w-0 transition-[padding] duration-200 lg:pl-[var(--admin-sidebar)]">
       {qaDemo && <p className="border-b border-warning/20 bg-warning-soft px-4 py-2 text-center text-[11px] font-medium text-warning-ink">Local design review · synthetic records · external services disabled</p>}
       <header className="sticky top-0 z-20 flex h-16 min-w-0 items-center justify-between gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur-lg sm:px-6 lg:px-8">
-        <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => setOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2 lg:hidden" aria-label="Open admin navigation"><MenuIcon className="size-5" /></button><nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 text-[12px]"><Link href="/admin" className="hidden text-muted hover:text-ink sm:block">Agency</Link><ChevronRight className="hidden size-3 text-faint sm:block" /><span className="truncate font-medium text-ink">{current?.label ?? "Client workspace"}</span>{adminDetailLabel(pathname) && <><ChevronRight className="size-3 text-faint" /><span className="hidden text-muted md:block">{adminDetailLabel(pathname)}</span></>}</nav></div>
+        <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => setOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2 lg:hidden" aria-label="Open admin navigation"><MenuIcon className="size-5" /></button><nav aria-label="Breadcrumb" className="min-w-0"><ol className="flex min-w-0 items-center gap-2 text-[12px]"><li className="hidden items-center gap-2 sm:flex"><Link href="/admin" className="text-muted hover:text-ink">Agency</Link><ChevronRight className="size-3 text-faint" aria-hidden /></li>{crumbs.map((crumb, i) => { const last = i === crumbs.length - 1; return <li key={`${crumb.label}-${i}`} className={cn("min-w-0 items-center gap-2", last ? "flex" : "hidden md:flex")}>{crumb.href ? <Link href={crumb.href} className="truncate text-muted hover:text-ink">{crumb.label}</Link> : <span aria-current={last ? "page" : undefined} className="truncate font-medium text-ink">{crumb.label}</span>}{!last && <ChevronRight className="size-3 shrink-0 text-faint" aria-hidden />}</li>; })}</ol></nav></div>
         <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => { setQuery(""); setCommandOpen(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-[12px] text-muted shadow-soft" aria-label="Search navigation"><Search className="size-4" /><span className="hidden sm:block">Jump to…</span><kbd className="hidden rounded border border-line bg-surface-2 px-1.5 text-[10px] md:block">⌘ K</kbd></button><button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button><span className="hidden rounded-full border border-line bg-surface px-2.5 py-1.5 text-[10px] font-medium text-muted xl:block">{superAdmin ? "Super admin" : "Agency staff"}</span></div>
       </header>
       <main id="admin-main" key={pathname} className="page-in mx-auto w-full max-w-[1600px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">{children}</main>

@@ -39,7 +39,7 @@ export interface ReviewQueues { waiting: ManagedWebsite[]; changes: ManagedWebsi
 export function ReviewsView({ q }: { q: ReviewQueues }) {
   return (
     <div className="module-stack">
-      <PageHero eyebrow="Website Studio" icon={<ClipboardCheck className="size-5" />} title="Reviews and publishing"
+      <PageHero eyebrow="Website Studio" icon={<ClipboardCheck className="size-5" />} title="Reviews & Publishing"
         description="Where each website is on its way to going live: waiting for the owner, needing changes, approved and ready, or in trouble. Publishing always needs the owner's approval of the exact draft." />
       <div className="grid gap-6 xl:grid-cols-2">
         <Queue title="Waiting for the owner" description="Sent for approval. The owner reviews the preview and approves it or asks for changes." empty="Nothing is waiting for an owner." sites={q.waiting} icon={<ClipboardCheck className="size-4 text-warning-ink" aria-hidden />} action="Review" />

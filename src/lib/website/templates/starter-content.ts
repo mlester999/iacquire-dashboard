@@ -63,7 +63,7 @@ export function applyTemplateStarterContent(content: SiteContent, key: string): 
           ledeDone = true;
         } else if (role === "About" && textRole === "body") props.text = identity!.sample.aboutText;
         else if (role === "Introduction" && textRole === "body") props.text = identity!.sample.description;
-        else if (role === "Hero" && textRole === "small" && key.startsWith("tech.")) props.text = "Illustrative workspace";
+        else if (role === "Hero" && textRole === "small" && key.startsWith("tech.")) props.text = `${brand} workspace, illustrative`;
       }
       if (node.type === "button") {
         const link = props.link as { label: string; href: string };
@@ -80,7 +80,7 @@ export function applyTemplateStarterContent(content: SiteContent, key: string): 
         props.submitLabel = identity!.primaryLabel;
         props.helper = `Fictional demonstration for ${brand}. Do not send sensitive information.`;
       }
-      if (node.type === "badge" && role === "Hero") props.text = badgeIndex++ === 0 ? `${brand} · Concept` : key.startsWith("tech.") ? "Workflow outline" : `${brand} studio`;
+      if (node.type === "badge" && role === "Hero") props.text = badgeIndex++ === 0 ? `${brand} · Concept` : key.startsWith("tech.") ? `${brand} workflow outline` : `${brand} studio`;
       if (node.type === "image") {
         props.alt = caption();
         if (props.caption) props.caption = props.alt;

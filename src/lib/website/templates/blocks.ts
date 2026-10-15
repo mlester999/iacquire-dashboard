@@ -413,7 +413,7 @@ export function ctaSection(ctx: TemplateCtx, o: CtaOpts = {}): Section {
     case "image":
       return b.section({
         ...base, tone: o.tone ?? "dark",
-        bg: o.bg ?? { kind: "image", src: o.image ?? art("interior", "warm"), overlay: { color: "dark", opacity: 60, dir: "flat" }, pos: { x: 50, y: 50 }, parallax: true },
+        bg: o.bg ?? { kind: "image", src: o.image ?? art("interior", "warm"), overlay: { color: o.tone === "light" ? "bg" : "dark", opacity: 60, dir: "flat" }, pos: { x: 50, y: 50 }, parallax: true },
         layout: { pt: o.pt ?? "3xl", pb: o.pb ?? "3xl", width: o.width ?? "regular", minH: "60" },
       }, [b.col(12, [...(o.eyebrow ? [b.eyebrow(o.eyebrow, { style: { align: "center", color: "onDark" } })] : []), b.h2(title, { style: { size: "6xl", align: "center", w: "l" }, anim: "up" }), ...(body ? [b.lede(body, { style: { align: "center", w: "m", color: "onDark" } })] : []), buttons(o.buttonVariant ?? "light", true)], { gap: "m", align: "center" })]);
     case "centered":

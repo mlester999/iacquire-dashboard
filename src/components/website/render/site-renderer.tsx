@@ -4,7 +4,7 @@ import { findPage, isRef, resolveItem, type ElementNode, type SiteContent } from
 import { FONT_CLASSES } from "@/lib/website/fonts";
 import "./site.css";
 import type { EditBridge, RenderCtx, ResolvedAsset } from "./ctx";
-import { MenuCloser, MotionRoot } from "./islands";
+import { MenuCloser, MotionRoot, NavFit } from "./islands";
 import { SectionView } from "./section";
 
 export interface SiteRendererProps {
@@ -100,6 +100,7 @@ export function SiteRenderer(props: SiteRendererProps) {
       {content.footer && <SectionView sec={content.footer} ctx={ctx} role="footer" />}
       {!editing && <MotionRoot enabled={d.motion !== "none"} />}
       {!editing && <MenuCloser />}
+      <NavFit />
     </div>
   );
 }

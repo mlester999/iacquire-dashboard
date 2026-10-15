@@ -3,7 +3,10 @@
 import type { SiteDetails } from "./types";
 
 /** Bump whenever built-in starter content changes; persisted site snapshots retain their revision. */
-export const BUILTIN_TEMPLATE_REVISION = 2;
+// Revision history: 1 first authored set; 2 authored identities for all 50; 3 marquee words, tech badges, contact details and opening hours now
+// come from each design's own identity instead of shared placeholders; the starter photographs that carry text now sit under an overlay strong enough to
+// read it, and phone headers give the logo room and drop the button that could not fit. Existing sites keep the revision they were created from.
+export const BUILTIN_TEMPLATE_REVISION = 3;
 
 type Pair = readonly [string, string];
 type Headings = readonly [intro: string, about: string, services: string, faq: string, gallery: string, contact: string, closing: string, process: string];
@@ -19,9 +22,17 @@ export interface StarterIdentity {
   sample: SiteDetails;
 }
 
+/** How a fictional business of each kind describes when it can be reached, so contact blocks read like their own industry. */
+const HOURS: Record<string, string> = {
+  luxe: "Private consultations by appointment", tech: "Walkthrough requests answered by email", bold: "Briefs read on weekdays", corp: "Weekday consultations by arrangement",
+  minimal: "Studio visits by arrangement", local: "Visits scheduled after a short call", care: "Sessions by booking", meridian: "Viewings by arrangement",
+  host: "Tables and stays by enquiry", agency: "Introductory calls by arrangement",
+};
+let sequence = 0;
 const industry: Record<string, string> = { luxe: "other", tech: "agency", bold: "agency", corp: "legal_finance", minimal: "other", local: "home_services", care: "healthcare", meridian: "real_estate", host: "local_services", agency: "consulting" };
 
 function identity(key: string, brand: string, description: string, headline: string, lede: string, about: string, headings: Headings, buttons: readonly [string, string], services: readonly Pair[], faqs: readonly Pair[], captions: string[], footer: string): StarterIdentity {
+  const position = sequence++;
   return {
     key, description, headings, primaryLabel: buttons[0], secondaryLabel: buttons[1], captions, footer,
     sample: {
@@ -29,8 +40,10 @@ function identity(key: string, brand: string, description: string, headline: str
       services: services.map(([title, description]) => ({ title, description })),
       faqs: faqs.map(([question, answer]) => ({ question, answer })),
       pages: ["home", "about", "services", "faq", "gallery", "contact"],
-      email: `${key.replace(".", "-")}@example.com`, phone: "+15125550143",
-      address: "Demonstration studio\nBy arrangement", hours: "Enquiries by arrangement",
+      email: `${key.replace(".", "-")}@example.com`,
+      // 555-01xx numbers are reserved for fiction, and each design gets its own so no two sites share contact details.
+      phone: `+1512555${String(100 + position).padStart(4, "0")}`,
+      address: `${brand}\nFictional demonstration address`, hours: HOURS[key.split(".")[0]],
       primaryAction: "enquire",
       highlights: services.map(([title]) => title),
       marquee: services.map(([title]) => title),
