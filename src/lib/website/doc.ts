@@ -594,7 +594,7 @@ export function eachElement(c: SiteContent, visit: (e: ElementNode, where: strin
   const sec = (s: Section, where: string) => s.columns.forEach((col) => walk(col.elements, where));
   if (c.header) sec(c.header, "Header");
   if (c.footer) sec(c.footer, "Footer");
-  Object.entries(c.globals).forEach(([id, s]) => sec(s, `Shared section ${id}`));
+  Object.entries(c.globals).forEach(([id, s]) => sec(s, s.name ? `Shared section “${s.name}”` : `Shared section ${id}`));
   for (const p of c.pages) p.items.forEach((i) => !isRef(i) && sec(i, p.title));
 }
 

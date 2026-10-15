@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **957 tests in 58 files passed** (877 in 49 before the Website Studio rebuild) |
+| `npm test` | **958 tests in 58 files passed** (877 in 49 before the Website Studio rebuild) |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean). Run with local database settings, not the hosted ones |

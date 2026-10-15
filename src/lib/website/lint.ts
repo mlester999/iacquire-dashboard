@@ -177,8 +177,11 @@ export function checkReadiness(content: SiteContent): Readiness {
 
   // Pictures. A drawn illustration is honest artwork, not a photo of the owner's work, team or places.
   const noAlt = new Set<string>();
+  // One note per element, however many pictures it holds (a services section with three picture cards is one thing to fix, not three).
+  const noted = new Set<string>();
   for (const u of imageUses(content)) {
-    if (u.src && u.src.kind === "art" && artKind(u.src.scene) === "illustration") {
+    if (u.src && u.src.kind === "art" && artKind(u.src.scene) === "illustration" && !noted.has(u.nodeId)) {
+      noted.add(u.nodeId);
       if (u.type === "gallery" || u.type === "collage" || u.type === "team" || u.type === "testimonials") {
         blockers.push({ code: "illustration_as_proof", message: "This shows built-in artwork where visitors expect a real photo of your work or people. Replace it with your own image.", where: u.where, nodeId: u.nodeId });
       } else {

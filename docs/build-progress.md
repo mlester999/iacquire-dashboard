@@ -18,7 +18,7 @@ Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email prov
 | Git | Branch `master` with a remote (`origin`) that you added; it matched `origin/master` when last checked. **This work never pushed.** `.env`, `.data`, build output are ignored. Checkpoints: `6ebe000` (Wave 0 baseline), `fa76674` (adaptive onboarding v2, brand assets, isolation guard), `fb75e3c` (Website Studio, redesign passes). **Everything after `fb75e3c` (operations, appointments, retention, commercial operations, docs) is uncommitted in the working tree** until you approve a commit |
 | Filesystem backups | `../iAcquire-backups/`: `…wave0-baseline-…`, `…wave0b-messaging-complete-20261014-1930.tar.gz` (excludes `node_modules`, `.next*`). No backup has been taken since the operations/commercial work |
 | Baseline at the first checkpoint | typecheck, lint, build clean; 536 tests / 34 files; 96 routes; migrations 0001–0019 |
-| Current (2026-10-15) | typecheck clean; lint **0 errors, 0 warnings**; build passes; **957 tests / 58 files**; **migrations 0001–0026, 154 tables** (0026 not applied to the hosted project) |
+| Current (2026-10-15) | typecheck clean; lint **0 errors, 0 warnings**; build passes; **958 tests / 58 files**; **migrations 0001–0026, 154 tables** (0026 not applied to the hosted project) |
 
 ## Completion matrix (brief section → status)
 

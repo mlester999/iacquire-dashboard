@@ -476,8 +476,8 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   // --- Keyboard ------------------------------------------------------------
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      const typing = t.closest("input, textarea, select, [contenteditable]") !== null;
+      const t = e.target as Element | null;
+      const typing = Boolean(t?.closest?.("input, textarea, select, [contenteditable]"));
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); void saveNow(); return; }
       if (typing) return;

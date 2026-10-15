@@ -302,6 +302,20 @@ describe("publishing checks", () => {
     doc = insertSection(doc, doc.pages[0].id, 1, buildPreset(doc, SECTION_PRESETS.find((p) => p.id === "gallery-grid")!)!);
     expect(checkReadiness(doc).blockers.map((b) => b.code)).toContain("illustration_as_proof");
   });
+
+  it("raises one note per element, however many pictures it holds, and names a shared section by its own name", () => {
+    const doc = site();
+    const warned = checkReadiness(doc).warnings.filter((w) => w.code === "illustration_in_use" && w.nodeId).map((w) => w.nodeId);
+    expect(new Set(warned).size).toBe(warned.length);
+    const shared = makeShared(doc, firstPageSections(doc)[1].id);
+    expect(shared).not.toBeNull();
+    const named = structuredClone(shared!.doc);
+    const key = Object.keys(named.globals)[0];
+    named.globals[key].name = "Services band";
+    const wheres: string[] = [];
+    eachElement(named, (_e, where) => wheres.push(where));
+    expect(wheres).toContain("Shared section “Services band”");
+  });
 });
 
 describe("older sites", () => {
