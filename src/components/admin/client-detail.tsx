@@ -774,7 +774,7 @@ function InvitationEmailStatus({ invitation: i }: { invitation: Detail["invitati
     : i.email_status === "captured" ? "Email was not delivered: email delivery is switched off for this environment"
     : i.email_status === "failed" ? `Email failed${i.email_error ? `: ${i.email_error}` : ""}`
     : "Email queued, delivery not confirmed";
-  return <p className={cn("text-[12px]", s.tone === "success" ? "text-success" : s.tone === "danger" ? "text-danger" : "text-warning")}>{text}</p>;
+  return <p className={cn("text-[12px]", s.tone === "success" ? "text-success-ink" : s.tone === "danger" ? "text-danger-ink" : "text-warning-ink")} suppressHydrationWarning>{text}</p>;
 }
 
 function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
@@ -783,7 +783,7 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   const [role, setRole] = React.useState<"owner" | "admin" | "member">("owner");
   const [link, setLink] = React.useState<string | null>(null);
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 [&>*]:min-w-0">
       <Card>
         <CardHeader>
           <div>
@@ -794,8 +794,8 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
         <CardContent className="space-y-4">
           <ul className="divide-y divide-line">
             {data.members.map((m) => (
-              <li key={m.user_id} className="flex items-center gap-3 py-2.5 text-[13px]">
-                <div className="min-w-0 flex-1">
+              <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-[13px]">
+                <div className="min-w-0 flex-1 basis-40">
                   <p className="truncate font-medium">{m.full_name || m.email}</p>
                   <p className="truncate text-[12px] text-muted">{m.email}</p>
                 </div>
@@ -804,19 +804,21 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
               </li>
             ))}
             {data.invitations.map((i) => (
-              <li key={i.id} className="flex items-center gap-3 py-2.5 text-[13px]">
-                <div className="min-w-0 flex-1">
+              <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-[13px]">
+                <div className="min-w-0 flex-1 basis-52">
                   <p className="truncate text-muted">{i.email}</p>
-                  <p className="text-[12px] text-faint">{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending · expires ${relativeTime(i.expires_at)}`}</p>
+                  <p className="text-[12px] text-faint" suppressHydrationWarning>{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending · expires ${relativeTime(i.expires_at)}`}</p>
                   <InvitationEmailStatus invitation={i} />
                 </div>
-                <Badge tone={i.expired ? "neutral" : "warning"}>{sentenceCase(i.role ?? "member")}</Badge>
-                {superAdmin && <ResendInvitationButton orgId={data.org.id} invitation={i} variant="secondary" label="Resend" />}
-                {superAdmin && (
-                  <Button size="sm" variant="ghost" onClick={() => run(`rv-${i.id}`, () => revokeInvitationAction(i.id, data.org.id), "Invitation revoked")}>
-                    Revoke
-                  </Button>
-                )}
+                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto">
+                  <Badge tone={i.expired ? "neutral" : "warning"}>{sentenceCase(i.role ?? "member")}</Badge>
+                  {superAdmin && <ResendInvitationButton orgId={data.org.id} invitation={i} variant="secondary" label="Resend" />}
+                  {superAdmin && (
+                    <Button size="sm" variant="ghost" onClick={() => run(`rv-${i.id}`, () => revokeInvitationAction(i.id, data.org.id), "Invitation revoked")}>
+                      Revoke
+                    </Button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

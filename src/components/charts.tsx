@@ -107,7 +107,7 @@ export function AreaChart({
   const [hover, setHover] = React.useState<number | null>(null);
   const [showTable, setShowTable] = React.useState(false);
   const reduce = useReducedMotion();
-  const pad = { l: 32, r: 12, t: 12, b: 26 };
+  const pad = { l: 32, r: 22, t: 12, b: 26 };
   const w = Math.max(0, width - pad.l - pad.r);
   const h = height - pad.t - pad.b;
   const max = niceMax(Math.max(...data.map((d) => d.y), 0));
@@ -319,7 +319,7 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = React.useState<number | null>(null);
   const reduce = useReducedMotion();
-  const pad = { l: 28, r: 8, t: 10, b: 24 };
+  const pad = { l: 28, r: 18, t: 10, b: 24 };
   const w = Math.max(0, width - pad.l - pad.r);
   const h = height - pad.t - pad.b;
   const max = niceMax(Math.max(...data.map((d) => d.y), 0));
