@@ -9,6 +9,12 @@ readiness are separate persisted records.
 1. Open **Admin → Clients**, create the client and send an invitation through the configured
    provider. Invitations are the only signup path; the application role comes from the invitation,
    not browser metadata. See `supabase-setup.md` before connecting a development project.
+   The portal reports what the mailer really did: **Email sent**, **not delivered** (the environment is
+   in `EMAIL_PROVIDER=capture` mode) or **failed** with the provider's reason. If the owner has not
+   received it, open the client and choose **Resend invite** (header, or **Team & staff** for each
+   pending invitation, expired ones included). Resending issues a fresh link and revokes the old one;
+   it is limited to six resends per hour per invitation. Production needs `EMAIL_PROVIDER=resend`,
+   `RESEND_API_KEY` and an `EMAIL_FROM` address on a domain verified with the provider.
 2. The client accepts the invitation, verifies their email, and completes company onboarding.
 3. The existing onboarding service saves the company profile, knowledge and selected employee
    configurations transactionally. It creates the setup instance and queues four preparation jobs

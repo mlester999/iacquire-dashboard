@@ -11,12 +11,25 @@ export interface OutgoingEmail {
   text: string;
 }
 
+export type EmailStatus = "queued" | "captured" | "sent" | "failed";
+
+export interface EmailDelivery {
+  id: string;
+  status: EmailStatus;
+  /** Provider failure reason; only set when status is "failed". */
+  error?: string | null;
+}
+
 /**
  * Queues an email in the outbox and delivers it through the configured provider.
  * With EMAIL_PROVIDER=capture (the default), messages are stored but not sent; in development
  * they can be read at /dev/mailbox. Delivery status is recorded truthfully either way.
+ *
+ * By default delivery is fire-and-forget. Pass `{ wait: true }` when the caller reports the outcome to a
+ * person (for example "invitation sent"): the provider call is awaited and the final status is returned.
+ * Callers that pass `db` from an open transaction should still prefer to send after it commits.
  */
-export async function sendEmail(email: OutgoingEmail, db?: Queryable): Promise<{ id: string; status: string }> {
+export async function sendEmail(email: OutgoingEmail, db?: Queryable, opts: { wait?: boolean } = {}): Promise<EmailDelivery> {
   const e = env();
   const insert = (q: Queryable) =>
     q.query<{ id: string }>(
@@ -34,6 +47,11 @@ export async function sendEmail(email: OutgoingEmail, db?: Queryable): Promise<{
     return { id, status: "captured" };
   }
 
+  if (opts.wait) {
+    const outcome = await deliverViaResend(id, email, db);
+    return { id, ...outcome };
+  }
+
   // Delivery happens outside the caller's transaction so a slow provider never holds locks.
   queueMicrotask(() => {
     void deliverViaResend(id, email);
@@ -41,7 +59,7 @@ export async function sendEmail(email: OutgoingEmail, db?: Queryable): Promise<{
   return { id, status: "queued" };
 }
 
-async function deliverViaResend(id: string, email: OutgoingEmail) {
+async function deliverViaResend(id: string, email: OutgoingEmail, db?: Queryable): Promise<{ status: "sent" | "failed"; error: string | null }> {
   const e = env();
   let status: "sent" | "failed" = "failed";
   let error: string | null = null;
@@ -54,17 +72,26 @@ async function deliverViaResend(id: string, email: OutgoingEmail) {
       signal: AbortSignal.timeout(10000),
     });
     if (res.ok) status = "sent";
-    else error = `Provider responded ${res.status}`;
+    else error = await providerError(res);
   } catch (err) {
     error = err instanceof Error ? err.message.slice(0, 200) : "delivery failed";
   }
-  await withSystem((db) =>
-    db.query("update email_outbox set status = $2, error = $3, sent_at = case when $2 = 'sent' then now() end where id = $1", [
-      id,
-      status,
-      error,
-    ]),
-  ).catch(() => undefined);
+  const record = (q: Queryable) =>
+    q.query("update email_outbox set status = $2, error = $3, sent_at = case when $2 = 'sent' then now() end where id = $1", [id, status, error]);
+  await (db ? record(db) : withSystem(record)).catch(() => undefined);
+  return { status, error };
+}
+
+/** The provider explains rejections (for example an unverified sending domain); surface that, never the request. */
+async function providerError(res: Response): Promise<string> {
+  let detail = "";
+  try {
+    const body = (await res.json()) as { message?: unknown };
+    if (typeof body.message === "string") detail = body.message.replace(/\s+/g, " ").trim();
+  } catch {
+    // Non-JSON error bodies fall back to the status code alone.
+  }
+  return `Provider responded ${res.status}${detail ? `: ${detail}` : ""}`.slice(0, 300);
 }
 
 export function appUrl(pathname: string): string {

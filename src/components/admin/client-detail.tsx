@@ -11,6 +11,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
+import { ResendInvitationButton, deliverySummary } from "@/components/admin/resend-invitation";
 import {
   assignStaffAction,
   connectHermesAction,
@@ -60,6 +61,8 @@ function useAction() {
 export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string }) {
   const [tab, setTab] = React.useState(["overview","workforce","reviews","integrations","usage","billing","team"].includes(initialTab)?initialTab:"overview");
   const held = data.heldVersions.length + data.heldKnowledge.length;
+  // The owner's pending invitation (expired ones included) can be re-sent straight from the header.
+  const ownerInvite = data.invitations.find((i) => i.role === "owner") ?? null;
   return (
     <div className="module-stack">
         <Link href="/admin/clients" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
@@ -68,6 +71,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
         <PageHero eyebrow="Client workspace" icon={<Building2 className="size-5"/>} title={data.org.name} description={<span>{data.org.industry??"Industry not set"} · {data.org.timezone.replaceAll("_"," ")}<span className="mt-1 block text-xs">Registered {formatDate(data.org.created_at,timeZone)} · Private, tenant-scoped workspace</span></span>} aside={<div className="flex items-center gap-4"><span className="grid size-16 place-items-center rounded-2xl border border-primary/15 bg-surface/70 text-xl font-semibold text-primary-ink">{initials(data.org.name)}</span><div className="space-y-2"><Badge tone={data.org.status === "active" ? "success" : data.org.status === "suspended" ? "danger" : "primary"}>{sentenceCase(data.org.status)}</Badge>{data.org.is_demo&&<div><Badge tone="violet">Demo data</Badge></div>}</div></div>} action={<><ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
             <ClipboardCheck className="size-4" /> Setup manager
           </ButtonLink>
+          {superAdmin&&ownerInvite&&<ResendInvitationButton orgId={data.org.id} invitation={ownerInvite} label="Resend invite" />}
           <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="ghost" size="sm">Readiness review</ButtonLink>{superAdmin&&<ButtonLink href={`/admin/clients/${data.org.id}/offboarding`} variant="ghost" size="sm"><DoorClosed className="size-4" /> Offboarding</ButtonLink>}</>}><dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[{label:"Client team",value:data.members.filter(m=>m.status==="active").length},{label:"Included AI employees",value:data.agents.filter(a=>a.enabled).length},{label:"Awaiting review",value:held},{label:"Assigned agency staff",value:data.staff.filter(s=>s.assigned).length}].map(s=><div key={s.label}><dt className="text-xs text-muted">{s.label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-ink">{s.value}</dd></div>)}</dl></PageHero>
       <Tabs
         id="client-tabs"
@@ -760,6 +764,19 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
   );
 }
 
+/** What actually happened to the invitation email, taken from the outbox rather than assumed. */
+function InvitationEmailStatus({ invitation: i }: { invitation: Detail["invitations"][number] }) {
+  if (!i.email_status) return <p className="text-[12px] text-faint">No invitation email on record. Use Resend.</p>;
+  const s = deliverySummary(i.email_status, i.email_error, i.email);
+  const when = i.email_at ? ` ${relativeTime(i.email_at)}` : "";
+  const text =
+    i.email_status === "sent" ? `Email sent${when}`
+    : i.email_status === "captured" ? "Email was not delivered: email delivery is switched off for this environment"
+    : i.email_status === "failed" ? `Email failed${i.email_error ? `: ${i.email_error}` : ""}`
+    : "Email queued, delivery not confirmed";
+  return <p className={cn("text-[12px]", s.tone === "success" ? "text-success" : s.tone === "danger" ? "text-danger" : "text-warning")}>{text}</p>;
+}
+
 function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   const { run, pending } = useAction();
   const [email, setEmail] = React.useState("");
@@ -790,9 +807,11 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
               <li key={i.id} className="flex items-center gap-3 py-2.5 text-[13px]">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-muted">{i.email}</p>
-                  <p className="text-[12px] text-faint">Invitation pending · expires {relativeTime(i.expires_at)}</p>
+                  <p className="text-[12px] text-faint">{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending · expires ${relativeTime(i.expires_at)}`}</p>
+                  <InvitationEmailStatus invitation={i} />
                 </div>
-                <Badge tone="warning">{sentenceCase(i.role ?? "member")}</Badge>
+                <Badge tone={i.expired ? "neutral" : "warning"}>{sentenceCase(i.role ?? "member")}</Badge>
+                {superAdmin && <ResendInvitationButton orgId={data.org.id} invitation={i} variant="secondary" label="Resend" />}
                 {superAdmin && (
                   <Button size="sm" variant="ghost" onClick={() => run(`rv-${i.id}`, () => revokeInvitationAction(i.id, data.org.id), "Invitation revoked")}>
                     Revoke
@@ -820,7 +839,7 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
                 <Button
                   loading={pending === "invite"}
                   onClick={async () => {
-                    const res = await run("invite", () => inviteClientUserAction(data.org.id, email, role), "Invitation sent");
+                    const res = await run("invite", () => inviteClientUserAction(data.org.id, email, role), (d) => (d?.delivery.status === "sent" ? "Invitation emailed" : "Invitation created, but the email was not delivered. Copy the link below."));
                     if (res && "data" in res && res.data) setLink((res.data as { link: string }).link);
                     setEmail("");
                   }}

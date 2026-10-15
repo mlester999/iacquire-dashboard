@@ -13,6 +13,7 @@ import {
   createTenantSchema,
   ghlMappingSchema,
   inviteOrgUser,
+  resendOrgInvitation,
   setAgentEnabled,
   setGhlMapping,
   setTenantStatus,
@@ -52,10 +53,27 @@ export async function inviteClientUserAction(orgId: string, email: string, role:
     const res = await inviteOrgUser(admin, orgId, email, role);
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: "team.invited", targetType: "invitation", targetId: res.id, result: "success", metadata: { role } });
     revalidatePath(`/admin/clients/${orgId}`);
-    return { ok: true as const, data: { link: res.link } };
+    return { ok: true as const, data: { link: res.link, delivery: publicDelivery(res.delivery) } };
   } catch (err) {
     return actionError(err);
   }
+}
+
+/** Sends a pending client invitation again with a fresh link; reports whether the email was really delivered. */
+export async function resendInvitationAction(orgId: string, inviteId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const res = await resendOrgInvitation(admin, orgId, inviteId);
+    revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath("/admin/clients");
+    return { ok: true as const, data: { email: res.email, link: res.link, delivery: publicDelivery(res.delivery) } };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+function publicDelivery(delivery: { status: string; error?: string | null } | null) {
+  return { status: delivery?.status ?? "queued", error: delivery?.error ?? null };
 }
 
 export async function setTenantStatusAction(orgId: string, status: "active" | "suspended", reason?: string) {

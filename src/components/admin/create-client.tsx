@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { Field, Input, Select } from "@/components/ui/primitives";
 import { createClientAction } from "@/app/(admin)/admin/actions";
+import { deliverySummary } from "@/components/admin/resend-invitation";
 import { AGENT_ROLES, type AgentRoleKey } from "@/lib/agents";
 import { AgentAvatar } from "@/components/brand";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ export function CreateClientButton({ initial }: { initial?: { name?: string; ema
   const [pending, setPending] = React.useState(false);
   const [link, setLink] = React.useState<string | null>(null);
   const [orgId, setOrgId] = React.useState<string | null>(null);
+  const [delivery, setDelivery] = React.useState<{ status: string; error: string | null } | null>(null);
 
   const submit = async () => {
     setPending(true);
@@ -34,6 +36,7 @@ export function CreateClientButton({ initial }: { initial?: { name?: string; ema
     if (!res.ok) return toast.error(res.error);
     setLink(res.data.inviteLink);
     setOrgId(res.data.orgId);
+    setDelivery({ status: res.data.emailDelivery.status, error: res.data.emailDelivery.error ?? null });
     toast.success(`${name} created`);
     router.refresh();
   };
@@ -50,10 +53,11 @@ export function CreateClientButton({ initial }: { initial?: { name?: string; ema
           if (!o) {
             setLink(null);
             setOrgId(null);
+            setDelivery(null);
           }
         }}
-        title={link ? "Client created" : "Create a client workspace"}
-        description={link ? "The owner invitation has been queued by email. You can also share this one-time link directly." : "Creates an isolated tenant with its own six AI employee records, limits and billing. Nothing is provisioned on Hermes or GoHighLevel."}
+        title={link ? (delivery && delivery.status !== "sent" ? "Client created. Email not delivered" : "Client created") : "Create a client workspace"}
+        description={link ? (delivery ? deliverySummary(delivery.status, delivery.error, email).body : "") : "Creates an isolated tenant with its own six AI employee records, limits and billing. Nothing is provisioned on Hermes or GoHighLevel."}
         size="lg"
         footer={
           link ? (
