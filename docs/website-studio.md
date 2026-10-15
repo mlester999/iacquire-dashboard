@@ -6,8 +6,8 @@ editor logic, assistant), `src/components/website/*` (renderer, editor, gallery,
 `src/app/(admin)/admin/website-studio/*`, `src/app/site-runtime/*`.
 
 **Status: implemented locally, tested with mocks and an in-memory PostgreSQL, and browser-checked on labelled sample data.** Nothing has been served from a
-real host, no DNS record, certificate or domain purchase exists, nothing has been published for a real client, migrations `0016`–`0026` have **not** been
-applied to the hosted Supabase project, and the agency screens have **not** been driven in a browser while signed in (see "What was and wasn't verified").
+real host, no DNS record, certificate or domain purchase exists, nothing has been published for a real client, the hosted Supabase project now has migrations `0001`–`0026` (`0026` applied 2026-10-15, see
+`docs/website-studio-migration-0026.md`; the hosted database is still empty, so no hosted data exercises it), and the agency screens have **not** been driven in a browser while signed in (see "What was and wasn't verified").
 
 ## The two sides
 
@@ -149,7 +149,6 @@ The platform never buys a domain and never assumes wildcard DNS exists.
 ## Needs your decision or access
 
 - Wildcard DNS and certificate for `SITES_BASE_DOMAIN`, a separate sites deployment and a CNAME target. Until then, sites exist only locally.
-- Applying migrations `0016`–`0026` to the hosted project, in order, with a reviewed plan (`docs/website-studio-migration-0026.md`) and a tested backup.
 - An AI provider connection if the assistant should handle open-ended requests.
 - Approved photography for each client before an image-led design is published. Without it the design stays gated.
 - Whether and how to resell domains. Nothing is priced in code.

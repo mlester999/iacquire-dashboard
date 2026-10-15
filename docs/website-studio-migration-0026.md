@@ -2,14 +2,23 @@
 
 `supabase/migrations/0026_website_studio_admin.sql` · rollback `supabase/rollbacks/0026_website_studio_admin.down.sql`
 
-**Status: NOT applied to the hosted Supabase project, and it must not be applied without your explicit approval.** It was run only against the local
-in-memory PostgreSQL that the test suite builds from all 26 migrations. This document is the reviewed plan to apply it; nothing in it has been done.
+**Status: APPLIED to the hosted Supabase project on 2026-10-15, at your explicit request.** Before that it was run only against the local in-memory PostgreSQL that the
+test suite builds from all 26 migrations. The rest of this document is the plan it was reviewed against, kept as the record.
+
+What actually happened: a read-only preflight found the hosted project already had `0001`–`0025` (so the ordering section below did not apply), the roles
+`iaq_app_user` and `iaq_site_runtime` present, none of the 0026 objects present, **no data** (0 organizations, websites, versions, publications or enquiries),
+no template key the widened checks would reject, and no locks. `npm run db:migrate` then applied only `0026`, atomically (the script and its version row run in
+one transaction). No filesystem or logical backup was taken, because `pg_dump` is not installed here and the database held nothing to lose; the tested rollback
+script is the way back. Read-only verification afterwards: the five tables exist with row level security enabled; `website.review` and `website.templates.design`
+(agency staff and super admin) and `website.templates.publish` (super admin) exist; `app.submit_site_form` has 16 arguments and `iaq_site_runtime` can execute it;
+`iaq_site_runtime` holds no table privileges; `anon` and `authenticated` hold none on the new tables; no column grant exposes template `content`, `draft_content`
+or `preview_image`; 26 migrations are recorded and there are 154 public tables.
 
 ## Ordering: this is not a stand-alone step
 
-The hosted project does not yet have `0016`–`0025` (operating controls, staff roles, credits, messaging, adaptive onboarding and brand assets, websites,
-operations, appointments, retention, commercial operations). `0026` alters tables and functions created by `0021_websites.sql`, so it can only be applied
-**after** `0021`, and in practice after the whole `0016`–`0025` chain. Apply them in order in one planned window; do not cherry-pick `0026`.
+`0026` alters tables and functions created by `0021_websites.sql`, so it can only be applied **after** `0021`, and in practice after the whole `0016`–`0025` chain
+(operating controls, staff roles, credits, messaging, adaptive onboarding and brand assets, websites, operations, appointments, retention, commercial operations).
+Apply migrations in order; do not cherry-pick `0026`. (On the hosted project that chain was already in place.)
 
 ## What it changes
 
@@ -77,4 +86,4 @@ versions), and tells you what to do first. It then drops the five tables, the ne
 and the original constraints, and removes the three permissions. `tests/website-migration-0026.test.ts` runs the script against a fully migrated local
 database inside a transaction that is always rolled back, checks every object it should remove or restore, and checks that it refuses when it should.
 **Rolling back after clients have used templates, saved sections or comments discards that data**, so take a backup first. It has never been run against
-the hosted project.
+the hosted project, and there is no reason to: the hosted copy of this migration is verified and holds no data.

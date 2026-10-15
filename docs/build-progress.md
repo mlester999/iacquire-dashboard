@@ -18,7 +18,7 @@ Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email prov
 | Git | Branch `master` with a remote (`origin`) that you added; it matched `origin/master` when last checked. **This work never pushed.** `.env`, `.data`, build output are ignored. Checkpoints: `6ebe000` (Wave 0 baseline), `fa76674` (adaptive onboarding v2, brand assets, isolation guard), `fb75e3c` (Website Studio, redesign passes). **Everything after `fb75e3c` (operations, appointments, retention, commercial operations, docs) is uncommitted in the working tree** until you approve a commit |
 | Filesystem backups | `../iAcquire-backups/`: `…wave0-baseline-…`, `…wave0b-messaging-complete-20261014-1930.tar.gz` (excludes `node_modules`, `.next*`). No backup has been taken since the operations/commercial work |
 | Baseline at the first checkpoint | typecheck, lint, build clean; 536 tests / 34 files; 96 routes; migrations 0001–0019 |
-| Current (2026-10-15) | typecheck clean; lint **0 errors, 0 warnings**; build passes; **958 tests / 58 files**; **migrations 0001–0026, 154 tables** (0026 not applied to the hosted project) |
+| Current (2026-10-15) | typecheck clean; lint **0 errors, 0 warnings**; build passes; **958 tests / 58 files**; **migrations 0001–0026, 154 tables** (all 26 applied to the hosted Supabase project; `0026` on 2026-10-15) |
 
 ## Completion matrix (brief section → status)
 
@@ -59,7 +59,7 @@ Legend: ✅ implemented and tested locally · 🟡 partial · ⬜ not started ·
 - Never touch GHL location `u69CVh0ZlAofUmRoj1zF` (Aster Homes). `SQvVnld5MBHdMQ1qnSfw` is the agency, not a tenant.
 - Never activate the n8n Appointment Event Processor or GHL draft workflows.
 - Migrations are written and tested on local PostgreSQL. **Applying a migration to the hosted Supabase project is a
-  separate approved step** (`npm run db:migrate`), listed under "Needs your approval" below.
+  separate approved step** (`npm run db:migrate`). `0001`–`0025` were already applied there; `0026` was applied on 2026-10-15 at your explicit request.
 - Secrets stay server-side; never print values from `.env`.
 
 ## Wave log
@@ -101,8 +101,6 @@ Each entry: before / built / database / tested / blocked.
 
 ## Needs your approval or credentials
 
-- **Apply migrations 0016–0025** to the hosted Supabase project (`npm run db:migrate`, after a backup; development project first).
-- **Commit** the uncommitted work after `fb75e3c` (local only; no push).
 - PayMongo **test** secret key and webhook secret.
 - GHL **test** location token with messaging and calendar scopes (never `u69CVh0ZlAofUmRoj1zF` or `SQvVnld5MBHdMQ1qnSfw`) before any write path is enabled.
 - Email sender (Resend) for escalation, notification and invitation email.
