@@ -1,6 +1,7 @@
 import "server-only";
 import { withSiteRuntime } from "@/server/db";
-import { parseContent, type SiteContent } from "@/lib/website/schema";
+import type { SiteContent } from "@/lib/website/doc";
+import { parseStoredContent } from "@/lib/website/legacy";
 
 // Everything the public website runtime may do, and nothing else. All reads go through restricted SQL functions that
 // run as iaq_site_runtime (see the websites migration), so this module cannot reach drafts, other tenants or customers.
@@ -48,7 +49,7 @@ export async function resolveSite(rawHost: string): Promise<LiveSite | null> {
   const row = rows.rows[0];
   let value: LiveSite | null = null;
   if (row) {
-    const parsed = parseContent(row.content);
+    const parsed = parseStoredContent(row.content, row.template_key);
     // Content is validated when it is published; if it no longer parses (the schema moved on), serve nothing rather than guess.
     if (parsed.ok) {
       value = {
@@ -105,13 +106,14 @@ export async function siteRateLimit(key: string, limit: number, windowSeconds: n
 export interface FormInput {
   host: string; page: string; name: string; email: string; phone: string; service: string; message: string;
   consent: boolean; marketing: boolean; consentText: string; ipHash: string; utm: Record<string, string>; referrer: string; dedupe: string;
+  purpose?: "contact" | "consultation" | "lead" | "appointment"; formId?: string;
 }
 export type FormOutcome = "ok" | "duplicate" | "unknown_host" | "disabled" | "consent_required";
 
 export async function submitSiteForm(i: FormInput): Promise<{ status: FormOutcome; id?: string }> {
   const { rows } = await withSiteRuntime((db) =>
-    db.query<{ result: { status: FormOutcome; id?: string } }>("select app.submit_site_form($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) as result", [
-      i.host, i.page, i.name, i.email, i.phone, i.service, i.message, i.consent, i.marketing, i.consentText, i.ipHash, JSON.stringify(i.utm), i.referrer, i.dedupe,
+    db.query<{ result: { status: FormOutcome; id?: string } }>("select app.submit_site_form($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) as result", [
+      i.host, i.page, i.name, i.email, i.phone, i.service, i.message, i.consent, i.marketing, i.consentText, i.ipHash, JSON.stringify(i.utm), i.referrer, i.dedupe, i.purpose ?? "contact", i.formId ?? null,
     ]),
   );
   return rows[0]?.result ?? { status: "unknown_host" };

@@ -11,18 +11,18 @@ const MAX_ATTEMPTS = 5;
 
 export interface SubmissionView {
   id: string; pageSlug: string; name: string; email: string | null; phone: string | null; service: string | null; message: string;
-  marketingOptIn: boolean; status: "received" | "processed" | "failed" | "spam"; contactId: string | null; createdAt: string; utm: Record<string, string>; referrer: string | null;
+  purpose: "contact" | "consultation" | "lead" | "appointment"; marketingOptIn: boolean; status: "received" | "processed" | "failed" | "spam"; contactId: string | null; createdAt: string; utm: Record<string, string>; referrer: string | null;
 }
 
 export async function listSubmissions(ctx: OrgContext, opts: { limit?: number } = {}): Promise<SubmissionView[]> {
   if (!ctx.can("contacts.view")) throw new AppError("forbidden", "You can't view enquiries.");
   return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<{ id: string; page_slug: string; name: string; email: string | null; phone: string | null; service: string | null; message: string; marketing_opt_in: boolean; status: SubmissionView["status"]; contact_id: string | null; created_at: Date; utm: Record<string, string>; referrer: string | null }>(
-      `select id, page_slug, name, email, phone, service, message, marketing_opt_in, status, contact_id, created_at, utm, referrer
+    const { rows } = await db.query<{ id: string; page_slug: string; name: string; email: string | null; phone: string | null; service: string | null; message: string; purpose: SubmissionView["purpose"]; marketing_opt_in: boolean; status: SubmissionView["status"]; contact_id: string | null; created_at: Date; utm: Record<string, string>; referrer: string | null }>(
+      `select id, page_slug, name, email, phone, service, message, purpose, marketing_opt_in, status, contact_id, created_at, utm, referrer
        from website_form_submissions where org_id = $1 order by created_at desc limit $2`,
       [ctx.org.orgId, Math.min(200, opts.limit ?? 50)],
     );
-    return rows.map((r) => ({ id: r.id, pageSlug: r.page_slug, name: r.name, email: r.email, phone: r.phone, service: r.service, message: r.message, marketingOptIn: r.marketing_opt_in, status: r.status, contactId: r.contact_id, createdAt: new Date(r.created_at).toISOString(), utm: r.utm ?? {}, referrer: r.referrer }));
+    return rows.map((r) => ({ id: r.id, pageSlug: r.page_slug, name: r.name, email: r.email, phone: r.phone, service: r.service, message: r.message, purpose: r.purpose, marketingOptIn: r.marketing_opt_in, status: r.status, contactId: r.contact_id, createdAt: new Date(r.created_at).toISOString(), utm: r.utm ?? {}, referrer: r.referrer }));
   });
 }
 
@@ -37,7 +37,9 @@ const urlCount = (s: string) => (s.match(/https?:\/\/|www\./gi) ?? []).length;
 /** Whether the wording of the consent the visitor agreed to covers messages to a phone. Without that, no text-message consent is recorded. */
 const coversTexting = (consentText: string) => /\b(text|texts|sms|whatsapp|message)\b/i.test(consentText);
 
-interface Claimed { id: string; org_id: string; website_id: string; name: string; email: string | null; phone: string | null; service: string | null; message: string; marketing_opt_in: boolean; consent_text: string; page_slug: string; host: string }
+const PURPOSE_LABEL: Record<string, string> = { contact: "Website enquiry", consultation: "Consultation request", lead: "Website lead", appointment: "Appointment request" };
+
+interface Claimed { purpose: string; id: string; org_id: string; website_id: string; name: string; email: string | null; phone: string | null; service: string | null; message: string; marketing_opt_in: boolean; consent_text: string; page_slug: string; host: string }
 
 async function processOne(s: Claimed): Promise<"processed" | "spam" | "failed"> {
   if (urlCount(s.message) >= 3 || urlCount(s.name) >= 1) {
@@ -74,17 +76,18 @@ async function processOne(s: Claimed): Promise<"processed" | "spam" | "failed"> 
     }
 
     // The enquiry appears in the inbox as an internal note: it is not a message the customer sent over a channel, and nothing is sent back.
-    const body = [`Website enquiry${s.service ? ` about ${s.service}` : ""}`, s.message ? `"${s.message.slice(0, 900)}"` : "", phone ? `Phone: ${phone}` : "", email ? `Email: ${email}` : ""].filter(Boolean).join("\n");
+    const label = PURPOSE_LABEL[s.purpose] ?? "Website enquiry";
+    const body = [`${label}${s.service ? ` about ${s.service}` : ""}`, s.message ? `"${s.message.slice(0, 900)}"` : "", phone ? `Phone: ${phone}` : "", email ? `Email: ${email}` : ""].filter(Boolean).join("\n");
     const conv = await db.query<{ id: string }>(
       `insert into conversations (org_id, contact_id, channel, status, subject, last_message_at, last_message_preview, unread_count)
        values ($1, $2, $3, 'open', $4, now(), $5, 1)
        on conflict (org_id, contact_id, channel, thread_key) do update set unread_count = conversations.unread_count + 1, last_message_at = now(), last_message_preview = excluded.last_message_preview, status = 'open'
        returning id`,
-      [s.org_id, contactId, channel, `Website enquiry${s.service ? `: ${s.service}` : ""}`.slice(0, 300), `Website enquiry: ${s.message || s.name}`.slice(0, 200)],
+      [s.org_id, contactId, channel, `${label}${s.service ? `: ${s.service}` : ""}`.slice(0, 300), `${label}: ${s.message || s.name}`.slice(0, 200)],
     );
     await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, dedupe_key) values ($1, $2, 'internal', 'system', $3, 'note', $4) on conflict (org_id, dedupe_key) do nothing", [s.org_id, conv.rows[0].id, body.slice(0, 4900), `web:${s.id}`]);
     await db.query("update website_form_submissions set status = 'processed', contact_id = $2, processed_at = now(), error = null where id = $1", [s.id, contactId]);
-    await notifyOrgRoles(db, s.org_id, ["owner", "admin", "sales_rep", "support"], { kind: "system", severity: "info", title: `New website enquiry from ${s.name || "a visitor"}`, body: (s.message || `${s.service ?? "General enquiry"}`).slice(0, 200), link: "/inbox", dedupeKey: `site-enquiry:${s.id}` });
+    await notifyOrgRoles(db, s.org_id, ["owner", "admin", "sales_rep", "support"], { kind: "system", severity: "info", title: `New ${label.toLowerCase()} from ${s.name || "a visitor"}`, body: (s.message || `${s.service ?? "General enquiry"}`).slice(0, 200), link: "/inbox", dedupeKey: `site-enquiry:${s.id}` });
     return "processed" as const;
   });
 }
@@ -95,7 +98,7 @@ export async function processSubmissions(opts: { limit?: number } = {}): Promise
     (await db.query<Claimed>(
       `update website_form_submissions set attempts = attempts + 1 where id in (
          select id from website_form_submissions where status = 'received' and attempts < $2 order by created_at limit $1 for update skip locked)
-       returning id, org_id, website_id, name, email, phone, service, message, marketing_opt_in, consent_text, page_slug, host`,
+       returning id, org_id, website_id, name, email, phone, service, message, marketing_opt_in, consent_text, page_slug, host, purpose`,
       [Math.min(50, opts.limit ?? 20), MAX_ATTEMPTS],
     )).rows,
   );

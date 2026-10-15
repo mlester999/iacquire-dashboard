@@ -30,7 +30,12 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Website previews are drawn inside an iframe on a portal page (same origin only), which keeps a site's styles away from the editor.
+      { source: "/frame/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+      { source: "/dev/frame/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+    ];
   },
 };
 

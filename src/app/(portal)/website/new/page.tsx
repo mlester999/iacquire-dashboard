@@ -4,6 +4,8 @@ import { requireOrgContext } from "@/server/tenancy/context";
 import { getWebsite } from "@/server/websites/service";
 import { buildSiteDetails } from "@/server/websites/details";
 import { NewWebsite } from "@/components/website/portal/new-website";
+import { builtInCards } from "@/lib/website/gallery-data";
+import { industryFilterFor } from "@/lib/website/gallery";
 import { PageHero } from "@/components/ui/workspace";
 
 export const metadata = { title: "Choose a website style" };
@@ -15,10 +17,10 @@ export default async function NewWebsitePage() {
   return (
     <div className="space-y-6">
       <PageHero
-        eyebrow="Website" title="Pick a look. We'll write the first draft." icon={<Palette className="size-4" />} tone="neutral"
-        description="Every style below is shown with your own business name, colours and services. Pick the one that feels right; you can change it later without losing a word. Nothing goes live until you publish."
+        eyebrow="Website" title="Choose a design to start from." icon={<Palette className="size-4" />} tone="neutral"
+        description="Browse complete designs, preview them on desktop, tablet and phone, and pick the one that feels right. It becomes your own website, and every part of it can be changed. Nothing goes live until you publish."
       />
-      <NewWebsite details={JSON.parse(JSON.stringify(details))} industry={details.industry} />
+      <NewWebsite cards={builtInCards()} preferIndustry={industryFilterFor(details.industry)} />
     </div>
   );
 }

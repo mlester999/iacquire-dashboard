@@ -6,10 +6,10 @@ import { toast } from "sonner";
 import { CheckCircle2, Eye, History, RotateCcw, ShieldAlert, Undo2 } from "lucide-react";
 import { previewVersionAction, restoreVersionAction, rollbackAction } from "@/app/actions/website";
 import { Button } from "@/components/ui/button";
-import { Dialog, Segmented } from "@/components/ui/overlays";
+import { Dialog } from "@/components/ui/overlays";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { LivePreview, type Device } from "@/components/website/studio/live-preview";
-import type { SiteContent } from "@/lib/website/schema";
+import { PreviewOverlay } from "@/components/website/editor/dialogs";
+import type { SiteContent } from "@/lib/website/doc";
 import { resolveTemplate } from "@/lib/website/templates";
 import { formatDateTime, relativeTime } from "@/lib/utils";
 import type { AssetView } from "@/server/assets/service";
@@ -35,8 +35,6 @@ export function HistoryView({
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [view, setView] = React.useState<{ version: VersionView; content: SiteContent; templateKey: string } | null>(null);
-  const [device, setDevice] = React.useState<Device>("desktop");
-  const [page, setPage] = React.useState("home");
   const [restoreId, setRestoreId] = React.useState<VersionView | null>(null);
   const [rollback, setRollback] = React.useState<PublicationView | null>(null);
 
@@ -45,7 +43,6 @@ export function HistoryView({
     const res = await previewVersionAction(v.id);
     setBusy(false);
     if (!res.ok) return void toast.error(res.error);
-    setPage("home");
     setView({ version: v, content: res.data.content, templateKey: res.data.templateKey });
   };
 
@@ -147,28 +144,13 @@ export function HistoryView({
         </CardContent>
       </Card>
 
-      <Dialog
-        open={view !== null} onOpenChange={(o) => !o && setView(null)} size="xl"
-        title={view ? `Version ${view.version.version}` : "Version"} description="This is how the site looked in this version. Nothing here changes your draft."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setView(null)}>Close</Button>
-            {canEdit && view && <Button variant="brand" onClick={() => { setRestoreId(view.version); }}>Restore this version</Button>}
-          </>
-        }
-      >
-        {view && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Segmented id="hv-device" ariaLabel="Preview width" value={device} onChange={setDevice} options={[{ value: "desktop", label: "Desktop" }, { value: "tablet", label: "Tablet" }, { value: "mobile", label: "Phone" }]} />
-              <Segmented id="hv-page" ariaLabel="Page" value={page} onChange={setPage} options={view.content.pages.slice(0, 5).map((p) => ({ value: p.slug, label: p.navLabel || p.title }))} />
-            </div>
-            <div className="max-h-[60dvh] overflow-auto rounded-2xl bg-surface-3 p-2">
-              <LivePreview content={view.content} templateKey={view.templateKey} pageSlug={page} assets={assets} device={device} selectedId={null} year={new Date().getFullYear()} onSelectSection={() => undefined} onSelectSite={() => undefined} onNavigatePage={setPage} />
-            </div>
-          </div>
-        )}
-      </Dialog>
+      {view && (
+        <PreviewOverlay
+          doc={view.content} title={`Version ${view.version.version}`} subtitle="Nothing here changes your draft" onClose={() => setView(null)}
+          resolveAsset={(id) => { const a = id ? assets.find((x) => x.id.toLowerCase() === id.toLowerCase()) : null; return a ? { src: a.url, width: a.width, height: a.height, alt: a.altText } : null; }}
+          actions={canEdit ? <button type="button" onClick={() => setRestoreId(view.version)} className="flex h-8 items-center gap-1.5 rounded-lg bg-[#3b5bdb] px-3 text-[12.5px] font-medium text-white hover:bg-[#4c6ae0]"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined}
+        />
+      )}
 
       <Dialog
         open={restoreId !== null} onOpenChange={(o) => !o && setRestoreId(null)} size="sm" title={restoreId ? `Restore version ${restoreId.version}?` : "Restore"}

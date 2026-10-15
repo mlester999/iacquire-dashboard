@@ -1,6 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { normalizeEmail } from "@/lib/messaging";
+import { eachElement } from "@/lib/website/doc";
 import { checkFormToken, hashClient } from "@/server/sites/form-token";
 import { resolveSite, siteRateLimit, submitSiteForm } from "@/server/sites/runtime";
 
@@ -64,6 +65,19 @@ export async function handleEnquiry(req: EnquiryRequest): Promise<EnquiryResult>
 
   const cfg = site.content.form;
   if (!cfg.enabled) return fail(400, "This site isn't taking enquiries right now.");
+  // The form's own settings come from the published site, found by the id the form carried; nothing the browser says about them is trusted.
+  let formProps: Record<string, unknown> | null = null;
+  eachElement(site.content, (e) => {
+    if (e.type === "form" && e.id === clip(f.e, 40)) formProps = e.props;
+  });
+  const props = formProps as Record<string, unknown> | null;
+  const modeOf = (k: "phone" | "message" | "service") => {
+    const v = props?.[k];
+    return (v === "required" || v === "optional" || v === "hidden" ? v : cfg.fields[k]) as "required" | "optional" | "hidden";
+  };
+  const own = Array.isArray(props?.services) && (props!.services as unknown[]).length ? (props!.services as string[]) : cfg.services;
+  const purposeRaw = String(props?.purpose ?? "contact");
+  const purpose = (["contact", "consultation", "lead", "appointment"].includes(purposeRaw) ? purposeRaw : "contact") as "contact" | "consultation" | "lead" | "appointment";
   const name = clip(f.name, 120);
   const email = clip(f.email, 320).toLowerCase();
   const phone = clip(f.phone, 30);
@@ -71,18 +85,18 @@ export async function handleEnquiry(req: EnquiryRequest): Promise<EnquiryResult>
   const service = clip(f.service, 60);
   if (name.length < 2) return fail(400, "Please enter your name.");
   if (!normalizeEmail(email)) return fail(400, "Please enter a valid email address.");
-  if (cfg.fields.phone === "required" && phone.replace(/\D/g, "").length < 7) return fail(400, "Please enter a phone number.");
+  if (modeOf("phone") === "required" && phone.replace(/\D/g, "").length < 7) return fail(400, "Please enter a phone number.");
   if (phone && !/^[0-9+()\-.\s]{7,30}$/.test(phone)) return fail(400, "That phone number doesn't look right.");
-  if (cfg.fields.message === "required" && message.length < 2) return fail(400, "Please tell us how we can help.");
-  if (cfg.fields.service === "required" && !service) return fail(400, "Please choose what you need.");
-  if (service && !cfg.services.includes(service)) return fail(400, "Please choose one of the options.");
+  if (modeOf("message") === "required" && message.length < 2) return fail(400, "Please tell us how we can help.");
+  if (modeOf("service") === "required" && !service) return fail(400, "Please choose what you need.");
+  if (service && !own.includes(service)) return fail(400, "Please choose one of the options.");
   if (f.consent !== "yes") return fail(400, "Please tick the box to agree to be contacted.");
 
   const day = new Date(req.now ?? Date.now()).toISOString().slice(0, 10);
   const dedupe = crypto.createHash("sha256").update(`${req.host}|${email}|${phone.replace(/\D/g, "")}|${message}|${day}`).digest("hex").slice(0, 40);
   const result = await submitSiteForm({
     host: req.host, page: clip(f.p, 40) || "home", name, email, phone, service, message, consent: true, marketing: cfg.marketingOptIn && f.marketing === "yes",
-    consentText: cfg.consentText, ipHash: client, utm: utmFrom(req.referer), referrer: "", dedupe,
+    consentText: cfg.consentText, ipHash: client, utm: utmFrom(req.referer), referrer: "", dedupe, purpose, formId: clip(f.e, 40) || undefined,
   });
   switch (result.status) {
     case "ok":

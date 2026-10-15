@@ -39,8 +39,8 @@ export interface RenderCtx {
   hrefFor: (slug: string) => string;
   /** Drawn inside another page (editor, thumbnails): no landmarks or skip link of its own. */
   embedded: boolean;
-  /** Tracks whether the page's single h1 has been drawn, so a second one is shown as an h2 instead. */
-  h1: { used: boolean };
+  /** The one heading drawn as the page's h1. Any other level-1 heading is drawn as an h2, so a page never has two. */
+  h1Id: string | null;
   edit?: EditBridge;
   nonce?: string;
 }

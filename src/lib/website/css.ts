@@ -58,6 +58,12 @@ const SECTION_WIDTH: Record<Design["width"], Record<string, string>> = {
 };
 const space = (s: string) => `var(--sp-${s})`;
 
+/** A scope keeps one rendered site's rules from touching another on the same page (gallery thumbnails). Unscoped output is unchanged. */
+const cleanScope = (scope: string) => scope.replace(/[^a-z0-9-]/gi, "").slice(0, 40);
+const scopeAttr = (scope: string) => (cleanScope(scope) ? `[data-s="${cleanScope(scope)}"]` : "");
+/** Zero-specificity prefix for per-node rules, so scoping never changes which rule wins. */
+const scopePrefix = (scope: string) => (cleanScope(scope) ? `:where([data-s="${cleanScope(scope)}"]) ` : "");
+
 // ---------------------------------------------------------------------------
 // Colour references
 // ---------------------------------------------------------------------------
@@ -167,7 +173,8 @@ const SHADOW_SETS: Record<Design["shadow"], [string, string, string]> = {
 const fontVar = (k: string) => `var(${FONTS[k as FontKey].variable}),${FONTS[k as FontKey].fallback}`;
 
 /** The CSS custom properties for a site's design. They sit on the site's root element. */
-export function rootCss(design: Design): string {
+export function rootCss(design: Design, scope = ""): string {
+  const S = scopeAttr(scope);
   const base = paletteFor(design, "auto");
   const r = RADIUS_BASE[design.radius];
   const sh = SHADOW_SETS[design.shadow];
@@ -179,13 +186,13 @@ export function rootCss(design: Design): string {
   const hw = design.heading;
   const dark = paletteFor(design, "dark");
   return (
-    `.iq-site{${paletteVars(base)}` +
+    `.iq-site${S}{${paletteVars(base)}` +
     `--c-dark:${dark.bg};--c-on-dark:${dark.ink};--c-primary:${c.primary};--c-accent:${c.accent};` +
     `--f-h:${fontVar(design.fonts.heading)};--f-b:${fontVar(design.fonts.body)};--f-a:${fontVar(design.fonts.accent)};--f-m:${fontVar(design.fonts.mono)};` +
     `--hw:${hw.weight};--hls:${LS[hw.ls]};--hlh:${LH[hw.lh]};--htt:${hw.transform};--ts:${ts};` +
     `--r:${r[0]};--r-lg:${r[1]};--r-btn:${r[2]};--sh-s:${sh[0]};--sh-m:${sh[1]};--sh-l:${sh[2]};` +
     `--bw:${design.buttons.weight};--gut:clamp(1.25rem,4.6cqw,3.25rem);${sizes}${spaces}}` +
-    (["dark", "light", "brand", "accent"] as const).map((t) => `.iq-site [data-tone="${t}"]{${paletteVars(paletteFor(design, t))}}`).join("")
+    (["dark", "light", "brand", "accent"] as const).map((t) => `.iq-site${S} [data-tone="${t}"]{${paletteVars(paletteFor(design, t))}}`).join("")
   );
 }
 
@@ -240,6 +247,10 @@ export function styleDecls(st: Partial<NodeStyle> & Partial<Override>, opts: { b
 // ---------------------------------------------------------------------------
 
 interface Out {
+  /** In the editor, content hidden on a device stays in place (dimmed) so it can still be selected. */
+  edit: boolean;
+  /** Selector prefix for this render's scope (empty when unscoped). */
+  p: string;
   base: string[];
   tablet: string[];
   mobile: string[];
@@ -247,18 +258,18 @@ interface Out {
   tabletOnly: string[];
 }
 const rule = (sel: string, decls: string) => (decls ? `${sel}{${decls}}` : "");
-const cls = (id: string) => `.x-${id}`;
+const clsOf = (out: Out, id: string) => `${out.p}.x-${id}`;
 
 function pushHide(out: Out, id: string, hide?: { d?: boolean; t?: boolean; m?: boolean }) {
   if (!hide) return;
-  const s = `${cls(id)}{display:none!important}`;
+  const s = out.edit ? `${clsOf(out, id)}{opacity:.28!important;outline:1px dashed currentColor;outline-offset:-1px}` : `${clsOf(out, id)}{display:none!important}`;
   if (hide.d) out.desktopOnly.push(s);
   if (hide.t) out.tabletOnly.push(s);
   if (hide.m) out.mobile.push(s);
 }
 
 function elementRules(el: ElementNode, out: Out) {
-  const sel = cls(el.id);
+  const sel = clsOf(out, el.id);
   if (el.style) out.base.push(rule(sel, styleDecls(el.style)));
   if (el.r?.t) out.tablet.push(rule(sel, styleDecls(el.r.t, { box: false })));
   if (el.r?.m) out.mobile.push(rule(sel, styleDecls(el.r.m, { box: false })));
@@ -274,7 +285,7 @@ function elementRules(el: ElementNode, out: Out) {
 }
 
 function columnRules(col: Column, index: number, count: number, sec: Section, out: Out) {
-  const sel = cls(col.id);
+  const sel = clsOf(out, col.id);
   const stack = sec.layout.stack;
   const desktop = col.span;
   const tablet = col.r?.t?.span ?? (stack === "tablet" ? 12 : desktop);
@@ -309,7 +320,7 @@ function columnRules(col: Column, index: number, count: number, sec: Section, ou
 }
 
 function sectionRules(sec: Section, design: Design, out: Out) {
-  const sel = cls(sec.id);
+  const sel = clsOf(out, sec.id);
   const l = sec.layout;
   const decl = [
     `--w:${SECTION_WIDTH[design.width][l.width]}`, `--pt:${space(l.pt)}`, `--pb:${space(l.pb)}`, `--mh:${MIN_H[l.minH]}`, `--gap:${space(l.gap)}`, `--va:${VALIGN[l.valign]}`,
@@ -332,8 +343,8 @@ function sectionRules(sec: Section, design: Design, out: Out) {
 }
 
 /** The stylesheet for one rendered page: design tokens plus a rule for each node that departs from its defaults. */
-export function siteCss(content: SiteContent, page: SitePage, extra: { header?: boolean; footer?: boolean } = {}): string {
-  const out: Out = { base: [], tablet: [], mobile: [], desktopOnly: [], tabletOnly: [] };
+export function siteCss(content: SiteContent, page: SitePage, extra: { header?: boolean; footer?: boolean; scope?: string; edit?: boolean } = {}): string {
+  const out: Out = { edit: extra.edit === true, p: scopePrefix(extra.scope ?? ""), base: [], tablet: [], mobile: [], desktopOnly: [], tabletOnly: [] };
   const design = content.design;
   if (content.header && extra.header !== false) sectionRules(content.header, design, out);
   if (content.footer && extra.footer !== false) sectionRules(content.footer, design, out);
@@ -346,7 +357,7 @@ export function siteCss(content: SiteContent, page: SitePage, extra: { header?: 
     return body ? `${q}{${body}}` : "";
   };
   return [
-    rootCss(design),
+    rootCss(design, extra.scope ?? ""),
     out.base.filter(Boolean).join(""),
     block(Q_TABLET, out.tablet),
     block(Q_MOBILE, out.mobile),

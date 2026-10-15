@@ -45,10 +45,19 @@ export function buildSite(key: string, details: SiteDetails, opts: { sample?: bo
   return assemble(ctx, t.variation.build(ctx), { key: t.key, family: t.family, variation: t.variation });
 }
 
-/** The template shown with its family's fictional business, clearly marked as sample content. */
+const SAMPLE_CACHE = new Map<string, SiteContent>();
+
+/**
+ * The template shown with its family's fictional business, clearly marked as sample content. Documents are never changed in place, so one
+ * built copy per template is shared by every request.
+ */
 export function sampleSite(key: string): SiteContent {
   const t = resolveTemplate(key) ?? resolveTemplate(DEFAULT_TEMPLATE_KEY)!;
-  return buildSite(t.key, t.family.sample ?? SAMPLES.meridian, { sample: true });
+  const hit = SAMPLE_CACHE.get(t.key);
+  if (hit) return hit;
+  const built = buildSite(t.key, t.family.sample ?? SAMPLES.meridian, { sample: true });
+  SAMPLE_CACHE.set(t.key, built);
+  return built;
 }
 
 /** Families recommended for an onboarding industry, best match first. Every family stays available. */

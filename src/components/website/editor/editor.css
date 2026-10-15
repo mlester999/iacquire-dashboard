@@ -1,0 +1,50 @@
+/* Editor chrome. Nothing here is loaded by a published site: this file is imported only by the visual editor. */
+
+.editor-canvas-bg {
+  background-color: color-mix(in srgb, var(--surface-3, #e9ecf2) 86%, var(--ink, #101828) 4%);
+  background-image: radial-gradient(color-mix(in srgb, var(--ink, #101828) 9%, transparent) 1px, transparent 1.2px);
+  background-size: 18px 18px;
+  outline: none;
+}
+.editor-canvas-bg:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary, #3b5bdb) 55%, transparent); }
+
+.editor-hover {
+  position: absolute; border: 1.5px solid color-mix(in srgb, var(--primary, #3b5bdb) 55%, transparent); border-radius: 2px; pointer-events: none;
+  background: color-mix(in srgb, var(--primary, #3b5bdb) 5%, transparent);
+}
+.editor-selected {
+  position: absolute; pointer-events: none; border: 2px solid var(--primary, #3b5bdb); border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / .6), inset 0 0 0 1px rgb(255 255 255 / .35);
+}
+.editor-selected[data-kind="section"], .editor-selected[data-kind="header"], .editor-selected[data-kind="footer"] { border-style: solid; }
+.editor-selected[data-kind="column"] { border-style: dashed; }
+.editor-selected.is-dragging { opacity: .35; }
+
+.editor-drop-line { position: absolute; background: var(--primary, #3b5bdb); border-radius: 3px; box-shadow: 0 0 0 2px rgb(255 255 255 / .8), 0 2px 8px rgb(16 24 40 / .3); z-index: 25; }
+.editor-drop-line.horizontal { height: 3px; }
+.editor-drop-line.vertical { width: 3px; }
+.editor-drop-line.is-invalid { background: #d92d20; }
+.editor-drop-container {
+  position: absolute; border: 2px dashed color-mix(in srgb, var(--primary, #3b5bdb) 70%, transparent); border-radius: 4px;
+  background: color-mix(in srgb, var(--primary, #3b5bdb) 7%, transparent); z-index: 20;
+}
+.editor-drop-container.is-invalid { border-color: #d92d20; background: rgb(217 45 32 / .06); }
+
+/* ---- The site, in edit mode --------------------------------------------- */
+.iq-site[data-edit] { cursor: default; user-select: none; }
+.iq-site[data-edit] a, .iq-site[data-edit] button, .iq-site[data-edit] summary, .iq-site[data-edit] label, .iq-site[data-edit] input, .iq-site[data-edit] select, .iq-site[data-edit] textarea { cursor: default; }
+.iq-site[data-edit] .iq-sticky { position: relative; top: auto; }
+.iq-site[data-edit] .iq-marquee-track, .iq-site[data-edit] [class*="marquee"] { animation-play-state: paused !important; }
+.iq-site[data-edit] [data-anim] { opacity: 1 !important; transform: none !important; filter: none !important; clip-path: none !important; }
+.iq-site[data-edit] [data-epath][data-empty]::before { content: attr(data-placeholder); opacity: .42; pointer-events: none; font-style: italic; }
+.iq-site[data-edit] [data-editing] { cursor: text; user-select: text; outline: none; caret-color: var(--p-text, currentColor); min-width: .5em; }
+.iq-site[data-edit] [data-editing]:empty::before { content: attr(data-placeholder); opacity: .42; font-style: italic; }
+.iq-site[data-edit] [data-editing] * { user-select: text; }
+.iq-site[data-edit] .iq-empty-slot { min-height: 3.5rem; }
+.iq-site[data-edit] .iq-video-play, .iq-site[data-edit] iframe { pointer-events: none; }
+.iq-site[data-edit] details > summary { pointer-events: none; }
+.iq-site[data-edit] details[open] > *:not(summary) { pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-selected, .editor-hover { transition: none; }
+}

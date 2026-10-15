@@ -8,7 +8,8 @@ import { HistoryView } from "@/components/website/portal/history-view";
 import { NewWebsite } from "@/components/website/portal/new-website";
 import { OverviewView } from "@/components/website/portal/overview-view";
 import { WebsiteSubnav } from "@/components/website/portal/website-subnav";
-import type { SiteDetails } from "@/lib/website/generate";
+import type { SiteDetails } from "@/lib/website/details";
+import { builtInCards } from "@/lib/website/gallery-data";
 import type { DnsInstructions } from "@/server/websites/domains";
 import type { SubmissionView } from "@/server/websites/forms";
 import type { DomainView, PublicationView, VersionView, WebsiteSummary } from "@/server/websites/service";
@@ -48,9 +49,9 @@ function sampleSite(state: string): WebsiteSummary {
 }
 
 const SUBMISSIONS: SubmissionView[] = [
-  { id: "s1", pageSlug: "contact", name: "Dana Whitfield", email: "dana@example.test", phone: "+15125550123", service: "Roof repair", message: "A branch came through our roof last night. Can someone take a look this week?", marketingOptIn: false, status: "processed", contactId: "c1", createdAt: ago(0.2), utm: {}, referrer: null },
-  { id: "s2", pageSlug: "home", name: "Marcus Lee", email: "marcus@example.test", phone: null, service: null, message: "Looking for a quote on a full replacement.", marketingOptIn: true, status: "received", contactId: null, createdAt: ago(1), utm: {}, referrer: null },
-  { id: "s3", pageSlug: "contact", name: "Cheap SEO Deals", email: "seo@example.test", phone: null, service: null, message: "Rank #1 on Google in a week!!!", marketingOptIn: false, status: "spam", contactId: null, createdAt: ago(3), utm: {}, referrer: null },
+  { id: "s1", pageSlug: "contact", name: "Dana Whitfield", email: "dana@example.test", phone: "+15125550123", service: "Roof repair", message: "A branch came through our roof last night. Can someone take a look this week?", purpose: "contact", marketingOptIn: false, status: "processed", contactId: "c1", createdAt: ago(0.2), utm: {}, referrer: null },
+  { id: "s2", pageSlug: "home", name: "Marcus Lee", email: "marcus@example.test", phone: null, service: null, message: "Looking for a quote on a full replacement.", purpose: "lead", marketingOptIn: true, status: "received", contactId: null, createdAt: ago(1), utm: {}, referrer: null },
+  { id: "s3", pageSlug: "contact", name: "Cheap SEO Deals", email: "seo@example.test", phone: null, service: null, message: "Rank #1 on Google in a week!!!", purpose: "contact", marketingOptIn: false, status: "spam", contactId: null, createdAt: ago(3), utm: {}, referrer: null },
 ];
 
 const VERSIONS: VersionView[] = [
@@ -115,7 +116,7 @@ export default async function WebsitePreview({ searchParams }: { searchParams: P
         {view === "new" && (
           <div className="space-y-6">
             <PageHero eyebrow="Website" title="Pick a look. We'll write the first draft." icon={<Palette className="size-4" />} tone="neutral" description="Every style below is shown with your own business name, colours and services. Pick the one that feels right; you can change it later without losing a word. Nothing goes live until you publish." />
-            <NewWebsite details={DETAILS} industry={DETAILS.industry} />
+            <NewWebsite cards={builtInCards()} />
           </div>
         )}
       </main>

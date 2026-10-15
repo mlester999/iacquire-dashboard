@@ -8,8 +8,10 @@ import * as React from "react";
  * anyone without JavaScript) all content is simply visible, so animation can never hide anything.
  */
 export function MotionRoot({ enabled = true }: { enabled?: boolean }) {
+  // It animates its own site, never another one drawn on the same page (the editor's canvas under a preview, a gallery of thumbnails).
+  const anchor = React.useRef<HTMLSpanElement>(null);
   React.useEffect(() => {
-    const root = document.querySelector<HTMLElement>(".iq-site");
+    const root = anchor.current?.closest<HTMLElement>(".iq-site") ?? null;
     if (!root || !enabled) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     root.setAttribute("data-motion", "on");
@@ -54,7 +56,7 @@ export function MotionRoot({ enabled = true }: { enabled?: boolean }) {
       root.removeAttribute("data-motion");
     };
   }, [enabled]);
-  return null;
+  return <span ref={anchor} hidden aria-hidden />;
 }
 
 /** Counts a figure up from zero when it scrolls into view. The final value is already in the HTML, so nothing depends on this. */

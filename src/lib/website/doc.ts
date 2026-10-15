@@ -7,7 +7,8 @@ import { ELEMENT_DEFS, ELEMENT_TYPES, CONTAINER_TYPES, MAX_CONTAINER_DEPTH, ICON
 import { FONT_KEYS } from "./font-keys";
 
 export const CONTENT_SCHEMA_VERSION = 2;
-export const LIMITS = { pages: 24, sectionsPerPage: 40, columnsPerSection: 6, elementsPerColumn: 40, childrenPerContainer: 16, totalBytes: 900_000, globals: 20 } as const;
+/** totalBytes stays under the database's 300 KB cap on a stored document, so an oversized save is refused with a clear message instead of a database error. */
+export const LIMITS = { pages: 24, sectionsPerPage: 40, columnsPerSection: 6, elementsPerColumn: 40, childrenPerContainer: 16, totalBytes: 240_000, globals: 20 } as const;
 /** Paths the site runtime itself uses; a page can never take one of these slugs. */
 export const RESERVED_SLUGS = new Set(["api", "admin", "_next", "__iaq", "assets", "_a", "sitemap", "robots", "favicon", "thanks", "static", "login"]);
 

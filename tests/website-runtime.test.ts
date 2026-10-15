@@ -6,7 +6,10 @@ import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { createAsset } from "@/server/assets/service";
 import { saveOnboardingStep } from "@/server/onboarding/service";
-import { SiteRenderer } from "@/components/website/site-renderer";
+import { SiteRenderer } from "@/components/website/render/site-renderer";
+import { isRef, type Section } from "@/lib/website/doc";
+import { newElement } from "@/lib/website/editor/library";
+import { insertElement } from "@/lib/website/ops";
 import { routeRequest, siteContentSecurityPolicy, type DeploymentRole } from "@/lib/site-routing";
 import { handleEnquiry, errorPage } from "@/server/sites/enquiry";
 import { checkFormToken, hashClient, issueFormToken } from "@/server/sites/form-token";
@@ -112,12 +115,15 @@ beforeAll(async () => {
       "b.services": { value: "Consulting, Support" },
     },
   });
-  await createWebsite(as(), { templateKey: "summit.peak" });
+  await createWebsite(as(), { templateKey: "corp.summit" });
   const png = await sharp({ create: { width: 480, height: 320, channels: 3, background: "#2255aa" } }).png().toBuffer();
   const asset = await createAsset(as(), { kind: "image", bytes: png, filename: "team.png", altText: "Our team at work" });
   const d = (await getDraft(as()))!;
-  const c = structuredClone(d.content);
-  (c.pages[0].sections[0].data as { image: string | null }).image = asset.id;
+  // The owner's photo goes onto the page as an image, so its alt text is part of what a visitor's browser receives.
+  const first = d.content.pages[0].items.find((i): i is Section => !isRef(i))!;
+  const img = newElement(d.content, "image");
+  img.props.src = { kind: "asset", id: asset.id };
+  const c = insertElement(d.content, first.columns[0].id, 0, img);
   await saveDraft(as(), { content: c, expectedRevision: d.revision });
   const live = async () => (await withSystem((db) => db.query<{ id: string }>("select published_publication_id as id from websites where org_id = $1", [org.id]))).rows[0].id;
   await publishWebsite(as(), { acknowledgeClaims: true }, { probe: async () => ({ status: 200, body: `<i data-site-publication="${await live()}"></i>` }) });
@@ -226,7 +232,7 @@ describe("published pages and images", () => {
     expect(asset).toMatchObject({ mimeType: "image/webp", width: 480, height: 320, alt: "Our team at work" }); // photos are stored as WebP
     const html = renderToStaticMarkup(
       React.createElement(SiteRenderer, {
-        content: site.content, templateKey: site.templateKey, pageSlug: "home", resolveAsset: assetResolver(assets), mode: "published", formAction: "/__iaq/form", formToken: "t",
+        content: site.content, pageSlug: "home", resolveAsset: assetResolver(assets), mode: "published", formAction: "/__iaq/form", formToken: "t",
         hrefFor: (s: string) => (s === "home" ? "/" : `/${s}`), publicationId: site.publicationId,
       }),
     );

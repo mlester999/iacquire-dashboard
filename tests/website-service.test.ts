@@ -6,12 +6,20 @@ import { createAsset } from "@/server/assets/service";
 import { saveOnboardingStep } from "@/server/onboarding/service";
 import { clearSiteCache, resolveSite } from "@/server/sites/runtime";
 import {
-  DraftConflictError, PublishBlockedError, changeTemplate, createWebsite, decideApproval, getDraft, getWebsite, listPublications, listVersions, preflight, publishWebsite,
+  DraftConflictError, PublishBlockedError, createWebsite, decideApproval, getDraft, getWebsite, listPublications, listVersions, preflight, publishWebsite,
   regenerateDraft, restoreVersion, rollbackWebsite, saveDraft, saveVersion, submitForApproval, unpublishWebsite,
 } from "@/server/websites/service";
-import { newSection } from "@/lib/website/schema";
+import { isRef, type Section, type SiteContent } from "@/lib/website/doc";
 import type { ProbeFetcher } from "@/server/websites/probe";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+
+/** Puts one of the owner's images behind the first section of the home page. */
+function withHeroImage(content: SiteContent, id: string): SiteContent {
+  const c = structuredClone(content);
+  const first = c.pages[0].items.find((i): i is Section => !isRef(i))!;
+  first.bg = { kind: "image", src: { kind: "asset", id }, overlay: { color: "dark", opacity: 40, dir: "flat" }, pos: { x: 50, y: 50 }, parallax: false };
+  return c;
+}
 
 type Person = { id: string; email: string };
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -58,10 +66,10 @@ afterAll(() => {
 
 describe("creating the website", () => {
   it("builds a first draft from confirmed workspace facts, with its own included address", async () => {
-    const { subdomain } = await createWebsite(as(owner), { templateKey: "forge.foreman" });
+    const { subdomain } = await createWebsite(as(owner), { templateKey: "local.crew" });
     expect(subdomain).toBe("roof-co");
     const site = (await getWebsite(as(owner)))!;
-    expect(site).toMatchObject({ name: "Roof Co", templateKey: "forge.foreman", platformHost: "roof-co.sites.test.example", draftRevision: 0, hasUnpublishedChanges: false, published: null });
+    expect(site).toMatchObject({ name: "Roof Co", templateKey: "local.crew", platformHost: "roof-co.sites.test.example", draftRevision: 0, hasUnpublishedChanges: false, published: null });
     expect(site.approval.status).toBe("draft");
     expect(site.domains).toHaveLength(1);
     expect(site.domains[0]).toMatchObject({ kind: "platform", status: "verified", isPrimary: true, acquisition: "platform", hostname: "roof-co.sites.test.example" });
@@ -72,8 +80,8 @@ describe("creating the website", () => {
   });
 
   it("allows one main website per workspace and only to people who may edit", async () => {
-    await expect(createWebsite(as(owner), { templateKey: "summit.peak" })).rejects.toThrow(/already has a website/);
-    await expect(createWebsite(as(rep, org, "sales_rep"), { templateKey: "summit.peak" })).rejects.toThrow(/Only owners and managers/);
+    await expect(createWebsite(as(owner), { templateKey: "corp.summit" })).rejects.toThrow(/already has a website/);
+    await expect(createWebsite(as(rep, org, "sales_rep"), { templateKey: "corp.summit" })).rejects.toThrow(/Only owners and managers/);
     await expect(createWebsite(as(owner), { templateKey: "nope.nope" })).rejects.toThrow(/Choose one of the templates/);
   });
 
@@ -81,13 +89,13 @@ describe("creating the website", () => {
     const o2 = await createOrg({ name: "Www" });
     const u2 = await createUser();
     await addMember(o2.id, u2.id, "owner");
-    const a = await createWebsite(as(u2, o2), { templateKey: "summit.peak" });
+    const a = await createWebsite(as(u2, o2), { templateKey: "corp.summit" });
     expect(a.subdomain).toMatch(/^[a-z0-9-]{3,42}$/);
     expect(["www", "app", "api", "admin"]).not.toContain(a.subdomain);
     const o3 = await createOrg({ name: "Roof Co" });
     const u3 = await createUser();
     await addMember(o3.id, u3.id, "owner");
-    const b = await createWebsite(as(u3, o3), { templateKey: "summit.peak" });
+    const b = await createWebsite(as(u3, o3), { templateKey: "corp.summit" });
     expect(b.subdomain).not.toBe("roof-co");
     expect(b.subdomain.startsWith("roof-co")).toBe(true);
   });
@@ -110,8 +118,7 @@ describe("editing", () => {
     const bad = structuredClone(draft.content);
     bad.business.email = "not-an-email";
     await expect(saveDraft(as(owner), { content: bad, expectedRevision: draft.revision })).rejects.toThrow(/email address/);
-    const withImage = structuredClone(draft.content);
-    (withImage.pages[0].sections[0].data as { image: string | null }).image = "11111111-1111-4111-8111-111111111111";
+    const withImage = withHeroImage(draft.content, "11111111-1111-4111-8111-111111111111");
     await expect(saveDraft(as(owner), { content: withImage, expectedRevision: draft.revision })).rejects.toThrow(/no longer in your library/);
     await expect(saveDraft(as(rep, org, "sales_rep"), { content: draft.content, expectedRevision: draft.revision })).rejects.toThrow(/Only owners and managers/);
     await expect(saveDraft(as(viewer, org, "viewer"), { content: draft.content, expectedRevision: draft.revision })).rejects.toThrow(/Only owners and managers/);
@@ -123,19 +130,22 @@ describe("editing", () => {
     const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#ccc" } }).png().toBuffer();
     const foreign = await createAsset(as(outsider, other), { kind: "image", bytes: png, filename: "theirs.png" });
     const draft = (await getDraft(as(owner)))!;
-    const sneaky = structuredClone(draft.content);
-    (sneaky.pages[0].sections[0].data as { image: string | null }).image = foreign.id;
+    const sneaky = withHeroImage(draft.content, foreign.id);
     await expect(saveDraft(as(owner), { content: sneaky, expectedRevision: draft.revision })).rejects.toThrow(/no longer in your library/);
   });
 
-  it("switches templates without touching content, and withdraws approval on any change", async () => {
+  it("starts again from another template without losing the old draft, and withdraws approval", async () => {
     const before = (await getDraft(as(owner)))!;
-    const res = await changeTemplate(as(owner), { templateKey: "atlas.quill", expectedRevision: before.revision });
+    await saveVersion(as(owner), { note: "Before the new look" });
+    const res = await regenerateDraft(as(owner), { expectedRevision: before.revision, templateKey: "corp.atlas" });
     const after = (await getDraft(as(owner)))!;
-    expect(after.templateKey).toBe("atlas.quill");
-    expect(after.content).toEqual(before.content);
+    expect(after.templateKey).toBe("corp.atlas");
+    expect(after.content.origin.key).toBe("corp.atlas");
     expect(after.revision).toBe(res.revision);
-    await expect(changeTemplate(as(owner), { templateKey: "atlas.quill", expectedRevision: before.revision })).rejects.toBeInstanceOf(DraftConflictError);
+    expect(after.content.business.name).toBe("Roof Co"); // the business facts carry over
+    expect((await listVersions(as(owner))).some((v) => v.note?.includes("Before the new look"))).toBe(true);
+    await expect(regenerateDraft(as(owner), { expectedRevision: before.revision, templateKey: "corp.atlas" })).rejects.toBeInstanceOf(DraftConflictError);
+    await expect(regenerateDraft(as(owner), { expectedRevision: after.revision, templateKey: "nope.nope" })).rejects.toThrow(/Choose one of the templates/);
   });
 
   it("keeps a restorable history and never loses the draft when restoring or rebuilding", async () => {
@@ -207,7 +217,7 @@ describe("publishing", () => {
   it("shows what stands in the way before publishing", async () => {
     const draft = (await getDraft(as(owner)))!;
     const risky = structuredClone(draft.content);
-    (risky.pages[0].sections[0].data as { subheadline: string }).subheadline = "Award-winning roofers. 100% satisfaction guaranteed.";
+    risky.business.tagline = "Award-winning roofers. 100% satisfaction guaranteed.";
     await saveDraft(as(owner), { content: risky, expectedRevision: draft.revision });
     const pf = await preflight(as(owner));
     expect(pf.blockers).toEqual([]);
@@ -233,8 +243,7 @@ describe("publishing", () => {
     const png = await sharp({ create: { width: 320, height: 200, channels: 3, background: "#3366cc" } }).png().toBuffer();
     const asset = await createAsset(as(owner), { kind: "image", bytes: png, filename: "roof.png", altText: "A repaired roof" });
     const draft = (await getDraft(as(owner)))!;
-    const withImage = structuredClone(draft.content);
-    (withImage.pages[0].sections[0].data as { image: string | null }).image = asset.id;
+    const withImage = withHeroImage(draft.content, asset.id);
     await saveDraft(as(owner), { content: withImage, expectedRevision: draft.revision });
 
     const publicationProbe: ProbeFetcher = async () => ({ status: 200, body: `<div data-site-publication="${liveId}"></div>` });

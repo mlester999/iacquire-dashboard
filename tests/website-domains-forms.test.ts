@@ -45,9 +45,9 @@ beforeAll(async () => {
   await addMember(org.id, viewer.id, "viewer");
   await addMember(other.id, rival.id, "owner");
   await saveOnboardingStep(as(owner), { answers: { "a.business_name": { value: "Domain Co" }, "a.industry": { value: "other" }, "a.contact_email": { value: "hi@domain.test" }, "b.services": { value: "Widgets, gadgets" } } });
-  await createWebsite(as(owner), { templateKey: "summit.peak" });
+  await createWebsite(as(owner), { templateKey: "corp.summit" });
   await saveOnboardingStep(as(rival, other), { answers: { "a.business_name": { value: "Rival Co" }, "a.industry": { value: "other" }, "a.contact_email": { value: "hi@rival.test" } } });
-  await createWebsite(as(rival, other), { templateKey: "summit.peak" });
+  await createWebsite(as(rival, other), { templateKey: "corp.summit" });
 });
 afterAll(() => {
   delete process.env.SITES_PROBE_ORIGIN;

@@ -27,10 +27,18 @@ export interface SiteRendererProps {
   nonce?: string;
   /** Draw only the first n visible sections (thumbnails). */
   limitSections?: number;
+  /** Keeps this site's styles from touching another site drawn on the same page (gallery thumbnails). */
+  scope?: string;
 }
 
-function hasH1(nodes: ElementNode[]): boolean {
-  return nodes.some((e) => (e.type === "heading" && String(e.props.level) === "1") || (e.children ? hasH1(e.children) : false));
+/** The first level-1 heading among these elements, in the order they are drawn. */
+function firstH1(nodes: ElementNode[]): string | null {
+  for (const e of nodes) {
+    if (e.type === "heading" && String(e.props.level) === "1") return e.id;
+    const inner = e.children ? firstH1(e.children) : null;
+    if (inner) return inner;
+  }
+  return null;
 }
 
 /**
@@ -41,16 +49,22 @@ export function SiteRenderer(props: SiteRendererProps) {
   const { content } = props;
   const page = findPage(content, props.pageSlug) ?? content.pages[0];
   const editing = props.mode === "edit";
+  const editingNow = props.mode === "edit";
+  const visibleSections = page.items
+    .map((item) => resolveItem(content, item))
+    .filter((sec): sec is NonNullable<typeof sec> => sec !== null && (editingNow || !sec.hidden));
+  const drawnInOrder = [...(content.header ? [content.header] : []), ...visibleSections, ...(content.footer ? [content.footer] : [])];
+  const h1Id = firstH1(drawnInOrder.flatMap((sec) => sec.columns.flatMap((c) => c.elements)));
   const ctx: RenderCtx = {
     content, page, resolveAsset: props.resolveAsset, mode: props.mode, formAction: props.formAction, formToken: props.formToken ?? "", hrefFor: props.hrefFor,
-    embedded: props.embedded === true, h1: { used: false }, edit: props.edit, nonce: props.nonce,
+    embedded: props.embedded === true, h1Id, edit: props.edit, nonce: props.nonce,
   };
   const visible = page.items
     .map((item) => ({ item, sec: resolveItem(content, item) }))
     .filter((x): x is { item: typeof x.item; sec: NonNullable<typeof x.sec> } => x.sec !== null && (editing || !x.sec.hidden));
   const shown = props.limitSections ? visible.slice(0, props.limitSections) : visible;
-  const pageHasH1 = visible.some((x) => x.sec.columns.some((c) => hasH1(c.elements)));
-  const css = siteCss(content, page).replace(/</g, "\\3c ");
+  const pageHasH1 = h1Id !== null;
+  const css = siteCss(content, page, { scope: props.scope, edit: editing }).replace(/</g, "\\3c ");
   const d = content.design;
   const year = props.year ?? new Date().getUTCFullYear();
   void year;
@@ -61,6 +75,7 @@ export function SiteRenderer(props: SiteRendererProps) {
       className={`iq-site ${FONT_CLASSES}`}
       style={{ "--vh": props.viewportHeight ? `${props.viewportHeight}px` : "100svh" } as React.CSSProperties}
       data-iq=""
+      data-s={props.scope ? props.scope.replace(/[^a-z0-9-]/gi, "").slice(0, 40) : undefined}
       data-emph={d.heading.emphasis}
       data-btn={d.buttons.style}
       data-btn-hover={d.buttons.hover}

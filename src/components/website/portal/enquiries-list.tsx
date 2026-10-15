@@ -7,7 +7,7 @@ import { Inbox, Mail, MessageSquareWarning, Phone } from "lucide-react";
 import { markEnquirySpamAction } from "@/app/actions/website";
 import { Button } from "@/components/ui/button";
 import { Badge, EmptyState } from "@/components/ui/primitives";
-import { displayPhone } from "@/components/website/contact";
+import { displayPhone } from "@/components/website/render/parts";
 import { relativeTime } from "@/lib/utils";
 import type { SubmissionView } from "@/server/websites/forms";
 

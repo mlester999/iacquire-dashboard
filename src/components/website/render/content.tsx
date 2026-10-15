@@ -453,6 +453,7 @@ export function FormEl({ el, ctx, p, index }: P) {
         <input type="hidden" name="p" value={ctx.page.slug} />
         <input type="hidden" name="t" value={ctx.formToken} />
         <input type="hidden" name="k" value={s(p.purpose) || "contact"} />
+        <input type="hidden" name="e" value={el.id} />
         <div aria-hidden className="iq-trap"><label>Leave this field empty<input type="text" name="company_website" tabIndex={-1} autoComplete="off" /></label></div>
         <div className="iq-fields">
           <div className="iq-fld"><label htmlFor={fid("name")}>Your name</label><input id={fid("name")} name="name" required maxLength={120} autoComplete="name" /></div>

@@ -7,10 +7,10 @@ import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
 import { consumeRateLimit, type RateLimitRule } from "@/server/security/rate-limit";
 import { readAuthorizedPrivateFile } from "@/server/storage/private";
-import { generateSiteContent } from "@/lib/website/generate";
+import { parseContent, referencedAssetIds, type SiteContent } from "@/lib/website/doc";
+import { parseStoredContent } from "@/lib/website/legacy";
 import { checkReadiness, warningNeedsAcknowledgement, type Issue } from "@/lib/website/lint";
-import { parseContent, referencedAssetIds, type SiteContent } from "@/lib/website/schema";
-import { resolveTemplate } from "@/lib/website/templates";
+import { buildSite, resolveTemplate } from "@/lib/website/templates";
 import { buildSiteDetails } from "@/server/websites/details";
 import { contentHash, sha256Hex } from "@/server/websites/hash";
 import { probeSite, type ProbeFetcher } from "@/server/websites/probe";
@@ -95,7 +95,7 @@ export async function getWebsite(ctx: OrgContext): Promise<WebsiteSummary | null
     const domains = await db.query<Record<string, unknown>>(`select ${DOMAIN_COLUMNS} from website_domains where website_id = $1 and removed_at is null order by is_primary desc, created_at`, [w.id]);
     let changed = false;
     if (w.published_publication_id) {
-      const parsed = parseContent(w.draft_content);
+      const parsed = parseStoredContent(w.draft_content, w.template_key);
       changed = !parsed.ok || contentHash(parsed.content) !== w.pub_hash || w.template_key !== w.pub_template;
     }
     return {
@@ -113,7 +113,7 @@ export async function getDraft(ctx: OrgContext): Promise<{ websiteId: string; co
     (await db.query<{ id: string; draft_content: unknown; draft_revision: number; template_key: string }>("select id, draft_content, draft_revision, template_key from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId])).rows[0],
   );
   if (!row) return null;
-  const parsed = parseContent(row.draft_content);
+  const parsed = parseStoredContent(row.draft_content, row.template_key);
   if (!parsed.ok) throw new AppError("internal", "The saved draft could not be read. Restore an earlier version.");
   return { websiteId: row.id, content: parsed.content, revision: row.draft_revision, templateKey: row.template_key };
 }
@@ -178,7 +178,7 @@ export async function createWebsite(ctx: OrgContext, input: { templateKey: strin
   if (ctx.org.kind !== "client") throw new AppError("invalid_input", "Websites are built inside a client workspace.");
   if (!resolveTemplate(input.templateKey)) throw new AppError("invalid_input", "Choose one of the templates.");
   const details = await buildSiteDetails(ctx);
-  const content = generateSiteContent(details, input.templateKey);
+  const content = buildSite(input.templateKey, details);
   const result = await withSystem(async (db) => {
     const existing = await db.query("select 1 from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId]);
     if (existing.rows.length) throw new AppError("conflict", "Your workspace already has a website.");
@@ -229,26 +229,10 @@ export async function saveDraft(ctx: OrgContext, input: { content: unknown; expe
   });
 }
 
-export async function changeTemplate(ctx: OrgContext, input: { templateKey: string; expectedRevision: number }): Promise<{ revision: number }> {
-  requireEdit(ctx);
-  if (!resolveTemplate(input.templateKey)) throw new AppError("invalid_input", "Choose one of the templates.");
-  return withSystem(async (db) => {
-    // Content never depends on the template, so switching keeps every word and image.
-    const { rows } = await db.query<{ draft_revision: number }>(
-      `update websites set template_key = $3, draft_revision = draft_revision + 1, draft_updated_by = $4, draft_updated_at = now(),
-         approval_status = case when approval_status in ('submitted', 'approved') then 'draft' else approval_status end
-       where org_id = $1 and kind = 'website' and draft_revision = $2 returning draft_revision`,
-      [ctx.org.orgId, input.expectedRevision, input.templateKey, ctx.user.id],
-    );
-    if (!rows[0]) throw new DraftConflictError();
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "website.template_changed", targetType: "website", result: "success", metadata: { template: input.templateKey } }, db);
-    return { revision: rows[0].draft_revision };
-  });
-}
-
 /** Replaces the draft with a fresh one built from the business details. The current draft is saved as a version first, so nothing is lost. */
-export async function regenerateDraft(ctx: OrgContext, input: { expectedRevision: number }): Promise<{ revision: number }> {
+export async function regenerateDraft(ctx: OrgContext, input: { expectedRevision: number; templateKey?: string }): Promise<{ revision: number }> {
   requireEdit(ctx);
+  if (input.templateKey !== undefined && !resolveTemplate(input.templateKey)) throw new AppError("invalid_input", "Choose one of the templates.");
   const details = await buildSiteDetails(ctx);
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; draft_content: unknown; template_key: string; draft_revision: number }>(
@@ -256,16 +240,17 @@ export async function regenerateDraft(ctx: OrgContext, input: { expectedRevision
     const w = rows[0];
     if (!w) throw new AppError("not_found", "Create your website first.");
     if (w.draft_revision !== input.expectedRevision) throw new DraftConflictError();
-    const current = parseContent(w.draft_content);
+    const current = parseStoredContent(w.draft_content, w.template_key);
     if (current.ok) await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: current.content, source: "editor", note: "Saved before rebuilding from your business details", userId: ctx.user.id });
-    const fresh = generateSiteContent(details, w.template_key);
+    const templateKey = input.templateKey ?? w.template_key;
+    const fresh = buildSite(templateKey, details);
     await assertAssetsOwned(db, ctx.org.orgId, referencedAssetIds(fresh));
     const updated = await db.query<{ draft_revision: number }>(
-      `update websites set draft_content = $2, draft_revision = draft_revision + 1, draft_updated_by = $3, draft_updated_at = now(),
+      `update websites set draft_content = $2, template_key = $4, draft_revision = draft_revision + 1, draft_updated_by = $3, draft_updated_at = now(),
          approval_status = case when approval_status in ('submitted', 'approved') then 'draft' else approval_status end where id = $1 returning draft_revision`,
-      [w.id, JSON.stringify(fresh), ctx.user.id],
+      [w.id, JSON.stringify(fresh), ctx.user.id, templateKey],
     );
-    await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: fresh, source: "generated", note: "Rebuilt from your business details", userId: ctx.user.id });
+    await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey, content: fresh, source: "generated", note: input.templateKey ? "Started again from another template" : "Rebuilt from your business details", userId: ctx.user.id });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "website.regenerated", targetType: "website", targetId: w.id, result: "success" }, db);
     return { revision: updated.rows[0].draft_revision };
   });
@@ -283,7 +268,7 @@ export async function saveVersion(ctx: OrgContext, input: { note?: string }): Pr
     const { rows } = await db.query<{ id: string; draft_content: unknown; template_key: string }>("select id, draft_content, template_key from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId]);
     const w = rows[0];
     if (!w) throw new AppError("not_found", "Create your website first.");
-    const parsed = parseContent(w.draft_content);
+    const parsed = parseStoredContent(w.draft_content, w.template_key);
     if (!parsed.ok) throw new AppError("invalid_input", parsed.error);
     const snap = await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: parsed.content, source: "editor", note: input.note, userId: ctx.user.id });
     const v = await db.query<{ version: number }>("select version from website_versions where id = $1", [snap.id]);
@@ -307,7 +292,7 @@ export async function getVersionContent(ctx: OrgContext, versionId: string): Pro
   if (!ctx.can("website.view")) throw new AppError("forbidden", "You don't have access to the website.");
   const row = await withUser(ctx.user.id, async (db) => (await db.query<{ content: unknown; template_key: string; version: number }>("select content, template_key, version from website_versions where id = $1 and org_id = $2", [versionId, ctx.org.orgId])).rows[0]);
   if (!row) return null;
-  const parsed = parseContent(row.content);
+  const parsed = parseStoredContent(row.content, row.template_key);
   return parsed.ok ? { content: parsed.content, templateKey: row.template_key, version: row.version } : null;
 }
 
@@ -321,7 +306,7 @@ export async function restoreVersion(ctx: OrgContext, input: { versionId: string
     if (!w) throw new AppError("not_found", "Create your website first.");
     if (w.draft_revision !== input.expectedRevision) throw new DraftConflictError();
     // Keep what was being edited before replacing it.
-    const current = parseContent(w.draft_content);
+    const current = parseStoredContent(w.draft_content, w.template_key);
     if (current.ok) await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: w.template_key, content: current.content, source: "editor", note: `Saved before restoring version ${v.version}`, userId: ctx.user.id });
     await assertAssetsOwned(db, ctx.org.orgId, referencedAssetIds(v.content));
     const updated = await db.query<{ draft_revision: number }>(
@@ -382,7 +367,7 @@ export async function decideApproval(ctx: OrgContext, input: { approve: boolean;
     if (input.approve) {
       // Approval covers exactly what was submitted: if the draft has moved on since, it must be sent again.
       const ver = await db.query<{ content_hash: string; template_key: string }>("select content_hash, template_key from website_versions where id = $1", [w.approval_version_id]);
-      const cur = parseContent(w.draft_content);
+      const cur = parseStoredContent(w.draft_content, w.template_key);
       if (!cur.ok || contentHash(cur.content) !== ver.rows[0]?.content_hash || w.template_key !== ver.rows[0]?.template_key) throw new AppError("conflict", "The website changed after it was sent for approval. It needs to be sent again.");
     }
     await db.query("update websites set approval_status = $2, approval_note = $3, approval_decided_by = $4, approval_decided_at = now() where id = $1", [w.id, input.approve ? "approved" : "changes_requested", (input.note ?? "").trim().slice(0, 600) || null, ctx.user.id]);
@@ -551,7 +536,7 @@ export async function rollbackWebsite(ctx: OrgContext, input: { publicationNumbe
     if (!t) throw new AppError("not_found", "That publication wasn't found.");
     if (t.id === w.published_publication_id) throw new AppError("conflict", "That version is already live.");
     if (t.status === "failed" || t.health === "unhealthy") throw new AppError("invalid_input", "That version could not be served last time, so it can't be restored.");
-    const parsed = parseContent(t.content);
+    const parsed = parseStoredContent(t.content, t.template_key);
     if (!parsed.ok) throw new AppError("invalid_input", "That version can no longer be read.");
     const snap = await snapshot(db, { orgId: ctx.org.orgId, websiteId: w.id, templateKey: t.template_key, content: parsed.content, source: "rollback", note: `Restored publication ${t.number}`, userId: ctx.user.id });
     const { rows: numRows } = await db.query<{ n: number }>("select coalesce(max(number), 0) + 1 as n from website_publications where website_id = $1", [w.id]);

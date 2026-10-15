@@ -94,6 +94,10 @@ export const PERMISSION_MATRIX = {
   "website.domains": row(...OWNER_ADMIN, ...STAFF),
   "website.approve": row("owner"),
   "website.publish": row("owner", "agency_super_admin"),
+  // Designing and maintaining the agency template library, publishing a template to clients, and reviewing a client's site and leaving comments on it.
+  "website.templates.design": row(...STAFF),
+  "website.templates.publish": row("agency_super_admin"),
+  "website.review": row(...STAFF),
   // Service incidents. Clients see only the ones marked client-visible; agency staff acknowledge, annotate and close them.
   "incidents.view": row(...OWNER_ADMIN, ...STAFF),
   "incidents.manage": row(...STAFF),

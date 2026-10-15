@@ -1,9 +1,10 @@
 import "server-only";
 import * as React from "react";
 import { headers } from "next/headers";
-import { SiteRenderer } from "@/components/website/site-renderer";
-import type { ResolvedAsset } from "@/components/website/parts";
-import { newSection, pagePath, findPage, type SiteContent, type SitePage } from "@/lib/website/schema";
+import { SiteRenderer } from "@/components/website/render/site-renderer";
+import type { ResolvedAsset } from "@/components/website/render/ctx";
+import { createBuilder } from "@/lib/website/build";
+import { findPage, pagePath, type SiteContent, type SitePage } from "@/lib/website/doc";
 import { issueFormToken } from "@/server/sites/form-token";
 import { normalizeHost, resolveSite, siteAssets, type LiveSite, type SiteAsset } from "@/server/sites/runtime";
 
@@ -26,23 +27,37 @@ export function assetResolver(map: Map<string, SiteAsset>): (id: string | null |
   };
 }
 
-/** The thank-you page after an enquiry: the site's own header and footer around the owner's chosen message. */
-function withThanks(content: SiteContent): { content: SiteContent; page: SitePage } {
-  const section = newSection("richText", "thanks-1");
-  (section.data as { heading: string; body: string }).heading = "Thank you";
-  (section.data as { heading: string; body: string }).body = content.form.successMessage;
-  const page: SitePage = { slug: "thanks", title: "Thank you", navLabel: "Thank you", showInNav: false, seoTitle: "", seoDescription: "", sections: [section] };
+/**
+ * The page shown after an enquiry. If the owner built their own thank-you page it is used as it is; otherwise the site's own header and
+ * footer surround the owner's chosen message.
+ */
+export function thanksPage(content: SiteContent): { content: SiteContent; page: SitePage } {
+  const own = content.pages.find((p) => p.kind === "thanks");
+  if (own) return { content, page: own };
+  const b = createBuilder("th");
+  const section = b.section({ id: "thanks-1", name: "Thank you", layout: { pt: "3xl", pb: "3xl", width: "narrow", minH: "60", valign: "center" } }, [
+    b.col(12, [
+      b.h1("Thank you", { style: { align: "center", size: "5xl" } }),
+      b.lede(content.form.successMessage, { style: { align: "center", w: "m" } }),
+      b.group([b.btn("Back to the home page", "/", { variant: "primary", size: "l" })], { justify: "center", style: { mt: "s" } }),
+    ], { gap: "m", align: "center" }),
+  ]);
+  const page: SitePage = { id: "pg-thanks", slug: "thanks", title: "Thank you", kind: "thanks", navLabel: "", showInNav: false, seoTitle: "", seoDescription: "", ogImage: null, noindex: true, items: [section] };
   return { content: { ...content, pages: [...content.pages, page] }, page };
 }
 
 export async function renderSitePage(site: LiveSite, host: string, slug: string): Promise<React.ReactElement | null> {
   let content = site.content;
-  if (slug === "thanks") content = withThanks(content).content;
-  const page = findPage(content, slug);
+  let page = findPage(content, slug);
+  if (slug === "thanks") {
+    const t = thanksPage(content);
+    content = t.content;
+    page = t.page;
+  }
   if (!page) return null;
   const assets = await siteAssets(host, site.publicationId);
   return React.createElement(SiteRenderer, {
-    content, templateKey: site.templateKey, pageSlug: page.slug, resolveAsset: assetResolver(assets), mode: "published", formAction: "/__iaq/form",
+    content, pageSlug: page.slug, resolveAsset: assetResolver(assets), mode: "published", formAction: "/__iaq/form",
     formToken: issueFormToken(host), hrefFor: hrefForPage, publicationId: site.publicationId,
   });
 }

@@ -30,7 +30,7 @@ const PUBLIC = [
   /^\/dev\//,
 ];
 
-function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null) {
+function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null, framable = false) {
   const dev = process.env.NODE_ENV !== "production";
   // Realtime opens a WebSocket straight to the project; nothing else talks to Supabase from the browser.
   const supabaseConnect = supabaseOrigin ? ` ${supabaseOrigin} ${supabaseOrigin.replace(/^http/, "ws")}` : "";
@@ -43,7 +43,8 @@ function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null) {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     `connect-src 'self'${supabaseConnect}${dev ? " ws: wss:" : ""}`,
-    "frame-ancestors 'none'",
+    // Isolated website previews (/frame/*) may be shown inside the portal's own pages and nowhere else.
+    framable ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
@@ -97,7 +98,7 @@ export async function proxy(req: NextRequest) {
   const supabase = provider === "supabase" ? readSupabasePublicConfig(process.env) : null;
 
   const nonce = btoa(crypto.randomUUID());
-  const csp = contentSecurityPolicy(nonce, supabase ? new URL(supabase.url).origin : null);
+  const csp = contentSecurityPolicy(nonce, supabase ? new URL(supabase.url).origin : null, pathname.startsWith("/frame/") || pathname.startsWith("/dev/frame/"));
 
   // Built from the *current* request headers so cookies refreshed below are visible downstream.
   const buildResponse = () => {

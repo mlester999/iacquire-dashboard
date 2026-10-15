@@ -2,7 +2,7 @@ import "server-only";
 import { withUser } from "@/server/db";
 import { confirmedAnswers, formatHours } from "@/lib/onboarding/engine";
 import { getOnboardingSession } from "@/server/onboarding/service";
-import { splitServices, type SiteDetails } from "@/lib/website/generate";
+import { splitServices, type SiteDetails } from "@/lib/website/details";
 import type { BusinessHours } from "@/lib/messaging";
 import type { OrgContext } from "@/server/tenancy/context";
 

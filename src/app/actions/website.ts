@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { guard } from "@/server/action-guard";
 import { AppError, actionError } from "@/server/errors";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { studioContext } from "@/server/websites/studio-ctx";
+import { deleteAsset, listAssets, setAssetAlt } from "@/server/assets/service";
 import {
-  PublishBlockedError, changeTemplate, createWebsite, decideApproval, getVersionContent, preflight, publishWebsite, regenerateDraft, restoreVersion, rollbackWebsite, saveDraft, saveVersion,
+  PublishBlockedError, createWebsite, getDraft, listVersions, decideApproval, getVersionContent, preflight, publishWebsite, regenerateDraft, restoreVersion, rollbackWebsite, saveDraft, saveVersion,
   submitForApproval, unpublishWebsite,
 } from "@/server/websites/service";
 import {
@@ -24,9 +25,9 @@ const int = (n: unknown) => {
   return n;
 };
 
-export async function createWebsiteAction(templateKey: string) {
+export async function createWebsiteAction(templateKey: string, orgId?: string) {
   return guard(async () => {
-    const ctx = await requireOrgContextOrThrow("website.edit");
+    const ctx = await studioContext(orgId, "website.edit");
     const res = await createWebsite(ctx, { templateKey: String(templateKey) });
     refresh();
     return res;
@@ -34,44 +35,36 @@ export async function createWebsiteAction(templateKey: string) {
 }
 
 /** Autosave. A "conflict" code means the site changed elsewhere, so the editor must reload instead of overwriting it. */
-export async function saveDraftAction(content: unknown, expectedRevision: number) {
+export async function saveDraftAction(content: unknown, expectedRevision: number, orgId?: string) {
   return guard(async () => {
-    const ctx = await requireOrgContextOrThrow("website.edit");
+    const ctx = await studioContext(orgId, "website.edit");
     return saveDraft(ctx, { content, expectedRevision: int(expectedRevision) });
   });
 }
 
-export async function changeTemplateAction(templateKey: string, expectedRevision: number) {
+/** Rebuilds the draft from the business details, optionally from a different template. The current draft is kept as a version first. */
+export async function regenerateDraftAction(expectedRevision: number, templateKey?: string, orgId?: string) {
   return guard(async () => {
-    const ctx = await requireOrgContextOrThrow("website.edit");
-    const res = await changeTemplate(ctx, { templateKey: String(templateKey), expectedRevision: int(expectedRevision) });
+    const ctx = await studioContext(orgId, "website.edit");
+    const res = await regenerateDraft(ctx, { expectedRevision: int(expectedRevision), ...(templateKey ? { templateKey: String(templateKey) } : {}) });
     refresh();
     return res;
   });
 }
 
-export async function regenerateDraftAction(expectedRevision: number) {
+export async function saveVersionAction(note: string, orgId?: string) {
   return guard(async () => {
-    const ctx = await requireOrgContextOrThrow("website.edit");
-    const res = await regenerateDraft(ctx, { expectedRevision: int(expectedRevision) });
-    refresh();
-    return res;
-  });
-}
-
-export async function saveVersionAction(note: string) {
-  return guard(async () => {
-    const ctx = await requireOrgContextOrThrow("website.edit");
+    const ctx = await studioContext(orgId, "website.edit");
     const res = await saveVersion(ctx, { note: String(note ?? "").slice(0, 300) });
     refresh();
     return res;
   });
 }
 
-export async function restoreVersionAction(versionId: string, expectedRevision: number) {
+export async function restoreVersionAction(versionId: string, expectedRevision: number, orgId?: string) {
   return guard(async () => {
     needUuid(versionId);
-    const ctx = await requireOrgContextOrThrow("website.edit");
+    const ctx = await studioContext(orgId, "website.edit");
     const res = await restoreVersion(ctx, { versionId, expectedRevision: int(expectedRevision) });
     refresh();
     return res;
@@ -79,22 +72,55 @@ export async function restoreVersionAction(versionId: string, expectedRevision: 
 }
 
 /** Lets someone look at an earlier version before deciding to restore it. */
-export async function previewVersionAction(versionId: string) {
+export async function previewVersionAction(versionId: string, orgId?: string) {
   return guard(async () => {
     needUuid(versionId);
-    const v = await getVersionContent(await requireOrgContextOrThrow("website.view"), versionId);
+    const v = await getVersionContent(await studioContext(orgId, "website.view"), versionId);
     if (!v) throw new AppError("not_found", "That version wasn't found.");
     return v;
   });
 }
 
-export async function preflightAction() {
-  return guard(async () => preflight(await requireOrgContextOrThrow("website.view")));
+/** The current draft, for the editor to reload after a restore or a rebuild. */
+export async function getDraftAction(orgId?: string) {
+  return guard(async () => {
+    const d = await getDraft(await studioContext(orgId, "website.view"));
+    if (!d) throw new AppError("not_found", "Create your website first.");
+    return { content: d.content, revision: d.revision, templateKey: d.templateKey };
+  });
 }
 
-export async function submitForApprovalAction() {
+export async function listVersionsAction(orgId?: string) {
+  return guard(async () => listVersions(await studioContext(orgId, "website.view")));
+}
+
+export async function listAssetsAction(orgId?: string) {
+  return guard(async () => listAssets(await studioContext(orgId, "workspace.view")));
+}
+
+export async function setAssetAltAction(id: string, alt: string, orgId?: string) {
+  return guard(async () => {
+    needUuid(id);
+    await setAssetAlt(await studioContext(orgId, "workspace.manage_profile"), id, String(alt ?? ""));
+    return {};
+  });
+}
+
+export async function deleteAssetAction(id: string, orgId?: string) {
+  return guard(async () => {
+    needUuid(id);
+    await deleteAsset(await studioContext(orgId, "workspace.manage_profile"), id);
+    return {};
+  });
+}
+
+export async function preflightAction(orgId?: string) {
+  return guard(async () => preflight(await studioContext(orgId, "website.view")));
+}
+
+export async function submitForApprovalAction(orgId?: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("website.edit");
+    const ctx = await studioContext(orgId, "website.edit");
     const res = await submitForApproval(ctx);
     refresh();
     return { ok: true as const, data: res };
@@ -103,9 +129,9 @@ export async function submitForApprovalAction() {
   }
 }
 
-export async function decideApprovalAction(approve: boolean, note: string) {
+export async function decideApprovalAction(approve: boolean, note: string, orgId?: string) {
   return guard(async () => {
-    const ctx = await requireOrgContextOrThrow("website.approve");
+    const ctx = await studioContext(orgId, "website.approve");
     await decideApproval(ctx, { approve: approve === true, note: String(note ?? "") });
     refresh();
     return { approved: approve === true };
@@ -117,9 +143,9 @@ function blocked(err: unknown): { ok: false; error: string; code: string; blocke
   return actionError(err);
 }
 
-export async function publishAction(acknowledgeClaims: boolean, note: string) {
+export async function publishAction(acknowledgeClaims: boolean, note: string, orgId?: string) {
   try {
-    const ctx = await requireOrgContextOrThrow("website.publish");
+    const ctx = await studioContext(orgId, "website.publish");
     const res = await publishWebsite(ctx, { acknowledgeClaims: acknowledgeClaims === true, note: String(note ?? "").slice(0, 300) });
     refresh();
     return { ok: true as const, data: res };
@@ -128,17 +154,17 @@ export async function publishAction(acknowledgeClaims: boolean, note: string) {
   }
 }
 
-export async function unpublishAction() {
+export async function unpublishAction(orgId?: string) {
   return guard(async () => {
-    await unpublishWebsite(await requireOrgContextOrThrow("website.publish"));
+    await unpublishWebsite(await studioContext(orgId, "website.publish"));
     refresh();
     return {};
   });
 }
 
-export async function rollbackAction(publicationNumber: number) {
+export async function rollbackAction(publicationNumber: number, orgId?: string) {
   return guard(async () => {
-    const res = await rollbackWebsite(await requireOrgContextOrThrow("website.publish"), { publicationNumber: int(publicationNumber) });
+    const res = await rollbackWebsite(await studioContext(orgId, "website.publish"), { publicationNumber: int(publicationNumber) });
     refresh();
     return res;
   });
@@ -148,80 +174,80 @@ export async function rollbackAction(publicationNumber: number) {
 // Domains
 // ---------------------------------------------------------------------------
 
-export async function addDomainAction(hostname: string) {
+export async function addDomainAction(hostname: string, orgId?: string) {
   return guard(async () => {
-    const res = await addCustomDomain(await requireOrgContextOrThrow("website.domains"), { hostname: String(hostname) });
+    const res = await addCustomDomain(await studioContext(orgId, "website.domains"), { hostname: String(hostname) });
     refresh();
     return res;
   });
 }
-export async function verifyDomainAction(id: string) {
+export async function verifyDomainAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    const res = await verifyDomain(await requireOrgContextOrThrow("website.domains"), id);
+    const res = await verifyDomain(await studioContext(orgId, "website.domains"), id);
     refresh();
     return res;
   });
 }
-export async function checkSslAction(id: string) {
+export async function checkSslAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    const res = await checkSsl(await requireOrgContextOrThrow("website.domains"), id);
+    const res = await checkSsl(await studioContext(orgId, "website.domains"), id);
     refresh();
     return res;
   });
 }
-export async function checkLiveAction(id: string) {
+export async function checkLiveAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    const res = await checkLive(await requireOrgContextOrThrow("website.domains"), id);
+    const res = await checkLive(await studioContext(orgId, "website.domains"), id);
     refresh();
     return res;
   });
 }
-export async function setPrimaryDomainAction(id: string) {
+export async function setPrimaryDomainAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    await setPrimaryDomain(await requireOrgContextOrThrow("website.domains"), id);
+    await setPrimaryDomain(await studioContext(orgId, "website.domains"), id);
     refresh();
     return {};
   });
 }
-export async function removeDomainAction(id: string) {
+export async function removeDomainAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    await removeDomain(await requireOrgContextOrThrow("website.domains"), id);
+    await removeDomain(await studioContext(orgId, "website.domains"), id);
     refresh();
     return {};
   });
 }
-export async function changeSubdomainAction(subdomain: string) {
+export async function changeSubdomainAction(subdomain: string, orgId?: string) {
   return guard(async () => {
-    const res = await changeSubdomain(await requireOrgContextOrThrow("website.domains"), { subdomain: String(subdomain) });
+    const res = await changeSubdomain(await studioContext(orgId, "website.domains"), { subdomain: String(subdomain) });
     refresh();
     return res;
   });
 }
-export async function requestDomainPurchaseAction(hostname: string) {
+export async function requestDomainPurchaseAction(hostname: string, orgId?: string) {
   return guard(async () => {
-    const res = await requestDomainPurchase(await requireOrgContextOrThrow("website.domains"), { hostname: String(hostname) });
+    const res = await requestDomainPurchase(await studioContext(orgId, "website.domains"), { hostname: String(hostname) });
     refresh();
     return res;
   });
 }
-export async function approveDomainPurchaseAction(id: string) {
+export async function approveDomainPurchaseAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    await approveDomainPurchase(await requireOrgContextOrThrow("website.approve"), id);
+    await approveDomainPurchase(await studioContext(orgId, "website.approve"), id);
     refresh();
     return {};
   });
 }
 
-export async function markEnquirySpamAction(id: string) {
+export async function markEnquirySpamAction(id: string, orgId?: string) {
   return guard(async () => {
     needUuid(id);
-    await markSubmissionSpam(await requireOrgContextOrThrow("contacts.edit"), id);
+    await markSubmissionSpam(await studioContext(orgId, "contacts.edit"), id);
     refresh();
     return {};
   });

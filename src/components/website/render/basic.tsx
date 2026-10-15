@@ -11,10 +11,7 @@ const n = (v: unknown, d = 0) => (typeof v === "number" ? v : d);
 
 export function Heading({ el, ctx, p, index }: ElementProps & { index?: number }) {
   let level = Math.min(4, Math.max(1, parseInt(s(p.level) || "2", 10) || 2));
-  if (level === 1) {
-    if (ctx.h1.used) level = 2;
-    else ctx.h1.used = true;
-  }
+  if (level === 1 && el.id !== ctx.h1Id) level = 2;
   const Tag = `h${level}` as "h1";
   return <Txt ctx={ctx} id={el.id} path="text" value={s(p.text)} as={Tag} className="iq-h" multiline rootProps={{ ...rootProps(el, ctx, "iq-heading", index), "data-lvl": String(level) }} placeholder="Heading" />;
 }

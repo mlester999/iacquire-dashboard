@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/server/auth/session";
-import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { studioContext } from "@/server/websites/studio-ctx";
 import { createAsset, type AssetKind } from "@/server/assets/service";
 import { toPublicError } from "@/server/errors";
 
@@ -13,10 +13,10 @@ const KINDS: AssetKind[] = ["logo", "image", "reference"];
 export async function POST(req: Request) {
   try {
     await assertSameOrigin();
-    const ctx = await requireOrgContextOrThrow("workspace.manage_profile");
     const length = Number(req.headers.get("content-length") ?? 0);
     if (length > MAX + 64 * 1024) return NextResponse.json({ error: "Images can be up to 10 MB." }, { status: 413 });
     const form = await req.formData();
+    const ctx = await studioContext(String(form.get("org") ?? "") || null, "workspace.manage_profile");
     const file = form.get("file");
     const kind = String(form.get("kind") ?? "");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose an image to upload." }, { status: 400 });
