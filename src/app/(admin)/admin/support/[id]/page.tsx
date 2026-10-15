@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowUpRight, MessageSquare, ShieldCheck, UserCheck } from "
 import { requireAgency } from "@/server/tenancy/context";
 import { getTicketForAgency } from "@/server/support/service";
 import { Badge, Card } from "@/components/ui/primitives";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { PageHero, SectionLabel } from "@/components/ui/workspace";
 import { TicketThread } from "@/components/support/ticket-thread";
 import { SupportAttachments } from "@/components/support/attachments";
@@ -29,7 +29,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ id
       </Link>
       <PageHero eyebrow={`Client care · ${t.ref}`} title={t.subject} icon={<MessageSquare className="size-5" />} tone="neutral" className="[&_h1]:break-words"
         description={<>{t.org_name} · Opened by {t.created_by_name ?? "client"} on {formatDateTime(t.created_at, user.timezone)}.</>}
-        action={<Button asChild variant="secondary"><Link href={`/admin/clients/${t.org_id}`}>Client workspace<ArrowUpRight className="size-3.5" aria-hidden /></Link></Button>}
+        action={<ButtonLink href={`/admin/clients/${t.org_id}`} variant="secondary">Client workspace<ArrowUpRight className="size-3.5" aria-hidden /></ButtonLink>}
         aside={<div className="flex flex-wrap gap-2"><Badge tone="neutral">{sentenceCase(t.status)}</Badge><Badge tone={t.priority === "urgent" || t.priority === "high" ? "danger" : "outline"}>{sentenceCase(t.priority)} priority</Badge><Badge tone="outline">{sentenceCase(t.category)}</Badge></div>}
       />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">

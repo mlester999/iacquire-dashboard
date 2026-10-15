@@ -6,6 +6,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "server-only": path.resolve(import.meta.dirname, "tests/support/server-only-stub.ts"),
+      "next/font/google": path.resolve(import.meta.dirname, "tests/support/next-font-stub.ts"),
     },
   },
   test: {
