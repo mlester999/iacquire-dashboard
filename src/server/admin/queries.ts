@@ -22,7 +22,18 @@ export interface TenantDetail {
     suspended_reason: string | null;
   };
   members: Array<{ user_id: string; full_name: string; email: string; role: string; status: string; last_login_at: Date | null }>;
-  invitations: Array<{ id: string; email: string; role: string | null; expires_at: Date; created_at: Date }>;
+  invitations: Array<{
+    id: string;
+    email: string;
+    role: string | null;
+    expires_at: Date;
+    created_at: Date;
+    expired: boolean;
+    /** Outcome of the most recent invitation email for this address: queued, captured (not delivered), sent or failed. */
+    email_status: string | null;
+    email_error: string | null;
+    email_at: Date | null;
+  }>;
   agents: Array<{
     id: string;
     role_key: AgentRoleKey;
@@ -65,7 +76,17 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       [orgId],
     );
     const invitations = await db.query<TenantDetail["invitations"][number]>(
-      "select id, email, role, expires_at, created_at from invitations where org_id = $1 and accepted_at is null and revoked_at is null and expires_at > now() order by created_at desc",
+      // Expired invitations stay listed so they can be resent; the email columns report what really happened to the message.
+      `select i.id, i.email::text as email, i.role, i.expires_at, i.created_at, (i.expires_at <= now()) as expired,
+              m.status as email_status, m.error as email_error, m.created_at as email_at
+       from invitations i
+       left join lateral (
+         select o.status, o.error, o.created_at from email_outbox o
+         where o.to_email = i.email and o.template = 'invitation' and o.created_at >= i.created_at
+         order by o.created_at desc limit 1
+       ) m on true
+       where i.org_id = $1 and i.accepted_at is null and i.revoked_at is null
+       order by i.created_at desc`,
       [orgId],
     );
     const agents = await db.query<TenantDetail["agents"][number]>(

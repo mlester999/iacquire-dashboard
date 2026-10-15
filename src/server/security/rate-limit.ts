@@ -47,6 +47,7 @@ export const RATE_LIMITS = {
   passwordResetByEmail: { name: "reset:email", limit: 3, windowSeconds: 3600 },
   verifyResendByUser: { name: "verify:user", limit: 4, windowSeconds: 3600 },
   inviteAcceptByIp: { name: "invite:ip", limit: 20, windowSeconds: 900 },
+  invitationResend: { name: "invite:resend", limit: 6, windowSeconds: 3600 },
   accessRequestByIp: { name: "access:ip", limit: 5, windowSeconds: 3600 },
   agentMessageByUser: { name: "agent:user", limit: 30, windowSeconds: 60 },
   helpMessageByUser: { name: "help:user", limit: 20, windowSeconds: 60 },

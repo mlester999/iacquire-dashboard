@@ -10,7 +10,7 @@ import {
 } from "@/server/security/crypto";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { recordAudit } from "@/server/audit";
-import { appUrl, sendEmail } from "@/server/email";
+import { appUrl, sendEmail, type EmailDelivery, type OutgoingEmail } from "@/server/email";
 import type { OrgRole, PlatformRole } from "@/lib/permissions";
 
 export const SESSION_ABSOLUTE_DAYS = 30;
@@ -410,10 +410,29 @@ export interface InvitationDetails {
   existingAccount: boolean;
 }
 
+export interface InvitationResult {
+  id: string;
+  token: string;
+  link: string;
+  /** The invitation email, so a caller that owns the transaction can deliver it after committing. */
+  message: OutgoingEmail;
+  /** What actually happened to the email; null when the caller deferred delivery (see `createInvitation`). */
+  delivery: EmailDelivery | null;
+}
+
+/**
+ * Creates an invitation and emails it. Re-inviting supersedes any outstanding invitation for the same
+ * address and tenant, so this is also how an invitation is resent (the stored token is a hash, so the
+ * original link cannot be recovered).
+ *
+ * The email goes out after the invitation is committed and its outcome is returned in `delivery`.
+ * When the caller passes its own transaction (`db`), nothing is sent here: call `deliverInvitation`
+ * with the result once that transaction has committed.
+ */
 export async function createInvitation(
   input: { orgId: string | null; email: string; role?: OrgRole; platformRole?: Exclude<PlatformRole, "none">; invitedBy: string | null },
   db?: Queryable,
-): Promise<{ id: string; token: string; link: string }> {
+): Promise<InvitationResult> {
   const email = normalizeEmail(input.email);
   const token = randomToken(32);
   const run = async (q: Queryable) => {
@@ -433,18 +452,26 @@ export async function createInvitation(
       ? (await q.query<{ name: string }>("select name from organizations where id = $1", [input.orgId])).rows[0]?.name
       : null;
     const link = appUrl(`/invite/${token}`);
-    await sendEmail(
-      {
-        to: email,
-        template: input.orgId ? "invitation" : "staff_invitation",
-        subject: orgName ? `You're invited to ${orgName} on iAcquire` : "You're invited to the iAcquire agency team",
-        text: `${orgName ? `You've been invited to join ${orgName}'s iAcquire workspace.` : "You've been invited to join the iAcquire agency workspace."}\n\nAccept your invitation: ${link}\n\nThis invitation expires in ${INVITE_DAYS} days.`,
-      },
-      q,
-    );
-    return { id: rows[0].id, token, link };
+    const message: OutgoingEmail = {
+      to: email,
+      template: input.orgId ? "invitation" : "staff_invitation",
+      subject: orgName ? `You're invited to ${orgName} on iAcquire` : "You're invited to the iAcquire agency team",
+      text: `${orgName ? `You've been invited to join ${orgName}'s iAcquire workspace.` : "You've been invited to join the iAcquire agency workspace."}\n\nAccept your invitation: ${link}\n\nThis invitation expires in ${INVITE_DAYS} days.`,
+    };
+    return { id: rows[0].id, token, link, message };
   };
-  return db ? run(db) : withSystem(run);
+  const created = await (db ? run(db) : withSystem(run));
+  if (db) return { ...created, delivery: null };
+  return { ...created, delivery: await deliverInvitation(created.message) };
+}
+
+/** Sends an invitation email and reports the real outcome. Never throws: the invitation already exists. */
+export async function deliverInvitation(message: OutgoingEmail): Promise<EmailDelivery> {
+  try {
+    return await sendEmail(message, undefined, { wait: true });
+  } catch (err) {
+    return { id: "", status: "failed", error: err instanceof Error ? err.message.slice(0, 200) : "The email could not be queued." };
+  }
 }
 
 export async function getInvitation(token: string): Promise<InvitationDetails | null> {

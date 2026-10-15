@@ -121,13 +121,13 @@ export function MessagingSettings({ settings, isOwner, canConfigure }: { setting
         <CardContent className="space-y-3">
           <ul className="space-y-2">
             {DAY_ORDER.map((d) => (
-              <li key={d} className="grid grid-cols-[7rem_auto_1fr] items-center gap-3 text-[13px]">
+              <li key={d} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 text-[13px] sm:grid-cols-[7rem_auto_1fr]">
                 <span className="font-medium">{DAY_LABEL[d]}</span>
                 <Switch checked={hours[d].open} disabled={!canConfigure} aria-label={`${DAY_LABEL[d]} open`} onCheckedChange={(open) => setHours((h) => ({ ...h, [d]: { ...h[d], open } }))} />
-                <span className="flex items-center gap-2">
-                  <input type="time" aria-label={`${DAY_LABEL[d]} opens`} value={hours[d].from} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], from: e.target.value } }))} className="h-10 rounded-lg border border-line bg-surface px-2 text-[13px] disabled:opacity-40" />
+                <span className="col-span-2 flex items-center gap-2 sm:col-span-1">
+                  <input type="time" aria-label={`${DAY_LABEL[d]} opens`} value={hours[d].from} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], from: e.target.value } }))} className="h-10 min-w-0 flex-1 rounded-lg sm:flex-none border border-line bg-surface px-2 text-[13px] disabled:opacity-40" />
                   <span className="text-muted">to</span>
-                  <input type="time" aria-label={`${DAY_LABEL[d]} closes`} value={hours[d].to} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], to: e.target.value } }))} className="h-10 rounded-lg border border-line bg-surface px-2 text-[13px] disabled:opacity-40" />
+                  <input type="time" aria-label={`${DAY_LABEL[d]} closes`} value={hours[d].to} disabled={!canConfigure || !hours[d].open} onChange={(e) => setHours((h) => ({ ...h, [d]: { ...h[d], to: e.target.value } }))} className="h-10 min-w-0 flex-1 rounded-lg sm:flex-none border border-line bg-surface px-2 text-[13px] disabled:opacity-40" />
                 </span>
               </li>
             ))}

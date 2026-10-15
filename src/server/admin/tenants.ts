@@ -3,7 +3,9 @@ import { z } from "zod";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { createInvitation, normalizeEmail } from "@/server/auth/service";
+import { createInvitation, deliverInvitation, normalizeEmail } from "@/server/auth/service";
+import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
+import { sha256 } from "@/server/security/crypto";
 import { ensureAgentInstances } from "@/server/workforce/service";
 import { ensureSetupInstance } from "@/server/setup/core";
 import { saveCredential,assertCredentialAdmin } from "@/server/security/credentials";
@@ -41,7 +43,7 @@ export const createTenantSchema = z.object({
 export async function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>) {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can create client workspaces.");
   const data = createTenantSchema.parse(input);
-  return withSystem(async (db) => {
+  const created = await withSystem(async (db) => {
     let slug = slugify(data.name);
     for (let i = 2; ; i++) {
       const { rows } = await db.query("select 1 from organizations where slug = $1", [slug]);
@@ -74,8 +76,11 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
       { orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.created", targetType: "organization", targetId: orgId, result: "success", metadata: { slug, enabledRoles: data.enabledRoles } },
       db,
     );
-    return { orgId, slug, inviteLink: invite.link };
+    return { orgId, slug, invite };
   });
+  // The owner email goes out only after the workspace and invitation are committed, and the real outcome is returned.
+  const emailDelivery = await deliverInvitation(created.invite.message);
+  return { orgId: created.orgId, slug: created.slug, inviteLink: created.invite.link, emailDelivery };
 }
 
 export interface TenantListRow {
@@ -276,4 +281,37 @@ export async function setIntegrationStatus(db: Queryable, orgId: string | null, 
 
 export async function inviteOrgUser(actor: SessionUser, orgId: string, email: string, role: "owner" | "admin" | "member") {
   return createInvitation({ orgId, email: normalizeEmail(email), role, invitedBy: actor.id });
+}
+
+/**
+ * Sends a pending client invitation again. The stored token is a hash, so this issues a fresh link and
+ * revokes the previous one rather than re-sending the old link. Expired invitations can be resent;
+ * accepted or deliberately revoked ones cannot.
+ */
+export async function resendOrgInvitation(admin: SessionUser, orgId: string, inviteId: string) {
+  if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can resend invitations.");
+  const { rows } = await withSystem((db) =>
+    db.query<{ email: string; role: "owner" | "admin" | "member" | null; accepted_at: Date | null; revoked_at: Date | null }>(
+      "select email::text as email, role, accepted_at, revoked_at from invitations where id = $1 and org_id = $2",
+      [inviteId, orgId],
+    ),
+  );
+  const invite = rows[0];
+  if (!invite) throw new AppError("not_found", "Invitation not found.");
+  if (invite.accepted_at) throw new AppError("conflict", "This invitation was already accepted.");
+  if (invite.revoked_at) throw new AppError("conflict", "This invitation was revoked or replaced. Send a new invitation from Team & staff instead.");
+  const limit = await consumeRateLimit(RATE_LIMITS.invitationResend, `${orgId}:${sha256(normalizeEmail(invite.email))}`);
+  if (!limit.allowed) throw new AppError("rate_limited", `This invitation was resent several times already. Try again in ${Math.ceil(limit.retryAfterSeconds / 60)} minutes.`);
+  const resent = await createInvitation({ orgId, email: invite.email, role: invite.role ?? "member", invitedBy: admin.id });
+  await recordAudit({
+    orgId,
+    actorUserId: admin.id,
+    actorKind: "agency",
+    action: "team.invitation_resent",
+    targetType: "invitation",
+    targetId: resent.id,
+    result: resent.delivery?.status === "failed" ? "failure" : "success",
+    metadata: { role: invite.role, emailStatus: resent.delivery?.status ?? null },
+  });
+  return { id: resent.id, email: normalizeEmail(invite.email), link: resent.link, delivery: resent.delivery };
 }

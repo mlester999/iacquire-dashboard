@@ -61,7 +61,7 @@ export function BillingWorkspace({
 
       <section className="relative overflow-hidden rounded-[26px] bg-[#11192c] p-5 text-white sm:p-8" aria-label="Service credits">
         <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 size-96 rounded-full bg-blue-500/15 blur-3xl" />
-        <div className="relative grid gap-8 lg:grid-cols-[1.2fr_1fr]">
+        <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div>
             <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[.18em] text-blue-200"><Wallet className="size-3.5" /> Prepaid service credits</p>
             <p className="mt-3 text-[44px] font-semibold leading-none tracking-[-.05em] tabular-nums sm:text-[56px]">{formatUsd(o.availableMicros)}</p>
@@ -95,7 +95,7 @@ export function BillingWorkspace({
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)]">
         <div className="space-y-6">
           <Card>
             <CardHeader>
