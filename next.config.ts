@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
   // Isolated local visual QA must not overwrite the running application's build output.
   distDir: process.env.NODE_ENV !== "production" && process.env.IAQ_DIST_DIR?.startsWith(".next-") ? process.env.IAQ_DIST_DIR : process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production" ? ".next-ui-qa" : ".next",
   poweredByHeader: false,
+  // DATABASE_SSL_CA_FILE is read through an environment-derived filesystem path, so the static
+  // tracer cannot discover it from fs.readFileSync. Keep the public root CA in every Node function.
+  outputFileTracingIncludes: {
+    "/*": ["./certs/prod-ca-2021.crt"],
+  },
   // Lets local QA run an agency session on 127.0.0.1 next to a client session on localhost.
   allowedDevOrigins: ["127.0.0.1"],
   reactStrictMode: true,

@@ -5,6 +5,7 @@ import path from "node:path";
 import { env } from "@/server/env";
 import { SupabaseConfigError, supabaseConfigStatus } from "@/server/supabase/config";
 import { planPostgresTls } from "@/server/db/tls";
+import { OperationFailure } from "@/server/diagnostics";
 
 export interface QueryResult<T> {
   rows: T[];
@@ -61,25 +62,43 @@ async function createPostgresDriver(connectionString: string): Promise<Driver> {
   const e = env();
   const caFile = e.DATABASE_SSL_CA_FILE?.trim();
   // A missing or unreadable CA file is a configuration error, never a silent downgrade.
-  const caPem = caFile ? fs.readFileSync(path.resolve(/* turbopackIgnore: true */ process.cwd(), caFile), "utf8") : e.DATABASE_SSL_CA;
-  const tls = planPostgresTls({ connectionString, caPem, requireVerified: e.NODE_ENV === "production" });
+  let caPem: string | undefined;
+  try {
+    caPem = caFile ? fs.readFileSync(path.resolve(/* turbopackIgnore: true */ process.cwd(), caFile), "utf8") : e.DATABASE_SSL_CA;
+  } catch (cause) {
+    throw new OperationFailure("database.read_tls_ca_file", cause);
+  }
+  let tls: ReturnType<typeof planPostgresTls>;
+  try {
+    tls = planPostgresTls({ connectionString, caPem, requireVerified: e.NODE_ENV === "production" });
+  } catch (cause) {
+    throw new OperationFailure("database.configure_tls", cause);
+  }
   if (tls.warning) console.warn(`[iacquire] ${tls.warning}`);
   const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: 10, idleTimeoutMillis: 30000 });
+  const query = async <T>(operation: string, run: () => Promise<T>): Promise<T> => {
+    try {
+      return await run();
+    } catch (cause) {
+      if (cause instanceof OperationFailure) throw cause;
+      throw new OperationFailure(operation, cause);
+    }
+  };
   return {
     kind: "postgres",
     async query<T>(sql: string, params?: unknown[]) {
-      const res = await pool.query(sql, params);
+      const res = await query("database.postgres_query", () => pool.query(sql, params));
       return { rows: res.rows as T[], rowCount: res.rowCount ?? 0 };
     },
     async exec(sql) {
-      await pool.query(sql);
+      await query("database.postgres_query", () => pool.query(sql));
     },
     async execScript(sql) {
-      const client = await pool.connect();
+      const client = await query("database.postgres_pool_connect", () => pool.connect());
       try {
-        await client.query("begin");
-        await client.query(sql);
-        await client.query("commit");
+        await query("database.transaction_begin", () => client.query("begin"));
+        await query("database.postgres_query", () => client.query(sql));
+        await query("database.transaction_commit", () => client.query("commit"));
       } catch (err) {
         await client.query("rollback").catch(() => undefined);
         throw err;
@@ -88,16 +107,16 @@ async function createPostgresDriver(connectionString: string): Promise<Driver> {
       }
     },
     async transaction(fn) {
-      const client = await pool.connect();
+      const client = await query("database.postgres_pool_connect", () => pool.connect());
       try {
-        await client.query("begin");
+        await query("database.transaction_begin", () => client.query("begin"));
         const result = await fn({
           async query<T>(sql: string, params?: unknown[]) {
-            const res = await client.query(sql, params);
+            const res = await query("database.postgres_query", () => client.query(sql, params));
             return { rows: res.rows as T[], rowCount: res.rowCount ?? 0 };
           },
         });
-        await client.query("commit");
+        await query("database.transaction_commit", () => client.query("commit"));
         return result;
       } catch (err) {
         await client.query("rollback").catch(() => undefined);

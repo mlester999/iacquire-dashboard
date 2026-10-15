@@ -18,6 +18,7 @@ import { withSystem } from "@/server/db";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { hashIp } from "@/server/security/crypto";
 import { notifyAgency } from "@/server/notifications";
+import { logSafeServerDiagnostic } from "@/server/diagnostics";
 
 export type FormState = { error?: string; success?: string; fieldErrors?: Record<string, string> } | undefined;
 
@@ -37,15 +38,15 @@ export async function loginAction(_: FormState, formData: FormData): Promise<For
   const password = String(formData.get("password") ?? "");
   if (!email || !password) return { error: "Enter your email and password." };
   if (email.length > 254 || password.length > 200) return { error: "Email or password is incorrect." };
-  const meta = await requestMeta();
   let result;
   try {
+    const meta = await requestMeta();
     result = await signInWithPassword({ email, password, ip: meta.ip, userAgent: meta.userAgent });
   } catch (err) {
     const message = configErrorMessage(err);
     if (message) return { error: message };
     if (process.env.NODE_ENV !== "test") {
-      console.error("[iacquire] login action failed", { type: err instanceof Error ? err.name : "unknown" });
+      logSafeServerDiagnostic("login action failed", err, "auth.sign_in");
     }
     return { error: "Sign-in is temporarily unavailable. Please try again in a moment." };
   }

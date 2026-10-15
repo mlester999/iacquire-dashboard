@@ -20,6 +20,7 @@ import {
   createSupabaseStatelessClient,
 } from "@/server/supabase/clients";
 import type { PlatformRole } from "@/lib/permissions";
+import { OperationFailure } from "@/server/diagnostics";
 
 /**
  * Supabase Auth implementation of the portal's identity operations.
@@ -49,6 +50,17 @@ interface ProfileRow {
 }
 
 const PROFILE_COLUMNS = "id, auth_user_id, email, full_name, platform_role, timezone, preferences, email_verified_at, status";
+
+async function loginDependency<T>(operation: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (cause) {
+    // Preserve the actionable missing-configuration response; wrap other failures with the stage
+    // name so the server action can log the operation and the underlying safe error code.
+    if (cause instanceof SupabaseConfigError) throw cause;
+    throw new OperationFailure(operation, cause);
+  }
+}
 
 async function profileByAuthId(authUserId: string, db?: Queryable): Promise<ProfileRow | null> {
   const run = async (q: Queryable) =>
@@ -149,44 +161,47 @@ export async function supabaseSignIn(input: {
   ip?: string | null;
 }): Promise<SupabaseLoginResult> {
   // Check configuration before rate-limit/database work so missing Supabase is an actionable UI error.
-  const sb = await createSupabaseServerClient();
+  const sb = await loginDependency("auth.supabase_client", () => createSupabaseServerClient());
   const email = normalizeEmail(input.email);
   const ipKey = hashIp(input.ip) ?? "unknown";
-  const ipLimit = await consumeRateLimit(RATE_LIMITS.loginByIp, ipKey);
-  const acctLimit = await consumeRateLimit(RATE_LIMITS.loginByAccount, sha256(email));
+  const ipLimit = await loginDependency("auth.rate_limit_ip", () => consumeRateLimit(RATE_LIMITS.loginByIp, ipKey));
+  const acctLimit = await loginDependency("auth.rate_limit_account", () => consumeRateLimit(RATE_LIMITS.loginByAccount, sha256(email)));
   if (!ipLimit.allowed || !acctLimit.allowed) {
-    await recordAudit({ actorKind: "system", action: "auth.login", result: "denied", ipHash: ipKey, metadata: { reason: "rate_limited" } });
+    await loginDependency("auth.audit_rate_limited", () => recordAudit({ actorKind: "system", action: "auth.login", result: "denied", ipHash: ipKey, metadata: { reason: "rate_limited" } }));
     return { ok: false, reason: "rate_limited", retryAfterSeconds: Math.max(ipLimit.retryAfterSeconds, acctLimit.retryAfterSeconds) };
   }
 
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: input.password });
+  const { data, error } = await loginDependency("auth.supabase_password", () => sb.auth.signInWithPassword({ email, password: input.password }));
+  if (error && (error.status === 0 || (error.status !== undefined && error.status >= 500) || error.name === "AuthRetryableFetchError")) {
+    throw new OperationFailure("auth.supabase_password", error);
+  }
   if (error || !data.user) {
-    const known = await profileByEmail(email);
-    await recordAudit({ actorKind: "user", actorUserId: known?.id ?? null, action: "auth.login", result: "failure", ipHash: ipKey, metadata: { code: error?.code ?? "unknown" } });
+    const known = await loginDependency("auth.profile_lookup_by_email", () => profileByEmail(email));
+    await loginDependency("auth.audit_rejected_login", () => recordAudit({ actorKind: "user", actorUserId: known?.id ?? null, action: "auth.login", result: "failure", ipHash: ipKey, metadata: { code: error?.code ?? "unknown" } }));
     if (error?.code === "email_not_confirmed") return { ok: false, reason: "unverified", userId: known?.id };
     if (error?.code === "over_request_rate_limit" || error?.status === 429) return { ok: false, reason: "rate_limited", retryAfterSeconds: 60 };
     if (error?.code === "user_banned") return { ok: false, reason: "disabled" };
     return { ok: false, reason: "invalid" };
   }
 
-  const profile = await profileByAuthId(data.user.id);
+  const profile = await loginDependency("auth.profile_lookup_by_auth_user", () => profileByAuthId(data.user.id));
   if (!profile) {
     await sb.auth.signOut({ scope: "local" }).catch(() => undefined);
-    await recordAudit({ actorKind: "system", action: "auth.login", result: "denied", ipHash: ipKey, metadata: { reason: "no_profile" } });
+    await loginDependency("auth.audit_unmapped_login", () => recordAudit({ actorKind: "system", action: "auth.login", result: "denied", ipHash: ipKey, metadata: { reason: "no_profile" } }));
     return { ok: false, reason: "no_profile" };
   }
   if (profile.status !== "active") {
     await sb.auth.signOut({ scope: "local" }).catch(() => undefined);
-    await recordAudit({ actorKind: "user", actorUserId: profile.id, action: "auth.login", result: "denied", ipHash: ipKey, metadata: { reason: "disabled" } });
+    await loginDependency("auth.audit_disabled_login", () => recordAudit({ actorKind: "user", actorUserId: profile.id, action: "auth.login", result: "denied", ipHash: ipKey, metadata: { reason: "disabled" } }));
     return { ok: false, reason: "disabled", userId: profile.id };
   }
-  await withSystem(async (db) => {
+  await loginDependency("auth.update_last_login_and_audit", () => withSystem(async (db) => {
     await db.query(
       "update users set last_login_at = now(), email_verified_at = coalesce(email_verified_at, $2::timestamptz) where id = $1",
       [profile.id, data.user.email_confirmed_at ?? null],
     );
     await recordAudit({ actorKind: "user", actorUserId: profile.id, action: "auth.login", result: "success", ipHash: ipKey }, db);
-  });
+  }));
   return { ok: true, userId: profile.id };
 }
 
