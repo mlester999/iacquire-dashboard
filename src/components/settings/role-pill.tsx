@@ -1,4 +1,4 @@
-import { Crown, Eye, Handshake, Headset, ShieldCheck, UserRound, type LucideIcon } from "lucide-react";
+import { Calendar, Crown, Eye, Handshake, Headset, ShieldCheck, UserRound, type LucideIcon } from "lucide-react";
 import { StatusPill, type StatusTone } from "@/components/ui/status";
 import { ROLE_LABELS, type OrgRole } from "@/lib/permissions";
 
@@ -9,6 +9,7 @@ export const ROLE_META: Record<OrgRole, { tone: StatusTone; icon: LucideIcon }> 
   sales_rep: { tone: "neutral", icon: Handshake },
   support: { tone: "neutral", icon: Headset },
   viewer: { tone: "neutral", icon: Eye },
+  appointment_setter: { tone: "neutral", icon: Calendar },
 };
 
 /** A role is a kind of access, shown as a quiet pill with its own icon so it can be scanned down a list. */

@@ -21,8 +21,19 @@ export async function credentialStoreReady(db: Queryable): Promise<boolean> {
   return rows[0]?.ready === true;
 }
 
+export type CredentialProvider = "hermes" | "ghl" | "n8n" | "llm";
+
+/** Stores a multi-part provider credential as one secret for Supabase Vault. */
+export function encodeCredentialSecret(parts: Record<string, string>): string {
+  const entries = Object.entries(parts).map(([key, value]) => [key, value.trim()] as const);
+  if (!entries.length || entries.some(([key, value]) => !/^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(key) || !value || /[\r\n]/.test(value))) {
+    throw new AppError("invalid_input", "Enter every part of the service credential.");
+  }
+  return JSON.stringify(Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b))));
+}
+
 /** Uses Supabase's managed encryption, not application-defined cryptography. */
-export async function saveCredential(db: Queryable, input: { orgId: string | null; provider: "hermes" | "ghl" | "n8n" | "llm"; label: string; secret: string; scopes?: string[]; actorId: string; replaces?: string | null }) {
+export async function saveCredential(db: Queryable, input: { orgId: string | null; provider: CredentialProvider; label: string; secret: string; scopes?: string[]; actorId: string; replaces?: string | null }) {
   await assertCredentialAdmin(db,input.actorId);
   const secret = input.secret.trim();
   if (secret.length < 16 || secret.length > 4096 || /[\r\n]/.test(secret)) throw new AppError("invalid_input", "Enter a valid service credential.");
