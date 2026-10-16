@@ -62,7 +62,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
 
     const newLeads = await one("select count(*)::int as n from leads where org_id = $1 and created_at > now() - interval '30 days'");
     const qualifiedLeads = await one("select count(*)::int as n from leads where org_id = $1 and review_status = 'approved' and created_at > now() - interval '30 days'");
-    const followUps = await one("select count(*)::int as n from tasks where org_id = $1 and status = 'open' and (due_at is null or due_at < now() + interval '1 day')");
+    const followUps = await one("select count(*)::int as n from tasks where org_id = $1 and status in ('open', 'in_progress') and (due_at is null or due_at < now() + interval '1 day')");
     const issues = ctx.can("retention.view") ? await one("select coalesce(sum(open_issues), 0)::int as n from retention_accounts where org_id = $1 and status <> 'churned'") : 0;
     const runs = await one("select count(*)::int as n from agent_runs where org_id = $1 and status = 'completed' and started_at > now() - interval '30 days'");
     const approvals = await one("select count(*)::int as n from approval_requests where org_id = $1 and status = 'pending' and (expires_at is null or expires_at > now())");
@@ -97,7 +97,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
     ];
 
     const { rows: tasks } = await db.query<{ id: string; title: string; due_at: Date | null; category: string }>(
-      `select id, title, due_at, category from tasks where org_id = $1 and status = 'open'
+      `select id, title, due_at, category from tasks where org_id = $1 and status in ('open', 'in_progress')
        order by due_at nulls last, created_at limit 6`,
       [orgId],
     );

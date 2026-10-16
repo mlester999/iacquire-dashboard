@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Info, KeyRound, XCircle } from "lucide-react";
 import { Badge, Field, Input, ProgressBar, Select } from "@/components/ui/primitives";
@@ -18,13 +19,13 @@ export interface WizardResult {
   syncedAt?: string | null;
 }
 export interface WizardApi {
-  save(input: unknown): Promise<void>;
-  test(provider: WizardProvider): Promise<WizardResult>;
+  save(input: unknown): Promise<{ gatewayId?: string } | void>;
+  test(provider: WizardProvider, gatewayId?: string): Promise<WizardResult>;
   syncMetadata(): Promise<WizardResult>;
   mapGhlAssets(input: { pipelineId: string | null; calendarIds: string[] }): Promise<void>;
 }
 
-type StepKey = "endpoint" | "auth" | "test" | "capabilities" | "routing" | "health" | "client" | "location" | "metadata" | "mapping" | "instance" | "inventory" | "approve";
+type StepKey = "endpoint" | "auth" | "test" | "capabilities" | "routing" | "health" | "client" | "location" | "metadata" | "mapping" | "instance" | "inventory" | "approve" | "agencyWorkforce" | "provisioning";
 const FLOWS: Record<WizardProvider, Array<{ key: StepKey; label: string }>> = {
   hermes: [
     { key: "endpoint", label: "Gateway endpoint" },
@@ -51,6 +52,35 @@ const FLOWS: Record<WizardProvider, Array<{ key: StepKey; label: string }>> = {
     { key: "health", label: "Connection health" },
   ],
 };
+const HERMES_GATEWAY_FLOW: Array<{ key: StepKey; label: string }> = [
+  { key: "endpoint", label: "Gateway" },
+  { key: "auth", label: "Secure authentication" },
+  { key: "test", label: "Gateway test" },
+  { key: "agencyWorkforce", label: "Agency workforce" },
+  { key: "provisioning", label: "Client provisioning" },
+  { key: "health", label: "Final health" },
+];
+export interface WizardGateway {
+  id: string;
+  label: string;
+  environment: string;
+  baseUrl: string;
+  host: string;
+  gatewayType: "multiplexed_profiles" | "single_profile";
+  reportedGatewayId: string | null;
+  declaredVersion: string | null;
+  status: string;
+  hasAccessCredential: boolean;
+  profileCreationStatus: string;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastHealthCheckAt: string | null;
+  lastLatencyMs: number | null;
+  lastError: string | null;
+  revision: number;
+  mappedProfileCount: number;
+  capabilities: Record<string, unknown>;
+}
 export const GHL_SCOPE_CHOICES = [
   "locations.readonly",
   "opportunities.readonly",
@@ -136,6 +166,7 @@ export function ConnectionWizard({
   connection,
   orgId,
   companyName,
+  hermesGateways = [],
   storeReady,
   api,
   timeZone,
@@ -146,6 +177,7 @@ export function ConnectionWizard({
   connection: IntegrationView;
   orgId: string | null;
   companyName?: string;
+  hermesGateways?: WizardGateway[];
   storeReady: boolean;
   api: WizardApi;
   timeZone: string;
@@ -154,9 +186,10 @@ export function ConnectionWizard({
   initialStep?: number;
 }) {
   const provider = connection.provider as WizardProvider;
-  const flow = FLOWS[provider];
+  const isGatewayWizard = provider === "hermes" && !orgId;
+  const flow = isGatewayWizard ? HERMES_GATEWAY_FLOW : FLOWS[provider];
   const reduce = useReducedMotion();
-  const [index, setIndex] = React.useState(() => Math.max(0, Math.min(FLOWS[connection.provider as WizardProvider].length - 1, initialStep)));
+  const [index, setIndex] = React.useState(() => Math.max(0, Math.min(flow.length - 1, initialStep)));
   const [secret, setSecret] = React.useState("");
   const [busy, setBusy] = React.useState<null | "save" | "test" | "sync" | "map">(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -170,6 +203,11 @@ export function ConnectionWizard({
   const [label, setLabel] = React.useState(connection.label);
   const [environment, setEnvironment] = React.useState(connection.environment);
   const [baseUrl, setBaseUrl] = React.useState(text(cfg.baseUrl));
+  const [gatewayId, setGatewayId] = React.useState(text(cfg.gatewayId));
+  const [gatewayType, setGatewayType] = React.useState(text(cfg.gatewayType) === "single_profile" ? "single_profile" : "multiplexed_profiles");
+  const [reportedGatewayId, setReportedGatewayId] = React.useState(text(cfg.reportedGatewayId));
+  const [accessClientId, setAccessClientId] = React.useState("");
+  const [accessClientSecret, setAccessClientSecret] = React.useState("");
   const [profile, setProfile] = React.useState(text(cfg.profile));
   const [roleKey, setRoleKey] = React.useState(text(cfg.roleKey) || AGENT_ROLE_KEYS[0]);
   const [declaredVersion, setDeclaredVersion] = React.useState(text(cfg.declaredVersion));
@@ -195,9 +233,19 @@ export function ConnectionWizard({
       provider === "ghl"
         ? { locationId, authMethod: "private_integration", apiVersion, scopes, ...(pipelineId ? { pipelineId } : {}), calendarIds }
         : provider === "hermes"
-          ? { baseUrl, profile, authMethod: "bearer", gatewayType: "profile_gateway", ...(orgId ? { roleKey } : {}), ...(declaredVersion ? { declaredVersion } : {}) }
+          ? isGatewayWizard
+            ? { baseUrl, ...(gatewayId ? { gatewayId } : {}), authMethod: "bearer", gatewayType, ...(reportedGatewayId ? { reportedGatewayId } : {}), ...(declaredVersion ? { declaredVersion } : {}) }
+            : { ...(gatewayId ? { gatewayId } : {}), profile, authMethod: "bearer", gatewayType: "multiplexed_profiles", roleKey, ...(declaredVersion ? { declaredVersion } : {}) }
           : { baseUrl, authMethod: "api_key", approvedWorkflowIds: approved, ...(declaredVersion ? { declaredVersion } : {}), declaredEdition: "unknown" };
-    return { provider, label, environment, config, ...(secret ? { secret } : {}) };
+    return {
+      provider,
+      label,
+      environment,
+      config,
+      ...(!isGatewayWizard && secret ? { secret } : {}),
+      ...(isGatewayWizard && accessClientId.trim() ? { accessClientId: accessClientId.trim() } : {}),
+      ...(isGatewayWizard && accessClientSecret.trim() ? { accessClientSecret: accessClientSecret.trim() } : {}),
+    };
   }
 
   async function run(kind: "save" | "test" | "sync" | "map", work: () => Promise<void>) {
@@ -217,16 +265,19 @@ export function ConnectionWizard({
   };
   const saveAndContinue = () =>
     run("save", async () => {
-      await api.save(buildInput());
+      const savedConnection = await api.save(buildInput());
+      if (savedConnection && "gatewayId" in savedConnection && savedConnection.gatewayId) setGatewayId(savedConnection.gatewayId);
       setSaved(true);
       setResult(null);
       setSynced(null);
       setSecret("");
+      setAccessClientId("");
+      setAccessClientSecret("");
       go(1);
     });
   const runTest = () =>
     run("test", async () => {
-      const r = await api.test(provider);
+      const r = await api.test(provider, provider === "hermes" && !orgId ? gatewayId || connection.id || undefined : undefined);
       setResult(r);
       setSynced(null);
     });
@@ -264,22 +315,41 @@ export function ConnectionWizard({
                 <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
               </Select>
             </Field>
-            <Field label="Approved HTTPS gateway URL" htmlFor="w-url" hint="The exact host must be approved in secure server settings. localhost on the Hermes VPS is not reachable from the deployed portal; use private networking or a protected HTTPS gateway.">
-              <Input id="w-url" type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://approved-gateway.example.com" autoComplete="off" />
-            </Field>
-            <Field label="Profile identifier" htmlFor="w-profile" hint={orgId ? "A dedicated profile for this client's employee. Internal iacquire-* agency profiles are refused." : "An agency gateway profile. It is never used as a shared client identity."}>
-              <Input id="w-profile" value={profile} onChange={(e) => setProfile(e.target.value)} autoComplete="off" />
-            </Field>
-            {orgId && (
+            {isGatewayWizard ? <>
+              <Field label="Approved HTTPS gateway URL" htmlFor="w-url" hint="The planned Hermes API host is pre-approved. Other hosts must be explicitly allowlisted in secure server settings. The public Hermes dashboard is not an API endpoint.">
+                <Input id="w-url" type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://hermes-api.iacquire.online" autoComplete="off" />
+              </Field>
+              <Field label="Gateway type" htmlFor="w-gateway-type">
+                <Select id="w-gateway-type" value={gatewayType} onChange={(e) => setGatewayType(e.target.value)}>
+                  <option value="multiplexed_profiles">One gateway with separate profiles</option>
+                  <option value="single_profile">Single profile gateway</option>
+                </Select>
+              </Field>
+              <Field label="Gateway identification" htmlFor="w-gateway-id" optional hint="An operator-supplied identifier is saved as an unverified note. It is not proof of gateway identity.">
+                <Input id="w-gateway-id" value={reportedGatewayId} onChange={(e) => setReportedGatewayId(e.target.value)} autoComplete="off" maxLength={120} />
+              </Field>
+            </> : <>
+              <Field label="Approved Hermes gateway" htmlFor="w-gateway-select" hint="Choose a gateway configured and controlled by iAcquire. This employee receives its own Hermes profile key.">
+                <Select id="w-gateway-select" value={gatewayId} onChange={(e) => { const selected = hermesGateways.find((g) => g.id === e.target.value); setGatewayId(e.target.value); if (selected) setBaseUrl(selected.baseUrl); }}>
+                  <option value="">Select an approved gateway…</option>
+                  {hermesGateways.filter((g) => g.status !== "disconnected").map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.label} · {gateway.host}</option>)}
+                </Select>
+              </Field>
+              {!hermesGateways.some((g) => g.status !== "disconnected") && <Notice tone="warning">No approved Hermes gateway is available. An agency super admin must register one in Admin → Integrations first.</Notice>}
+              <Field label="Profile identifier" htmlFor="w-profile" hint="Enter the existing or separately provisioned profile ID. The backend will verify that it answers on the selected gateway.">
+                <Input id="w-profile" value={profile} onChange={(e) => setProfile(e.target.value)} autoComplete="off" />
+              </Field>
+            </>}
+            {!isGatewayWizard && (
               <Field label="AI employee" htmlFor="w-role">
                 <Select id="w-role" value={roleKey} onChange={(e) => setRoleKey(e.target.value)}>
                   {AGENT_ROLE_KEYS.map((key) => <option key={key} value={key}>{AGENT_BY_KEY[key].name}</option>)}
                 </Select>
               </Field>
             )}
-            <Field label="Installed version, as told by the gateway administrator" htmlFor="w-version" optional hint="Saved as an unverified note. The test checks the installed API capabilities separately.">
+            {isGatewayWizard && <Field label="Installed version, as told by the gateway administrator" htmlFor="w-version" optional hint="Saved as an unverified note. The API capability check does not identify the package version.">
               <Input id="w-version" value={declaredVersion} onChange={(e) => setDeclaredVersion(e.target.value)} maxLength={80} />
-            </Field>
+            </Field>}
           </div>
         );
       case "instance":
@@ -337,9 +407,17 @@ export function ConnectionWizard({
       case "auth":
         return (
           <div className="space-y-4">
-            <Field label={secretLabel} htmlFor="w-secret" hint={connection.hasCredential ? "Leave empty to keep the stored credential. Enter a new value to rotate it; the old portal credential is revoked." : "Enter it only here. Never paste private keys into chat, tickets or email."}>
+            {isGatewayWizard ? <>
+              <Field label="Cloudflare Access service token ID" htmlFor="w-access-id" hint={connection.hasCredential ? "Leave both values empty to keep the stored service token. Enter both to rotate it." : "Used by the server to pass Cloudflare Access. It is stored in Supabase Vault and never sent to the browser after saving."}>
+                <Input id="w-access-id" type="password" autoComplete="new-password" value={accessClientId} onChange={(e) => setAccessClientId(e.target.value)} placeholder={connection.hasCredential ? "Existing token securely stored" : "Service token ID"} maxLength={512} />
+              </Field>
+              <Field label="Cloudflare Access service token secret" htmlFor="w-access-secret" hint="This is separate from every Hermes profile API_SERVER_KEY.">
+                <Input id="w-access-secret" type="password" autoComplete="new-password" value={accessClientSecret} onChange={(e) => setAccessClientSecret(e.target.value)} placeholder={connection.hasCredential ? "Existing token securely stored" : "Service token secret"} maxLength={2048} />
+              </Field>
+              <Notice>Cloudflare Access authenticates iAcquire to the protected hostname. Each employee will still use its own Hermes profile API key.</Notice>
+            </> : <Field label={secretLabel} htmlFor="w-secret" hint={connection.hasCredential ? "Leave empty to keep the stored credential. Enter a new value to rotate it; the old portal credential is revoked." : "Enter it only here. Never paste private keys into chat, tickets or email."}>
               <Input id="w-secret" type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={connection.hasCredential ? "Existing credential securely stored" : "Enter credential securely"} maxLength={4096} />
-            </Field>
+            </Field>}
             {provider === "ghl" && (
               <fieldset className="space-y-2">
                 <legend className="mb-1 text-sm font-semibold">Intended read-only permissions</legend>
@@ -361,7 +439,9 @@ export function ConnectionWizard({
         return (
           <div className="space-y-4">
             <p className="text-[13px] leading-relaxed text-muted">
-              {provider === "hermes" && "The portal reaches the gateway, signs in with this profile's own key, and checks which profile answers. No AI run is started."}
+              {provider === "hermes" && (isGatewayWizard
+                ? "The portal tests all six mapped agency profiles with their own Hermes keys and the shared Cloudflare Access token. No AI run is started. The gateway stays unverified until every employee passes."
+                : "The portal reaches the gateway, signs in with this employee's own key, and checks which profile answers. No AI run is started.")}
               {provider === "ghl" && "The portal reads only this location: it confirms the token belongs to it, then tests each read permission you selected. Nothing is written."}
               {provider === "n8n" && "The portal authenticates with the API key and reads the workflow list. It never edits, runs or activates a workflow."}
             </p>
@@ -398,6 +478,38 @@ export function ConnectionWizard({
             <Notice>{orgId ? "This profile can only serve this client's employee. The portal refuses to reuse it for another employee or client." : "Client employees use their own dedicated profiles, never agency profiles."} Employee “Online” also needs a separate employee health check.</Notice>
           </div>
         );
+      case "agencyWorkforce": {
+        const profiles = list(caps.agencyProfiles);
+        return (
+          <div className="space-y-4">
+            <p className="text-[13px] leading-relaxed text-muted">Map the six existing iAcquire employee profiles from the gateway administrator&apos;s verified inventory. The portal does not guess profile IDs or create replacement agency profiles.</p>
+            {profiles.length ? <ul className="space-y-2">{profiles.map((item) => {
+              const role = text(item.roleKey);
+              const label = text(item.label) || (role && AGENT_BY_KEY[role as keyof typeof AGENT_BY_KEY]?.shortName) || "Agency employee";
+              const status = text(item.status) || "setup_required";
+              return <li key={role || label} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
+                <span className="min-w-0"><span className="block text-[13px] font-medium text-ink">{label}</span><span className="block break-all font-mono text-[11px] text-muted">{text(item.profile) || "No profile mapped"}</span></span>
+                <Badge tone={status === "online" ? "success" : status === "setup_required" ? "neutral" : "warning"}>{status.replaceAll("_", " ")}</Badge>
+              </li>;
+            })}</ul> : <Notice tone="warning">Run the gateway test after mapping profiles to see their individual health.</Notice>}
+            <Link href="/admin/workforce" className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 text-sm font-medium text-primary hover:bg-surface-2">Map agency profiles</Link>
+            <Notice>Hermes&apos; profile list is available to its administrator through the CLI. The public API profile route does not discover or enumerate profiles.</Notice>
+          </div>
+        );
+      }
+      case "provisioning": {
+        const creation = caps.profileCreation && typeof caps.profileCreation === "object" ? caps.profileCreation as Record<string, unknown> : {};
+        const creationStatus = text(creation.status) || "unverified";
+        return (
+          <div className="space-y-4">
+            <Row ok={creationStatus === "restricted_service_verified"} title={creationStatus === "restricted_service_verified" ? "Restricted provisioning service verified" : "Automatic client profile creation not verified"}>
+              {creationStatus === "restricted_service_verified" ? "The gateway's restricted provisioning service passed its capability and isolation checks." : "No installed-version-aware, restricted profile provisioning service is configured. Client workforces cannot be marked Ready or auto-created by this connection yet."}
+            </Row>
+            <Notice tone="warning">Do not use the Hermes dashboard or unrestricted shell tools as a substitute for a secure provisioning API. The current operator runbook creates blank profiles on the VPS and must be reviewed before each client rollout.</Notice>
+            <p className="text-xs text-muted">Provisioning readiness stays unverified until the remote service proves isolated creation, unique credentials, idempotent retries and tenant routing.</p>
+          </div>
+        );
+      }
       case "metadata": {
         const inventory = (caps.inventory ?? {}) as Record<string, unknown>;
         const proven = strings(caps.provenReadPermissions);
@@ -534,9 +646,11 @@ export function ConnectionWizard({
   const primary = (() => {
     switch (step) {
       case "auth":
-        return <Button loading={busy === "save"} disabled={!storeReady || (needsSecret && secret.trim().length < 16)} onClick={() => void saveAndContinue()}><KeyRound className="size-4" /> Save securely &amp; continue</Button>;
+        return <Button loading={busy === "save"} disabled={!storeReady || (needsSecret && (isGatewayWizard ? (!accessClientId.trim() || !accessClientSecret.trim()) : secret.trim().length < 16))} onClick={() => void saveAndContinue()}><KeyRound className="size-4" /> Save securely &amp; continue</Button>;
       case "test":
-        return result && OK_STATES.includes(result.status)
+        return isGatewayWizard
+          ? <><Button variant="secondary" loading={busy === "test"} disabled={!saved && connection.status === "not_configured"} onClick={() => void runTest()}>{result ? "Test again" : "Test profiles"}</Button><Button onClick={() => go(1)} disabled={!saved && connection.status === "not_configured"}>Continue <ArrowRight className="size-4" /></Button></>
+          : result && OK_STATES.includes(result.status)
           ? <><Button variant="secondary" loading={busy === "test"} onClick={() => void runTest()}>Test again</Button><Button onClick={() => go(1)}>Continue <ArrowRight className="size-4" /></Button></>
           : <Button loading={busy === "test"} disabled={!saved && connection.status === "not_configured"} onClick={() => void runTest()}>{result ? "Test again" : "Run live test"}</Button>;
       case "metadata":
@@ -550,7 +664,7 @@ export function ConnectionWizard({
       case "capabilities":
         return <Button onClick={() => go(1)}>Continue <ArrowRight className="size-4" /></Button>;
       default:
-        return last ? <Button onClick={onClose}>Done</Button> : <Button onClick={() => go(1)} disabled={(step === "endpoint" && (!baseUrl || !profile)) || (step === "instance" && !baseUrl) || (step === "location" && locationId.length < 10)}>Continue <ArrowRight className="size-4" /></Button>;
+        return last ? <Button onClick={onClose}>Done</Button> : <Button onClick={() => go(1)} disabled={(step === "endpoint" && (isGatewayWizard ? !baseUrl : (!gatewayId || !profile))) || (step === "instance" && !baseUrl) || (step === "location" && locationId.length < 10)}>Continue <ArrowRight className="size-4" /></Button>;
     }
   })();
 
@@ -560,6 +674,8 @@ export function ConnectionWizard({
       onOpenChange={(open) => {
         if (!open) {
           setSecret("");
+          setAccessClientId("");
+          setAccessClientSecret("");
           onClose();
         }
       }}

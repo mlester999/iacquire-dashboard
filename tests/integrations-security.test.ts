@@ -74,6 +74,40 @@ describe("managed credential boundaries",()=>{
   });
 });
 
+describe("Hermes gateway and profile credential isolation",()=>{
+  it("stores gateway Access credentials separately from each employee's Hermes profile key",async()=>{
+    const gatewayId=await saveIntegrationConnection(admin,null,{
+      provider:"hermes",label:"Synthetic protected Hermes gateway",environment:"development",
+      accessClientId:"synthetic-cloudflare-id",accessClientSecret:"synthetic-cloudflare-secret",
+      config:{baseUrl:"https://hermes-api.iacquire.online",gatewayType:"multiplexed_profiles"},
+    });
+    expect(typeof gatewayId).toBe("string");
+    const gateways=await listIntegrationManager(admin,null);
+    expect(gateways.hermesGateways).toHaveLength(1);
+    expect(gateways.hermesGateways[0]).toMatchObject({id:gatewayId,host:"hermes-api.iacquire.online",hasAccessCredential:true,status:"credentials_saved"});
+    expect(JSON.stringify(gateways)).not.toContain("synthetic-cloudflare-secret");
+
+    await saveIntegrationConnection(admin,orgA.id,{
+      provider:"hermes",label:"Synthetic sales employee",environment:"development",secret:SECRET,
+      config:{gatewayId:gatewayId as string,profile:"c-synthetic-sales",roleKey:"sales_assistant",authMethod:"bearer"},
+    });
+    const {rows}=await withSystem(db=>db.query<{gateway_credential_id:string;profile_credential_id:string;hermes_gateway_id:string;hermes_profile:string}>(
+      `select g.access_credential_id as gateway_credential_id,a.credential_id as profile_credential_id,a.hermes_gateway_id,a.hermes_profile
+       from hermes_gateways g join agent_instances a on a.hermes_gateway_id=g.id where g.id=$1 and a.org_id=$2`,[gatewayId,orgA.id]));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({hermes_gateway_id:gatewayId,hermes_profile:"c-synthetic-sales"});
+    expect(rows[0].gateway_credential_id).not.toBe(rows[0].profile_credential_id);
+    expect(await withSystem(db=>resolveCredential(db,rows[0].gateway_credential_id,null,"hermes"))).toBe(JSON.stringify({accessClientId:"synthetic-cloudflare-id",accessClientSecret:"synthetic-cloudflare-secret"}));
+    expect(await withSystem(db=>resolveCredential(db,rows[0].profile_credential_id,orgA.id,"hermes"))).toBe(SECRET);
+    expect((await withUser(owner.id,db=>db.query("select * from hermes_gateways"))).rows).toHaveLength(0);
+
+    await expect(saveIntegrationConnection(admin,orgB.id,{
+      provider:"hermes",label:"Duplicate profile",environment:"development",secret:SECRET,
+      config:{gatewayId:gatewayId as string,profile:"c-synthetic-sales",roleKey:"sales_assistant",authMethod:"bearer"},
+    })).rejects.toMatchObject({code:"conflict"});
+  });
+});
+
 describe("read-only verification and installed contract",()=>{
   it("verifies dedicated Hermes identity and capabilities; preserves credentials-saved until a test",async()=>{
     await saveIntegrationConnection(admin,orgA.id,{provider:"hermes",label:"Synthetic employee",environment:"development",secret:SECRET,config:{baseUrl:hermes.url,profile:"c-synthetic-sales",roleKey:"sales_assistant"}});

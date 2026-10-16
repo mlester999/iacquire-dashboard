@@ -3,17 +3,18 @@
 // The UI uses this only to decide what to show; the server and database enforce access.
 //
 // Client roles: owner = Business Owner, admin = Manager, member = Team member (earlier, general role),
-// sales_rep, support, viewer. Agency roles are a separate access model and never appear as a client role.
+// sales_rep, support, viewer, appointment_setter. Agency roles are a separate access model and never appear as a client role.
+// Individual members can additionally be granted or refused delegable CRM permissions (member_permission_overrides).
 
-export const ORG_ROLES = ["owner", "admin", "member", "sales_rep", "support", "viewer"] as const;
+export const ORG_ROLES = ["owner", "admin", "member", "sales_rep", "support", "viewer", "appointment_setter"] as const;
 export type OrgRole = (typeof ORG_ROLES)[number];
 export type PlatformRole = "none" | "agency_staff" | "agency_super_admin";
 export type EffectiveRole = OrgRole | "agency_staff" | "agency_super_admin";
 
 const row = (...roles: EffectiveRole[]): readonly EffectiveRole[] => roles;
-const CLIENT = ["owner", "admin", "member", "sales_rep", "support", "viewer"] as const;
+const CLIENT = ["owner", "admin", "member", "sales_rep", "support", "viewer", "appointment_setter"] as const;
 /** Everyone who works conversations and records, as opposed to read-only viewers. */
-const WORKING = ["owner", "admin", "member", "sales_rep", "support"] as const;
+const WORKING = ["owner", "admin", "member", "sales_rep", "support", "appointment_setter"] as const;
 const OWNER_ADMIN = ["owner", "admin"] as const;
 const STAFF = ["agency_staff", "agency_super_admin"] as const;
 
@@ -74,8 +75,8 @@ export const PERMISSION_MATRIX = {
   "inbox.reply": row(...WORKING),
   "inbox.assign": row(...OWNER_ADMIN),
   "inbox.notes": row(...WORKING),
-  "inbox.resume_ai": row("owner", "admin", "sales_rep", "support"),
-  "escalations.respond": row("owner", "admin", "sales_rep", "support"),
+  "inbox.resume_ai": row("owner", "admin", "sales_rep", "support", "appointment_setter"),
+  "escalations.respond": row("owner", "admin", "sales_rep", "support", "appointment_setter"),
   "escalations.configure": row(...OWNER_ADMIN),
   "contacts.view": row(...CLIENT),
   "contacts.edit": row(...WORKING),
@@ -107,6 +108,40 @@ export const PERMISSION_MATRIX = {
   "offboarding.manage": row("agency_super_admin"),
   "data.export": row("owner", "agency_super_admin"),
   "finance.manage": row("agency_super_admin"),
+  // Native CRM. Agency staff never appear here: they reach a client's CRM only through an audited, time-limited support session
+  // (src/server/crm/actor.ts), so row-level security never widens for them. Delegable permissions can also be granted or withdrawn
+  // per person (member_permission_overrides, see DELEGABLE_PERMISSIONS).
+  "crm.view": row(...CLIENT),
+  "contacts.assign": row(...OWNER_ADMIN),
+  "contacts.delete": row(...OWNER_ADMIN),
+  "contacts.import": row(...OWNER_ADMIN),
+  "contacts.export": row(...OWNER_ADMIN),
+  "contacts.bulk": row(...OWNER_ADMIN),
+  "companies.view": row(...CLIENT),
+  "companies.edit": row(...WORKING),
+  "tags.manage": row(...OWNER_ADMIN),
+  "fields.manage": row(...OWNER_ADMIN),
+  "smartlists.share": row(...OWNER_ADMIN),
+  "pipelines.manage": row(...OWNER_ADMIN),
+  "opportunities.edit": row("owner", "admin", "member", "sales_rep", "appointment_setter"),
+  "opportunities.reopen": row(...OWNER_ADMIN),
+  "opportunities.delete": row(...OWNER_ADMIN),
+  "calendars.manage": row(...OWNER_ADMIN),
+  "calendars.connect": row(...WORKING),
+  "workflows.view": row(...OWNER_ADMIN),
+  "workflows.manage": row(...OWNER_ADMIN),
+  "templates.manage": row(...OWNER_ADMIN),
+  "campaigns.manage": row(...OWNER_ADMIN),
+  // Sending a campaign to many people at once is the owner's decision.
+  "campaigns.send": row("owner"),
+  "forms.manage": row(...OWNER_ADMIN),
+  "reviews.manage": row(...OWNER_ADMIN),
+  // Call records can include recordings and transcripts, so read-only viewers do not see them.
+  "calls.view": row(...WORKING),
+  // Switching between iAcquire Native CRM and GoHighLevel moves the record of truth, so only the owner can start it.
+  "crm.provider.manage": row("owner"),
+  "crm.api.manage": row(...OWNER_ADMIN),
+  "crm.permissions.manage": row(...OWNER_ADMIN),
 } as const satisfies Record<string, readonly EffectiveRole[]>;
 
 export type Permission = keyof typeof PERMISSION_MATRIX;
@@ -128,6 +163,7 @@ export const ROLE_LABELS: Record<EffectiveRole, string> = {
   sales_rep: "Sales Representative",
   support: "Customer Support",
   viewer: "Viewer",
+  appointment_setter: "Appointment Setter",
   agency_staff: "Agency Staff",
   agency_super_admin: "Agency Super Admin",
 };
@@ -139,10 +175,76 @@ export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   sales_rep: "Takes sales conversations and ready-to-close leads.",
   support: "Handles customer questions, complaints and service requests.",
   viewer: "Read-only access to leads, appointments, reports and conversations assigned to them.",
+  appointment_setter: "Works new enquiries, books and reschedules appointments, and keeps contact details current.",
 };
 
 /** Roles offered in the invite picker. The earlier general role stays valid for existing members and API callers. */
-export const INVITABLE_ROLES: readonly OrgRole[] = ["admin", "sales_rep", "support", "viewer"];
+export const INVITABLE_ROLES: readonly OrgRole[] = ["admin", "sales_rep", "appointment_setter", "support", "viewer"];
+
+/**
+ * Permissions an owner or manager may grant to, or withdraw from, one person on top of their role. Mirrors the check constraint on
+ * member_permission_overrides. Billing, whole-workspace export, provider switching, offboarding, publishing and autonomous AI are never
+ * delegable: they always follow the role.
+ */
+export const DELEGABLE_PERMISSIONS = [
+  "contacts.view", "contacts.edit", "contacts.assign", "contacts.merge", "contacts.delete", "contacts.import", "contacts.export", "contacts.bulk",
+  "companies.view", "companies.edit", "tags.manage", "fields.manage", "smartlists.share",
+  "sales.view", "pipelines.manage", "opportunities.edit", "opportunities.reopen", "opportunities.delete",
+  "appointments.view", "appointments.book", "appointments.manage", "calendars.manage", "calendars.connect",
+  "tasks.manage", "notes.write", "inbox.view_all", "inbox.assign",
+  "workflows.view", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "calls.view", "analytics.export",
+] as const satisfies readonly Permission[];
+export type DelegablePermission = (typeof DELEGABLE_PERMISSIONS)[number];
+/** Plain-language names for the permissions that can be adjusted per person, grouped as the Team & Permissions screen shows them. */
+export const DELEGABLE_PERMISSION_INFO: Record<DelegablePermission, { label: string; group: "Contacts" | "Sales" | "Calendar" | "Work" | "Messaging" | "Automation" | "Reporting" }> = {
+  "contacts.view": { label: "See contacts", group: "Contacts" },
+  "contacts.edit": { label: "Add and edit contacts", group: "Contacts" },
+  "contacts.assign": { label: "Assign contacts and deals to others", group: "Contacts" },
+  "contacts.merge": { label: "Merge duplicate contacts", group: "Contacts" },
+  "contacts.delete": { label: "Archive and delete records", group: "Contacts" },
+  "contacts.import": { label: "Import spreadsheets", group: "Contacts" },
+  "contacts.export": { label: "Export contacts", group: "Contacts" },
+  "contacts.bulk": { label: "Change many records at once", group: "Contacts" },
+  "companies.view": { label: "See companies", group: "Contacts" },
+  "companies.edit": { label: "Add and edit companies", group: "Contacts" },
+  "tags.manage": { label: "Create, rename and merge tags", group: "Contacts" },
+  "fields.manage": { label: "Manage custom fields", group: "Contacts" },
+  "smartlists.share": { label: "Share Smart Lists with the team", group: "Contacts" },
+  "sales.view": { label: "See pipelines and deals", group: "Sales" },
+  "pipelines.manage": { label: "Change pipelines and stages", group: "Sales" },
+  "opportunities.edit": { label: "Create and move deals", group: "Sales" },
+  "opportunities.reopen": { label: "Reopen closed deals", group: "Sales" },
+  "opportunities.delete": { label: "Archive deals", group: "Sales" },
+  "appointments.view": { label: "See appointments", group: "Calendar" },
+  "appointments.book": { label: "Book appointments", group: "Calendar" },
+  "appointments.manage": { label: "Reschedule and cancel appointments", group: "Calendar" },
+  "calendars.manage": { label: "Set up calendars and booking pages", group: "Calendar" },
+  "calendars.connect": { label: "Connect a personal calendar", group: "Calendar" },
+  "tasks.manage": { label: "Create and complete tasks", group: "Work" },
+  "notes.write": { label: "Write notes", group: "Work" },
+  "inbox.view_all": { label: "See every conversation", group: "Messaging" },
+  "inbox.assign": { label: "Assign conversations", group: "Messaging" },
+  "workflows.view": { label: "See automations", group: "Automation" },
+  "workflows.manage": { label: "Build and change automations", group: "Automation" },
+  "templates.manage": { label: "Manage message templates", group: "Automation" },
+  "campaigns.manage": { label: "Prepare campaigns", group: "Automation" },
+  "forms.manage": { label: "Build forms", group: "Automation" },
+  "reviews.manage": { label: "Manage review requests", group: "Automation" },
+  "calls.view": { label: "See call records", group: "Reporting" },
+  "analytics.export": { label: "Export reports", group: "Reporting" },
+};
+
+export const isDelegablePermission = (p: unknown): p is DelegablePermission => typeof p === "string" && (DELEGABLE_PERMISSIONS as readonly string[]).includes(p);
+
+export type PermissionOverrides = Partial<Record<Permission, "grant" | "revoke">>;
+
+/** A member's effective permissions: the role's, adjusted by any per-person overrides. Owners are never overridden. */
+export function effectivePermission(role: EffectiveRole | null | undefined, permission: Permission, overrides?: PermissionOverrides): boolean {
+  if (!role) return false;
+  const override = role === "owner" ? undefined : overrides?.[permission];
+  if (override && isDelegablePermission(permission)) return override === "grant";
+  return roleHasPermission(role, permission);
+}
 
 /** Which tenant roles a person with `actor` role may grant to others. */
 export function grantableRoles(actor: EffectiveRole): OrgRole[] {

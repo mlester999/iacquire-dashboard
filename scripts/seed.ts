@@ -20,6 +20,8 @@ import { env } from "../src/server/env";
 
 const args = process.argv.slice(2);
 const DEMO = args.includes("--demo");
+// Fictional Native CRM records in the demo workspace (contacts, companies, deals, tasks), for visual QA of the CRM screens.
+const CRM_DEMO = DEMO && args.includes("--crm");
 const mockIdx = args.indexOf("--mock-hermes");
 const MOCK_URL = mockIdx >= 0 ? args[mockIdx + 1] : null;
 const CRED_FILE = path.resolve(".data/dev-credentials.local.json");
@@ -246,6 +248,15 @@ async function main() {
   fs.mkdirSync(path.dirname(CRED_FILE), { recursive: true });
   fs.writeFileSync(CRED_FILE, JSON.stringify(creds, null, 2));
   if (DEMO) console.log(`Local passwords saved to ${path.relative(process.cwd(), CRED_FILE)} (gitignored).`);
+  if (CRM_DEMO) {
+    const { seedCrmDemo } = await import("./seed-crm-demo");
+    const ids = await withSystem(async (db) => {
+      const org = (await db.query<{ id: string }>("select id from organizations where slug = 'demo-workspace' and is_demo")).rows[0];
+      const people = (await db.query<{ id: string; email: string }>("select id, email::text as email from users where email in ('owner@demo.test', 'member@demo.test')")).rows;
+      return { org: org?.id, owner: people.find((p) => p.email === "owner@demo.test")?.id, member: people.find((p) => p.email === "member@demo.test")?.id };
+    });
+    if (ids.org && ids.owner && ids.member) await seedCrmDemo(ids.org, ids.owner, ids.member);
+  }
   await closeDb();
 }
 

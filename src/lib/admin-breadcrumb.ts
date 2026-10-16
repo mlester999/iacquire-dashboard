@@ -15,12 +15,12 @@ export const STUDIO_SECTIONS = [
 
 /** Top-level agency screens. The sidebar shows the same names. */
 export const ADMIN_SECTIONS: Record<string, string> = {
-  clients: "Clients", workforce: "AI Workforce", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
+  clients: "Clients", crm: "Client CRMs", workforce: "AI Workforce", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
   maintenance: "Maintenance", services: "Service catalog", portfolio: "Portfolio", "setup-templates": "Setup templates", integrations: "Integrations",
   health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", team: "Agency team", audit: "Audit log",
 };
 
-const CLIENT_PAGES: Record<string, string> = { setup: "Setup", integrations: "Integrations", activation: "Activation", provisioning: "Provisioning", offboarding: "Offboarding", website: "Website" };
+const CLIENT_PAGES: Record<string, string> = { crm: "CRM", setup: "Setup", integrations: "Integrations", activation: "Activation", provisioning: "Provisioning", offboarding: "Offboarding", website: "Website" };
 const STUDIO_LABEL = Object.fromEntries(STUDIO_SECTIONS.map((s) => [s.href.split("/")[3] ?? "", s.label])) as Record<string, string>;
 
 /**
@@ -46,7 +46,8 @@ export function adminCrumbs(pathname: string): Crumb[] {
     trail.push({ label: ADMIN_SECTIONS[area] ?? area.replace(/-/g, " "), href: base });
     if (area === "clients" && a) {
       trail.push({ label: "Client workspace", href: `${base}/${a}` });
-      if (b) trail.push({ label: CLIENT_PAGES[b] ?? b.replace(/-/g, " ") });
+      if (b === "crm") trail.push({ label: "CRM", href: `${base}/${a}/crm` });
+      else if (b) trail.push({ label: CLIENT_PAGES[b] ?? b.replace(/-/g, " ") });
     } else if (area === "projects" && a) trail.push({ label: "Project" });
     else if (area === "support" && a) trail.push({ label: "Request" });
   }

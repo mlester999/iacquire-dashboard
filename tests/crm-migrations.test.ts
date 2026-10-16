@@ -1,0 +1,75 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { withSystem } from "@/server/db";
+import { createContact } from "@/server/crm/contacts";
+import { createTag } from "@/server/crm/tags";
+import { crmOrg } from "./support/crm";
+
+// Every Native CRM migration ships with a reviewed rollback. Here they are proven: run newest-first on a fully migrated database they must
+// execute and remove what the migrations added; with native data present they must refuse. Each run happens in a transaction that is always
+// rolled back, so the shared test database is untouched.
+
+const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => /^00(2[7-9]|[3-9]\d)_/.test(f)).sort();
+const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");
+class Done extends Error {}
+
+/** Splits a script into statements, keeping `$$ ... $$` bodies whole. The test driver runs one statement per call. */
+function statements(sql: string): string[] {
+  const out: string[] = [];
+  let cur: string[] = [];
+  let inside = false;
+  for (const raw of sql.split("\n")) {
+    const line = raw.replace("\r", "");
+    if (!inside && (line.trim() === "" || line.trim().startsWith("--"))) continue;
+    cur.push(line);
+    if (line.split("$$").length % 2 === 0) inside = !inside;
+    if (!inside && line.trimEnd().endsWith(";")) {
+      out.push(cur.join("\n"));
+      cur = [];
+    }
+  }
+  return out;
+}
+
+const runAllDowns = async (db: { query: (sql: string) => Promise<unknown> }) => {
+  for (const file of [...CRM_MIGRATIONS].reverse()) for (const stmt of statements(downFor(file))) await db.query(stmt);
+};
+
+describe("Native CRM migrations and rollbacks", () => {
+  it("every CRM migration has a rollback script", () => {
+    expect(CRM_MIGRATIONS.length).toBeGreaterThanOrEqual(2);
+    for (const f of CRM_MIGRATIONS) expect(() => downFor(f)).not.toThrow();
+  });
+
+  it("rolls back cleanly, newest first, on a fully migrated database with no native data", async () => {
+    let report: Record<string, unknown> = {};
+    await expect(
+      withSystem(async (db) => {
+        await runAllDowns(db);
+        const q = async (sql: string) => (await db.query<Record<string, unknown>>(sql)).rows;
+        report = {
+          crmTables: (await q("select table_name from information_schema.tables where table_schema = 'public' and table_name like 'crm\\_%' and table_name not in ('crm_pipelines', 'crm_opportunities')")).map((r) => r.table_name),
+          contactColumns: (await q("select column_name from information_schema.columns where table_name = 'contacts' and column_name in ('first_name', 'search_text', 'lead_status')")).length,
+          oppProvider: (await q("select column_name from information_schema.columns where table_name = 'crm_opportunities' and column_name = 'provider'")).length,
+          setterRole: (await q("select 1 from role_permissions where role = 'appointment_setter'")).length,
+          hasPermission: String((await q("select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'app' and p.proname = 'has_permission'"))[0]?.prosrc ?? ""),
+        };
+        throw new Done();
+      }),
+    ).rejects.toBeInstanceOf(Done);
+    expect(report).toMatchObject({ crmTables: [], contactColumns: 0, oppProvider: 0, setterRole: 0 });
+    expect(String(report.hasPermission)).not.toContain("member_permission_overrides");
+    const still = await withSystem(async (db) => (await db.query("select 1 from information_schema.tables where table_name = 'crm_workspaces'")).rows.length);
+    expect(still).toBe(1);
+  });
+
+  it("refuses to roll back while Native CRM data exists", async () => {
+    const c = await crmOrg();
+    await createTag(c.actor("owner"), { name: "Keep me" });
+    await createContact(c.actor("owner"), { firstName: "Keep", lastName: "Me" });
+    await expect(withSystem(async (db) => {
+      await runAllDowns(db);
+      throw new Done();
+    })).rejects.toThrow(/Rollback refused/);
+  });
+});

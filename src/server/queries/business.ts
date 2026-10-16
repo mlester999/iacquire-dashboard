@@ -42,7 +42,7 @@ export async function getSalesPipeline(ctx: OrgContext) {
   return withUser(ctx.user.id, async (db) => {
     const sources = await sourceAvailability(db, ctx.org.orgId, ctx.org.isDemo);
     const pipelines = await db.query<{ ghl_pipeline_id: string; name: string; stages: Array<{ id: string; name: string; position: number }>; synced_at: Date }>(
-      "select ghl_pipeline_id, name, stages, synced_at from crm_pipelines where org_id = $1 order by name",
+      "select ghl_pipeline_id, name, stages, synced_at from crm_pipelines where org_id = $1 and provider = 'ghl' order by name",
       [ctx.org.orgId],
     );
     const opps = await db.query<{
@@ -64,11 +64,11 @@ export async function getSalesPipeline(ctx: OrgContext) {
       `select o.id, o.ghl_opportunity_id, o.ghl_pipeline_id, o.stage_id, o.stage_name, o.name, o.status, o.monetary_value::text,
               o.contact_label, o.assigned_to, o.source, o.remote_updated_at, o.synced_at,
               (select count(*)::int from record_notes n where n.org_id = o.org_id and n.record_type = 'opportunity' and n.record_id = o.id::text) as notes
-       from crm_opportunities o where o.org_id = $1 order by o.remote_updated_at desc nulls last`,
+       from crm_opportunities o where o.org_id = $1 and o.provider = 'ghl' order by o.remote_updated_at desc nulls last`,
       [ctx.org.orgId],
     );
     const tasks = await db.query<{ id: string; title: string; due_at: Date | null; status: string; related_id: string | null }>(
-      "select id, title, due_at, status, related_id from tasks where org_id = $1 and category in ('sales', 'follow_up') and status = 'open' order by due_at nulls last limit 20",
+      "select id, title, due_at, status, related_id from tasks where org_id = $1 and category in ('sales', 'follow_up') and status in ('open', 'in_progress') order by due_at nulls last limit 20",
       [ctx.org.orgId],
     );
     const proposals = await db.query<{ n: number }>(
@@ -117,7 +117,7 @@ export async function getRetention(ctx: OrgContext) {
       [ctx.org.orgId],
     );
     const tasks = await db.query<{ id: string; title: string; due_at: Date | null; related_id: string | null }>(
-      "select id, title, due_at, related_id from tasks where org_id = $1 and category = 'retention' and status = 'open' order by due_at nulls last",
+      "select id, title, due_at, related_id from tasks where org_id = $1 and category = 'retention' and status in ('open', 'in_progress') order by due_at nulls last",
       [ctx.org.orgId],
     );
     const tickets = await db.query<{ n: number }>(

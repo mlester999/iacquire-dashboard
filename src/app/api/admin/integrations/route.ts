@@ -37,9 +37,9 @@ export async function POST(req:NextRequest) {
     if(action.action==="sync_metadata")return response({ok:true,result:await syncGhlMetadata(user,orgId)});
     if(action.action==="map_ghl_assets"){if(!orgId)throw new AppError("invalid_input","Select a client first.");const d=z.object({pipelineId:z.string().nullish(),calendarIds:z.array(z.string()).max(20).optional()}).parse(body);await mapGhlAssets(user,orgId,{pipelineId:d.pipelineId,calendarIds:d.calendarIds});return response({ok:true});}
     if(action.action==="map_workflows"){if(!orgId)throw new AppError("invalid_input","Select a client for workflow mapping.");const d=z.object({workflowIds:z.array(z.string())}).parse(body);await mapAgencyWorkflows(user,orgId,d.workflowIds);return response({ok:true});}
-    if(action.action==="save") {const d=z.object({input:integrationSaveSchema}).parse(body);await saveIntegrationConnection(user,orgId,d.input);return response({ok:true});}
-    const d=z.object({provider:z.enum(INTEGRATION_PROVIDERS)}).parse(body);
-    if(action.action==="test")return response({ok:true,result:await testIntegrationConnection(user,orgId,d.provider)});
-    await disconnectIntegration(user,orgId,d.provider);return response({ok:true});
+    if(action.action==="save") {const d=z.object({input:integrationSaveSchema}).parse(body);const gatewayId=await saveIntegrationConnection(user,orgId,d.input);return response({ok:true,...(typeof gatewayId==="string"?{gatewayId}:{})});}
+    const d=z.object({provider:z.enum(INTEGRATION_PROVIDERS),gatewayId:z.string().uuid().optional()}).parse(body);
+    if(action.action==="test")return response({ok:true,result:await testIntegrationConnection(user,orgId,d.provider,d.gatewayId)});
+    await disconnectIntegration(user,orgId,d.provider,d.gatewayId);return response({ok:true});
   }catch(error){return failure(error);}
 }

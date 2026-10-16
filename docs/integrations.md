@@ -8,7 +8,7 @@ the browser. Connection setup is documented in [integrations-setup.md](integrati
 
 | Integration | State in this build | Writes? |
 | --- | --- | --- |
-| Hermes Agent | Adapter complete, contract pinned by tests against the Hermes source. The admin wizard saves the gateway and profile, then a live check verifies identity, capabilities and restricted tools. No client profiles provisioned yet. | Runs only (chat, research); never edits profiles |
+| Hermes Agent | Shared gateway registry, separate profile mappings, Cloudflare Access credentials and per-profile health checks are implemented. The six agency employees must be mapped and verified. Automatic client profile creation remains unavailable until a restricted provisioning service is installed and verified. | Runs only (chat, research); never edits profiles |
 | GoHighLevel | Read-only adapter: identity check, permission probes, metadata discovery (pipelines, calendars, tags, custom fields, custom values, forms, workflow inventory), pipeline/calendar mapping from verified metadata, and the existing opportunity/calendar sync. Not verified live: needs a per-location token. | None (`GHL_WRITES_ENABLED=false`) |
 | n8n | Agency-global read-only connection: authenticated workflow inventory, approved-workflow mapping per client, safe execution summaries. Not verified live. | None — never edits, runs or activates workflows |
 | Google Calendar, email sending, domains | No connector yet. Setup steps stay actionable and unverified. | None |
@@ -33,8 +33,19 @@ Checked against the Hermes Agent source (`gateway/platforms/api_server.py`, `api
 | `POST /v1/runs/{id}/stop` | Stop generation |
 | `POST /v1/runs/{id}/approval` `{ choice: "once" \| "deny", request_id }` | Resolve a paused tool approval from the Approval Center |
 
-With the multiplexed gateway each profile is served under `/p/<profile>/` and authenticated with
-that profile's own `API_SERVER_KEY`.
+With a multiplexed gateway, each profile is served under `/p/<profile>/` and authenticated with
+that profile's own `API_SERVER_KEY`. For `hermes-api.iacquire.online`, Cloudflare Access also
+requires the separate `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers. Both credential
+pairs are sent only by server-side adapters, loaded from managed Vault references, and never
+returned to the browser. The gateway registry and workforce profile mapping are separate records.
+
+The global Hermes wizard registers a gateway without requiring a profile ID. In **Admin → AI
+Workforce**, an agency super admin maps the exact existing profile ID and that profile's own
+`API_SERVER_KEY` to each of the six internal employee records. The UI does not guess or recreate
+agency profiles. Gateway verification runs read-only health checks for all six mapped agency
+employees; it shows `Connected` only if every required profile passes. An individual client employee
+is mapped to an approved gateway and receives its own profile key. The database enforces the
+gateway/profile URL match and prevents one gateway profile from backing multiple employees.
 
 ### Client isolation — why each employee gets its own profile
 
@@ -62,21 +73,29 @@ The portal never touches the VPS. When a client finishes onboarding, provisionin
 in **Admin → Clients → (client) → AI workforce**. For each employee, **Runbook** generates
 the exact profile name, `SOUL.md`, `config.yaml` snippet and steps:
 
-1. `hermes profile create <profile> --description "…"` (blank — no `--clone`).
-2. Save the generated `SOUL.md` into `~/.hermes/profiles/<profile>/`.
-3. Merge the `config.yaml` snippet (disabled toolsets; Docker terminal backend as defence in depth).
-4. In the profile's `.env`: `API_SERVER_ENABLED=true` and a unique `API_SERVER_KEY`; configure the
-   model provider (`hermes -p <profile> model`, e.g. DeepSeek).
-5. `hermes gateway restart`, then verify from the VPS:
-   `curl -H "Authorization: Bearer $KEY" http://127.0.0.1:8642/p/<profile>/v1/toolsets`.
-6. In the portal: **Admin → Clients → (client) → Integrations → Hermes Agent → Connect** (guided wizard:
-   approved HTTPS gateway URL, profile name, employee, then the profile's own key). The key goes to
-   managed Supabase Vault and is never shown again. The wizard then runs a live test inside the flow.
-   Finally run the employee **Health check** from the AI workforce page. The employee turns `online`
-   only if it passes.
+1. Follow the staged Cloudflare and endpoint checks in [hermes-cloudflare-setup.md](hermes-cloudflare-setup.md).
+2. For a manually approved non-production profile, use Hermes' documented profile CLI to create a
+   blank profile (`hermes profile create <profile>`; never use `--clone`). Apply the role's reviewed
+   configuration and an independent `API_SERVER_KEY` using the installed-version runbook.
+3. Verify the exact profile route locally and through Cloudflare Access. The application does not
+   create profiles or apply remote configuration; do not mark these manual steps as automatic
+   provisioning.
+4. In **Admin → Clients → (client) → Integrations → Hermes Agent**, select the registered gateway,
+   employee role, exact profile ID, and that profile's own key. The key is stored in managed Vault
+   and is not shown again.
+5. Run the profile's read-only health check. The profile is `online` only after identity, capabilities,
+   safe tool exposure, and employee configuration are verified. The current public toolset API cannot
+   prove a complete plugin/MCP permission inventory, so live client runs remain blocked until a
+   complete inventory check is implemented and verified.
 
-The gateway must be reachable from the portal over HTTPS (reverse proxy in front of the API
-listener). `ALLOW_INSECURE_HERMES_URLS` exists for local testing and is refused in production.
+Profiles made this way are operator-managed. Six-profile automatic client provisioning is not ready;
+production profile creation and activation must wait for an independently authenticated, narrowly
+scoped provisioning service and an approved production activation process.
+
+Use the operator checklist in [hermes-cloudflare-setup.md](hermes-cloudflare-setup.md) before
+activating DNS or connecting the production gateway. The planned hostname is allowlisted in the
+application, but an allowlisted URL is not proof that DNS, Tunnel, Access or Hermes is live.
+`ALLOW_INSECURE_HERMES_URLS` is refused in production.
 
 ### Scale note
 

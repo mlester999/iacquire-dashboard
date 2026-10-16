@@ -64,7 +64,7 @@ export default async function IntegrationPreview({ searchParams }: { searchParam
         </p>
         <div className="mb-4"><PreviewTheme/></div>
         <IntegrationsManager
-          initial={{ connections, secureStoreReady: withSample, agencyWorkflows: [], mappedWorkflowIds: [] }}
+          initial={{ connections, secureStoreReady: withSample, agencyWorkflows: [], mappedWorkflowIds: [], hermesGateways: [] }}
           orgId={client ? "00000000-0000-4000-8000-000000000001" : null}
           companyName={client ? "Sample Client (preview)" : undefined}
           superAdmin

@@ -26,7 +26,7 @@ export function LlmConnectionDialog({
 }: {
   connection: IntegrationView;
   storeReady: boolean;
-  onSave: (input: unknown) => Promise<void>;
+  onSave: (input: unknown) => Promise<unknown>;
   onTest: () => Promise<TestResult>;
   onListModels: (input: { baseUrl: string; apiFormat: LlmApiFormat; secret?: string }) => Promise<string[]>;
   onClose: () => void;

@@ -98,13 +98,15 @@ export async function setAgentEnabledAction(orgId: string, agentId: string, enab
   }
 }
 
-export async function connectHermesAction(agentId: string, input: { baseUrl: string; profile: string; apiKey: string }) {
+export async function connectHermesAction(agentId: string, input: { baseUrl?: string; gatewayId?: string; profile: string; apiKey: string }) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     const orgId = await agentOrg(agentId);
     await connectHermesProfile({ agentId, ...input, agencyUserId: admin.id });
     const health = await runHealthCheck(agentId, { userId: admin.id, kind: "agency" });
     revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/integrations");
     return { ok: true as const, data: health };
   } catch (err) {
     return actionError(err);

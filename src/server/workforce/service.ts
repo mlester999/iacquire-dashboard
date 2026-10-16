@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { resolveCredential, saveCredential } from "@/server/security/credentials";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
+import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, compileKnowledgeContext, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
@@ -351,12 +352,12 @@ function splitPolicy(compiled: string): [string, string] {
 // ---------------------------------------------------------------------------
 
 export function validateHermesBaseUrl(raw: string): string {
-  return validateIntegrationEndpoint(raw);
+  return validateIntegrationEndpoint(raw, ["hermes-api.iacquire.online"]);
 }
 
 export async function loadConnection(db: Queryable, agentId: string): Promise<HermesConnection | null> {
-  const { rows } = await db.query<{ org_id:string; credential_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
-    `select a.org_id,a.credential_id,a.hermes_base_url, a.hermes_profile, c.ciphertext, c.revoked_at
+  const { rows } = await db.query<{ org_id:string; credential_id:string|null; hermes_gateway_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
+    `select a.org_id,a.credential_id,a.hermes_gateway_id,a.hermes_base_url,a.hermes_profile,c.ciphertext,c.revoked_at
      from agent_instances a left join integration_credentials c on c.id = a.credential_id
      where a.id = $1`,
     [agentId],
@@ -365,18 +366,21 @@ export async function loadConnection(db: Queryable, agentId: string): Promise<He
   if (!r?.hermes_base_url || !r.ciphertext || r.revoked_at) return null;
   if (!r.credential_id) return null;
   const apiKey = await resolveCredential(db,r.credential_id,r.org_id,"hermes");
-  return apiKey ? { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey } : null;
+  if (!apiKey) return null;
+  const access = await loadHermesAccessCredentials(db, r.hermes_gateway_id);
+  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, ...(access ?? {}) };
 }
 
 /** Agency-only: attach a Hermes profile endpoint and its per-profile API key to a tenant employee. */
 export async function connectHermesProfile(input: {
   agentId: string;
-  baseUrl: string;
+  baseUrl?: string;
   profile: string;
   apiKey: string;
   agencyUserId: string;
+  gatewayId?: string;
 }) {
-  const baseUrl = validateHermesBaseUrl(input.baseUrl);
+  let baseUrl = input.baseUrl ? validateHermesBaseUrl(input.baseUrl) : "";
   const profile = input.profile.trim();
   if (!/^[a-z0-9][a-z0-9_-]{1,62}$/.test(profile)) throw new AppError("invalid_input", "Profile names use lowercase letters, numbers, dashes and underscores.");
   const apiKey = input.apiKey.trim();
@@ -388,6 +392,34 @@ export async function connectHermesProfile(input: {
     );
     const agent = rows[0];
     if (!agent) throw new AppError("not_found", "AI employee not found.");
+    let gatewayId: string | null = null;
+    if (input.gatewayId) {
+      const { rows: gatewayRows } = await db.query<{ id: string; base_url: string; gateway_type: string }>(
+        "select id,base_url,gateway_type from hermes_gateways where id=$1 and status <> 'disconnected'",
+        [input.gatewayId],
+      );
+      const gateway = gatewayRows[0];
+      if (!gateway) throw new AppError("not_found", "Approved Hermes gateway not found.");
+      const registeredBaseUrl = validateHermesBaseUrl(gateway.base_url);
+      if (baseUrl && registeredBaseUrl !== baseUrl) throw new AppError("invalid_input", "The profile URL must match its selected gateway.");
+      baseUrl = registeredBaseUrl;
+      gatewayId = gateway.id;
+      if (gateway.gateway_type === "single_profile") {
+        const { rows: mapped } = await db.query<{ count: number }>(
+          "select count(*)::int as count from agent_instances where hermes_gateway_id=$1 and id<>$2 and hermes_profile is not null",
+          [gateway.id, input.agentId],
+        );
+        if (mapped[0]?.count) throw new AppError("conflict", "This gateway is registered for one profile and cannot serve another workforce employee.");
+      }
+    } else {
+      if (!baseUrl) throw new AppError("invalid_input", "Choose an approved Hermes gateway.");
+      const { rows: gatewayRows } = await db.query<{ id: string }>(
+        "select id from hermes_gateways where rtrim(base_url,'/')=rtrim($1,'/') and status <> 'disconnected'",
+        [baseUrl],
+      );
+      gatewayId = gatewayRows[0]?.id ?? null;
+      if (!gatewayId && process.env.NODE_ENV !== "test") throw new AppError("invalid_input", "Select an iAcquire-registered Hermes gateway before mapping this profile.");
+    }
     if (agent.kind === "client" && isReservedProfile(profile)) {
       throw new AppError("invalid_input", "Internal iAcquire profiles can't be assigned to client workspaces. Provision a dedicated profile.");
     }
@@ -400,10 +432,10 @@ export async function connectHermesProfile(input: {
     const {rows:old}=await db.query<{credential_id:string|null}>("select credential_id from agent_instances where id=$1",[input.agentId]);
     const cred = await saveCredential(db,{orgId:agent.org_id,provider:"hermes",label:`Hermes profile ${profile}`,secret:apiKey,actorId:input.agencyUserId,replaces:old[0]?.credential_id});
     await db.query(
-      `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4,
+      `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4, hermes_gateway_id = $5,
          status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check'
        where id = $1`,
-      [input.agentId, baseUrl, profile, cred.id],
+      [input.agentId, baseUrl, profile, cred.id, gatewayId],
     );
     await db.query(
       `update agent_provisioning_jobs set status = 'awaiting_health_check', handled_by = $2
@@ -420,7 +452,7 @@ export async function connectHermesProfile(input: {
         targetType: "agent_instance",
         targetId: input.agentId,
         result: "success",
-        metadata: { profile, host: new URL(baseUrl).host },
+        metadata: { profile, host: new URL(baseUrl).host, gatewayId },
       },
       db,
     );

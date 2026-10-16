@@ -50,6 +50,17 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/activity/, "Activity"],
   [/^\/notifications/, "Notifications"],
   [/^\/support/, "Support"],
+  [/^\/crm\/contacts/, "Contacts"],
+  [/^\/crm\/companies/, "Companies"],
+  [/^\/crm\/smart-lists/, "Smart Lists"],
+  [/^\/crm\/tags/, "Tags & Segments"],
+  [/^\/crm\/fields/, "Custom Fields"],
+  [/^\/crm\/pipelines/, "Pipelines"],
+  [/^\/crm\/opportunities/, "Opportunities"],
+  [/^\/crm\/tasks/, "Tasks"],
+  [/^\/crm\/settings/, "CRM Settings"],
+  [/^\/crm/, "CRM"],
+  [/^\/inbox/, "Inbox"],
   [/^\/settings/, "Settings"],
   [/^\/add-ons/, "Custom Projects & Add-ons"],
   [/^\/projects/, "My Projects"],
@@ -332,4 +343,3 @@ export function SetupBanner() {
     </div>
   );
 }
-

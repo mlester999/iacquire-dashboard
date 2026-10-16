@@ -19,6 +19,8 @@ import { enrollEligible, prepareDueSteps } from "@/server/retention/engine";
 import { runFairUseChecks } from "@/server/fairuse/service";
 import { runInactivityReview } from "@/server/inactivity/service";
 import { sendDeletionReminders } from "@/server/offboarding/service";
+import { processImports } from "@/server/crm/imports";
+import { sendTaskReminders } from "@/server/crm/tasks";
 
 export interface ScheduledJob {
   name: string;
@@ -49,6 +51,9 @@ export const JOBS: ScheduledJob[] = [
   },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   { name: "websiteEnquiries", run: async () => (await processSubmissions()).processed },
+  // Native CRM: imports move forward a chunk at a time (never in one long request), and task reminders go out once each.
+  { name: "crmImports", run: async () => (await processImports()).advanced },
+  { name: "crmTaskReminders", run: async () => (await sendTaskReminders()).sent },
   { name: "domainRenewals", run: () => sendRenewalReminders() },
   { name: "websiteHealth", run: async () => (await checkLivePublications()).checked },
   { name: "notificationEmails", run: async () => (await deliverNotificationEmails()).queued },
