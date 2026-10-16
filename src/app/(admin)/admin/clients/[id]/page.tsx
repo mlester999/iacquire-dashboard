@@ -5,6 +5,8 @@ import { AppError } from "@/server/errors";
 import { ClientDetail } from "@/components/admin/client-detail";
 import { AgencyPauseCard } from "@/components/admin/agency-pause-card";
 import { withSystem } from "@/server/db";
+import Link from "next/link";
+import { Contact } from "lucide-react";
 
 export const metadata = { title: "Client" };
 
@@ -26,6 +28,10 @@ export default async function ClientDetailPage({ params, searchParams }: { param
   return (
     <div className="space-y-6">
       <AgencyPauseCard orgId={id} clientName={data.org.name} paused={pause.rows.length > 0} canLift={superAdmin} />
+      <Link href={`/admin/clients/${id}/crm`} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-[13px] shadow-soft hover:bg-surface-2">
+        <span className="flex items-center gap-2.5"><Contact className="size-4 text-primary" aria-hidden /><span><span className="font-medium text-ink">CRM workspace</span><span className="ml-2 text-muted">Opens with a recorded, time-limited support session</span></span></span>
+        <span className="font-medium text-primary">Open CRM</span>
+      </Link>
       <ClientDetail data={data} superAdmin={superAdmin} initialTab={tab ?? "overview"} timeZone={user.timezone} />
     </div>
   );

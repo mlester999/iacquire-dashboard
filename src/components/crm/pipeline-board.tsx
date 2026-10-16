@@ -151,7 +151,7 @@ export function PipelineBoard({
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
           <Input aria-label="Search deals" placeholder="Search deals, contacts, companies" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        {scope.userId && (
+        {scope.userId && !scope.agency && (
           <Segmented id="board-owner" ariaLabel="Whose deals" size="sm" value={state.mine ? "mine" : "all"} onChange={(v) => router.push(hrefWith({ mine: v === "mine" ? "1" : null }))}
             options={[{ value: "all", label: "All deals" }, { value: "mine", label: "My deals" }]} />
         )}
