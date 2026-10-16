@@ -170,7 +170,7 @@ export function PipelineBoard({
       <p className="sr-only" aria-live="polite">{announce}</p>
       <p id="board-kbd-hint" className="sr-only">Press Alt and the left or right arrow to move this deal to the previous or next stage.</p>
 
-      <div className="scrollbar-thin -mx-1 overflow-x-auto px-1 pb-3">
+      <div className="scrollbar-thin -mx-1 snap-x snap-mandatory overflow-x-auto scroll-px-1 px-1 pb-3 sm:snap-none">
         <ol className="flex min-h-[420px] gap-3" aria-label={`${pipeline.name} stages`}>
           {cols.map((col) => {
             const isOver = over === col.stage.id && dragging && dragging.from !== col.stage.id;
@@ -178,7 +178,7 @@ export function PipelineBoard({
               <li
                 key={col.stage.id}
                 aria-label={`${col.stage.name}, ${col.count} ${col.count === 1 ? "deal" : "deals"}`}
-                className={cn("flex w-[264px] shrink-0 flex-col rounded-2xl border bg-surface-2/60 transition-colors", isOver ? "border-primary/50 bg-primary-soft/40" : "border-line")}
+                className={cn("flex w-[min(264px,82vw)] shrink-0 snap-start flex-col rounded-2xl border bg-surface-2/60 transition-colors", isOver ? "border-primary/50 bg-primary-soft/40" : "border-line")}
                 onDragOver={(e) => {
                   if (!dragging || !canMove) return;
                   e.preventDefault();
