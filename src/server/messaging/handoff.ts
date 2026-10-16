@@ -75,11 +75,14 @@ async function addRecipients(
     });
     // Email carries the category and a link only: no customer message content leaves the app.
     if (person.notifyEmail) {
+      const urgent = kind === "action_required" && esc.urgency === "urgent";
       emails.push({
         to: person.email,
         template: "escalation_alert",
-        subject: kind === "action_required" ? `${esc.urgency === "urgent" ? "[Urgent] " : ""}${label}: customer needs a person` : `FYI: ${label}`,
-        text: `${kind === "action_required" ? "A customer conversation needs a person." : "A customer conversation was escalated to a teammate with first priority."}\n\nType: ${label}\nOpen it: ${appUrl(link(esc.conversationId, esc.id))}\n\nSign in to see the conversation.`,
+        subject: kind === "action_required" ? `${urgent ? "[Urgent] " : ""}${label}: customer needs a person` : `FYI: ${label}: a teammate has first priority`,
+        text: `${kind === "action_required" ? "Open the conversation to take it. The first person to accept it owns it." : "Another teammate has first priority. You will be asked if it is not picked up."}\n\nPriority: ${esc.urgency === "urgent" ? "Urgent" : "Normal"}\nType: ${label}\nOpen it: ${appUrl(link(esc.conversationId, esc.id))}\n\nSign in to see the conversation.`,
+        tone: urgent ? "critical" : kind === "action_required" ? "warning" : "info",
+        tag: urgent ? "Urgent" : kind === "action_required" ? "Needs a person" : "For your information",
       });
     }
   }

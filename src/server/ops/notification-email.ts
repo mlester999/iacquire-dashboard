@@ -31,6 +31,22 @@ interface Pending {
  * with the reason), so "did they get it?" has an answer, and the same notification is never emailed twice.
  * Customer content stays in the portal: those kinds are emailed as a title and a link only.
  */
+/** Presentation hints for the email design: severity tints the header, the kind names the category. */
+const toneOf = (severity: string): "info" | "success" | "warning" | "critical" | undefined => (severity === "info" || severity === "success" || severity === "warning" || severity === "critical" ? severity : undefined);
+const KIND_TAGS: Array<[RegExp, string]> = [
+  [/^(approval_|lead_awaiting)/, "Approval"],
+  [/^(billing_|usage_limit|fair_use)/, "Billing"],
+  [/^(escalation_|message_)/, "Conversation"],
+  [/^booking_/, "Appointment"],
+  [/^support_/, "Support"],
+  [/^setup_/, "Setup"],
+  [/^(project_|maintenance_)/, "Projects"],
+  [/^(website_|domain_)/, "Website"],
+  [/^(integration_|incident_|workflow_)/, "System"],
+  [/^(retention_|account_|offboarding_)/, "Account"],
+];
+const tagOf = (kind: string) => KIND_TAGS.find(([re]) => re.test(kind))?.[1];
+
 export async function deliverNotificationEmails(opts: { now?: Date; limit?: number } = {}): Promise<{ queued: number; skipped: number; deferred: number }> {
   const now = opts.now ?? new Date();
   const out = { queued: 0, skipped: 0, deferred: 0 };
@@ -70,7 +86,7 @@ export async function deliverNotificationEmails(opts: { now?: Date; limit?: numb
     const link = n.link ? new URL(n.link, base).toString() : `${base}/notifications`;
     const text = [n.title, emailIncludesBody(n.kind) && n.body ? `\n${n.body}` : "", `\nOpen in iAcquire: ${link}`, "\nYou can change which notifications are emailed in Settings → Notifications."].filter(Boolean).join("\n");
     try {
-      const sent = await sendEmail({ to: n.email, template: "notification", subject: n.title.slice(0, 150), text });
+      const sent = await sendEmail({ to: n.email, template: "notification", subject: n.title.slice(0, 150), text, tone: toneOf(n.severity), tag: tagOf(n.kind) });
       await record(sent.status === "failed" ? "skipped" : "queued", sent.status === "failed" ? "The email provider rejected it." : null, sent.id);
       out.queued += 1;
     } catch {

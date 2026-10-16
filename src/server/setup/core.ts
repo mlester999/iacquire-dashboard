@@ -249,7 +249,7 @@ function helpers(orgId: string, db: Queryable, afterQueue: Array<() => Promise<v
       afterQueue.push(async () => {
         const to = await emailOptedInRecipients(orgId);
         for (const addr of to) {
-          await sendEmail({ to: addr, template: "setup_update", subject: n.title, text: `${n.title}${n.body ? `\n\n${n.body}` : ""}\n\nOpen your Setup Center: ${new URL("/setup", env().APP_URL).toString()}` });
+          await sendEmail({ to: addr, template: "setup_update", subject: n.title, text: `${n.title}${n.body ? `\n\n${n.body}` : ""}\n\nOpen your Setup Center: ${new URL("/setup", env().APP_URL).toString()}`, tone: n.severity });
         }
       });
     },

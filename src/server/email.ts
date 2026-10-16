@@ -1,6 +1,7 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
+import { renderEmail } from "@/server/email-render";
 
 export type EmailTemplate = "invitation" | "verify_email" | "password_reset" | "support_reply" | "staff_invitation" | "setup_update" | "escalation_alert" | "notification";
 
@@ -9,6 +10,9 @@ export interface OutgoingEmail {
   template: EmailTemplate;
   subject: string;
   text: string;
+  /** Optional presentation hints (the text part stays complete without them): severity tints the header, tag names the category. */
+  tone?: "info" | "success" | "warning" | "critical";
+  tag?: string;
 }
 
 export type EmailStatus = "queued" | "captured" | "sent" | "failed";
@@ -68,7 +72,8 @@ async function deliverViaResend(id: string, email: OutgoingEmail, db?: Queryable
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${e.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: e.EMAIL_FROM, to: [email.to], subject: email.subject, text: email.text }),
+      // Branded HTML plus the original plain text as the fallback part (multipart/alternative).
+      body: JSON.stringify({ from: e.EMAIL_FROM, to: [email.to], subject: email.subject, ...renderOutgoing(email) }),
       signal: AbortSignal.timeout(10000),
     });
     if (res.ok) status = "sent";
@@ -80,6 +85,11 @@ async function deliverViaResend(id: string, email: OutgoingEmail, db?: Queryable
     q.query("update email_outbox set status = $2, error = $3, sent_at = case when $2 = 'sent' then now() end where id = $1", [id, status, error]);
   await (db ? record(db) : withSystem(record)).catch(() => undefined);
   return { status, error };
+}
+
+function renderOutgoing(email: OutgoingEmail) {
+  const { html, text } = renderEmail(email, { baseUrl: env().APP_URL });
+  return { html, text };
 }
 
 /** The provider explains rejections (for example an unverified sending domain); surface that, never the request. */

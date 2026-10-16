@@ -11,7 +11,7 @@ import {
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { recordAudit } from "@/server/audit";
 import { appUrl, sendEmail, type EmailDelivery, type OutgoingEmail } from "@/server/email";
-import type { OrgRole, PlatformRole } from "@/lib/permissions";
+import { ROLE_LABELS, type OrgRole, type PlatformRole } from "@/lib/permissions";
 
 export const SESSION_ABSOLUTE_DAYS = 30;
 export const SESSION_IDLE_DAYS = 7;
@@ -452,11 +452,16 @@ export async function createInvitation(
       ? (await q.query<{ name: string }>("select name from organizations where id = $1", [input.orgId])).rows[0]?.name
       : null;
     const link = appUrl(`/invite/${token}`);
+    const inviter = input.invitedBy
+      ? (await q.query<{ full_name: string | null }>("select full_name from users where id = $1", [input.invitedBy])).rows[0]?.full_name?.replace(/\s+/g, " ").trim()
+      : null;
+    const roleLabel = ROLE_LABELS[input.orgId ? input.role ?? "member" : input.platformRole ?? "agency_staff"];
+    const who = [inviter ? `Invited by: ${inviter}` : "", `Role: ${roleLabel}`].filter(Boolean).join("\n");
     const message: OutgoingEmail = {
       to: email,
       template: input.orgId ? "invitation" : "staff_invitation",
       subject: orgName ? `You're invited to ${orgName} on iAcquire` : "You're invited to the iAcquire agency team",
-      text: `${orgName ? `You've been invited to join ${orgName}'s iAcquire workspace.` : "You've been invited to join the iAcquire agency workspace."}\n\nAccept your invitation: ${link}\n\nThis invitation expires in ${INVITE_DAYS} days.`,
+      text: `${orgName ? `You've been invited to join ${orgName}'s iAcquire workspace.` : "You've been invited to join the iAcquire agency workspace."}\n\n${who}\n\nAccept your invitation: ${link}\n\nThis invitation expires in ${INVITE_DAYS} days.`,
     };
     return { id: rows[0].id, token, link, message };
   };
