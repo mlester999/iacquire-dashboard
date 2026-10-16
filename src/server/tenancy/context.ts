@@ -6,7 +6,7 @@ import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { ORG_COOKIE, getCurrentUser, requireUser, requireUserOrThrow } from "@/server/auth/session";
 import type { SessionUser } from "@/server/auth/service";
-import { permissionsFor, roleHasPermission, type OrgRole, type Permission } from "@/lib/permissions";
+import { PERMISSION_MATRIX, effectivePermission, isDelegablePermission, type OrgRole, type Permission, type PermissionOverrides } from "@/lib/permissions";
 
 export interface Membership {
   orgId: string;
@@ -62,14 +62,25 @@ export async function listMemberships(userId: string): Promise<Membership[]> {
   });
 }
 
-function buildContext(user: SessionUser, org: Membership, memberships: Membership[]): OrgContext {
-  const permissions = permissionsFor(org.role);
+/** Per-person grants and withdrawals of delegable permissions in one workspace. The database applies the same rule in app.has_permission. */
+export async function loadPermissionOverrides(userId: string, orgId: string): Promise<PermissionOverrides> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ permission: string; effect: "grant" | "revoke" }>("select permission, effect from member_permission_overrides where org_id = $1 and user_id = $2", [orgId, userId]),
+  );
+  const out: PermissionOverrides = {};
+  for (const r of rows) if (isDelegablePermission(r.permission)) out[r.permission] = r.effect;
+  return out;
+}
+
+export function buildContext(user: SessionUser, org: Membership, memberships: Membership[], overrides: PermissionOverrides = {}): OrgContext {
+  const can = (p: Permission) => effectivePermission(org.role, p, overrides);
+  const permissions = (Object.keys(PERMISSION_MATRIX) as Permission[]).filter(can);
   return {
     user,
     org,
     role: org.role,
     permissions,
-    can: (p) => roleHasPermission(org.role, p),
+    can,
     memberships,
   };
 }
@@ -87,7 +98,7 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   const jar = await cookies();
   const preferred = jar.get(ORG_COOKIE)?.value;
   const org = usable.find((m) => m.orgId === preferred) ?? usable[0];
-  return buildContext(user, org, memberships);
+  return buildContext(user, org, memberships, org.role === "owner" ? {} : await loadPermissionOverrides(user.id, org.orgId));
 });
 
 /** Pages: redirect to the right place when there is no usable workspace. */

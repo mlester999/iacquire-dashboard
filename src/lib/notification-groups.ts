@@ -12,6 +12,7 @@ export const NOTIFICATION_GROUPS = [
   { key: "projects", label: "Custom projects & maintenance", description: "Progress updates, messages and maintenance updates. Quotes and your decisions always notify you.", kinds: ["project_update", "project_message", "maintenance_update"] },
   { key: "billing", label: "Billing and credits", description: "Payments received, low balances and spending-limit warnings.", kinds: ["billing_payment_received", "billing_budget_warning", "billing_low_balance"] },
   { key: "messaging", label: "Customer messaging", description: "FYI notices about conversations handled by your team, and messages that were held back.", kinds: ["escalation_fyi", "message_blocked"] },
+  { key: "crm", label: "CRM", description: "Records assigned to you, tasks coming due, and finished imports.", kinds: ["crm_assigned", "crm_task_due", "crm_import_finished"] },
   { key: "websites", label: "Website", description: "When your website is published or a domain is verified.", kinds: ["website_published", "domain_verified"] },
 ] as const;
 

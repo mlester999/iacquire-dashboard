@@ -55,7 +55,11 @@ export type NotificationKind =
   | "booking_needs_action"
   | "retention_attention"
   | "fair_use_notice"
-  | "offboarding_update";
+  | "offboarding_update"
+  | "crm_import_finished"
+  | "crm_assigned"
+  | "crm_support_access"
+  | "crm_task_due";
 
 export interface NotificationInput {
   kind: NotificationKind;

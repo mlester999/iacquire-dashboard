@@ -32,8 +32,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 async function createPgliteDriver(dataDir: string | undefined): Promise<Driver> {
   const { PGlite } = await import("@electric-sql/pglite");
   const { citext } = await import("@electric-sql/pglite/contrib/citext");
+  // The same contrib extensions the hosted Supabase project offers: trigram search and GiST equality (booking exclusion constraints).
+  const { pg_trgm } = await import("@electric-sql/pglite/contrib/pg_trgm");
+  const { btree_gist } = await import("@electric-sql/pglite/contrib/btree_gist");
   if (dataDir) fs.mkdirSync(dataDir, { recursive: true });
-  const db = new PGlite({ dataDir, extensions: { citext } });
+  const db = new PGlite({ dataDir, extensions: { citext, pg_trgm, btree_gist } });
   await db.waitReady;
   const wrap = (q: { query: typeof db.query }): Queryable => ({
     async query<T>(sql: string, params?: unknown[]) {

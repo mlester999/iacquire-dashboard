@@ -51,6 +51,7 @@ export const ROLE_DEFAULT_CATEGORIES: Record<OrgRole, readonly EscalationCategor
   sales_rep: ["ready_to_close", "human_requested", "phone_consultation", "sensitive_negotiation"],
   support: ["human_requested", "complaint", "refund_concern", "frustrated_customer", "unanswered_question"],
   viewer: [],
+  appointment_setter: ["human_requested", "phone_consultation", "unanswered_question"],
 };
 
 export const OWNER_PRIORITY_MODES = ["first_priority", "notify_only", "urgent_only"] as const;

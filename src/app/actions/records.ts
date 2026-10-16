@@ -79,7 +79,7 @@ export async function completeTaskAction(taskId: string) {
     const ctx = await requireOrgContextOrThrow("tasks.manage");
     uuid.parse(taskId);
     const res = await withUser(ctx.user.id, (db) =>
-      db.query("update tasks set status = 'done', completed_at = now() where id = $1 and org_id = $2 and status = 'open'", [taskId, ctx.org.orgId]),
+      db.query("update tasks set status = 'done', completed_at = now() where id = $1 and org_id = $2 and status in ('open', 'in_progress')", [taskId, ctx.org.orgId]),
     );
     if (!res.rowCount) throw new AppError("not_found", "Task not found.");
     revalidatePath("/", "layout");
