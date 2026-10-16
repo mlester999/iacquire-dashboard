@@ -71,9 +71,12 @@ alter table crm_opportunities
   add column stage_entered_at timestamptz,
   add column archived_at timestamptz,
   add column version integer not null default 1,
+  -- Set by automated creators (forms, bookings, workflows, the API) so a retry returns the same deal instead of a second one.
+  add column idempotency_key text check (char_length(idempotency_key) between 8 and 200),
   add column created_at timestamptz not null default now(),
   add column updated_at timestamptz not null default now();
 alter table crm_opportunities alter column ghl_opportunity_id drop not null;
+create unique index crm_opportunities_idempotency on crm_opportunities (org_id, idempotency_key) where idempotency_key is not null;
 alter table crm_opportunities add constraint crm_opportunities_ghl_id check (provider <> 'ghl' or ghl_opportunity_id is not null);
 alter table crm_opportunities add constraint crm_opportunities_native_shape check (provider <> 'native' or (pipeline_ref is not null and stage_ref is not null and currency is not null and stage_entered_at is not null));
 alter table crm_opportunities add constraint crm_opportunities_native_closed check (provider <> 'native' or ((status = 'open') = (closed_at is null)));

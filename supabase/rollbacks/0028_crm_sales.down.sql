@@ -26,6 +26,7 @@ drop trigger if exists crm_opportunities_touch on crm_opportunities;
 drop index if exists crm_opportunities_board_idx;
 drop index if exists crm_opportunities_contact_idx;
 drop index if exists crm_opportunities_owner_idx;
+drop index if exists crm_opportunities_idempotency;
 alter table crm_opportunities
   drop constraint if exists crm_opportunities_ghl_id,
   drop constraint if exists crm_opportunities_native_shape,
@@ -58,7 +59,7 @@ alter table crm_opportunities drop column if exists provider, drop column if exi
   drop column if exists company_id, drop column if exists currency, drop column if exists expected_close_date, drop column if exists lost_reason,
   drop column if exists assigned_user_id, drop column if exists description, drop column if exists probability, drop column if exists created_by,
   drop column if exists created_via, drop column if exists closed_at, drop column if exists stage_entered_at, drop column if exists archived_at,
-  drop column if exists version, drop column if exists created_at, drop column if exists updated_at;
+  drop column if exists version, drop column if exists idempotency_key, drop column if exists created_at, drop column if exists updated_at;
 alter table crm_opportunities drop constraint if exists crm_opportunities_id_org;
 alter table crm_opportunities alter column ghl_opportunity_id set not null;
 

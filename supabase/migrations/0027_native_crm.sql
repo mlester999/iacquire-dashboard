@@ -604,7 +604,7 @@ create table crm_import_jobs (
   source text not null default 'csv' check (source in ('csv', 'ghl_api')),
   file_name text check (char_length(file_name) <= 200),
   status text not null default 'uploaded' check (status in (
-    'uploaded', 'validated', 'queued', 'importing', 'completed', 'failed', 'cancelled', 'rolling_back', 'rolled_back')),
+    'uploaded', 'validating', 'validated', 'importing', 'completed', 'failed', 'cancelled', 'rolling_back', 'rolled_back')),
   headers text[] not null default '{}' check (cardinality(headers) <= 200),
   mapping jsonb not null default '{}'::jsonb check (jsonb_typeof(mapping) = 'object' and pg_column_size(mapping) <= 16384),
   -- duplicates: what to do when a row matches an existing record by exact email or phone (never by name).
@@ -623,7 +623,7 @@ create table crm_import_jobs (
   unique (id, org_id)
 );
 create index crm_import_jobs_org_idx on crm_import_jobs (org_id, created_at desc);
-create index crm_import_jobs_work_idx on crm_import_jobs (status) where status in ('queued', 'importing', 'rolling_back');
+create index crm_import_jobs_work_idx on crm_import_jobs (status) where status in ('validating', 'importing', 'rolling_back');
 
 create table crm_import_rows (
   org_id uuid not null references organizations(id) on delete cascade,
