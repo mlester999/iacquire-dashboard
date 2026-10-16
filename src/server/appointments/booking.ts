@@ -11,6 +11,7 @@ import { isSlotAvailable, loadPolicy } from "@/server/appointments/availability"
 import { ghlAppointmentProvider, type AppointmentProvider } from "@/server/appointments/provider";
 import { formatSlot, overlaps } from "@/lib/appointments";
 import type { OrgContext } from "@/server/tenancy/context";
+import { bookingIsNative, executeNativeBooking, requestNativeBooking } from "@/server/calendars/agent-booking";
 
 export type BookingActor = { kind: "ai"; agentId: string | null } | { kind: "staff"; userId: string };
 
@@ -66,6 +67,8 @@ async function release(db: Queryable, id: string, status: "failed" | "cancelled"
  * the booking sent. A booking is never claimed until the calendar provider confirms it.
  */
 export async function requestBooking(req: BookingRequest, d: { provider?: AppointmentProvider } = {}): Promise<BookingResult> {
+  // Native calendars: the same hold, check and approval steps, booking a native appointment type instead of a GoHighLevel calendar.
+  if (!d.provider && (await withSystem((db) => bookingIsNative(db, req.orgId)))) return requestNativeBooking(req);
   const now = req.now ?? new Date();
   const provider = deps(d);
 
@@ -169,6 +172,8 @@ function resultFor(b: BookingRow): BookingResult {
  * person confirms an AI proposal. The mode and the pauses are checked again here, immediately before the write.
  */
 export async function executeBooking(orgId: string, bookingId: string, opts: { provider?: AppointmentProvider; now?: Date; ghlContactId?: string | null; approvalId?: string | null } = {}): Promise<BookingResult> {
+  const kind = await withSystem((db) => db.query<{ provider: string }>("select provider from appointment_bookings where id = $1 and org_id = $2", [bookingId, orgId]));
+  if (kind.rows[0]?.provider === "native") return executeNativeBooking(orgId, bookingId, { now: opts.now, approvalId: opts.approvalId });
   const provider = deps(opts);
   const now = opts.now ?? new Date();
   const loaded = await withSystem(async (db) => {

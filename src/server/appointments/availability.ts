@@ -2,6 +2,7 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { filterSlots, isLiveStatus, type AppointmentStatus, type Slot } from "@/lib/appointments";
 import { ghlAppointmentProvider, type AppointmentProvider } from "@/server/appointments/provider";
+import { bookingIsNative, nativeAvailability } from "@/server/calendars/agent-booking";
 
 export interface AppointmentPolicy {
   defaultCalendarId: string | null;
@@ -57,6 +58,8 @@ export interface AvailabilityOptions {
  * calendar can't be read the answer is "none, and here is why", never a guess.
  */
 export async function getAvailability(orgId: string, opts: AvailabilityOptions = {}): Promise<AvailabilityResult> {
+  // A workspace on native calendars answers from its own calendars; GoHighLevel is never asked.
+  if (!opts.provider && (await withSystem((db) => bookingIsNative(db, orgId)))) return nativeAvailability(orgId, opts);
   const now = opts.now ?? new Date();
   const provider = opts.provider ?? ghlAppointmentProvider;
   const ctx = await withSystem(async (db) => {

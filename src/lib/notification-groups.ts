@@ -8,7 +8,7 @@ export const NOTIFICATION_GROUPS = [
   { key: "support", label: "Support replies", description: "Replies and status changes from the iAcquire team.", kinds: ["support_reply"] },
   { key: "knowledge", label: "Knowledge updates", description: "Reviews of held knowledge or configuration changes.", kinds: ["knowledge_update_ready"] },
   { key: "usage", label: "Usage alerts", description: "When you approach your workspace limits.", kinds: ["usage_limit_approaching"] },
-  { key: "calendar", label: "Bookings", description: "Confirmed bookings from your calendar.", kinds: ["booking_confirmed"] },
+  { key: "calendar", label: "Bookings", description: "New and confirmed bookings, and problems syncing a connected calendar.", kinds: ["booking_confirmed", "crm_booking_new", "crm_calendar_sync"] },
   { key: "projects", label: "Custom projects & maintenance", description: "Progress updates, messages and maintenance updates. Quotes and your decisions always notify you.", kinds: ["project_update", "project_message", "maintenance_update"] },
   { key: "billing", label: "Billing and credits", description: "Payments received, low balances and spending-limit warnings.", kinds: ["billing_payment_received", "billing_budget_warning", "billing_low_balance"] },
   { key: "messaging", label: "Customer messaging", description: "FYI notices about conversations handled by your team, and messages that were held back.", kinds: ["escalation_fyi", "message_blocked"] },
