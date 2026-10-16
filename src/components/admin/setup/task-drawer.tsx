@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, ExternalLink, Link2, ShieldAlert, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, Clock, ExternalLink, History, Link2, Lock, MessageSquareQuote, ShieldAlert, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Sheet, Tabs } from "@/components/ui/overlays";
-import { StatusBadge, StatusIcon } from "@/components/setup/status";
-import { CheckRow, eventLabel, MODE_HINT, MODE_LABEL, snapshotTasks, SwitchRow, type Act } from "@/components/admin/setup/common";
+import { StatusIcon } from "@/components/setup/status";
+import { InfoChip, StatusPill } from "@/components/ui/status";
+import { CheckRow, eventLabel, MODE_HINT, MODE_LABEL, snapshotTasks, SwitchRow, TaskStatusPill, type Act } from "@/components/admin/setup/common";
+import { Callout } from "@/components/admin/setup/ui";
 import {
   addTaskAttachmentAction,
   addTaskNoteAction,
@@ -47,11 +49,11 @@ function DrawerBody({ orgId, snapshot, task, act, busy, timeZone }: Props & { ta
     <div className="space-y-5 p-5">
       <div className="flex flex-wrap items-center gap-2">
         <StatusIcon status={task.status} size="sm" />
-        <StatusBadge status={task.status} />
-        {!task.required && <Badge tone="outline">Optional</Badge>}
-        {task.hidden && <Badge tone="outline">Hidden from client</Badge>}
-        {task.serviceExcluded && <Badge tone="outline">Not in package</Badge>}
-        <span className="text-[12.5px] text-muted">Updated {relativeTime(task.updatedAt)}</span>
+        <TaskStatusPill status={task.status} />
+        {!task.required && <StatusPill tone="neutral" dot={false}>Optional</StatusPill>}
+        {task.hidden && <StatusPill tone="neutral" dot={false}>Hidden from client</StatusPill>}
+        {task.serviceExcluded && <StatusPill tone="neutral" dot={false}>Not in package</StatusPill>}
+        <InfoChip icon={<Clock />}><span suppressHydrationWarning>Updated {relativeTime(task.updatedAt)}</span></InfoChip>
       </div>
       <Tabs
         id="setup-drawer"
@@ -121,22 +123,30 @@ function StatusTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
   return (
     <div className="space-y-5">
       {completionLine(task, timeZone) && (
-        <p className="flex items-start gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-[13px] leading-relaxed text-success-ink">
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> {completionLine(task, timeZone)}
-        </p>
+        <Callout tone="success" icon={<CheckCircle2 />}>
+          {completionLine(task, timeZone)}
+        </Callout>
       )}
-      {task.completionNote && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">Client sees: “{task.completionNote}”</p>}
-      {task.blockedReason && <p className="rounded-xl bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">Blocked: {task.blockedReason}</p>}
+      {task.completionNote && (
+        <Callout tone="neutral" icon={<MessageSquareQuote />} title="Client sees">
+          “{task.completionNote}”
+        </Callout>
+      )}
+      {task.blockedReason && (
+        <Callout tone="danger" icon={<Ban />} title="Blocked">
+          {task.blockedReason}
+        </Callout>
+      )}
       {unmet.length > 0 && task.status !== "completed" && (
-        <p className="flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> Waiting on: {unmet.join(", ")}
-        </p>
+        <Callout tone="warning" icon={<AlertTriangle />} title="Waiting on">
+          {unmet.join(", ")}
+        </Callout>
       )}
 
       {verified && <VerificationCard {...{ orgId, task, check, act, busy }} />}
 
       {activation ? (
-        <p className="rounded-xl bg-surface-2 px-3 py-3 text-[13px] leading-relaxed text-muted">{MODE_HINT.activation} Use “Mark ready for final review” and “Approve activation” in the readiness panel.</p>
+        <Callout tone="violet" icon={<ShieldCheck />}>{MODE_HINT.activation} Use “Mark ready for final review” and “Approve activation” in the readiness panel.</Callout>
       ) : (
         <div className="space-y-4 rounded-2xl border border-line bg-surface-2/40 p-4">
           <h3 className="text-[14px] font-semibold text-ink">Change status</h3>
@@ -166,9 +176,9 @@ function StatusTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
           )}
           {notifies && <CheckRow id="ts-notify" label="Notify the client in their portal" checked={notify} onChange={setNotify} />}
           {problem && status !== task.status && (
-            <p role="alert" className="text-[12.5px] text-warning-ink">
-              {problem}
-            </p>
+            <Callout tone="warning" icon={<AlertTriangle />} className="px-3 py-2 text-[12.5px]">
+              <span role="alert">{problem}</span>
+            </Callout>
           )}
           <Button
             variant="brand"
@@ -204,18 +214,18 @@ function VerificationCard({ orgId, task, check, act, busy }: { orgId: string; ta
         <h3 className="flex items-center gap-2 text-[14px] font-semibold text-ink">
           <ShieldCheck className="size-4 text-primary" /> Integration check
         </h3>
-        <Badge tone={tone}>{label}</Badge>
+        <StatusPill tone={tone}>{label}</StatusPill>
       </div>
       <p className="text-[12.5px] leading-relaxed text-muted">
         <span className="font-medium text-ink-2">{check?.label ?? "Check"}</span>
         {check?.connectorImplemented && check.detail ? `: ${check.detail}` : "."} Task progress and integration health are tracked separately.
       </p>
-      {check?.status === "attested" && check.attestedBy && <p className="text-[12.5px] text-violet-ink">Attested by {check.attestedBy}. This is a statement by the team, not a system test.</p>}
-      {result && <p className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] text-ink-2">{result}</p>}
+      {check?.status === "attested" && check.attestedBy && <Callout tone="violet" icon={<ShieldCheck />} className="px-3 py-2 text-[12.5px]">Attested by {check.attestedBy}. This is a statement by the team, not a system test.</Callout>}
+      {result && <Callout tone="neutral" className="px-3 py-2 text-[12.5px]">{result}</Callout>}
 
       {check?.connectorImplemented ? (
         task.status === "completed" ? (
-          <p className="text-[12.5px] text-muted">This step is already complete. Re-run the check from the readiness panel to confirm it still passes.</p>
+          <Callout tone="success" icon={<CheckCircle2 />} className="px-3 py-2 text-[12.5px]">This step is already complete. Re-run the check from the readiness panel to confirm it still passes.</Callout>
         ) : (
           <Button
             variant="secondary"
@@ -292,10 +302,10 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
         <h3 className="text-[14px] font-semibold text-ink">Ask the client for something</h3>
         <p className="text-[12.5px] leading-relaxed text-muted">Moves the step to Waiting for client and gives them one clear button. Their answer sends it to Ready for review. It never completes the step by itself.</p>
         {task.clientAction && (
-          <p className="rounded-lg bg-surface px-3 py-2 text-[12.5px] text-ink-2">
-            Current request: <span className="font-medium">{task.clientAction.label}</span>
-            {approvalNeeded && <span className="ml-1 text-warning-ink">· approval required before completion</span>}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface px-3 py-2.5 text-[12.5px] text-ink-2 ring-1 ring-inset ring-line">
+            <span>Current request: <span className="font-medium text-ink">{task.clientAction.label}</span></span>
+            {approvalNeeded && <StatusPill tone="warning" size="sm">Approval required before completion</StatusPill>}
+          </div>
         )}
         <Field label="Type" htmlFor="rq-type" hint={CLIENT_ACTION_TYPES.find((t) => t.value === req.type)?.hint}>
           <Select id="rq-type" value={req.type} onChange={(e) => setReq({ ...req, type: e.target.value as ClientActionType })}>
@@ -326,20 +336,22 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
       </section>
 
       {resp && (
-        <section className="rounded-2xl border border-line bg-surface p-4">
+        <section className="space-y-3 rounded-2xl border border-line bg-surface p-4">
           <h3 className="text-[14px] font-semibold text-ink">Client response</h3>
-          <p className="mt-1 text-[13px] text-ink-2">
-            {resp.decision === "request_changes" ? "Asked for changes" : resp.decision === "approve" ? "Approved" : resp.decision === "confirm" ? "Confirmed it is done" : "Sent information"}
-            {resp.at ? ` · ${relativeTime(resp.at)}` : ""}
-          </p>
-          {resp.message && <p className="mt-2 whitespace-pre-wrap rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{resp.message}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill tone={resp.decision === "request_changes" ? "warning" : resp.decision === "approve" || resp.decision === "confirm" ? "success" : "primary"}>
+              {resp.decision === "request_changes" ? "Asked for changes" : resp.decision === "approve" ? "Approved" : resp.decision === "confirm" ? "Confirmed it is done" : "Sent information"}
+            </StatusPill>
+            {resp.at && <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(resp.at)}</span></InfoChip>}
+          </div>
+          {resp.message && <p className="whitespace-pre-wrap rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-ink-2">{resp.message}</p>}
         </section>
       )}
 
       <section className="space-y-3">
         <h3 className="text-[14px] font-semibold text-ink">Links and documentation</h3>
         {task.attachments.length === 0 ? (
-          <p className="text-[12.5px] text-muted">No links or documents yet.</p>
+          <EmptyState compact icon={<Link2 className="size-5" />} title="No links or documents yet" description="Add a link or a private document below. Choose whether the client can see it." />
         ) : (
           <ul className="space-y-2">
             {task.attachments.map((a) => (
@@ -348,8 +360,8 @@ function ClientTab({ orgId, task, act, busy }: TabProps) {
                 <a href={a.url} target="_blank" rel="noopener noreferrer nofollow" className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:text-primary">
                   {a.label} <ExternalLink className="ml-0.5 inline size-3" />
                 </a>
-                <Badge tone={a.visibility === "client" ? "primary" : "neutral"}>{a.visibility === "client" ? "Client sees" : "Internal"}</Badge>
-                <button type="button" aria-label={`Remove ${a.label}`} className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink" onClick={() => act("rm-att", () => removeTaskAttachmentAction(orgId, a.id), "Link removed")}>
+                <StatusPill tone={a.visibility === "client" ? "primary" : "neutral"} size="sm">{a.visibility === "client" ? "Client sees" : "Internal"}</StatusPill>
+                <button type="button" aria-label={`Remove ${a.label}`} className="flex size-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-danger-soft hover:text-danger-ink sm:size-8" onClick={() => act("rm-att", () => removeTaskAttachmentAction(orgId, a.id), "Link removed")}>
                   <Trash2 className="size-3.5" />
                 </button>
               </li>
@@ -513,7 +525,7 @@ function DetailsTab({ orgId, snapshot, task, act, busy }: TabProps) {
         <p className="text-[12.5px] text-muted">This step can&apos;t be completed (or requested from the client) until these are done. Hidden and out-of-package steps are ignored.</p>
         <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
           {others.map((o) => (
-            <CheckRow key={o.id} id={`dep-${o.id}`} label={o.title} hint={o.hidden || o.serviceExcluded ? "Not applicable" : STATUS_LABEL[o.status]} checked={deps.includes(o.id)} onChange={(v) => setDeps(v ? [...deps, o.id] : deps.filter((d) => d !== o.id))} />
+            <CheckRow key={o.id} id={`dep-${o.id}`} label={o.title} trailing={o.hidden || o.serviceExcluded ? <StatusPill tone="neutral" size="sm" dot={false}>Not applicable</StatusPill> : <TaskStatusPill status={o.status} size="sm" />} checked={deps.includes(o.id)} onChange={(v) => setDeps(v ? [...deps, o.id] : deps.filter((d) => d !== o.id))} />
           ))}
         </div>
         <Button variant="secondary" size="sm" loading={busy === "deps"} disabled={JSON.stringify([...deps].sort()) === JSON.stringify([...task.dependsOn].sort())} onClick={() => act("deps", () => setTaskDependenciesAction(orgId, task.id, deps), "Prerequisites saved")}>
@@ -553,7 +565,7 @@ function HistoryTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
       <section>
         <h3 className="mb-3 text-[14px] font-semibold text-ink">Change history</h3>
         {events.length === 0 ? (
-          <p className="text-[12.5px] text-muted">No changes recorded yet.</p>
+          <EmptyState compact icon={<History className="size-5" />} title="No changes recorded yet" description="Status changes, notes and edits to this step show up here." />
         ) : (
           <ol className="relative space-y-4 border-l border-line pl-4">
             {events.map((e) => (
@@ -561,18 +573,16 @@ function HistoryTab({ orgId, snapshot, task, act, busy, timeZone }: TabProps) {
                 <span className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" aria-hidden />
                 <p className="text-[13px] leading-snug text-ink">{eventLabel(e, tasks)}</p>
                 {e.body && (
-                  <p className="mt-1 rounded-lg bg-primary-soft px-2.5 py-1.5 text-[12.5px] text-primary-ink">
-                    <span className="font-medium">Client sees: </span>
+                  <Callout tone="primary" icon={<MessageSquareQuote />} title="Client sees" className="mt-1.5 px-2.5 py-2 text-[12.5px]">
                     {e.body}
-                  </p>
+                  </Callout>
                 )}
                 {e.reason && (
-                  <p className="mt-1 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-ink-2">
-                    <span className="font-medium">Internal: </span>
+                  <Callout tone="neutral" icon={<Lock />} title="Internal" className="mt-1.5 px-2.5 py-2 text-[12.5px]">
                     {e.reason}
-                  </p>
+                  </Callout>
                 )}
-                <p className="mt-1 text-[12px] text-faint">{formatDateTime(e.at, timeZone)}</p>
+                <InfoChip icon={<Clock />} className="mt-1.5 h-5 text-[11px]">{formatDateTime(e.at, timeZone)}</InfoChip>
               </li>
             ))}
           </ol>

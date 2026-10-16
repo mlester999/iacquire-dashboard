@@ -3,13 +3,14 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, Circle, Copy, Globe, Plus, ShoppingCart, Star, Trash2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, Copy, Globe, Landmark, Plus, ShoppingCart, Star, Trash2 } from "lucide-react";
 import {
   addDomainAction, approveDomainPurchaseAction, changeSubdomainAction, checkLiveAction, checkSslAction, removeDomainAction, requestDomainPurchaseAction, setPrimaryDomainAction, verifyDomainAction,
 } from "@/app/actions/website";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
 import { domainStatusLabel, domainStatusTone } from "@/components/website/portal/domain-status";
 import { formatCurrency, formatDate, relativeTime } from "@/lib/utils";
 import type { DnsInstructions } from "@/server/websites/domains";
@@ -27,12 +28,12 @@ function CopyValue({ label, value }: { label: string; value: string }) {
     }
   };
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-line bg-surface-2/60 p-2">
+    <div className="flex items-start gap-2 rounded-xl bg-surface-2/70 p-2.5 ring-1 ring-inset ring-line">
       <div className="min-w-0 flex-1">
-        <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted">{label}</p>
+        <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{label}</p>
         <p className="break-all font-mono text-[12.5px] text-ink">{value}</p>
       </div>
-      <button type="button" onClick={() => void copy()} aria-label={`Copy ${label}`} className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary">
+      <button type="button" onClick={() => void copy()} aria-label={`Copy ${label}`} className="grid size-10 shrink-0 place-items-center rounded-lg text-ink-2 ring-1 ring-inset ring-line hover:bg-surface-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-9">
         <Copy className="size-3.5" aria-hidden />
       </button>
     </div>
@@ -42,13 +43,13 @@ function CopyValue({ label, value }: { label: string; value: string }) {
 function Step({ done, title, children }: { done: boolean | null; title: string; children?: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <span className="mt-0.5 shrink-0" aria-hidden>
-        {done === true ? <CheckCircle2 className="size-5 text-success" /> : <Circle className={done === false ? "size-5 text-warning" : "size-5 text-line-strong"} />}
+      <span aria-hidden className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full ring-1 ring-inset ${done === true ? "bg-success-soft text-success-ink ring-success/20" : done === false ? "bg-warning-soft text-warning-ink ring-warning/25" : "bg-surface-2 text-faint ring-line"}`}>
+        {done === true ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-medium">
+        <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
           {title}
-          <span className="sr-only">{done === true ? " (done)" : " (not done yet)"}</span>
+          {done === true ? <StatusPill tone="success" size="sm">Done</StatusPill> : done === false ? <StatusPill tone="warning" size="sm">To do</StatusPill> : <StatusPill tone="neutral" size="sm">Up next</StatusPill>}
         </p>
         {children && <div className="mt-1.5 space-y-2 text-[13px] leading-relaxed text-muted">{children}</div>}
       </div>
@@ -67,21 +68,21 @@ function DomainCard({ d, dns, canManage, canApprove, hasPublished, run, busy }: 
     <Card>
       <CardHeader className="flex-col items-stretch gap-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="flex min-w-0 items-center gap-2 break-all">
-            <Globe className="size-4 shrink-0 text-muted" aria-hidden /> {d.hostname}
+          <CardTitle className="flex min-w-0 items-center gap-3 break-all">
+            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-line"><Globe className="size-4" /></span> {d.hostname}
           </CardTitle>
-          <div className="flex items-center gap-2">
-            {d.isPrimary && <Badge tone="primary"><Star className="size-3" aria-hidden /> Main address</Badge>}
-            <Badge tone={domainStatusTone(d)}>{domainStatusLabel(d)}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            {d.isPrimary && <StatusPill tone="primary" icon={<Star className="size-3" aria-hidden />}>Main address</StatusPill>}
+            <StatusPill tone={domainStatusTone(d)}>{domainStatusLabel(d)}</StatusPill>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {d.acquisition === "purchase_requested" && (
-          <div className="space-y-3 rounded-xl border border-line bg-surface-2/60 p-4 text-[13.5px]">
+          <div className="space-y-3 rounded-xl bg-surface-2/70 p-4 text-[13.5px] ring-1 ring-inset ring-line">
             {d.purchaseCostMicros ? (
               <>
-                <p className="flex items-center gap-2 font-medium"><ShoppingCart className="size-4" aria-hidden /> We found it for {formatCurrency(d.purchaseCostMicros / 1_000_000)} for the first year.</p>
+                <p className="flex items-center gap-2 font-medium"><span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary-ink"><ShoppingCart className="size-4" /></span> We found it for {formatCurrency(d.purchaseCostMicros / 1_000_000)} for the first year.</p>
                 <p className="text-muted">This is the registrar&apos;s price, passed on at cost with no markup, and it renews yearly. It&apos;s registered in your business&apos;s name. Nothing is bought until you approve.</p>
                 {canApprove ? (
                   <Button type="button" variant="brand" size="sm" loading={b("approve")} disabled={busy !== null} onClick={() => void run(`${d.id}:approve`, () => approveDomainPurchaseAction(d.id), "Approved. We'll register it and let you know.")}>
@@ -94,9 +95,13 @@ function DomainCard({ d, dns, canManage, canApprove, hasPublished, run, busy }: 
             )}
           </div>
         )}
-        {d.acquisition === "purchase_approved" && <p className="rounded-xl border border-line bg-surface-2/60 p-4 text-[13.5px] text-muted">Approved. We&apos;re registering it in your business&apos;s name and will tell you as soon as it&apos;s done.</p>}
+        {d.acquisition === "purchase_approved" && <p className="rounded-xl bg-surface-2/70 p-4 text-[13.5px] text-muted ring-1 ring-inset ring-line">Approved. We&apos;re registering it in your business&apos;s name and will tell you as soon as it&apos;s done.</p>}
         {d.acquisition === "purchased" && d.registrar && (
-          <p className="text-[13px] text-muted">Registered with {d.registrar}{d.renewsAt ? `, renews ${formatDate(d.renewsAt)}` : ""}{d.purchaseCostMicros ? ` · ${formatCurrency(d.purchaseCostMicros / 1_000_000)} for the first year, at cost` : ""}.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <InfoChip icon={<Landmark />}>Registered with {d.registrar}</InfoChip>
+            {d.renewsAt && <InfoChip icon={<CalendarClock />}>Renews {formatDate(d.renewsAt)}</InfoChip>}
+            {d.purchaseCostMicros ? <InfoChip>{formatCurrency(d.purchaseCostMicros / 1_000_000)} first year, at cost</InfoChip> : null}
+          </div>
         )}
 
         {!pre && dns && (
@@ -146,7 +151,7 @@ function DomainCard({ d, dns, canManage, canApprove, hasPublished, run, busy }: 
               </Button>
             )}
             {d.kind === "custom" && (
-              <Button type="button" variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmRemove(true)}>
+              <Button type="button" variant="secondary" size="sm" className="text-danger-ink" disabled={busy !== null} onClick={() => setConfirmRemove(true)}>
                 <Trash2 className="size-3.5" /> Remove
               </Button>
             )}
@@ -197,12 +202,16 @@ export function DomainsView({
         <CardHeader className="flex-col items-stretch gap-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>Your included address</CardTitle>
-            {platform && <Badge tone={domainStatusTone(platform)}>{domainStatusLabel(platform)}</Badge>}
+            {platform && <StatusPill tone={domainStatusTone(platform)}>{domainStatusLabel(platform)}</StatusPill>}
           </div>
           <CardDescription>This works as soon as you publish, with no setup. You can keep it, or connect your own domain below.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center justify-between gap-3">
-          <p className="break-all text-[15px] font-semibold">{platformHost}{platform?.isPrimary ? <span className="ml-2 text-[12px] font-normal text-muted">main address</span> : null}</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted ring-1 ring-inset ring-line"><Globe className="size-4" /></span>
+            <p className="min-w-0 break-all text-[15px] font-semibold">{platformHost}</p>
+            {platform?.isPrimary && <StatusPill tone="primary" icon={<Star className="size-3" aria-hidden />}>Main address</StatusPill>}
+          </div>
           {canManage && <Button type="button" variant="secondary" size="sm" onClick={() => { setSub(subdomain); setSubOpen(true); }}>Change address</Button>}
         </CardContent>
       </Card>

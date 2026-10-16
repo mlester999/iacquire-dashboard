@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Clock, ExternalLink, List, MoveRight, RefreshCw, Video } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
-import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/primitives";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Card, CardContent, EmptyState } from "@/components/ui/primitives";
+import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
+import { Panel } from "@/components/overview/panel";
 import { Segmented, Sheet } from "@/components/ui/overlays";
 import { MetricCard } from "@/components/ui/workspace";
 import { refreshCrmAction } from "@/app/actions/records";
@@ -46,7 +47,7 @@ function flags(a: Appt) {
   return out;
 }
 
-const STATUS_TONE: Record<string, "success" | "primary" | "danger" | "neutral" | "warning" | "violet"> = {
+const STATUS_TONE: Record<string, StatusTone> = {
   confirmed: "success",
   new: "primary",
   cancelled: "danger",
@@ -54,6 +55,28 @@ const STATUS_TONE: Record<string, "success" | "primary" | "danger" | "neutral" |
   noshow: "warning",
   invalid: "neutral",
 };
+
+/** Calendar chips carry the appointment's status in their colour; the text label stays in the pill and the sheet. */
+const CHIP_TONE: Record<StatusTone, string> = {
+  success: "bg-success-soft text-success-ink hover:bg-success/15",
+  primary: "bg-primary-soft text-primary-ink hover:bg-primary/15",
+  danger: "bg-surface-2 text-faint line-through hover:bg-surface-3",
+  violet: "bg-violet-soft text-violet-ink hover:bg-violet/15",
+  warning: "bg-warning-soft text-warning-ink hover:bg-warning/15",
+  neutral: "bg-surface-2 text-ink-2 hover:bg-surface-3",
+};
+const STATUS_LABEL: Record<string, string> = { confirmed: "Confirmed", new: "New", cancelled: "Cancelled", showed: "Showed up", noshow: "No-show", invalid: "Invalid" };
+const statusLabel = (s: string) => STATUS_LABEL[s] ?? sentenceCase(s);
+
+/** A month tile with the day of the month, used wherever an appointment appears in a list. */
+function DateTile({ at, timeZone }: { at: string; timeZone: string }) {
+  return (
+    <div className="grid w-12 shrink-0 place-items-center rounded-xl bg-surface-2 py-1.5 text-center ring-1 ring-inset ring-line">
+      <p className="text-[10px] font-semibold uppercase leading-none tracking-wider text-muted">{new Date(at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
+      <p className="mt-1 text-[18px] font-semibold leading-none tabular-nums text-ink">{new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone }).format(new Date(at))}</p>
+    </div>
+  );
+}
 
 function dayKey(d: Date, tz: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -95,7 +118,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <div className="grid gap-3 sm:grid-cols-3 xl:col-span-3"><MetricCard label="Upcoming meetings" value={upcoming.length} detail="Future meetings recorded by your calendar." icon={<CalendarDays className="size-4"/>}/><MetricCard label="Confirmed" value={upcoming.filter(appointment=>appointment.status==="confirmed").length} detail="Confirmed appointments among upcoming meetings." icon={<Video className="size-4"/>} tone="green"/><MetricCard label="Calendar time zone" value={<span className="text-[18px]">{timeZoneLabel(timeZone)}</span>} detail={lastSync?`Last checked ${relativeTime(lastSync)}`:"No synchronization timestamp recorded."} icon={<Clock className="size-4"/>} tone="neutral"/></div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:col-span-3"><MetricCard label="Upcoming meetings" value={upcoming.length} detail="Future meetings recorded by your calendar." icon={<CalendarDays className="size-4"/>}/><MetricCard label="Confirmed" value={upcoming.filter(appointment=>appointment.status==="confirmed").length} detail="Confirmed appointments among upcoming meetings." icon={<Video className="size-4"/>} tone="green"/><MetricCard label="Calendar time zone" value={<span className="text-[18px]">{timeZoneLabel(timeZone)}</span>} detail={lastSync?`Last checked ${relativeTime(lastSync)}`:"No synchronization timestamp recorded."} icon={<Clock className="size-4"/>} tone="neutral"/></div>
       <PendingBookings rows={pending} canBook={canBook} />
       <div className="space-y-4 xl:col-span-2">
         <Card>
@@ -116,7 +139,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
               {canRefresh && (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="secondary"
                   loading={refreshing}
                   onClick={async () => {
                     setRefreshing(true);
@@ -168,7 +191,8 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                             key={a.id}
                             type="button"
                             onClick={() => setOpen(a)}
-                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[10.5px] font-medium sm:text-[11px]", a.status === "cancelled" ? "bg-surface-2 text-faint line-through" : "bg-primary-soft text-primary-ink hover:bg-primary/15")}
+                            className={cn("block w-full truncate rounded-md px-1 py-0.5 text-left text-[10.5px] font-medium transition-colors sm:text-[11px]", CHIP_TONE[STATUS_TONE[a.status] ?? "neutral"])}
+                            title={`${a.title} · ${statusLabel(a.status)}`}
                           >
                             <span className="hidden sm:inline">{formatTime(a.start_at, timeZone)} </span>
                             {a.title}
@@ -183,24 +207,25 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             </div>
           ) : (
             <ul className="divide-y divide-line">
-              {listed.length === 0 && <li className="p-8 text-center text-[13px] text-muted">No appointments in the synced window.</li>}
+              {listed.length === 0 && (
+                <li>
+                  <EmptyState icon={<CalendarDays className="size-5" />} title="No appointments in the synced window" description="Meetings from your connected calendar appear here once they are booked." />
+                </li>
+              )}
               {listed.map((a) => (
                 <li key={a.id}>
-                  <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-surface-2/50">
-                    <div className="w-14 shrink-0 text-center">
-                      <p className="text-[11px] font-medium uppercase text-muted">{new Date(a.start_at).toLocaleDateString("en-US", { month: "short", timeZone })}</p>
-                      <p className="text-[20px] font-semibold leading-none">{new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone }).format(new Date(a.start_at))}</p>
-                    </div>
+                  <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-2/60 sm:gap-4">
+                    <DateTile at={a.start_at} timeZone={timeZone} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] font-medium">{a.title}</p>
-                      <p className="text-[12.5px] text-muted">
-                        {formatTime(a.start_at, timeZone)} – {formatTime(a.end_at, timeZone)}
-                        {a.meeting_type ? ` · ${a.meeting_type}` : ""}
-                      </p>
+                      <p className="truncate text-[14px] font-semibold" title={a.title}>{a.title}</p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <InfoChip icon={<Clock />}>{formatTime(a.start_at, timeZone)} – {formatTime(a.end_at, timeZone)}</InfoChip>
+                        {a.meeting_type && <InfoChip icon={<Video />}>{a.meeting_type}</InfoChip>}
+                      </div>
                     </div>
-                    <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                      {flags(a).filter((f) => f.key !== "ai").map((f) => <Badge key={f.key} tone={f.tone}>{f.label}</Badge>)}
-                      <Badge tone={STATUS_TONE[a.status] ?? "neutral"}>{a.status === "noshow" ? "No-show" : sentenceCase(a.status)}</Badge>
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <StatusPill tone={STATUS_TONE[a.status] ?? "neutral"}>{statusLabel(a.status)}</StatusPill>
+                      {flags(a).filter((f) => f.key !== "ai").map((f) => <StatusPill key={f.key} tone={f.tone} size="sm">{f.label}</StatusPill>)}
                     </span>
                   </button>
                 </li>
@@ -208,38 +233,36 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             </ul>
           )}
         </Card>
-        <p className="flex items-center gap-2 text-[12px] text-muted">
-          <Clock className="size-3.5" /> Times shown in {timeZoneLabel(timeZone)}. {lastSync ? `Last synced ${relativeTime(lastSync)}.` : ""}
-        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {view === "calendar" && (["confirmed", "new", "showed", "noshow", "cancelled"] as const).map((s) => <StatusPill key={s} tone={STATUS_TONE[s]} size="sm">{statusLabel(s)}</StatusPill>)}
+          <InfoChip icon={<Clock />}>Times shown in {timeZoneLabel(timeZone)}</InfoChip>
+          {lastSync && <InfoChip><span suppressHydrationWarning>Last synced {relativeTime(lastSync)}</span></InfoChip>}
+        </div>
       </div>
 
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Upcoming</CardTitle>
-              <CardDescription>Next confirmed and new bookings.</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {upcoming.length === 0 ? (
-              <p className="py-6 text-center text-[13px] text-muted">No upcoming appointments.</p>
-            ) : (
-              <ul className="space-y-2">
-                {upcoming.slice(0, 6).map((a) => (
-                  <li key={a.id}>
-                    <button type="button" onClick={() => setOpen(a)} className="w-full rounded-xl border border-line p-3 text-left transition hover:border-line-strong hover:shadow-soft">
-                      <p className="truncate text-[13.5px] font-medium">{a.title}</p>
-                      <p className="text-[12px] text-muted">
-                        {formatDate(a.start_at, timeZone)} · {formatTime(a.start_at, timeZone)}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <Panel icon={<CalendarDays />} title="Upcoming" description="Next confirmed and new bookings.">
+          {upcoming.length === 0 ? (
+            <EmptyState compact icon={<CalendarDays className="size-5" />} title="No upcoming appointments" description="New bookings from your calendar appear here." />
+          ) : (
+            <ul className="space-y-2">
+              {upcoming.slice(0, 6).map((a) => (
+                <li key={a.id}>
+                  <button type="button" onClick={() => setOpen(a)} className="flex w-full items-center gap-3 rounded-xl border border-line p-2.5 text-left transition hover:-translate-y-px hover:border-line-strong hover:shadow-card">
+                    <DateTile at={a.start_at} timeZone={timeZone} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-semibold" title={a.title}>{a.title}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <InfoChip icon={<Clock />}>{formatTime(a.start_at, timeZone)}</InfoChip>
+                        <StatusPill tone={STATUS_TONE[a.status] ?? "neutral"} size="sm">{statusLabel(a.status)}</StatusPill>
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
         <Card>
           <CardContent className="flex items-start gap-3 pt-5">
             <AgentAvatar role={AGENT_BY_KEY.appointment_setter} size="md" />
@@ -247,11 +270,11 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
               <p className="text-[14px] font-semibold">Appointment Setter</p>
               <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
               {setterReady ? (
-                <Link href="/chat/appointment-setter" className="mt-2 inline-flex text-[13px] font-medium text-primary hover:underline">
+                <ButtonLink href="/chat/appointment-setter" variant="secondary" size="sm" className="mt-3">
                   Ask the Appointment Setter
-                </Link>
+                </ButtonLink>
               ) : (
-                <p className="mt-2 text-[12.5px] text-faint">Available once it&apos;s online.</p>
+                <StatusPill tone="neutral" className="mt-3">Available once it&apos;s online</StatusPill>
               )}
             </div>
           </CardContent>
@@ -265,8 +288,8 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
         {open && (
           <div className="space-y-4 p-5 text-[13.5px]">
             <div className="flex flex-wrap gap-1.5">
-              <Badge tone={STATUS_TONE[open.status] ?? "neutral"}>{open.status === "noshow" ? "No-show" : sentenceCase(open.status)}</Badge>
-              {flags(open).map((f) => <Badge key={f.key} tone={f.tone}>{f.label}</Badge>)}
+              <StatusPill tone={STATUS_TONE[open.status] ?? "neutral"}>{statusLabel(open.status)}</StatusPill>
+              {flags(open).map((f) => <StatusPill key={f.key} tone={f.tone}>{f.label}</StatusPill>)}
             </div>
             {open.conflict && <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12.5px] text-danger-ink" role="alert"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />This overlaps another appointment for the same person. Move one of them in your calendar.</p>}
             {open.status === "cancelled" && open.cancelled_at && <p className="flex items-start gap-2 text-[12.5px] text-muted"><CalendarX2 className="mt-0.5 size-4 shrink-0" aria-hidden />Cancelled {relativeTime(open.cancelled_at)}{open.late_cancellation ? ", close to the start time." : "."}</p>}
@@ -274,7 +297,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
             <dl className="space-y-3">
               <div>
                 <dt className="text-[12px] text-muted">Meeting type</dt>
-                <dd>{open.meeting_type ?? "Not specified"}</dd>
+                <dd className="mt-1">{open.meeting_type ? <InfoChip icon={<Video />}>{open.meeting_type}</InfoChip> : <span className="text-muted">Not specified</span>}</dd>
               </div>
               <div>
                 <dt className="text-[12px] text-muted">Contact</dt>
@@ -284,7 +307,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
                 <dt className="text-[12px] text-muted">Meeting link</dt>
                 <dd>
                   {open.meeting_link ? (
-                    <a href={open.meeting_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+                    <a href={open.meeting_link} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:bg-primary/15">
                       <Video className="size-4" /> Join meeting <ExternalLink className="size-3" />
                     </a>
                   ) : (

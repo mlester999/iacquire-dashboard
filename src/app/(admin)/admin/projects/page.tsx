@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { FolderKanban } from "lucide-react";
+import { Building2, ChevronRight, CircleDollarSign, FolderKanban, Layers, UserRound } from "lucide-react";
 import { requireAgency } from "@/server/tenancy/context";
 import { agencyProjectStats, listAgencyProjects, listProjectClients } from "@/server/projects/agency";
 import { AdminPageHeader } from "@/components/admin/admin-shell";
-import { Badge, Card, EmptyState } from "@/components/ui/primitives";
-import { ProjectStatusBadge } from "@/components/projects/common";
-import { PROJECT_STATUSES, PROJECT_STATUS_LABEL, formatMoney } from "@/lib/projects";
+import { Card, EmptyState } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
+import { PROJECT_STATUSES, PROJECT_STATUS_LABEL, PROJECT_STATUS_TONE, formatMoney } from "@/lib/projects";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Custom projects" };
@@ -30,7 +30,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
       <AdminPageHeader title="Custom projects" description="Project requests from client workspaces you work on: review, scope, quote, deliver and hand over." />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-[12.5px]">
         {(["submitted", "under_review", "discovery_needed", "quote_preparing", "quote_sent", "awaiting_approval", "in_development", "testing", "ready_for_review"] as const).map((s) => (
-          <Link key={s} href={`/admin/projects?status=${s}`} className={`rounded-full border px-3 py-1 transition ${filter === s ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink"}`}>
+          <Link key={s} href={`/admin/projects?status=${s}`} className={`inline-flex min-h-9 items-center rounded-full border px-3.5 py-1 transition ${filter === s ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink"}`}>
             {PROJECT_STATUS_LABEL[s]} <span className="ml-1 tabular-nums text-faint">{stats[s] ?? 0}</span>
           </Link>
         ))}
@@ -41,7 +41,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
         <label htmlFor="client-filter" className="text-muted">
           Client
         </label>
-        <select id="client-filter" name="org" defaultValue={orgFilter ?? ""} className="h-9 rounded-xl border border-line-strong bg-surface px-3 text-[13px]">
+        <select id="client-filter" name="org" defaultValue={orgFilter ?? ""} className="h-10 rounded-xl border border-line-strong bg-surface px-3 text-[13px] text-ink">
           <option value="">All clients</option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
@@ -49,7 +49,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
             </option>
           ))}
         </select>
-        <button type="submit" className="h-9 rounded-xl border border-line bg-surface px-3 font-medium shadow-soft hover:bg-surface-2">
+        <button type="submit" className="h-10 rounded-xl border border-line bg-surface px-4 font-medium shadow-soft hover:bg-surface-2">
           Filter
         </button>
         {orgFilter && (
@@ -79,21 +79,31 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
           <ul className="divide-y divide-line">
             {projects.map((p) => (
               <li key={p.id}>
-                <Link href={`/admin/projects/${p.id}`} className="flex flex-col gap-1 px-5 py-3.5 transition hover:bg-surface-2/60 md:flex-row md:items-center md:gap-4">
-                  <span className="font-mono text-[12px] text-muted md:w-20">{p.ref}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] font-medium">{p.title}</span>
-                    <span className="block text-[12px] text-muted">
-                      {p.orgName} · {p.serviceName ?? "Custom project"} · {p.assignedToName ? `assigned to ${p.assignedToName}` : "unassigned"}
-                      {p.agreedPriceCents !== null ? ` · agreed ${formatMoney(p.agreedPriceCents)}` : ""}
+                <Link href={`/admin/projects/${p.id}`} className="group flex flex-col gap-2.5 px-4 py-3.5 transition hover:bg-surface-2/60 md:flex-row md:items-center md:gap-4 md:px-5">
+                  <span className="flex min-w-0 flex-1 items-center gap-3">
+                    <AvatarTile name={p.orgName} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 md:flex-nowrap">
+                        <span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted ring-1 ring-inset ring-line">{p.ref}</span>
+                        <span className="min-w-0 basis-full text-[14px] font-semibold leading-snug text-ink md:basis-auto md:truncate" title={p.title}>{p.title}</span>
+                      </span>
+                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <InfoChip icon={<Building2 />}>{p.orgName}</InfoChip>
+                        <InfoChip icon={<Layers />}>{p.serviceName ?? "Custom project"}</InfoChip>
+                        <InfoChip icon={<UserRound />} className={p.assignedToName ? "" : "text-muted"}>{p.assignedToName ?? "Unassigned"}</InfoChip>
+                        {p.agreedPriceCents !== null && <InfoChip icon={<CircleDollarSign />} className="tabular-nums">{formatMoney(p.agreedPriceCents)}</InfoChip>}
+                      </span>
                     </span>
                   </span>
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    {p.openTasks > 0 && <Badge tone="warning">{p.openTasks} to do</Badge>}
-                    {p.quoteStatus === "sent" && <Badge tone="primary">Quote out</Badge>}
-                    <ProjectStatusBadge status={p.status} />
+                  <span className="flex flex-wrap items-center gap-1.5 pl-12 md:justify-end md:pl-0">
+                    {p.openTasks > 0 && <StatusPill tone="warning" size="sm">{p.openTasks} to do</StatusPill>}
+                    {p.quoteStatus === "sent" && <StatusPill tone="primary" size="sm">Quote out</StatusPill>}
+                    <StatusPill tone={PROJECT_STATUS_TONE[p.status]}>{PROJECT_STATUS_LABEL[p.status]}</StatusPill>
                   </span>
-                  <span className="text-[12px] text-faint md:w-24 md:text-right">{relativeTime(p.lastActivityAt)}</span>
+                  <span className="flex items-center gap-1 pl-12 text-[12px] text-muted md:w-28 md:justify-end md:pl-0">
+                    {relativeTime(p.lastActivityAt)}
+                    <ChevronRight className="hidden size-4 text-faint transition group-hover:translate-x-0.5 group-hover:text-ink-2 md:block" />
+                  </span>
                 </Link>
               </li>
             ))}

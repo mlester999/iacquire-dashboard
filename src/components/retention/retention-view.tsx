@@ -3,9 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarClock, HeartHandshake, Plus, Repeat, Search, Star, UserPlus } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, HeartHandshake, HeartPulse, MessageSquareQuote, Plus, Repeat, Search, Star, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
+import { IconTile, Panel } from "@/components/overview/panel";
 import { Dialog, Sheet } from "@/components/ui/overlays";
 import { MetricCard,CoverageBar } from "@/components/ui/workspace";
 import { addFeedbackAction, addServiceEventAction, createTaskAction, saveAccountAction } from "@/app/actions/records";
@@ -33,12 +35,23 @@ interface Data {
   openIssues: number;
 }
 
-const HEALTH: Record<Account["health"], { label: string; dot: string }> = {
-  unknown: { label: "Not assessed", dot: "bg-faint" },
-  healthy: { label: "Healthy", dot: "bg-success" },
-  watch: { label: "Watch", dot: "bg-warning" },
-  at_risk: { label: "At risk", dot: "bg-danger" },
+const HEALTH: Record<Account["health"], { label: string; dot: string; tone: StatusTone }> = {
+  unknown: { label: "Not assessed", dot: "bg-faint", tone: "neutral" },
+  healthy: { label: "Healthy", dot: "bg-success", tone: "success" },
+  watch: { label: "Watch", dot: "bg-warning", tone: "warning" },
+  at_risk: { label: "At risk", dot: "bg-danger", tone: "danger" },
 };
+
+const ACCOUNT_TONE: Record<Account["status"], StatusTone> = { onboarding: "primary", active: "success", at_risk: "danger", churned: "neutral" };
+const ACCOUNT_LABEL: Record<Account["status"], string> = { onboarding: "Onboarding", active: "Active", at_risk: "At risk", churned: "Churned" };
+
+function HealthPill({ health }: { health: Account["health"] }) {
+  return <StatusPill tone={HEALTH[health].tone}>{HEALTH[health].label}</StatusPill>;
+}
+
+function IssuesPill({ count }: { count: number }) {
+  return count > 0 ? <StatusPill tone="warning" size="sm">{count} open issue{count === 1 ? "" : "s"}</StatusPill> : <InfoChip>No open issues</InfoChip>;
+}
 
 const blank = { customerName: "", status: "active", health: "unknown", onboardingProgress: "", renewalDate: "", openIssues: "0", repeatOpportunity: "" };
 
@@ -87,23 +100,30 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
-          ["Active customers", active, <HeartHandshake key="a" className="size-4 text-success" />],
-          ["Onboarding", onboarding, <UserPlus key="b" className="size-4 text-primary" />],
-          ["At risk", atRisk, <AlertTriangle key="c" className="size-4 text-danger" />],
-          ["Open issues", data.openIssues, <AlertTriangle key="d" className="size-4 text-warning" />],
-          ["Avg. feedback", avg === null ? "—" : `${avg.toFixed(1)} / 5`, <Star key="e" className="size-4 text-warning" />],
+          ["Active customers", active, <HeartHandshake key="a" className="size-4" />],
+          ["Onboarding", onboarding, <UserPlus key="b" className="size-4" />],
+          ["At risk", atRisk, <AlertTriangle key="c" className="size-4" />],
+          ["Open issues", data.openIssues, <AlertTriangle key="d" className="size-4" />],
+          ["Avg. feedback", avg === null ? "—" : `${avg.toFixed(1)} / 5`, <Star key="e" className="size-4" />],
         ].map(([label, value, icon]) => (
-          <MetricCard key={String(label)} label={label as string} value={value as React.ReactNode} icon={icon as React.ReactNode} tone={label==="Active customers"?"green":label==="At risk"||label==="Open issues"?"amber":"blue"}/>
+          <MetricCard key={String(label)} label={label as string} value={value as React.ReactNode} icon={icon as React.ReactNode} tone={label==="Active customers"?"green":label==="At risk"||label==="Open issues"||label==="Avg. feedback"?"amber":"blue"} className={label==="Avg. feedback"?"col-span-2 lg:col-span-1":undefined}/>
         ))}
       </div>
-      {data.accounts.length>0&&<div className="control-panel p-4"><p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted">Customer health · assessed from saved records</p><CoverageBar label="Customer health" parts={Object.entries(HEALTH).map(([health,definition])=>({label:definition.label,count:data.accounts.filter(account=>account.health===health).length,color:health==="healthy"?"var(--success)":health==="at_risk"?"var(--danger)":health==="watch"?"var(--warning)":"var(--muted)"}))}/></div>}
+      {data.accounts.length > 0 && (
+        <Panel icon={<HeartPulse />} tone="success" title="Customer health" description="Assessed from the records you keep." bodyClassName="pt-3">
+          <CoverageBar label="Customer health" parts={Object.entries(HEALTH).map(([health, definition]) => ({ label: definition.label, count: data.accounts.filter((account) => account.health === health).length, color: health === "healthy" ? "var(--success)" : health === "at_risk" ? "var(--danger)" : health === "watch" ? "var(--warning)" : "var(--muted)" }))} />
+        </Panel>
+      )}
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader>
-            <div>
-              <CardTitle>Customers</CardTitle>
-              <CardDescription>Health, onboarding and renewal at a glance.</CardDescription>
+            <div className="flex min-w-0 items-start gap-3">
+              <IconTile tone="primary"><HeartHandshake /></IconTile>
+              <div className="min-w-0">
+                <CardTitle>Customers</CardTitle>
+                <CardDescription>Health, onboarding and renewal at a glance.</CardDescription>
+              </div>
             </div>
             {canEdit && (
               <Button size="sm" onClick={() => setEditing({ id: null, form: { ...blank } })}>
@@ -116,119 +136,140 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
             {data.accounts.length === 0 ? (
               <EmptyState compact icon={<HeartHandshake className="size-5" />} title="No customers tracked yet" description="Add the customers you want to keep a close eye on. CRM-based syncing can be connected by iAcquire later." />
             ) : (
-              <><div className="divide-y divide-line md:hidden">{visibleAccounts.map((account) => <button key={account.id} type="button" onClick={() => setOpen(account)} className="block w-full px-4 py-4 text-left transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-primary"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><span className="block break-words text-[14px] font-semibold text-ink">{account.customer_name}</span><span className="mt-1 block text-[12px] text-muted">{sentenceCase(account.status)} · {account.last_contact_at ? `Contacted ${relativeTime(account.last_contact_at)}` : "No contact recorded"}</span></span><span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1 text-[11.5px]"><span aria-hidden className={cn("size-2 rounded-full",HEALTH[account.health].dot)}/>{HEALTH[account.health].label}</span></span><span className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted"><span>{account.renewal_date ? `Renewal ${formatDate(account.renewal_date,"UTC")}` : "Renewal not recorded"}</span><span className={account.open_issues > 0 ? "text-warning-ink" : ""}>{account.open_issues} open issue{account.open_issues===1?"":"s"}</span></span>{account.onboarding_progress !== null && <span className="mt-3 block"><span className="mb-1 block text-[11px] text-muted">Onboarding {account.onboarding_progress}%</span><ProgressBar value={account.onboarding_progress} label={`${account.customer_name} onboarding`}/></span>}</button>)}</div><div className="scrollbar-thin hidden overflow-x-auto md:block">
-                <table className="workspace-table w-full min-w-[640px] text-left text-[13.5px]">
-                  <thead className="border-y border-line bg-surface-2/60 text-[12px] text-muted">
-                    <tr>
-                      <th className="px-5 py-2.5 font-medium">Customer</th>
-                      <th className="px-3 py-2.5 font-medium">Health</th>
-                      <th className="px-3 py-2.5 font-medium">Onboarding</th>
-                      <th className="px-3 py-2.5 font-medium">Renewal</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Issues</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {visibleAccounts.map((a) => (
-                      <tr key={a.id} onClick={() => setOpen(a)} className="cursor-pointer hover:bg-surface-2/50">
-                        <td className="px-5 py-3">
-                          <button type="button" onClick={() => setOpen(a)} className="rounded-md text-left font-medium hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{a.customer_name}</button>
-                          <p className="text-[12px] text-muted">
-                            {sentenceCase(a.status)} · last contact {a.last_contact_at ? relativeTime(a.last_contact_at) : "not recorded"}
-                          </p>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className="inline-flex items-center gap-1.5 text-[12.5px]">
-                            <span className={cn("size-2 rounded-full", HEALTH[a.health].dot)} /> {HEALTH[a.health].label}
+              <>
+                <div className="divide-y divide-line md:hidden">
+                  {visibleAccounts.map((account) => (
+                    <button key={account.id} type="button" onClick={() => setOpen(account)} className="block w-full px-4 py-4 text-left transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-primary">
+                      <span className="flex items-start gap-3">
+                        <AvatarTile name={account.customer_name} size="md" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-[14px] font-semibold text-ink">{account.customer_name}</span>
+                          <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <HealthPill health={account.health} />
+                            <StatusPill tone={ACCOUNT_TONE[account.status]} size="sm">{ACCOUNT_LABEL[account.status]}</StatusPill>
                           </span>
-                        </td>
-                        <td className="w-36 px-3 py-3">{a.onboarding_progress === null ? <span className="text-faint">—</span> : <ProgressBar value={a.onboarding_progress} label={`${a.customer_name} onboarding`} />}</td>
-                        <td className="px-3 py-3 text-ink-2">{a.renewal_date ? formatDate(a.renewal_date, "UTC") : "—"}</td>
-                        <td className="px-5 py-3 text-right tabular-nums">{a.open_issues}</td>
+                          <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <InfoChip icon={<Clock />}><span suppressHydrationWarning>{account.last_contact_at ? `Contacted ${relativeTime(account.last_contact_at)}` : "No contact recorded"}</span></InfoChip>
+                            <InfoChip icon={<CalendarClock />}>{account.renewal_date ? `Renewal ${formatDate(account.renewal_date, "UTC")}` : "Renewal not recorded"}</InfoChip>
+                            <IssuesPill count={account.open_issues} />
+                          </span>
+                          {account.onboarding_progress !== null && (
+                            <span className="mt-3 block">
+                              <span className="mb-1 flex justify-between text-[11px] text-muted"><span>Onboarding</span><span className="font-semibold tabular-nums text-ink-2">{account.onboarding_progress}%</span></span>
+                              <ProgressBar value={account.onboarding_progress} label={`${account.customer_name} onboarding`} />
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="scrollbar-thin hidden overflow-x-auto md:block">
+                  <table className="workspace-table w-full min-w-[640px] text-left text-[13.5px]">
+                    <thead className="border-y border-line bg-surface-2/60 text-[12px] text-muted">
+                      <tr>
+                        <th className="px-5 py-2.5 font-medium">Customer</th>
+                        <th className="px-3 py-2.5 font-medium">Health</th>
+                        <th className="px-3 py-2.5 font-medium">Onboarding</th>
+                        <th className="px-3 py-2.5 font-medium">Renewal</th>
+                        <th className="px-5 py-2.5 text-right font-medium">Issues</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>{visibleAccounts.length === 0 && <EmptyState compact icon={<Search className="size-5"/>} title="No matching customers" description="Try another name or health filter." action={<Button variant="secondary" size="sm" onClick={() => { setQuery(""); setHealthFilter("all"); }}>Clear filters</Button>}/>}</>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {visibleAccounts.map((a) => (
+                        <tr key={a.id} onClick={() => setOpen(a)} className="cursor-pointer transition hover:bg-surface-2/60">
+                          <td className="px-5 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <AvatarTile name={a.customer_name} size="md" />
+                              <div className="min-w-0">
+                                <button type="button" onClick={() => setOpen(a)} title={a.customer_name} className="block max-w-[240px] truncate rounded-md text-left font-semibold text-ink hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{a.customer_name}</button>
+                                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+                                  <StatusPill tone={ACCOUNT_TONE[a.status]} size="sm">{ACCOUNT_LABEL[a.status]}</StatusPill>
+                                  <span suppressHydrationWarning>{a.last_contact_at ? `Contacted ${relativeTime(a.last_contact_at)}` : "No contact recorded"}</span>
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3"><HealthPill health={a.health} /></td>
+                          <td className="w-40 px-3 py-3">
+                            {a.onboarding_progress === null ? (
+                              <span className="text-faint">—</span>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <ProgressBar value={a.onboarding_progress} label={`${a.customer_name} onboarding`} className="flex-1" />
+                                <span className="w-9 text-right text-[12px] font-semibold tabular-nums text-ink-2">{a.onboarding_progress}%</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3">{a.renewal_date ? <InfoChip icon={<CalendarClock />}>{formatDate(a.renewal_date, "UTC")}</InfoChip> : <span className="text-faint">—</span>}</td>
+                          <td className="px-5 py-3 text-right">{a.open_issues > 0 ? <StatusPill tone="warning" size="sm"><span className="tabular-nums">{a.open_issues}</span> open</StatusPill> : <span className="text-[12.5px] tabular-nums text-muted">0</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {visibleAccounts.length === 0 && <EmptyState compact icon={<Search className="size-5" />} title="No matching customers" description="Try another name or health filter." action={<Button variant="secondary" size="sm" onClick={() => { setQuery(""); setHealthFilter("all"); }}>Clear filters</Button>} />}
+              </>
             )}
           </CardContent>
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarClock className="size-4" /> Renewals in the next 60 days
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {renewals.length === 0 ? (
-                <p className="text-[13px] text-muted">No renewals coming up.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {renewals.map((a) => (
-                    <li key={a.id} className="flex items-center justify-between text-[13px]">
-                      <span className="truncate">{a.customer_name}</span>
-                      <span className="text-muted">{formatDate(a.renewal_date, "UTC")}</span>
+          <Panel icon={<CalendarClock />} tone="warning" title="Renewals in the next 60 days" description={renewals.length ? `${renewals.length} coming up` : undefined}>
+            {renewals.length === 0 ? (
+              <EmptyState compact className="!px-2 !py-3" icon={<CalendarClock className="size-5" />} title="No renewals coming up" description="Renewal dates you record on a customer appear here." />
+            ) : (
+              <ul className="space-y-2">
+                {renewals.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2/60 px-3 py-2 text-[13px] ring-1 ring-inset ring-line">
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <AvatarTile name={a.customer_name} size="sm" />
+                      <span className="truncate font-medium" title={a.customer_name}>{a.customer_name}</span>
+                    </span>
+                    <InfoChip icon={<Clock />}>{formatDate(a.renewal_date, "UTC")}</InfoChip>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+          <Panel icon={<MessageSquareQuote />} tone="violet" title="Recent feedback" description={avg === null ? undefined : `${avg.toFixed(1)} out of 5 on average`}>
+            {data.feedback.length === 0 ? (
+              <EmptyState compact className="!px-2 !py-3" icon={<MessageSquareQuote className="size-5" />} title="No feedback recorded yet" description="Record what a customer said from their profile." />
+            ) : (
+              <ul className="space-y-3">
+                {data.feedback.slice(0, 5).map((f) => (
+                  <li key={f.id} className="rounded-xl bg-surface-2/60 p-3 ring-1 ring-inset ring-line">
+                    <div role="img" className="flex items-center gap-0.5 text-warning-ink" aria-label={f.rating === null ? "Rating not recorded" : `${f.rating} out of 5`}>
+                      {Array.from({ length: 5 }, (_, i) => (
+                        <Star key={i} className={cn("size-3.5", i < (f.rating ?? 0) ? "fill-current" : "text-surface-3")} />
+                      ))}
+                    </div>
+                    {f.comment && <p className="mt-1.5 text-[13px] leading-snug">&ldquo;{f.comment}&rdquo;</p>}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <InfoChip>{f.customer_name ?? "Customer"}</InfoChip>
+                      <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(f.received_at)}</span></InfoChip>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+          <Panel icon={<Repeat />} tone="success" title="Repeat business">
+            {data.accounts.filter((a) => a.repeat_opportunity).length === 0 ? (
+              <EmptyState compact className="!px-2 !py-3" icon={<Repeat className="size-5" />} title="No repeat-business ideas yet" description="Note repeat-business ideas on a customer to see them here." />
+            ) : (
+              <ul className="space-y-2 text-[13px]">
+                {data.accounts
+                  .filter((a) => a.repeat_opportunity)
+                  .map((a) => (
+                    <li key={a.id} className="rounded-xl bg-surface-2/60 p-3 ring-1 ring-inset ring-line">
+                      <p className="font-semibold text-ink">{a.customer_name}</p>
+                      <p className="mt-0.5 leading-snug text-ink-2">{a.repeat_opportunity}</p>
                     </li>
                   ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Recent feedback</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {data.feedback.length === 0 ? (
-                <p className="text-[13px] text-muted">No feedback recorded yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {data.feedback.slice(0, 5).map((f) => (
-                    <li key={f.id}>
-                      <div role="img" className="flex items-center gap-1 text-warning" aria-label={f.rating === null ? "Rating not recorded" : `${f.rating} out of 5`}>
-                        {Array.from({ length: 5 }, (_, i) => (
-                          <Star key={i} className={cn("size-3.5", i < (f.rating ?? 0) ? "fill-current" : "text-surface-3")} />
-                        ))}
-                      </div>
-                      {f.comment && <p className="mt-1 text-[13px]">“{f.comment}”</p>}
-                      <p className="text-[11.5px] text-faint">
-                        {f.customer_name ?? "Customer"} · {relativeTime(f.received_at)}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Repeat className="size-4" /> Repeat business
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {data.accounts.filter((a) => a.repeat_opportunity).length === 0 ? (
-                <p className="text-[13px] text-muted">Note repeat-business ideas on a customer to see them here.</p>
-              ) : (
-                <ul className="space-y-2 text-[13px]">
-                  {data.accounts
-                    .filter((a) => a.repeat_opportunity)
-                    .map((a) => (
-                      <li key={a.id}>
-                        <span className="font-medium">{a.customer_name}:</span> <span className="text-ink-2">{a.repeat_opportunity}</span>
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+              </ul>
+            )}
+          </Panel>
         </div>
       </div>
 
@@ -272,7 +313,7 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
         }
       >
         {editing && (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Customer name" htmlFor="ra-name" className="sm:col-span-2">
               <Input id="ra-name" value={editing.form.customerName} maxLength={200} onChange={(e) => setEditing({ ...editing, form: { ...editing.form, customerName: e.target.value } })} />
             </Field>
@@ -325,19 +366,24 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
     <Sheet open={Boolean(account)} onOpenChange={(o) => !o && onClose()} title={account?.customer_name ?? "Customer"} description={account ? `${sentenceCase(account.status)} · ${HEALTH[account.health].label}` : undefined}>
       {account && (
         <div className="space-y-6 p-5">
-          {canEdit && (
-            <Button variant="secondary" size="sm" onClick={() => onEdit(account)}>
-              Edit details
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <HealthPill health={account.health} />
+            <StatusPill tone={ACCOUNT_TONE[account.status]}>{ACCOUNT_LABEL[account.status]}</StatusPill>
+            <IssuesPill count={account.open_issues} />
+            {canEdit && (
+              <Button variant="secondary" size="sm" className="ml-auto" onClick={() => onEdit(account)}>
+                Edit details
+              </Button>
+            )}
+          </div>
           <div>
             <p className="mb-2 text-[13px] font-semibold">Follow-up tasks</p>
-            {tasks.length === 0 ? <p className="text-[13px] text-muted">No open follow-ups.</p> : (
+            {tasks.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong p-3 text-center text-[13px] text-muted">No open follow-ups.</p> : (
               <ul className="space-y-1.5 text-[13px]">
                 {tasks.map((t) => (
-                  <li key={t.id} className="flex justify-between gap-2">
-                    <span>{t.title}</span>
-                    <span className="text-muted">{t.due_at ? relativeTime(t.due_at) : ""}</span>
+                  <li key={t.id} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2 ring-1 ring-inset ring-line">
+                    <span className="min-w-0">{t.title}</span>
+                    {t.due_at && <InfoChip icon={<Clock />}>{relativeTime(t.due_at)}</InfoChip>}
                   </li>
                 ))}
               </ul>
@@ -365,7 +411,7 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
           </div>
           <div>
             <p className="mb-2 text-[13px] font-semibold">Service history</p>
-            {history.length === 0 ? <p className="text-[13px] text-muted">Nothing recorded yet.</p> : (
+            {history.length === 0 ? <p className="rounded-xl border border-dashed border-line-strong p-3 text-center text-[13px] text-muted">Nothing recorded yet.</p> : (
               <ol className="relative space-y-3 border-l border-line pl-4">
                 {history.map((h) => (
                   <li key={h.id} className="relative">
@@ -422,7 +468,7 @@ function AccountSheet({ account, data, canEdit, canTask, timeZone, onClose, onEd
               </Button>
             </div>
           )}
-          <Badge tone="outline">{account.source === "manual" ? "Added manually" : "Synced from CRM"}</Badge>
+          <InfoChip>{account.source === "manual" ? "Added manually" : "Synced from CRM"}</InfoChip>
         </div>
       )}
     </Sheet>

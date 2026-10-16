@@ -6,60 +6,15 @@ import { ArrowUpRight, Ban, CalendarDays, Check, Clock, Contact, Funnel, Globe, 
 import { Tooltip } from "@/components/ui/overlays";
 import { SETUP_SERVICES } from "@/lib/setup";
 import type { ClientSetupRow } from "@/server/setup/snapshots";
-import { cn, formatDate, initials, relativeTime } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { HEALTH, plural, STATE, stateOf, type Tone } from "@/components/admin/client-state";
+import { AvatarTile, RelativeTime, StatusPill, toneDotClass } from "@/components/ui/status";
+
+export { AvatarTile, StatusPill };
 
 // ---------------------------------------------------------------------------
 // Shared building blocks (also used by the table view)
 // ---------------------------------------------------------------------------
-
-const PILL: Record<Tone, { box: string; dot: string }> = {
-  neutral: { box: "bg-surface-2 text-ink-2 ring-line-strong", dot: "bg-faint" },
-  primary: { box: "bg-primary-soft text-primary-ink ring-primary/20", dot: "bg-primary" },
-  success: { box: "bg-success-soft text-success-ink ring-success/20", dot: "bg-success" },
-  warning: { box: "bg-warning-soft text-warning-ink ring-warning/25", dot: "bg-warning" },
-  danger: { box: "bg-danger-soft text-danger-ink ring-danger/20", dot: "bg-danger" },
-  violet: { box: "bg-violet-soft text-violet-ink ring-violet/20", dot: "bg-violet" },
-};
-
-/** A status with a tinted surface, hairline ring and a state dot, so it reads as a status and not as loose text. */
-export function StatusPill({ tone = "neutral", icon, dot = true, className, children }: { tone?: Tone; icon?: React.ReactNode; dot?: boolean; className?: string; children: React.ReactNode }) {
-  const t = PILL[tone];
-  return (
-    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium ring-1 ring-inset", t.box, className)}>
-      {icon ?? (dot && <span aria-hidden className={cn("size-1.5 rounded-full", t.dot)} />)}
-      {children}
-    </span>
-  );
-}
-
-const AVATAR_GRADIENTS = [
-  "linear-gradient(135deg,#2c5bff,#5b4dff)",
-  "linear-gradient(135deg,#7a5cff,#b25cf0)",
-  "linear-gradient(135deg,#0b8bd9,#2c5bff)",
-  "linear-gradient(135deg,#4f46e5,#2b3a9e)",
-  "linear-gradient(135deg,#0ea5a4,#2c5bff)",
-];
-
-function hashOf(value: string) {
-  let h = 0;
-  for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) >>> 0;
-  return h;
-}
-
-/** Deterministic gradient monogram: the same company always gets the same colour. */
-export function AvatarTile({ name, size = "md", className }: { name: string; size?: "sm" | "md" | "lg"; className?: string }) {
-  const dims = { sm: "size-7 rounded-lg text-[10.5px]", md: "size-9 rounded-[10px] text-[12px]", lg: "size-12 rounded-[14px] text-[15px]" }[size];
-  return (
-    <span
-      aria-hidden
-      className={cn("grid shrink-0 place-items-center font-semibold tracking-wide text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.28),0_6px_14px_-6px_rgb(44_91_255/0.55)] ring-1 ring-inset ring-white/15", dims, className)}
-      style={{ background: AVATAR_GRADIENTS[hashOf(name) % AVATAR_GRADIENTS.length] }}
-    >
-      {initials(name)}
-    </span>
-  );
-}
 
 /** Circular setup progress. Animates from empty on first paint (instant with reduced motion). */
 export function ProgressRing({ percent, tone = "primary", size = 64, label }: { percent: number | null; tone?: "primary" | "success" | "warning"; size?: number; label: string }) {
@@ -129,7 +84,7 @@ export function ConnectionChips({ r, compact = false }: { r: ClientSetupRow; com
       {chips.map((c) => (
         <Tooltip key={c.key} content={c.detail}>
           <span className={cn("inline-flex items-center gap-1.5 text-[11.5px] font-medium text-ink-2", !compact && "h-6 rounded-full bg-surface px-2.5 ring-1 ring-inset ring-line-strong")}>
-            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", c.tone === "neutral" ? "bg-transparent ring-1 ring-inset ring-faint" : PILL[c.tone].dot)} />
+            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", c.tone === "neutral" ? "bg-transparent ring-1 ring-inset ring-faint" : toneDotClass(c.tone))} />
             {c.label}
           </span>
         </Tooltip>
@@ -161,16 +116,6 @@ export function ServiceChips({ services, max = 3 }: { services: ClientSetupRow["
         </Tooltip>
       )}
     </div>
-  );
-}
-
-/** Clock-relative text legitimately differs between the server render and hydration, so that one text node opts out of the check. */
-export function RelativeTime({ value, prefix = "" }: { value: string | Date | null | undefined; prefix?: string }) {
-  return (
-    <span suppressHydrationWarning>
-      {prefix}
-      {relativeTime(value)}
-    </span>
   );
 }
 

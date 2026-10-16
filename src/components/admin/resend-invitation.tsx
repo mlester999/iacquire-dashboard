@@ -7,7 +7,8 @@ import { AlertTriangle, CheckCircle2, Copy, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { resendInvitationAction } from "@/app/(admin)/admin/actions";
-import { cn } from "@/lib/utils";
+import { IconTile } from "@/components/admin/setup/ui";
+import { InfoChip, StatusPill } from "@/components/ui/status";
 
 interface Outcome {
   email: string;
@@ -84,24 +85,33 @@ export function ResendInvitationButton({
         open={Boolean(outcome)}
         onOpenChange={(o) => !o && setOutcome(null)}
         title={
-          <span className="flex items-center gap-2">
-            {summary?.tone === "success" ? <CheckCircle2 className="size-5 text-success" /> : <AlertTriangle className={cn("size-5", summary?.tone === "danger" ? "text-danger" : "text-warning")} />}
+          <span className="flex items-center gap-3">
+            <IconTile icon={summary?.tone === "success" ? <CheckCircle2 /> : <AlertTriangle />} tone={summary?.tone ?? "neutral"} size="sm" />
             {summary?.title}
           </span>
         }
         description={summary?.body}
         footer={<Button onClick={() => setOutcome(null)}>Done</Button>}
       >
-        {outcome && (
-          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-2">
-            <code className="min-w-0 flex-1 truncate px-2 font-mono text-[12.5px]">{outcome.link}</code>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => navigator.clipboard.writeText(outcome.link).then(() => toast.success("Invitation link copied"), () => toast.error("Copy failed. Select the link and copy it manually."))}
-            >
-              <Copy className="size-3.5" /> Copy
-            </Button>
+        {outcome && summary && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone={summary.tone}>{outcome.status === "sent" ? "Invitation sent" : outcome.status === "captured" ? "Email not delivered" : outcome.status === "failed" ? "Email failed" : "Email queued"}</StatusPill>
+              <InfoChip icon={<Mail />}>{outcome.email}</InfoChip>
+            </div>
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-ink-2">Invitation link</p>
+              <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-2">
+                <code className="min-w-0 flex-1 truncate px-2 font-mono text-[12.5px]" title={outcome.link}>{outcome.link}</code>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigator.clipboard.writeText(outcome.link).then(() => toast.success("Invitation link copied"), () => toast.error("Copy failed. Select the link and copy it manually."))}
+                >
+                  <Copy className="size-3.5" /> Copy
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </Dialog>

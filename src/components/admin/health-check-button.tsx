@@ -13,7 +13,7 @@ export function HealthCheckButton({ agentId }: { agentId: string }) {
   return (
     <Button
       size="sm"
-      variant="ghost"
+      variant="secondary"
       loading={pending}
       onClick={async () => {
         setPending(true);
@@ -24,7 +24,7 @@ export function HealthCheckButton({ agentId }: { agentId: string }) {
         router.refresh();
       }}
     >
-      <Stethoscope className="size-3.5" /> Check
+      <Stethoscope className="size-3.5" aria-hidden /> Run health check
     </Button>
   );
 }

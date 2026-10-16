@@ -3,10 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Inbox, Mail, MessageSquareWarning, Phone } from "lucide-react";
+import { BellRing, BellOff, Clock, FileText, Inbox, Mail, MessageSquareWarning, Phone, Wrench } from "lucide-react";
 import { markEnquirySpamAction } from "@/app/actions/website";
 import { Button } from "@/components/ui/button";
-import { Badge, EmptyState } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { displayPhone } from "@/components/website/render/parts";
 import { relativeTime } from "@/lib/utils";
 import type { SubmissionView } from "@/server/websites/forms";
@@ -34,29 +35,36 @@ export function EnquiriesList({ items, canEdit }: { items: SubmissionView[]; can
     return <EmptyState icon={<Inbox className="size-5" />} title="No enquiries yet" description="When someone fills in the form on your website, it shows up here and in your contacts." />;
   }
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+    <ul className="card-surface divide-y divide-line overflow-hidden rounded-2xl">
       {items.map((e) => {
         const s = STATUS[e.status];
         return (
-          <li key={e.id} className="space-y-2 p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[15px] font-semibold">{e.name}</p>
-              <div className="flex items-center gap-2">
-                <Badge tone={s.tone}>{s.label}</Badge>
-                <span className="text-[12.5px] text-muted">{relativeTime(e.createdAt)}</span>
+          <li key={e.id} className="space-y-3 p-4 transition-colors hover:bg-surface-2/30 sm:p-5">
+            <div className="flex items-start gap-3">
+              <AvatarTile name={e.name} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                  <p className="min-w-0 break-words text-[15px] font-semibold" title={e.name}>{e.name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill tone={s.tone}>{s.label}</StatusPill>
+                    <InfoChip icon={<Clock />}>{relativeTime(e.createdAt)}</InfoChip>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {e.email && <InfoChip icon={<Mail />} className="max-w-full">{e.email}</InfoChip>}
+                  {e.phone && <InfoChip icon={<Phone />}>{displayPhone(e.phone)}</InfoChip>}
+                  {e.service && <InfoChip icon={<Wrench />}>{e.service}</InfoChip>}
+                  <InfoChip icon={<FileText />}>{e.pageSlug === "home" ? "Home page" : `${e.pageSlug} page`}</InfoChip>
+                </div>
               </div>
             </div>
-            <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-2">
-              {e.email && <span className="inline-flex items-center gap-1.5"><Mail className="size-3.5 text-muted" aria-hidden /> {e.email}</span>}
-              {e.phone && <span className="inline-flex items-center gap-1.5"><Phone className="size-3.5 text-muted" aria-hidden /> {displayPhone(e.phone)}</span>}
-              {e.service && <span>Needs: {e.service}</span>}
-              <span className="text-muted">From {e.pageSlug === "home" ? "the home page" : `the ${e.pageSlug} page`}</span>
-            </p>
-            {e.message && <p className="whitespace-pre-wrap break-words rounded-xl bg-surface-2/70 p-3 text-[14px] leading-relaxed">{e.message}</p>}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[12.5px] text-muted">
-              <span>{e.marketingOptIn ? "Agreed to receive updates and offers." : "Did not opt in to updates or offers."}</span>
+            {e.message && <p className="whitespace-pre-wrap break-words rounded-xl bg-surface-2/70 p-3 text-[14px] leading-relaxed ring-1 ring-inset ring-line sm:ml-12">{e.message}</p>}
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:ml-12">
+              {e.marketingOptIn
+                ? <StatusPill tone="success" size="sm" icon={<BellRing className="size-3" aria-hidden />}>Agreed to updates and offers</StatusPill>
+                : <StatusPill tone="neutral" size="sm" icon={<BellOff className="size-3" aria-hidden />}>No opt-in to updates or offers</StatusPill>}
               {canEdit && e.status !== "spam" && (
-                <Button type="button" variant="ghost" size="sm" loading={busy === e.id} disabled={busy !== null} onClick={() => void spam(e.id)}>
+                <Button type="button" variant="secondary" size="sm" loading={busy === e.id} disabled={busy !== null} onClick={() => void spam(e.id)}>
                   <MessageSquareWarning className="size-3.5" /> Mark as spam
                 </Button>
               )}

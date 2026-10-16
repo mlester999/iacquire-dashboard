@@ -4,16 +4,17 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, BadgeCheck, Banknote, Landmark, PiggyBank, Receipt, Scale, ShieldAlert, Wallet } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Banknote, Building2, CalendarDays, Landmark, PiggyBank, Receipt, Scale, ShieldAlert, Trash2, Wallet } from "lucide-react";
 import {
   addFinanceEntryAction, addProviderFeeAction, adjustCreditsAction, confirmLiveReviewAction, publishUnitRateAction, saveFinanceSettingsAction, setExchangeRateAction, voidFinanceEntryAction,
 } from "@/app/(admin)/admin/finance-actions";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { Dialog, Segmented, Switch } from "@/components/ui/overlays";
 import { MetricCard, SectionLabel } from "@/components/ui/workspace";
 import { CATEGORIES, ENTRY_KINDS, KIND_HELP, KIND_LABEL, PERIOD_LABEL, signedUsd, type EntryKind, type PeriodKey } from "@/lib/finance";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, sentenceCase } from "@/lib/utils";
 import type { FinancialReport } from "@/server/billing/finance";
 import type { AgencyBillingOverview } from "@/server/billing/service";
 import type { UnitRateRow } from "@/server/billing/rates";
@@ -27,6 +28,12 @@ const TABS: Array<{ value: Tab; label: string }> = [
 ];
 
 const dollars = (micros: number) => signedUsd(micros);
+const TH = "px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted";
+const PROVIDER_LABEL: Record<string, string> = { ghl: "GoHighLevel", llm: "AI model", n8n: "n8n", research: "Research", enrichment: "Enrichment", internal: "Internal", paymongo: "PayMongo" };
+const providerLabel = (p: string) => PROVIDER_LABEL[p] ?? sentenceCase(p);
+/** Machine event names such as "checkout_session.payment.paid" read as a sentence. */
+const readableEvent = (t: string) => sentenceCase(t.replace(/[._]+/g, " ").trim());
+const OUTCOME_TONE = { error: "danger", rejected: "danger", ignored: "neutral" } as const;
 
 function Line({ label, value, note, strong, negative, indent }: { label: React.ReactNode; value: number | null; note?: React.ReactNode; strong?: boolean; negative?: boolean; indent?: boolean }) {
   return (
@@ -100,18 +107,22 @@ function Statement({ r }: { r: FinancialReport }) {
             <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Wallet className="size-4" aria-hidden /></span>
             <div>
               <CardTitle>Held for clients: not income</CardTitle>
-              <CardDescription>Prepaid credits clients have bought and not yet used are owed to them as service. Top-ups this period: {dollars(r.prepaid.topUpsMicros)}. Held now: {dollars(r.prepaid.heldForClientsMicros)}.</CardDescription>
+              <CardDescription>Prepaid credits clients have bought and not yet used are owed to them as service.</CardDescription>
             </div>
           </div>
         </CardHeader>
+        <CardContent className="flex flex-wrap gap-2 pt-3">
+          <InfoChip icon={<Wallet />}>Top-ups this period <strong className="font-semibold tabular-nums text-ink">{dollars(r.prepaid.topUpsMicros)}</strong></InfoChip>
+          <InfoChip icon={<Scale />}>Held now <strong className="font-semibold tabular-nums text-ink">{dollars(r.prepaid.heldForClientsMicros)}</strong></InfoChip>
+        </CardContent>
       </Card>
 
       {r.caveats.length > 0 && (
         <section aria-label="What this statement leaves out">
-          <SectionLabel title="Read this before relying on the numbers" />
+          <SectionLabel title="Read this before relying on the numbers" count={r.caveats.length} />
           <ul className="space-y-2">
             {r.caveats.map((c) => (
-              <li key={c} className="flex items-start gap-2.5 rounded-xl bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{c}</li>
+              <li key={c} className="flex items-start gap-2.5 rounded-xl border border-warning/25 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />{c}</li>
             ))}
           </ul>
         </section>
@@ -198,16 +209,19 @@ function Entries({ r, canManage }: { r: FinancialReport; canManage: boolean }) {
           ) : (
             <ul className="divide-y divide-line">
               {r.entries.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-start gap-3 px-5 py-3">
-                  <div className="min-w-0 flex-1">
+                <li key={e.id} className="management-row flex flex-wrap items-start gap-x-3 gap-y-2 px-5 py-3.5">
+                  <div className="min-w-0 flex-1 basis-60">
                     <p className={`text-[14px] font-medium ${e.voided ? "text-muted line-through" : ""}`}>{e.description}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
-                      <Badge tone="outline">{KIND_LABEL[e.kind]}</Badge><span>{e.category}</span>{e.orgName && <span>· {e.orgName}</span>}<span>· {formatDate(e.periodOn, "UTC")}</span>
-                      {e.voided && <Badge tone="warning">Voided: {e.voidReason}</Badge>}
-                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <InfoChip className="font-semibold text-ink">{KIND_LABEL[e.kind]}</InfoChip>
+                      <InfoChip>{e.category}</InfoChip>
+                      {e.orgName && <InfoChip icon={<Building2 />}>{e.orgName}</InfoChip>}
+                      <InfoChip icon={<CalendarDays />}>{formatDate(e.periodOn, "UTC")}</InfoChip>
+                      {e.voided && <StatusPill tone="warning" size="sm">Voided: {e.voidReason}</StatusPill>}
+                    </div>
                   </div>
                   <span className={`text-[14px] font-semibold tabular-nums ${e.voided ? "text-muted line-through" : ""}`}>{dollars(e.amountMicros)}</span>
-                  {canManage && !e.voided && <Button size="sm" variant="ghost" onClick={() => { setVoiding(e.id); setReason(""); }}>Void</Button>}
+                  {canManage && !e.voided && <Button size="sm" variant="outline" aria-label={`Void entry: ${e.description}`} onClick={() => { setVoiding(e.id); setReason(""); }}><Trash2 className="size-3.5" aria-hidden />Void</Button>}
                 </li>
               ))}
             </ul>
@@ -254,13 +268,13 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
           <div className="flex items-start gap-3">
             <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${pm.configured && pm.webhookConfigured ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink"}`}><Landmark className="size-4" aria-hidden /></span>
             <div>
-              <CardTitle className="flex flex-wrap items-center gap-2">PayMongo <Badge tone={pm.configured && pm.webhookConfigured ? "success" : "warning"}>{pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "Live keys" : "Test keys") : "Webhook missing") : "Not connected"}</Badge></CardTitle>
+              <CardTitle className="flex flex-wrap items-center gap-2">PayMongo <StatusPill tone={pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "success" : "primary") : "warning") : "neutral"}>{pm.configured ? (pm.webhookConfigured ? (pm.livemode ? "Live keys" : "Test keys") : "Webhook missing") : "Not connected"}</StatusPill></CardTitle>
               <CardDescription>Checkout, refunds and webhooks. Live checkout stays off until the provider and the legal and tax treatment of prepaid credits have been reviewed.</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {pm.problems.length > 0 && <ul className="space-y-1.5">{pm.problems.map((p) => <li key={p} className="flex items-start gap-2 text-[13px] text-warning-ink"><ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{p}</li>)}</ul>}
+          {pm.problems.length > 0 && <ul className="space-y-1.5">{pm.problems.map((p) => <li key={p} className="flex items-start gap-2.5 rounded-xl border border-warning/25 bg-warning-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-warning-ink"><ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />{p}</li>)}</ul>}
           <label className="flex items-start justify-between gap-4 rounded-2xl border border-line p-4">
             <span>
               <span className="block text-[14px] font-medium">Live-payments review confirmed</span>
@@ -282,13 +296,13 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
         <CardHeader><div><CardTitle>Usage rates</CardTitle><CardDescription>What each provider charges us per unit, and what clients are charged: wholesale × {(overview.markupBps / 10000).toFixed(2)} (a {((overview.markupBps - 10000) / 100).toFixed(0)}% markup on eligible metered usage, not a {((overview.markupBps - 10000) / 100).toFixed(0)}% profit margin). Nothing can be billed on a unit until its rate is published.</CardDescription></div></CardHeader>
         <CardContent className="space-y-4 px-0 pb-0">
           {rates.length === 0 ? <EmptyState compact icon={<Scale />} title="No rates published yet" description="Measure the provider's real cost, then publish it. Until then, sending on that channel is refused because it couldn't be billed." /> : (
-            <div className="overflow-x-auto"><table className="w-full min-w-[34rem] text-left text-[13px]"><caption className="sr-only">Published usage rates</caption><thead><tr className="border-y border-line text-[12px] text-muted"><th scope="col" className="px-5 py-2.5 font-medium">Unit</th><th scope="col" className="px-3 py-2.5 font-medium">Provider</th><th scope="col" className="px-3 py-2.5 text-right font-medium">We pay</th><th scope="col" className="px-3 py-2.5 text-right font-medium">Client pays</th><th scope="col" className="px-5 py-2.5 text-right font-medium">Published</th></tr></thead>
-              <tbody className="divide-y divide-line">{rates.map((x) => <tr key={`${x.provider}:${x.unitType}`}><th scope="row" className="px-5 py-2.5 font-medium">{x.label}</th><td className="px-3 py-2.5 text-muted">{x.provider}</td><td className="px-3 py-2.5 text-right tabular-nums">${(x.wholesaleMicrosPerUnit / 1e6).toFixed(6)}</td><td className="px-3 py-2.5 text-right tabular-nums">${(x.clientMicrosPerUnit / 1e6).toFixed(6)}</td><td className="px-5 py-2.5 text-right text-muted">{formatDate(x.publishedAt, "UTC")}</td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[34rem] text-left text-[13px]"><caption className="sr-only">Published usage rates</caption><thead><tr className="border-y border-line bg-surface-2/60"><th scope="col" className={`${TH} px-5`}>Unit</th><th scope="col" className={TH}>Provider</th><th scope="col" className={`${TH} text-right`}>We pay</th><th scope="col" className={`${TH} text-right`}>Client pays</th><th scope="col" className={`${TH} px-5 text-right`}>Published</th></tr></thead>
+              <tbody className="divide-y divide-line">{rates.map((x) => <tr key={`${x.provider}:${x.unitType}`} className="management-row"><th scope="row" className="px-5 py-3 font-medium">{x.label}</th><td className="px-3 py-3"><InfoChip>{providerLabel(x.provider)}</InfoChip></td><td className="px-3 py-3 text-right tabular-nums">${(x.wholesaleMicrosPerUnit / 1e6).toFixed(6)}</td><td className="px-3 py-3 text-right font-medium tabular-nums">${(x.clientMicrosPerUnit / 1e6).toFixed(6)}</td><td className="whitespace-nowrap px-5 py-3 text-right text-muted">{formatDate(x.publishedAt, "UTC")}</td></tr>)}</tbody></table></div>
           )}
           {canManage && (
             <form className="grid gap-3 border-t border-line p-5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_2fr_auto]" onSubmit={(e) => { e.preventDefault(); void act("rate", () => publishUnitRateAction(rate.provider, rate.unit, Number(rate.wholesale), rate.note), "Rate published"); }}>
               <Field label="Provider" htmlFor="rate-prov"><Input id="rate-prov" value={rate.provider} onChange={(e) => setRate({ ...rate, provider: e.target.value })} /></Field>
-              <Field label="Unit" htmlFor="rate-unit"><Select id="rate-unit" value={rate.unit} onChange={(e) => setRate({ ...rate, unit: e.target.value })}>{["sms_segment", "whatsapp_message", "email_send", "ai_tokens_in", "ai_tokens_out", "ai_research_call", "premium_api_call", "automation_execution", "other"].map((u) => <option key={u} value={u}>{u.replace(/_/g, " ")}</option>)}</Select></Field>
+              <Field label="Unit" htmlFor="rate-unit"><Select id="rate-unit" value={rate.unit} onChange={(e) => setRate({ ...rate, unit: e.target.value })}>{["sms_segment", "whatsapp_message", "email_send", "ai_tokens_in", "ai_tokens_out", "ai_research_call", "premium_api_call", "automation_execution", "other"].map((u) => <option key={u} value={u}>{sentenceCase(u)}</option>)}</Select></Field>
               <Field label="We pay (USD per unit)" htmlFor="rate-w"><Input id="rate-w" inputMode="decimal" value={rate.wholesale} onChange={(e) => setRate({ ...rate, wholesale: e.target.value })} placeholder="0.008" /></Field>
               <Field label="Where this came from" htmlFor="rate-note" optional><Input id="rate-note" value={rate.note} onChange={(e) => setRate({ ...rate, note: e.target.value })} placeholder="Provider invoice or price page" /></Field>
               <div className="flex items-end"><Button type="submit" variant="secondary" loading={busy === "rate"} disabled={!(Number(rate.wholesale) > 0)}>Publish</Button></div>
@@ -316,7 +330,7 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void act("fee", () => addProviderFeeAction({ ...fee, amountUsd: Number(fee.amount) }), "Fee disclosed to the client"); }}>
                 <Field label="Client" htmlFor="fee-org"><Select id="fee-org" value={fee.orgId} onChange={(e) => setFee({ ...fee, orgId: e.target.value })}><option value="">Choose a client</option>{r.clients.map((c) => <option key={c.orgId} value={c.orgId}>{c.name}</option>)}</Select></Field>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Kind" htmlFor="fee-kind"><Select id="fee-kind" value={fee.kind} onChange={(e) => setFee({ ...fee, kind: e.target.value as typeof fee.kind })}>{["number_rental", "sender_registration", "whatsapp_connection", "domain", "other"].map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}</Select></Field>
+                  <Field label="Kind" htmlFor="fee-kind"><Select id="fee-kind" value={fee.kind} onChange={(e) => setFee({ ...fee, kind: e.target.value as typeof fee.kind })}>{["number_rental", "sender_registration", "whatsapp_connection", "domain", "other"].map((k) => <option key={k} value={k}>{sentenceCase(k)}</option>)}</Select></Field>
                   <Field label="Repeats" htmlFor="fee-rec"><Select id="fee-rec" value={fee.recurrence} onChange={(e) => setFee({ ...fee, recurrence: e.target.value as typeof fee.recurrence })}><option value="one_time">Once</option><option value="monthly">Monthly</option><option value="annual">Yearly</option></Select></Field>
                 </div>
                 <Field label="Description" htmlFor="fee-desc"><Input id="fee-desc" value={fee.description} onChange={(e) => setFee({ ...fee, description: e.target.value })} placeholder="SMS number rental" /></Field>
@@ -342,7 +356,7 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
         <Card>
           <CardHeader><div><CardTitle>Payment notifications that need a look</CardTitle><CardDescription>Events PayMongo sent that were rejected, failed to process or aren&apos;t handled automatically. Check each against PayMongo.</CardDescription></div></CardHeader>
           <CardContent className="px-0 pb-0">
-            <ul className="divide-y divide-line">{overview.unmatchedEvents.map((e) => <li key={e.id} className="flex flex-wrap items-start gap-3 px-5 py-3"><div className="min-w-0 flex-1"><p className="text-[13.5px] font-medium">{e.eventType}</p><p className="text-[12px] text-muted">{e.detail ?? "No detail recorded."}</p></div><Badge tone={e.outcome === "error" || e.outcome === "rejected" ? "danger" : "neutral"}>{e.outcome}</Badge><time dateTime={e.receivedAt} className="text-[12px] text-muted">{formatDateTime(e.receivedAt, "UTC")}</time></li>)}</ul>
+            <ul className="divide-y divide-line">{overview.unmatchedEvents.map((e) => <li key={e.id} className="management-row flex flex-wrap items-start gap-x-3 gap-y-2 px-5 py-3.5"><div className="min-w-0 flex-1 basis-60"><div className="flex flex-wrap items-center gap-2"><p className="text-[13.5px] font-medium">{readableEvent(e.eventType)}</p><InfoChip className="bg-transparent font-mono text-[10.5px] text-muted">{e.eventType}</InfoChip></div><p className="mt-1 text-[12px] leading-relaxed text-muted">{e.detail ?? "No detail recorded."}</p></div><div className="flex items-center gap-3"><StatusPill tone={OUTCOME_TONE[e.outcome as keyof typeof OUTCOME_TONE] ?? "neutral"} size="sm">{sentenceCase(e.outcome)}</StatusPill><time dateTime={e.receivedAt} className="whitespace-nowrap text-[12px] text-muted">{formatDateTime(e.receivedAt, "UTC")}</time></div></li>)}</ul>
           </CardContent>
         </Card>
       )}
@@ -358,15 +372,15 @@ function Clients({ r, overview }: { r: FinancialReport; overview: AgencyBillingO
         <CardContent className="px-0 pb-0">
           {r.clients.length === 0 ? <EmptyState compact icon={<Banknote />} title="No clients to show" /> : (
             <div className="overflow-x-auto"><table className="w-full min-w-[44rem] text-left text-[13px]"><caption className="sr-only">Contribution by client</caption>
-              <thead><tr className="border-y border-line text-[12px] text-muted"><th scope="col" className="px-5 py-2.5 font-medium">Client</th><th scope="col" className="px-3 py-2.5 text-right font-medium">Cash in</th><th scope="col" className="px-3 py-2.5 text-right font-medium">Usage charged</th><th scope="col" className="px-3 py-2.5 text-right font-medium">Provider cost</th><th scope="col" className="px-3 py-2.5 text-right font-medium">Fees</th><th scope="col" className="px-3 py-2.5 text-right font-medium">Direct costs</th><th scope="col" className="px-5 py-2.5 text-right font-medium">Contribution</th></tr></thead>
-              <tbody className="divide-y divide-line">{r.clients.map((c) => <tr key={c.orgId}><th scope="row" className="px-5 py-2.5 font-medium"><Link href={`/admin/clients/${c.orgId}`} className="hover:text-primary-ink">{c.name}</Link></th><td className="px-3 py-2.5 text-right tabular-nums">{dollars(c.receivedMicros - c.refundedMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(c.usageChargedMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(-c.providerCostMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(-c.paymentFeesMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(-c.directCostsMicros)}</td><td className={`px-5 py-2.5 text-right font-semibold tabular-nums ${c.contributionMicros < 0 ? "text-danger-ink" : ""}`}>{dollars(c.contributionMicros)}</td></tr>)}</tbody></table></div>
+              <thead><tr className="border-y border-line bg-surface-2/60"><th scope="col" className={`${TH} px-5 text-left`}>Client</th><th scope="col" className={`${TH} text-right`}>Cash in</th><th scope="col" className={`${TH} text-right`}>Usage charged</th><th scope="col" className={`${TH} text-right`}>Provider cost</th><th scope="col" className={`${TH} text-right`}>Fees</th><th scope="col" className={`${TH} text-right`}>Direct costs</th><th scope="col" className={`${TH} px-5 text-right`}>Contribution</th></tr></thead>
+              <tbody className="divide-y divide-line">{r.clients.map((c) => <tr key={c.orgId} className="management-row"><th scope="row" className="px-5 py-2.5 font-medium"><Link href={`/admin/clients/${c.orgId}`} className="flex min-w-0 items-center gap-2.5 hover:text-primary-ink"><AvatarTile name={c.name} size="sm" /><span className="truncate" title={c.name}>{c.name}</span></Link></th><td className="px-3 py-2.5 text-right tabular-nums">{dollars(c.receivedMicros - c.refundedMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(c.usageChargedMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(-c.providerCostMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(-c.paymentFeesMicros)}</td><td className="px-3 py-2.5 text-right tabular-nums">{dollars(-c.directCostsMicros)}</td><td className={`px-5 py-2.5 text-right font-semibold tabular-nums ${c.contributionMicros < 0 ? "text-danger-ink" : ""}`}>{c.contributionMicros < 0 && <span className="sr-only">Negative </span>}{dollars(c.contributionMicros)}</td></tr>)}</tbody></table></div>
           )}
         </CardContent>
       </Card>
       {overview.reconciliationErrors.length > 0 && (
         <Card>
           <CardHeader><div><CardTitle className="flex items-center gap-2 text-danger-ink"><AlertTriangle className="size-4" aria-hidden />Credit ledgers that don&apos;t add up</CardTitle><CardDescription>The stored balance differs from the sum of the ledger. Review before relying on any figure for these clients.</CardDescription></div></CardHeader>
-          <CardContent className="px-0 pb-0"><ul className="divide-y divide-line">{overview.reconciliationErrors.map((e) => <li key={e.orgId} className="px-5 py-3 text-[13px]"><span className="font-medium">{e.name}</span><span className="text-muted"> · stored {dollars(e.balanceMicros)} vs ledger {dollars(e.ledgerBalanceMicros)}</span></li>)}</ul></CardContent>
+          <CardContent className="px-0 pb-0"><ul className="divide-y divide-line">{overview.reconciliationErrors.map((e) => <li key={e.orgId} className="management-row flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-3 text-[13px]"><span className="flex min-w-0 flex-1 items-center gap-2.5 font-medium"><AvatarTile name={e.name} size="sm" /><span className="truncate" title={e.name}>{e.name}</span></span><span className="flex flex-wrap items-center gap-1.5"><InfoChip>Stored {dollars(e.balanceMicros)}</InfoChip><InfoChip>Ledger {dollars(e.ledgerBalanceMicros)}</InfoChip><StatusPill tone="danger" size="sm">Mismatch</StatusPill></span></li>)}</ul></CardContent>
         </Card>
       )}
     </div>

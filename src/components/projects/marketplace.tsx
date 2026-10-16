@@ -5,7 +5,8 @@ import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowRight, Bot, Check, Clock, Code2, Compass, Globe, Info, Layers, Plug, Search, ShoppingBag, Sparkles, Star, Workflow, X,LayoutGrid,List as ListIcon } from "lucide-react";
 import { TechnologyPill } from "@/components/projects/visuals";
-import { Badge, Card } from "@/components/ui/primitives";
+import { Card, EmptyState } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { Chip } from "@/components/projects/common";
@@ -77,17 +78,17 @@ export function Marketplace({
         <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative grid gap-5 sm:grid-cols-3">
           <div>
-            <Badge tone="success">Already yours</Badge>
+            <StatusPill tone="success">Already yours</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">{CORE_OFFER.name}</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Your core system and its standard AI employees are covered by your agreement. Nothing on this page is needed to use them.</p>
           </div>
           <div>
-            <Badge tone="primary">Optional</Badge>
+            <StatusPill tone="primary">Optional</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">Add-ons &amp; custom projects</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Separately scoped work beyond your package. Always quoted in writing first. You are never charged automatically.</p>
           </div>
           <div>
-            <Badge tone="violet">Optional</Badge>
+            <StatusPill tone="violet">Optional</StatusPill>
             <p className="mt-2.5 text-[14px] font-semibold">Managed maintenance{maintenancePrice ? ` · ${maintenancePrice}` : ""}</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
               Ongoing monitoring and reasonable changes.{" "}
@@ -148,17 +149,15 @@ export function Marketplace({
       <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted" aria-live="polite">{visible.length} service{visible.length===1?"":"s"} to explore</p><div className="flex gap-1 rounded-lg border border-line bg-surface p-1"><Button variant={layout==="grid"?"soft":"ghost"} size="icon-sm" aria-pressed={layout==="grid"} aria-label="Grid view" onClick={()=>setLayout("grid")}><LayoutGrid className="size-4"/></Button><Button variant={layout==="list"?"soft":"ghost"} size="icon-sm" aria-pressed={layout==="list"} aria-label="List view" onClick={()=>setLayout("list")}><ListIcon className="size-4"/></Button></div></div>
 
       {!canRequest && (
-        <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
-          <Info className="mt-0.5 size-4 shrink-0" /> You can browse everything here. A workspace owner or admin submits requests.
+        <p className="flex items-start gap-2.5 rounded-xl bg-surface-2 p-3.5 text-[13px] text-ink-2 ring-1 ring-inset ring-line">
+          <Info className="mt-0.5 size-4 shrink-0 text-primary" /> You can browse everything here. A workspace owner or admin submits requests.
         </p>
       )}
 
       {/* Groups */}
       {groups.length === 0 ? (
-        <Card className="px-6 py-12 text-center">
-          <p className="text-[15px] font-semibold">No services match that search</p>
-          <p className="mt-1 text-[13.5px] text-muted">Try a different filter, or tell us what you&apos;re after and we&apos;ll scope it with you.</p>
-          {canRequest?<ButtonLink href={requestHref()} variant="brand" className="mt-5">Request a Custom Project <ArrowRight className="size-4" /></ButtonLink>:<Button variant="secondary" className="mt-5" onClick={()=>{setQuery("");setFilter("all");}}>Show all services</Button>}
+        <Card>
+          <EmptyState icon={<Search className="size-5" />} title="No services match that search" description="Try a different filter, or tell us what you're after and we'll scope it with you." action={canRequest?<ButtonLink href={requestHref()} variant="brand">Request a Custom Project <ArrowRight className="size-4" /></ButtonLink>:<Button variant="secondary" onClick={()=>{setQuery("");setFilter("all");}}>Show all services</Button>} />
         </Card>
       ) : (
         <div className="space-y-10">
@@ -170,7 +169,7 @@ export function Marketplace({
                   <h2 id={`cat-${g.code}`} className="text-[18px] font-semibold tracking-tight">
                     {g.name}
                   </h2>
-                  <Badge tone={meta.kind === "custom_build" ? "violet" : "neutral"}>{meta.kind === "custom_build" ? "Custom build · quoted" : "Ready-to-use"}</Badge>
+                  <StatusPill tone={meta.kind === "custom_build" ? "violet" : "neutral"}>{meta.kind === "custom_build" ? "Custom build · quoted" : "Ready-to-use"}</StatusPill>
                 </div>
                 <motion.ul layout={!reduce} className={layout==="grid"?"grid gap-4 md:grid-cols-2 xl:grid-cols-3":"space-y-3"}>
                   <AnimatePresence mode="popLayout" initial={false}>
@@ -236,11 +235,11 @@ function ServiceCard({ service: s, canRequest, onDetails,compact=false }: { serv
         </span>
         <div className="flex flex-wrap justify-end gap-1.5">
           {s.featured && available && (
-            <Badge tone="warning">
+            <StatusPill tone="warning">
               <Star className="size-3" /> Popular
-            </Badge>
+            </StatusPill>
           )}
-          {AVAILABILITY_LABEL[s.availability] && <Badge tone="neutral">{AVAILABILITY_LABEL[s.availability]}</Badge>}
+          {AVAILABILITY_LABEL[s.availability] && <StatusPill tone="neutral">{AVAILABILITY_LABEL[s.availability]}</StatusPill>}
         </div>
       </div>
       <h3 className="mt-4 text-[16px] font-semibold leading-snug tracking-tight">{s.name}</h3>
@@ -419,7 +418,7 @@ function ServiceDetail({ service: s, canRequest, onClose }: { service: ServiceVi
                     <Link href={`/our-work/${p.slug}`} className="inline-flex items-center gap-2 text-[13.5px] font-medium text-primary hover:underline">
                       {p.title} <ArrowRight className="size-3.5" />
                     </Link>
-                    {p.status !== "built" && <Badge tone="warning" className="ml-2">{PORTFOLIO_STATUS_LABEL[p.status]}</Badge>}
+                    {p.status !== "built" && <StatusPill tone="warning" className="ml-2">{PORTFOLIO_STATUS_LABEL[p.status]}</StatusPill>}
                   </li>
                 ))}
               </ul>

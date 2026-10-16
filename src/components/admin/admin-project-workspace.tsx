@@ -4,19 +4,30 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Download, FileText, Lock, Plus, Send, Trash2,MessageSquare,Flag,ClipboardCheck,UserRound } from "lucide-react";
+import { Calendar, Check, CircleDollarSign, Download, FileText, FolderOpen, Lock, Plus, Receipt, Send, Trash2, MessageSquare, Flag, ClipboardCheck, UserRound, Clock, ListChecks, Megaphone, Paperclip, Inbox } from "lucide-react";
 import { MetricCard } from "@/components/ui/workspace";
-import { Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { Button } from "@/components/ui/button";
-import { ProjectStatusBadge, bytesLabel, useRunner } from "@/components/projects/common";
+import { bytesLabel, useRunner } from "@/components/projects/common";
 import {
   agencyMessageAction, assignAction, completeTaskAction, deleteMilestoneAction, handoverAction, milestoneStatusAction, progressUpdateAction, saveMilestoneAction,
   saveNotesAction, saveQuoteAction, sendQuoteAction, setStatusAction, withdrawQuoteAction,
 } from "@/app/(admin)/admin/projects/actions";
-import { MILESTONE_LABEL, MILESTONE_STATUSES, PROJECT_STATUS_LABEL, QUOTE_STATUS_LABEL, STATUS_TRANSITIONS, formatMoney, type MilestoneStatus, type ProjectStatus } from "@/lib/projects";
+import { PROJECT_STATUS_TONE, MILESTONE_LABEL, MILESTONE_STATUSES, PROJECT_STATUS_LABEL, QUOTE_STATUS_LABEL, STATUS_TRANSITIONS, formatMoney, type MilestoneStatus, type ProjectStatus } from "@/lib/projects";
 import type { AgencyProjectDetail } from "@/server/projects/agency";
 import type { QuoteView } from "@/server/projects/shared";
 import { cn, formatDate, formatDateTime, relativeTime } from "@/lib/utils";
+
+function SectionTitle({ icon, children, tone = "primary" }: { icon: React.ReactNode; children: React.ReactNode; tone?: "primary" | "warning" | "violet" | "success" | "neutral" }) {
+  const t = { primary: "bg-primary-soft text-primary", warning: "bg-warning-soft text-warning-ink", violet: "bg-violet-soft text-violet-ink", success: "bg-success-soft text-success-ink", neutral: "bg-surface-2 text-ink-2" }[tone];
+  return (
+    <CardTitle className="flex items-center gap-2.5">
+      <span aria-hidden className={cn("grid size-8 shrink-0 place-items-center rounded-[10px] ring-1 ring-inset ring-line [&>svg]:size-4", t)}>{icon}</span>
+      {children}
+    </CardTitle>
+  );
+}
 
 const lines = (v: string) => v.split("\n").map((x) => x.trim()).filter(Boolean);
 const toLines = (v: string[]) => v.join("\n");
@@ -33,7 +44,7 @@ export function AdminProjectWorkspace({ project: p, currentUserId }: { project: 
     <div className="space-y-5">
       <HeaderCard project={p} currentUserId={currentUserId} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard label="Delivery milestones" value={p.milestones.length?`${p.milestones.filter(m=>m.status==="completed").length}/${p.milestones.length}`:"Not set"} detail="Completed against agreed scope" tone="green" icon={<Flag className="size-4"/>}/><MetricCard label="Conversation" value={p.messages.length} detail="Client and internal messages" tone="blue" icon={<MessageSquare className="size-4"/>}/><MetricCard label="Agency tasks" value={p.tasks.length} detail="Outstanding work for this request" tone="amber" icon={<ClipboardCheck className="size-4"/>}/><MetricCard label="Assigned owner" value={<span className="text-lg">{p.assignedTo?.name??"Unassigned"}</span>} detail={p.orgName} tone="neutral" icon={<UserRound className="size-4"/>}/></div>
-      <nav aria-label="Project workspace sections" className="flex flex-wrap gap-1 rounded-xl border border-line bg-surface p-1.5">{[{id:"conversation",label:"Conversation"},{id:"quote",label:"Quote builder"},{id:"milestones",label:"Milestones"},{id:"updates",label:"Progress updates"}].map(s=><a key={s.id} href={`#agency-project-${s.id}`} className="rounded-lg px-3 py-2 text-xs font-medium text-ink-2 hover:bg-surface-2">{s.label}</a>)}</nav>
+      <nav aria-label="Project workspace sections" className="scrollbar-thin flex gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1.5 shadow-soft">{[{id:"conversation",label:"Conversation",icon:MessageSquare},{id:"quote",label:"Quote builder",icon:Receipt},{id:"milestones",label:"Milestones",icon:Flag},{id:"updates",label:"Progress updates",icon:Megaphone}].map(s=><a key={s.id} href={`#agency-project-${s.id}`} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink [&>svg]:size-3.5 [&>svg]:text-muted"><s.icon />{s.label}</a>)}</nav>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
           <div id="agency-project-conversation" className="scroll-mt-24"><Conversation project={p} closed={closed}/></div>
@@ -76,23 +87,26 @@ function HeaderCard({ project: p, currentUserId }: { project: AgencyProjectDetai
       <CardContent className="grid gap-5 pt-5 lg:grid-cols-[1fr_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[12px] text-muted">{r.ref}</span>
-            <ProjectStatusBadge status={r.status} />
-            {r.serviceName && <Badge tone="outline">{r.serviceName}</Badge>}
+            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-muted ring-1 ring-inset ring-line">{r.ref}</span>
+            <StatusPill tone={PROJECT_STATUS_TONE[r.status]}>{PROJECT_STATUS_LABEL[r.status]}</StatusPill>
+            {r.serviceName && <InfoChip>{r.serviceName}</InfoChip>}
           </div>
-          <h1 className="mt-1.5 text-[24px] font-semibold tracking-[-0.02em]">{r.title}</h1>
-          <p className="mt-1 text-[13px] text-muted">
-            <Link href={`/admin/clients/${r.orgId}`} className="font-medium text-primary hover:underline">
+          <h1 className="mt-2 text-[24px] font-semibold leading-tight tracking-[-0.02em]">{r.title}</h1>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <Link href={`/admin/clients/${r.orgId}`} className="inline-flex h-7 items-center gap-2 rounded-lg bg-surface pl-1 pr-2.5 text-[12px] font-medium text-primary-ink ring-1 ring-inset ring-line hover:bg-primary-soft">
+              <AvatarTile name={p.orgName} size="sm" className="!size-5 !rounded-md !text-[8.5px]" />
               {p.orgName}
             </Link>
-            {p.createdByName ? ` · requested by ${p.createdByName}` : ""} · {formatDate(r.submittedAt)} · active {relativeTime(r.lastActivityAt)}
-          </p>
-          {p.delivery && (
-            <p className="mt-1 text-[13px] text-ink-2">
-              Agreed <strong>{formatMoney(p.delivery.agreedPriceCents, p.delivery.currency)}</strong>
-              {p.delivery.ongoingMonthlyCents ? ` + ${formatMoney(p.delivery.ongoingMonthlyCents, p.delivery.currency)}/month` : ""}
-            </p>
-          )}
+            {p.createdByName && <InfoChip icon={<UserRound />}>Requested by {p.createdByName}</InfoChip>}
+            <InfoChip icon={<Calendar />}>{formatDate(r.submittedAt)}</InfoChip>
+            <InfoChip icon={<Clock />}>Active {relativeTime(r.lastActivityAt)}</InfoChip>
+            {p.delivery && (
+              <InfoChip icon={<CircleDollarSign />} className="tabular-nums">
+                Agreed {formatMoney(p.delivery.agreedPriceCents, p.delivery.currency)}
+                {p.delivery.ongoingMonthlyCents ? ` + ${formatMoney(p.delivery.ongoingMonthlyCents, p.delivery.currency)}/month` : ""}
+              </InfoChip>
+            )}
+          </div>
         </div>
         <div className="grid min-w-0 gap-3 rounded-xl border border-line bg-surface/90 p-3 lg:min-w-[280px]">
           <Field label="Assigned to" htmlFor="assignee">
@@ -151,8 +165,8 @@ function TasksCard({ project: p }: { project: AgencyProjectDetail }) {
   return (
     <Card className="border-warning/30">
       <CardHeader>
-        <CardTitle>To do</CardTitle>
-        <Badge tone="warning">{p.tasks.length}</Badge>
+        <SectionTitle icon={<ListChecks />} tone="warning">To do</SectionTitle>
+        <StatusPill tone="warning" size="sm">{p.tasks.length} open</StatusPill>
       </CardHeader>
       <CardContent>
         <ul className="space-y-2">
@@ -186,7 +200,7 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>What the client asked for</CardTitle>
+        <SectionTitle icon={<Inbox />}>What the client asked for</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <dl className="space-y-3">
@@ -195,7 +209,7 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
             .map((x) => (
               <div key={x.key}>
                 <dt className="text-[11.5px] font-medium text-muted">{x.label}</dt>
-                <dd className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{x.answer}</dd>
+                <dd className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink-2">{/^\d{4}-\d{2}-\d{2}$/.test(x.answer ?? "") ? formatDate(x.answer as string) : x.answer}</dd>
               </div>
             ))}
         </dl>
@@ -213,11 +227,10 @@ function RequestInfo({ project: p }: { project: AgencyProjectDetail }) {
           </div>
         )}
         {(r.budgetRange || r.preferredDeadline) && (
-          <p className="border-t border-line pt-3 text-[12.5px] text-ink-2">
-            {r.budgetRange ? `Budget: ${r.budgetRange}` : ""}
-            {r.budgetRange && r.preferredDeadline ? " · " : ""}
-            {r.preferredDeadline ? `Deadline: ${formatDate(r.preferredDeadline)}` : ""}
-          </p>
+          <div className="flex flex-wrap gap-1.5 border-t border-line pt-3">
+            {r.budgetRange && <InfoChip icon={<CircleDollarSign />}>Budget {r.budgetRange}</InfoChip>}
+            {r.preferredDeadline && <InfoChip icon={<Calendar />}>Deadline {formatDate(r.preferredDeadline)}</InfoChip>}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -271,11 +284,11 @@ function Conversation({ project: p, closed }: { project: AgencyProjectDetail; cl
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Conversation</CardTitle>
+        <SectionTitle icon={<MessageSquare />}>Conversation</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {p.messages.length === 0 ? (
-          <p className="text-[13.5px] text-muted">No messages yet.</p>
+          <EmptyState compact icon={<MessageSquare className="size-5" />} title="No messages yet" description="Replies to the client and internal notes will appear here." />
         ) : (
           <ul className="space-y-3">
             {p.messages.map((m) => (
@@ -389,7 +402,7 @@ function QuoteBuilder({ project: p }: { project: AgencyProjectDetail }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Quote</CardTitle>
+        <SectionTitle icon={<Receipt />} tone="violet">Quote</SectionTitle>
         {!locked && !editing && !draft && (
           <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
             <Plus className="size-3.5" /> {last ? `New version (v${last.version + 1})` : "Prepare a quote"}
@@ -402,7 +415,7 @@ function QuoteBuilder({ project: p }: { project: AgencyProjectDetail }) {
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {p.quotes.length === 0 && !editing && <p className="text-[13.5px] text-muted">No quote yet. Only agency staff can set pricing; the client sees a quote only after you send it.</p>}
+        {p.quotes.length === 0 && !editing && <EmptyState compact icon={<Receipt className="size-5" />} title="No quote yet" description="Only agency staff can set pricing; the client sees a quote only after you send it." />}
         {locked && <p className="text-[12.5px] text-muted">A quote can&apos;t be added now that the project is {PROJECT_STATUS_LABEL[p.request.status].toLowerCase()}.</p>}
         {p.quotes.length > 0 && (
           <ul className="space-y-2">
@@ -496,7 +509,7 @@ function QuoteRow({ q, requestId, live }: { q: QuoteView; requestId: string; liv
           v{q.version} · {formatMoney(q.oneTimeCents, q.currency)}
           {q.ongoingMonthlyCents ? ` + ${formatMoney(q.ongoingMonthlyCents, q.currency)}/mo` : ""}
         </span>
-        <Badge tone={q.status === "accepted" ? "success" : q.status === "sent" ? "warning" : q.status === "declined" ? "danger" : "neutral"}>{QUOTE_STATUS_LABEL[q.status] ?? q.status}</Badge>
+        <StatusPill tone={q.status === "accepted" ? "success" : q.status === "sent" ? "warning" : q.status === "declined" ? "danger" : "neutral"}>{QUOTE_STATUS_LABEL[q.status] ?? q.status}</StatusPill>
         {q.firstViewedAt && live && <span className="text-[11.5px] text-muted">viewed {relativeTime(q.firstViewedAt)}</span>}
         {(live || q.status === "draft") && (
           <Button
@@ -549,11 +562,11 @@ function MilestonesEditor({ project: p, closed }: { project: AgencyProjectDetail
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Milestones</CardTitle>
+        <SectionTitle icon={<Flag />} tone="success">Milestones</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {p.milestones.length === 0 ? (
-          <p className="text-[13.5px] text-muted">No milestones yet. Add them once the scope is agreed so the client can follow progress.</p>
+          <EmptyState compact icon={<Flag className="size-5" />} title="No milestones yet" description="Add them once the scope is agreed so the client can follow progress." />
         ) : (
           <ul className="space-y-2">
             {p.milestones.map((m) => (
@@ -623,7 +636,7 @@ function UpdatesPanel({ project: p, closed }: { project: AgencyProjectDetail; cl
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Progress updates</CardTitle>
+        <SectionTitle icon={<Megaphone />}>Progress updates</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {!closed && (
@@ -678,7 +691,7 @@ function HandoverCard({ project: p }: { project: AgencyProjectDetail }) {
   return (
     <Card className="border-success/30">
       <CardHeader>
-        <CardTitle>Record completion &amp; handover</CardTitle>
+        <SectionTitle icon={<ClipboardCheck />} tone="success">Record completion &amp; handover</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[13px] text-muted">Completes the project and shows these notes to the client: what was delivered, where it lives, and how to use it. All client-approval milestones must be complete first.</p>
@@ -728,11 +741,11 @@ function FilesPanel({ project: p, closed }: { project: AgencyProjectDetail; clos
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Files</CardTitle>
+        <SectionTitle icon={<Paperclip />} tone="neutral">Files</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {p.files.length === 0 ? (
-          <p className="text-[13px] text-muted">No files yet.</p>
+          <EmptyState compact icon={<FolderOpen className="size-5" />} title="No files yet" description="Deliverables and shared documents will appear here." />
         ) : (
           <ul className="space-y-2">
             {p.files.map((f) => (

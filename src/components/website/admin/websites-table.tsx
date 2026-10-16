@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, ExternalLink, Eye, Globe, PencilRuler, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Clock, ExternalLink, Eye, Globe, LayoutTemplate, PencilRuler, Rocket, Search, ShieldCheck, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card } from "@/components/ui/primitives";
+import { Card, EmptyState } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { FrameThumb } from "@/components/website/frame/frame-thumb";
 import { LifecycleBadge } from "@/components/website/admin/lifecycle-badge";
 import { SitePreviewOverlay } from "@/components/website/admin/site-preview-overlay";
@@ -51,42 +52,45 @@ export function WebsitesTable({ sites, timeZone, canEdit, frameFor = defaultSite
         </select>
       </div>
       {rows.length === 0 ? (
-        <Card className="px-6 py-14 text-center"><p className="text-[15px] font-semibold">No websites match</p><p className="mt-1 text-[13px] text-muted">Try a different search or status.</p></Card>
+        <Card><EmptyState icon={<Search className="size-5" />} title="No websites match" description="Try a different search or status." action={<Button variant="secondary" onClick={() => { setQ(""); setState("all"); }}>Clear filters</Button>} /></Card>
       ) : (
         <ul className="grid gap-4 xl:grid-cols-2" aria-label="Client websites">
           {rows.map((s) => (
-            <li key={s.websiteId}>
-              <Card className="overflow-hidden">
+            <li key={s.websiteId} className="min-w-0">
+              <Card className="h-full overflow-hidden transition-shadow hover:shadow-md">
                 <div className="grid sm:grid-cols-[13rem_1fr]">
                   <div className="relative border-b border-line sm:border-b-0 sm:border-r">
                     <FrameThumb src={frameFor(s, true)} title={`${s.name} draft`} ratio="aspect-[16/10] sm:aspect-auto sm:h-full sm:min-h-[9rem]" />
                     {s.archived && <span className="absolute inset-0 bg-bg/60" aria-hidden />}
                   </div>
-                  <div className="min-w-0 space-y-2.5 p-4">
+                  <div className="min-w-0 space-y-3 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-[15px] font-semibold tracking-tight">{s.name}</p>
-                        <p className="truncate text-[12.5px] text-muted">{s.orgName}</p>
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <AvatarTile name={s.orgName} />
+                        <div className="min-w-0">
+                          <p className="truncate text-[15px] font-semibold tracking-tight" title={s.name}>{s.name}</p>
+                          <p className="truncate text-[12.5px] text-muted" title={s.orgName}>{s.orgName}</p>
+                        </div>
                       </div>
                       <LifecycleBadge state={s.lifecycle} />
                     </div>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px]">
-                      <div><dt className="text-muted">Template</dt><dd className="truncate font-medium">{s.templateName}</dd></div>
-                      <div><dt className="text-muted">Domain</dt><dd className="flex items-center gap-1 truncate font-medium"><Globe className="size-3 shrink-0 text-muted" aria-hidden />{s.domain?.hostname ?? "—"}</dd></div>
-                      <div><dt className="text-muted">Last edited</dt><dd className="font-medium" title={formatDateTime(s.draftUpdatedAt, timeZone)}>{relativeTime(s.draftUpdatedAt)}</dd></div>
-                      <div><dt className="text-muted">Last published</dt><dd className="font-medium">{s.published ? `#${s.published.number} · ${relativeTime(s.published.publishedAt)}` : "Never"}</dd></div>
-                    </dl>
-                    {s.lockedBy && <Badge tone="violet">{s.lockedBy} is editing</Badge>}
+                    <div className="flex flex-wrap gap-1.5">
+                      <InfoChip icon={<LayoutTemplate />}><span title={s.templateName}>{s.templateName}</span></InfoChip>
+                      <InfoChip icon={<Globe />}><span title={s.domain?.hostname}>{s.domain?.hostname ?? "No domain"}</span></InfoChip>
+                      <InfoChip icon={<Clock />}><span title={formatDateTime(s.draftUpdatedAt, timeZone)}>Edited {relativeTime(s.draftUpdatedAt)}</span></InfoChip>
+                      <InfoChip icon={<Rocket />}>{s.published ? `Live #${s.published.number} · ${relativeTime(s.published.publishedAt)}` : "Never published"}</InfoChip>
+                    </div>
+                    {s.lockedBy && <StatusPill tone="violet" icon={<UserRound className="size-3" />}>{s.lockedBy} is editing</StatusPill>}
                     {s.warnings.length > 0 && (
-                      <ul className="space-y-1">
-                        {s.warnings.slice(0, 3).map((w) => <li key={w} className="flex items-start gap-1.5 text-[12px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />{w}</li>)}
+                      <ul className="space-y-1.5">
+                        {s.warnings.slice(0, 3).map((w) => <li key={w} className="flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] leading-snug text-warning-ink ring-1 ring-inset ring-warning/20"><AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden /><span className="min-w-0 break-words">{w}</span></li>)}
                       </ul>
                     )}
-                    {s.warnings.length === 0 && s.published?.health === "healthy" && <p className="flex items-center gap-1.5 text-[12px] text-success-ink"><ShieldCheck className="size-3.5" aria-hidden /> Live and answering</p>}
+                    {s.warnings.length === 0 && s.published?.health === "healthy" && <StatusPill tone="success" icon={<ShieldCheck className="size-3" />}>Live and answering</StatusPill>}
                     <div className="flex flex-wrap gap-2 pt-0.5">
-                      <Button size="sm" variant="secondary" onClick={() => setPreview(s)}><Eye className="size-3.5" /> Preview</Button>
-                      {canEdit && !s.archived && <Link href={`/admin/website-studio/websites/${s.orgId}/edit`} className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15"><PencilRuler className="size-3.5" aria-hidden /> Edit</Link>}
-                      <Link href={`/admin/website-studio/websites/${s.orgId}`} className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2"><ExternalLink className="size-3.5" aria-hidden /> Review</Link>
+                      <Button size="sm" variant="secondary" className="max-sm:h-10" onClick={() => setPreview(s)}><Eye className="size-3.5" /> Preview</Button>
+                      {canEdit && !s.archived && <Link href={`/admin/website-studio/websites/${s.orgId}/edit`} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3 text-[13px] font-medium text-primary-ink hover:bg-primary/15 sm:h-8"><PencilRuler className="size-3.5" aria-hidden /> Edit</Link>}
+                      <Link href={`/admin/website-studio/websites/${s.orgId}`} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:h-8"><ExternalLink className="size-3.5" aria-hidden /> Review</Link>
                     </div>
                   </div>
                 </div>

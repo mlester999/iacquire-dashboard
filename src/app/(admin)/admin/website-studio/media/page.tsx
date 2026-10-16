@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ImageIcon } from "lucide-react";
+import { AlertTriangle, ImageIcon, Images } from "lucide-react";
 import { requireAgency } from "@/server/tenancy/context";
 import { AppError } from "@/server/errors";
 import { listAssets } from "@/server/assets/service";
@@ -7,7 +7,8 @@ import { managedClients } from "@/server/websites/admin";
 import { getDraft } from "@/server/websites/service";
 import { studioContext } from "@/server/websites/studio-ctx";
 import { referencedAssetIds } from "@/lib/website/doc";
-import { Card } from "@/components/ui/primitives";
+import { Card, EmptyState } from "@/components/ui/primitives";
+import { AvatarTile } from "@/components/ui/status";
 import { PageHero } from "@/components/ui/workspace";
 import { AdminMedia } from "@/components/website/admin/admin-media";
 
@@ -40,16 +41,16 @@ export default async function MediaPage({ searchParams }: { searchParams: Promis
       <nav aria-label="Clients" className="flex flex-wrap gap-2">
         {clients.map((c) => (
           <Link key={c.id} href={`/admin/website-studio/media?org=${c.id}`} aria-current={selected?.id === c.id ? "page" : undefined}
-            className={selected?.id === c.id ? "inline-flex h-9 items-center rounded-full bg-primary px-3.5 text-[13px] font-medium text-white" : "inline-flex h-9 items-center rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium text-ink-2 hover:border-line-strong"}>{c.name}</Link>
+            className={selected?.id === c.id ? "inline-flex h-11 max-w-full items-center gap-2 rounded-full bg-primary py-1 pl-1.5 pr-4 text-[13px] font-medium text-white shadow-soft" : "inline-flex h-11 max-w-full items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1.5 pr-4 text-[13px] font-medium text-ink-2 transition-colors hover:border-line-strong hover:bg-surface-2 hover:text-ink"}><AvatarTile name={c.name} size="sm" className="!rounded-full" /><span className="truncate" title={c.name}>{c.name}</span></Link>
         ))}
-        {clients.length === 0 && <p className="text-[13px] text-muted">You have no clients assigned yet.</p>}
+        {clients.length === 0 && <Card className="w-full"><EmptyState compact icon={<Images className="size-5" />} title="No clients assigned yet" description="Once you are assigned to a client, their image library appears here." /></Card>}
       </nav>
       {!selected || !loaded ? (
-        <Card className="px-6 py-12 text-center text-[13.5px] text-muted">Choose a client to see and manage their images.</Card>
+        <Card><EmptyState icon={<Images className="size-5" />} title="Choose a client" description="Pick a client above to see and manage their images." /></Card>
       ) : loaded.ok ? (
         <AdminMedia key={selected.id} orgId={selected.id} initialAssets={JSON.parse(JSON.stringify(loaded.assets))} usedIds={loaded.usedIds} canUpload={loaded.canUpload} />
       ) : (
-        <Card className="px-6 py-12 text-center text-[13.5px] text-warning-ink">{loaded.message}</Card>
+        <Card><EmptyState icon={<AlertTriangle className="size-5" />} title="Images are not available" description={loaded.message} /></Card>
       )}
     </div>
   );

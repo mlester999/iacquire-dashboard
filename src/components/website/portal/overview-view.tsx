@@ -1,10 +1,12 @@
+import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Globe, Inbox, ShieldAlert, TriangleAlert } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, Globe, Inbox, Link2, Rocket, ShieldAlert, Star, TriangleAlert, Activity } from "lucide-react";
 import type { Preflight, WebsiteSummary } from "@/server/websites/service";
 import type { SubmissionView } from "@/server/websites/forms";
 import { ApprovalPanel, OverviewActions } from "@/components/website/portal/overview-actions";
 import { domainStatusLabel, domainStatusTone } from "@/components/website/portal/domain-status";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { PageHero } from "@/components/ui/workspace";
 import { resolveTemplate } from "@/lib/website/templates";
 import { formatDateTime, relativeTime } from "@/lib/utils";
@@ -15,6 +17,20 @@ const APPROVAL_COPY = {
   approved: "The latest draft is approved and ready to publish.",
   changes_requested: "The owner asked for changes.",
 } as const;
+
+function IconTile({ children, tone = "primary" }: { children: React.ReactNode; tone?: "primary" | "success" | "warning" | "danger" | "neutral" }) {
+  const t = { primary: "bg-primary-soft text-primary-ink", success: "bg-success-soft text-success-ink", warning: "bg-warning-soft text-warning-ink", danger: "bg-danger-soft text-danger-ink", neutral: "bg-surface-2 text-ink-2" }[tone];
+  return <span aria-hidden className={`grid size-9 shrink-0 place-items-center rounded-xl ring-1 ring-inset ring-line ${t}`}>{children}</span>;
+}
+
+function Fact({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className={`min-w-0 rounded-xl bg-surface-2/70 px-3 py-2.5 ring-1 ring-inset ring-line ${wide ? "sm:col-span-2" : ""}`}>
+      <dt className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-muted">{label}</dt>
+      <dd className="mt-1 min-w-0 break-words text-[13.5px] font-medium text-ink">{children}</dd>
+    </div>
+  );
+}
 
 export interface OverviewPermissions { canEdit: boolean; canPublish: boolean; canApprove: boolean }
 
@@ -41,28 +57,29 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
         action={<OverviewActions canEdit={perms.canEdit} canPublish={perms.canPublish} isLive={pub !== null} host={liveHost} />}
       />
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex-col items-stretch gap-0">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Status</CardTitle>
-              <Badge tone={state.tone}>{state.label}</Badge>
+              <div className="flex min-w-0 items-center gap-3">
+                <IconTile tone={state.tone}><Activity className="size-4" /></IconTile>
+                <CardTitle>Status</CardTitle>
+              </div>
+              <StatusPill tone={state.tone}>{state.label}</StatusPill>
             </div>
-            <CardDescription>{state.text}</CardDescription>
+            <CardDescription className="mt-3">{state.text}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-[13.5px]">
             {site.hasUnpublishedChanges && (
-              <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft/60 p-3 text-warning-ink">
+              <p className="flex items-start gap-2 rounded-xl bg-warning-soft p-3 text-warning-ink ring-1 ring-inset ring-warning/25">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> You have edits that aren&apos;t live yet. Publish to show them to visitors.
               </p>
             )}
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
-              <dt className="text-muted">Address</dt>
-              <dd className="min-w-0 break-words font-medium">{liveHost}</dd>
-              <dt className="text-muted">Draft last edited</dt>
-              <dd>{formatDateTime(site.draftUpdatedAt, timeZone)}</dd>
-              {pub && (<><dt className="text-muted">Last published</dt><dd>{formatDateTime(pub.publishedAt, timeZone)}</dd></>)}
-              {pub?.healthCheckedAt && (<><dt className="text-muted">Last checked</dt><dd>{relativeTime(pub.healthCheckedAt)}</dd></>)}
+            <dl className="grid gap-2.5 sm:grid-cols-2">
+              <Fact label="Address" wide>{liveHost}</Fact>
+              <Fact label="Draft last edited">{formatDateTime(site.draftUpdatedAt, timeZone)}</Fact>
+              {pub && <Fact label="Last published">{formatDateTime(pub.publishedAt, timeZone)}</Fact>}
+              {pub?.healthCheckedAt && <Fact label="Last checked">{relativeTime(pub.healthCheckedAt)}</Fact>}
             </dl>
           </CardContent>
         </Card>
@@ -70,42 +87,54 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
         <Card>
           <CardHeader className="flex-col items-stretch gap-0">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Ready to publish?</CardTitle>
-              {pf.blockers.length === 0 ? <Badge tone="success"><CheckCircle2 className="size-3" aria-hidden /> Nothing blocking</Badge> : <Badge tone="danger"><ShieldAlert className="size-3" aria-hidden /> {pf.blockers.length} to fix</Badge>}
+              <div className="flex min-w-0 items-center gap-3">
+                <IconTile tone={pf.blockers.length === 0 ? "success" : "danger"}><Rocket className="size-4" /></IconTile>
+                <CardTitle>Ready to publish?</CardTitle>
+              </div>
+              {pf.blockers.length === 0 ? <StatusPill tone="success" icon={<CheckCircle2 className="size-3" aria-hidden />}>Nothing blocking</StatusPill> : <StatusPill tone="danger" icon={<ShieldAlert className="size-3" aria-hidden />}>{pf.blockers.length} to fix</StatusPill>}
             </div>
-            <CardDescription>{APPROVAL_COPY[site.approval.status]}{site.approval.note ? ` “${site.approval.note}”` : ""}</CardDescription>
+            <CardDescription className="mt-3">{APPROVAL_COPY[site.approval.status]}{site.approval.note ? ` “${site.approval.note}”` : ""}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {pf.blockers.length > 0 && (
-              <ul className="space-y-1.5 text-[13.5px]">
+              <ul className="space-y-2 text-[13.5px]">
                 {pf.blockers.slice(0, 4).map((b, i) => (
-                  <li key={`${b.code}-${i}`} className="flex gap-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-danger" /><span>{b.message} <span className="text-muted">({b.where})</span></span></li>
+                  <li key={`${b.code}-${i}`} className="flex items-start gap-2.5 rounded-xl bg-danger-soft/70 p-3 ring-1 ring-inset ring-danger/20"><ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-danger-ink" /><span className="min-w-0">{b.message} <InfoChip className="ml-1 align-middle">{b.where}</InfoChip></span></li>
                 ))}
-                {pf.blockers.length > 4 && <li className="text-muted">…and {pf.blockers.length - 4} more.</li>}
+                {pf.blockers.length > 4 && <li><InfoChip>+{pf.blockers.length - 4} more</InfoChip></li>}
               </ul>
             )}
             {pf.needsAcknowledgement.length > 0 && (
-              <p className="text-[13px] text-muted">{pf.needsAcknowledgement.length} claim{pf.needsAcknowledgement.length === 1 ? "" : "s"} on your site will need your confirmation when you publish.</p>
+              <p className="flex items-start gap-2 rounded-xl bg-surface-2/70 p-3 text-[13px] text-ink-2 ring-1 ring-inset ring-line"><TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-ink" /> {pf.needsAcknowledgement.length} claim{pf.needsAcknowledgement.length === 1 ? "" : "s"} on your site will need your confirmation when you publish.</p>
+            )}
+            {pf.blockers.length === 0 && pf.needsAcknowledgement.length === 0 && site.approval.status !== "submitted" && (
+              <p className="flex items-center gap-2 rounded-xl bg-success-soft/70 p-3 text-[13px] text-success-ink ring-1 ring-inset ring-success/20"><CheckCircle2 aria-hidden className="size-4 shrink-0" /> Everything checks out. Publish whenever you&apos;re ready.</p>
             )}
             {site.approval.status === "submitted" && <ApprovalPanel canDecide={perms.canApprove} />}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex-col items-stretch gap-0">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Domains</CardTitle>
-              <Link href="/website/domains" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">Manage <ArrowRight className="size-3.5" aria-hidden /></Link>
+              <div className="flex min-w-0 items-center gap-3"><IconTile><Link2 className="size-4" /></IconTile><CardTitle>Domains</CardTitle></div>
+              <Link href="/website/domains" className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary-soft px-3 text-[13px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:brightness-95">Manage <ArrowRight className="size-3.5" aria-hidden /></Link>
             </div>
           </CardHeader>
           <CardContent>
             <ul className="divide-y divide-line">
               {site.domains.map((d) => (
                 <li key={d.id} className="flex items-center justify-between gap-3 py-2.5 text-[13.5px]">
-                  <span className="min-w-0 truncate font-medium">{d.hostname}{d.isPrimary ? <span className="ml-2 text-[12px] font-normal text-muted">main</span> : null}</span>
-                  <Badge tone={domainStatusTone(d)}>{domainStatusLabel(d)}</Badge>
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-line"><Globe className="size-3.5" /></span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium" title={d.hostname}>{d.hostname}</span>
+                      {d.isPrimary && <InfoChip className="mt-0.5 h-5 text-[10.5px]" icon={<Star />}>Main address</InfoChip>}
+                    </span>
+                  </span>
+                  <StatusPill tone={domainStatusTone(d)}>{domainStatusLabel(d)}</StatusPill>
                 </li>
               ))}
             </ul>
@@ -115,19 +144,22 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
         <Card>
           <CardHeader className="flex-col items-stretch gap-0">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Recent enquiries</CardTitle>
-              <Link href="/website/leads" className="inline-flex items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">See all <ArrowRight className="size-3.5" aria-hidden /></Link>
+              <div className="flex min-w-0 items-center gap-3"><IconTile><Inbox className="size-4" /></IconTile><CardTitle>Recent enquiries</CardTitle></div>
+              <Link href="/website/leads" className="inline-flex h-9 items-center gap-1 rounded-lg bg-primary-soft px-3 text-[13px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20 transition hover:brightness-95">See all <ArrowRight className="size-3.5" aria-hidden /></Link>
             </div>
           </CardHeader>
           <CardContent>
             {enquiries.length === 0 ? (
-              <p className="flex items-center gap-2 text-[13.5px] text-muted"><Inbox className="size-4" aria-hidden /> Nothing yet. Enquiries from your website appear here and in your contacts.</p>
+              <EmptyState icon={<Inbox className="size-5" />} title="No enquiries yet" description="Enquiries from your website appear here and in your contacts." />
             ) : (
               <ul className="divide-y divide-line">
                 {enquiries.map((e) => (
-                  <li key={e.id} className="py-2.5 text-[13.5px]">
-                    <p className="flex items-center justify-between gap-3"><span className="min-w-0 truncate font-medium">{e.name}</span><span className="shrink-0 text-[12px] text-muted">{relativeTime(e.createdAt)}</span></p>
-                    <p className="mt-0.5 line-clamp-1 text-muted">{e.message || "No message"}</p>
+                  <li key={e.id} className="flex items-start gap-3 py-2.5 text-[13.5px]">
+                    <AvatarTile name={e.name} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center justify-between gap-3"><span className="min-w-0 truncate font-medium" title={e.name}>{e.name}</span><InfoChip className="shrink-0" icon={<Clock />}>{relativeTime(e.createdAt)}</InfoChip></p>
+                      <p className="mt-0.5 line-clamp-1 text-muted" title={e.message || undefined}>{e.message || "No message"}</p>
+                    </div>
                   </li>
                 ))}
               </ul>

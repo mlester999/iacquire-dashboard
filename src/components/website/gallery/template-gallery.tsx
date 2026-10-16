@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Check, Eye, LayoutGrid, List, Sparkles, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/primitives";
+import { InfoChip } from "@/components/ui/status";
 import { EMPTY_GALLERY_FILTERS, INDUSTRY_FILTERS, filterCards, type GalleryCard, type GalleryFilters as FilterState } from "@/lib/website/gallery";
 import { GalleryFilters } from "./gallery-filters";
 import { useUrlState } from "./use-url-state";
@@ -69,7 +71,7 @@ function Card({ card, frameBase, selected, view, onPreview, onSelect, chooseLabe
           <h2 className="mt-1 truncate text-[20px] font-semibold tracking-tight">{card.name}</h2>
         </div>
         <p className={cn("text-[13px] leading-relaxed text-muted", list ? "line-clamp-3" : "line-clamp-2")}>{card.description}</p>
-        {card.industries.length > 0 && <p className="text-[11px] font-medium text-ink-2">{card.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).join(" · ")}</p>}
+        {card.industries.length > 0 && <div className="flex flex-wrap gap-1.5">{card.industries.map((id) => INDUSTRY_FILTERS.find((i) => i.id === id)?.label).filter(Boolean).slice(0, 2).map((label) => <InfoChip key={label}>{label}</InfoChip>)}</div>}
         <Tags card={card} />
         <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-4">
           <Button size="sm" variant="secondary" onClick={onPreview}><Eye className="size-3.5" /> Preview</Button>
@@ -148,11 +150,12 @@ export function TemplateGallery({ cards, frameBase, onChoose, chooseLabel = "Use
         </div>
       </div>
       {list.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center">
-          <Sparkles className="mx-auto size-7 text-faint" aria-hidden />
-          <h2 className="mt-3 text-[17px] font-semibold">Find a different perspective</h2>
-          <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-muted">{collection === "featured" && featuredCount === 0 ? "No featured designs match these filters. Explore the full collection for your next starting point." : "No designs match these filters. Try another industry, family or search term."}</p>
-          <Button className="mt-4" variant="secondary" onClick={clear}>Clear filters</Button>
+        <div className="rounded-2xl border border-dashed border-line-strong">
+          <EmptyState
+            icon={<Sparkles className="size-5" />} title="No designs match"
+            description={collection === "featured" && featuredCount === 0 ? "No featured designs match these filters. Explore the full collection for your next starting point." : "No designs match these filters. Try another industry, family or search term."}
+            action={<Button variant="secondary" onClick={clear}>Clear filters</Button>}
+          />
           {emptyHint}
         </div>
       ) : <section aria-label="Template results" className={cn("grid gap-5", view === "grid" ? "sm:grid-cols-2 xl:grid-cols-3" : "grid-cols-1")}>{list.map(mount)}</section>}
@@ -161,7 +164,7 @@ export function TemplateGallery({ cards, frameBase, onChoose, chooseLabel = "Use
 
       {canChoose && sel && (
         <div className="sticky bottom-4 z-30 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface/95 p-3 sm:pl-5 shadow-[0_18px_50px_-18px_rgb(16_24_40/.3)] backdrop-blur" role="region" aria-label="Your selection">
-          <p className="min-w-0 truncate text-[13.5px]"><span className="text-muted">Selected:</span> <strong className="font-semibold">{cards.find((c) => c.key === sel)?.name}</strong></p>
+          <p className="flex min-w-0 items-center gap-2 text-[13.5px]"><span className="inline-flex h-6 shrink-0 items-center rounded-full bg-primary-soft px-2.5 text-[12px] font-medium text-primary-ink ring-1 ring-inset ring-primary/20">Selected</span><strong className="min-w-0 truncate font-semibold">{cards.find((c) => c.key === sel)?.name}</strong></p>
           <div className="flex shrink-0 gap-2">
             <Button variant="ghost" size="sm" onClick={() => select(null)}>Clear</Button>
             <Button variant="secondary" size="sm" onClick={() => setPreview(sel)}><Eye className="size-3.5" /> Preview</Button>

@@ -3,16 +3,17 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink,ShieldCheck,Wrench,Activity,Clock3,ArrowRight,LifeBuoy,Code2,CheckCircle2 } from "lucide-react";
-import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui/primitives";
+import { CalendarClock, Check, ExternalLink, Gauge, Receipt, ShieldCheck,Wrench,Activity,Clock3,ArrowRight,LifeBuoy,Code2,CheckCircle2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui/primitives";
 import { Button,ButtonLink } from "@/components/ui/button";
 import { PageHero,MetricCard,SectionLabel } from "@/components/ui/workspace";
+import { AvatarTile, InfoChip, RelativeTime, statusLabel, StatusPill } from "@/components/ui/status";
 import { cn } from "@/lib/utils";
 import { useRunner } from "@/components/projects/common";
 import { activateMaintenanceAction, resolveMaintenanceAction, updateMaintenanceRequestAction } from "@/app/(admin)/admin/maintenance/actions";
 import { MAINTENANCE_STATUS_LABEL, formatMoney } from "@/lib/projects";
 import type { listAgencyMaintenance } from "@/server/maintenance/service";
-import { formatDate, relativeTime, sentenceCase } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 type Data = Awaited<ReturnType<typeof listAgencyMaintenance>>;
 
@@ -30,7 +31,7 @@ export function MaintenanceAdmin({ subscriptions, requests }: Data) {
         {subscriptions.length === 0 ? (
           <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-line-strong bg-surface p-5 sm:flex-row sm:items-center"><span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary-soft"><Wrench className="size-6 text-primary"/></span><div className="flex-1"><h3 className="text-base font-semibold">Ready for your first maintenance client</h3><p className="mt-1 text-xs leading-relaxed text-muted">An enrollment request appears here when an eligible client chooses the plan. Their core defect support remains separate and free under the service agreement.</p></div><ButtonLink variant="outline" size="sm" href="/admin/clients">View eligible clients <ArrowRight className="size-3.5"/></ButtonLink></div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
             {plans.map((s) => (
               <PlanCard key={s.id} s={s} />
             ))}
@@ -69,25 +70,43 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
     if (ok !== null) router.refresh();
   };
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>{s.orgName}</CardTitle>
-          <p className="mt-1 text-[12.5px] text-muted">
-            {formatMoney(s.monthlyPriceCents, s.currency)}/month · {s.monthlyRequestAllowance} requests/month · terms {s.termsVersion} · accepted {formatDate(s.acceptedAt)}
-          </p>
+    <Card className="min-w-0">
+      <CardHeader className="flex-wrap gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <AvatarTile name={s.orgName} />
+          <div className="min-w-0">
+            <CardTitle className="truncate" title={s.orgName}>{s.orgName}</CardTitle>
+            <p className="mt-0.5 text-[12px] text-muted">Accepted {formatDate(s.acceptedAt)} · terms {s.termsVersion}</p>
+          </div>
         </div>
-        <Badge tone={s.status === "active" ? "success" : "warning"}>{MAINTENANCE_STATUS_LABEL[s.status]}</Badge>
+        <StatusPill tone={s.status === "active" ? "success" : s.status === "cancel_requested" ? "danger" : "warning"}>{MAINTENANCE_STATUS_LABEL[s.status]}</StatusPill>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          <InfoChip icon={<Receipt />} className="tabular-nums">{formatMoney(s.monthlyPriceCents, s.currency)}/month</InfoChip>
+          <InfoChip icon={<Gauge />} className="tabular-nums">{s.monthlyRequestAllowance} requests/month</InfoChip>
+        </div>
         {s.requestNote && <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">“{s.requestNote}”</p>}
         {s.status === "active" || s.status === "cancel_requested" ? (
-          <p className="text-[13px] text-ink-2">
-            Billing started {s.billingStartOn ? formatDate(s.billingStartOn) : "—"} · next renewal {s.renewalOn ? formatDate(s.renewalOn) : "—"} · {s.used} of {s.monthlyRequestAllowance} requests used this month
-          </p>
+          <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-3">
+            {[
+              { label: "Billing started", value: s.billingStartOn ? formatDate(s.billingStartOn) : "—" },
+              { label: "Next renewal", value: s.renewalOn ? formatDate(s.renewalOn) : "—" },
+              { label: "Used this month", value: `${s.used} of ${s.monthlyRequestAllowance}` },
+            ].map((f) => (
+              <div key={f.label} className="min-w-0 rounded-xl bg-surface-2/70 px-3 py-2 ring-1 ring-inset ring-line">
+                <p className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted">{f.label}</p>
+                <p className="mt-0.5 truncate text-[12.5px] font-medium tabular-nums text-ink">{f.value}</p>
+              </div>
+            ))}
+          </div>
         ) : null}
         {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[13px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
-        {!s.eligible && s.status === "requested" && <p className="text-[12.5px] text-warning-ink">The core system isn&apos;t activated yet, so this can&apos;t start.</p>}
+        {!s.eligible && s.status === "requested" && (
+          <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink ring-1 ring-inset ring-warning/25">
+            <CalendarClock className="size-4 shrink-0" /> The core system isn&apos;t activated yet, so this can&apos;t start.
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-2 border-t border-line pt-3">
           {s.status === "requested" && (
             <>
@@ -98,7 +117,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
               <Button size="sm" variant="brand" disabled={!s.eligible} loading={isPending(`a-${s.id}`)} onClick={() => void done(`a-${s.id}`, () => activateMaintenanceAction(s.id, start), "Plan activated")}>
                 <Check className="size-3.5" /> Activate plan
               </Button>
-              <Button size="sm" variant="ghost" loading={isPending(`d-${s.id}`)} onClick={() => void done(`d-${s.id}`, () => resolveMaintenanceAction(s.id, "decline"), "Request declined")}>
+              <Button size="sm" variant="outline" loading={isPending(`d-${s.id}`)} onClick={() => void done(`d-${s.id}`, () => resolveMaintenanceAction(s.id, "decline"), "Request declined")}>
                 Decline
               </Button>
             </>
@@ -108,7 +127,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
               Confirm cancellation
             </Button>
           )}
-          <Link href={`/admin/clients/${s.orgId}`} className="ml-auto inline-flex items-center gap-1 text-[12.5px] text-primary hover:underline">
+          <Link href={`/admin/clients/${s.orgId}`} className="ml-auto inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
             Client <ExternalLink className="size-3" />
           </Link>
         </div>
@@ -121,17 +140,19 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
   const router = useRouter();
   const { run, isPending } = useRunner();
   return (
-    <li className="grid gap-2 px-5 py-3.5 lg:grid-cols-[1fr_190px_auto] lg:items-center">
+    <li className="grid gap-3 px-4 py-4 transition hover:bg-surface-2/50 md:px-5 lg:grid-cols-[1fr_190px_150px] lg:items-center">
       <div className="min-w-0">
-        <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium">
-          <span className="font-mono text-[12px] text-muted">{r.ref}</span>
+        <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-ink">
+          <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] font-normal text-muted ring-1 ring-inset ring-line">{r.ref}</span>
           {r.title}
-          <Badge tone={r.kind === "core_defect" ? "danger" : "primary"}>{r.kind === "core_defect" ? "Core defect" : "Managed"}</Badge>
+          <StatusPill size="sm" tone={r.kind === "core_defect" ? "danger" : "primary"}>{r.kind === "core_defect" ? "Core defect" : "Managed"}</StatusPill>
         </p>
-        <p className="mt-0.5 text-[12.5px] text-muted">
-          {r.orgName} · {relativeTime(r.createdAt)} · {r.kind === "core_defect" ? "no charge, not counted" : r.countsAgainstAllowance ? "uses the monthly allowance" : "allowance waived"}
-        </p>
-        <p className="mt-1 line-clamp-2 text-[12.5px] text-ink-2">{r.description}</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <InfoChip>{r.orgName}</InfoChip>
+          <InfoChip><RelativeTime value={r.createdAt} /></InfoChip>
+          <InfoChip>{r.kind === "core_defect" ? "No charge, not counted" : r.countsAgainstAllowance ? "Uses monthly allowance" : "Allowance waived"}</InfoChip>
+        </div>
+        <p className="mt-2 line-clamp-2 text-[12.5px] text-ink-2" title={r.description}>{r.description}</p>
       </div>
       <Select
         aria-label={`Status of ${r.ref}`}
@@ -144,15 +165,15 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
       >
         {["open", "in_progress", "waiting_for_client", "completed", "declined"].map((s) => (
           <option key={s} value={s}>
-            {sentenceCase(s)}
+            {statusLabel(s)}
           </option>
         ))}
       </Select>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5 lg:justify-end">
         {r.kind === "managed_change" && r.countsAgainstAllowance && (
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
             onClick={async () => {
               const ok = await run(`w-${r.id}`, () => updateMaintenanceRequestAction(r.id, { waiveAllowance: true }), "Allowance waived for this request");
               if (ok !== null) router.refresh();
@@ -162,7 +183,7 @@ function RequestRow({ r }: { r: Data["requests"][number] }) {
           </Button>
         )}
         {r.ticketId && (
-          <Link href={`/admin/support/${r.ticketId}`} className="inline-flex h-8 items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-primary hover:bg-surface-2">
+          <Link href={`/admin/support/${r.ticketId}`} className="inline-flex h-9 items-center gap-1 rounded-xl px-3 text-[13px] font-medium text-primary hover:bg-primary-soft">
             Open thread
           </Link>
         )}

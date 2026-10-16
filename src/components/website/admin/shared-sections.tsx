@@ -6,12 +6,13 @@ import { toast } from "sonner";
 import { Layers } from "lucide-react";
 import { setPatternStatusAction } from "@/app/actions/website-admin";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { relativeTime } from "@/lib/utils";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui/primitives";
+import { InfoChip, RelativeTime, StatusPill, type StatusTone } from "@/components/ui/status";
+import {  } from "@/lib/utils";
 import type { PatternStatus, PatternView } from "@/server/websites/components";
 
 const LABEL: Record<PatternStatus, string> = { draft: "Waiting for a super admin", published: "Offered to every client", archived: "Archived" };
-const TONE: Record<PatternStatus, "warning" | "success" | "outline"> = { draft: "warning", published: "success", archived: "outline" };
+const TONE: Record<PatternStatus, StatusTone> = { draft: "warning", published: "success", archived: "neutral" };
 
 /**
  * Sections the agency shares with every client's editor. Anyone on the agency team can save one from the editor; it reaches clients only once a
@@ -31,25 +32,25 @@ export function SharedSections({ patterns, canPublish }: { patterns: PatternView
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Layers className="size-4" aria-hidden /> Shared sections <span className="text-[13px] font-normal text-muted">· {patterns.length}</span></CardTitle>
+        <CardTitle className="flex items-center gap-2.5"><span className="grid size-8 place-items-center rounded-[10px] bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/20" aria-hidden><Layers className="size-4" /></span> Shared sections <span className="rounded-md bg-surface-3 px-2 py-0.5 text-xs font-semibold tabular-nums text-ink-2">{patterns.length}</span></CardTitle>
         <CardDescription>Reusable sections your team saved from the editor (Save as a component, then share with every website). Websites that already used one keep their own copy.</CardDescription>
       </CardHeader>
       <CardContent>
         {patterns.length === 0 ? (
-          <p className="text-[13px] text-muted">None yet. In any editor, choose a section&apos;s more menu, then Save as a component, and share it with the agency.</p>
+          <EmptyState compact icon={<Layers className="size-5" />} title="No shared sections yet" description="In any editor, choose a section's more menu, then Save as a component, and share it with the agency." />
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="-mx-2 divide-y divide-line">
             {patterns.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-surface-2/70">
                 <div className="min-w-0">
-                  <p className="truncate text-[14px] font-semibold">{p.name}</p>
-                  <p className="truncate text-[12.5px] text-muted">{p.createdByName ?? "The agency team"} · {relativeTime(p.updatedAt)}</p>
+                  <p className="truncate text-[14px] font-semibold text-ink" title={p.name}>{p.name}</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5"><InfoChip>{p.createdByName ?? "The agency team"}</InfoChip><InfoChip><RelativeTime value={p.updatedAt} prefix="Updated " /></InfoChip></div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Badge tone={TONE[p.status]}>{LABEL[p.status]}</Badge>
-                  {canPublish && p.status !== "published" && <Button size="sm" variant="soft" loading={busy === p.id} onClick={() => void change(p, "published")}>Offer to clients</Button>}
-                  {canPublish && p.status === "published" && <Button size="sm" variant="secondary" loading={busy === p.id} onClick={() => void change(p, "draft")}>Take back</Button>}
-                  {canPublish && p.status !== "archived" && <Button size="sm" variant="ghost" disabled={busy === p.id} onClick={() => void change(p, "archived")}>Archive</Button>}
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+                  <StatusPill tone={TONE[p.status]}>{LABEL[p.status]}</StatusPill>
+                  {canPublish && p.status !== "published" && <Button size="sm" className="max-sm:h-10" variant="soft" loading={busy === p.id} onClick={() => void change(p, "published")}>Offer to clients</Button>}
+                  {canPublish && p.status === "published" && <Button size="sm" className="max-sm:h-10" variant="secondary" loading={busy === p.id} onClick={() => void change(p, "draft")}>Take back</Button>}
+                  {canPublish && p.status !== "archived" && <Button size="sm" className="max-sm:h-10" variant="ghost" disabled={busy === p.id} onClick={() => void change(p, "archived")}>Archive</Button>}
                 </div>
               </li>
             ))}

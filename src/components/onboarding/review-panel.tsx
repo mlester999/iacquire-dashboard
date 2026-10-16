@@ -1,13 +1,49 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Pencil, ShieldCheck, Sparkles, UserRound, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Pencil, PlugZap, ShieldCheck, Sparkles, UserRound, Wrench } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
-import { Badge, Skeleton } from "@/components/ui/primitives";
+import { Skeleton } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
 import { AGENT_BY_KEY } from "@/lib/agents";
 import type { ReviewModel, ReviewRow } from "@/lib/onboarding/engine";
 import { cn } from "@/lib/utils";
+
+const HOURS_PART = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/;
+
+/** Renders an answer value: facts joined with " · " or day-hour lists become chips instead of a run of text. */
+function AnswerValue({ value }: { value: string }) {
+  const lines = value.split("\n").filter(Boolean);
+  const hours = value.split("; ");
+  if (hours.length >= 2 && hours.every((h) => HOURS_PART.test(h.trim()))) {
+    return (
+      <span className="flex flex-wrap gap-1.5">
+        {hours.map((h) => (
+          <InfoChip key={h}>{h.trim()}</InfoChip>
+        ))}
+      </span>
+    );
+  }
+  if (lines.length > 0 && lines.every((l) => { const p = l.split(" · "); return p.length >= 2 && !p[0].endsWith("?") && p.slice(1).every((x) => x.length <= 48); })) {
+    return (
+      <span className="flex flex-col gap-2">
+        {lines.map((l) => {
+          const [head, ...rest] = l.split(" · ");
+          return (
+            <span key={l} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-medium text-ink">{head}</span>
+              {rest.map((part) => (
+                <InfoChip key={part}>{part}</InfoChip>
+              ))}
+            </span>
+          );
+        })}
+      </span>
+    );
+  }
+  return <>{value}</>;
+}
 
 const STATE_BADGE: Record<ReviewRow["state"], { label: string; tone: "neutral" | "warning" | "danger" | "success" } | null> = {
   answered: null,
@@ -82,11 +118,15 @@ export function ReviewPanel({
         {review.sections.map((section) => (
           <details key={section.id} className="group overflow-hidden rounded-2xl border border-line bg-surface" open={section.rows.some((r) => (r.state === "outstanding" && r.required) || r.state === "needs_confirmation")}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-[14px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
-              <span>
-                <span className="mr-2 text-[12px] font-semibold text-primary">{section.id}</span>
-                {section.title}
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-lg bg-primary-soft text-[11px] font-semibold text-primary">{section.id}</span>
+                <span className="truncate">{section.title}</span>
               </span>
-              <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden />
+              <span className="flex shrink-0 items-center gap-2">
+                {section.rows.some((r) => r.state === "needs_confirmation") && <StatusPill tone="warning" size="sm">Check</StatusPill>}
+                <InfoChip className="hidden tabular-nums sm:inline-flex">{section.rows.filter((r) => r.state === "answered").length}/{section.rows.length} answered</InfoChip>
+                <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden />
+              </span>
             </summary>
             <dl className="divide-y divide-line border-t border-line">
               {section.rows.map((row) => {
@@ -97,14 +137,14 @@ export function ReviewPanel({
                     <div className="min-w-0 flex-1">
                       <dt className="flex flex-wrap items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-muted">
                         {row.label}
-                        {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
+                        {badge && <StatusPill tone={badge.tone} size="sm" className="normal-case tracking-normal">{badge.label}</StatusPill>}
                         {row.source && row.source !== "user" && row.source !== "prefill" && row.value && (
-                          <Badge tone="violet">
-                            <Sparkles className="size-3" aria-hidden /> AI-suggested
-                          </Badge>
+                          <StatusPill tone="violet" size="sm" dot={false} className="normal-case tracking-normal" icon={<Sparkles className="size-3" aria-hidden />}>
+                            AI-suggested
+                          </StatusPill>
                         )}
                       </dt>
-                      <dd className="mt-1 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{row.value || <span className="text-muted">—</span>}</dd>
+                      <dd className="mt-1 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink">{row.value ? <AnswerValue value={row.value} /> : <span className="text-muted">Not answered</span>}</dd>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row.questionId)} aria-label={`Edit ${row.label}`}>
                       <Pencil className="size-3.5" /> Edit
@@ -133,7 +173,7 @@ export function ReviewPanel({
               </div>
               {e.configuredFrom.length > 0 && <p className="mt-3 text-[12.5px] text-muted">Configured from: {e.configuredFrom.join("; ")}</p>}
               {e.gaps.map((g) => (
-                <p key={g} className="mt-2 flex items-start gap-1.5 text-[12.5px] text-warning-ink">
+                <p key={g} className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-2 text-[12.5px] text-warning-ink">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   {g}
                 </p>
@@ -184,9 +224,15 @@ export function ReviewPanel({
         ) : (
           <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
             {review.missingConnections.map((m) => (
-              <li key={m.key} className="px-4 py-3">
-                <p className="text-[14px] font-medium">{m.label}</p>
-                <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{m.why}</p>
+              <li key={m.key} className="flex items-start gap-3 px-4 py-3">
+                <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-xl bg-warning-soft text-warning-ink"><PlugZap className="size-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[14px] font-medium">{m.label}</p>
+                    <StatusPill tone="warning" size="sm">Not connected</StatusPill>
+                  </div>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{m.why}</p>
+                </div>
               </li>
             ))}
           </ul>

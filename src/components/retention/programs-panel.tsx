@@ -6,14 +6,17 @@ import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Clock, MessageSquareText, Pause, Play, Search, ShieldCheck, UserPlus } from "lucide-react";
 import { markCustomerAction, saveProgramAction, searchCustomersAction, setProgramEnabledAction, setRetentionPausedAction } from "@/app/actions/retention";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
+import { IconTile } from "@/components/overview/panel";
+import { SectionLabel } from "@/components/ui/workspace";
 import { Dialog, Switch } from "@/components/ui/overlays";
 import { cn, formatDate, relativeTime } from "@/lib/utils";
 import { MAX_BODY, PROGRAM_STATE_LABEL, reasonText, type ProgramStep, type StepIssue } from "@/lib/retention";
 import type { LifecycleOverview, ProgramView, RetentionActivityRow } from "@/server/retention/service";
 
 const STATE_TONE = { off: "neutral", needs_approval: "warning", on: "success", lapsed: "warning" } as const;
-const STEP_TONE = { sent: "success", queued: "primary", blocked: "warning", skipped: "neutral", cancelled: "neutral", scheduled: "neutral" } as const;
+const STEP_TONE: Record<string, StatusTone> = { sent: "success", queued: "primary", blocked: "warning", skipped: "neutral", cancelled: "neutral", scheduled: "neutral" };
 const STEP_LABEL = { sent: "Sent", queued: "On its way", blocked: "Held back", skipped: "Skipped", cancelled: "Stopped", scheduled: "Planned" } as const;
 
 function ProgramEditor({ program, onClose }: { program: ProgramView; onClose: () => void }) {
@@ -116,13 +119,18 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
   return (
     <Card>
       <CardHeader>
-        <div className="min-w-0">
-          <CardTitle className="flex flex-wrap items-center gap-2">
-            {program.name}
-            <Badge tone={STATE_TONE[program.state]}>{PROGRAM_STATE_LABEL[program.state]}</Badge>
-            {program.purpose === "marketing" && <Badge tone="violet">Promotional</Badge>}
-          </CardTitle>
-          <CardDescription>{program.description}</CardDescription>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconTile tone={on ? "success" : program.state === "off" ? "neutral" : "warning"}>
+            <MessageSquareText />
+          </IconTile>
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2">
+              {program.name}
+              <StatusPill tone={STATE_TONE[program.state]} size="sm">{PROGRAM_STATE_LABEL[program.state]}</StatusPill>
+              {program.purpose === "marketing" && <StatusPill tone="violet" size="sm" dot={false}>Promotional</StatusPill>}
+            </CardTitle>
+            <CardDescription>{program.description}</CardDescription>
+          </div>
         </div>
         <Switch
           checked={program.enabled && program.state !== "needs_approval"}
@@ -151,12 +159,12 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
         {on && program.authorizedUntil && <p className="flex items-center gap-1.5 text-[12px] text-muted"><CheckCircle2 className="size-3.5 text-success-ink" aria-hidden />Approved by the owner until {formatDate(program.authorizedUntil, "UTC")}.</p>}
 
         <dl className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6" aria-label="Last 30 days">
-          {([["Enrolled", program.stats.enrolled30d], ["Sent", program.stats.sent30d], ["Delivered", program.stats.delivered30d], ["Replied", program.stats.replied30d], ["Held back", program.stats.held30d], ["Stopped", program.stats.stopped30d]] as const).map(([label, n]) => (
-            <div key={label} className="flex flex-col rounded-xl border border-line px-2 py-2"><dt className="order-2 mt-1 text-[11px] text-muted">{label}</dt><dd className="order-1 text-[18px] font-semibold leading-none">{n}</dd></div>
+          {([["Enrolled", program.stats.enrolled30d, ""], ["Sent", program.stats.sent30d, ""], ["Delivered", program.stats.delivered30d, "success"], ["Replied", program.stats.replied30d, "success"], ["Held back", program.stats.held30d, "warning"], ["Stopped", program.stats.stopped30d, "neutral"]] as const).map(([label, n, tone]) => (
+            <div key={label} className={cn("flex flex-col rounded-xl px-2 py-2.5 ring-1 ring-inset", n > 0 && tone === "success" ? "bg-success-soft/60 ring-success/20" : n > 0 && tone === "warning" ? "bg-warning-soft/60 ring-warning/25" : "bg-surface-2/60 ring-line")}><dt className="order-2 mt-1 text-[11px] text-muted">{label}</dt><dd className="order-1 text-[18px] font-semibold leading-none tabular-nums">{n}</dd></div>
           ))}
         </dl>
 
-        {canEdit && <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => setEditing(true)}><MessageSquareText className="size-3.5" /> Edit wording</Button></div>}
+        {canEdit && <div className="flex justify-end"><Button size="sm" variant="secondary" onClick={() => setEditing(true)}><MessageSquareText className="size-3.5" /> Edit wording</Button></div>}
       </CardContent>
       {editing && <ProgramEditor program={program} onClose={() => setEditing(false)} />}
       <Dialog
@@ -185,14 +193,17 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
 
 function Lifecycle({ data }: { data: LifecycleOverview }) {
   if (!data.stages.length) return null;
-  if (!data.stages.some((stage) => stage.count > 0)) return <div className="control-panel rounded-2xl p-5"><h2 className="text-[15px] font-semibold">Customer lifecycle</h2><p className="mt-1 text-[13px] leading-relaxed text-muted">No lifecycle records yet. When a contact becomes a customer, their progress and eligible programs appear here. Your manually tracked accounts stay separate above.</p></div>;
+  if (!data.stages.some((stage) => stage.count > 0)) return <Card><EmptyState compact icon={<UserPlus className="size-5" />} title="No lifecycle records yet" description="When a contact becomes a customer, their progress and eligible programs appear here. Your manually tracked accounts stay separate above." /></Card>;
   const max = Math.max(1, ...data.stages.map((s) => s.count));
   return (
     <Card>
       <CardHeader>
-        <div>
-          <CardTitle>Customer lifecycle</CardTitle>
-          <CardDescription>Where everyone you&apos;re in touch with is right now. Programs start when someone becomes a customer.</CardDescription>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconTile tone="primary"><UserPlus /></IconTile>
+          <div className="min-w-0">
+            <CardTitle>Customer lifecycle</CardTitle>
+            <CardDescription>Where everyone you&apos;re in touch with is right now. Programs start when someone becomes a customer.</CardDescription>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -227,9 +238,12 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
   return (
     <Card>
       <CardHeader>
-        <div>
-          <CardTitle>Customers in programs</CardTitle>
-          <CardDescription>Exclude anyone who shouldn&apos;t get automated messages, for example during a dispute.</CardDescription>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconTile tone="success"><ShieldCheck /></IconTile>
+          <div className="min-w-0">
+            <CardTitle>Customers in programs</CardTitle>
+            <CardDescription>Exclude anyone who shouldn&apos;t get automated messages, for example during a dispute.</CardDescription>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -243,7 +257,7 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
               <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line" aria-label="Matching contacts">
                 {results.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2">
-                    <span className="min-w-0 text-[13.5px]"><span className="font-medium">{r.name}</span> <span className="text-muted">· {r.detail} · {r.stage}</span></span>
+                    <span className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]"><span className="font-medium">{r.name}</span><InfoChip>{r.detail}</InfoChip><InfoChip>{r.stage}</InfoChip></span>
                     <Button size="sm" variant="secondary" loading={busy === r.id} onClick={async () => { setBusy(r.id); const res = await markCustomerAction(r.id); setBusy(null); if (!res.ok) return void toast.error(res.error); toast.success(`${r.name} is now a customer.`); setQuery(""); router.refresh(); }}><UserPlus className="size-3.5" /> Mark as customer</Button>
                   </li>
                 ))}
@@ -256,13 +270,17 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
         ) : (
           <ul className="divide-y divide-line">
             {data.customers.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center gap-3 py-2.5">
+              <li key={c.id} className="flex flex-wrap items-center gap-3 py-3">
+                <AvatarTile name={c.name} size="md" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-medium">{c.name}</p>
-                  <p className="text-[12px] text-muted">{c.since ? `Customer since ${formatDate(c.since, "UTC")}` : "Customer"} · {c.paused ? "Excluded from programs" : c.activePrograms ? `${c.activePrograms} program${c.activePrograms === 1 ? "" : "s"} running` : "No program running"}</p>
+                  <p className="truncate text-[14px] font-semibold" title={c.name}>{c.name}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <InfoChip icon={<Clock />}>{c.since ? `Customer since ${formatDate(c.since, "UTC")}` : "Customer"}</InfoChip>
+                    {c.paused ? <StatusPill tone="warning" size="sm">Excluded from programs</StatusPill> : c.activePrograms ? <StatusPill tone="success" size="sm">{c.activePrograms} program{c.activePrograms === 1 ? "" : "s"} running</StatusPill> : <StatusPill tone="neutral" size="sm">No program running</StatusPill>}
+                  </div>
                 </div>
                 {canEdit && (
-                  <Button size="sm" variant="ghost" loading={busy === c.id} onClick={async () => { setBusy(c.id); const res = await setRetentionPausedAction(c.id, !c.paused); setBusy(null); if (!res.ok) return void toast.error(res.error); toast.success(c.paused ? "Included again" : "Excluded. Anything planned was stopped."); router.refresh(); }}>
+                  <Button size="sm" variant="secondary" loading={busy === c.id} onClick={async () => { setBusy(c.id); const res = await setRetentionPausedAction(c.id, !c.paused); setBusy(null); if (!res.ok) return void toast.error(res.error); toast.success(c.paused ? "Included again" : "Excluded. Anything planned was stopped."); router.refresh(); }}>
                     {c.paused ? <><Play className="size-3.5" /> Include again</> : <><Pause className="size-3.5" /> Exclude</>}
                   </Button>
                 )}
@@ -279,9 +297,12 @@ function Activity({ rows }: { rows: RetentionActivityRow[] }) {
   return (
     <Card>
       <CardHeader>
-        <div>
-          <CardTitle>What happened</CardTitle>
-          <CardDescription>Each program message and its real outcome. &quot;Delivered&quot; appears only when the provider confirms it.</CardDescription>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconTile tone="violet"><MessageSquareText /></IconTile>
+          <div className="min-w-0">
+            <CardTitle>What happened</CardTitle>
+            <CardDescription>Each program message and its real outcome. &quot;Delivered&quot; appears only when the provider confirms it.</CardDescription>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-0 pb-0">
@@ -290,12 +311,20 @@ function Activity({ rows }: { rows: RetentionActivityRow[] }) {
         ) : (
           <ul className="divide-y divide-line">
             {rows.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-start gap-3 px-5 py-3">
+              <li key={r.id} className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface-2/50">
+                <AvatarTile name={r.contactName} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-medium">{r.contactName} <span className="font-normal text-muted">· {r.program}</span></p>
-                  <p className="text-[12px] text-muted">{relativeTime(r.at)}{r.reason ? ` · ${reasonText(r.reason)}` : ""}{r.delivery === "delivered" || r.delivery === "read" ? " · Delivered" : ""}</p>
+                  <p className="truncate text-[13.5px] font-semibold" title={`${r.contactName} · ${r.program}`}>{r.contactName}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <InfoChip>{r.program}</InfoChip>
+                    <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(r.at)}</span></InfoChip>
+                    {r.reason && <span className="text-[12px] text-muted">{reasonText(r.reason)}</span>}
+                  </div>
                 </div>
-                <Badge tone={STEP_TONE[r.status]}>{STEP_LABEL[r.status]}</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <StatusPill tone={STEP_TONE[r.status] ?? "neutral"}>{STEP_LABEL[r.status]}</StatusPill>
+                  {(r.delivery === "delivered" || r.delivery === "read") && <StatusPill tone="success" size="sm">Delivered</StatusPill>}
+                </div>
               </li>
             ))}
           </ul>
@@ -310,13 +339,12 @@ export function RetentionAutomation({ programs, lifecycle, activity, canEdit, ca
     <section id="retention-programs" aria-label="Automated customer messages" className="scroll-mt-28 space-y-6">
       <Lifecycle data={lifecycle} />
       <div>
-        <h2 className="text-[16px] font-semibold tracking-tight">Automated customer messages</h2>
-        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">Everything here is off until the business owner approves its exact wording. Messages follow the same rules as every other customer message: consent, opt-outs, quiet hours and your credit balance. Nothing is ever sent to customers who already existed when you switch a program on.</p>
-        <div className="mt-4 grid items-start gap-4 xl:grid-cols-2">
+        <SectionLabel title="Automated customer messages" description={<span className="block max-w-3xl leading-relaxed">Everything here is off until the business owner approves its exact wording. Messages follow the same rules as every other customer message: consent, opt-outs, quiet hours and your credit balance. Nothing is ever sent to customers who already existed when you switch a program on.</span>} />
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           {programs.map((p) => <ProgramCard key={p.id} program={p} canEdit={canEdit} canActivate={canActivate} />)}
         </div>
       </div>
-      <div className="grid items-start gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
         <Customers data={lifecycle} canEdit={canEditContacts} />
         <Activity rows={activity} />
       </div>

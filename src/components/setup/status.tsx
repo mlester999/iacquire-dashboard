@@ -3,7 +3,7 @@
 import * as React from "react";
 import { motion } from "motion/react";
 import { Ban, Check, CircleDashed, Eye, Loader2, UserRound } from "lucide-react";
-import { Badge } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
 import { CLIENT_STATUS_LABEL, STATUS_LABEL, type TaskStatus } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 
@@ -49,8 +49,8 @@ export function StatusIcon({ status, className, size = "md" }: { status: TaskSta
 
 export function StatusBadge({ status, audience = "agency", className }: { status: TaskStatus; audience?: "agency" | "client"; className?: string }) {
   return (
-    <Badge tone={STATUS_TONE[status]} className={className}>
+    <StatusPill tone={STATUS_TONE[status]} className={className}>
       {(audience === "client" ? CLIENT_STATUS_LABEL : STATUS_LABEL)[status]}
-    </Badge>
+    </StatusPill>
   );
 }

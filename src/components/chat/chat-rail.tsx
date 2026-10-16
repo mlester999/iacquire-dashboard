@@ -10,6 +10,7 @@ import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { useShell } from "@/components/shell/shell-context";
 import { openHelp } from "@/components/help/help-widget";
 import { AuthAppearance } from "@/components/auth/appearance";
+import { InfoChip } from "@/components/ui/status";
 import { cn } from "@/lib/utils";
 
 export interface ConversationItem {
@@ -117,7 +118,7 @@ export function ChatRail({
           })}
       </ul>
 
-      <div className="mx-4 mb-1 mt-5 flex items-center justify-between border-t border-line pt-4"><span className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Conversation history</span><span className="font-mono text-[10px] text-muted">{conversations.length}</span></div>
+      <div className="mx-4 mb-1 mt-5 flex items-center justify-between border-t border-line pt-4"><span className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Conversation history</span><InfoChip className="h-5 px-1.5 text-[10.5px] tabular-nums">{conversations.length}</InfoChip></div>
       <div className="mt-2 flex items-center gap-2 px-3">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />

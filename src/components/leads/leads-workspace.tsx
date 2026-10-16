@@ -8,20 +8,25 @@ import {
   AlertCircle,
   Check,
   CheckCircle2,
+  Clock,
   Download,
   ExternalLink,
   Info,
   Loader2,
+  MapPin,
   Radar,
   RefreshCw,
   Search,
   Send,
   ShieldAlert,
+  Target,
   X,
 } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
+import { AccentTop, IconTile, Panel } from "@/components/overview/panel";
 import { Segmented, Sheet, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero,CoverageBar } from "@/components/ui/workspace";
 import { createResearchAction, requestCrmImportAction, retryResearchAction, reviewLeadsAction, saveTargetingAction } from "@/app/actions/leads";
@@ -81,9 +86,21 @@ const SCORE_LABELS: Record<string, [string, number]> = {
 };
 
 function ScorePill({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-faint">—</span>;
-  const tone = score >= 75 ? "bg-success-soft text-success-ink" : score >= 50 ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2";
-  return <span className={cn("inline-flex h-6 min-w-9 items-center justify-center rounded-full px-2 text-[12px] font-semibold tabular-nums", tone)}>{score}</span>;
+  if (score === null) return <StatusPill tone="neutral" size="sm" dot={false}>No score</StatusPill>;
+  const tone: StatusTone = score >= 75 ? "success" : score >= 50 ? "primary" : "neutral";
+  return (
+    <span title={`Fit score ${score} of 100`} className="inline-flex items-center gap-2">
+      <StatusPill tone={tone} dot={false} className="min-w-10 justify-center tabular-nums">{score}</StatusPill>
+      <span aria-hidden className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-surface-3 lg:block"><span className={cn("block h-full rounded-full", tone === "success" ? "bg-success" : tone === "primary" ? "bg-primary" : "bg-faint")} style={{ width: `${Math.max(4, Math.min(100, score))}%` }} /></span>
+    </span>
+  );
+}
+
+const SYNC_TONE: Record<string, StatusTone> = { not_synced: "neutral", awaiting_approval: "warning", blocked: "warning", synced: "success", failed: "danger" };
+const REVIEW_TONE: Record<Lead["review_status"], StatusTone> = { pending: "warning", approved: "success", rejected: "danger" };
+
+function DuplicateChip({ status }: { status: string }) {
+  return status === "no_match" ? <InfoChip icon={<CheckCircle2 />}>No duplicates</InfoChip> : <StatusPill tone="warning" size="sm">{sentenceCase(status)}</StatusPill>;
 }
 
 const SYNC_LABEL: Record<string, string> = {
@@ -139,13 +156,14 @@ export function LeadsWorkspace(props: {
 function HunterBanner({ ready, status }: { ready: boolean; status: AgentStatus }) {
   const meta = AGENT_BY_KEY.lead_hunter;
   return (
-    <div className={cn("flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center", ready ? "border-line bg-surface" : "border-warning/30 bg-warning-soft/40")}>
-      <AgentAvatar role={meta} size="md" />
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-2 text-[14px] font-semibold">
+    <div className="card-surface relative flex flex-col gap-3 overflow-hidden rounded-2xl p-4 sm:flex-row sm:items-center">
+      <AccentTop tone={ready ? "success" : "warning"} />
+      <AgentAvatar role={meta} size="md" className="relative" />
+      <div className="relative min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
           Lead Hunter <AgentStatusBadge status={status} />
         </p>
-        <p className="text-[13px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until the Lead Hunter is connected and online."}</p>
+        <p className="mt-0.5 text-[13px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until the Lead Hunter is connected and online."}</p>
       </div>
     </div>
   );
@@ -258,7 +276,36 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="divide-y divide-line md:hidden">{filtered.map((lead) => <article key={lead.id} className={cn("px-4 py-4", selected.includes(lead.id) && "bg-primary-soft/30")}><div className="flex items-start gap-3">{canReview && <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-2"><input type="checkbox" aria-label={`Select ${lead.business_name}`} className="size-4 accent-[var(--primary)]" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} /></label>}<button type="button" onClick={() => setOpen(lead)} className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"><span className="block break-words text-[14px] font-semibold text-ink">{lead.business_name}</span><span className="mt-1 block text-[12px] text-muted">{lead.industry ?? "Industry unknown"} · {lead.location ?? "Location not recorded"}</span><span className="mt-3 flex flex-wrap items-center gap-2"><ScorePill score={lead.score}/><span className="text-[11px] text-muted">fit score</span><Badge tone={lead.review_status === "approved" ? "success" : lead.review_status === "rejected" ? "neutral" : "warning"}>{sentenceCase(lead.review_status)}</Badge></span><span className="mt-2 block text-[11.5px] text-muted">{relativeTime(lead.created_at)} · {lead.duplicate_status === "no_match" ? "No duplicates found" : sentenceCase(lead.duplicate_status)}</span>{lead.review_status === "approved" && <span className="mt-1 block text-[11.5px] text-primary">{SYNC_LABEL[lead.crm_sync_status] ?? lead.crm_sync_status}</span>}</button></div></article>)}</div>
+      <div className="divide-y divide-line md:hidden">
+        {filtered.map((lead) => (
+          <article key={lead.id} className={cn("px-4 py-4", selected.includes(lead.id) && "bg-primary-soft/30")}>
+            <div className="flex items-start gap-3">
+              {canReview && (
+                <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-surface-2">
+                  <input type="checkbox" aria-label={`Select ${lead.business_name}`} className="size-4 accent-[var(--primary)]" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} />
+                </label>
+              )}
+              <button type="button" onClick={() => setOpen(lead)} className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">
+                <AvatarTile name={lead.business_name} size="md" />
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-[14px] font-semibold text-ink">{lead.business_name}</span>
+                  <span className="mt-0.5 block text-[12px] text-muted">{lead.industry ?? "Industry unknown"}</span>
+                  <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <ScorePill score={lead.score} />
+                    <StatusPill tone={REVIEW_TONE[lead.review_status]}>{sentenceCase(lead.review_status)}</StatusPill>
+                    {lead.review_status === "approved" && <StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill>}
+                  </span>
+                  <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <InfoChip icon={<MapPin />}>{lead.location ?? "Location not recorded"}</InfoChip>
+                    <DuplicateChip status={lead.duplicate_status} />
+                    <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(lead.created_at)}</span></InfoChip>
+                  </span>
+                </span>
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
       <div className="scrollbar-thin hidden overflow-x-auto md:block">
         <table className="workspace-table w-full min-w-[760px] text-left text-[13.5px]">
           <thead className="bg-surface-2/60 text-[12px] text-muted">
@@ -276,34 +323,41 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
               )}
               <th className="px-3 py-3 font-medium">Business</th>
               <th className="px-3 py-3 font-medium">Location</th>
-              <th className="px-3 py-3 font-medium">Score</th>
+              <th className="px-3 py-3 font-medium">Fit score</th>
               <th className="px-3 py-3 font-medium">Status</th>
               <th className="px-3 py-3 font-medium">Duplicates</th>
-              <th className="px-4 py-3 font-medium">Researched</th>
+              <th className="px-4 py-3 text-right font-medium">Researched</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {filtered.map((l) => (
-              <tr key={l.id} className={cn("cursor-pointer transition hover:bg-surface-2/50", selected.includes(l.id) && "bg-primary-soft/30")} onClick={() => setOpen(l)}>
+              <tr key={l.id} className={cn("cursor-pointer transition hover:bg-surface-2/60", selected.includes(l.id) && "bg-primary-soft/30")} onClick={() => setOpen(l)}>
                 {canReview && (
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" aria-label={`Select ${l.business_name}`} className="size-4 accent-[var(--primary)]" checked={selected.includes(l.id)} onChange={() => toggle(l.id)} />
                   </td>
                 )}
                 <td className="px-3 py-3">
-                  <button type="button" onClick={() => setOpen(l)} className="rounded-md text-left font-medium text-ink hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{l.business_name}</button>
-                  <p className="text-[12px] text-muted">{l.industry ?? "Industry unknown"}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <AvatarTile name={l.business_name} size="md" />
+                    <div className="min-w-0">
+                      <button type="button" onClick={() => setOpen(l)} title={l.business_name} className="block max-w-[260px] truncate rounded-md text-left font-semibold text-ink hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{l.business_name}</button>
+                      <p className="mt-0.5 max-w-[260px] truncate text-[12px] text-muted" title={l.industry ?? undefined}>{l.industry ?? "Industry unknown"}</p>
+                    </div>
+                  </div>
                 </td>
-                <td className="px-3 py-3 text-ink-2">{l.location ?? "—"}</td>
+                <td className="px-3 py-3">{l.location ? <InfoChip icon={<MapPin />}>{l.location}</InfoChip> : <span className="text-faint">—</span>}</td>
                 <td className="px-3 py-3">
                   <ScorePill score={l.score} />
                 </td>
                 <td className="px-3 py-3">
-                  <Badge tone={l.review_status === "approved" ? "success" : l.review_status === "rejected" ? "neutral" : "warning"}>{sentenceCase(l.review_status)}</Badge>
-                  {l.review_status === "approved" && <p className="mt-1 text-[11.5px] text-muted">{SYNC_LABEL[l.crm_sync_status] ?? l.crm_sync_status}</p>}
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusPill tone={REVIEW_TONE[l.review_status]}>{sentenceCase(l.review_status)}</StatusPill>
+                    {l.review_status === "approved" && <StatusPill tone={SYNC_TONE[l.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[l.crm_sync_status] ?? sentenceCase(l.crm_sync_status)}</StatusPill>}
+                  </div>
                 </td>
-                <td className="px-3 py-3 text-[12.5px] text-muted">{l.duplicate_status === "no_match" ? "None found" : sentenceCase(l.duplicate_status)}</td>
-                <td className="px-4 py-3 text-[12.5px] text-muted">{relativeTime(l.created_at)}</td>
+                <td className="px-3 py-3"><DuplicateChip status={l.duplicate_status} /></td>
+                <td className="px-4 py-3 text-right text-[12.5px] tabular-nums text-muted" title={formatDateTime(l.created_at, timeZone)}><span suppressHydrationWarning>{relativeTime(l.created_at)}</span></td>
               </tr>
             ))}
           </tbody>
@@ -320,9 +374,13 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
     <Sheet open={Boolean(lead)} onOpenChange={(o) => !o && onClose()} title={lead?.business_name ?? "Lead"} description={lead ? [lead.industry, lead.location].filter(Boolean).join(" · ") : undefined}>
       {lead && (
         <div className="space-y-6 p-5">
+          <div className="flex flex-wrap gap-2">
+            <StatusPill tone={REVIEW_TONE[lead.review_status]}>{sentenceCase(lead.review_status)}</StatusPill>
+            {lead.review_status === "approved" && <StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"}>{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill>}
+          </div>
           <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
             <div className="text-center">
-              <p className="text-[32px] font-semibold leading-none tracking-tight">{lead.score ?? "—"}</p>
+              <p className="text-[32px] font-semibold leading-none tracking-tight tabular-nums">{lead.score ?? "—"}</p>
               <p className="mt-1 text-[11.5px] text-muted">of 100</p>
             </div>
             <p className="text-[12.5px] leading-relaxed text-muted">A research-priority score from cited evidence. It is not a measure of interest or consent.</p>
@@ -366,8 +424,8 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           <div>
             <p className="mb-2 text-[12px] font-medium uppercase tracking-wider text-faint">Source evidence</p>
             {lead.evidence.length === 0 ? (
-              <p className="flex items-center gap-2 text-[13px] text-warning-ink">
-                <AlertCircle className="size-4" /> No cited sources — treat with caution.
+              <p className="flex items-center gap-2.5 rounded-xl bg-warning-soft p-3 text-[13px] text-warning-ink ring-1 ring-inset ring-warning/25">
+                <AlertCircle className="size-4 shrink-0" /> No cited sources — treat with caution.
               </p>
             ) : (
               <ul className="space-y-2">
@@ -386,16 +444,20 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           <dl className="grid grid-cols-2 gap-3 text-[12.5px]">
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">Duplicate check</dt>
-              <dd className="mt-0.5 font-medium">{lead.duplicate_status === "no_match" ? "No match" : sentenceCase(lead.duplicate_status)}</dd>
+              <dd className="mt-1.5">{lead.duplicate_status === "no_match" ? <StatusPill tone="success" size="sm">No match</StatusPill> : <StatusPill tone="warning" size="sm">{sentenceCase(lead.duplicate_status)}</StatusPill>}</dd>
             </div>
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">CRM</dt>
-              <dd className="mt-0.5 font-medium">{SYNC_LABEL[lead.crm_sync_status] ?? lead.crm_sync_status}</dd>
+              <dd className="mt-1.5"><StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill></dd>
             </div>
           </dl>
-          <p className="flex items-center gap-2 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
-            <ShieldAlert className="size-4 shrink-0" /> Contact consent: unknown · Outreach: blocked until separately approved
-          </p>
+          <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
+            <IconTile tone="neutral" size="sm"><ShieldAlert /></IconTile>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <StatusPill tone="warning" size="sm">Contact consent unknown</StatusPill>
+              <StatusPill tone="neutral" size="sm">Outreach blocked until separately approved</StatusPill>
+            </div>
+          </div>
           {canReview && (
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               {lead.review_status === "pending" && (
@@ -452,24 +514,16 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
       failed: ["danger", "Failed"],
       cancelled: ["neutral", "Cancelled"],
     };
-    const [tone, label] = map[s] ?? ["neutral", s];
+    const [tone, label] = map[s] ?? ["neutral", sentenceCase(s)];
     return (
-      <Badge tone={tone}>
-        {s === "running" && <Loader2 className="size-3 animate-spin" />}
+      <StatusPill tone={tone} icon={s === "running" ? <Loader2 className="size-3 animate-spin" aria-hidden /> : undefined}>
         {label}
-      </Badge>
+      </StatusPill>
     );
   };
   return (
-    <div className="grid gap-6 lg:grid-cols-5">
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <div>
-            <CardTitle>New research request</CardTitle>
-            <CardDescription>Describe who you want to find. Your targeting rules are applied automatically.</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <Panel className="lg:col-span-2" icon={<Radar />} tone="primary" title="New research request" description="Describe who you want to find. Your targeting rules are applied automatically." bodyClassName="space-y-4">
           <Segmented id="campaign" ariaLabel="Campaign type" value={campaign} onChange={setCampaign} options={[{ value: "business", label: "Businesses" }, { value: "influencer", label: "Influencer partners" }]} />
           <Field label="What should the Lead Hunter look for?" htmlFor="research-prompt">
             <Textarea id="research-prompt" rows={4} maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={!canResearch} placeholder="Find businesses in California that may need appointment automation." />
@@ -488,32 +542,25 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
             <Radar className="size-4" /> {hunterReady ? "Start research" : "Save request"}
           </Button>
           {!canResearch && <p className="text-[12.5px] text-muted">Only owners and admins can request research.</p>}
-        </CardContent>
-      </Card>
-      <Card className="lg:col-span-3">
-        <CardHeader>
-          <div>
-            <CardTitle>Research history</CardTitle>
-            <CardDescription>Real status of every request.</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
+      </Panel>
+      <Panel className="lg:col-span-3" icon={<Clock />} tone="neutral" title="Research history" description="Real status of every request.">
           {requests.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-muted">No research requests yet.</p>
+            <EmptyState compact icon={<Radar className="size-5" />} title="No research requests yet" description="Describe the businesses you want to find and your Lead Hunter will research them from approved public sources." />
           ) : (
             <ul className="divide-y divide-line">
               {requests.map((r) => (
-                <li key={r.id} className="py-3">
+                <li key={r.id} className="py-3.5">
                   <div className="flex flex-wrap items-center gap-2">
                     {statusBadge(r.status)}
-                    {r.campaign_type === "influencer" && <Badge tone="violet">Influencer</Badge>}
-                    <span className="ml-auto text-[12px] text-faint">{formatDateTime(r.created_at, timeZone)}</span>
+                    {r.campaign_type === "influencer" && <StatusPill tone="violet" dot={false}>Influencer</StatusPill>}
+                    <span className="ml-auto"><InfoChip icon={<Clock />}>{formatDateTime(r.created_at, timeZone)}</InfoChip></span>
                   </div>
-                  <p className="mt-1.5 text-[13.5px] text-ink">{r.prompt}</p>
-                  <p className="mt-0.5 text-[12px] text-muted">
-                    {r.status === "completed" ? `${r.result_count} result${r.result_count === 1 ? "" : "s"} added to review` : r.failure_reason ?? ""}
-                    {r.requested_by_name ? ` · ${r.requested_by_name}` : ""}
-                  </p>
+                  <p className="mt-2 text-[13.5px] leading-snug text-ink">{r.prompt}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {r.status === "completed" && <InfoChip icon={<CheckCircle2 />}>{r.result_count} result{r.result_count === 1 ? "" : "s"} added to review</InfoChip>}
+                    {r.status !== "completed" && r.failure_reason && <span className="text-[12px] text-danger-ink">{r.failure_reason}</span>}
+                    {r.requested_by_name && <InfoChip>{r.requested_by_name}</InfoChip>}
+                  </div>
                   {(r.status === "waiting_for_agent" || r.status === "failed") && hunterReady && canResearch && (
                     <Button
                       size="sm"
@@ -533,8 +580,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
               ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -586,16 +632,9 @@ function TargetingForm({ targeting, canEdit }: { targeting: Targeting; canEdit: 
   const set = <K extends keyof Targeting>(k: K, v: Targeting[K]) => setT((p) => ({ ...p, [k]: v }));
   const dirty = JSON.stringify(t) !== JSON.stringify(targeting);
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <div>
-            <CardTitle>Who should we look for?</CardTitle>
-            <CardDescription>Press Enter after each item. These rules shape every research request.</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <Panel className="lg:col-span-2" icon={<Target />} tone="violet" title="Who should we look for?" description="Press Enter after each item. These rules shape every research request." bodyClassName="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TagInput id="t-ind" label="Industries" values={t.industries} onChange={(v) => set("industries", v)} placeholder="e.g. Dental clinics" disabled={!canEdit} />
             <TagInput id="t-countries" label="Countries" values={t.countries} onChange={(v) => set("countries", v)} placeholder="e.g. United States" disabled={!canEdit} />
             <TagInput id="t-regions" label="Regions or cities" values={t.regions} onChange={(v) => set("regions", v)} placeholder="e.g. California" disabled={!canEdit} />
@@ -603,7 +642,7 @@ function TargetingForm({ targeting, canEdit }: { targeting: Targeting; canEdit: 
             <TagInput id="t-keywords" label="Keywords" values={t.keywords} onChange={(v) => set("keywords", v)} placeholder="e.g. online booking" disabled={!canEdit} />
             <TagInput id="t-signals" label="Buying signals" values={t.buyingSignals} onChange={(v) => set("buyingSignals", v)} placeholder="e.g. Hiring a receptionist" disabled={!canEdit} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Business size" htmlFor="t-size">
               <Select id="t-size" value={t.businessSize} disabled={!canEdit} onChange={(e) => set("businessSize", e.target.value)}>
                 {[["any", "Any size"], ["solo", "Solo"], ["2-10", "2–10 people"], ["11-50", "11–50 people"], ["51-200", "51–200 people"], ["200+", "200+ people"]].map(([v, l]) => (
@@ -625,8 +664,7 @@ function TargetingForm({ targeting, canEdit }: { targeting: Targeting; canEdit: 
           <Field label="Minimum qualification criteria" htmlFor="t-min" optional>
             <Textarea id="t-min" rows={2} maxLength={1000} value={t.minimumCriteria} disabled={!canEdit} onChange={(e) => set("minimumCriteria", e.target.value)} placeholder="e.g. Has a website and at least 5 employees" />
           </Field>
-        </CardContent>
-      </Card>
+      </Panel>
       <div className="space-y-6">
         <Card>
           <CardHeader>

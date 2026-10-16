@@ -2,20 +2,20 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
 import { PROJECT_STATUS_LABEL, PROJECT_STATUS_TONE, type ProjectStatus } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 
 export function ProjectStatusBadge({ status, className }: { status: ProjectStatus; className?: string }) {
   return (
-    <Badge tone={PROJECT_STATUS_TONE[status]} className={className}>
+    <StatusPill tone={PROJECT_STATUS_TONE[status]} className={className}>
       {PROJECT_STATUS_LABEL[status]}
-    </Badge>
+    </StatusPill>
   );
 }
 
 export function Chip({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn("inline-flex items-center rounded-full border border-line bg-surface-2 px-2.5 py-0.5 text-[11.5px] font-medium text-ink-2", className)}>{children}</span>;
+  return <span className={cn("inline-flex items-center rounded-full bg-surface-2 px-2.5 py-0.5 text-[11.5px] ring-1 ring-inset ring-line font-medium text-ink-2", className)}>{children}</span>;
 }
 
 /** Result shape returned by the portal's server actions. */

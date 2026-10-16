@@ -5,6 +5,7 @@ import { Check, ImagePlus, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
+import { EmptyState } from "@/components/ui/primitives";
 import { Art } from "@/components/website/render/art";
 import { useStudioApi } from "@/components/website/studio/studio-api";
 import { ART_SCENES, ART_TONES, type ArtScene, type ArtTone } from "@/lib/website/art-keys";
@@ -99,25 +100,29 @@ export function MediaLibrary({
               </Button>
               <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={(e) => { void upload(Array.from(e.target.files ?? []), kind); e.target.value = ""; }} />
             </div>
-            <div className="flex items-center justify-between gap-2">
-              <Seg label="Upload as" value={kind} onChange={setKind} options={[{ value: "image", label: "Photo" }, { value: "logo", label: "Logo" }]} size="sm" />
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-[11.5px] font-medium text-ink-2">Upload as</span>
+              <div className="min-w-0 flex-1"><Seg label="Upload as" value={kind} onChange={setKind} options={[{ value: "image", label: "Photo" }, { value: "logo", label: "Logo" }]} size="sm" /></div>
             </div>
             <p className="text-[11px] leading-relaxed text-muted">PNG, JPG or WebP up to 10 MB. Photos are compressed for fast loading. Logos keep their format, and a plain background can be removed where possible. Drop files anywhere here.</p>
           </>
         ) : <p className="rounded-lg bg-surface-3 p-2.5 text-[11.5px] text-muted">Only owners and managers can add images.</p>}
         {!compact && (
-          <div className="flex items-center gap-2">
+          <div className="space-y-2">
             <TextControl aria-label="Search images by description" placeholder="Search by description" value={q} onChange={(e) => setQ(e.target.value)} />
             <Seg label="Show" value={filter} onChange={setFilter} options={[{ value: "all", label: "All" }, { value: "image", label: "Photos" }, { value: "logo", label: "Logos" }]} size="sm" />
           </div>
         )}
       </div>
       {assets.length === 0 ? (
-        <div className="mx-4 mt-2 flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong px-6 py-10 text-center">
-          <ImagePlus className="size-8 text-faint" aria-hidden />
-          <p className="mt-2 text-[13px] font-medium">No images yet</p>
-          <p className="mt-1 text-[12px] leading-relaxed text-muted">Upload photos of your work, your team or your premises. Until then the site shows built-in artwork, which you&apos;ll replace before publishing.</p>
-        </div>
+        <EmptyState
+          compact
+          className="mx-4 mt-2 flex-1 rounded-2xl border border-dashed border-line-strong"
+          icon={<ImagePlus className="size-5" aria-hidden />}
+          title="No images yet"
+          description="Upload photos of your work, your team or your premises. Until then the site shows built-in artwork, which you'll replace before publishing."
+          action={canUpload ? <Button size="sm" variant="soft" onClick={() => fileRef.current?.click()} disabled={busy > 0}><Upload className="size-3.5" /> Upload images</Button> : undefined}
+        />
       ) : (
         <ul className={cn("grid min-h-0 flex-1 content-start gap-2.5 overflow-y-auto px-4 pb-4", compact ? "grid-cols-3" : "grid-cols-2")}>
           {shown.map((a) => {
@@ -134,12 +139,12 @@ export function MediaLibrary({
                 {!compact && (
                   <div className="space-y-1 p-1.5">
                     <input aria-label="Description for screen readers" defaultValue={a.altText} maxLength={200} placeholder="Describe this image" onBlur={(e) => void saveAlt(a, e.target.value.trim())} className="h-7 w-full rounded-md border border-transparent bg-surface-2 px-1.5 text-[11.5px] hover:border-line focus:border-primary focus:outline-none" />
-                    <div className="flex items-center justify-between text-[10.5px] text-muted">
+                    <div className="flex items-center justify-between text-[11px] tabular-nums text-muted">
                       <span>{a.width && a.height ? `${a.width}×${a.height}` : ""}</span>
                       {confirm === a.id ? (
-                        <span className="flex items-center gap-1"><button type="button" onClick={() => void remove(a)} className="rounded bg-danger px-1.5 py-0.5 font-medium text-white">Remove</button><button type="button" onClick={() => setConfirm(null)} className="rounded px-1 py-0.5 hover:bg-surface-3">Keep</button></span>
+                        <span className="flex items-center gap-1"><button type="button" onClick={() => void remove(a)} className="min-h-8 rounded-md bg-danger px-2.5 py-1 font-medium text-white">Remove</button><button type="button" onClick={() => setConfirm(null)} className="min-h-8 rounded-md px-2.5 py-1 hover:bg-surface-3">Keep</button></span>
                       ) : (
-                        <IconButton label={isUsed ? "Used on your site. Replace it there first to remove it." : "Remove from library"} disabled={isUsed || !canUpload} onClick={() => setConfirm(a.id)} className="size-6"><Trash2 className="size-3" /></IconButton>
+                        <IconButton label={isUsed ? "Used on your site. Replace it there first to remove it." : "Remove from library"} disabled={isUsed || !canUpload} onClick={() => setConfirm(a.id)} className="size-8"><Trash2 className="size-3.5" /></IconButton>
                       )}
                     </div>
                   </div>
@@ -147,7 +152,7 @@ export function MediaLibrary({
               </li>
             );
           })}
-          {!shown.length && <li className="col-span-full py-6 text-center text-[12px] text-muted">No images match.</li>}
+          {!shown.length && <li className="col-span-full"><EmptyState compact icon={<ImagePlus className="size-5" />} title="No images match" description="Try a different search or filter." className="!py-6" /></li>}
         </ul>
       )}
     </div>

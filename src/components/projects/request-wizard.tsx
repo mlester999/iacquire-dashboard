@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, FileText, Info, Lightbulb, Paperclip, Plus, Send, ShieldCheck, Sparkles, X } from "lucide-react";
-import { Badge, Card, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
+import { Card, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
-import { Chip, bytesLabel } from "@/components/projects/common";
+import { InfoChip, StatusPill } from "@/components/ui/status";
+import { bytesLabel } from "@/components/projects/common";
 import { createProjectRequestAction } from "@/app/actions/projects";
 import { BUDGET_BANDS, formatDelivery, formatPrice, suggestServices, type ServiceView } from "@/lib/projects";
-import { cn } from "@/lib/utils";
+import { cn, sentenceCase } from "@/lib/utils";
 
 const STEPS = ["The idea", "How it works today", "Your tools", "Optional details", "Review"] as const;
 const COMMON_TOOLS = ["GoHighLevel", "n8n", "Make.com", "Zapier", "Google Sheets", "Airtable", "Notion", "Slack", "ClickUp", "Shopify", "Stripe", "HubSpot", "Google Calendar", "Gmail", "QuickBooks", "WordPress"];
@@ -138,7 +139,7 @@ export function RequestWizard({
         </ol>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="p-5 sm:p-6">
           <p className="mb-4 border-b border-line pb-3 text-[11px] font-semibold uppercase tracking-[.1em] text-primary">{STEPS[step]} · Step {step+1} of {STEPS.length}</p>
           {/* Enter-only animation: an exit step would block the next one whenever animations are throttled. */}
@@ -274,7 +275,7 @@ export function RequestWizard({
               {step === 4 && (
                 <div className="space-y-4">
                   <h3 className="text-[16px] font-semibold">Review your request</h3>
-                  <dl className="space-y-3 text-[13.5px]">
+                  <dl className="divide-y divide-line overflow-hidden rounded-xl bg-surface-2/50 text-[13.5px] ring-1 ring-inset ring-line">
                     {[
                       ["What to build", title],
                       ["The problem", problem],
@@ -286,8 +287,8 @@ export function RequestWizard({
                       ["Attachments", files.length ? files.map((f) => f.name).join(", ") : "None"],
                       ["Service", selected ? selected.name : "Custom project"],
                     ].map(([k, v]) => (
-                      <div key={k} className="grid gap-1 sm:grid-cols-[150px_1fr]">
-                        <dt className="text-muted">{k}</dt>
+                      <div key={k} className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]">
+                        <dt className="text-[12px] font-medium uppercase tracking-[.06em] text-muted">{k}</dt>
                         <dd className="whitespace-pre-wrap break-words text-ink">{v}</dd>
                       </div>
                     ))}
@@ -336,9 +337,9 @@ export function RequestWizard({
                         <Sparkles className="size-3.5 text-primary" /> {s.name}
                       </p>
                       <p className="mt-0.5 text-[12.5px] tabular-nums text-ink-2">
-                        {formatPrice(s.price)} <span className="text-faint">· published, not a quote</span>
+                        {formatPrice(s.price)}
                       </p>
-                      <p className="mt-1 text-[12px] text-muted">{reasons.join(" · ")}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5"><InfoChip>Published, not a quote</InfoChip>{reasons.map((r) => <InfoChip key={r}>{r}</InfoChip>)}</div>
                       {s.coreOverlapNote && <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{s.coreOverlapNote}</p>}
                       <Button size="sm" variant="soft" className="mt-2" onClick={() => setServiceSlug(s.slug)}>
                         Use this service
@@ -355,13 +356,13 @@ export function RequestWizard({
               <p className="text-[12.5px] font-semibold">Already connected to your workspace</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {connected.map((c) => (
-                  <Chip key={c}>{c === "ghl" ? "GoHighLevel" : c === "hermes" ? "AI workforce" : c}</Chip>
+                  <StatusPill key={c} size="sm" tone="success">{c === "ghl" ? "GoHighLevel" : c === "hermes" ? "AI workforce" : c === "ghl_calendar" ? "GoHighLevel calendar" : sentenceCase(c)}</StatusPill>
                 ))}
               </div>
             </Card>
           )}
           <Card className="p-4">
-            <Badge tone="neutral">Good to know</Badge>
+            <StatusPill tone="primary" icon={<Info className="size-3" />}>Good to know</StatusPill>
             <p className="mt-2 text-[12.5px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Workforce page first, and ask Support if you&apos;re unsure.</p>
           </Card>
         </aside>
