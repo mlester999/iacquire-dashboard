@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { LayoutTemplate } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GalleryCard } from "@/lib/website/gallery";
 import { THUMBNAIL_VIEWPORT } from "@/lib/website/thumbnail-contract";
@@ -13,6 +14,7 @@ export function TemplateThumb({ card, frameBase, className, priority = false, dr
   const ref = React.useRef<HTMLDivElement>(null);
   const [scale, setScale] = React.useState(0.25);
   const [nearby, setNearby] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
   React.useEffect(() => {
     const el = ref.current;
     if (!el || card.thumbnail) return;
@@ -26,13 +28,14 @@ export function TemplateThumb({ card, frameBase, className, priority = false, dr
   }, [card.thumbnail]);
   return (
     <div ref={ref} data-thumbnail-key={card.key} data-thumbnail-version={card.thumbnail?.version ?? card.version} data-thumbnail-signature={card.thumbnail?.signature} className={cn("relative aspect-[16/10] w-full overflow-hidden bg-surface-3", className)}>
+      <div aria-hidden className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary-soft via-surface-2 to-surface-3 text-primary/40"><LayoutTemplate className="size-8" strokeWidth={1.5} /></div>
       {card.thumbnail ? (
         // Pre-encoded canonical screenshots; responsive WebP files avoid an image optimizer request per card.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={card.thumbnail.src} srcSet={card.thumbnail.srcSet} sizes="(max-width: 639px) 95vw, (max-width: 1023px) 46vw, (max-width: 1535px) 30vw, 440px" width={card.thumbnail.width} height={card.thumbnail.height} alt={`${card.name} website, home page`} loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       ) : nearby && <iframe
-        title={`${card.name} template, home page`} src={`${frameBase}?key=${encodeURIComponent(card.key)}&thumb=1${draft ? "&draft=1" : ""}&v=${card.version ?? 0}&r=${card.revision ?? 0}`} loading="lazy" tabIndex={-1} aria-hidden scrolling="no"
-        className="absolute left-0 top-0 origin-top-left border-0 bg-white" style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})`, pointerEvents: "none" }}
+        title={`${card.name} template, home page`} src={`${frameBase}?key=${encodeURIComponent(card.key)}&thumb=1${draft ? "&draft=1" : ""}&v=${card.version ?? 0}&r=${card.revision ?? 0}`} loading="lazy" tabIndex={-1} aria-hidden scrolling="no" onLoad={() => setLoaded(true)}
+        className={cn("absolute left-0 top-0 origin-top-left border-0 bg-white transition-opacity duration-300", loaded ? "opacity-100" : "opacity-0")} style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})`, pointerEvents: "none" }}
       />}
     </div>
   );

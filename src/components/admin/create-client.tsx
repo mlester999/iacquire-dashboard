@@ -3,10 +3,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy, Plus } from "lucide-react";
+import { CheckCircle2, Copy, Mail, MailWarning, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { Field, Input, Select } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
+import { IconTile } from "@/components/admin/setup/ui";
 import { createClientAction } from "@/app/(admin)/admin/actions";
 import { deliverySummary } from "@/components/admin/resend-invitation";
 import { AGENT_ROLES, type AgentRoleKey } from "@/lib/agents";
@@ -80,33 +82,45 @@ export function CreateClientButton({ initial }: { initial?: { name?: string; ema
         }
       >
         {link ? (
-          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-2">
-            <code className="min-w-0 flex-1 truncate px-2 font-mono text-[12.5px]">{link}</code>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                await navigator.clipboard.writeText(link);
-                toast.success("Invitation link copied");
-              }}
-            >
-              <Copy className="size-3.5" /> Copy
-            </Button>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <IconTile icon={delivery && delivery.status !== "sent" ? <MailWarning /> : <CheckCircle2 />} tone={delivery && delivery.status !== "sent" ? "warning" : "success"} />
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <StatusPill tone={delivery && delivery.status !== "sent" ? "warning" : "success"}>{delivery && delivery.status !== "sent" ? "Email not delivered" : "Invitation emailed"}</StatusPill>
+                <InfoChip icon={<Mail />}>{email}</InfoChip>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-ink-2">Invitation link</p>
+              <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-2">
+                <code className="min-w-0 flex-1 truncate px-2 font-mono text-[12.5px]" title={link}>{link}</code>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(link);
+                    toast.success("Invitation link copied");
+                  }}
+                >
+                  <Copy className="size-3.5" /> Copy
+                </Button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Company name" htmlFor="cc-name">
-                <Input id="cc-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus />
+                <Input id="cc-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus placeholder="e.g. Sunrise Clinic" />
               </Field>
               <Field label="Owner email" htmlFor="cc-email" hint="They'll receive an invitation to set a password.">
-                <Input id="cc-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Input id="cc-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@company.com" />
               </Field>
               <Field label="Industry" htmlFor="cc-industry" optional>
                 <Input id="cc-industry" value={industry} onChange={(e) => setIndustry(e.target.value)} maxLength={120} />
               </Field>
               <Field label="Website" htmlFor="cc-website" optional>
-                <Input id="cc-website" value={website} onChange={(e) => setWebsite(e.target.value)} maxLength={300} />
+                <Input id="cc-website" value={website} onChange={(e) => setWebsite(e.target.value)} maxLength={300} placeholder="https://" />
               </Field>
               <Field label="Timezone" htmlFor="cc-tz">
                 <Select id="cc-tz" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
@@ -119,7 +133,7 @@ export function CreateClientButton({ initial }: { initial?: { name?: string; ema
               </Field>
             </div>
             <fieldset>
-              <legend className="mb-2 text-[13px] font-medium text-ink-2">AI employees included</legend>
+              <legend className="mb-2 flex w-full items-center justify-between gap-2 text-[13px] font-medium text-ink-2">AI employees included <InfoChip className="h-5 text-[11px]">{roles.length} of {AGENT_ROLES.length} selected</InfoChip></legend>
               <div className="grid gap-2 sm:grid-cols-2">
                 {AGENT_ROLES.map((r) => {
                   const on = roles.includes(r.key);

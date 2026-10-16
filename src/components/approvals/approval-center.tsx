@@ -14,12 +14,15 @@ import {
   Info,
   MessageSquareWarning,
   ShieldCheck,
+  Target,
   User,
   X,
 } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, EmptyState, Field, Textarea } from "@/components/ui/primitives";
+import { Card, EmptyState, Field, Textarea } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
+import { IconTile } from "@/components/overview/panel";
 import { Dialog, Sheet, Tabs } from "@/components/ui/overlays";
 import { PageHero,CoverageBar } from "@/components/ui/workspace";
 import { approvalEventsAction, decideApprovalAction } from "@/app/actions/approvals";
@@ -74,22 +77,45 @@ const STATUS: Record<Approval["status"], { tone: "warning" | "success" | "danger
   cancelled: { tone: "neutral", label: "Cancelled" },
 };
 
+/** Titles are written by the AI team and can carry a raw timestamp such as "2026-10-23 08:57 UTC"; show it as a readable date. */
+function readableTitle(title: string) {
+  return title.replace(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2})?(?:\.\d+)?\s*(UTC|Z)?/g, (match, y, mo, d, h, mi, zone) => {
+    const at = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)));
+    if (Number.isNaN(at.getTime())) return match;
+    const text = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(at);
+    return zone ? `${text} UTC` : text;
+  });
+}
+
 function Requester({ a }: { a: Approval }) {
   if (a.agent_role && isAgentRoleKey(a.agent_role)) {
     const meta = AGENT_BY_KEY[a.agent_role];
     return (
-      <span className="flex items-center gap-2">
-        <AgentAvatar role={meta} size="xs" /> <span className="text-[12.5px] text-ink-2">{meta.shortName}</span>
+      <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-violet-soft py-0 pl-0.5 pr-2.5 text-[12px] font-medium text-violet-ink ring-1 ring-inset ring-violet/20">
+        <AgentAvatar role={meta} size="xs" /> {meta.shortName}
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-2 text-[12.5px] text-ink-2">
-      <span className="flex size-6 items-center justify-center rounded-md bg-surface-2">
-        <User className="size-3.5" />
-      </span>
+    <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-[12px] font-medium text-ink-2 ring-1 ring-inset ring-line-strong">
+      <User className="size-3" aria-hidden />
       {a.requested_by_name ?? "System"}
     </span>
+  );
+}
+
+/** A request that is close to expiring deserves a visible warning, not a muted line. */
+function ExpiryChip({ at }: { at: string }) {
+  const [now] = React.useState(() => Date.now());
+  const hours = (new Date(at).getTime() - now) / 3_600_000;
+  return hours < 24 ? (
+    <StatusPill tone="warning" icon={<Clock className="size-3" aria-hidden />}>
+      <span suppressHydrationWarning>Expires {relativeTime(at)}</span>
+    </StatusPill>
+  ) : (
+    <InfoChip icon={<Clock />}>
+      <span suppressHydrationWarning>Expires {relativeTime(at)}</span>
+    </InfoChip>
   );
 }
 
@@ -130,8 +156,11 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
     <div className="space-y-6">
       <PageHero eyebrow="Human control, by design" title="Your team's ideas. Your final say." description="Review what your AI employees propose before customer-facing or CRM actions run. Every decision stays in the history; rejected or expired requests never execute." icon={<ShieldCheck className="size-4"/>} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Decision queue</p><p className="mt-2 text-[36px] font-semibold tracking-tight">{pending.length}<span className="ml-2 text-[13px] font-normal tracking-normal text-muted">awaiting review</span></p><div className="mt-3"><CoverageBar label="Approval request status" parts={[{label:"Pending",count:pending.length,color:"var(--warning)"},{label:"History",count:history.length,color:"var(--primary)"}]}/></div></div>}/>
       {!canDecide && (
-        <p className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-muted">
-          <Info className="size-4" /> You can view approvals. Workspace owners and admins make the decisions.
+        <p className="flex items-center gap-3 rounded-2xl bg-surface-2/80 p-3 text-[13px] text-ink-2 ring-1 ring-inset ring-line">
+          <IconTile tone="primary" size="sm">
+            <Info />
+          </IconTile>
+          You can view approvals. Workspace owners and admins make the decisions.
         </p>
       )}
       <Tabs
@@ -158,34 +187,42 @@ export function ApprovalCenter({ approvals, canDecide, canDecideHigh, timeZone }
                     <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center">
                       <button type="button" onClick={() => setSelected(a)} className="min-w-0 flex-1 text-left">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone="outline">{KIND_LABEL[a.kind] ?? sentenceCase(a.kind)}</Badge>
-                          <Badge tone={RISK[a.risk].tone}>{a.risk === "high" || a.risk === "critical" ? <AlertTriangle className="size-3" /> : null}{RISK[a.risk].label}</Badge>
-                          {a.status !== "pending" && <Badge tone={STATUS[a.status].tone}>{STATUS[a.status].label}</Badge>}
-                          {a.status === "approved" && a.execution_status === "blocked" && <Badge tone="neutral">Held — integration not enabled</Badge>}
-                          {a.status === "approved" && a.execution_status === "succeeded" && <Badge tone="success">Completed</Badge>}
-                          {a.status === "approved" && a.execution_status === "failed" && <Badge tone="danger">Failed</Badge>}
+                          <InfoChip>{KIND_LABEL[a.kind] ?? sentenceCase(a.kind)}</InfoChip>
+                          <StatusPill tone={RISK[a.risk].tone} icon={a.risk === "high" || a.risk === "critical" ? <AlertTriangle className="size-3" aria-hidden /> : undefined}>{RISK[a.risk].label}</StatusPill>
+                          {a.status !== "pending" && <StatusPill tone={STATUS[a.status].tone}>{STATUS[a.status].label}</StatusPill>}
+                          {a.status === "approved" && a.execution_status === "blocked" && <StatusPill tone="neutral">Held — integration not enabled</StatusPill>}
+                          {a.status === "approved" && a.execution_status === "succeeded" && <StatusPill tone="success">Completed</StatusPill>}
+                          {a.status === "approved" && a.execution_status === "failed" && <StatusPill tone="danger">Failed</StatusPill>}
                         </div>
-                        <p className="mt-2 text-[15px] font-semibold text-ink">{a.title}</p>
-                        {a.target_label && <p className="mt-0.5 truncate text-[13px] text-muted">Target: {a.target_label}</p>}
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-faint">
+                        <p className="mt-2.5 text-[15px] font-semibold leading-snug text-ink">{readableTitle(a.title)}</p>
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                           <Requester a={a} />
-                          <span>{relativeTime(a.created_at)}</span>
-                          {a.status === "pending" && a.expires_at && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="size-3" /> Expires {relativeTime(a.expires_at)}
+                          {a.target_label && (
+                            <span title={`Target: ${a.target_label}`} className="inline-flex min-w-0 max-w-full">
+                              <InfoChip icon={<Target />}>{a.target_label}</InfoChip>
                             </span>
+                          )}
+                          <InfoChip icon={<Clock />}>
+                            <span suppressHydrationWarning>{relativeTime(a.created_at)}</span>
+                          </InfoChip>
+                          {a.status === "pending" && a.expires_at && <ExpiryChip at={a.expires_at} />}
+                          {a.status !== "pending" && a.decided_by_name && <InfoChip icon={<ShieldCheck />}>{a.decided_by_name}</InfoChip>}
+                          {a.status !== "pending" && a.decided_at && (
+                            <InfoChip icon={<Clock />}>
+                              <span suppressHydrationWarning>Decided {relativeTime(a.decided_at)}</span>
+                            </InfoChip>
                           )}
                         </div>
                       </button>
                       {a.status === "pending" && canDecide && (
-                        <div className="flex shrink-0 flex-wrap gap-2">
+                        <div className="grid shrink-0 grid-cols-2 gap-2 lg:flex lg:flex-wrap">
                           <Button size="sm" variant="secondary" onClick={() => setNoteFor({ a, decision: "request_changes" })} disabled={busy === a.id}>
                             <FileEdit className="size-3.5" /> Request changes
                           </Button>
                           <Button size="sm" variant="secondary" onClick={() => setNoteFor({ a, decision: "reject" })} disabled={busy === a.id}>
                             <X className="size-3.5" /> Reject
                           </Button>
-                          <Button size="sm" variant="brand" loading={busy === a.id} disabled={highRiskBlocked} title={highRiskBlocked ? "Needs the workspace owner" : undefined} onClick={() => decide(a, "approve")}>
+                          <Button size="sm" variant="brand" className="col-span-2 lg:col-span-1" loading={busy === a.id} disabled={highRiskBlocked} title={highRiskBlocked ? "Needs the workspace owner" : undefined} onClick={() => decide(a, "approve")}>
                             <Check className="size-3.5" /> Approve
                           </Button>
                         </div>
@@ -258,62 +295,69 @@ function ApprovalSheet({ approval, onClose, timeZone }: { approval: Approval | n
     };
   }, [approval]);
   return (
-    <Sheet open={Boolean(approval)} onOpenChange={(o) => !o && onClose()} title={approval?.title ?? "Approval"} description={approval ? (KIND_LABEL[approval.kind] ?? approval.kind) : undefined}>
+    <Sheet open={Boolean(approval)} onOpenChange={(o) => !o && onClose()} title={approval ? readableTitle(approval.title) : "Approval"} description={approval ? (KIND_LABEL[approval.kind] ?? sentenceCase(approval.kind)) : undefined}>
       {approval && (
         <div className="space-y-5 p-5">
           <div className="flex flex-wrap gap-2">
-            <Badge tone={RISK[approval.risk].tone}>{RISK[approval.risk].label}</Badge>
-            <Badge tone={STATUS[approval.status].tone}>{STATUS[approval.status].label}</Badge>
+            <StatusPill tone={RISK[approval.risk].tone}>{RISK[approval.risk].label}</StatusPill>
+            <StatusPill tone={STATUS[approval.status].tone}>{STATUS[approval.status].label}</StatusPill>
           </div>
           <dl className="space-y-4 text-[13.5px]">
             <div>
-              <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Requested by</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Requested by</dt>
               <dd className="mt-1">
                 <Requester a={approval} />
               </dd>
             </div>
             {approval.target_label && (
               <div>
-                <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Target</dt>
-                <dd className="mt-1 text-ink">{approval.target_label}</dd>
+                <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Target</dt>
+                <dd className="mt-1 break-words text-ink">{approval.target_label}</dd>
               </div>
             )}
-            <div>
-              <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Why</dt>
-              <dd className="mt-1 leading-relaxed text-ink">{approval.reason || "—"}</dd>
+            <div className="rounded-xl bg-surface-2/70 p-3.5 ring-1 ring-inset ring-line">
+              <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Why</dt>
+              <dd className="mt-1.5 leading-relaxed text-ink">{approval.reason || "—"}</dd>
             </div>
-            <div>
-              <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Expected effect</dt>
-              <dd className="mt-1 leading-relaxed text-ink">{approval.expected_effect || "—"}</dd>
+            <div className="rounded-xl bg-surface-2/70 p-3.5 ring-1 ring-inset ring-line">
+              <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Expected effect</dt>
+              <dd className="mt-1.5 leading-relaxed text-ink">{approval.expected_effect || "—"}</dd>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Created</dt>
-                <dd className="mt-1">{formatDateTime(approval.created_at, timeZone)}</dd>
+                <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Created</dt>
+                <dd className="mt-1.5">
+                  <InfoChip icon={<Clock />}>{formatDateTime(approval.created_at, timeZone)}</InfoChip>
+                </dd>
               </div>
               <div>
-                <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Expires</dt>
-                <dd className="mt-1">{approval.expires_at ? formatDateTime(approval.expires_at, timeZone) : "No expiry"}</dd>
+                <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Expires</dt>
+                <dd className="mt-1.5">
+                  <InfoChip icon={<Clock />}>{approval.expires_at ? formatDateTime(approval.expires_at, timeZone) : "No expiry"}</InfoChip>
+                </dd>
               </div>
             </div>
             {approval.execution_detail && (
-              <div className="rounded-xl bg-surface-2 p-3">
-                <dt className="flex items-center gap-1.5 text-[12px] font-medium text-ink-2">
-                  {approval.execution_status === "succeeded" ? <CheckCircle2 className="size-3.5 text-success" /> : approval.execution_status === "blocked" ? <Ban className="size-3.5" /> : <MessageSquareWarning className="size-3.5 text-danger" />}
+              <div className="rounded-xl bg-surface-2 p-3.5 ring-1 ring-inset ring-line">
+                <dt className="flex items-center gap-2 text-[12px] font-medium text-ink-2">
+                  {approval.execution_status === "succeeded" ? <CheckCircle2 className="size-3.5 text-success-ink" /> : approval.execution_status === "blocked" ? <Ban className="size-3.5" /> : <MessageSquareWarning className="size-3.5 text-danger-ink" />}
                   Outcome
+                  <StatusPill size="sm" tone={approval.execution_status === "succeeded" ? "success" : approval.execution_status === "blocked" ? "neutral" : "danger"}>
+                    {approval.execution_status === "succeeded" ? "Completed" : approval.execution_status === "blocked" ? "Held" : "Failed"}
+                  </StatusPill>
                 </dt>
-                <dd className="mt-1 text-[13px] text-ink">{approval.execution_detail}</dd>
+                <dd className="mt-1.5 text-[13px] text-ink">{approval.execution_detail}</dd>
               </div>
             )}
             {approval.decision_note && (
               <div>
-                <dt className="text-[12px] font-medium uppercase tracking-wider text-faint">Decision note</dt>
+                <dt className="text-[12px] font-medium uppercase tracking-wider text-muted">Decision note</dt>
                 <dd className="mt-1 italic text-ink-2">“{approval.decision_note}”</dd>
               </div>
             )}
           </dl>
           <div>
-            <p className="mb-3 text-[12px] font-medium uppercase tracking-wider text-faint">Activity</p>
+            <p className="mb-3 text-[12px] font-medium uppercase tracking-wider text-muted">Activity</p>
             {events === null ? (
               <div className="space-y-2">
                 <div className="skeleton h-10 rounded-lg" />

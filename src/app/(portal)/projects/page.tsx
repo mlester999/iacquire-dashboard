@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { ArrowRight, FolderKanban, Hourglass, MessageCircleQuestion, ReceiptText } from "lucide-react";
+import { ArrowRight, Clock, FolderKanban, Hourglass, MessageCircleQuestion, ReceiptText } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { listProjects } from "@/server/projects/client";
-import { Badge, Card, EmptyState, ProgressBar } from "@/components/ui/primitives";
+import { Card, EmptyState, ProgressBar } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
 import { ProjectStatusBadge } from "@/components/projects/common";
 import { formatMoney } from "@/lib/projects";
 import { relativeTime } from "@/lib/utils";
 import { PageHero } from "@/components/ui/workspace";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 
 export const metadata = { title: "My projects" };
 
@@ -46,47 +47,48 @@ export default async function ProjectsPage() {
         <ul className="grid gap-4 lg:grid-cols-2">
           {sorted.map((p) => (
             <li key={p.id}>
-              <Link href={`/projects/${p.id}`} className="group block h-full">
-                <Card className="flex h-full flex-col border-primary/15 p-5 transition-all duration-200 motion-safe:group-hover:-translate-y-0.5 group-hover:shadow-card">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-mono text-[12px] text-muted">{p.ref}</p>
-                      <h3 className="mt-0.5 text-[16px] font-semibold leading-snug tracking-tight">{p.title}</h3>
-                      <p className="mt-0.5 text-[12.5px] text-muted">{p.serviceName ?? "Custom project"}</p>
+              <Link href={`/projects/${p.id}`} className="group block h-full rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <Card className="flex h-full flex-col overflow-hidden p-5 transition-all duration-200 motion-safe:group-hover:-translate-y-0.5 group-hover:shadow-card">
+                  <div className="flex items-start gap-3">
+                    <AvatarTile name={p.title} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                        <InfoChip className="font-mono">{p.ref}</InfoChip>
+                        <ProjectStatusBadge status={p.status} />
+                      </div>
+                      <h3 className="mt-2 text-[16px] font-semibold leading-snug tracking-tight">{p.title}</h3>
+                      <p className="mt-0.5 truncate text-[12.5px] text-muted" title={p.serviceName ?? "Custom project"}>{p.serviceName ?? "Custom project"}</p>
                     </div>
-                    <ProjectStatusBadge status={p.status} />
                   </div>
                   {(p.quoteWaiting || p.approvalsWaiting > 0 || p.infoRequested) && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {p.quoteWaiting && (
-                        <Badge tone="warning">
-                          <ReceiptText className="size-3" /> Quote ready for your decision
-                        </Badge>
+                        <StatusPill tone="warning" icon={<ReceiptText className="size-3" />}>Quote ready for your decision</StatusPill>
                       )}
                       {p.approvalsWaiting > 0 && (
-                        <Badge tone="warning">
-                          <Hourglass className="size-3" /> {p.approvalsWaiting} to approve
-                        </Badge>
+                        <StatusPill tone="warning" icon={<Hourglass className="size-3" />}>{p.approvalsWaiting} to approve</StatusPill>
                       )}
                       {p.infoRequested && (
-                        <Badge tone="warning">
-                          <MessageCircleQuestion className="size-3" /> We need information
-                        </Badge>
+                        <StatusPill tone="warning" icon={<MessageCircleQuestion className="size-3" />}>We need information</StatusPill>
                       )}
                     </div>
                   )}
                   {p.milestonesTotal > 0 && (
-                    <div className="mt-4">
+                    <div className="mt-4 rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line">
+                      <div className="mb-2 flex items-center justify-between gap-3 text-[12px]">
+                        <span className="font-medium text-ink-2">Milestones</span>
+                        <span className="tabular-nums text-muted"><strong className="font-semibold text-ink">{p.milestonesDone}</strong> of {p.milestonesTotal} complete</span>
+                      </div>
                       <ProgressBar value={(p.milestonesDone / p.milestonesTotal) * 100} label={`${p.milestonesDone} of ${p.milestonesTotal} milestones complete`} />
-                      <p className="mt-1.5 text-[12px] text-muted">
-                        {p.milestonesDone} of {p.milestonesTotal} milestones complete
-                      </p>
                     </div>
                   )}
-                  <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-[12px] text-faint">
-                    <span>Updated {relativeTime(p.lastActivityAt)}</span>
-                    {p.agreedPriceCents !== null ? <span className="font-medium tabular-nums text-ink-2">Agreed {formatMoney(p.agreedPriceCents, p.currency ?? "USD")}</span> : <span>Not yet quoted</span>}
-                  </div>
+                  <div className="mt-auto pt-4"><div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3.5">
+                    <InfoChip icon={<Clock className="size-3" />}>Updated {relativeTime(p.lastActivityAt)}</InfoChip>
+                    <span className="flex items-center gap-2">
+                      {p.agreedPriceCents !== null ? <InfoChip className="tabular-nums text-ink">Agreed {formatMoney(p.agreedPriceCents, p.currency ?? "USD")}</InfoChip> : <InfoChip>Not yet quoted</InfoChip>}
+                      <ArrowRight aria-hidden className="size-4 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                    </span>
+                  </div></div>
                 </Card>
               </Link>
             </li>

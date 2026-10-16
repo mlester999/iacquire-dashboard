@@ -3,6 +3,7 @@
 import * as React from "react";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
+import { StatusPill, type StatusTone } from "@/components/ui/status";
 import { AGENT_STATUS_LABEL, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 
 export function LogoMark({ className, title = "iAcquire" }: { className?: string; title?: string }) {
@@ -101,33 +102,45 @@ export function AgentAvatar({
   );
 }
 
-const STATUS_STYLE: Record<AgentStatus, { dot: string; text: string; pulse: boolean }> = {
-  online: { dot: "bg-success", text: "text-success-ink", pulse: true },
-  busy: { dot: "bg-warning", text: "text-warning-ink", pulse: true },
-  provisioning: { dot: "bg-violet", text: "text-violet-ink", pulse: true },
-  setup_required: { dot: "bg-faint", text: "text-muted", pulse: false },
-  offline: { dot: "bg-danger", text: "text-danger-ink", pulse: false },
-  error: { dot: "bg-danger", text: "text-danger-ink", pulse: false },
-  disabled: { dot: "bg-surface-3", text: "text-faint", pulse: false },
+const STATUS_STYLE: Record<AgentStatus, { dot: string; tone: StatusTone; pulse: boolean }> = {
+  online: { dot: "bg-success", tone: "success", pulse: true },
+  busy: { dot: "bg-primary", tone: "primary", pulse: true },
+  provisioning: { dot: "bg-violet", tone: "violet", pulse: true },
+  setup_required: { dot: "bg-warning", tone: "warning", pulse: false },
+  offline: { dot: "bg-danger", tone: "danger", pulse: false },
+  error: { dot: "bg-danger", tone: "danger", pulse: false },
+  disabled: { dot: "bg-faint", tone: "neutral", pulse: false },
 };
 
-export function StatusDot({ status, className }: { status: AgentStatus; className?: string }) {
+export function StatusDot({ status, className, label }: { status: AgentStatus; className?: string; label?: string }) {
   const s = STATUS_STYLE[status];
+  const text = label ?? status.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
   return (
-    <span className={cn("relative inline-flex size-2", className)} aria-hidden>
-      {s.pulse && <span className={cn("absolute inset-0 rounded-full animate-pulse-ring", s.dot)} />}
-      <span className={cn("relative inline-flex size-2 rounded-full ring-2 ring-surface", s.dot)} />
+    <span className={cn("relative inline-flex size-2", className)} title={text}>
+      {s.pulse && <span aria-hidden className={cn("absolute inset-0 rounded-full animate-pulse-ring", s.dot)} />}
+      <span aria-hidden className={cn("relative inline-flex size-2 rounded-full ring-2 ring-surface", s.dot)} />
+      <span className="sr-only">{text}</span>
     </span>
   );
 }
 
-export function AgentStatusBadge({ status, className }: { status: AgentStatus; className?: string }) {
+/** An AI employee's connection state as a tinted pill with a live state dot (pulsing while working or being set up). */
+export function AgentStatusBadge({ status, className, size = "md" }: { status: AgentStatus; className?: string; size?: "sm" | "md" }) {
   const s = STATUS_STYLE[status];
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium", s.text, className)}>
-      <StatusDot status={status} />
+    <StatusPill
+      tone={s.tone}
+      size={size}
+      className={className}
+      icon={
+        <span className="relative inline-flex size-1.5" aria-hidden>
+          {s.pulse && <span className={cn("absolute inset-0 rounded-full animate-pulse-ring", s.dot)} />}
+          <span className={cn("relative inline-flex size-1.5 rounded-full", s.dot)} />
+        </span>
+      }
+    >
       {AGENT_STATUS_LABEL[status]}
-    </span>
+    </StatusPill>
   );
 }
 

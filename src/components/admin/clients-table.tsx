@@ -9,7 +9,8 @@ import { MetricCard } from "@/components/ui/workspace";
 import { Button } from "@/components/ui/button";
 import type { ClientSetupRow } from "@/server/setup/snapshots";
 import { cn, formatDate } from "@/lib/utils";
-import { AvatarTile, ClientCard, ConnectionChips, PendingOwner, RelativeTime, StatusPill } from "@/components/admin/client-card";
+import { ClientCard, ConnectionChips, PendingOwner } from "@/components/admin/client-card";
+import { AvatarTile, RelativeTime, StatusPill } from "@/components/ui/status";
 import { countStates, HEALTH, plural, STATE, STATE_ORDER, stateOf, type StateKey } from "@/components/admin/client-state";
 
 type Sort = "attention" | "newest" | "name" | "progress_asc" | "progress_desc" | "activity" | "blocked";
@@ -204,15 +205,15 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
           {/* Desktop table */}
           <Card className={cn("overflow-hidden", view === "table" ? "hidden md:block" : "hidden")}>
             <div className="scrollbar-thin overflow-x-auto">
-              <table className="workspace-table w-full min-w-[1040px] text-left text-[13.5px]">
+              <table className="workspace-table w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-line bg-surface-2/60">
                   <tr>
                     <th scope="col" className="px-4 py-3.5 font-semibold">Company</th>
-                    <th scope="col" className="px-2.5 py-3.5 font-semibold">Setup</th>
-                    <th scope="col" className="px-2.5 py-3.5 font-semibold">State</th>
-                    <th scope="col" className="px-2.5 py-3.5 font-semibold">Open work</th>
-                    <th scope="col" className="px-2.5 py-3.5 font-semibold">Responsible</th>
-                    <th scope="col" className="px-2.5 py-3.5 font-semibold">Connections</th>
+                    <th scope="col" className="px-2 py-3.5 font-semibold">Setup</th>
+                    <th scope="col" className="px-2 py-3.5 font-semibold">State</th>
+                    <th scope="col" className="px-2 py-3.5 font-semibold">Open work</th>
+                    <th scope="col" className="px-2 py-3.5 font-semibold">Responsible</th>
+                    <th scope="col" className="px-2 py-3.5 font-semibold">Connections</th>
                     <th scope="col" className="px-4 py-3.5 font-semibold">Latest update</th>
                   </tr>
                 </thead>
@@ -221,30 +222,29 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                     const s = STATE[stateOf(r)];
                     return (
                       <tr key={r.id} className="group">
-                        <td className="max-w-[208px] px-4 py-4">
+                        <td className="min-w-[210px] max-w-[240px] px-4 py-4">
                           <div className="flex items-center gap-3">
                             <AvatarTile name={r.name} size="md" />
                             <div className="min-w-0">
-                              <Link href={`/admin/clients/${r.id}`} className="block truncate font-semibold text-ink hover:text-primary">
+                              <Link href={`/admin/clients/${r.id}`} title={r.name} className="line-clamp-2 break-words font-semibold leading-snug text-ink hover:text-primary">
                                 {r.name}
                               </Link>
-                              <p className="truncate text-[12px] text-faint">
-                                Registered {formatDate(r.createdAt, timeZone)}
-                                {r.isDemo && <span className="ml-1 text-violet-ink">· demo</span>}
-                              </p>
-                              {r.contact ? <p className="truncate text-[12px] text-muted">{r.contact.name} · {r.contact.email}</p> : <div className="mt-1.5"><PendingOwner /></div>}
+                              {r.contact ? <p className="mt-0.5 truncate text-[12px] text-muted" title={`${r.contact.name} · ${r.contact.email}`}>{r.contact.name} · {r.contact.email}</p> : <div className="mt-1.5"><PendingOwner /></div>}
                             </div>
                           </div>
                         </td>
-                        <td className="px-2.5 py-4">
+                        <td className="px-2 py-4">
                           <SetupCell r={r} />
                         </td>
-                        <td className="px-2.5 py-4">
-                          <StatusPill tone={s.tone}>{s.label}</StatusPill>
+                        <td className="px-2 py-4">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusPill tone={s.tone}>{s.label}</StatusPill>
+                            {r.isDemo && <StatusPill tone="violet" size="sm" dot={false}>Demo</StatusPill>}
+                          </div>
                           <p className="mt-1.5 whitespace-nowrap text-[11.5px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Not onboarded yet"}</p>
                         </td>
-                        <td className="whitespace-nowrap px-2.5 py-4">
-                          <span className="text-ink-2">{r.setup.outstanding} open</span>
+                        <td className="whitespace-nowrap px-2 py-4">
+                          <span className="font-semibold tabular-nums text-ink">{r.setup.outstanding} <span className="font-normal text-muted">open</span></span>
                           <div className="mt-1.5 flex flex-col items-start gap-1.5 empty:hidden">
                             {r.setup.clientActions > 0 && (
                               <StatusPill tone="warning" icon={<Clock className="size-3" aria-hidden />}>{r.setup.clientActions} waiting on client</StatusPill>
@@ -263,7 +263,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                             )}
                           </div>
                         </td>
-                        <td className="px-2.5 py-4">
+                        <td className="px-2 py-4">
                           {r.responsible ? (
                             <span className="flex items-center gap-2 whitespace-nowrap text-ink-2">
                               <AvatarTile name={r.responsible.name} size="sm" />
@@ -276,13 +276,13 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
                             </span>
                           )}
                         </td>
-                        <td className="px-2.5 py-4">
+                        <td className="px-2 py-4">
                           <HealthCell r={r} />
                         </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-ink-2">
-                          <span className="flex items-center justify-between gap-2">
+                        <td className="whitespace-nowrap py-4 pl-2.5 pr-3 text-ink-2">
+                          <span className="flex items-center justify-between gap-1.5">
                             {r.lastActivityAt ? <RelativeTime value={r.lastActivityAt} /> : <span className="text-faint">None yet</span>}
-                            <Link href={`/admin/clients/${r.id}`} aria-label={`Open ${r.name}`} className="flex size-7 items-center justify-center rounded-full text-faint ring-1 ring-inset ring-transparent transition hover:bg-primary hover:text-white">
+                            <Link href={`/admin/clients/${r.id}`} aria-label={`Open ${r.name}`} className="flex size-6 shrink-0 items-center justify-center rounded-full text-faint ring-1 ring-inset ring-transparent transition hover:bg-primary hover:text-white">
                               <ArrowRight className="size-4" />
                             </Link>
                           </span>
@@ -311,9 +311,9 @@ function SetupCell({ r }: { r: ClientSetupRow }) {
   if (!r.setup.started) return <span className="text-[12.5px] text-faint">Checklist not started</span>;
   if (r.setup.percent === null) return <span className="text-[12.5px] text-faint">No required steps</span>;
   return (
-    <div className="flex min-w-[150px] items-center gap-2.5">
-      <ProgressBar value={r.setup.percent} tone={r.setup.percent === 100 ? "success" : "primary"} className="h-2 flex-1" label={`${r.name} setup progress`} />
-      <span className="w-[4.5rem] shrink-0 text-right text-[12.5px] tabular-nums text-ink-2">
+    <div className="flex min-w-[140px] items-center gap-2">
+      <ProgressBar value={r.setup.percent} tone={r.setup.percent === 100 ? "success" : "primary"} className="h-2 min-w-12 flex-1" label={`${r.name} setup progress`} />
+      <span className="shrink-0 whitespace-nowrap text-right text-[12.5px] tabular-nums text-ink-2">
         <span className="font-semibold">{r.setup.percent}%</span> <span className="text-faint">· {r.setup.completed}/{r.setup.total}</span>
       </span>
     </div>
@@ -323,12 +323,18 @@ function SetupCell({ r }: { r: ClientSetupRow }) {
 function HealthCell({ r }: { r: ClientSetupRow }) {
   const h = HEALTH[r.health.level];
   return (
-    <div className="min-w-[138px] space-y-2">
+    <div className="min-w-[128px] space-y-2">
       <StatusPill tone={h.tone} icon={r.health.level === "issue" ? <AlertTriangle className="size-3" aria-hidden /> : undefined}>
         {h.label}
       </StatusPill>
       <ConnectionChips r={r} compact />
-      {r.health.failedChecks > 0 && <p className="text-[11.5px] text-danger-ink">{plural(r.health.failedChecks, "failing readiness check")}</p>}
+      {r.health.failedChecks > 0 && (
+        <div>
+          <StatusPill tone="danger" size="sm" icon={<AlertTriangle className="size-3" aria-hidden />} className="max-w-full" >
+            <span title={plural(r.health.failedChecks, "failing readiness check")}>{plural(r.health.failedChecks, "failing check")}</span>
+          </StatusPill>
+        </div>
+      )}
     </div>
   );
 }

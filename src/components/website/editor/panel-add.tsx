@@ -20,7 +20,7 @@ export interface SavedSection {
   section: Section;
 }
 
-const ELEMENT_ICONS: Partial<Record<ElementType, React.ComponentType<{ className?: string }>>> = {
+export const ELEMENT_ICONS: Partial<Record<ElementType, React.ComponentType<{ className?: string }>>> = {
   heading: Type, text: AlignLeft, image: ImageIcon, button: MousePointerClick, group: Rows3, card: Square, icon: Star, divider: Minus, spacer: MoveVertical, badge: Tag, list: ListChecks,
   services: LayoutGrid, steps: List, faq: HelpCircle, testimonials: Quote, stats: BarChart3, logos: Cpu, team: Users, pricing: Wallet, gallery: ImageIcon, collage: Columns3, video: Play,
   contactInfo: MapPin, social: Share2, nav: Navigation, logo: Smile, form: Mail, map: MapPin, marquee: MessageSquareQuote,

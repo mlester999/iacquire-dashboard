@@ -19,6 +19,7 @@ import {
   Square,
   Wrench,
 } from "lucide-react";
+import { Hourglass, PlugZap } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge, ThinkingDots } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -574,7 +575,11 @@ function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: Agent
           ))}
         </div>
       ) : (
-        <div className="mt-8 w-full rounded-2xl border border-line bg-surface-2/70 p-5 text-left">
+        <div className="mt-8 flex w-full items-start gap-4 rounded-2xl border border-line bg-surface-2/70 p-5 text-left">
+          <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", status === "setup_required" || status === "provisioning" ? "bg-warning-soft text-warning-ink" : status === "disabled" ? "bg-surface-3 text-muted" : "bg-danger-soft text-danger-ink")}>
+            {status === "setup_required" || status === "provisioning" ? <Hourglass className="size-5" /> : <PlugZap className="size-5" />}
+          </span>
+          <div className="min-w-0 flex-1">
           <AgentStatusBadge status={status} />
           <p className="mt-2 text-[14px] font-semibold text-ink">
             {status === "setup_required" || status === "provisioning" ? "Your iAcquire team is preparing this employee" : status === "disabled" ? "Not included in your plan" : "This employee is unavailable right now"}
@@ -591,6 +596,7 @@ function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: Agent
             <ButtonLink size="sm" variant="ghost" href={`/workforce/${meta.slug}`}>
               View employee
             </ButtonLink>
+          </div>
           </div>
         </div>
       )}

@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AlignCenter, AlignLeft, AlignRight, ChevronRight, Copy, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronRight, Copy, FileText, Sparkles, Trash2 } from "lucide-react";
+import { ELEMENT_ICONS } from "./panel-add";
 import { Icon } from "@/components/website/render/icons";
 import { ELEMENT_DEFS, SPACES, type ElementType } from "@/lib/website/catalog";
 import {
@@ -231,9 +232,12 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
-        <div className="min-w-0">
-          <p className="truncate text-[14px] font-semibold tracking-tight">{def.label}</p>
-          <p className="truncate text-[11.5px] text-muted">{def.description}</p>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/15">{(() => { const I = ELEMENT_ICONS[el.type] ?? Sparkles; return <I className="size-[18px]" />; })()}</span>
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-semibold tracking-tight">{def.label}</p>
+            <p className="truncate text-[11.5px] text-muted" title={def.description}>{def.description}</p>
+          </div>
         </div>
         <div className="flex shrink-0">
           <IconButton label="Duplicate" onClick={() => actions.duplicate(el.id)}><Copy className="size-3.5" /></IconButton>
@@ -361,7 +365,7 @@ function PageInspector({ page, doc, actions }: { page: Page; doc: SiteContent; a
   const sample = `https://${doc.business.name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "yourbusiness"}.com${page.slug === "home" ? "" : `/${page.slug}`}`;
   return (
     <>
-      <div className="px-4 pb-1 pt-3"><p className="text-[14px] font-semibold tracking-tight">Page settings</p><p className="text-[11.5px] text-muted">Select anything on the page to edit it. Nothing selected shows this page.</p></div>
+      <div className="flex items-start gap-2.5 px-4 pb-1 pt-3"><span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/15"><FileText className="size-[18px]" /></span><div className="min-w-0"><p className="text-[14px] font-semibold tracking-tight">Page settings</p><p className="text-[11.5px] leading-snug text-muted">Select anything on the page to edit it. Nothing selected shows this page.</p></div></div>
       <Group title="Page">
         <Row label="Page name" htmlFor="pg-title"><TextControl id="pg-title" value={page.title} maxLength={60} onChange={(e) => set({ title: e.target.value }, "title")} /></Row>
         <Row label="Page address"><SlugControl page={page} doc={doc} onCommit={(slug) => set({ slug })} /></Row>

@@ -3,9 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Hand, ListChecks, OctagonAlert, PauseCircle, ShieldAlert, Zap } from "lucide-react";
+import { Hand, ListChecks, Lock, OctagonAlert, PauseCircle, ShieldAlert, SlidersHorizontal, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Textarea } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Textarea } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
+import { IconTile } from "@/components/overview/panel";
 import { Dialog, Switch } from "@/components/ui/overlays";
 import { setAgentModeAction, setClientPauseAction } from "@/app/actions/automation";
 import { cn } from "@/lib/utils";
@@ -86,12 +88,17 @@ export function OperatingModeCard({
 
   return (
     <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>How {displayName} works</CardTitle>
-          <CardDescription>Choose how much freedom this employee has. You can change it at any time and the change takes effect on queued work too.</CardDescription>
+      <CardHeader className="flex-wrap">
+        <div className="flex min-w-0 items-start gap-3">
+          <IconTile tone="primary">
+            <SlidersHorizontal />
+          </IconTile>
+          <div className="min-w-0">
+            <CardTitle>How {displayName} works</CardTitle>
+            <CardDescription>Choose how much freedom this employee has. You can change it at any time and the change takes effect on queued work too.</CardDescription>
+          </div>
         </div>
-        <Badge tone={mode === "autonomous" ? "primary" : mode === "paused" ? "warning" : "neutral"}>{MODES.find((m) => m.value === mode)?.label}</Badge>
+        <StatusPill tone={mode === "autonomous" ? "primary" : mode === "paused" ? "warning" : "neutral"}>{MODES.find((m) => m.value === mode)?.label}</StatusPill>
       </CardHeader>
       <CardContent className="space-y-4">
         {agencyPaused && (
@@ -100,7 +107,7 @@ export function OperatingModeCard({
             iAcquire has paused automation for your workspace. Customer messages and new autonomous work are on hold regardless of the setting below.
           </p>
         )}
-        <div role="radiogroup" aria-label={`Operating mode for ${displayName}`} className="grid gap-3 md:grid-cols-3">
+        <div role="radiogroup" aria-label={`Operating mode for ${displayName}`} className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {MODES.map((option) => {
             const selected = option.value === mode;
             const blocked = option.value === "autonomous" && (Boolean(autonomousBlockedReason) || !canGoAutonomous);
@@ -114,21 +121,39 @@ export function OperatingModeCard({
                 onClick={() => choose(option.value)}
                 className={cn(
                   "flex min-h-32 flex-col rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed",
-                  selected ? "border-primary bg-primary-soft/50" : "border-line bg-surface hover:border-line-strong disabled:opacity-60",
+                  selected ? "border-primary/50 bg-primary-soft/50 ring-1 ring-inset ring-primary/30" : "border-line bg-surface enabled:hover:-translate-y-px enabled:hover:border-line-strong enabled:hover:shadow-card disabled:opacity-60",
                 )}
               >
-                <span className="flex items-center gap-2 text-[14px] font-semibold">
-                  {option.icon}
+                <span className="flex items-center gap-2.5 text-[14px] font-semibold">
+                  <IconTile tone={selected ? (option.value === "paused" ? "warning" : "primary") : "neutral"} size="sm">
+                    {option.icon}
+                  </IconTile>
                   {option.label}
                   {pending === option.value && <span className="text-[11px] font-normal text-muted">Saving…</span>}
+                  {selected && (
+                    <StatusPill tone={option.value === "paused" ? "warning" : "primary"} size="sm" className="ml-auto">
+                      Current
+                    </StatusPill>
+                  )}
                 </span>
-                <span className="mt-2 text-[13px] leading-relaxed text-ink-2">{option.summary}</span>
-                <span className="mt-2 text-[12px] leading-relaxed text-muted">{blocked && !selected ? (autonomousBlockedReason ?? "Only the business owner can enable this.") : option.detail}</span>
+                <span className="mt-2.5 text-[13px] leading-relaxed text-ink-2">{option.summary}</span>
+                {blocked && !selected ? (
+                  <span className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] leading-relaxed text-warning-ink">
+                    <Lock className="mt-0.5 size-3 shrink-0" aria-hidden />
+                    {autonomousBlockedReason ?? "Only the business owner can enable this."}
+                  </span>
+                ) : (
+                  <span className="mt-2 text-[12px] leading-relaxed text-muted">{option.detail}</span>
+                )}
               </button>
             );
           })}
         </div>
-        {!canPause && <p className="text-[12px] text-muted">Only owners and managers can change how an employee works.</p>}
+        {!canPause && (
+          <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] text-muted ring-1 ring-inset ring-line">
+            <Lock className="size-3.5 shrink-0" aria-hidden /> Only owners and managers can change how an employee works.
+          </p>
+        )}
       </CardContent>
       <Dialog
         open={confirming}
@@ -199,9 +224,9 @@ export function EmergencyControls({
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3">
-          <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", anyPaused ? "bg-warning/20 text-warning-ink" : "bg-surface-2 text-ink-2")}>
-            {anyPaused ? <OctagonAlert className="size-4" /> : <Hand className="size-4" />}
-          </span>
+          <IconTile tone={anyPaused ? "warning" : "neutral"}>
+            {anyPaused ? <OctagonAlert /> : <Hand />}
+          </IconTile>
           <div>
             <h2 className="text-[15px] font-semibold tracking-tight">{agencyPaused ? "Automation is on hold" : anyPaused ? "Some automation is paused" : "Emergency controls"}</h2>
             <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
@@ -211,7 +236,7 @@ export function EmergencyControls({
             </p>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[28rem]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:min-w-[28rem]">
           <ControlSwitch id="pause-messaging" label="Pause customer-facing AI messaging" checked={messaging} disabled={!canPause || busy !== null} onChange={(next) => toggle("messaging", next)} />
           <ControlSwitch id="pause-outbound" label="Pause all outbound AI actions" checked={outbound} disabled={!canPause || busy !== null} onChange={(next) => toggle("outbound", next)} />
         </div>

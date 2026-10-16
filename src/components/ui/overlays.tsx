@@ -19,6 +19,8 @@ export function Dialog({
   footer,
   size = "md",
   trigger,
+  icon,
+  ariaLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -28,6 +30,10 @@ export function Dialog({
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
   trigger?: React.ReactNode;
+  /** Optional icon rendered in a tinted tile beside the title. */
+  icon?: React.ReactNode;
+  /** Accessible name for the scrolling content region; defaults from a string title. */
+  ariaLabel?: string;
 }) {
   const width = { sm: "sm:max-w-md", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
   const returnFocus = React.useRef<HTMLElement | null>(null);
@@ -72,19 +78,22 @@ export function Dialog({
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               >
                 <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
-                  <div className="min-w-0">
-                    <D.Title className="text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
-                    {description ? (
-                      <D.Description className="mt-1 text-[13px] leading-relaxed text-muted">{description}</D.Description>
-                    ) : (
-                      <D.Description className="sr-only">Dialog</D.Description>
-                    )}
+                  <div className={cn("min-w-0", icon && "flex items-start gap-3")}>
+                    {icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/20 [&>svg]:size-[18px]" aria-hidden>{icon}</span>}
+                    <div className="min-w-0">
+                      <D.Title className="text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
+                      {description ? (
+                        <D.Description className="mt-1 text-[13px] leading-relaxed text-muted">{description}</D.Description>
+                      ) : (
+                        <D.Description className="sr-only">Dialog</D.Description>
+                      )}
+                    </div>
                   </div>
                   <D.Close className="-mr-1 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink sm:size-8" aria-label="Close">
                     <X className="size-4" />
                   </D.Close>
                 </div>
-                <div tabIndex={0} role="region" aria-label={typeof title === "string" ? `${title} content` : "Dialog content"} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-6">{children}</div>
+                <div tabIndex={0} role="region" aria-label={ariaLabel ?? (typeof title === "string" ? `${title} content` : "Dialog content")} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-6">{children}</div>
                 {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">{footer}</div>}
               </motion.div>
             </D.Content>
@@ -295,9 +304,43 @@ export function Tabs({
   id: string;
   children?: React.ReactNode;
 }) {
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = React.useState({ left: false, right: false });
+  const measure = React.useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 4;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
+  }, []);
+  // Bring the active tab into view (on mount and whenever it changes) without moving the page vertically.
+  React.useEffect(() => {
+    const list = listRef.current;
+    const active = list?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
+    if (list && active) {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const target = active.offsetLeft - (list.clientWidth - active.offsetWidth) / 2;
+      list.scrollTo({ left: Math.max(0, target), behavior: reduce ? "auto" : "smooth" });
+    }
+    measure();
+  }, [value, measure]);
+  React.useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure]);
+  const fade = `linear-gradient(to right, ${edges.left ? "transparent, #000 28px" : "#000, #000 0"}, ${edges.right ? "#000 calc(100% - 28px), transparent" : "#000 100%, #000"})`;
   return (
     <TB.Root value={value} onValueChange={onValueChange}>
-      <TB.List className={cn("scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1", className)} aria-label="Sections">
+      <TB.List
+        ref={listRef}
+        onScroll={measure}
+        style={edges.left || edges.right ? { maskImage: fade, WebkitMaskImage: fade } : undefined}
+        className={cn("scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1", className)}
+        aria-label="Sections"
+      >
         {items.map((item) => (
           <TB.Trigger
             key={item.value}

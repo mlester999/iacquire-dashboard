@@ -7,7 +7,7 @@ import { AlertTriangle, Ban, BarChart3, CheckCircle2, Download, Info, Sparkles, 
 import { AgentAvatar } from "@/components/brand";
 import { AreaChart, Columns, HBarList, StatusSplit } from "@/components/charts";
 import { ButtonLink } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Input } from "@/components/ui/primitives";
 import { Segmented, Tooltip } from "@/components/ui/overlays";
 import { PageHero, CoverageBar } from "@/components/ui/workspace";
 import { AGENT_BY_KEY, AGENT_ROLES } from "@/lib/agents";
@@ -185,7 +185,7 @@ export function AnalyticsView({
                 <tbody>
                   {data.leads.bySource.map((s) => (
                     <tr key={s.source} className="border-b border-line">
-                      <td className="py-2">{s.source === "lead_hunter" ? "AI Lead Hunter" : s.source}</td>
+                      <td className="py-2">{s.source === "lead_hunter" ? "AI Lead Hunter" : s.source.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}</td>
                       <td className="py-2 text-right tabular-nums">{s.total}</td>
                       <td className="py-2 text-right tabular-nums">{s.approved}</td>
                       <td className="py-2 text-right tabular-nums">{s.avg_score ?? "—"}</td>
@@ -198,7 +198,7 @@ export function AnalyticsView({
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <div>
@@ -246,7 +246,7 @@ export function AnalyticsView({
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader>
             <div>
@@ -305,7 +305,7 @@ export function AnalyticsView({
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader>
             <div>
@@ -343,7 +343,7 @@ export function AnalyticsView({
                 <Metric label="Churn rate" value={formatPercent(data.retention.churned / data.retention.total)} definition="Churned ÷ all tracked customers." />
               </div>
             ) : (
-              <p className="text-[13px] text-muted">Add customers in Customer Retention to see retention metrics.</p>
+              <EmptyState compact icon={<BarChart3 className="size-5" />} title="No customers tracked yet" description="Add customers in Customer Retention to see retention metrics." />
             )}
           </CardContent>
         </Card>

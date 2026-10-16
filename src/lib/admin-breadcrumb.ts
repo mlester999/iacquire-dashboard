@@ -7,5 +7,9 @@ export function adminDetailLabel(pathname: string): string | null {
     if (area === "websites") return id ? (action === "edit" ? "Website Editor" : "Client Website") : "Client Websites";
     return ({ reviews: "Reviews & Publishing", domains: "Domains & Hosting", media: "Media Library", "shared-sections": "Shared Sections" } as Record<string, string>)[area] ?? null;
   }
-  return pathname.split("/").filter(Boolean).length > 2 ? "Client detail" : null;
+  const [, section, id] = pathname.split("/").filter(Boolean).length > 2 ? pathname.split("/").filter(Boolean) : [];
+  if (!id) return null;
+  if (section === "support") return "Ticket";
+  if (section === "projects") return "Project";
+  return "Client detail";
 }

@@ -3,24 +3,29 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Circle, Clock, DoorClosed, ShieldAlert, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, Coins, DoorClosed, History, Power, Trash2 } from "lucide-react";
 import { cancelOffboardingAgencyAction, closeBillingAction, dismissReviewAction, executeDeletionAction, planDeletionAction, shutdownAction, startOffboardingAction } from "@/app/(admin)/admin/commercial-actions";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/overlays";
-import { formatDate, formatDateTime, relativeTime } from "@/lib/utils";
+import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
+import { Callout, IconTile } from "@/components/admin/setup/ui";
+import { formatDate, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import { signedUsd } from "@/lib/finance";
 import type { DeletionPlan, OffboardingView } from "@/server/offboarding/service";
 import type { ReviewRow } from "@/server/inactivity/service";
 
+/** One precondition for deletion: the sentence on the left, a Done or Waiting pill on the right. */
 function Check({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
-    <li className="flex items-start gap-2 text-[13px] leading-relaxed">
-      {ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden /> : <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />}
-      <span className={ok ? "" : "text-muted"}>{children}</span>
+    <li className="flex items-start justify-between gap-3 rounded-lg bg-surface-2/50 px-3 py-2.5 text-[13px] leading-relaxed ring-1 ring-inset ring-line">
+      <span className={ok ? "min-w-0 text-ink" : "min-w-0 text-ink-2"}>{children}</span>
+      {ok ? <StatusPill tone="success" size="sm">Done</StatusPill> : <StatusPill tone="neutral" size="sm">Waiting</StatusPill>}
     </li>
   );
 }
+
+const STATUS_TONE: Record<string, StatusTone> = { requested: "warning", shutdown: "primary", retention: "primary", deleted: "danger", cancelled: "neutral" };
 
 export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, canManage }: { orgId: string; orgName: string; view: OffboardingView | null; review: ReviewRow | null; purgeEnabled: boolean; canManage: boolean }) {
   const router = useRouter();
@@ -56,10 +61,10 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
       {review && review.status === "open" && (
         <Card>
           <CardHeader>
-            <div className="flex items-start gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-warning-soft text-warning-ink"><Clock className="size-4" aria-hidden /></span>
-              <div>
-                <CardTitle>Account has gone quiet</CardTitle>
+            <div className="flex min-w-0 items-start gap-3">
+              <IconTile icon={<Clock />} tone="warning" />
+              <div className="min-w-0">
+                <CardTitle className="flex flex-wrap items-center gap-2">Account has gone quiet <StatusPill tone="warning" size="sm">Review open</StatusPill></CardTitle>
                 <CardDescription>No sign of activity for {review.inactiveDays} days. {review.noticesSent} notice{review.noticesSent === 1 ? "" : "s"} sent to the owner. Nothing has been deleted or switched off, and nothing will be without a decision.</CardDescription>
               </div>
             </div>
@@ -77,14 +82,14 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
 
       <Card>
         <CardHeader>
-          <div className="flex items-start gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2"><DoorClosed className="size-4" aria-hidden /></span>
-            <div>
+          <div className="flex min-w-0 items-start gap-3">
+            <IconTile icon={<DoorClosed />} tone={view ? (STATUS_TONE[view.status] ?? "success") : "neutral"} />
+            <div className="min-w-0">
               <CardTitle className="flex flex-wrap items-center gap-2">
                 Offboarding
-                {view ? <Badge tone={view.status === "requested" ? "warning" : view.status === "retention" ? "primary" : view.status === "deleted" ? "danger" : "success"}>{view.status === "retention" ? "Closed, in retention" : view.status[0].toUpperCase() + view.status.slice(1)}</Badge> : <Badge tone="neutral">Not leaving</Badge>}
+                {view ? <StatusPill tone={STATUS_TONE[view.status] ?? "success"}>{view.status === "retention" ? "Closed, in retention" : sentenceCase(view.status)}</StatusPill> : <StatusPill tone="neutral">Not leaving</StatusPill>}
               </CardTitle>
-              <CardDescription>Leaving is a process, not a switch: the client takes their data and domains, automation stops safely, billing is settled, and deletion only follows the agreed retention period. Every step is recorded.</CardDescription>
+              <CardDescription>Leaving is a process, not a switch. Every step below is recorded.</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -98,13 +103,20 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
             </div>
           )}
 
+          {!active && !canManage && (
+            <Callout tone="neutral" icon={<DoorClosed />}>This client is not leaving. Only a super admin can start offboarding.</Callout>
+          )}
+
           {view && view.status === "requested" && (
             <div className="space-y-4">
-              <p className="text-[13.5px] leading-relaxed">Requested {relativeTime(view.requestedAt)} by {view.requestedByKind === "client" ? "the owner" : "the agency"}{view.reason ? `: "${view.reason}"` : ""}. Nothing has been switched off. Confirm the plan with the client, make sure they can take their data, then shut down.</p>
+              <Callout tone="warning" icon={<Clock />} title={<span suppressHydrationWarning>{`Requested ${relativeTime(view.requestedAt)} by ${view.requestedByKind === "client" ? "the owner" : "the agency"}`}</span>}>
+                {view.reason ? <span className="block">&ldquo;{view.reason}&rdquo;</span> : null}
+                Nothing has been switched off. Confirm the plan with the client, make sure they can take their data, then shut down.
+              </Callout>
               {canManage && (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="danger" onClick={() => setShutting(true)}>Shut down the workspace…</Button>
-                  <Button variant="ghost" loading={busy === "cancel"} onClick={() => act("cancel", () => cancelOffboardingAgencyAction(orgId, "Cancelled by the agency."), "Cancelled")}>Cancel the request</Button>
+                  <Button variant="danger" onClick={() => setShutting(true)}><Power className="size-4" aria-hidden /> Shut down the workspace…</Button>
+                  <Button variant="outline" loading={busy === "cancel"} onClick={() => act("cancel", () => cancelOffboardingAgencyAction(orgId, "Cancelled by the agency."), "Cancelled")}>Cancel the request</Button>
                 </div>
               )}
             </div>
@@ -114,24 +126,28 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
             <div className="space-y-5">
               <ul className="space-y-2" aria-label="Shutdown steps">
                 {view.steps.map((s) => (
-                  <li key={s.key} className="flex items-start gap-2 text-[13px] leading-relaxed">
-                    {s.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden /> : <ShieldAlert className="mt-0.5 size-4 shrink-0 text-danger-ink" aria-hidden />}
-                    <span><span className="font-medium">{s.key[0].toUpperCase() + s.key.slice(1)}.</span> <span className={s.ok ? "text-muted" : "text-danger-ink"}>{s.text}</span></span>
+                  <li key={s.key} className={`flex items-start justify-between gap-3 rounded-lg px-3 py-2.5 text-[13px] leading-relaxed ring-1 ring-inset ${s.ok ? "bg-success-soft/25 ring-success/15" : "bg-danger-soft/30 ring-danger/20"}`}>
+                    <span className="min-w-0"><span className="font-medium text-ink">{s.key[0].toUpperCase() + s.key.slice(1)}.</span> <span className={s.ok ? "text-ink-2" : "text-danger-ink"}>{s.text}</span></span>
+                    {s.ok ? <StatusPill tone="success" size="sm">Done</StatusPill> : <StatusPill tone="danger" size="sm">Needs attention</StatusPill>}
                   </li>
                 ))}
               </ul>
               <dl className="grid gap-3 sm:grid-cols-3">
-                {[["Shut down", view.shutdownAt ? formatDateTime(view.shutdownAt, "UTC") : "—"], ["Kept until", view.deleteAfter ? formatDate(view.deleteAfter, "UTC") : "—"], ["Prepaid credit left", view.creditBalanceMicros === null ? "—" : signedUsd(view.creditBalanceMicros)]].map(([k, v]) => (
-                  <div key={k} className="rounded-xl border border-line px-3.5 py-3"><dt className="text-[12px] text-muted">{k}</dt><dd className="mt-1 text-[15px] font-semibold">{v}</dd></div>
+                {([
+                  { k: "Shut down", v: view.shutdownAt ? formatDateTime(view.shutdownAt, "UTC") : "—", icon: <Power />, tone: "danger" },
+                  { k: "Kept until", v: view.deleteAfter ? formatDate(view.deleteAfter, "UTC") : "—", icon: <CalendarClock />, tone: "warning" },
+                  { k: "Prepaid credit left", v: view.creditBalanceMicros === null ? "—" : signedUsd(view.creditBalanceMicros), icon: <Coins />, tone: "success" },
+                ] as Array<{ k: string; v: string; icon: React.ReactNode; tone: StatusTone }>).map(({ k, v, icon, tone }) => (
+                  <div key={k} className="flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3"><IconTile icon={icon} tone={tone} size="sm" /><div className="min-w-0"><dt className="text-[12px] text-muted">{k}</dt><dd className="mt-0.5 truncate text-[14.5px] font-semibold tabular-nums text-ink" title={v}>{v}</dd></div></div>
                 ))}
               </dl>
 
               <div className="space-y-3 rounded-2xl border border-line p-4">
-                <p className="text-[13.5px] font-semibold">Before anything can be deleted</p>
-                <ul className="space-y-1.5">
+                <p className="text-[13.5px] font-semibold text-ink">Before anything can be deleted</p>
+                <ul className="space-y-2">
                   <Check ok={retentionOver}>The retention period has ended{view.deleteAfter ? ` (${formatDate(view.deleteAfter, "UTC")})` : ""}.</Check>
-                  <Check ok={Boolean(view.billingClosedAt)}>Billing is closed{view.billingClosedAt ? ` (${relativeTime(view.billingClosedAt)})` : ""}.</Check>
-                  <Check ok={Boolean(view.exportDownloadedAt)}>The client downloaded their data{view.exportDownloadedAt ? ` (${relativeTime(view.exportDownloadedAt)})` : ", or you record why not"}.</Check>
+                  <Check ok={Boolean(view.billingClosedAt)}><span suppressHydrationWarning>Billing is closed{view.billingClosedAt ? ` (${relativeTime(view.billingClosedAt)})` : ""}.</span></Check>
+                  <Check ok={Boolean(view.exportDownloadedAt)}><span suppressHydrationWarning>The client downloaded their data{view.exportDownloadedAt ? ` (${relativeTime(view.exportDownloadedAt)})` : ", or you record why not"}.</span></Check>
                   <Check ok={purgeEnabled}>Permanent deletion is enabled for this environment{purgeEnabled ? "" : " (it is off by default; it is switched on deliberately, after a backup has been restored once)"}.</Check>
                 </ul>
                 {canManage && !view.billingClosedAt && (
@@ -149,13 +165,14 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
                   <div className="flex flex-wrap gap-2">
                     <Button variant="secondary" loading={busy === "plan"} onClick={async () => { setBusy("plan"); const res = await planDeletionAction(orgId, view.id); setBusy(null); if (!res.ok) return void toast.error(res.error); setPlan(res.data); }}>Show the deletion plan</Button>
                     <Button variant="danger" disabled={!ready} onClick={() => setDeleting(true)}><Trash2 className="size-4" aria-hidden /> Delete the data permanently…</Button>
-                    <Button variant="ghost" loading={busy === "cancel"} onClick={() => act("cancel", () => cancelOffboardingAgencyAction(orgId, "Restored at the client's request."), "Cancelled. The owner re-enables automation and re-invites staff.")}>Bring the workspace back</Button>
+                    <Button variant="outline" loading={busy === "cancel"} onClick={() => act("cancel", () => cancelOffboardingAgencyAction(orgId, "Restored at the client's request."), "Cancelled. The owner re-enables automation and re-invites staff.")}>Bring the workspace back</Button>
                   </div>
                   {plan && (
-                    <div className="rounded-2xl border border-line p-4">
-                      <p className="text-[13.5px] font-semibold">Would remove {plan.totalPurgeRows.toLocaleString("en-US")} rows across {plan.purge.length} tables and {plan.files} stored files</p>
-                      <p className="mt-1 text-[12.5px] text-muted">Kept as financial and audit records: {plan.retain.map((r) => `${r.table.replace(/_/g, " ")} (${r.rows})`).join(", ") || "none"}.</p>
-                      <ul className="mt-3 grid gap-x-6 gap-y-1 text-[12.5px] sm:grid-cols-2">{plan.purge.map((p) => <li key={p.table} className="flex justify-between gap-3"><span className="truncate text-muted">{p.table.replace(/_/g, " ")}</span><span className="tabular-nums">{p.rows.toLocaleString("en-US")}</span></li>)}</ul>
+                    <div className="space-y-3 rounded-2xl border border-line p-4">
+                      <Callout tone="warning" icon={<Trash2 />} title={`Would remove ${plan.totalPurgeRows.toLocaleString("en-US")} rows across ${plan.purge.length} tables and ${plan.files} stored files`}>
+                        Kept as financial and audit records: {plan.retain.map((r) => `${r.table.replace(/_/g, " ")} (${r.rows})`).join(", ") || "none"}.
+                      </Callout>
+                      <ul className="grid gap-x-6 text-[12.5px] sm:grid-cols-2">{plan.purge.map((p) => <li key={p.table} className="flex justify-between gap-3 border-b border-line py-1.5"><span className="truncate text-muted" title={p.table.replace(/_/g, " ")}>{p.table.replace(/_/g, " ")}</span><span className="tabular-nums text-ink">{p.rows.toLocaleString("en-US")}</span></li>)}</ul>
                     </div>
                   )}
                 </div>
@@ -164,9 +181,9 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
           )}
 
           {view && view.timeline.length > 0 && (
-            <details className="rounded-xl border border-line px-4 py-3 text-[13px]">
-              <summary className="cursor-pointer font-medium">History ({view.timeline.length})</summary>
-              <ol className="mt-3 space-y-2 border-l border-line pl-4">{view.timeline.map((t, i) => <li key={i}><span className="text-muted">{formatDateTime(t.at, "UTC")}</span> · {t.detail ?? t.kind}</li>)}</ol>
+            <details className="group rounded-xl border border-line px-4 py-3 text-[13px]">
+              <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 font-medium text-ink [&::-webkit-details-marker]:hidden"><History className="size-4 text-muted" aria-hidden /> History <InfoChip className="h-5 text-[11px]">{view.timeline.length}</InfoChip></summary>
+              <ol className="mt-3 space-y-3 border-l border-line pl-4">{view.timeline.map((t, i) => <li key={i} className="relative"><span aria-hidden className="absolute -left-[21px] top-1.5 size-2.5 rounded-full border-2 border-surface bg-primary" /><p className="text-ink-2">{t.detail ?? sentenceCase(t.kind)}</p><InfoChip icon={<Clock />} className="mt-1.5 h-5 text-[11px]">{formatDateTime(t.at, "UTC")}</InfoChip></li>)}</ol>
             </details>
           )}
         </CardContent>
@@ -178,7 +195,7 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
         size="md"
         title={`Shut down ${orgName}?`}
         description="This stops all automation and messaging for the client and removes their staff's access. The owner keeps access to download their data. Every step is recorded."
-        footer={<><Button variant="ghost" onClick={() => setShutting(false)}>Not yet</Button><Button variant="danger" loading={busy === "shutdown"} onClick={() => act("shutdown", () => shutdownAction(orgId, view!.id, websitePlan, retentionDays), "Workspace shut down", () => setShutting(false))}>Shut down</Button></>}
+        footer={<><Button variant="secondary" onClick={() => setShutting(false)}>Not yet</Button><Button variant="danger" loading={busy === "shutdown"} onClick={() => act("shutdown", () => shutdownAction(orgId, view!.id, websitePlan, retentionDays), "Workspace shut down", () => setShutting(false))}>Shut down</Button></>}
       >
         <div className="space-y-4">
           <Field label="Their website" htmlFor="off-site" hint="Their own domains stay theirs either way.">
@@ -199,10 +216,10 @@ export function OffboardingPanel({ orgId, orgName, view, review, purgeEnabled, c
         size="md"
         title="Delete this client's data permanently?"
         description="This cannot be undone. Payments, the credit ledger, usage, fees and the audit trail are kept. Everything else, including customers, conversations, files and the website, is deleted."
-        footer={<><Button variant="ghost" onClick={() => setDeleting(false)}>Cancel</Button><Button variant="danger" loading={busy === "delete"} disabled={confirmName.trim() !== orgName.trim() || (!view?.exportDownloadedAt && waive.trim().length < 10)} onClick={() => act("delete", () => executeDeletionAction(orgId, view!.id, confirmName, waive || undefined), "Deleted", () => { setDeleting(false); setPlan(null); })}>Delete permanently</Button></>}
+        footer={<><Button variant="secondary" onClick={() => setDeleting(false)}>Cancel</Button><Button variant="danger" loading={busy === "delete"} disabled={confirmName.trim() !== orgName.trim() || (!view?.exportDownloadedAt && waive.trim().length < 10)} onClick={() => act("delete", () => executeDeletionAction(orgId, view!.id, confirmName, waive || undefined), "Deleted", () => { setDeleting(false); setPlan(null); })}>Delete permanently</Button></>}
       >
         <div className="space-y-4">
-          <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3.5 py-3 text-[13px] leading-relaxed text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />Take a backup first, and make sure it can be restored.</p>
+          <Callout tone="danger" icon={<AlertTriangle />}>Take a backup first, and make sure it can be restored.</Callout>
           {!view?.exportDownloadedAt && (
             <Field label="The client hasn't downloaded their data. Why is that all right?" htmlFor="del-waive"><Textarea id="del-waive" rows={2} maxLength={200} value={waive} onChange={(e) => setWaive(e.target.value)} /></Field>
           )}

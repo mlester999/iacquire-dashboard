@@ -3,9 +3,10 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ExternalLink, Headset, LifeBuoy, RefreshCw, ShieldCheck, Sparkles, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, Clock, ExternalLink, Headset, Hourglass, LifeBuoy, RefreshCw, ShieldCheck, Sparkles, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, Field, Textarea } from "@/components/ui/primitives";
+import { Card, EmptyState, Field, Textarea } from "@/components/ui/primitives";
+import { InfoChip } from "@/components/ui/status";
 import { Dialog, Segmented } from "@/components/ui/overlays";
 import { openHelp } from "@/components/help/help-widget";
 import { ProgressRing } from "@/components/setup/progress-ring";
@@ -41,7 +42,7 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
   const needsYou = p.counts.waiting_for_client;
   const allDone = p.total > 0 && p.completed === p.total;
 
-  if (accessLost) return <Card role="alert" className="mx-auto max-w-3xl p-6"><h1 className="font-semibold text-ink">Setup access changed</h1><p className="mt-2 text-sm text-muted">{error}</p><Button className="mt-4" variant="secondary" onClick={() => window.location.reload()}>Refresh access</Button></Card>;
+  if (accessLost) return <Card role="alert" className="mx-auto max-w-3xl"><EmptyState icon={<AlertTriangle className="size-5" />} title="Setup access changed" description={error} action={<Button variant="secondary" onClick={() => window.location.reload()}><RefreshCw className="size-3.5" /> Refresh access</Button>} /></Card>;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -78,13 +79,15 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
               <Chip label="Blocked" value={p.counts.blocked} tone="danger" />
             </dl>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[12.5px] text-muted sm:justify-start">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               {data.estimatedCompletion && (
-                <span className="inline-flex items-center gap-1.5" title="Set by the iAcquire team from its schedule">
-                  <CalendarClock className="size-3.5" /> Estimated setup completion {formatDate(`${data.estimatedCompletion}T12:00:00Z`, "UTC")}
+                <span title="Set by the iAcquire team from its schedule">
+                  <InfoChip icon={<CalendarClock />}>Estimated setup completion {formatDate(`${data.estimatedCompletion}T12:00:00Z`, "UTC")}</InfoChip>
                 </span>
               )}
-              <span title={formatDate(data.lastUpdatedAt, timeZone)}>Last updated {relativeTime(data.lastUpdatedAt)}</span>
+              <span title={formatDate(data.lastUpdatedAt, timeZone)}>
+                <InfoChip icon={<Clock />}>Last updated {relativeTime(data.lastUpdatedAt)}</InfoChip>
+              </span>
               <LiveBadge connection={connection} syncedAt={syncedAt} preview={preview} />
             </div>
           </div>
@@ -135,13 +138,18 @@ export function SetupCenter({ initial, firstName, timeZone, preview = false }: {
               <h2 id={`sec-${section}`} className="text-[16px] font-semibold tracking-tight text-ink">
                 {SECTION_TITLE[section]}
               </h2>
-              <span className="text-[12.5px] text-muted">
+              <InfoChip>
                 {list.filter((t) => t.status === "completed").length} of {list.length} done
-              </span>
+              </InfoChip>
             </div>
             {list.length === 0 ? (
-              <Card className="px-5 py-8 text-center text-[13.5px] text-muted">
-                {section === "client" ? "Nothing needs your attention right now. We'll tell you the moment we need something." : "No steps to show yet."}
+              <Card>
+                <EmptyState
+                  compact
+                  icon={section === "client" ? <CheckCircle2 className="size-5" /> : <ClipboardList className="size-5" />}
+                  title={section === "client" ? "Nothing needs you right now" : "No steps to show yet"}
+                  description={section === "client" ? "We'll tell you the moment we need something." : "Your checklist appears here once the iAcquire team sets it up."}
+                />
               </Card>
             ) : (
               <ol className="relative space-y-3 border-l-2 border-line pl-4 sm:pl-6">
@@ -250,7 +258,7 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="text-[15px] font-semibold leading-snug tracking-tight text-ink">{t.title}</h3>
             <StatusBadge status={t.status} audience="client" />
-            {!t.required && <span className="text-[12px] text-faint">Optional</span>}
+            {!t.required && <InfoChip className="h-5 text-[11px]">Optional</InfoChip>}
           </div>
           {t.description && <p className="mt-1 text-[13.5px] leading-relaxed text-muted">{t.description}</p>}
 
@@ -295,7 +303,7 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
 
           {t.status === "in_progress" && t.clientNote && <p className="mt-3 text-[13px] leading-relaxed text-muted">{t.clientNote}</p>}
 
-          {t.status === "pending" && t.waitingOn.length > 0 && <p className="mt-3 text-[13px] text-muted">Starts after: {t.waitingOn.slice(0, 2).join(", ")}{t.waitingOn.length > 2 ? ` and ${t.waitingOn.length - 2} more` : ""}</p>}
+          {t.status === "pending" && t.waitingOn.length > 0 && <div className="mt-3"><InfoChip icon={<Hourglass />}>Starts after {t.waitingOn.slice(0, 2).join(", ")}{t.waitingOn.length > 2 ? ` and ${t.waitingOn.length - 2} more` : ""}</InfoChip></div>}
 
           {t.attachments.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2">
@@ -309,13 +317,9 @@ function TaskCard({ task: t, index, timeZone, highlight, onRespond }: { task: Cl
             </ul>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-faint">
-            {t.estimatedCompletionAt && t.status !== "completed" && (
-              <span className="inline-flex items-center gap-1">
-                <CalendarClock className="size-3" /> Estimated {formatDate(`${t.estimatedCompletionAt}T12:00:00Z`, "UTC")}
-              </span>
-            )}
-            <span>Updated {relativeTime(t.updatedAt)}</span>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+            {t.estimatedCompletionAt && t.status !== "completed" && <InfoChip icon={<CalendarClock />}>Estimated {formatDate(`${t.estimatedCompletionAt}T12:00:00Z`, "UTC")}</InfoChip>}
+            <InfoChip icon={<Clock />}>Updated {relativeTime(t.updatedAt)}</InfoChip>
             {t.history.length > 0 && (
               <details className="group/h">
                 <summary className="cursor-pointer list-none rounded text-primary hover:underline [&::-webkit-details-marker]:hidden">History</summary>

@@ -3,9 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
-import { Info, Table2 } from "lucide-react";
+import { BarChart3, Info, Table2 } from "lucide-react";
 import { AnimatedNumber } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
+import { EmptyState } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
 import { cn, formatNumber } from "@/lib/utils";
 
 function useWidth<T extends HTMLElement>() {
@@ -57,30 +59,32 @@ export function StatTile({
 }) {
   const reduce = useReducedMotion();
   const tone = {
-    primary: "bg-primary-soft text-primary",
-    violet: "bg-violet-soft text-violet",
-    success: "bg-success-soft text-success",
-    warning: "bg-warning-soft text-warning",
+    primary: { icon: "bg-primary-soft text-primary-ink", strip: "from-primary to-violet", wash: "from-primary-soft/70" },
+    violet: { icon: "bg-violet-soft text-violet-ink", strip: "from-violet to-primary", wash: "from-violet-soft/70" },
+    success: { icon: "bg-success-soft text-success-ink", strip: "from-success to-success/20", wash: "from-success-soft/60" },
+    warning: { icon: "bg-warning-soft text-warning-ink", strip: "from-warning to-warning/20", wash: "from-warning-soft/60" },
   }[accent];
   const metric = <><p className="text-[12.5px] font-medium text-muted">{label}</p>{value === null ? (
-    <p className="mt-1 flex items-baseline gap-2"><span className="text-[26px] font-semibold leading-none tracking-tight text-faint">—</span><span className="text-[12px] text-muted">{unavailableReason ?? "Unavailable"}</span></p>
-  ) : <AnimatedNumber value={value} format={format} className="mt-1 block text-[28px] font-semibold leading-none tracking-tight text-ink" />}</>;
+    <div className="mt-1.5 flex flex-col items-start gap-2"><span className="text-[26px] font-semibold leading-none tracking-tight text-faint">—</span><StatusPill tone="neutral" size="sm" className="h-auto min-h-5 max-w-full whitespace-normal py-0.5 text-left leading-snug">{unavailableReason ?? "Unavailable"}</StatusPill></div>
+  ) : <AnimatedNumber value={value} format={format} className="mt-1 block text-[28px] font-semibold leading-none tracking-tight tabular-nums text-ink" />}</>;
   const content = (
     <motion.div
       style={{ animationDelay: `${index * 40}ms` }}
       whileHover={reduce ? undefined : { y: -2 }}
       className="card-surface rise-in group relative h-full min-w-0 overflow-hidden rounded-2xl p-4 transition-shadow hover:shadow-float sm:p-5"
     >
+      <span aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r", tone.strip)} />
+      <span aria-hidden className={cn("pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b to-transparent", tone.wash)} />
       <div aria-hidden className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-primary/5 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-      <div className="flex items-start justify-between gap-2">
-        <span className={cn("flex size-9 items-center justify-center rounded-xl", tone)}>{icon}</span>
+      <div className="relative flex items-start justify-between gap-2">
+        <span className={cn("flex size-9 items-center justify-center rounded-xl ring-1 ring-inset ring-line", tone.icon)}>{icon}</span>
         <Tooltip content={definition}>
           <button type="button" className="relative z-10 flex size-11 items-center justify-center rounded-lg text-faint hover:bg-surface-2 hover:text-muted sm:size-8" aria-label={`About ${label}`}>
             <Info className="size-3.5" />
           </button>
         </Tooltip>
       </div>
-      {href ? <Link href={href} className="mt-3 block rounded-lg outline-offset-4 after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-2 focus-visible:outline-primary">{metric}</Link> : <div className="mt-3">{metric}</div>}
+      {href ? <Link href={href} className="relative mt-3 block rounded-lg outline-offset-4 after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-2 focus-visible:outline-primary">{metric}</Link> : <div className="relative mt-3">{metric}</div>}
     </motion.div>
   );
   return content;
@@ -117,6 +121,8 @@ export function AreaChart({
   const area = data.length ? `${line} L${x(data.length - 1).toFixed(1)},${pad.t + h} L${x(0).toFixed(1)},${pad.t + h} Z` : "";
   const ticks = [0, max / 2, max];
   const total = data.reduce((s, d) => s + d.y, 0);
+  // Roughly one x label per 64px so labels never collide, and the periodic labels yield to the final one.
+  const labelStep = Math.max(1, Math.ceil(data.length / 7), Math.ceil(data.length / Math.max(2, Math.floor(w / 64))));
 
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = (e.currentTarget as SVGRectElement).getBoundingClientRect();
@@ -127,7 +133,7 @@ export function AreaChart({
   return (
     <div ref={ref} className="min-w-0 w-full">
       <div className="mb-2 flex items-center justify-end">
-        <button type="button" onClick={() => setShowTable((s) => !s)} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-ink" aria-pressed={showTable}>
+        <button type="button" onClick={() => setShowTable((s) => !s)} className="flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-muted ring-1 ring-inset ring-line transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-8" aria-pressed={showTable}>
           <Table2 className="size-3.5" /> {showTable ? "Chart" : "Table"}
         </button>
       </div>
@@ -170,7 +176,7 @@ export function AreaChart({
                 </g>
               ))}
               {data.map((d, i) =>
-                i % Math.ceil(data.length / 7) === 0 || i === data.length - 1 ? (
+                i === data.length - 1 || (i % labelStep === 0 && data.length - 1 - i >= labelStep * 0.75) ? (
                   <text key={d.x} x={x(i)} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[11px]">
                     {formatX(d.x)}
                   </text>
@@ -247,17 +253,17 @@ export function Funnel({ stages, unavailableLabel = "Not connected" }: { stages:
         const rate = s.value !== null && prev && s.value <= prev ? s.value / prev : null;
         return (
           <li key={s.label}>
-            <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
-              <span className="font-medium text-ink-2">{s.label}</span>
-              <span className="tabular-nums text-ink">
-                {s.value === null ? <span className="text-[12px] text-muted">{unavailableLabel}</span> : formatNumber(s.value)}
-                {rate !== null && <span className="ml-2 text-[12px] text-muted">{Math.round(rate * 100)}% of previous</span>}
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-[13px]">
+              <span className="min-w-0 truncate font-medium text-ink-2">{s.label}</span>
+              <span className="flex shrink-0 items-center gap-2 tabular-nums text-ink">
+                {rate !== null && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted ring-1 ring-inset ring-line">{Math.round(rate * 100)}% of previous</span>}
+                {s.value === null ? <StatusPill tone="neutral" size="sm">{unavailableLabel}</StatusPill> : <span className="font-semibold">{formatNumber(s.value)}</span>}
               </span>
             </div>
-            <div className="h-6 rounded-md bg-surface-2">
+            <div className="h-6 rounded-lg bg-surface-2 ring-1 ring-inset ring-line">
               {s.value !== null && s.value > 0 && (
                 <motion.div
-                  className="h-6 rounded-r-[4px] rounded-l-[2px]"
+                  className="h-6 rounded-lg"
                   style={{ background: RAMP[Math.min(i, RAMP.length - 1)] }}
                   initial={reduce ? false : { width: 0 }}
                   animate={{ width: `${Math.max(2, (s.value / max) * 100)}%` }}
@@ -287,7 +293,7 @@ export function HBarList({
 }) {
   const reduce = useReducedMotion();
   const max = Math.max(1, ...rows.map((r) => r.value));
-  if (!rows.some((r) => r.value > 0)) return <p className="py-6 text-center text-[13px] text-muted">{emptyLabel}</p>;
+  if (!rows.some((r) => r.value > 0)) return <EmptyState compact icon={<BarChart3 className="size-5" />} title={emptyLabel} description="Counts appear here as soon as there is something to show." />;
   return (
     <ul className="space-y-3">
       {rows.map((r, i) => (
@@ -325,6 +331,8 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
   const max = niceMax(Math.max(...data.map((d) => d.y), 0));
   const band = data.length ? w / data.length : 0;
   const barW = Math.min(24, band * 0.6);
+  // Thin the x labels so they never touch: roughly one label per 64px of plot width.
+  const labelEvery = Math.max(1, Math.ceil(data.length / Math.max(2, Math.floor(w / 64))));
   return (
     <div ref={ref} className="relative min-w-0 w-full" style={{ height }}>
       {width > 0 && (
@@ -352,9 +360,11 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
                     animate={{ opacity: hover === null || hover === i ? 1 : 0.55 }}
                   />
                 )}
-                <text x={cx} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[11px]">
-                  {d.x}
-                </text>
+                {i % labelEvery === 0 && (
+                  <text x={cx} y={height - 6} textAnchor="middle" className="fill-[var(--faint)] text-[11px]">
+                    {d.x}
+                  </text>
+                )}
               </g>
             );
           })}
@@ -375,7 +385,7 @@ export function Columns({ data, height = 180, unit, label }: { data: Array<{ x: 
 /** A 100% bar split into status segments with a 2px surface gap; icon + label carry meaning. */
 export function StatusSplit({ segments }: { segments: Array<{ label: string; value: number; color: string; icon: React.ReactNode }> }) {
   const total = segments.reduce((s, x) => s + x.value, 0);
-  if (!total) return <p className="py-4 text-center text-[13px] text-muted">No runs in this period</p>;
+  if (!total) return <EmptyState compact icon={<BarChart3 className="size-5" />} title="No runs in this period" description="Outcomes show here once approved actions have run." />;
   return (
     <div>
       <div className="flex h-3 gap-[2px] overflow-hidden rounded-full">
@@ -385,13 +395,13 @@ export function StatusSplit({ segments }: { segments: Array<{ label: string; val
             <div key={s.label} style={{ width: `${(s.value / total) * 100}%`, background: s.color }} title={`${s.label}: ${s.value}`} />
           ))}
       </div>
-      <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[12.5px]">
+      <ul className="mt-3 flex flex-wrap gap-2 text-[12.5px]">
         {segments.map((s) => (
-          <li key={s.label} className="flex items-center gap-1.5 text-ink-2">
+          <li key={s.label} className="inline-flex min-h-7 items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-ink-2 ring-1 ring-inset ring-line">
             {s.icon}
             <span>{s.label}</span>
             <span className="font-semibold tabular-nums text-ink">{formatNumber(s.value)}</span>
-            <span className="text-muted">({Math.round((s.value / total) * 100)}%)</span>
+            <span className="tabular-nums text-muted">{Math.round((s.value / total) * 100)}%</span>
           </li>
         ))}
       </ul>

@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Eye, GitCompare, History, Loader2, Monitor, RotateCcw, Smartphone, Tablet, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Eye, GitCompare, History, Loader2, Monitor, RotateCcw, Smartphone, Tablet, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
+import { EmptyState } from "@/components/ui/primitives";
+import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
 import { SiteRenderer } from "@/components/website/render/site-renderer";
 import type { RenderCtx } from "@/components/website/render/ctx";
 import { useStudioApi, type VersionContent } from "@/components/website/studio/studio-api";
@@ -67,7 +69,7 @@ export function PreviewOverlay({
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-[#14171f]" role="dialog" aria-modal="true" aria-label={title}>
       <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0e1118] px-4 py-2 text-white">
-        <p className="mr-2 flex items-center gap-2 text-[13px] font-semibold"><Eye className="size-4 text-[#9ebcff]" aria-hidden /> {title}{subtitle && <span className="font-normal text-white/60">· {subtitle}</span>}</p>
+        <p className="mr-2 flex items-center gap-2 text-[13px] font-semibold"><Eye className="size-4 text-primary" aria-hidden /> {title}{subtitle && <span className="font-normal text-white/60">· {subtitle}</span>}</p>
         <div role="radiogroup" aria-label="Device" className="flex rounded-lg bg-white/10 p-0.5">
           {DEVICES.map((d) => {
             const I = DEVICE_ICON[d.id];
@@ -116,6 +118,8 @@ export function CheckpointDialog({ open, onOpenChange, onSave }: { open: boolean
 // ---------------------------------------------------------------------------
 
 const SOURCE: Record<string, string> = { generated: "Written for you", editor: "Saved", checkpoint: "Named version", submit: "Sent for review", publish: "Published", rollback: "Rolled back", ai: "Assistant change", restore: "Restored", template: "New template" };
+
+const SOURCE_TONE: Record<string, StatusTone> = { generated: "violet", editor: "neutral", checkpoint: "primary", submit: "warning", publish: "success", rollback: "danger", ai: "violet", restore: "warning", template: "primary" };
 
 export function VersionsDialog({
   open, onOpenChange, currentDoc, revision, resolveAsset, onRestored, canEdit, flush,
@@ -189,20 +193,27 @@ export function VersionsDialog({
     <>
       <Dialog open={open && !view} onOpenChange={onOpenChange} size="lg" title="Version history" description="Every named version, every time you sent the site for review, and every publication. Restoring never loses your current draft; it&apos;s saved first.">
         {error && <p role="alert" className="rounded-xl border border-danger/30 bg-danger-soft/50 p-3 text-[13px] text-danger-ink">{error}</p>}
-        {!list && !error && <p className="flex items-center gap-2 text-[13.5px] text-muted" role="status"><Loader2 className="size-4 animate-spin" aria-hidden /> Loading versions…</p>}
-        {list && list.length === 0 && <p className="flex items-center gap-2 text-[13.5px] text-muted"><History className="size-4" aria-hidden /> No versions yet. Use “Save version” whenever you like a draft.</p>}
+        {!list && !error && <p className="flex items-center justify-center gap-2 rounded-xl bg-surface-2 py-10 text-[13.5px] text-muted" role="status"><Loader2 className="size-4 animate-spin" aria-hidden /> Loading versions…</p>}
+        {list && list.length === 0 && <EmptyState icon={<History className="size-5" />} title="No versions yet" description="Use “Save version” whenever you like a draft." />}
         {list && list.length > 0 && (
           <ul className="divide-y divide-line">
             {list.map((v) => (
               <li key={v.id} className="py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">Version {v.version}
-                      <span className="rounded-full bg-surface-3 px-2 py-px text-[11px] font-medium text-muted">{SOURCE[v.source] ?? "Saved"}</span>
-                      {v.isLive && <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-px text-[11px] font-medium text-success-ink"><CheckCircle2 className="size-3" aria-hidden /> Live</span>}
-                    </p>
-                    <p className="text-[12.5px] text-muted">{relativeTime(v.createdAt)} · {formatDateTime(v.createdAt, "UTC")}{v.createdByName ? ` · ${v.createdByName}` : ""}</p>
-                    {v.note && <p className="text-[13px] text-ink-2">“{v.note}”</p>}
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span aria-hidden className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl bg-surface-2 text-[13px] font-semibold tabular-nums text-ink ring-1 ring-inset ring-line"><span className="text-[8.5px] font-medium uppercase leading-none tracking-wider text-muted">v</span>{v.version}</span>
+                    <div className="min-w-0 space-y-1.5">
+                      <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold"><span>Version {v.version}</span>
+                        <StatusPill size="sm" tone={SOURCE_TONE[v.source] ?? "neutral"}>{SOURCE[v.source] ?? "Saved"}</StatusPill>
+                        {v.isLive && <StatusPill size="sm" tone="success" icon={<CheckCircle2 className="size-3" aria-hidden />}>Live</StatusPill>}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <InfoChip icon={<CalendarClock className="size-3" aria-hidden />}><span title={formatDateTime(v.createdAt, "UTC")}>{relativeTime(v.createdAt)}</span></InfoChip>
+                        <InfoChip>{formatDateTime(v.createdAt, "UTC")}</InfoChip>
+                        {v.createdByName && <InfoChip icon={<User className="size-3" aria-hidden />}>{v.createdByName}</InfoChip>}
+                      </div>
+                      {v.note && <p className="text-[13px] text-ink-2">“{v.note}”</p>}
+                    </div>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     <Button size="sm" variant="secondary" loading={busy === v.id} onClick={() => void preview(v)}><Eye className="size-3.5" /> Preview</Button>
@@ -215,7 +226,13 @@ export function VersionsDialog({
                     <p className="text-[12.5px] font-semibold">What would change if you went back to version {v.version}</p>
                     {diff.diff.changes.length === 0 ? <p className="mt-1 text-[12.5px] text-muted">Nothing: your draft already matches this version.</p> : (
                       <>
-                        <p className="mt-0.5 text-[11.5px] text-muted">{diff.diff.counts.added} added · {diff.diff.counts.removed} removed · {diff.diff.counts.changed} changed · {diff.diff.counts.moved} moved. (Compared with your current draft, from this version&apos;s point of view.)</p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <StatusPill size="sm" tone="success">{diff.diff.counts.added} added</StatusPill>
+                          <StatusPill size="sm" tone="danger">{diff.diff.counts.removed} removed</StatusPill>
+                          <StatusPill size="sm" tone="warning">{diff.diff.counts.changed} changed</StatusPill>
+                          <StatusPill size="sm" tone="primary">{diff.diff.counts.moved} moved</StatusPill>
+                        </div>
+                        <p className="mt-1.5 text-[11.5px] text-muted">Compared with your current draft, from this version&apos;s point of view.</p>
                         <ul className="mt-2 max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-[12.5px] text-ink-2">{diff.diff.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
                       </>
                     )}
@@ -228,7 +245,7 @@ export function VersionsDialog({
       </Dialog>
       {view && (
         <PreviewOverlay doc={view.content.content} resolveAsset={resolveAsset} onClose={() => setView(null)} title={`Version ${view.v.version}`} subtitle={`${SOURCE[view.v.source] ?? "Saved"} · ${relativeTime(view.v.createdAt)}`}
-          actions={canEdit ? <button type="button" onClick={() => setConfirm(view.v)} className="flex h-8 items-center gap-1.5 rounded-lg bg-[#3b5bdb] px-3 text-[12.5px] font-medium text-white hover:bg-[#4c6ae0]"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined} />
+          actions={canEdit ? <button type="button" onClick={() => setConfirm(view.v)} className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12.5px] font-medium text-white hover:opacity-90"><RotateCcw className="size-3.5" /> Restore this version</button> : undefined} />
       )}
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)} size="sm" title={confirm ? `Restore version ${confirm.version}?` : "Restore"}
         description="It replaces your current draft. Your current draft is saved as its own version first, and your live site doesn't change until you publish."

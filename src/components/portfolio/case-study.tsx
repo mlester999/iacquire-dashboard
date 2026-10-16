@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, ExternalLink, Info,Layers,Target,Workflow } from "lucide-react";
 import { FounderNotice, ImageGallery } from "@/components/portfolio/portfolio-views";
-import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
 import { ButtonLink } from "@/components/ui/button";
 import { Chip } from "@/components/projects/common";
 import { PORTFOLIO_STATUS_LABEL, formatPrice, type ServiceView } from "@/lib/projects";
 import type { PortfolioDetail } from "@/server/portfolio/service";
-import { ProjectMediaPlaceholder,TechnologyPill } from "@/components/projects/visuals";
+import { ProjectMediaPlaceholder,TechnologyPill,categoryLabel } from "@/components/projects/visuals";
 
 export function CaseStudy({ project, services, canRequest }: { project: PortfolioDetail; services: ServiceView[]; canRequest: boolean }) {
   const firstService = services.find((s) => s.availability === "available") ?? null;
@@ -20,28 +21,28 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
       <header className="space-y-3 border-l-2 border-primary/45 pl-4 sm:pl-6">
         <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-primary">Founder project / Case study</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={project.status === "built" ? "success" : "warning"}>{project.statusLabel || PORTFOLIO_STATUS_LABEL[project.status]}</Badge>
+          <StatusPill tone={project.status === "built" ? "success" : "warning"}>{project.statusLabel || PORTFOLIO_STATUS_LABEL[project.status]}</StatusPill>
           {project.categories.map((c) => (
-            <Chip key={c}>{c}</Chip>
+            <Chip key={c}>{categoryLabel(c)}</Chip>
           ))}
         </div>
         <h1 className="text-balance text-[28px] font-semibold leading-[1.16] tracking-[-0.035em] sm:text-[34px]">{project.title}</h1>
         <p className="max-w-3xl text-[15px] leading-relaxed text-ink-2">{project.summary}</p>
-        <p className="text-[12.5px] text-muted">{project.attribution} · built by Mark Lester Acak</p>
+        <div className="flex flex-wrap gap-1.5"><InfoChip>{project.attribution}</InfoChip><InfoChip>Built by Mark Lester Acak</InfoChip></div>
       </header>
 
       {project.status !== "built" && (
-        <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/60 p-3.5 text-[13px] leading-relaxed text-warning-ink">
-          <Info className="mt-0.5 size-4 shrink-0" /> This project is marked <strong>{project.statusLabel || PORTFOLIO_STATUS_LABEL[project.status]}</strong>. It&apos;s shown as work in progress, not a finished product.
+        <p className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-soft/60 p-4 text-[13px] leading-relaxed text-warning-ink">
+          <Info className="mt-0.5 size-4 shrink-0" /><span>This project is marked <strong>{project.statusLabel || PORTFOLIO_STATUS_LABEL[project.status]}</strong>. It&apos;s shown as work in progress, not a finished product.</span>
         </p>
       )}
 
       {project.assets.length?<ImageGallery assets={project.assets} title={project.title}/>:<ProjectMediaPlaceholder title={project.title} technologies={project.technologies} className="aspect-auto min-h-56 w-full rounded-2xl p-6 sm:aspect-[16/7] sm:p-10"/>}
 
       <nav aria-label="Case study sections" className="flex flex-wrap gap-2 border-y border-line py-3">
-        {project.problem&&<a href="#case-study-problem" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Target className="size-3.5"/>The problem</a>}
-        {project.solution&&<a href="#case-study-solution" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Workflow className="size-3.5"/>What was built</a>}
-        <a href="#case-study-technology" className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 transition hover:bg-surface-2"><Layers className="size-3.5"/>Technology</a>
+        {project.problem&&<a href="#case-study-problem" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition hover:bg-primary-soft hover:text-primary-ink"><Target className="size-3.5"/>The problem</a>}
+        {project.solution&&<a href="#case-study-solution" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition hover:bg-primary-soft hover:text-primary-ink"><Workflow className="size-3.5"/>What was built</a>}
+        <a href="#case-study-technology" className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition hover:bg-primary-soft hover:text-primary-ink"><Layers className="size-3.5"/>Technology</a>
       </nav>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -81,7 +82,7 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
               </ul>
             </Section>
           )}
-          {project.privacyNote && <p className="rounded-xl bg-surface-2 p-3.5 text-[12.5px] leading-relaxed text-muted">{project.privacyNote}</p>}
+          {project.privacyNote && <p className="flex items-start gap-3 rounded-2xl bg-surface-2 p-4 text-[12.5px] leading-relaxed text-muted ring-1 ring-inset ring-line"><Info aria-hidden className="mt-0.5 size-4 shrink-0" />{project.privacyNote}</p>}
         </div>
 
         <aside className="min-w-0 space-y-5 lg:self-start lg:sticky lg:top-24">
@@ -99,7 +100,7 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
                 <div className="mt-4 border-t border-line pt-4">
                   <p className="text-[11.5px] font-medium uppercase tracking-[.08em] text-muted">What it delivers</p>
                   <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{project.publishedOutcome}</p>
-                  <p className="mt-1 text-[11.5px] text-faint">As described by the founder. Not a measured result.</p>
+                  <p className="mt-1.5 text-[11.5px] text-muted">As described by the founder. Not a measured result.</p>
                 </div>
               )}
               {project.liveDemoUrl && (
@@ -117,9 +118,9 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
               </CardHeader>
               <CardContent className="space-y-2">
                 {services.map((s) => (
-                  <Link key={s.id} href={`/projects/new?service=${s.slug}&like=${project.slug}`} className="block rounded-xl bg-surface-2 p-3 transition hover:bg-surface-3">
+                  <Link key={s.id} href={`/projects/new?service=${s.slug}&like=${project.slug}`} className="block rounded-xl bg-surface-2 p-3 ring-1 ring-inset ring-line transition hover:bg-surface-3 hover:ring-primary/25">
                     <p className="text-[13.5px] font-medium">{s.name}</p>
-                    <p className="text-[12px] text-muted">{formatPrice(s.price)} · quoted after review</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5"><InfoChip className="tabular-nums">{formatPrice(s.price)}</InfoChip><InfoChip>Quoted after review</InfoChip></div>
                   </Link>
                 ))}
               </CardContent>
@@ -144,6 +145,6 @@ export function CaseStudy({ project, services, canRequest }: { project: Portfoli
 
 function Section({ id,title, children }: { id?:string;title: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-24 border-b border-line pb-6"><h2 className="mb-3 flex items-center gap-2 text-[18px] font-semibold tracking-tight"><span className="h-4 w-1 rounded-full bg-primary" aria-hidden/>{title}</h2>{children}</section>
+    <section id={id} className="card-surface scroll-mt-24 rounded-2xl p-5 sm:p-6"><h2 className="mb-3 flex items-center gap-2 text-[18px] font-semibold tracking-tight"><span className="h-4 w-1 rounded-full bg-primary" aria-hidden/>{title}</h2>{children}</section>
   );
 }

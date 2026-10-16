@@ -4,9 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarPlus, KanbanSquare, MessageSquareText, RefreshCw, Rows3, Search, ShieldCheck, Trophy } from "lucide-react";
+import { BarChart3, CalendarPlus, ChevronRight, Clock, KanbanSquare, Lock, MessageSquareText, RefreshCw, Rows3, Search, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, Field, Input, Textarea } from "@/components/ui/primitives";
+import { Card, EmptyState, Field, Input, Textarea } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
+import { IconTile, Panel } from "@/components/overview/panel";
 import { Segmented, Sheet } from "@/components/ui/overlays";
 import { MetricCard,CoverageBar } from "@/components/ui/workspace";
 import { addNoteAction, createTaskAction, listNotesAction, refreshCrmAction } from "@/app/actions/records";
@@ -37,6 +39,7 @@ interface Data {
 }
 
 const STATUS_TONE: Record<string, "primary" | "success" | "danger" | "neutral"> = { open: "primary", won: "success", lost: "danger", abandoned: "neutral" };
+const STAGE_COLORS = ["var(--primary)", "var(--violet)", "var(--success)", "var(--warning)"];
 
 export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { data: Data; canNote: boolean; canTask: boolean; canRefresh: boolean; timeZone: string }) {
   const router = useRouter();
@@ -56,16 +59,23 @@ export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { d
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard label="Open opportunities" value={opps.filter((o)=>o.status==="open").length} detail="Opportunities in the current filtered view." icon={<KanbanSquare className="size-4"/>}/>
         <MetricCard label="Open pipeline value" value={formatCurrency(openValue)} detail="Only values recorded in your CRM." icon={<Rows3 className="size-4"/>} tone="violet"/>
         <MetricCard label="Won value" value={formatCurrency(wonValue)} detail="Closed-won opportunities in this view." icon={<Trophy className="size-4"/>} tone="green"/>
       </div>
-      {stages.length>0&&<div className="control-panel p-4"><p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted">Opportunity distribution · {pipeline?.name}</p><CoverageBar label="Opportunities by pipeline stage" parts={stages.map((stage,index)=>({label:stage.name,count:opps.filter(opportunity=>opportunity.stage_id===stage.id).length,color:["var(--primary)","var(--violet)","var(--success)","var(--warning)"][index%4]}))}/></div>}
+      {stages.length > 0 && (
+        <Panel icon={<BarChart3 />} tone="violet" title="Opportunity distribution" description={pipeline?.name} bodyClassName="pt-3">
+          <CoverageBar label="Opportunities by pipeline stage" parts={stages.map((stage, index) => ({ label: stage.name, count: opps.filter((opportunity) => opportunity.stage_id === stage.id).length, color: STAGE_COLORS[index % 4] }))} />
+        </Panel>
+      )}
 
       {data.pendingSalesApprovals > 0 && (
-        <Link href="/approvals" className="flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning-soft/50 px-4 py-3 text-[13px] text-warning-ink">
-          <ShieldCheck className="size-4" /> {data.pendingSalesApprovals} sales follow-up or CRM change{data.pendingSalesApprovals === 1 ? " is" : "s are"} waiting for your approval.
+        <Link href="/approvals" className="group flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning-soft/50 px-4 py-3 text-[13px] text-warning-ink transition hover:-translate-y-px hover:shadow-card">
+          <IconTile tone="warning" size="sm"><ShieldCheck /></IconTile>
+          <span className="min-w-0 flex-1 font-medium">{data.pendingSalesApprovals} sales follow-up or CRM change{data.pendingSalesApprovals === 1 ? " is" : "s are"} waiting for your approval.</span>
+          <StatusPill tone="warning" size="sm">Review</StatusPill>
+          <ChevronRight className="size-4 shrink-0 transition group-hover:translate-x-0.5" aria-hidden />
         </Link>
       )}
 
@@ -85,7 +95,12 @@ export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { d
               ))}
             </select>
           )}
-          {data.pipelines.length === 1 && <p className="text-[14px] font-semibold">{pipeline?.name}</p>}
+          {data.pipelines.length === 1 && (
+            <p className="flex items-center gap-2.5 text-[14px] font-semibold">
+              <IconTile tone="primary" size="sm"><KanbanSquare /></IconTile>
+              {pipeline?.name}
+            </p>
+          )}
           <div className="relative lg:ml-auto lg:w-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
             <label htmlFor="opp-search" className="sr-only">
@@ -127,69 +142,76 @@ export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { d
         {view === "board" ? (
           <div className="scrollbar-thin overflow-x-auto p-4">
             <div className="flex gap-3" style={{ minWidth: `${Math.max(stages.length, 1) * 260}px` }}>
-              {stages.map((stage) => {
+              {stages.map((stage, index) => {
                 const items = opps.filter((o) => o.stage_id === stage.id);
                 const value = items.reduce((s, o) => s + (o.monetary_value ?? 0), 0);
                 return (
-                  <div key={stage.id} className="flex w-[260px] shrink-0 flex-col rounded-2xl bg-surface-2/70 p-2">
-                    <div className="flex items-center justify-between px-2 py-1.5">
-                      <p className="truncate text-[13px] font-semibold">{stage.name}</p>
-                      <span className="rounded-full bg-surface px-2 py-0.5 text-[11.5px] font-medium text-muted">{items.length}</span>
+                  <div key={stage.id} className="relative flex w-[260px] shrink-0 flex-col overflow-hidden rounded-2xl bg-surface-2/70 p-2 ring-1 ring-inset ring-line">
+                    <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ background: STAGE_COLORS[index % 4] }} />
+                    <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-2">
+                      <p className="truncate text-[13px] font-semibold" title={stage.name}>{stage.name}</p>
+                      <span className="min-w-6 rounded-full bg-surface px-2 py-0.5 text-center text-[11.5px] font-semibold tabular-nums text-ink-2 ring-1 ring-inset ring-line">{items.length}</span>
                     </div>
-                    <p className="px-2 pb-2 text-[11.5px] text-faint">{value ? formatCurrency(value) : "No value set"}</p>
+                    <p className="px-2 pb-2.5 text-[12px] font-medium tabular-nums text-ink-2">{value ? formatCurrency(value) : <span className="font-normal text-muted">No value set</span>}</p>
                     <div className="space-y-2">
                       {items.map((o) => (
-                        <button key={o.id} type="button" onClick={() => setOpen(o)} className="block w-full rounded-xl border border-line bg-surface p-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-card">
-                          <p className="text-[13px] font-medium leading-snug">{o.name}</p>
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-[12px] tabular-nums text-ink-2">{o.monetary_value ? formatCurrency(o.monetary_value) : "—"}</span>
-                            <Badge tone={STATUS_TONE[o.status] ?? "neutral"} className="h-5 text-[11px]">
-                              {sentenceCase(o.status)}
-                            </Badge>
+                        <button key={o.id} type="button" onClick={() => setOpen(o)} className="block w-full rounded-xl border border-line bg-surface p-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card">
+                          <p className="text-[13px] font-semibold leading-snug text-ink">{o.name}</p>
+                          <div className="mt-2.5 flex items-center justify-between gap-2">
+                            <span className="text-[13px] font-semibold tabular-nums text-ink">{o.monetary_value ? formatCurrency(o.monetary_value) : <span className="font-normal text-muted">No value</span>}</span>
+                            <StatusPill tone={STATUS_TONE[o.status] ?? "neutral"} size="sm">{sentenceCase(o.status)}</StatusPill>
                           </div>
                           {o.notes > 0 && (
-                            <p className="mt-1.5 flex items-center gap-1 text-[11px] text-faint">
-                              <MessageSquareText className="size-3" /> {o.notes} note{o.notes === 1 ? "" : "s"}
-                            </p>
+                            <div className="mt-2">
+                              <InfoChip icon={<MessageSquareText />}>{o.notes} note{o.notes === 1 ? "" : "s"}</InfoChip>
+                            </div>
                           )}
                         </button>
                       ))}
-                      {items.length === 0 && <p className="px-2 py-4 text-center text-[12px] text-faint">Empty</p>}
+                      {items.length === 0 && <p className="rounded-xl border border-dashed border-line-strong px-2 py-5 text-center text-[12px] text-muted">No opportunities in this stage</p>}
                     </div>
                   </div>
                 );
               })}
-              {stages.length === 0 && <p className="p-6 text-[13px] text-muted">This pipeline has no stages yet.</p>}
+              {stages.length === 0 && <EmptyState compact className="w-full" icon={<KanbanSquare className="size-5" />} title="This pipeline has no stages yet" description="Stages appear here once they exist in your CRM." />}
             </div>
           </div>
         ) : (
           <div className="scrollbar-thin overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-[13.5px]">
+            <table className="workspace-table w-full min-w-[680px] text-left text-[13.5px]">
               <thead className="bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th className="px-4 py-3 font-medium">Opportunity</th>
                   <th className="px-3 py-3 font-medium">Stage</th>
                   <th className="px-3 py-3 font-medium">Status</th>
                   <th className="px-3 py-3 text-right font-medium">Value</th>
-                  <th className="px-4 py-3 font-medium">Updated</th>
+                  <th className="px-4 py-3 text-right font-medium">Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {opps.map((o) => (
-                  <tr key={o.id} onClick={() => setOpen(o)} className="cursor-pointer hover:bg-surface-2/50">
-                    <td className="px-4 py-3 font-medium">{o.name}</td>
-                    <td className="px-3 py-3 text-ink-2">{o.stage_name ?? "—"}</td>
-                    <td className="px-3 py-3">
-                      <Badge tone={STATUS_TONE[o.status] ?? "neutral"}>{sentenceCase(o.status)}</Badge>
+                  <tr key={o.id} onClick={() => setOpen(o)} className="cursor-pointer transition hover:bg-surface-2/60">
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <AvatarTile name={o.contact_label ?? o.name} size="md" />
+                        <div className="min-w-0">
+                          <p className="max-w-[280px] truncate font-semibold text-ink" title={o.name}>{o.name}</p>
+                          {o.contact_label && <p className="mt-0.5 max-w-[280px] truncate text-[12px] text-muted">{o.contact_label}</p>}
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums">{o.monetary_value ? formatCurrency(o.monetary_value) : "—"}</td>
-                    <td className="px-4 py-3 text-[12.5px] text-muted">{o.remote_updated_at ? relativeTime(o.remote_updated_at) : "—"}</td>
+                    <td className="px-3 py-3">{o.stage_name ? <InfoChip>{o.stage_name}</InfoChip> : <span className="text-faint">—</span>}</td>
+                    <td className="px-3 py-3">
+                      <StatusPill tone={STATUS_TONE[o.status] ?? "neutral"}>{sentenceCase(o.status)}</StatusPill>
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold tabular-nums">{o.monetary_value ? formatCurrency(o.monetary_value) : <span className="font-normal text-muted">No value</span>}</td>
+                    <td className="px-4 py-3 text-right text-[12.5px] tabular-nums text-muted"><span suppressHydrationWarning>{o.remote_updated_at ? relativeTime(o.remote_updated_at) : "—"}</span></td>
                   </tr>
                 ))}
                 {opps.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-[13px] text-muted">
-                      No opportunities match.
+                    <td colSpan={5}>
+                      <EmptyState compact icon={<Search className="size-5" />} title="No opportunities match" description="Try another search or status filter." />
                     </td>
                   </tr>
                 )}
@@ -198,7 +220,14 @@ export function SalesBoard({ data, canNote, canTask, canRefresh, timeZone }: { d
           </div>
         )}
       </Card>
-      <p className="text-[12px] text-faint">Read-only view of your CRM{pipeline?.synced_at ? ` · last synced ${relativeTime(pipeline.synced_at)}` : ""}.</p>
+      <p className="flex flex-wrap items-center gap-1.5">
+        <InfoChip icon={<Lock />}>Read-only view of your CRM</InfoChip>
+        {pipeline?.synced_at && (
+          <InfoChip icon={<Clock />}>
+            <span suppressHydrationWarning>Last synced {relativeTime(pipeline.synced_at)}</span>
+          </InfoChip>
+        )}
+      </p>
 
       <OpportunitySheet opp={open} onClose={() => setOpen(null)} canNote={canNote} canTask={canTask} timeZone={timeZone} />
     </div>
@@ -230,21 +259,32 @@ function OpportunitySheet({ opp, onClose, canNote, canTask, timeZone }: { opp: O
       {opp && (
         <div className="space-y-6 p-5">
           <dl className="grid grid-cols-2 gap-3 text-[13px]">
-            {[
-              ["Status", sentenceCase(opp.status)],
-              ["Value", opp.monetary_value ? formatCurrency(opp.monetary_value) : "Not set"],
-              ["Contact", opp.contact_label ?? "—"],
-              ["Source", opp.source ?? "—"],
-              ["Owner", opp.assigned_to ?? "Unassigned"],
-              ["Updated", opp.remote_updated_at ? formatDateTime(opp.remote_updated_at, timeZone) : "—"],
-            ].map(([k, v]) => (
-              <div key={k} className="rounded-xl bg-surface-2 p-3">
-                <dt className="text-[11.5px] text-muted">{k}</dt>
-                <dd className="mt-0.5 font-medium">{v}</dd>
-              </div>
-            ))}
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-[11.5px] text-muted">Status</dt>
+              <dd className="mt-1.5"><StatusPill tone={STATUS_TONE[opp.status] ?? "neutral"}>{sentenceCase(opp.status)}</StatusPill></dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-[11.5px] text-muted">Value</dt>
+              <dd className="mt-0.5 text-[18px] font-semibold tabular-nums">{opp.monetary_value ? formatCurrency(opp.monetary_value) : <span className="text-[13px] font-normal text-muted">Not set</span>}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-[11.5px] text-muted">Contact</dt>
+              <dd className="mt-0.5 break-words font-medium">{opp.contact_label ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-[11.5px] text-muted">Source</dt>
+              <dd className="mt-0.5 break-words font-medium">{opp.source ? sentenceCase(opp.source) : "—"}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-[11.5px] text-muted">Owner</dt>
+              <dd className="mt-1.5">{opp.assigned_to ? <InfoChip icon={<UserRound />}>{opp.assigned_to}</InfoChip> : <StatusPill tone="neutral" size="sm">Unassigned</StatusPill>}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-[11.5px] text-muted">Updated</dt>
+              <dd className="mt-0.5 font-medium">{opp.remote_updated_at ? formatDateTime(opp.remote_updated_at, timeZone) : "—"}</dd>
+            </div>
           </dl>
-          <p className="rounded-xl border border-line p-3 text-[12.5px] text-muted">Proposal and requirements status, stage changes and follow-up messages are managed through your AI Sales Assistant and the Approval Center.</p>
+          <p className="flex items-start gap-2.5 rounded-xl border border-line p-3 text-[12.5px] leading-relaxed text-muted"><IconTile tone="neutral" size="sm"><ShieldCheck /></IconTile><span>Proposal and requirements status, stage changes and follow-up messages are managed through your AI Sales Assistant and the Approval Center.</span></p>
           {canTask && (
             <div className="space-y-2">
               <p className="text-[13px] font-semibold">Add a follow-up task</p>
@@ -297,7 +337,7 @@ function OpportunitySheet({ opp, onClose, canNote, canTask, timeZone }: { opp: O
             {notes === null ? (
               <div className="skeleton h-12 rounded-xl" />
             ) : notes.length === 0 ? (
-              <p className="text-[13px] text-muted">No notes yet.</p>
+              <p className="rounded-xl border border-dashed border-line-strong p-4 text-center text-[13px] text-muted">No notes yet.</p>
             ) : (
               <ul className="space-y-2">
                 {notes.map((n) => (

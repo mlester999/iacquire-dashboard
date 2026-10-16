@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarPlus, CheckCircle2, Clock, Search, ShieldCheck, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarPlus, CheckCircle2, Clock, Search, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react";
 import { bookAppointmentAction, cancelBookingAction, loadSlotsAction, renewRemindersAction, savePolicyAction, searchContactsAction } from "@/app/actions/appointments";
-import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Field, Input, Select } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
+import { IconTile, Panel } from "@/components/overview/panel";
 import { Dialog, Switch } from "@/components/ui/overlays";
 import { cn, formatDate, relativeTime } from "@/lib/utils";
 import type { PendingBookingRow, BookableContact } from "@/server/appointments/overview";
@@ -172,34 +173,30 @@ export function PendingBookings({ rows, canBook }: { rows: PendingBookingRow[]; 
   const [busy, setBusy] = React.useState<string | null>(null);
   if (!rows.length) return null;
   return (
-    <Card className="xl:col-span-3">
-      <CardHeader>
-        <div>
-          <CardTitle>Waiting on you</CardTitle>
-          <CardDescription>These times are held so nobody else can take them. Nothing here is booked until your calendar shows it.</CardDescription>
-        </div>
-        <Badge tone="warning">{rows.length}</Badge>
-      </CardHeader>
-      <CardContent>
+    <Panel className="xl:col-span-3" icon={<CalendarClock />} tone="warning" accent title="Waiting on you" description="These times are held so nobody else can take them. Nothing here is booked until your calendar shows it." action={<StatusPill tone="warning">{rows.length} waiting</StatusPill>} bodyClassName="pt-2">
         <ul className="divide-y divide-line">
           {rows.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-3 py-3">
-              <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", r.status === "awaiting_approval" ? "bg-primary-soft text-primary-ink" : "bg-warning-soft text-warning-ink")}>
-                {r.status === "awaiting_approval" ? <ShieldCheck className="size-4" aria-hidden /> : <Clock className="size-4" aria-hidden />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-medium">{r.contactName} · {r.label}</p>
-                <p className="text-[12.5px] text-muted">
-                  {r.status === "awaiting_approval" ? `Your Appointment Setter proposed this ${relativeTime(r.createdAt)}. Confirm it in Approvals.` : `Add this to your calendar${r.reason ? `. ${r.reason}` : ""}`}
+            <li key={r.id} className="flex flex-wrap items-center gap-3 py-3.5">
+              <IconTile tone={r.status === "awaiting_approval" ? "primary" : "warning"}>
+                {r.status === "awaiting_approval" ? <ShieldCheck /> : <Clock />}
+              </IconTile>
+              <div className="min-w-0 flex-1 basis-60">
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] font-semibold">
+                  <span className="truncate" title={r.contactName}>{r.contactName}</span>
+                  <InfoChip icon={<Clock />}>{r.label}</InfoChip>
+                  <StatusPill tone={r.status === "awaiting_approval" ? "primary" : "warning"} size="sm">{r.status === "awaiting_approval" ? "Awaiting your approval" : "Needs a calendar entry"}</StatusPill>
+                </p>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                  {r.status === "awaiting_approval" ? <span suppressHydrationWarning>{`Your Appointment Setter proposed this ${relativeTime(r.createdAt)}. Confirm it in Approvals.`}</span> : `Add this to your calendar${r.reason ? `. ${r.reason}` : ""}`}
                 </p>
               </div>
               {r.status === "awaiting_approval" ? (
-                <Link href="/approvals" className="inline-flex h-11 items-center rounded-xl px-3 text-[13px] font-medium text-primary hover:underline sm:h-8">Review in Approvals</Link>
+                <ButtonLink href="/approvals" variant="soft" size="sm">Review in Approvals</ButtonLink>
               ) : null}
               {canBook && (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="secondary"
                   loading={busy === r.id}
                   onClick={async () => {
                     setBusy(r.id);
@@ -216,8 +213,7 @@ export function PendingBookings({ rows, canBook }: { rows: PendingBookingRow[]; 
             </li>
           ))}
         </ul>
-      </CardContent>
-    </Card>
+    </Panel>
   );
 }
 
@@ -251,15 +247,8 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
   const toggleOffset = (v: number) => setP((cur) => ({ ...cur, reminderOffsetsMinutes: cur.reminderOffsetsMinutes.includes(v) ? cur.reminderOffsetsMinutes.filter((x) => x !== v) : [...cur.reminderOffsetsMinutes, v].sort((a, b) => b - a).slice(0, 3) }));
 
   return (
-    <Card className="xl:col-span-3">
-      <CardHeader>
-        <div>
-          <CardTitle>Booking rules</CardTitle>
-          <CardDescription>How far ahead and how short a notice customers can book, and what your AI employees may do on their own.</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <Panel className="xl:col-span-3" icon={<SlidersHorizontal />} title="Booking rules" description="How far ahead and how short a notice customers can book, and what your AI employees may do on their own." bodyClassName="space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Calendar for bookings" htmlFor="rule-cal" hint={policy.calendars.length ? undefined : "No calendar is connected yet."}>
             <Select id="rule-cal" value={p.defaultCalendarId ?? ""} onChange={(e) => setP({ ...p, defaultCalendarId: e.target.value || null })} disabled={!policy.calendars.length}>
               <option value="">{policy.calendars.length === 1 ? "The connected calendar" : "Choose a calendar"}</option>
@@ -317,7 +306,7 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
                 </p>
               )}
               {policy.remindersAuthorization === "active" && policy.remindersAuthorizedUntil && (
-                <p className="flex items-center gap-2 text-[12.5px] text-muted"><CheckCircle2 className="size-3.5 text-success-ink" aria-hidden /> Permission active until {formatDate(policy.remindersAuthorizedUntil, "UTC")}.</p>
+                <p><StatusPill tone="success" size="sm" icon={<CheckCircle2 className="size-3" aria-hidden />}>Permission active until {formatDate(policy.remindersAuthorizedUntil, "UTC")}</StatusPill></p>
               )}
             </div>
           )}
@@ -334,11 +323,10 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
         </div>
 
         <div className="flex justify-end gap-2 border-t border-line pt-4">
-          <Button variant="ghost" disabled={!dirty || busy} onClick={() => setP(policy)}>Discard</Button>
+          <Button variant="secondary" disabled={!dirty || busy} onClick={() => setP(policy)}>Discard</Button>
           <Button disabled={!dirty} loading={busy} onClick={save}>Save rules</Button>
         </div>
-      </CardContent>
-    </Card>
+    </Panel>
   );
 }
 

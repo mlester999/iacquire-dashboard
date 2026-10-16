@@ -8,25 +8,31 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   Check,
-  CircleCheck,
+  Clock,
   History,
   Info,
   Lock,
   MessageSquare,
+  PlugZap,
   RotateCcw,
+  Save,
   ShieldCheck,
   Sparkles,
+  Target,
   Wand2,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { InfoChip, StatusPill } from "@/components/ui/status";
+import { IconTile, Panel } from "@/components/overview/panel";
 import { Dialog, Segmented, Switch, Tabs, Tooltip } from "@/components/ui/overlays";
 import { applyChangeAction, proposeChangeAction, rollbackAction, saveAgentSettingsAction } from "@/app/actions/workforce";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type ReplyLength, type Tone } from "@/lib/agent-settings";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
-import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
+import { cn, formatDateTime, formatNumber, relativeTime, sentenceCase } from "@/lib/utils";
 import { PageHero,MetricCard } from "@/components/ui/workspace";
 import { OperatingModeCard,type AgentMode } from "@/components/workforce/operating-controls";
 
@@ -91,6 +97,21 @@ const TOOL_COPY: Record<string, string> = {
   "analytics.read": "Read workspace analytics",
 };
 
+/** A card header with an icon tile, so every settings card has the same structure. */
+function CardHead({ icon, tone = "primary", title, description }: { icon: React.ReactNode; tone?: "primary" | "violet" | "success" | "warning" | "neutral"; title: React.ReactNode; description?: React.ReactNode }) {
+  return (
+    <CardHeader>
+      <div className="flex min-w-0 items-start gap-3">
+        <IconTile tone={tone}>{icon}</IconTile>
+        <div className="min-w-0">
+          <CardTitle>{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+      </div>
+    </CardHeader>
+  );
+}
+
 export function EmployeeDetail(props: Props) {
   const { meta, agent } = props;
   const reduced=useReducedMotion();
@@ -109,17 +130,19 @@ export function EmployeeDetail(props: Props) {
   ];
   return (
     <div className="space-y-6">
-      <Link href="/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+      <Link href="/workforce" className="-ml-2.5 inline-flex min-h-10 items-center gap-1.5 rounded-xl px-2.5 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink">
         <ArrowLeft className="size-3.5" /> AI Workforce
       </Link>
-      <PageHero eyebrow={meta.name} title={agent.displayName} description={props.description} tone="neutral" aside={<div className="flex items-center gap-4 rounded-2xl border border-line bg-surface/70 p-5"><AgentAvatar role={meta} size="xl"/><div><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Dedicated identity</p><p className="mt-2 text-[14px] font-semibold">{meta.shortName}</p><p className="mt-1 text-[12px] text-muted">Private company workspace</p></div></div>} action={<>
+      <PageHero eyebrow={meta.name} title={agent.displayName} description={props.description} tone="neutral" aside={<div className="flex items-center gap-4 rounded-2xl border border-line bg-surface/70 p-5"><AgentAvatar role={meta} size="xl"/><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Dedicated identity</p><p className="mt-2 text-[14px] font-semibold">{meta.shortName}</p><InfoChip icon={<Lock />} className="mt-2">Private workspace</InfoChip></div></div>} action={<>
+          <div className="flex flex-wrap items-center gap-2 self-center">
               <AgentStatusBadge status={agent.enabled?agent.status:"disabled"} />
-              <span className="text-muted">{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured yet"}</span>
-              {agent.lastHealthCheckAt && <span className="text-faint" suppressHydrationWarning>Checked {relativeTime(agent.lastHealthCheckAt)}</span>}
+              <InfoChip icon={<History />}>{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured yet"}</InfoChip>
+              {agent.lastHealthCheckAt && <InfoChip icon={<Clock />}><span suppressHydrationWarning>Checked {relativeTime(agent.lastHealthCheckAt)}</span></InfoChip>}
+          </div>
           {props.canChat && (ready?<ButtonLink href={`/chat/${meta.slug}`} variant="brand"><MessageSquare className="size-4"/>Start a chat</ButtonLink>:<Button disabled variant="secondary"><MessageSquare className="size-4"/>Chat unavailable</Button>)}
         </>}/>
 
-      <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="Configuration versions" value={props.versions.length} detail="Saved changes remain available in history." icon={<History className="size-4"/>} tone="blue"/><MetricCard label="Recorded runs" value={props.runs.length} detail="Activity from this employee's saved run history." icon={<Sparkles className="size-4"/>} tone="violet"/><MetricCard label="Awaiting approval" value={props.pendingApprovals} detail="Customer-facing actions stay under your control." icon={<ShieldCheck className="size-4"/>} tone="amber" href="/approvals"/></div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><MetricCard label="Configuration versions" value={props.versions.length} detail="Saved changes remain available in history." icon={<History className="size-4"/>} tone="blue"/><MetricCard label="Recorded runs" value={props.runs.length} detail="Activity from this employee's saved run history." icon={<Sparkles className="size-4"/>} tone="violet"/><MetricCard label="Awaiting approval" value={props.pendingApprovals} detail="Customer-facing actions stay under your control." icon={<ShieldCheck className="size-4"/>} tone="amber" href="/approvals"/></div>
 
       <Tabs id="employee-tabs" value={tab} onValueChange={setTab} items={items}>
 
@@ -145,82 +168,70 @@ export function EmployeeDetail(props: Props) {
 function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals, timeZone, meta }: Props) {
   const online = agent.enabled&&(agent.status === "online" || agent.status === "busy");
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Card className="surface-tint lg:col-span-2">
-        <CardHeader>
-          <div>
-            <CardTitle>How {agent.displayName} works for you</CardTitle>
-            <CardDescription>Generated from your answers. Edit it any time in Configure.</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <p className="rounded-xl border border-line bg-surface-2/60 p-4 text-[14px] leading-relaxed text-ink">{agent.summary ?? `${meta.shortName} hasn't been configured yet.`}</p>
-          <div>
-            <p className="mb-2 text-[13px] font-semibold">Capabilities</p>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {capabilities.map((c) => (
-                <li key={c} className="flex items-start gap-2 text-[13px] text-ink-2">
-                  <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" /> {c}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="mb-2 text-[13px] font-semibold">Tool permissions</p>
-            <ul className="space-y-1.5">
-              {agent.defaultTools.map((t) => (
-                <li key={t} className="flex items-center gap-2 text-[13px] text-ink-2">
-                  <Lock className="size-3.5 text-faint" /> {TOOL_COPY[t] ?? t}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-[12px] text-muted">Tools are granted by iAcquire. You can switch tools off in Configure, but never add new ones from here.</p>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <Panel className="surface-tint lg:col-span-2" icon={<Sparkles />} tone="violet" title={`How ${agent.displayName} works for you`} description="Generated from your answers. Edit it any time in Configure." bodyClassName="space-y-6">
+        <p className="rounded-xl border border-line bg-surface/80 p-4 text-[14px] leading-relaxed text-ink">{agent.summary ?? `${meta.shortName} hasn't been configured yet.`}</p>
+        <div>
+          <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Capabilities</p>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {capabilities.map((c) => (
+              <li key={c} className="flex items-start gap-2.5 rounded-xl bg-surface/80 px-3 py-2.5 text-[13px] leading-snug text-ink-2 ring-1 ring-inset ring-line">
+                <IconTile tone="success" size="sm"><Check /></IconTile>
+                <span className="min-w-0 pt-0.5">{c}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Tool permissions</p>
+          <ul className="space-y-1.5">
+            {agent.defaultTools.map((t) => (
+              <li key={t} className="flex items-center gap-2.5 rounded-xl bg-surface/80 px-3 py-2 text-[13px] text-ink-2 ring-1 ring-inset ring-line">
+                <IconTile tone="neutral" size="sm"><Lock /></IconTile>
+                <span className="min-w-0">{TOOL_COPY[t] ?? t}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2.5 text-[12px] leading-relaxed text-muted">Tools are granted by iAcquire. You can switch tools off in Configure, but never add new ones from here.</p>
+        </div>
+      </Panel>
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Connection</CardTitle>
-              <CardDescription>Latest recorded connection check.</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2.5 text-[13px]">
+        <Panel icon={<PlugZap />} tone={online ? "success" : agent.enabled ? "warning" : "neutral"} title="Connection" description="Latest recorded connection check.">
+          <div className="space-y-3 text-[13px]">
             <AgentStatusBadge status={agent.enabled?agent.status:"disabled"} />
-            <p className="text-muted">
+            <p className="leading-relaxed text-muted">
               {!agent.enabled?"This employee is not included in your package.":online
                 ? "Running in its own private, secured environment."
                 : agent.status === "setup_required" || agent.status === "provisioning"
                   ? "iAcquire is preparing a dedicated, isolated environment for this employee."
                   : (agent.lastHealthDetail ?? "The last check didn't succeed.")}
             </p>
-            {agent.lastHealthCheckAt && <p className="text-[12px] text-faint">Last checked {formatDateTime(agent.lastHealthCheckAt, timeZone)}</p>}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Safeguards</CardTitle>
-              <CardDescription>These always apply and can&apos;t be changed by instructions.</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2 text-[13px] text-ink-2">
+            {agent.lastHealthCheckAt && <InfoChip icon={<Clock />}>Last checked {formatDateTime(agent.lastHealthCheckAt, timeZone)}</InfoChip>}
+          </div>
+        </Panel>
+        <Panel icon={<ShieldCheck />} title="Safeguards" description="These always apply and can't be changed by instructions." bodyClassName="space-y-3">
+          <ul className="space-y-2 text-[13px] text-ink-2">
             {["Customer-facing actions wait for your approval", "Never invents bookings, prices or results", "Only works with your company's data", "Can't grant itself new tools or access"].map((s) => (
-              <p key={s} className="flex items-start gap-2">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /> {s}
-              </p>
+              <li key={s} className="flex items-start gap-2.5">
+                <IconTile tone="primary" size="sm"><ShieldCheck /></IconTile>
+                <span className="pt-0.5 leading-snug">{s}</span>
+              </li>
             ))}
-            <div className="mt-3 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
-              Pending approvals: <span className="font-semibold text-ink">{pendingApprovals}</span> ·{" "}
-              <Link href="/approvals" className="text-primary hover:underline">
-                Approval Center
-              </Link>
-              <br />
-              Knowledge last applied: <span suppressHydrationWarning>{knowledgeAppliedAt ? relativeTime(knowledgeAppliedAt) : "not yet"}</span>
+          </ul>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Link href="/approvals" className="group rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line transition hover:bg-surface-2 hover:ring-line-strong">
+              <p className="text-[11.5px] text-muted">Pending approvals</p>
+              <p className="mt-1 flex items-center gap-2 text-[20px] font-semibold leading-none tabular-nums text-ink">
+                {pendingApprovals}
+                {pendingApprovals > 0 && <StatusPill tone="warning" size="sm">Review</StatusPill>}
+              </p>
+            </Link>
+            <div className="rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line">
+              <p className="text-[11.5px] text-muted">Knowledge applied</p>
+              <p className="mt-1 text-[13px] font-medium text-ink" suppressHydrationWarning>{knowledgeAppliedAt ? relativeTime(knowledgeAppliedAt) : "Not yet"}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       </div>
     </div>
   );
@@ -245,22 +256,17 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
         <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Communication</CardTitle>
-              <CardDescription>How {agent.displayName} sounds.</CardDescription>
-            </div>
-          </CardHeader>
+          <CardHead icon={<MessageSquare />} tone="primary" title="Communication" description={<>How {agent.displayName} sounds.</>} />
           <CardContent className="space-y-5">
             <Field label="Name" htmlFor="cfg-name" hint="What your team calls this employee.">
               <Input id="cfg-name" value={s.displayName} maxLength={40} onChange={(e) => set("displayName", e.target.value)} />
             </Field>
             <div>
               <p className="mb-2 text-[13px] font-medium text-ink-2">Tone</p>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {TONES.map((t: Tone) => (
                   <button
                     key={t}
@@ -270,7 +276,7 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
                     className={cn("rounded-xl border p-3 text-left transition", s.tone === t ? "border-primary bg-primary-soft/50 ring-2 ring-primary/20" : "border-line hover:border-line-strong")}
                   >
                     <span className="flex items-center justify-between text-[13.5px] font-semibold">
-                      {TONE_COPY[t].label} {s.tone === t && <Check className="size-4 text-primary" />}
+                      {TONE_COPY[t].label} {s.tone === t && <StatusPill tone="primary" size="sm" dot={false} icon={<Check className="size-3" />}>Selected</StatusPill>}
                     </span>
                     <span className="mt-1 block text-[12.5px] italic text-muted">“{TONE_COPY[t].example}”</span>
                   </button>
@@ -301,12 +307,7 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
         </Card>
 
         <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Role &amp; business focus</CardTitle>
-              <CardDescription>Short answers are perfect. Leave anything blank to use sensible defaults.</CardDescription>
-            </div>
-          </CardHeader>
+          <CardHead icon={<Target />} tone="violet" title="Role & business focus" description={<>Short answers are perfect. Leave anything blank to use sensible defaults.</>} />
           <CardContent className="space-y-4">
             {meta.questions.map((q) => (
               <Field key={q.id} label={q.label} htmlFor={`cfg-q-${q.id}`} optional>
@@ -329,12 +330,7 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
         </Card>
 
         <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Rules &amp; escalation</CardTitle>
-              <CardDescription>Boundaries for {agent.displayName}.</CardDescription>
-            </div>
-          </CardHeader>
+          <CardHead icon={<ShieldCheck />} tone="primary" title="Rules & escalation" description={<>Boundaries for {agent.displayName}.</>} />
           <CardContent className="space-y-4">
             <Field label="Company rules" htmlFor="cfg-rules" optional>
               <Textarea id="cfg-rules" rows={2} maxLength={1500} value={s.companyRules} onChange={(e) => set("companyRules", e.target.value)} placeholder="e.g. Never discuss competitors by name" />
@@ -342,7 +338,7 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
             <Field label="Never promise" htmlFor="cfg-never" optional>
               <Textarea id="cfg-never" rows={2} maxLength={1000} value={s.neverPromise} onChange={(e) => set("neverPromise", e.target.value)} placeholder="e.g. Same-day service, exact prices before an inspection" />
             </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Ask a human when…" htmlFor="cfg-esc" optional>
                 <Input id="cfg-esc" maxLength={600} value={s.escalateWhen} onChange={(e) => set("escalateWhen", e.target.value)} placeholder="a customer is upset" />
               </Field>
@@ -361,12 +357,7 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
         </Card>
 
         <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Allowed actions</CardTitle>
-              <CardDescription>Switch off anything you don&apos;t want {agent.displayName} to use.</CardDescription>
-            </div>
-          </CardHeader>
+          <CardHead icon={<Wrench />} tone="neutral" title="Allowed actions" description={<>Switch off anything you don&apos;t want {agent.displayName} to use.</>} />
           <CardContent className="divide-y divide-line">
             {agent.defaultTools.map((t) => {
               const on = !s.disabledTools.includes(t);
@@ -382,12 +373,7 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
       </div>
       <div className="lg:sticky lg:top-24 lg:self-start">
         <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Save changes</CardTitle>
-              <CardDescription>Creates a new version you can roll back.</CardDescription>
-            </div>
-          </CardHeader>
+          <CardHead icon={<Save />} title="Save changes" description="Creates a new version you can roll back." />
           <CardContent className="space-y-3">
             <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">
               <Info className="mt-0.5 size-3.5 shrink-0" /> Your answers are kept separate from iAcquire&apos;s safety rules, so they can never change what the employee is allowed to do.
@@ -435,14 +421,7 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
 
   return (
     <Card className="max-w-3xl">
-      <CardHeader>
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Wand2 className="size-4 text-violet" /> Describe a change in plain English
-          </CardTitle>
-          <CardDescription>We&apos;ll show exactly what will change before anything is applied.</CardDescription>
-        </div>
-      </CardHeader>
+      <CardHead icon={<Wand2 />} tone="violet" title="Describe a change in plain English" description="We'll show exactly what will change before anything is applied." />
       <CardContent className="space-y-4">
         <label htmlFor="change-text" className="sr-only">
           Change request
@@ -450,7 +429,7 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
         <Textarea id="change-text" rows={3} maxLength={1000} value={text} onChange={(e) => { setText(e.target.value); setProposal(null); }} placeholder={`e.g. ${examples[0]}`} />
         <div className="flex flex-wrap gap-2">
           {examples.map((e) => (
-            <button key={e} type="button" onClick={() => { setText(e); setProposal(null); }} className="rounded-full border border-line bg-surface px-3 py-1 text-[12.5px] text-ink-2 transition hover:border-primary/30 hover:text-ink">
+            <button key={e} type="button" onClick={() => { setText(e); setProposal(null); }} className="min-h-9 rounded-full border border-line bg-surface px-3.5 py-1 text-[12.5px] text-ink-2 transition hover:border-primary/30 hover:bg-primary-soft/40 hover:text-ink">
               {e}
             </button>
           ))}
@@ -462,7 +441,7 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
           {proposal && (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-2xl border border-line bg-surface-2/60 p-4">
               {proposal.status === "refused" ? (
-                <p className="flex items-start gap-2 text-[13.5px] text-warning-ink">
+                <p className="flex items-start gap-2.5 rounded-xl bg-warning-soft p-3 text-[13.5px] text-warning-ink">
                   <XCircle className="mt-0.5 size-4 shrink-0" /> {proposal.refusal}
                 </p>
               ) : proposal.status === "no_change" ? (
@@ -499,17 +478,10 @@ function HistoryTab({ meta, versions, timeZone }: Props) {
   const router = useRouter();
   const [confirm, setConfirm] = React.useState<Version | null>(null);
   const [pending, setPending] = React.useState(false);
-  if (!versions.length) return <Card><CardContent className="py-12 text-center text-[13.5px] text-muted">No configuration versions yet.</CardContent></Card>;
+  if (!versions.length) return <Card><EmptyState icon={<History className="size-5" />} title="No configuration versions yet" description="Every saved change to how this employee works is kept here, so you can always go back." /></Card>;
   return (
     <Card>
-      <CardHeader>
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <History className="size-4" /> Version history
-          </CardTitle>
-          <CardDescription>Every change is kept. Restoring an older version creates a new one.</CardDescription>
-        </div>
-      </CardHeader>
+      <CardHead icon={<History />} tone="neutral" title="Version history" description="Every change is kept. Restoring an older version creates a new one." />
       <CardContent>
         <ol className="relative space-y-5 border-l border-line pl-5">
           {versions.map((v) => (
@@ -517,18 +489,18 @@ function HistoryTab({ meta, versions, timeZone }: Props) {
               <span className={cn("absolute -left-[26px] top-1 size-3 rounded-full ring-4 ring-surface", v.status === "applied" ? "bg-success" : v.status === "pending_agency_review" ? "bg-warning" : v.status === "rejected" ? "bg-danger" : "bg-surface-3")} />
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[14px] font-semibold">v{v.version}</span>
-                <Badge tone={v.status === "applied" ? "success" : v.status === "pending_agency_review" ? "warning" : v.status === "rejected" ? "danger" : "neutral"}>
+                <StatusPill tone={v.status === "applied" ? "success" : v.status === "pending_agency_review" ? "warning" : v.status === "rejected" ? "danger" : "neutral"}>
                   {v.status === "applied" ? "Active" : v.status === "pending_agency_review" ? "Awaiting iAcquire review" : sentenceCase(v.status)}
-                </Badge>
-                <span className="text-[12px] text-muted">
-                  {sentenceCase(v.source)} · {v.created_by_name ?? "System"} · {formatDateTime(v.created_at, timeZone)}
-                </span>
+                </StatusPill>
+                <InfoChip>{sentenceCase(v.source)}</InfoChip>
+                <InfoChip>{v.created_by_name ?? "System"}</InfoChip>
+                <InfoChip icon={<Clock />}>{formatDateTime(v.created_at, timeZone)}</InfoChip>
               </div>
               {v.change_request && <p className="mt-1 text-[13px] italic text-ink-2">“{v.change_request}”</p>}
               <p className="mt-1 text-[13px] leading-relaxed text-muted">{v.summary}</p>
               {v.status === "superseded" && (
                 <Tooltip content="Creates a new version with these settings">
-                  <Button size="sm" variant="ghost" className="mt-1 -ml-2" onClick={() => setConfirm(v)}>
+                  <Button size="sm" variant="secondary" className="mt-2" onClick={() => setConfirm(v)}>
                     <RotateCcw className="size-3.5" /> Restore
                   </Button>
                 </Tooltip>
@@ -571,11 +543,11 @@ function HistoryTab({ meta, versions, timeZone }: Props) {
 }
 
 function ActivityTab({ runs, timeZone,meta,agent,canChat:canUse }: Props) {
-  if (!runs.length) return <Card className="surface-tint"><CardContent className="flex flex-col items-start gap-4 py-7 sm:flex-row sm:items-center"><AgentAvatar role={meta} size="lg"/><div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-[.15em] text-primary">Employee activity</p><h3 className="mt-2 text-[19px] font-semibold tracking-tight">No recorded runs yet</h3><p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted">Conversations and tool activity appear here after {agent.displayName} starts working. This view only shows saved run records.</p></div>{canUse&&<ButtonLink href={agent.enabled&&canChat(agent.status)?`/chat/${meta.slug}`:"/setup"} variant="secondary">{agent.enabled&&canChat(agent.status)?"Open chat":"Review setup"}</ButtonLink>}</CardContent></Card>;
+  if (!runs.length) return <Card className="surface-tint"><CardContent className="flex flex-col items-start gap-4 py-7 sm:flex-row sm:items-center"><AgentAvatar role={meta} size="lg"/><div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-[.15em] text-primary-ink">Employee activity</p><h3 className="mt-2 text-[19px] font-semibold tracking-tight">No recorded runs yet</h3><p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted">Conversations and tool activity appear here after {agent.displayName} starts working. This view only shows saved run records.</p></div>{canUse&&<ButtonLink href={agent.enabled&&canChat(agent.status)?`/chat/${meta.slug}`:"/setup"} variant="secondary">{agent.enabled&&canChat(agent.status)?"Open chat":"Review setup"}</ButtonLink>}</CardContent></Card>;
   return (
     <Card className="overflow-hidden">
       <div className="scrollbar-thin overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-[13px]">
+        <table className="workspace-table w-full min-w-[640px] text-left text-[13px]">
           <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
             <tr>
               <th className="px-5 py-3 font-medium">Started</th>
@@ -589,13 +561,13 @@ function ActivityTab({ runs, timeZone,meta,agent,canChat:canUse }: Props) {
             {runs.map((r) => (
               <tr key={r.id}>
                 <td className="px-5 py-2.5">{formatDateTime(r.started_at, timeZone)}</td>
-                <td className="px-3 py-2.5">{r.purpose === "lead_research" ? "Lead research" : "Conversation"}</td>
+                <td className="px-3 py-2.5"><InfoChip>{r.purpose === "lead_research" ? "Lead research" : "Conversation"}</InfoChip></td>
                 <td className="px-3 py-2.5">
-                  <Badge tone={r.status === "completed" ? "success" : r.status === "cancelled" ? "neutral" : r.status === "running" ? "primary" : "danger"}>{sentenceCase(r.status)}</Badge>
-                  {r.error_message && <span className="ml-2 text-[12px] text-muted">{r.error_message}</span>}
+                  <StatusPill tone={r.status === "completed" ? "success" : r.status === "cancelled" ? "neutral" : r.status === "running" || r.status === "queued" ? "primary" : "danger"}>{sentenceCase(r.status)}</StatusPill>
+                  {r.error_message && <span className="ml-2 inline-block max-w-[260px] truncate align-middle text-[12px] text-muted" title={r.error_message}>{r.error_message}</span>}
                 </td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{r.tools}</td>
-                <td className="px-5 py-2.5 text-right tabular-nums">{r.total_tokens ?? "—"}</td>
+                <td className="px-5 py-2.5 text-right tabular-nums">{r.total_tokens === null ? "—" : formatNumber(r.total_tokens)}</td>
               </tr>
             ))}
           </tbody>

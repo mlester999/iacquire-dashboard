@@ -3,7 +3,8 @@ import { Globe, Plus } from "lucide-react";
 import { requireAgency } from "@/server/tenancy/context";
 import { listManagedWebsites, managedClients } from "@/server/websites/admin";
 import { roleHasPermission } from "@/lib/permissions";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui/primitives";
+import { AvatarTile } from "@/components/ui/status";
 import { PageHero } from "@/components/ui/workspace";
 import { WebsitesTable } from "@/components/website/admin/websites-table";
 
@@ -27,8 +28,8 @@ export default async function ClientWebsitesPage() {
             <ul className="flex flex-wrap gap-2">
               {without.map((c) => (
                 <li key={c.id}>
-                  <Link href={`/admin/website-studio/websites/${c.id}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 shadow-soft hover:border-line-strong hover:bg-surface-2">
-                    <Plus className="size-3.5 text-primary" aria-hidden /> {c.name}
+                  <Link href={`/admin/website-studio/websites/${c.id}`} className="group inline-flex h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface py-1 pl-1.5 pr-3 text-[13px] font-medium text-ink shadow-soft transition-colors hover:border-primary/40 hover:bg-surface-2">
+                    <AvatarTile name={c.name} size="sm" /> <span className="truncate" title={c.name}>{c.name}</span> <Plus className="size-3.5 shrink-0 text-primary transition-transform group-hover:rotate-90" aria-hidden />
                   </Link>
                 </li>
               ))}
@@ -37,7 +38,7 @@ export default async function ClientWebsitesPage() {
         </Card>
       )}
       {sites.length === 0 ? (
-        <Card className="px-6 py-14 text-center"><p className="text-[15px] font-semibold">No client websites yet</p><p className="mt-1 text-[13px] text-muted">Create the first one from a client above.</p></Card>
+        <Card><EmptyState icon={<Globe className="size-5" />} title="No client websites yet" description="Create the first one from a client above." /></Card>
       ) : (
         <WebsitesTable sites={JSON.parse(JSON.stringify(sites))} timeZone={user.timezone} canEdit={canEdit} />
       )}

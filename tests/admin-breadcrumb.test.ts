@@ -8,6 +8,9 @@ describe("agency route breadcrumbs", () => {
     expect(adminDetailLabel("/admin/website-studio/websites/org-id/edit")).toBe("Website Editor");
     expect(adminDetailLabel("/admin/website-studio/domains")).toBe("Domains & Hosting");
     expect(adminDetailLabel("/admin/clients/org-id")).toBe("Client detail");
+    expect(adminDetailLabel("/admin/support/ticket-id")).toBe("Ticket");
+    expect(adminDetailLabel("/admin/projects/project-id")).toBe("Project");
+    expect(adminDetailLabel("/admin/clients")).toBeNull();
     expect(adminDetailLabel("/admin/website-studio")).toBeNull();
   });
 });

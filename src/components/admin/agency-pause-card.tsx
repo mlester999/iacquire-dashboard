@@ -6,6 +6,9 @@ import { toast } from "sonner";
 import { OctagonAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
+import { IconTile } from "@/components/admin/setup/ui";
+import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/overlays";
 import { setAgencyPauseAction } from "@/app/actions/automation";
 
@@ -31,12 +34,22 @@ export function AgencyPauseCard({ orgId, clientName, paused, canLift }: { orgId:
   }
 
   return (
-    <section aria-label="Emergency pause" className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${paused ? "border-danger/40 bg-danger-soft/60" : "border-line bg-surface"}`}>
-      <div className="flex items-start gap-3">
-        <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${paused ? "bg-danger/15 text-danger-ink" : "bg-surface-2 text-ink-2"}`}>{paused ? <OctagonAlert className="size-4" /> : <ShieldCheck className="size-4" />}</span>
-        <div>
-          <h2 className="text-[14px] font-semibold tracking-tight">{paused ? "Emergency pause is active" : "Automation pause is off"}</h2>
-          <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-muted">
+    <section
+      aria-label="Emergency pause"
+      className={cn(
+        "relative flex flex-col gap-4 overflow-hidden rounded-2xl border p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:p-5",
+        paused ? "border-danger/40 bg-danger-soft/60" : "border-line bg-surface",
+      )}
+    >
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", paused ? "bg-danger" : "bg-success/70")} />
+      <div className="flex min-w-0 items-start gap-3.5 pl-1">
+        <IconTile icon={paused ? <OctagonAlert /> : <ShieldCheck />} tone={paused ? "danger" : "success"} />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-[14.5px] font-semibold tracking-tight text-ink">{paused ? "Emergency pause is active" : "Automation pause is off"}</h2>
+            <StatusPill tone={paused ? "danger" : "success"} size="sm">{paused ? "Automation paused" : "Automation running"}</StatusPill>
+          </div>
+          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-muted">
             {paused
               ? "Customer messages, follow-ups and autonomous jobs for this client are blocked on the server. Client records remain available. Only a super admin can lift this pause."
               : "No emergency pause is recorded. Integration verification and activation approval still determine whether automation can run. An emergency pause blocks sends, including queued ones, and notifies the client's owner and managers."}
@@ -44,12 +57,12 @@ export function AgencyPauseCard({ orgId, clientName, paused, canLift }: { orgId:
         </div>
       </div>
       {paused ? (
-        <Button variant="secondary" size="sm" disabled={!canLift} onClick={() => submit(false)} loading={busy} title={canLift ? undefined : "Only a super admin can lift an emergency pause"}>
+        <Button variant="secondary" size="sm" className="shrink-0" disabled={!canLift} onClick={() => submit(false)} loading={busy} title={canLift ? undefined : "Only a super admin can lift an emergency pause"}>
           Lift emergency pause
         </Button>
       ) : (
-        <Button variant="danger" size="sm" onClick={() => setOpen(true)}>
-          Emergency pause
+        <Button variant="danger" size="sm" className="shrink-0" onClick={() => setOpen(true)}>
+          <OctagonAlert className="size-4" /> Emergency pause
         </Button>
       )}
       <Dialog

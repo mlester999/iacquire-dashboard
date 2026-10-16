@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
+import { AvatarTile, StatusPill } from "@/components/ui/status";
 import { CLIENT_NAV } from "@/components/shell/sidebar";
 import { useTheme } from "@/components/providers";
 import { useShell } from "@/components/shell/shell-context";
@@ -262,10 +263,14 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
             </button>
           </MenuTrigger>
           <MenuContent className="w-64">
-            <div className="px-2.5 py-2">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{shell.user.name}</p>
-              <p className="truncate text-[12px] text-muted">{shell.user.email}</p>
+            <div className="flex items-center gap-2.5 px-2.5 py-2">
+              <AvatarTile name={shell.user.name} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-semibold text-ink" title={shell.user.name}>{shell.user.name}</p>
+                <p className="truncate text-[12px] text-muted" title={shell.user.email}>{shell.user.email}</p>
+              </div>
             </div>
+            <div className="px-2.5 pb-2"><StatusPill tone="primary" size="sm" className="capitalize">{shell.org.role.replaceAll("_", " ")}</StatusPill></div>
             <MenuSeparator />
             <MenuItem onSelect={() => router.push("/settings/security")}>
               <UserRound className="size-4" /> Account &amp; security

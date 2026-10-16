@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquare, Check, RotateCcw } from "lucide-react";
+import { MessageSquare, Check, RotateCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/primitives";
+import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { useStudioApi } from "@/components/website/studio/studio-api";
 import type { SiteContent } from "@/lib/website/doc";
 import { describeNode, findNode } from "@/lib/website/ops";
@@ -70,10 +72,17 @@ export function CommentsPanel({ doc, selection, pageSlug, onJump, active }: { do
             <MessageSquare className="size-3 shrink-0" aria-hidden /> <span className="truncate">{here ? `On: ${describeNode(doc, c.nodeId)}` : "On something that has since been removed"}</span>
           </button>
         )}
-        <p className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 text-[11px] text-muted">
-          <span>{c.authorName ?? "Someone"} · {c.authorKind === "agency" ? "iAcquire" : "Your team"} · {relativeTime(c.createdAt)}</span>
-          <button type="button" onClick={() => void resolve(c)} className="inline-flex items-center gap-1 font-medium text-primary-ink hover:underline">{c.resolvedAt ? <><RotateCcw className="size-3" aria-hidden /> Reopen</> : <><Check className="size-3" aria-hidden /> Resolve</>}</button>
-        </p>
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-line pt-2.5 text-[11px] text-muted">
+          <span className="flex min-w-0 items-center gap-2">
+            <AvatarTile name={c.authorName ?? "Someone"} size="sm" />
+            <span className="min-w-0">
+              <span className="block truncate text-[12px] font-medium text-ink">{c.authorName ?? "Someone"}</span>
+              <span className="block">{relativeTime(c.createdAt)}</span>
+            </span>
+            <StatusPill size="sm" tone={c.authorKind === "agency" ? "primary" : "neutral"}>{c.authorKind === "agency" ? "iAcquire" : "Your team"}</StatusPill>
+          </span>
+          <button type="button" onClick={() => void resolve(c)} className="inline-flex h-7 items-center gap-1 rounded-lg px-2 font-medium text-primary-ink hover:bg-primary-soft">{c.resolvedAt ? <><RotateCcw className="size-3" aria-hidden /> Reopen</> : <><Check className="size-3" aria-hidden /> Resolve</>}</button>
+        </div>
       </li>
     );
   };
@@ -91,12 +100,12 @@ export function CommentsPanel({ doc, selection, pageSlug, onJump, active }: { do
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {error && <p role="alert" className="rounded-lg bg-danger-soft p-2.5 text-[12px] text-danger-ink">{error}</p>}
-        {!list && !error && <p className="text-[12px] text-muted" role="status">Loading comments…</p>}
-        {list && list.length === 0 && <p className="py-6 text-center text-[12.5px] leading-relaxed text-muted">No comments yet. Notes from iAcquire and your team appear here.</p>}
+        {!list && !error && <p className="flex items-center justify-center gap-2 rounded-xl bg-surface-2 py-6 text-[12px] text-muted" role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Loading comments…</p>}
+        {list && list.length === 0 && <EmptyState compact icon={<MessageSquare className="size-5" />} title="No comments yet" description="Notes from iAcquire and your team appear here." />}
         {open.length > 0 && <ul className="space-y-2" aria-label="Open comments">{open.map(row)}</ul>}
         {done.length > 0 && (
           <details className="pt-2">
-            <summary className="cursor-pointer text-[12px] font-medium text-muted">Resolved · {done.length}</summary>
+            <summary className="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-muted">Resolved <InfoChip>{done.length}</InfoChip></summary>
             <ul className="mt-2 space-y-2">{done.map(row)}</ul>
           </details>
         )}

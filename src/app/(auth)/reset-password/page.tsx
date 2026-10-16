@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { KeyRound } from "lucide-react";
+import { ButtonLink } from "@/components/ui/button";
 import { usingSupabaseAuth } from "@/server/auth/provider";
 import { supabaseRecoverySessionActive } from "@/server/auth/supabase";
 import { AuthHeading, ResetPasswordForm } from "@/components/auth/forms";
@@ -11,15 +12,18 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   const ready = usingSupabaseAuth() ? await supabaseRecoverySessionActive() : Boolean(token);
   if (!ready) {
     return (
-      <>
+      <div className="text-center">
+        <div className="mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl bg-warning-soft text-warning-ink">
+          <KeyRound className="size-7" />
+        </div>
         <AuthHeading
           title={usingSupabaseAuth() ? "Reset link expired" : "Link missing"}
           description={usingSupabaseAuth() ? "Reset sessions only last a few minutes. Request a new link to continue." : "This page needs the reset link from your email."}
         />
-        <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+        <ButtonLink href="/forgot-password" variant="brand" size="lg" className="w-full">
           Request a new reset link
-        </Link>
-      </>
+        </ButtonLink>
+      </div>
     );
   }
   return (

@@ -2,8 +2,11 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { Eye, ShieldCheck, UserCog } from "lucide-react";
 import { Switch } from "@/components/ui/overlays";
-import { STATUS_LABEL, type AgencyEventView, type AgencySetupSnapshot, type AgencyTaskView, type CompletionMode } from "@/lib/setup";
+import { StatusPill, type StatusTone } from "@/components/ui/status";
+import { STATUS_TONE } from "@/components/setup/status";
+import { CLIENT_STATUS_LABEL, STATUS_LABEL, type AgencyEventView, type AgencySetupSnapshot, type AgencyTaskView, type CheckStatus, type CompletionMode, type TaskStatus } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 
 export type ActResult = { ok: true; data?: unknown } | { ok: false; error: string };
@@ -44,20 +47,45 @@ export const MODE_LABEL: Record<CompletionMode, string> = {
   activation: "Final approval",
 };
 
+/** A leading icon per completion mode, so "System check" and "Manual" read at a glance. */
+export const MODE_ICON: Record<CompletionMode, React.ReactNode> = {
+  manual: <UserCog />,
+  verified: <ShieldCheck />,
+  activation: <Eye />,
+};
+
+/** How a connection check reads in a pill: one vocabulary for the manager, the drawer and the activation dialog. */
+export const CHECK_STATUS: Record<CheckStatus, { label: string; tone: StatusTone }> = {
+  verified: { label: "Verified", tone: "success" },
+  attested: { label: "Attested by agency", tone: "violet" },
+  failed: { label: "Failing", tone: "danger" },
+  unverified: { label: "Not verified", tone: "neutral" },
+};
+
+/** The task status as a tinted pill with a state dot. Tone comes from the shared setup status map; the label never relies on colour alone. */
+export function TaskStatusPill({ status, audience = "agency", size = "md", className }: { status: TaskStatus; audience?: "agency" | "client"; size?: "sm" | "md"; className?: string }) {
+  return (
+    <StatusPill tone={STATUS_TONE[status]} size={size} className={className}>
+      {(audience === "client" ? CLIENT_STATUS_LABEL : STATUS_LABEL)[status]}
+    </StatusPill>
+  );
+}
+
 export const MODE_HINT: Record<CompletionMode, string> = {
   manual: "Staff mark this complete.",
   verified: "Only a passing system check completes this. An agency attestation records evidence for review.",
   activation: "Completed only by approving activation.",
 };
 
-export function CheckRow({ id, label, hint, checked, onChange, disabled }: { id: string; label: React.ReactNode; hint?: React.ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function CheckRow({ id, label, hint, trailing, checked, onChange, disabled }: { id: string; label: React.ReactNode; hint?: React.ReactNode; /** A status pill or chip pinned to the right. */ trailing?: React.ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <label htmlFor={id} className={cn("flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition hover:border-line-strong", disabled && "cursor-not-allowed opacity-60")}>
+    <label htmlFor={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border bg-surface px-3 py-2.5 transition hover:border-line-strong", checked ? "border-primary/35 bg-primary-soft/30" : "border-line", disabled && "cursor-not-allowed opacity-60")}>
       <input id={id} type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span className="min-w-0 text-[13.5px] leading-snug text-ink">
+      <span className="min-w-0 flex-1 text-[13.5px] leading-snug text-ink">
         {label}
         {hint && <span className="mt-0.5 block text-[12.5px] text-muted">{hint}</span>}
       </span>
+      {trailing && <span className="shrink-0 self-center">{trailing}</span>}
     </label>
   );
 }
