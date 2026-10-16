@@ -117,7 +117,7 @@ export function CompaniesWorkspace({
         </Select>
         {state.filter && (
           <span className="inline-flex min-h-9 max-w-full items-center gap-1 rounded-xl bg-surface-2 px-3 text-[12.5px] text-ink-2">
-            <span className="truncate">{describeFilter(state.filter, catalog)}</span>
+            <span className="truncate">{describeFilter(state.filter, catalog, options)}</span>
             <Link href={hrefWith({ f: null })} aria-label="Clear filter" className="-mr-1 inline-flex size-6 items-center justify-center rounded-md hover:bg-line/60"><X className="size-3.5" /></Link>
           </span>
         )}

@@ -11,9 +11,11 @@ import { Dialog } from "@/components/ui/overlays";
 import { cn } from "@/lib/utils";
 import { initialsOf, LEAD_STATUS_LABELS, LEAD_STATUS_TONES, type LeadStatus } from "@/lib/crm/types";
 
+export { money, shortDate, totalsText } from "@/lib/crm/format";
+
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string; code?: string };
 
-/** Runs a server action, shows what happened, and refreshes the page's server data on success. */
+/** Runs a server action, shows what happened, and refreshes the page's server data on success. Resolves to the action's data (or `true`) on success, `null` on failure. */
 export function useCrmAction() {
   const router = useRouter();
   const [pending, setPending] = React.useState<string | null>(null);
@@ -29,7 +31,8 @@ export function useCrmAction() {
         const msg = typeof success === "function" ? success(res.data) : success;
         if (msg) toast.success(msg);
         router.refresh();
-        return res.data;
+        // Actions that return nothing still report success as a truthy value, so `if (await run(...))` works for them too.
+        return (res.data ?? true) as T;
       } catch {
         toast.error("That didn't go through. Check your connection and try again.");
         return null;
@@ -67,28 +70,8 @@ export function LeadStatusBadge({ status }: { status: LeadStatus }) {
   return <Badge tone={LEAD_STATUS_TONES[status]}>{LEAD_STATUS_LABELS[status]}</Badge>;
 }
 
-export function money(value: number | null | undefined, currency = "USD") {
-  if (value === null || value === undefined) return "—";
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: value % 1 === 0 ? 0 : 2 }).format(value);
-  } catch {
-    return `${currency} ${value.toLocaleString("en-US")}`;
-  }
-}
 
-/** A calendar date (YYYY-MM-DD) for display, without shifting it through a time zone. The year shows only when it isn't this year. */
-export function shortDate(isoDate: string | null | undefined): string {
-  if (!isoDate) return "";
-  const [y, m, d] = isoDate.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return isoDate;
-  const sameYear = y === new Date().getFullYear();
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }), timeZone: "UTC" });
-}
 
-export function totalsText(totals: Array<{ currency: string; value: number }>) {
-  if (!totals.length) return "No values";
-  return totals.map((t) => money(t.value, t.currency)).join(" · ");
-}
 
 /** A search box that finds records as you type and lets you pick one. Keyboard: arrows and Enter. */
 export function RecordPicker<T extends { id: string }>({

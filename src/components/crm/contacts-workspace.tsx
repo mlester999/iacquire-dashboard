@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input, Select } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, Sheet } from "@/components/ui/overlays";
 import { cn, relativeTime } from "@/lib/utils";
-import { archiveContactsAction, assignContactsAction, countContactsAction, createSmartListAction, pinSmartListAction, tagContactsAction } from "@/app/actions/crm";
+import { archiveContactsAction, assignContactsAction, countContactsAction, createSmartListAction, pinSmartListAction, tagContactsAction, updateSmartListAction } from "@/app/actions/crm";
 import { FilterBuilder, completeFilter, describeFilter, useFilterFields, type FilterOptions } from "@/components/crm/filter-builder";
 import { ContactFormDialog } from "@/components/crm/contact-form-dialog";
 import { displayFieldValue, type FieldDef } from "@/components/crm/field-input";
@@ -74,6 +74,9 @@ export function ContactsWorkspace({
   const [archiveOpen, setArchiveOpen] = React.useState(false);
   const filterOptions: FilterOptions = React.useMemo(() => ({ tags, members, pipelines, customFields: fields }), [tags, members, pipelines, fields]);
   const catalog = useFilterFields("contact", filterOptions);
+  // With a saved list open and no extra filter on top, the filter sheet edits that list's own conditions.
+  const listMeta = state.list ? lists.find((l) => l.id === state.list) : undefined;
+  const editingList = Boolean(page.smartList && !state.filter && listMeta && !scope.readOnly && (listMeta.mine || (listMeta.visibility === "team" && scope.can["smartlists.share"])));
 
   // A different page or view clears the selection.
   const selectionKey = `${page.page}|${state.list}|${state.q}|${state.archived}`;
@@ -111,11 +114,11 @@ export function ContactsWorkspace({
   React.useEffect(() => {
     if (!filterOpen) return;
     const t = setTimeout(async () => {
-      const res = await countContactsAction(scope.orgId, { filter: completeFilter(draft, catalog), smartListId: state.list, search: state.q || undefined, archived: state.archived });
+      const res = await countContactsAction(scope.orgId, { filter: completeFilter(draft, catalog), smartListId: editingList ? null : state.list, search: state.q || undefined, archived: state.archived });
       setDraftCount(res.ok ? res.data : null);
     }, 350);
     return () => clearTimeout(t);
-  }, [draft, filterOpen, scope.orgId, catalog, state.list, state.q, state.archived]);
+  }, [draft, filterOpen, scope.orgId, catalog, state.list, state.q, state.archived, editingList]);
 
   const selection = allMatching
     ? { query: { smartListId: state.list, filter: state.filter ?? undefined, search: state.q || undefined, archived: state.archived } }
@@ -209,7 +212,7 @@ export function ContactsWorkspace({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-[20px] font-semibold tracking-[-0.03em] text-ink">{page.smartList?.name ?? activeBuiltIn?.label ?? "Filtered contacts"}</h2>
-            <p className="mt-0.5 text-[13px] text-muted">{page.total.toLocaleString("en-US")} {page.total === 1 ? "contact" : "contacts"}{filterActive && ` · ${describeFilter(state.filter!, catalog)}`}</p>
+            <p className="mt-0.5 text-[13px] text-muted">{page.total.toLocaleString("en-US")} {page.total === 1 ? "contact" : "contacts"}{filterActive && ` · ${describeFilter(state.filter!, catalog, filterOptions)}`}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {scope.can["contacts.export"] && <a href={exportHref} className="inline-flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:h-9"><Download className="size-4" />Export</a>}
@@ -243,7 +246,7 @@ export function ContactsWorkspace({
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
               <Input aria-label="Search contacts" placeholder="Search name, email, phone or city" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
             </div>
-            <Button variant={filterActive ? "soft" : "secondary"} size="sm" onClick={() => { setDraft(state.filter ?? EMPTY_FILTER); setFilterOpen(true); }}>
+            <Button variant={filterActive ? "soft" : "secondary"} size="sm" onClick={() => { setDraft(state.filter ?? (editingList ? page.smartList!.filter : EMPTY_FILTER)); setFilterOpen(true); }}>
               <Filter className="size-4" />Filter{filterActive ? ` (${state.filter!.conditions.length})` : ""}
             </Button>
             <Menu>
@@ -349,14 +352,24 @@ export function ContactsWorkspace({
       </div>
 
       {/* Filter builder */}
-      <Sheet open={filterOpen} onOpenChange={setFilterOpen} title="Filter contacts" description="Conditions are checked live against your contacts. Save the filter as a Smart List to reuse it.">
+      <Sheet open={filterOpen} onOpenChange={setFilterOpen} title={editingList ? `Edit "${page.smartList!.name}"` : "Filter contacts"} description={editingList ? "Change the conditions, then save them to the list, or apply them just for now." : "Conditions are checked live against your contacts. Save the filter as a Smart List to reuse it."}>
         <div className="space-y-4 p-5">
           <FilterBuilder value={draft} onChange={setDraft} options={filterOptions} />
           <p className="rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-ink-2" aria-live="polite">{draftCount === null ? "Counting…" : `${draftCount.toLocaleString("en-US")} ${draftCount === 1 ? "contact matches" : "contacts match"}`}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => setDraft(EMPTY_FILTER)}>Reset</Button>
-            <Button variant="secondary" onClick={() => { setFilterOpen(false); setSaveOpen(true); }}><Save className="size-4" />Save as Smart List</Button>
-            <Button onClick={() => { const c = completeFilter(draft, catalog); setFilterOpen(false); router.push(hrefWith({ f: c.conditions.length ? encode(c) : null, list: state.list })); }}>Apply</Button>
+            <Button variant="secondary" onClick={() => { setFilterOpen(false); setSaveOpen(true); }}><Save className="size-4" />{editingList ? "Save as new list" : "Save as Smart List"}</Button>
+            {editingList ? (
+              <>
+                <Button variant="secondary" onClick={() => { const c = completeFilter(draft, catalog); setFilterOpen(false); router.push(hrefWith({ f: c.conditions.length ? encode(c) : null, list: null })); }}>Apply without saving</Button>
+                <Button loading={busy("update-list")} onClick={async () => {
+                  const c = completeFilter(draft, catalog);
+                  if (await run("update-list", () => updateSmartListAction(scope.orgId, state.list!, { filter: c }), "List updated.")) setFilterOpen(false);
+                }}>Save to list</Button>
+              </>
+            ) : (
+              <Button onClick={() => { const c = completeFilter(draft, catalog); setFilterOpen(false); router.push(hrefWith({ f: c.conditions.length ? encode(c) : null, list: state.list })); }}>Apply</Button>
+            )}
           </div>
         </div>
       </Sheet>

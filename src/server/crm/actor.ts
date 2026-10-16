@@ -226,3 +226,40 @@ export async function auditSupportView(actor: CrmActor, section: string, targetI
   if (actor.kind !== "agency") return;
   await recordAudit({ orgId: actor.orgId, actorUserId: actor.userId, actorKind: "agency", action: "crm.support_view", targetType: "crm_section", targetId: targetId ?? section, result: "success", metadata: { section, sessionId: actor.supportSessionId } });
 }
+
+export interface SupportSessionLogEntry {
+  id: string;
+  person: string;
+  mode: "read" | "write";
+  reason: string;
+  startedAt: string;
+  endedAt: string | null;
+  expiresAt: string;
+  active: boolean;
+  views: number;
+  changes: number;
+}
+
+/**
+ * The client's own record of agency access to their CRM: who opened a support session, why, for how long, and how many pages they viewed
+ * and changes they made during it. Shown to the client's owner and managers.
+ */
+export async function listSupportSessionsForClient(actor: CrmActor, limit = 50): Promise<SupportSessionLogEntry[]> {
+  assertCan(actor, "activity.view");
+  // Trusted read after the check above: agency people aren't members of the client's workspace, so the user-scoped path can't see their names.
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; person: string | null; email: string; mode: "read" | "write"; reason: string; started_at: Date; ended_at: Date | null; expires_at: Date; user_id: string; views: string; changes: string }>(
+      `select s.id, nullif(u.full_name, '') as person, u.email::text as email, s.mode, s.reason, s.started_at, s.ended_at, s.expires_at, s.user_id,
+              (select count(*) from audit_logs a where a.org_id = s.org_id and a.actor_user_id = s.user_id and a.action = 'crm.support_view' and a.metadata->>'sessionId' = s.id::text)::text as views,
+              (select count(*) from crm_activities ca where ca.org_id = s.org_id and ca.actor_kind = 'agency' and ca.actor_user_id = s.user_id
+                 and ca.occurred_at between s.started_at and coalesce(s.ended_at, least(s.expires_at, now())))::text as changes
+       from crm_support_sessions s join users u on u.id = s.user_id where s.org_id = $1 order by s.started_at desc limit $2`,
+      [actor.orgId, Math.min(200, limit)],
+    );
+    const now = Date.now();
+    return rows.map((r) => ({
+      id: r.id, person: r.person ?? r.email, mode: r.mode, reason: r.reason, startedAt: new Date(r.started_at).toISOString(), endedAt: r.ended_at ? new Date(r.ended_at).toISOString() : null,
+      expiresAt: new Date(r.expires_at).toISOString(), active: !r.ended_at && new Date(r.expires_at).getTime() > now, views: Number(r.views), changes: Number(r.changes),
+    }));
+  });
+}

@@ -232,11 +232,48 @@ function ValueEditor({ field, op, value, options, onChange, id }: { field: Field
   }
 }
 
-export function describeFilter(group: FilterGroup, fields: Field[]): string {
+/** A readable sentence for a filter, naming tags, people and stages instead of their ids. */
+export function describeFilter(group: FilterGroup, fields: Field[], opts?: FilterOptions): string {
   const parts = group.conditions.map((c) => {
-    if (isGroup(c)) return `(${describeFilter(c, fields)})`;
+    if (isGroup(c)) return `(${describeFilter(c, fields, opts)})`;
     const f = fields.find((x) => x.key === c.field);
-    return `${f?.label ?? "Field"} ${OP_LABELS[c.op] ?? c.op}`;
+    const value = f && opNeedsValue(f.kind, c.op) ? describeValue(f, c.op, c.value, opts) : "";
+    return `${f?.label ?? "Field"} ${OP_LABELS[c.op] ?? c.op}${value ? ` ${value}` : ""}`;
   });
   return parts.join(group.op === "and" ? " and " : " or ") || "Everyone";
+}
+
+function describeValue(f: Field, op: string, value: unknown, opts?: FilterOptions): string {
+  const names = (ids: unknown, lookup: (id: string) => string | undefined, noun: string) => {
+    const list = Array.isArray(ids) ? ids.map(String) : [];
+    if (!list.length) return "";
+    const found = list.map((id) => lookup(id)).filter((x): x is string => Boolean(x));
+    if (found.length === list.length && found.length <= 3) return found.join(", ");
+    return found.length && found.length <= 3 ? `${found.join(", ")} and ${list.length - found.length} more` : `${list.length} ${noun}`;
+  };
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const v = value as Record<string, unknown>;
+    if ("from" in v || "to" in v) return `${v.from ?? "…"} – ${v.to ?? "…"}`;
+    if ("channel" in v) return `${String(v.channel)} ${String(v.purpose ?? "")} ${String(v.status ?? "")}`.replace(/\s+/g, " ").trim();
+    return "";
+  }
+  switch (f.kind) {
+    case "tags":
+      return names(value, (id) => opts?.tags.find((t) => t.id === id)?.name, "tags");
+    case "owner":
+      return names(value, (id) => opts?.members.find((m) => m.id === id)?.name, "people");
+    case "company":
+      return names(value, () => undefined, Array.isArray(value) && value.length === 1 ? "company" : "companies");
+    case "opportunity":
+      if (op === "in_pipeline") return names(value, (id) => opts?.pipelines.find((p) => p.id === id)?.name, "pipelines");
+      return names(value, (id) => opts?.pipelines.flatMap((p) => p.stages).find((s) => s.id === id)?.name, "stages");
+    case "enum":
+      return Array.isArray(value) ? value.map((v) => f.options?.find((o) => o.value === v)?.label ?? String(v)).join(", ") : String(value);
+    case "text":
+      return `“${String(value)}”`;
+    default:
+      if (Array.isArray(value)) return value.map((v) => f.options?.find((o) => o.value === v)?.label ?? String(v)).join(", ");
+      return typeof value === "number" && /days/.test(op) ? `${value} days` : String(value);
+  }
 }

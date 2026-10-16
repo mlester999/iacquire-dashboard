@@ -195,6 +195,45 @@ export const DELEGABLE_PERMISSIONS = [
   "workflows.view", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "calls.view", "analytics.export",
 ] as const satisfies readonly Permission[];
 export type DelegablePermission = (typeof DELEGABLE_PERMISSIONS)[number];
+/** Plain-language names for the permissions that can be adjusted per person, grouped as the Team & Permissions screen shows them. */
+export const DELEGABLE_PERMISSION_INFO: Record<DelegablePermission, { label: string; group: "Contacts" | "Sales" | "Calendar" | "Work" | "Messaging" | "Automation" | "Reporting" }> = {
+  "contacts.view": { label: "See contacts", group: "Contacts" },
+  "contacts.edit": { label: "Add and edit contacts", group: "Contacts" },
+  "contacts.assign": { label: "Assign contacts and deals to others", group: "Contacts" },
+  "contacts.merge": { label: "Merge duplicate contacts", group: "Contacts" },
+  "contacts.delete": { label: "Archive and delete records", group: "Contacts" },
+  "contacts.import": { label: "Import spreadsheets", group: "Contacts" },
+  "contacts.export": { label: "Export contacts", group: "Contacts" },
+  "contacts.bulk": { label: "Change many records at once", group: "Contacts" },
+  "companies.view": { label: "See companies", group: "Contacts" },
+  "companies.edit": { label: "Add and edit companies", group: "Contacts" },
+  "tags.manage": { label: "Create, rename and merge tags", group: "Contacts" },
+  "fields.manage": { label: "Manage custom fields", group: "Contacts" },
+  "smartlists.share": { label: "Share Smart Lists with the team", group: "Contacts" },
+  "sales.view": { label: "See pipelines and deals", group: "Sales" },
+  "pipelines.manage": { label: "Change pipelines and stages", group: "Sales" },
+  "opportunities.edit": { label: "Create and move deals", group: "Sales" },
+  "opportunities.reopen": { label: "Reopen closed deals", group: "Sales" },
+  "opportunities.delete": { label: "Archive deals", group: "Sales" },
+  "appointments.view": { label: "See appointments", group: "Calendar" },
+  "appointments.book": { label: "Book appointments", group: "Calendar" },
+  "appointments.manage": { label: "Reschedule and cancel appointments", group: "Calendar" },
+  "calendars.manage": { label: "Set up calendars and booking pages", group: "Calendar" },
+  "calendars.connect": { label: "Connect a personal calendar", group: "Calendar" },
+  "tasks.manage": { label: "Create and complete tasks", group: "Work" },
+  "notes.write": { label: "Write notes", group: "Work" },
+  "inbox.view_all": { label: "See every conversation", group: "Messaging" },
+  "inbox.assign": { label: "Assign conversations", group: "Messaging" },
+  "workflows.view": { label: "See automations", group: "Automation" },
+  "workflows.manage": { label: "Build and change automations", group: "Automation" },
+  "templates.manage": { label: "Manage message templates", group: "Automation" },
+  "campaigns.manage": { label: "Prepare campaigns", group: "Automation" },
+  "forms.manage": { label: "Build forms", group: "Automation" },
+  "reviews.manage": { label: "Manage review requests", group: "Automation" },
+  "calls.view": { label: "See call records", group: "Reporting" },
+  "analytics.export": { label: "Export reports", group: "Reporting" },
+};
+
 export const isDelegablePermission = (p: unknown): p is DelegablePermission => typeof p === "string" && (DELEGABLE_PERMISSIONS as readonly string[]).includes(p);
 
 export type PermissionOverrides = Partial<Record<Permission, "grant" | "revoke">>;

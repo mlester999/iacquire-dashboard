@@ -76,3 +76,31 @@ export async function* exportContactsCsv(actor: CrmActor, q: Pick<ContactListQue
     throw err;
   }
 }
+
+export interface ExportJobView {
+  id: string;
+  entity: string;
+  status: "running" | "completed" | "failed";
+  rowCount: number;
+  requestedBy: string | null;
+  requestedByKind: string;
+  createdAt: string;
+  completedAt: string | null;
+  error: string | null;
+}
+
+/** Who exported what and when, so an owner can see every copy of their data that left the CRM. */
+export async function listExportJobs(actor: CrmActor, limit = 20): Promise<ExportJobView[]> {
+  assertCan(actor, "contacts.export");
+  return crmRead(actor, async (db) => {
+    const { rows } = await db.query<{ id: string; entity: string; status: ExportJobView["status"]; row_count: number; requested_by: string | null; requested_by_kind: string; created_at: Date; completed_at: Date | null; error: string | null }>(
+      `select j.id, j.entity, j.status, j.row_count, nullif(u.full_name, '') as requested_by, j.requested_by_kind, j.created_at, j.completed_at, j.error
+       from crm_export_jobs j left join users u on u.id = j.requested_by where j.org_id = $1 order by j.created_at desc limit $2`,
+      [actor.orgId, Math.min(100, limit)],
+    );
+    return rows.map((r) => ({
+      id: r.id, entity: r.entity, status: r.status, rowCount: r.row_count, requestedBy: r.requested_by, requestedByKind: r.requested_by_kind,
+      createdAt: new Date(r.created_at).toISOString(), completedAt: r.completed_at ? new Date(r.completed_at).toISOString() : null, error: r.error,
+    }));
+  });
+}
