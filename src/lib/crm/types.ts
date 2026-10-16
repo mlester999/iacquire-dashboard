@@ -105,3 +105,15 @@ export function initialsOf(name: string): string {
   if (!parts.length) return "?";
   return ((parts[0][0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
+
+/** Readable phone numbers for display. Storage stays E.164; this never changes the stored value. */
+export function formatPhone(e164: string | null | undefined): string {
+  if (!e164) return "";
+  const d = e164.replace(/\D/g, "");
+  if (e164.startsWith("+1") && d.length === 11) return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  if (e164.startsWith("+63") && d.length === 12) return `+63 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}`;
+  if (e164.startsWith("+44") && d.length === 12) return `+44 ${d.slice(2, 6)} ${d.slice(6)}`;
+  const cc = d.length > 10 ? d.slice(0, d.length - 10) : d.slice(0, 2);
+  const rest = d.slice(cc.length);
+  return `+${cc} ${rest.replace(/(\d{3})(?=\d{4,})/g, "$1 ")}`.trim();
+}

@@ -448,6 +448,7 @@ export async function getBoard(actor: CrmActor, pipelineId: string, opts: { sear
 
 export interface OpportunityQuery {
   pipelineId?: string | null;
+  stageId?: string | null;
   status?: OpportunityStatus | "all";
   ownerId?: string | null;
   contactId?: string | null;
@@ -458,7 +459,7 @@ export interface OpportunityQuery {
   pageSize?: number;
 }
 
-export async function listOpportunities(actor: CrmActor, q: OpportunityQuery = {}): Promise<{ rows: Array<OpportunityCard & { pipelineName: string; stageName: string; createdAt: string; closedAt: string | null; lostReason: string | null }>; total: number; page: number; pageSize: number }> {
+export async function listOpportunities(actor: CrmActor, q: OpportunityQuery = {}): Promise<{ rows: Array<OpportunityCard & { pipelineName: string; stageName: string; createdAt: string; updatedAt: string; closedAt: string | null; lostReason: string | null }>; total: number; page: number; pageSize: number }> {
   assertCan(actor, "sales.view");
   const pageSize = Math.min(100, Math.max(1, q.pageSize ?? 25));
   const page = Math.max(1, q.page ?? 1);
@@ -470,24 +471,29 @@ export async function listOpportunities(actor: CrmActor, q: OpportunityQuery = {
       where.push(sql.replace("?", `$${params.length}`));
     };
     if (q.pipelineId) add("o.pipeline_ref = ?", q.pipelineId);
+    if (q.stageId) add("o.stage_ref = ?", q.stageId);
     if (q.status && q.status !== "all") add("o.status = ?", q.status);
     if (q.ownerId) add("o.assigned_user_id = ?", q.ownerId);
     if (q.contactId) add("o.contact_id = ?", q.contactId);
     if (q.companyId) add("o.company_id = ?", q.companyId);
     const term = q.search?.trim().toLowerCase().slice(0, 80);
-    if (term) add("(lower(o.name) like ? escape '\\')", `%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
+    if (term) {
+      params.push(`%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
+      const n = `$${params.length}`;
+      where.push(`(lower(o.name) like ${n} escape '\\' or exists (select 1 from contacts c2 where c2.id = o.contact_id and c2.deleted_at is null and lower(c2.display_name) like ${n} escape '\\') or exists (select 1 from crm_companies co2 where co2.id = o.company_id and co2.deleted_at is null and lower(co2.name) like ${n} escape '\\'))`);
+    }
     const order = { name: "lower(o.name)", value: "o.monetary_value", created_at: "o.created_at", updated_at: "o.updated_at", expected_close_date: "o.expected_close_date", stage_entered_at: "o.stage_entered_at" }[q.sort?.by ?? "updated_at"] ?? "o.updated_at";
     const dir = q.sort?.dir === "asc" ? "asc" : "desc";
     const total = Number((await db.query<{ n: string }>(`select count(*)::text as n from crm_opportunities o where ${where.join(" and ")}`, params)).rows[0].n);
-    const listSelect = CARD_SELECT.replace("select o.id,", "select o.created_at, o.closed_at, o.lost_reason, p.name as pipeline_name, s.name as stage_name, o.id,") +
+    const listSelect = CARD_SELECT.replace("select o.id,", "select o.created_at, o.updated_at, o.closed_at, o.lost_reason, p.name as pipeline_name, s.name as stage_name, o.id,") +
       " join crm_pipelines p on p.id = o.pipeline_ref join crm_pipeline_stages s on s.id = o.stage_ref";
-    const { rows } = await db.query<CardRow & { pipeline_name: string; stage_name: string; created_at: Date; closed_at: Date | null; lost_reason: string | null }>(
+    const { rows } = await db.query<CardRow & { pipeline_name: string; stage_name: string; created_at: Date; updated_at: Date; closed_at: Date | null; lost_reason: string | null }>(
       `${listSelect} where ${where.join(" and ")} order by ${order} ${dir} nulls last, o.id limit ${pageSize} offset ${(page - 1) * pageSize}`,
       params,
     );
     const cards = await toCards(db, actor.orgId, rows);
     return {
-      rows: cards.map((c, i) => ({ ...c, pipelineName: rows[i].pipeline_name, stageName: rows[i].stage_name, createdAt: new Date(rows[i].created_at).toISOString(), closedAt: rows[i].closed_at ? new Date(rows[i].closed_at!).toISOString() : null, lostReason: rows[i].lost_reason })),
+      rows: cards.map((c, i) => ({ ...c, pipelineName: rows[i].pipeline_name, stageName: rows[i].stage_name, createdAt: new Date(rows[i].created_at).toISOString(), updatedAt: new Date(rows[i].updated_at).toISOString(), closedAt: rows[i].closed_at ? new Date(rows[i].closed_at!).toISOString() : null, lostReason: rows[i].lost_reason })),
       total,
       page,
       pageSize,
@@ -552,7 +558,7 @@ export interface PipelineMetrics {
   wonCount: number;
   lostCount: number;
   wonValue: Array<{ currency: string; value: number }>;
-  /** Won ÷ (won + lost) for deals closed in the period; null when nothing closed. */
+  /** Won ÷ (won + lost) for deals closed in the period, as a percentage with one decimal; null when nothing closed. */
   winRate: number | null;
   createdCount: number;
   period: { from: string; to: string };

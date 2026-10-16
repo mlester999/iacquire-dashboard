@@ -26,10 +26,12 @@ export interface ShellData {
   projectsAttention: number;
   /** Conversations with unread customer messages, plus escalations waiting for this person. */
   inboxAttention: number;
+  /** Which CRM the workspace runs on, so navigation shows the native CRM or the GoHighLevel views (or both while migrating). */
+  crmMode: "native" | "ghl" | "hybrid" | null;
 }
 
 export async function getShellData(ctx: OrgContext, helpAiAvailable: boolean): Promise<ShellData> {
-  const { agents, unread, approvals, setup, projectsAttention, inboxAttention } = await withUser(ctx.user.id, async (db) => {
+  const { agents, unread, approvals, setup, projectsAttention, inboxAttention, crmMode } = await withUser(ctx.user.id, async (db) => {
     const a = await db.query<{ role_key: string; display_name: string; status: AgentStatus; enabled: boolean }>(
       `select a.role_key, a.display_name, a.status, a.enabled from agent_instances a
        join agent_roles r on r.key = a.role_key where a.org_id = $1 order by r.sort_order`,
@@ -93,7 +95,13 @@ export async function getShellData(ctx: OrgContext, helpAiAvailable: boolean): P
           [ctx.org.orgId],
         )
       : { rows: [{ n: 0 }] };
-    return { agents: a.rows, unread: n.rows[0]?.n ?? 0, approvals: p.rows[0]?.n ?? 0, setup, projectsAttention: pa.rows[0]?.n ?? 0, inboxAttention: ib.rows[0]?.n ?? 0 };
+    const ws = ctx.org.kind === "client" && ctx.can("crm.view")
+      ? await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [ctx.org.orgId])
+      : { rows: [] as Array<{ mode: "native" | "ghl" | "hybrid" }> };
+    return {
+      agents: a.rows, unread: n.rows[0]?.n ?? 0, approvals: p.rows[0]?.n ?? 0, setup, projectsAttention: pa.rows[0]?.n ?? 0, inboxAttention: ib.rows[0]?.n ?? 0,
+      crmMode: ws.rows[0]?.mode ?? (ctx.org.kind === "client" && ctx.can("crm.view") ? ("native" as const) : null),
+    };
   });
   return {
     user: { id: ctx.user.id, name: ctx.user.fullName || ctx.user.email, email: ctx.user.email, platformRole: ctx.user.platformRole },
@@ -117,5 +125,6 @@ export async function getShellData(ctx: OrgContext, helpAiAvailable: boolean): P
     helpAiAvailable,
     projectsAttention,
     inboxAttention,
+    crmMode,
   };
 }

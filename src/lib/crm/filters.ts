@@ -70,7 +70,7 @@ export interface CatalogField {
   key: string;
   label: string;
   kind: FieldKind;
-  group: "Contact" | "Activity" | "Sales" | "Consent" | "Custom fields";
+  group: "Contact" | "Company" | "Activity" | "Sales" | "Consent" | "Custom fields";
   options?: Array<{ value: string; label: string }>;
 }
 
@@ -99,13 +99,13 @@ export const CONTACT_FILTER_FIELDS: CatalogField[] = [
 ];
 
 export const COMPANY_FILTER_FIELDS: CatalogField[] = [
-  { key: "name", label: "Name", kind: "text", group: "Contact" },
-  { key: "domain", label: "Domain", kind: "text", group: "Contact" },
-  { key: "industry", label: "Industry", kind: "text", group: "Contact" },
-  { key: "city", label: "City", kind: "text", group: "Contact" },
-  { key: "country", label: "Country code", kind: "text", group: "Contact" },
-  { key: "owner", label: "Owner", kind: "owner", group: "Contact" },
-  { key: "tags", label: "Tags", kind: "tags", group: "Contact" },
+  { key: "name", label: "Name", kind: "text", group: "Company" },
+  { key: "domain", label: "Domain", kind: "text", group: "Company" },
+  { key: "industry", label: "Industry", kind: "text", group: "Company" },
+  { key: "city", label: "City", kind: "text", group: "Company" },
+  { key: "country", label: "Country code", kind: "text", group: "Company" },
+  { key: "owner", label: "Owner", kind: "owner", group: "Company" },
+  { key: "tags", label: "Tags", kind: "tags", group: "Company" },
   { key: "created_at", label: "Created", kind: "date", group: "Activity" },
   { key: "updated_at", label: "Last updated", kind: "date", group: "Activity" },
 ];
@@ -216,6 +216,6 @@ export const CONTACT_COLUMN_LABELS: Record<ContactColumn, string> = {
   email: "Email", phone: "Phone", company: "Company", owner: "Owner", lead_status: "Status", source: "Source", tags: "Tags", lead_score: "Score",
   created_at: "Created", last_activity_at: "Last activity", city: "City", country: "Country", created_via: "Created via",
 };
-export const DEFAULT_CONTACT_COLUMNS: ContactColumn[] = ["email", "phone", "company", "owner", "lead_status", "tags", "created_at"];
+export const DEFAULT_CONTACT_COLUMNS: ContactColumn[] = ["phone", "company", "owner", "lead_status", "tags", "created_at"];
 
 export const sortSchema = z.object({ by: z.string().max(60).default("created_at"), dir: z.enum(["asc", "desc"]).default("desc") });

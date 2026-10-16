@@ -178,7 +178,7 @@ export async function listTaskComments(actor: CrmActor, taskId: string): Promise
 
 export type TaskView_ = "mine" | "team" | "overdue" | "upcoming" | "completed" | "all";
 
-export async function listTasks(actor: CrmActor, q: { view?: TaskView_; contactId?: string; opportunityId?: string; companyId?: string; assigneeId?: string; search?: string; limit?: number } = {}): Promise<TaskView[]> {
+export async function listTasks(actor: CrmActor, q: { view?: TaskView_; taskId?: string; contactId?: string; opportunityId?: string; companyId?: string; assigneeId?: string; search?: string; limit?: number } = {}): Promise<TaskView[]> {
   assertCan(actor, "crm.view");
   return crmRead(actor, async (db) => {
     const params: unknown[] = [actor.orgId];
@@ -195,6 +195,7 @@ export async function listTasks(actor: CrmActor, q: { view?: TaskView_; contactI
     else if (view === "overdue") where.push("t.status in ('open', 'in_progress') and t.due_at < now()");
     else if (view === "upcoming") where.push("t.status in ('open', 'in_progress') and t.due_at >= now() and t.due_at < now() + interval '7 days'");
     else if (view === "completed") where.push("t.status = 'done'");
+    if (q.taskId) add("t.id = ?", q.taskId);
     if (q.contactId) add("t.contact_id = ?", q.contactId);
     if (q.opportunityId) add("t.opportunity_id = ?", q.opportunityId);
     if (q.companyId) add("t.company_id = ?", q.companyId);
@@ -223,6 +224,22 @@ export async function listTasks(actor: CrmActor, q: { view?: TaskView_; contactI
       opportunity: r.opportunity_id && r.opp_name ? { id: r.opportunity_id, name: r.opp_name } : null,
       source: r.source, createdAt: iso(r.created_at)!, completedAt: iso(r.completed_at), comments: Number(r.comments),
     }));
+  });
+}
+
+/** How many tasks each list view holds, for the view tabs. */
+export async function countTaskViews(actor: CrmActor): Promise<Record<"mine" | "team" | "overdue" | "upcoming", number>> {
+  assertCan(actor, "crm.view");
+  return crmRead(actor, async (db) => {
+    const { rows } = await db.query<{ mine: string; team: string; overdue: string; upcoming: string }>(
+      `select count(*) filter (where t.assigned_user_id = $2)::text as mine, count(*)::text as team,
+              count(*) filter (where t.due_at < now())::text as overdue,
+              count(*) filter (where t.due_at >= now() and t.due_at < now() + interval '7 days')::text as upcoming
+       from tasks t where t.org_id = $1 and t.status in ('open', 'in_progress') and t.category in ('crm', 'appointment', 'follow_up', 'sales', 'general')`,
+      [actor.orgId, actor.userId],
+    );
+    const r = rows[0];
+    return { mine: Number(r.mine), team: Number(r.team), overdue: Number(r.overdue), upcoming: Number(r.upcoming) };
   });
 }
 

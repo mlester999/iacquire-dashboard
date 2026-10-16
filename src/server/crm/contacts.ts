@@ -622,3 +622,82 @@ export async function getContactDetail(actor: CrmActor, id: string): Promise<Con
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Pickers and related lists for the interface
+// ---------------------------------------------------------------------------
+
+/** Teammates who can own contacts and deals (active members who can see contacts). */
+export async function listAssignableMembers(actor: CrmActor): Promise<Array<{ id: string; name: string; role: string }>> {
+  assertCan(actor, "crm.view");
+  return crmRead(actor, async (db) => {
+    const { rows } = await db.query<{ id: string; name: string; role: string }>(
+      `select u.id, coalesce(nullif(u.full_name, ''), u.email::text) as name, m.role from organization_memberships m join users u on u.id = m.user_id
+       where m.org_id = $1 and m.status = 'active' and u.status = 'active'
+         and (m.role = 'owner' or coalesce(
+               (select o.effect = 'grant' from member_permission_overrides o where o.org_id = m.org_id and o.user_id = m.user_id and o.permission = 'contacts.view'),
+               exists (select 1 from role_permissions rp where rp.role = m.role and rp.permission = 'contacts.view')))
+       order by lower(coalesce(nullif(u.full_name, ''), u.email::text))`,
+      [actor.orgId],
+    );
+    return rows;
+  });
+}
+
+/** Contacts whose name, email or phone matches, for pickers (deal, task and booking forms). */
+export async function searchContacts(actor: CrmActor, q: string, limit = 10): Promise<Array<{ id: string; name: string; email: string | null; phone: string | null }>> {
+  assertCan(actor, "contacts.view");
+  const term = q.trim().toLowerCase().slice(0, 80);
+  return crmRead(actor, async (db) => {
+    const like = `%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+    const { rows } = await db.query<{ id: string; name: string; email: string | null; phone: string | null }>(
+      `select c.id, c.display_name as name, c.email::text as email, c.phone from contacts c
+       where c.org_id = $1 and c.deleted_at is null and c.archived_at is null and ($2 = '' or c.search_text like $3 escape '\\')
+       order by c.last_activity_at desc nulls last, c.created_at desc limit $4`,
+      [actor.orgId, term, like, Math.min(25, limit)],
+    );
+    return rows;
+  });
+}
+
+export interface ContactConversation {
+  id: string;
+  channel: string;
+  status: string;
+  ownerKind: string;
+  lastMessageAt: string | null;
+  preview: string | null;
+  unread: number;
+}
+
+/** The person's conversations the reader is allowed to see (row-level security applies for client members). */
+export async function listContactConversations(actor: CrmActor, contactId: string): Promise<ContactConversation[]> {
+  assertCan(actor, "inbox.view");
+  return crmRead(actor, async (db) => {
+    const { rows } = await db.query<{ id: string; channel: string; status: string; owner_kind: string; last_message_at: Date | null; last_message_preview: string | null; unread_count: number }>(
+      `select id, channel, status, owner_kind, last_message_at, last_message_preview, unread_count from conversations
+       where org_id = $1 and contact_id = $2 order by last_message_at desc nulls last limit 50`,
+      [actor.orgId, contactId],
+    );
+    return rows.map((r) => ({ id: r.id, channel: r.channel, status: r.status, ownerKind: r.owner_kind, lastMessageAt: r.last_message_at ? new Date(r.last_message_at).toISOString() : null, preview: r.last_message_preview, unread: r.unread_count }));
+  });
+}
+
+export interface ContactAppointment {
+  id: string;
+  title: string;
+  status: string;
+  startAt: string;
+  endAt: string;
+}
+
+export async function listContactAppointments(actor: CrmActor, contactId: string): Promise<ContactAppointment[]> {
+  assertCan(actor, "appointments.view");
+  return crmRead(actor, async (db) => {
+    const { rows } = await db.query<{ id: string; title: string; status: string; start_at: Date; end_at: Date }>(
+      "select id, title, status, start_at, end_at from appointment_refs where org_id = $1 and contact_id = $2 order by start_at desc limit 50",
+      [actor.orgId, contactId],
+    );
+    return rows.map((r) => ({ id: r.id, title: r.title, status: r.status, startAt: new Date(r.start_at).toISOString(), endAt: new Date(r.end_at).toISOString() }));
+  });
+}

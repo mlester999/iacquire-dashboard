@@ -3,8 +3,7 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
-import { requireUserOrThrow } from "@/server/auth/session";
-import { agencyCanAccessOrg, requireOrgContextOrThrow, type OrgContext } from "@/server/tenancy/context";
+import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import type { Permission } from "@/lib/permissions";
 
@@ -123,6 +122,17 @@ export interface SupportSession {
 const READ_MINUTES = 60;
 const WRITE_MINUTES = 30;
 
+/**
+ * Whether an agency person may work on this client: super admins on every client, staff only where assigned. The same rule as
+ * tenancy's agencyCanAccessOrg, kept here so CRM services (and scripts and workers) never import request-bound code.
+ */
+export async function agencyCanAccessClient(user: Pick<SessionUser, "id" | "platformRole">, orgId: string): Promise<boolean> {
+  if (user.platformRole === "agency_super_admin") return true;
+  if (user.platformRole !== "agency_staff") return false;
+  const { rows } = await withSystem((db) => db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [orgId, user.id]));
+  return rows.length > 0;
+}
+
 async function clientOrg(db: Queryable, orgId: string) {
   const { rows } = await db.query<{ id: string; name: string; timezone: string; kind: string; status: string }>("select id, name, timezone, kind, status from organizations where id = $1", [orgId]);
   const org = rows[0];
@@ -149,7 +159,7 @@ export async function activeSupportSession(user: Pick<SessionUser, "id">, orgId:
  */
 export async function startSupportSession(user: SessionUser, orgId: string, input: { mode: "read" | "write"; reason: string }): Promise<SupportSession> {
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
-  if (!(await agencyCanAccessOrg(user, orgId))) throw new AppError("forbidden", "You are not assigned to this client.");
+  if (!(await agencyCanAccessClient(user, orgId))) throw new AppError("forbidden", "You are not assigned to this client.");
   if (input.mode === "write" && user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only agency super admins can open a session that changes client records.");
   const reason = input.reason.trim();
   if (reason.length < 5) throw new AppError("invalid_input", "Say why you need access (at least 5 characters). The client can see it.");
@@ -188,7 +198,7 @@ export async function endSupportSession(user: Pick<SessionUser, "id">, orgId: st
 /** An agency actor for one client, only while the person holds an active support session for it. */
 export async function agencyActor(user: SessionUser, orgId: string): Promise<CrmActor> {
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
-  if (!(await agencyCanAccessOrg(user, orgId))) throw new AppError("forbidden", "You are not assigned to this client.");
+  if (!(await agencyCanAccessClient(user, orgId))) throw new AppError("forbidden", "You are not assigned to this client.");
   return withSystem(async (db) => {
     const org = await clientOrg(db, orgId);
     const session = await activeSupportSession(user, orgId, db);
@@ -209,24 +219,6 @@ export async function agencyActor(user: SessionUser, orgId: string): Promise<Crm
       can: (p) => allowed.has(p),
     } satisfies CrmActor;
   });
-}
-
-/**
- * The actor for a server action or route. A client user always acts on their own active workspace (another organization ID is
- * refused, not honoured). An agency user names the client and must hold a support session for it.
- */
-export async function resolveCrmActor(orgId?: string | null, permission: Permission = "crm.view"): Promise<CrmActor> {
-  const user = await requireUserOrThrow();
-  if (orgId && user.platformRole !== "none") {
-    const actor = await agencyActor(user, orgId);
-    assertCan(actor, permission);
-    return actor;
-  }
-  const ctx = await requireOrgContextOrThrow();
-  if (orgId && orgId !== ctx.org.orgId) throw new AppError("forbidden", "You don't have access to that workspace.");
-  const actor = memberActor(ctx);
-  assertCan(actor, permission);
-  return actor;
 }
 
 /** Records that an agency person looked at a part of a client's CRM. Called by agency pages; harmless for other actors. */

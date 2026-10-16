@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { toPublicError } from "@/server/errors";
 import { consumeRateLimit } from "@/server/security/rate-limit";
-import { resolveCrmActor } from "@/server/crm/actor";
+import { resolveCrmActor } from "@/server/crm/request";
 import { exportContactsCsv } from "@/server/crm/exports";
+import { decodeFilter } from "@/lib/crm/filter-codec";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,6 +25,7 @@ export async function GET(req: Request) {
     if (!limit.allowed) return NextResponse.json({ error: "Too many exports in a short time. Please wait a few minutes." }, { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds ?? 600) } });
     const query = {
       smartListId: list && UUID.test(list) ? list : null,
+      filter: decodeFilter(url.searchParams.get("f") ?? undefined) ?? undefined,
       search: url.searchParams.get("q")?.slice(0, 120) || undefined,
       archived: (["only", "include"].includes(url.searchParams.get("archived") ?? "") ? url.searchParams.get("archived") : "exclude") as "exclude" | "only" | "include",
     };
