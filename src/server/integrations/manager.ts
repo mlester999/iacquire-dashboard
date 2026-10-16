@@ -9,9 +9,10 @@ import { saveCredential,resolveCredential,revokeCredential,credentialStoreReady 
 import { validateIntegrationEndpoint,validateLlmEndpoint } from "@/server/integrations/safety";
 import { inspectGhl,inspectHermes,inspectN8n,inspectLlm,fetchLlmModels,GHL_READ_SCOPES,type Inspection } from "@/server/integrations/inspection";
 import { assertAssignableLocation,setIntegrationStatus } from "@/server/admin/tenants";
-import { isReservedProfile } from "@/server/workforce/service";
+import { isReservedProfile, runHealthCheck } from "@/server/workforce/service";
+import { listHermesGateways, loadHermesAccessCredentials, saveHermesGateway, validateHermesGatewayUrl, type HermesGatewayView } from "@/server/integrations/hermes/gateways";
 import { INTEGRATION_PROVIDERS,INTEGRATION_NAMES,LLM_PRESET_IDS,type IntegrationProvider,type IntegrationState,type IntegrationView } from "@/lib/integrations";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { AGENT_BY_KEY,AGENT_ROLE_KEYS } from "@/lib/agents";
 import { env } from "@/server/env";
 import { invalidateLlmConfig } from "@/server/llm/client";
 import { supabaseConfigStatus } from "@/server/supabase/config";
@@ -32,13 +33,15 @@ type ConnectionRow={id:string;org_id:string|null;provider:IntegrationProvider;la
 export const integrationSaveSchema=z.object({
   provider:z.enum(["hermes","ghl","n8n","llm"]),label:z.string().trim().min(2).max(120),environment:z.enum(["development","staging","production"]),
   secret:z.string().trim().min(16).max(4096).optional(),
-  config:z.object({baseUrl:z.string().max(500).optional(),profile:z.string().regex(/^[a-z0-9][a-z0-9_-]{1,62}$/).optional(),roleKey:z.enum(AGENT_ROLE_KEYS).optional(),gatewayType:z.enum(["profile_gateway","single_profile"]).optional(),locationId:z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(),authMethod:z.enum(["bearer","private_integration","api_key"]).optional(),apiVersion:z.enum(["v3","2021-07-28"]).optional(),pipelineId:z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(),calendarIds:z.array(z.string().regex(/^[A-Za-z0-9]{10,40}$/)).max(20).optional(),scopes:z.array(z.enum(GHL_READ_SCOPES)).max(10).optional(),approvedWorkflowIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{1,80}$/)).max(40).optional(),declaredVersion:z.string().trim().max(80).optional(),declaredEdition:z.enum(["unknown","community","enterprise"]).optional(),llmPreset:z.enum(LLM_PRESET_IDS).optional(),apiFormat:z.enum(["openai","anthropic"]).optional(),model:z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:\/@+-]{0,119}$/,"Enter a valid model name.").optional()}).strict(),
+  accessClientId:z.string().trim().min(1).max(512).optional(),accessClientSecret:z.string().trim().min(1).max(2048).optional(),
+  config:z.object({baseUrl:z.string().max(500).optional(),gatewayId:z.string().uuid().optional(),profile:z.string().regex(/^[a-z0-9][a-z0-9_-]{1,62}$/).optional(),roleKey:z.enum(AGENT_ROLE_KEYS).optional(),gatewayType:z.enum(["multiplexed_profiles","profile_gateway","single_profile"]).optional(),reportedGatewayId:z.string().trim().max(120).optional(),locationId:z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(),authMethod:z.enum(["bearer","private_integration","api_key"]).optional(),apiVersion:z.enum(["v3","2021-07-28"]).optional(),pipelineId:z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(),calendarIds:z.array(z.string().regex(/^[A-Za-z0-9]{10,40}$/)).max(20).optional(),scopes:z.array(z.enum(GHL_READ_SCOPES)).max(10).optional(),approvedWorkflowIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{1,80}$/)).max(40).optional(),declaredVersion:z.string().trim().max(80).optional(),declaredEdition:z.enum(["unknown","community","enterprise"]).optional(),llmPreset:z.enum(LLM_PRESET_IDS).optional(),apiFormat:z.enum(["openai","anthropic"]).optional(),model:z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:\/@+-]{0,119}$/,"Enter a valid model name.").optional()}).strict(),
 }).strict();
 export type IntegrationSaveInput=z.input<typeof integrationSaveSchema>;
 
-export async function listIntegrationManager(user:SessionUser,orgId:string|null):Promise<{connections:IntegrationView[];secureStoreReady:boolean;agencyWorkflows:Array<{id:string;name:string}>;mappedWorkflowIds:string[]}> {
+export async function listIntegrationManager(user:SessionUser,orgId:string|null):Promise<{connections:IntegrationView[];secureStoreReady:boolean;agencyWorkflows:Array<{id:string;name:string}>;mappedWorkflowIds:string[];hermesGateways:HermesGatewayView[]}> {
   const role=await authorize(user,orgId);
   const rows=await withUser(user.id,db=>db.query<ConnectionRow>("select * from integration_connections where org_id is not distinct from $1::uuid order by provider",[orgId])).then(r=>r.rows);
+  const hermesGateways=await withSystem(listHermesGateways);
   const meta=await withSystem(db=>db.query<{id:string;fingerprint:string;rotated_at:Date|null;revoked_at:Date|null}>("select c.id,c.fingerprint,r.rotated_at,c.revoked_at from integration_credentials c left join credential_references r on r.id=c.credential_reference_id where c.org_id is not distinct from $1::uuid",[orgId]));
   const checks=await withUser(user.id,db=>db.query<{connection_id:string;status:string;detail:string;verification_mode:string;capabilities:Record<string,unknown>;checked_at:Date}>("select k.connection_id,k.status,k.detail,k.verification_mode,k.capabilities,k.checked_at from integration_connection_checks k join integration_connections c on c.id=k.connection_id where c.org_id is not distinct from $1::uuid order by checked_at desc limit 80",[orgId]));
   const secureStoreReady=await withSystem(credentialStoreReady);
@@ -49,10 +52,13 @@ export async function listIntegrationManager(user:SessionUser,orgId:string|null)
     return Array.isArray(w) ? w.filter((v):v is {id:string;name:string}=>!!v && typeof v==="object" && typeof v.id==="string" && typeof v.name==="string").map(v=>({id:v.id,name:v.name})) : [];
   }) : [];
   const mappedN8n=orgId && mappedWorkflowIds.length ? (await withUser(user.id,db=>db.query<{status:string;detail:string|null;last_checked_at:Date|null}>("select status,detail,last_checked_at from integration_status where org_id=$1 and provider='n8n'",[orgId]))).rows[0] : null;
-  return {secureStoreReady,agencyWorkflows,mappedWorkflowIds,connections:INTEGRATION_PROVIDERS.filter(p=>p!=="llm" || !orgId).map(provider=>{
+  const primaryGateway=!orgId ? (hermesGateways.slice().reverse().find(g=>g.status!=="disconnected") ?? hermesGateways[hermesGateways.length-1]) : null;
+  return {secureStoreReady,agencyWorkflows,mappedWorkflowIds,hermesGateways,connections:INTEGRATION_PROVIDERS.filter(p=>p!=="llm" || !orgId).map(provider=>{
     const r=rows.find(c=>c.provider===provider); const cred=meta.rows.find(c=>c.id===r?.credential_id);
+    const gateway=provider==="hermes" ? primaryGateway : null;
     const mapped=provider==="n8n" && mappedN8n && !r;
-    return {id:r?.id ?? null,provider,label:r?.label ?? INTEGRATION_NAMES[provider],environment:r?.environment ?? "development",status:r?.status ?? (mapped ? mappedN8n.status==="connected" ? "connected" : mappedN8n.status==="disabled" ? "disconnected" : mappedN8n.status==="error" ? "needs_attention" : "credentials_saved" : provider==="supabase" && !orgId && supabaseConfigStatus().configured ? "credentials_saved" : "not_configured"),config:r?.config ?? (mapped?{agencyManaged:true,approvedWorkflowIds:mappedWorkflowIds}:{}),capabilities:r?.capabilities ?? {},lastSuccessAt:date(r?.last_success_at ?? (mapped && mappedN8n.status==="connected"?mappedN8n.last_checked_at:null)),lastFailureAt:date(r?.last_failure_at ?? (mapped && mappedN8n.status==="error"?mappedN8n.last_checked_at:null)),lastError:r?.last_error ?? (mapped && ["error","disabled"].includes(mappedN8n.status)?mappedN8n.detail:null),fingerprint:cred?.fingerprint ?? null,rotatedAt:date(cred?.rotated_at ?? null),hasCredential:!!cred && !cred.revoked_at,checks:checks.rows.filter(c=>c.connection_id===r?.id).slice(0,8).map(c=>({status:c.status,detail:c.detail,mode:c.verification_mode,operation:typeof c.capabilities.verificationOperation==="string"?c.capabilities.verificationOperation:c.capabilities.verification==="one_token_completion"?"basic_model_response":c.capabilities.verification==="model_list"?"model_listing":undefined,at:date(c.checked_at)!}))};
+    const gatewayConfig=gateway?{gatewayId:gateway.id,baseUrl:gateway.baseUrl,gatewayType:gateway.gatewayType,reportedGatewayId:gateway.reportedGatewayId??undefined,declaredVersion:gateway.declaredVersion??undefined}:null;
+    return {id:gateway?.id ?? r?.id ?? null,provider,label:gateway?.label ?? r?.label ?? INTEGRATION_NAMES[provider],environment:gateway?.environment ?? r?.environment ?? "development",status:(gateway?.status as IntegrationState|undefined) ?? r?.status ?? (mapped ? mappedN8n.status==="connected" ? "connected" : mappedN8n.status==="disabled" ? "disconnected" : mappedN8n.status==="error" ? "needs_attention" : "credentials_saved" : provider==="supabase" && !orgId && supabaseConfigStatus().configured ? "credentials_saved" : "not_configured"),config:gatewayConfig ?? r?.config ?? (mapped?{agencyManaged:true,approvedWorkflowIds:mappedWorkflowIds}:{}),capabilities:gateway?.capabilities ?? r?.capabilities ?? {},lastSuccessAt:gateway?.lastSuccessAt ?? date(r?.last_success_at ?? (mapped && mappedN8n.status==="connected"?mappedN8n.last_checked_at:null)),lastFailureAt:gateway?.lastFailureAt ?? date(r?.last_failure_at ?? (mapped && mappedN8n.status==="error"?mappedN8n.last_checked_at:null)),lastError:gateway?.lastError ?? r?.last_error ?? (mapped && ["error","disabled"].includes(mappedN8n.status)?mappedN8n.detail:null),fingerprint:cred?.fingerprint ?? null,rotatedAt:date(cred?.rotated_at ?? null),hasCredential:gateway?gateway.hasAccessCredential:!!cred && !cred.revoked_at,checks:checks.rows.filter(c=>c.connection_id===r?.id).slice(0,8).map(c=>({status:c.status,detail:c.detail,mode:c.verification_mode,operation:typeof c.capabilities.verificationOperation==="string"?c.capabilities.verificationOperation:c.capabilities.verification==="one_token_completion"?"basic_model_response":c.capabilities.verification==="model_list"?"model_listing":undefined,at:date(c.checked_at)!}))};
   })};
 }
 
@@ -70,13 +76,37 @@ async function refreshSetup(orgId:string|null) {
 export async function saveIntegrationConnection(user:SessionUser,orgId:string|null,input:IntegrationSaveInput) {
   await authorize(user,orgId,true);
   const d=integrationSaveSchema.parse(input); const config=d.config;
+  if(d.provider==="hermes" && !orgId) {
+    if(!config.baseUrl)throw new AppError("invalid_input","Enter the approved HTTPS gateway URL.");
+    const gatewayType=config.gatewayType==="single_profile" ? "single_profile" : "multiplexed_profiles";
+    const gatewayId=await withSystem(db=>saveHermesGateway(db,user,{
+      gatewayId:config.gatewayId,
+      label:d.label,
+      environment:d.environment,
+      baseUrl:config.baseUrl!,
+      gatewayType,
+      reportedGatewayId:config.reportedGatewayId,
+      declaredVersion:config.declaredVersion,
+      accessClientId:d.accessClientId,
+      accessClientSecret:d.accessClientSecret,
+    }));
+    return gatewayId;
+  }
   if(d.provider==="llm") {
     if(orgId)throw new AppError("invalid_input","The AI model connection is agency-wide, not per client.");
     if(!config.baseUrl)throw new AppError("invalid_input","Enter the model provider base URL.");
     if(!config.model || !config.apiFormat)throw new AppError("invalid_input","Choose the model and API format.");
     config.baseUrl=validateLlmEndpoint(config.baseUrl);
   }
-  else if(d.provider!=="ghl") {if(!config.baseUrl)throw new AppError("invalid_input","Enter the service endpoint."); config.baseUrl=validateIntegrationEndpoint(config.baseUrl);}
+  else if(d.provider!=="ghl") {
+    if(d.provider==="hermes" && orgId && config.gatewayId) {
+      const {rows}=await withSystem(db=>db.query<{id:string;base_url:string;status:string}>("select id,base_url,status from hermes_gateways where id=$1",[config.gatewayId]));
+      if(!rows[0] || rows[0].status==="disconnected")throw new AppError("not_found","Choose an active approved Hermes gateway.");
+      config.baseUrl=rows[0].base_url;
+    }
+    if(!config.baseUrl)throw new AppError("invalid_input","Select an approved Hermes gateway or enter the service endpoint.");
+    config.baseUrl=d.provider==="hermes" ? validateHermesGatewayUrl(config.baseUrl) : validateIntegrationEndpoint(config.baseUrl);
+  }
   if(d.provider==="hermes" && !config.profile)throw new AppError("invalid_input","Enter the intended gateway profile.");
   if(d.provider==="ghl" && (!orgId || !config.locationId))throw new AppError("invalid_input","Select a client and enter its GHL location identifier.");
   await withSystem(async db=>{
@@ -84,11 +114,28 @@ export async function saveIntegrationConnection(user:SessionUser,orgId:string|nu
     let kind:"agency"|"client"="agency";
     if(orgId) {const {rows}=await db.query<{kind:"agency"|"client"}>("select kind from organizations where id=$1",[orgId]); if(!rows[0])throw new AppError("not_found","Client organization not found.");kind=rows[0].kind;}
     let agent:{id:string;credential_id:string|null}|undefined;
+    let hermesGatewayId:string|null=null;
     if(d.provider==="hermes" && orgId) {
       if(kind==="client" && isReservedProfile(config.profile!))throw new AppError("forbidden","Clients require dedicated profiles. Agency profiles cannot be reused.");
       if(!config.roleKey)throw new AppError("invalid_input","Select the AI employee this profile belongs to.");
       agent=(await db.query<{id:string;credential_id:string|null}>("select id,credential_id from agent_instances where org_id=$1 and role_key=$2",[orgId,config.roleKey])).rows[0];
       if(!agent)throw new AppError("not_found","AI employee not found.");
+      let selectedGatewayType:string|undefined;
+      if(config.gatewayId) {
+        const {rows:gateways}=await db.query<{id:string;base_url:string;status:string;gateway_type:string}>("select id,base_url,status,gateway_type from hermes_gateways where id=$1",[config.gatewayId]);
+        if(!gateways[0] || gateways[0].status==="disconnected" || gateways[0].base_url!==config.baseUrl)throw new AppError("invalid_input","The employee profile must use its selected approved gateway.");
+        hermesGatewayId=gateways[0].id;
+        selectedGatewayType=gateways[0].gateway_type;
+      } else {
+        const {rows:gateways}=await db.query<{id:string;gateway_type:string}>("select id,gateway_type from hermes_gateways where rtrim(base_url,'/')=rtrim($1,'/') and status <> 'disconnected'",[config.baseUrl]);
+        hermesGatewayId=gateways[0]?.id??null;
+        selectedGatewayType=gateways[0]?.gateway_type;
+        if(!hermesGatewayId && process.env.NODE_ENV!=="test")throw new AppError("invalid_input","Select an iAcquire-registered Hermes gateway before mapping this profile.");
+      }
+      if(selectedGatewayType==="single_profile") {
+        const mapped=await db.query("select 1 from agent_instances where hermes_gateway_id=$1 and id<>$2 and hermes_profile is not null limit 1",[hermesGatewayId,agent.id]);
+        if(mapped.rows.length)throw new AppError("conflict","This gateway is registered for one profile and cannot serve another workforce employee.");
+      }
       const dupe=await db.query("select 1 from agent_instances where hermes_base_url=$1 and hermes_profile=$2 and id<>$3",[config.baseUrl,config.profile,agent.id]);
       if(dupe.rows.length)throw new AppError("conflict","That profile already belongs to another employee.");
       credentialId=agent.credential_id;
@@ -107,7 +154,7 @@ export async function saveIntegrationConnection(user:SessionUser,orgId:string|nu
     await db.query(`insert into integration_connections(org_id,provider,label,environment,config,credential_id,status,created_by)
       values($1,$2,$3,$4,$5,$6,'credentials_saved',$7)
       on conflict(coalesce(org_id,'00000000-0000-0000-0000-000000000000'::uuid),provider) do update set label=excluded.label,environment=excluded.environment,config=excluded.config,credential_id=excluded.credential_id,status='credentials_saved',capabilities='{}',last_error=null,revision=integration_connections.revision+1`,[orgId,d.provider,d.label,d.environment,JSON.stringify(config),credentialId,user.id]);
-    if(agent)await db.query("update agent_instances set hermes_base_url=$2,hermes_profile=$3,credential_id=$4,status='provisioning',last_health_ok=null,last_health_check_at=null,last_health_detail='Credentials saved. Live verification required.' where id=$1",[agent.id,config.baseUrl,config.profile,credentialId]);
+    if(agent)await db.query("update agent_instances set hermes_base_url=$2,hermes_profile=$3,credential_id=$4,hermes_gateway_id=$5,status='provisioning',last_health_ok=null,last_health_check_at=null,last_health_detail='Credentials saved. Live verification required.' where id=$1",[agent.id,config.baseUrl,config.profile,credentialId,hermesGatewayId]);
     if(d.provider==="ghl")await db.query(`insert into ghl_location_mappings(org_id,location_id,pipeline_id,calendar_ids,credential_id,status,created_by) values($1,$2,$3,$4,$5,'pending',$6)
       on conflict(org_id) do update set location_id=excluded.location_id,pipeline_id=excluded.pipeline_id,calendar_ids=excluded.calendar_ids,credential_id=excluded.credential_id,status='pending',verified_at=null`,[orgId,config.locationId,config.pipelineId ?? null,config.calendarIds ?? [],credentialId,user.id]);
     await setIntegrationStatus(db,orgId,d.provider,"pending","Credentials saved. A real connection test is required.");
@@ -121,8 +168,80 @@ export async function saveIntegrationConnection(user:SessionUser,orgId:string|nu
   if(d.provider!=="llm")await refreshSetup(orgId);
 }
 
-export async function testIntegrationConnection(user:SessionUser,orgId:string|null,provider:IntegrationProvider):Promise<Inspection> {
+async function testHermesGateway(user:SessionUser,gatewayId?:string):Promise<Inspection> {
+  const gateway=await withSystem(async db=>{
+    const result=gatewayId
+      ? await db.query<{id:string;base_url:string;declared_version:string|null;profile_creation_status:string;revision:number;status:string}>("select id,base_url,declared_version,profile_creation_status,revision,status from hermes_gateways where id=$1",[gatewayId])
+      : await db.query<{id:string;base_url:string;declared_version:string|null;profile_creation_status:string;revision:number;status:string}>("select id,base_url,declared_version,profile_creation_status,revision,status from hermes_gateways where status <> 'disconnected' order by created_at limit 1");
+    return result.rows[0] ?? null;
+  });
+  if(!gateway)throw new AppError("not_found","Register an approved Hermes gateway before testing it.");
+  if(gateway.status==="disconnected")throw new AppError("integration_unavailable","Reconnect this gateway before testing it.");
+  if(gateway.status==="testing")throw new AppError("conflict","A gateway test is already running.");
+  const startedUpdate=await withSystem(db=>db.query("update hermes_gateways set status='testing' where id=$1 and revision=$2 and status not in ('disconnected','testing')",[gateway.id,gateway.revision]));
+  if(!startedUpdate.rowCount)throw new AppError("conflict","The gateway changed before its test started. Reload and try again.");
+  const started=Date.now();
+  const {org,agents}=await withSystem(async db=>{
+    const orgs=await db.query<{id:string}>("select id from organizations where kind='agency' order by created_at limit 1");
+    if(!orgs.rows[0])return {org:null,agents:[] as Array<{id:string;role_key:string;hermes_gateway_id:string|null;hermes_profile:string|null}>};
+    const employees=await db.query<{id:string;role_key:string;hermes_gateway_id:string|null;hermes_profile:string|null}>("select id,role_key,hermes_gateway_id,hermes_profile from agent_instances where org_id=$1",[orgs.rows[0].id]);
+    return {org:orgs.rows[0],agents:employees.rows};
+  });
+  const profileHealth=await Promise.all(AGENT_ROLE_KEYS.map(async roleKey=>{
+    const agent=agents.find(row=>row.role_key===roleKey);
+    if(!agent || !agent.hermes_profile || agent.hermes_gateway_id!==gateway.id) {
+      return {roleKey,label:AGENT_BY_KEY[roleKey].shortName,profile:agent?.hermes_profile??null,status:"setup_required",detail:"Map this existing agency employee to the gateway and verify its own profile key."};
+    }
+    try {
+      const health=await runHealthCheck(agent.id,{userId:user.id,kind:"agency"},{skipSetupSync:true});
+      return {roleKey,label:AGENT_BY_KEY[roleKey].shortName,profile:agent.hermes_profile,status:health.status,detail:health.detail};
+    } catch {
+      return {roleKey,label:AGENT_BY_KEY[roleKey].shortName,profile:agent.hermes_profile,status:"error",detail:"The profile health check failed safely."};
+    }
+  }));
+  const connected=Boolean(org) && profileHealth.length===6 && profileHealth.every(p=>p.status==="online");
+  const detail=connected
+    ? "The protected gateway authenticated and all six mapped agency profiles passed identity, capability and tool-safety checks."
+    : `${profileHealth.filter(p=>p.status==="online").length} of 6 agency profiles passed. Map and verify each existing profile before the gateway can show Connected.`;
+  const result:Inspection={
+    status:connected?"connected":"needs_attention",
+    detail,
+    capabilities:{
+      gatewayHost:new URL(gateway.base_url).host,
+      authenticatedProfiles:profileHealth.filter(p=>p.status==="online").length,
+      requiredAgencyProfiles:6,
+      agencyProfiles:profileHealth,
+      declaredVersion:gateway.declared_version,
+      installedVersionDetected:false,
+      profileCreation:{status:gateway.profile_creation_status,automaticProvisioningVerified:false},
+      verificationOperation:"six_profile_read_only_health_checks",
+      safeReadOnlyTest:true,
+    },
+  };
+  const elapsed=Math.max(0,Date.now()-started);
+  await withSystem(async db=>{
+    const saved=await db.query(
+      `update hermes_gateways set status=$2,capabilities=$3,last_health_check_at=now(),last_latency_ms=$4,
+        last_success_at=case when $2='connected' then now() else last_success_at end,
+        last_failure_at=case when $2<>'connected' then now() else last_failure_at end,
+        last_error=case when $2='connected' then null else $5 end where id=$1 and revision=$6`,
+      [gateway.id,result.status,JSON.stringify(result.capabilities),elapsed,result.status==="connected"?null:detail,gateway.revision],
+    );
+    if(!saved.rowCount)throw new AppError("conflict","Gateway settings changed during the profile tests. Run the current verification again.");
+    await setIntegrationStatus(db,null,"hermes",connected?"connected":"error",detail);
+    await recordAudit({orgId:null,actorUserId:user.id,actorKind:"agency",action:"hermes.gateway_tested",targetType:"hermes_gateway",targetId:gateway.id,result:connected?"success":"failure",metadata:{status:result.status,verifiedProfiles:profileHealth.filter(p=>p.status==="online").length,totalProfiles:6,mode:process.env.NODE_ENV==="test"?"mock":"live_read_only"}},db);
+  });
+  return result;
+}
+
+export async function testIntegrationConnection(user:SessionUser,orgId:string|null,provider:IntegrationProvider,gatewayId?:string):Promise<Inspection> {
   await authorize(user,orgId,true);
+  if(provider==="hermes" && !orgId) {
+    const hasGateway=await withSystem(async db=>gatewayId
+      ? (await db.query("select 1 from hermes_gateways where id=$1",[gatewayId])).rows.length>0
+      : (await db.query("select 1 from hermes_gateways where status <> 'disconnected' limit 1")).rows.length>0);
+    if(hasGateway)return testHermesGateway(user,gatewayId);
+  }
   if(provider==="n8n" && orgId) {
     const tenantConnection=await withSystem(db=>existing(db,orgId,provider));
     if(!tenantConnection)return testMappedN8nConnection(user,orgId);
@@ -137,6 +256,8 @@ export async function testIntegrationConnection(user:SessionUser,orgId:string|nu
     const secret=provider==="supabase" ? null : await withSystem(db=>resolveCredential(db,r.credential_id!,orgId,provider));
     if(provider!=="supabase" && !secret)throw new AppError("integration_unavailable","The stored credential is revoked or unavailable.");
     const cfg=r.config;
+    const access=provider==="hermes" && typeof cfg.gatewayId==="string" ? await withSystem(db=>loadHermesAccessCredentials(db,cfg.gatewayId as string)) : null;
+    if(provider==="hermes" && typeof cfg.gatewayId==="string" && !access)throw new AppError("integration_unavailable","The selected gateway's Cloudflare Access credential is unavailable. Reconnect the gateway securely.");
     if(provider==="supabase") {
       const {rows}=await withSystem(db=>db.query<{auth_user_id:string|null}>("select auth_user_id from users where id=$1",[user.id]));
       if(!rows[0]?.auth_user_id)throw new AppError("integration_unavailable","Your profile is not linked to Supabase Auth. Complete account migration before verifying the foundation.");
@@ -146,13 +267,13 @@ export async function testIntegrationConnection(user:SessionUser,orgId:string|nu
       const privateBuckets=required.every(name=>buckets.some(b=>b.id===name && !b.public));
       result={status:privateBuckets ? "connected" : "needs_attention",detail:privateBuckets ? "Supabase Auth identity, PostgreSQL profile persistence and required private Storage buckets verified." : "Supabase Auth responds, but required private Storage buckets are missing or public.",capabilities:{authIdentityVerified:true,postgresqlReadVerified:true,privateBucketsVerified:privateBuckets,realtime:"independent_scoped_subscription_test_required"}};
     }
-    else if(provider==="hermes")result=await inspectHermes({baseUrl:String(cfg.baseUrl),profile:String(cfg.profile),apiKey:secret!},!!orgId);
+    else if(provider==="hermes")result=await inspectHermes({baseUrl:String(cfg.baseUrl),profile:String(cfg.profile),apiKey:secret!,...(access??{})},!!orgId);
     else if(provider==="ghl")result=await inspectGhl({locationId:String(cfg.locationId),token:secret!,orgKind:"client",version:cfg.apiVersion==="v3" ? "v3" : "2021-07-28"},Array.isArray(cfg.scopes)?cfg.scopes as string[]:["locations.readonly","opportunities.readonly"]);
     else if(provider==="llm")result=await inspectLlm({baseUrl:String(cfg.baseUrl),model:String(cfg.model),format:cfg.apiFormat==="anthropic" ? "anthropic" : "openai",apiKey:secret!});
     else if(provider==="n8n")result=await inspectN8n({baseUrl:String(cfg.baseUrl),apiKey:secret!},Array.isArray(cfg.approvedWorkflowIds)?cfg.approvedWorkflowIds as string[]:[]);
     else throw new AppError("integration_unavailable","This provider requires a supported authorization or DNS verification connection.");
     // Even an upstream response reflecting its key must not reach persistence or browser output.
-    if(secret)result=JSON.parse(JSON.stringify(result).split(secret).join("[redacted]")) as Inspection;
+    for(const value of [secret,access?.accessClientId,access?.accessClientSecret].filter((v):v is string=>!!v))result=JSON.parse(JSON.stringify(result).split(value).join("[redacted]")) as Inspection;
   } catch(error) {result={status:"error",detail:error instanceof AppError ? error.message : "The service could not be verified. Check its endpoint, credential and installed API compatibility.",capabilities:provider==="llm"?{verificationOperation:"model_listing",safeReadOnlyTest:true}:{}};}
   await withSystem(async db=>{
     const current=await existing(db,orgId,provider);
@@ -266,8 +387,28 @@ async function testMappedN8nConnection(user:SessionUser,orgId:string):Promise<In
     await recordAudit({orgId,actorUserId:user.id,actorKind:"agency",action:"integration.mapped_workflows_verified",result:result.status==="connected"?"success":"failure",metadata:{workflowIds:ids,status:result.status}},db);
   });await refreshSetup(orgId);return result;
 }
-export async function disconnectIntegration(user:SessionUser,orgId:string|null,provider:IntegrationProvider) {
+export async function disconnectIntegration(user:SessionUser,orgId:string|null,provider:IntegrationProvider,gatewayId?:string) {
   await authorize(user,orgId,true);
+  if(provider==="hermes" && !orgId) {
+    const gateways=await withSystem(async db=>{
+      const query=gatewayId
+        ? await db.query<{id:string;access_credential_id:string|null}>("select id,access_credential_id from hermes_gateways where id=$1",[gatewayId])
+        : await db.query<{id:string;access_credential_id:string|null}>("select id,access_credential_id from hermes_gateways where status <> 'disconnected' order by created_at limit 1");
+      return query.rows;
+    });
+    if(gateways.length) {
+      await withSystem(async db=>{
+        for(const gateway of gateways) {
+          if(gateway.access_credential_id)await revokeCredential(db,gateway.access_credential_id,null,"hermes",user.id);
+          await db.query("update hermes_gateways set status='disconnected',access_credential_id=null,capabilities='{}',last_error='Disconnected in the portal.',revision=revision+1 where id=$1",[gateway.id]);
+          await db.query("update agent_instances set status='offline',last_health_ok=false,last_health_detail='Hermes gateway disconnected in the portal.' where hermes_gateway_id=$1",[gateway.id]);
+          await recordAudit({orgId:null,actorUserId:user.id,actorKind:"agency",action:"hermes.gateway_disconnected",targetType:"hermes_gateway",targetId:gateway.id,result:"success",metadata:{profileMappingsPreserved:true}},db);
+        }
+        await setIntegrationStatus(db,null,"hermes","disabled","Hermes gateway disconnected in the portal. Revoke the Cloudflare service token in Access separately.");
+      });
+      return;
+    }
+  }
   await withSystem(async db=>{
     const r=await existing(db,orgId,provider);if(!r)throw new AppError("not_found","Connection not found.");
     if(r.credential_id)await revokeCredential(db,r.credential_id,orgId,provider,user.id);

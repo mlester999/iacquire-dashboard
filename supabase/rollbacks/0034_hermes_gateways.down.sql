@@ -1,0 +1,13 @@
+drop trigger if exists agent_hermes_gateway_guard on agent_instances;
+drop function if exists app.guard_agent_hermes_gateway();
+drop trigger if exists hermes_gateway_type_guard on hermes_gateways;
+drop function if exists app.guard_hermes_gateway_type();
+drop trigger if exists hermes_gateway_credential_guard on hermes_gateways;
+drop function if exists app.guard_hermes_gateway_credential();
+drop policy if exists hermes_gateways_agency_select on hermes_gateways;
+drop trigger if exists hermes_gateways_touch on hermes_gateways;
+drop index if exists agent_instances_gateway_profile_unique;
+drop index if exists agent_instances_hermes_gateway;
+alter table agent_instances drop column if exists hermes_gateway_id;
+drop index if exists hermes_gateways_status;
+drop table if exists hermes_gateways;

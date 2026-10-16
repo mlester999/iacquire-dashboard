@@ -81,6 +81,23 @@ describe("Hermes verification fails closed",()=>{
     await expect(getCapabilities({...conn,baseUrl:"https://unapproved.example.test"})).rejects.toThrow();
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it("sends Cloudflare Access and Hermes profile credentials in separate headers",async()=>{
+    const spy=vi.spyOn(globalThis,"fetch").mockResolvedValue(Response.json({object:"hermes.api_server.capabilities",auth:{required:true,type:"bearer"},features:{run_submission:true,run_events_sse:true}}));
+    const connection={...conn,accessClientId:"synthetic-access-id",accessClientSecret:"synthetic-access-secret"};
+    expect((await getCapabilities(connection)).authenticated).toBe(true);
+    const [url,init]=spy.mock.calls[0];const sent=new Headers(init?.headers);
+    expect(String(url)).toContain("/p/c-synthetic-profile/v1/capabilities");
+    expect(sent.get("Authorization")).toBe("Bearer synthetic-credential");
+    expect(sent.get("CF-Access-Client-Id")).toBe("synthetic-access-id");
+    expect(sent.get("CF-Access-Client-Secret")).toBe("synthetic-access-secret");
+  });
+
+  it("refuses a partial Cloudflare Access credential pair before making a request",async()=>{
+    const spy=vi.spyOn(globalThis,"fetch");
+    await expect(getCapabilities({...conn,accessClientId:"synthetic-access-id"})).rejects.toMatchObject({kind:"bad_response"});
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
 
 describe("restricted tool detection", () => {

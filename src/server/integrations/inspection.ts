@@ -15,7 +15,7 @@ const id=(v:unknown)=>typeof v === "string" ? v : "";
 const list=(v:unknown):Record<string,unknown>[] => Array.isArray(v) ? v.filter((x):x is Record<string,unknown>=>!!x && typeof x === "object") : [];
 
 export async function inspectHermes(conn:HermesConnection,clientProfile:boolean):Promise<Inspection> {
-  conn={...conn,baseUrl:validateIntegrationEndpoint(conn.baseUrl)};
+  conn={...conn,baseUrl:validateIntegrationEndpoint(conn.baseUrl,["hermes-api.iacquire.online"])};
   const caps=await getCapabilities(conn);
   const models=await getProfileModels(conn);
   const sets=await getToolsets(conn);

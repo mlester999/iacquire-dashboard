@@ -206,6 +206,7 @@ export async function listAllAgents(user: SessionUser) {
     const { rows } = await db.query<{
       id: string;
       org_id: string;
+      org_kind: "agency" | "client";
       org_name: string;
       role_key: AgentRoleKey;
       display_name: string;
@@ -218,13 +219,30 @@ export async function listAllAgents(user: SessionUser) {
       failed_30d: number;
       tokens_30d: number;
     }>(
-      `select a.id, a.org_id, o.name as org_name, a.role_key, a.display_name, a.enabled, a.status, a.hermes_profile,
+      `select a.id, a.org_id, o.kind as org_kind, o.name as org_name, a.role_key, a.display_name, a.enabled, a.status, a.hermes_profile,
               a.last_health_check_at, a.last_health_detail,
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as runs_30d,
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d,
               (select coalesce(sum(total_tokens),0)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as tokens_30d
        from agent_instances a join organizations o on o.id = a.org_id join agent_roles ro on ro.key = a.role_key
-       where o.kind = 'client' order by o.name, ro.sort_order`,
+       where o.kind in ('agency','client') order by case when o.kind='agency' then 0 else 1 end, o.name, ro.sort_order`,
+    );
+    return rows;
+  });
+}
+
+/** Agency-owned employee identities are returned separately from client workforce rows. */
+export async function listAgencyAgents(user: SessionUser) {
+  return withUser(user.id, async (db) => {
+    const { rows } = await db.query<{
+      id: string; org_id: string; org_name: string; role_key: AgentRoleKey; display_name: string;
+      enabled: boolean; status: AgentStatus; hermes_profile: string | null;
+      last_health_check_at: Date | null; last_health_detail: string | null;
+    }>(
+      `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
+              a.last_health_check_at,a.last_health_detail
+       from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
+       where o.kind='agency' order by ro.sort_order`,
     );
     return rows;
   });

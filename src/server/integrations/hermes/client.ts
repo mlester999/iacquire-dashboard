@@ -21,6 +21,9 @@ export interface HermesConnection {
   baseUrl: string;
   profile: string | null;
   apiKey: string;
+  /** Optional Cloudflare Access service token. Profile API keys remain separate. */
+  accessClientId?: string;
+  accessClientSecret?: string;
 }
 
 export type HermesErrorKind = "unreachable" | "auth_failed" | "not_found" | "rate_limited" | "bad_response" | "timeout" | "upstream";
@@ -76,13 +79,23 @@ export interface TokenUsage {
 
 function endpoint(conn: HermesConnection, path: string): string {
   // Apply the same deployment-owned host policy to every legacy/chat adapter call too.
-  const base = validateIntegrationEndpoint(conn.baseUrl);
+  const base = validateIntegrationEndpoint(conn.baseUrl, ["hermes-api.iacquire.online"]);
   const prefix = conn.profile ? `/p/${encodeURIComponent(conn.profile)}` : "";
   return `${base}${prefix}${path}`;
 }
 
 function headers(conn: HermesConnection, extra?: Record<string, string>): Record<string, string> {
-  return { Authorization: `Bearer ${conn.apiKey}`, Accept: "application/json", ...extra };
+  if (Boolean(conn.accessClientId) !== Boolean(conn.accessClientSecret)) {
+    throw new HermesError("bad_response", "Cloudflare Access credentials are incomplete.");
+  }
+  return {
+    Authorization: `Bearer ${conn.apiKey}`,
+    Accept: "application/json",
+    ...(conn.accessClientId && conn.accessClientSecret
+      ? { "CF-Access-Client-Id": conn.accessClientId, "CF-Access-Client-Secret": conn.accessClientSecret }
+      : {}),
+    ...extra,
+  };
 }
 
 async function request(conn: HermesConnection, path: string, init: RequestInit & { timeoutMs?: number }): Promise<Response> {
