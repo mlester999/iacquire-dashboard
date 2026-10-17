@@ -84,7 +84,7 @@ export interface HermesToolPolicyView {
   clients: Array<{ id: string; name: string; policy: HermesPolicyRecord | null; agentIds: string[] }>;
   agents: Array<{
     id: string; orgId: string; orgName: string; orgKind: string; roleKey: AgentRoleKey; displayName: string; enabled: boolean;
-    profile: string | null; expectedProfile: string | null; identityMapped: boolean; lastProfileCheck: string | null;
+    profile: string | null; expectedProfile: string | null; identityMapped: boolean; canAcknowledgeFullCapabilities: boolean; lastProfileCheck: string | null;
     lastProfileCheckAt: string | null; toolPermissionsStatus: string | null; fullCapabilitiesAcknowledged: boolean;
     acknowledgedBy: string | null; acknowledgedAt: string | null; policy: HermesPolicyRecord | null;
   }>;
@@ -147,14 +147,17 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
     const clientIds = clients.map((client) => client.id);
     const { rows: agents } = await db.query<{
       id: string; org_id: string; org_name: string; org_kind: string; role_key: AgentRoleKey; display_name: string; enabled: boolean;
-      hermes_profile: string | null; check_status: string | null; check_profile: string | null; api_contract_verified: boolean; tool_permissions_status: string | null; checked_at: Date | null;
+      hermes_profile: string | null; hermes_gateway_id: string | null; check_status: string | null; check_profile: string | null; check_gateway_id: string | null;
+      identity_verified: boolean | null; api_contract_verified: boolean | null; credential_ready: boolean; tool_permissions_status: string | null; checked_at: Date | null;
       acknowledged_profile: string | null; acknowledged_by_name: string | null; acknowledged_at: Date | null;
     }>(
-      `select a.id,a.org_id,o.name as org_name,o.kind as org_kind,a.role_key,a.display_name,a.enabled,a.hermes_profile,
-         c.status as check_status,c.profile_id as check_profile,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
+      `select a.id,a.org_id,o.name as org_name,o.kind as org_kind,a.role_key,a.display_name,a.enabled,a.hermes_profile,a.hermes_gateway_id,
+         c.status as check_status,c.profile_id as check_profile,c.gateway_id as check_gateway_id,c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
+         (a.credential_id is not null and cred.revoked_at is null) as credential_ready,
          ack.verified_profile as acknowledged_profile,coalesce(nullif(ack_user.full_name,''),ack_user.email::text) as acknowledged_by_name,ack.acknowledged_at
        from agent_instances a join organizations o on o.id=a.org_id
        left join agency_hermes_profile_checks c on c.agent_instance_id=a.id
+       left join integration_credentials cred on cred.id=a.credential_id
        left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
        left join users ack_user on ack_user.id=ack.acknowledged_by
        where (o.kind='agency' and $2::boolean) or (o.kind='client' and a.org_id=any($1::uuid[]))
@@ -175,6 +178,14 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
     const agentOverrides = new Map(records.filter((policy) => policy.scopeKind === "agent").map((policy) => [policy.agentId!, policy]));
     const agentView = agents.map((agent) => {
       const expectedProfile = agent.org_kind === "agency" ? AGENCY_HERMES_PROFILE_IDS[agent.role_key] : null;
+      const identityMapped = Boolean(expectedProfile
+        && agent.hermes_profile === expectedProfile
+        && agent.check_profile === expectedProfile
+        && agent.hermes_gateway_id
+        && agent.check_gateway_id === agent.hermes_gateway_id
+        && agent.check_status === "verified"
+        && agent.identity_verified === true
+        && agent.api_contract_verified === true);
       return {
         id: agent.id,
         orgId: agent.org_id,
@@ -185,7 +196,8 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
         enabled: agent.enabled,
         profile: agent.hermes_profile,
         expectedProfile,
-        identityMapped: Boolean(expectedProfile && agent.hermes_profile === expectedProfile && agent.check_profile === expectedProfile && agent.check_status === "verified" && agent.api_contract_verified),
+        identityMapped,
+        canAcknowledgeFullCapabilities: identityMapped && agent.enabled && agent.credential_ready,
         lastProfileCheck: agent.check_status,
         lastProfileCheckAt: agent.checked_at ? new Date(agent.checked_at).toISOString() : null,
         toolPermissionsStatus: agent.tool_permissions_status,

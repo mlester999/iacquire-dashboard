@@ -269,6 +269,17 @@ describe("agency Hermes workforce isolation", () => {
 
     const agentIds = agents.map((agent) => agent.id);
     await expect(acknowledgeInternalFullCapabilities(staff, agentIds)).rejects.toMatchObject({ code: "forbidden" });
+    await withSystem((db) => db.query(
+      "update integration_credentials set revoked_at=now() where id=(select credential_id from agent_instances where id=$1)",
+      [agentIds[0]],
+    ));
+    const ineligiblePolicyProfile = (await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === agentIds[0]);
+    expect(ineligiblePolicyProfile).toMatchObject({ identityMapped: true, canAcknowledgeFullCapabilities: false });
+    await expect(acknowledgeInternalFullCapabilities(admin, agentIds)).rejects.toMatchObject({ code: "conflict" });
+    await withSystem((db) => db.query(
+      "update integration_credentials set revoked_at=null where id=(select credential_id from agent_instances where id=$1)",
+      [agentIds[0]],
+    ));
     await withSystem((db) => db.query("update agent_instances set enabled=false where id=$1", [agentIds[0]]));
     await expect(acknowledgeInternalFullCapabilities(admin, agentIds)).rejects.toMatchObject({ code: "conflict" });
     await withSystem((db) => db.query("update agent_instances set enabled=true where id=$1", [agentIds[0]]));

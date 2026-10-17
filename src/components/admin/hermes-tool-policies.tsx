@@ -163,7 +163,7 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
   setSelected: React.Dispatch<React.SetStateAction<string[]>>;
   onConfirm: () => void;
 }) {
-  const selectable = profiles.filter((profile) => profile.identityMapped && profile.enabled && profile.expectedProfile);
+  const selectable = profiles.filter((profile) => profile.canAcknowledgeFullCapabilities && !profile.fullCapabilitiesAcknowledged);
   return <Card className="space-y-4 border-violet/20 p-5">
     <div className="flex items-start gap-3">
       <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-soft text-violet"><Bot className="size-4" /></span>
@@ -177,7 +177,7 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
       {profiles.map((profile) => {
         const acknowledged = profile.fullCapabilitiesAcknowledged;
         const checked = acknowledged || selected.includes(profile.id);
-        const canAcknowledge = profile.identityMapped && profile.enabled && Boolean(profile.expectedProfile) && !acknowledged;
+        const canAcknowledge = profile.canAcknowledgeFullCapabilities && !acknowledged;
         return <div key={profile.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
           <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold text-ink">{AGENT_BY_KEY[profile.roleKey].shortName}</p>
@@ -204,6 +204,6 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
       <p className="text-[11px] text-muted">Unverified inventory stays visible after acknowledgement.</p>
       <Button variant="secondary" disabled={!selectable.length || !selected.length} onClick={onConfirm}><CheckCircle2 className="size-4" /> Acknowledge {selected.length} selected</Button>
     </div>
-    {selectable.length < profiles.length && <p className="text-[11px] text-warning-ink">One or more profiles need an identity/API check or are disabled. Review them in Internal Workforce before acknowledgement.</p>}
+    {profiles.some((profile) => !profile.fullCapabilitiesAcknowledged && !profile.canAcknowledgeFullCapabilities) && <p className="text-[11px] text-warning-ink">One or more profiles need an enabled profile, active credential, and current authenticated identity/API check for the saved gateway. Review them in Internal Workforce before acknowledgement.</p>}
   </Card>;
 }
