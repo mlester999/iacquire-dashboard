@@ -17,6 +17,31 @@ import { AGENT_BY_KEY } from "@/lib/agents";
 import { formatDate } from "@/lib/utils";
 
 type Target = "client_default" | `client:${string}` | `agent:${string}`;
+type PolicyTargetOption = { value: Target; companyName: string; targetName: string; typeOrder: number; label: string };
+
+function policyTargetOptions(data: HermesToolPolicyView): PolicyTargetOption[] {
+  const collator = new Intl.Collator("en", { sensitivity: "base" });
+  return [
+    ...data.clients.map((client): PolicyTargetOption => ({
+      value: `client:${client.id}`,
+      companyName: client.name,
+      targetName: "",
+      typeOrder: 0,
+      label: `${client.name} · Client`,
+    })),
+    ...data.agents.map((agent): PolicyTargetOption => ({
+      value: `agent:${agent.id}`,
+      companyName: agent.orgName,
+      targetName: agent.displayName,
+      typeOrder: 1,
+      label: `${agent.orgName} · Employee · ${agent.displayName}`,
+    })),
+  ].sort((a, b) =>
+    collator.compare(a.companyName, b.companyName)
+    || a.typeOrder - b.typeOrder
+    || collator.compare(a.targetName, b.targetName),
+  );
+}
 
 function targetInfo(data: HermesToolPolicyView, target: Target): { policy: HermesPolicyRecord; inherited: boolean; saveTarget: { scopeKind: "client_default" | "client" | "agent"; orgId?: string; agentId?: string }; title: string } {
   if (target === "client_default") return { policy: data.clientDefault, inherited: false, saveTarget: { scopeKind: "client_default" }, title: "Default client policy" };
@@ -84,6 +109,7 @@ function PolicyConfiguration({ data, target, onTargetChange }: {
 }) {
   const router = useRouter();
   const selectedTarget = targetInfo(data, target);
+  const targetOptions = policyTargetOptions(data);
   const [name, setName] = React.useState(target === "client_default" ? selectedTarget.policy.name : selectedTarget.inherited ? "Custom Policy" : selectedTarget.policy.name);
   const [allowedCapabilities, setAllowedCapabilities] = React.useState<string[]>([...selectedTarget.policy.allowedCapabilities]);
   const [blockedToolsets, setBlockedToolsets] = React.useState<string[]>([...selectedTarget.policy.blockedToolsets]);
@@ -115,7 +141,7 @@ function PolicyConfiguration({ data, target, onTargetChange }: {
   });
 
   return <Card className="space-y-5 p-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-base font-semibold text-ink">Policy configuration</h2><p className="mt-1 text-[12px] text-muted">Edit the default, a client override, or an employee override.</p></div><div className="sm:w-80"><Select aria-label="Policy target" value={target} disabled={pending} onChange={(event) => onTargetChange(event.target.value as Target)}><option value="client_default">Default client policy</option>{data.clients.map((client) => <option key={client.id} value={`client:${client.id}`}>Client · {client.name}</option>)}{data.agents.map((agent) => <option key={agent.id} value={`agent:${agent.id}`}>Employee · {agent.displayName} · {agent.orgName}</option>)}</Select></div></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-base font-semibold text-ink">Policy configuration</h2><p className="mt-1 text-[12px] text-muted">Edit the default, a client override, or an employee override.</p></div><div className="sm:w-80"><Select aria-label="Policy target" value={target} disabled={pending} onChange={(event) => onTargetChange(event.target.value as Target)}><option value="client_default">Default client policy</option>{targetOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></div></div>
     <div className="rounded-xl border border-line bg-surface-2 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-ink">{selectedTarget.title}</p><p className="mt-1 text-[12px] text-muted">{selectedTarget.inherited ? "Currently inherits the policy shown below." : "This scope has a saved override."}</p></div><StatusPill tone="warning">Desired · Not enforced</StatusPill></div></div>
     <div className="space-y-2"><label htmlFor="hermes-policy-name" className="text-[12px] font-medium text-ink">Policy name</label><input id="hermes-policy-name" className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={readOnly || pending || agentIsInternal} /></div>
     {agentIsInternal && <p className="rounded-xl border border-warning/20 bg-warning-soft p-3 text-[12px] text-warning-ink">Internal profiles remain on their existing Hermes configuration. Saving a per-profile desired override will block new portal runs until the gateway can apply and verify the changed policy.</p>}
