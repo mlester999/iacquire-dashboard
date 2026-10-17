@@ -10,12 +10,18 @@ alter table invitations drop constraint if exists invitations_platform_role_chec
 alter table invitations add constraint invitations_platform_role_check
   check (platform_role in ('agency_staff', 'agency_manager', 'agency_super_admin'));
 alter table invitations add column agency_scope_mode text;
+-- Older versions could leave Super Admin invitations in the database even though they cannot
+-- be accepted. Retire unaccepted legacy rows and preserve accepted/revoked rows as unscoped history.
+update invitations set revoked_at = now()
+  where org_id is null and platform_role = 'agency_super_admin' and accepted_at is null and revoked_at is null;
 update invitations set agency_scope_mode = case when platform_role = 'agency_manager' then 'all_clients' else 'assigned_clients' end
-  where org_id is null and agency_scope_mode is null;
+  where org_id is null and platform_role in ('agency_manager', 'agency_staff') and agency_scope_mode is null;
 alter table invitations add constraint invitations_agency_scope_mode_check
   check ((org_id is not null and platform_role is null and agency_scope_mode is null)
       or (org_id is null and platform_role = 'agency_manager' and agency_scope_mode in ('all_clients', 'assigned_clients'))
-      or (org_id is null and platform_role = 'agency_staff' and agency_scope_mode = 'assigned_clients'));
+      or (org_id is null and platform_role = 'agency_staff' and agency_scope_mode = 'assigned_clients')
+      or (org_id is null and platform_role = 'agency_super_admin' and agency_scope_mode is null
+        and (accepted_at is not null or revoked_at is not null)));
 alter table invitations add column email_delivery_status text check (email_delivery_status in ('queued', 'captured', 'sent', 'failed'));
 alter table invitations add column email_delivery_error text check (char_length(email_delivery_error) <= 300);
 
