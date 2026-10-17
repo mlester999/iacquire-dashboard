@@ -6,6 +6,7 @@ import { AppError,toPublicError } from "@/server/errors";
 import { INTEGRATION_PROVIDERS } from "@/lib/integrations";
 import { env } from "@/server/env";
 import { consumeRateLimit } from "@/server/security/rate-limit";
+import { isTrustedPortalRequest } from "@/server/security/portal-origin";
 
 export const dynamic="force-dynamic";
 export const runtime="nodejs";
@@ -25,9 +26,8 @@ export async function GET(req:NextRequest) {
 export async function POST(req:NextRequest) {
   try {
     const user=await requireAgencyOrThrow("super_admin");
-    const origin=req.headers.get("origin");
-    if(!origin || new URL(origin).origin!==new URL(env().APP_URL).origin)throw new AppError("forbidden","Connection changes must come from the portal.");
-    if(env().NODE_ENV==="production" && !env().APP_URL.startsWith("https://"))throw new AppError("forbidden","Secure HTTPS submission is required.");
+    const config=env();
+    if(!isTrustedPortalRequest({origin:req.headers.get("origin"),appUrl:config.APP_URL,host:req.headers.get("host"),forwardedHost:req.headers.get("x-forwarded-host"),production:config.NODE_ENV==="production"}))throw new AppError("forbidden","Connection changes must come from the portal.");
     if(Number(req.headers.get("content-length") ?? 0)>20_000)throw new AppError("invalid_input","Connection request is too large.");
     const limit=await consumeRateLimit({name:"integration-admin",limit:20,windowSeconds:60},user.id);
     if(!limit.allowed)throw new AppError("rate_limited","Wait a moment before testing another connection.");
