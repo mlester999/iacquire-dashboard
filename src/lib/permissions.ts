@@ -238,6 +238,18 @@ export const AGENCY_TEAM_OPERATIONAL_PERMISSIONS = [
   "workflows.view", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "calls.view", "analytics.export",
 ] as const satisfies readonly Permission[];
 
+/** Module view grants are parent gates for related agency actions. */
+export const AGENCY_TEAM_PERMISSION_VIEW_PARENT: Partial<Record<Permission, "projects.view" | "website.view">> = {
+  "projects.manage": "projects.view",
+  "quotes.manage": "projects.view",
+  "website.create": "website.view",
+  "website.edit": "website.view",
+  "website.domains": "website.view",
+  "website.review": "website.view",
+  "website.publish": "website.view",
+  "website.archive": "website.view",
+};
+
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   owner: "Full control, including billing, autonomous mode and the final say on escalations.",
   admin: "Runs the workspace day to day: team, AI settings, inbox and approvals.",
@@ -321,8 +333,10 @@ export const AGENCY_TEAM_MANAGED_PERMISSIONS = [
   ...AGENCY_TEAM_OPERATIONAL_PERMISSIONS,
   "crm.view",
   "setup.manage",
+  "projects.view",
   "projects.manage",
   "quotes.manage",
+  "website.view",
   "website.publish",
   "website.create",
   "website.edit",
@@ -336,8 +350,10 @@ export type AgencyTeamPermission = (typeof AGENCY_TEAM_MANAGED_PERMISSIONS)[numb
 const AGENCY_TEAM_EXTRA_PERMISSION_INFO = {
   "crm.view": { label: "Open Native CRM", group: "Native CRM", note: "CRM access requires an active, audited support session and client scope." },
   "setup.manage": { label: "Manage Setup Center operations", group: "Setup Center" },
+  "projects.view": { label: "View client projects", group: "Projects and quotes" },
   "projects.manage": { label: "Manage client projects and updates", group: "Projects and quotes" },
   "quotes.manage": { label: "Prepare and manage client quotes", group: "Projects and quotes" },
+  "website.view": { label: "View Website Studio", group: "Website Studio" },
   "website.publish": { label: "Publish client websites", group: "Website Studio", note: "Website Studio's client review and publishing checks still apply." },
   "website.create": { label: "Create client websites", group: "Website Studio", note: "Creates a private first draft; client scope and template availability still apply." },
   "website.edit": { label: "Edit client websites", group: "Website Studio", note: "Client scope and website resource checks still apply." },
@@ -386,7 +402,6 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "setup.view": { label: "View setup tasks", group: "Setup Center", note: "Client scope and resource access still apply." },
   "setup.respond": { label: "Respond to setup requests", group: "Setup Center", note: "Client owner or agency role control." },
   "setup.activate": { label: "Activate completed setup", group: "Setup Center", note: "Super Admin approval is required." },
-  "projects.view": { label: "View client projects", group: "Projects and quotes", note: "Client scope and resource access still apply." },
   "projects.request": { label: "Request client work", group: "Projects and quotes", note: "Client owner or agency role control." },
   "projects.approve_quote": { label: "Approve client quotes", group: "Projects and quotes", note: "Reserved for the client owner." },
   "catalog.manage": { label: "Manage service catalog", group: "Agency operations", note: "Super Admin only." },
@@ -408,7 +423,6 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "billing.agency_view": { label: "View agency billing", group: "Agency security", note: "Agency role control." },
   "billing.agency_manage": { label: "Manage agency billing", group: "Agency security", note: "Super Admin only." },
   "calendars.connect": { label: "Connect a personal calendar", group: "Calendar", note: "This connection is not available through agency support access; use the person's client workspace account." },
-  "website.view": { label: "View client website", group: "Website Studio", note: "Client scope and resource access still apply." },
   "website.approve": { label: "Approve website changes", group: "Website Studio", note: "Reserved for the client owner." },
   "website.templates.design": { label: "Design shared Website Studio templates", group: "Website Studio", note: "Agency role default; shared templates remain agency-controlled." },
   "website.templates.publish": { label: "Publish shared Website Studio templates", group: "Website Studio", note: "Super Admin only." },

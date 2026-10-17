@@ -1,7 +1,7 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
-import { agencyCanAccessOrg } from "@/server/tenancy/context";
+import { agencyCanAccessOrg, agencyUserHasPermission } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { DOMAIN_COLUMNS, mapDomain, platformHost, type DomainView } from "@/server/websites/service";
 
@@ -22,6 +22,7 @@ const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : nul
 /** What the agency needs to see about a client's website: whether it is live and healthy, the domains, and any domain waiting on a quote or a purchase. */
 export async function getAgencyWebsiteView(user: SessionUser, orgId: string): Promise<AgencyWebsiteView> {
   if (!(await agencyCanAccessOrg(user, orgId))) throw new AppError("not_found", "Client not found.");
+  if (!(await agencyUserHasPermission(user.id, "website.view"))) throw new AppError("forbidden", "Your role does not allow viewing Website Studio.");
   return withSystem(async (db) => {
     const org = (await db.query<{ name: string }>("select name from organizations where id = $1", [orgId])).rows[0];
     if (!org) throw new AppError("not_found", "Client not found.");

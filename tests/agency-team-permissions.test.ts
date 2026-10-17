@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyInvitation, createInvitation, getInvitation } from "@/server/auth/service";
+import { applyInvitation, createInvitation, createSession, getInvitation, validateSessionToken } from "@/server/auth/service";
 import { copyAgencyUserPermissions, updateAgencyTeamMember, updateAgencyUserPermission } from "@/server/admin/team";
 import { assignStaff, createClientTenant } from "@/server/admin/tenants";
 import { withSystem, withUser, listMigrationFiles, selectMigrationFiles } from "@/server/db";
@@ -8,7 +8,8 @@ import { listClientSetupOverview } from "@/server/setup/snapshots";
 import { getAdminOverview, getTenantDetail, listAllAgents } from "@/server/admin/queries";
 import { agencyCrmPortfolio } from "@/server/crm/agency";
 import { listAgencyTickets } from "@/server/support/service";
-import { loadAgencyPermissions } from "@/server/tenancy/context";
+import { loadAgencyPermissionOverrides, loadAgencyPermissions, loadAgencyRolePermissions } from "@/server/tenancy/context";
+import { agencyOrgContext } from "@/server/websites/studio-ctx";
 import { AGENCY_DELEGABLE_PERMISSIONS, AGENCY_PERMISSION_INFO, AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSIONS, PERMISSION_MATRIX } from "@/lib/permissions";
 import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
 
@@ -27,12 +28,12 @@ describe("agency team migration compatibility", () => {
     expect([...AGENCY_DELEGABLE_PERMISSIONS]).toEqual(Object.entries(AGENCY_PERMISSION_INFO).filter(([, info]) => info.delegable).map(([permission]) => permission));
   });
 
-  it("applies unique migrations 0037 through 0043 in order and keeps the permission constraints in sync", async () => {
-    const chain = listMigrationFiles().filter((file) => /^003[789]_|^004[0-3]_/.test(file));
-    expect(chain.map((file) => file.slice(0, 4))).toEqual(["0037", "0038", "0039", "0040", "0041", "0042", "0043"]);
+  it("applies unique migrations 0037 through 0044 in order and keeps the permission constraints in sync", async () => {
+    const chain = listMigrationFiles().filter((file) => /^003[789]_|^004[0-4]_/.test(file));
+    expect(chain.map((file) => file.slice(0, 4))).toEqual(["0037", "0038", "0039", "0040", "0041", "0042", "0043", "0044"]);
     expect(new Set(chain.map((file) => file.slice(0, 4))).size).toBe(chain.length);
     const applied = await withSystem((db) => db.query<{ version: string }>(
-      "select version from schema_migrations where version like '0037_%' or version like '0038_%' or version like '0039_%' or version like '0040_%' or version like '0041_%' or version like '0042_%' or version like '0043_%' order by version",
+      "select version from schema_migrations where version like '0037_%' or version like '0038_%' or version like '0039_%' or version like '0040_%' or version like '0041_%' or version like '0042_%' or version like '0043_%' or version like '0044_%' order by version",
     ));
     expect(applied.rows.map((row) => row.version)).toEqual(chain.map((file) => file.replace(/\.sql$/, "")));
 
@@ -59,6 +60,7 @@ describe("agency team migration compatibility", () => {
       "0041_crm_action_permissions",
       "0042_company_delete_permission",
       "0043_agency_manager_operational_defaults",
+      "0044_agency_module_view_overrides",
       "0040_agency_workforce_permissions",
       "0039_agency_team_permission_overrides",
     ])).toEqual([
@@ -67,6 +69,7 @@ describe("agency team migration compatibility", () => {
       "0041_crm_action_permissions.sql",
       "0042_company_delete_permission.sql",
       "0043_agency_manager_operational_defaults.sql",
+      "0044_agency_module_view_overrides.sql",
     ]);
     expect(() => selectMigrationFiles(["0039"])).toThrow(/exact filenames/);
     expect(() => selectMigrationFiles([])).toThrow(/at least one exact migration version/);
@@ -91,6 +94,31 @@ describe("agency team migration compatibility", () => {
       [agency.id],
     ));
     expect(portfolio.rows[0]?.allowed).toBe(true);
+  });
+
+  it("enforces project module and action permissions on private upload reads and writes", async () => {
+    const agency = await createUser({ platformRole: "agency_super_admin" });
+    const staff = await createUser({ platformRole: "agency_staff" });
+    const admin = agencyUser(agency, "agency_super_admin");
+    const client = await createOrg({ name: "Project upload permission client" });
+    await withSystem((db) => db.query(
+      "insert into staff_assignments (org_id,user_id,assigned_by) values ($1,$2,$3)", [client.id, staff.id, agency.id],
+    ));
+    await updateAgencyUserPermission(admin, { userId: staff.id, permission: "projects.manage", effect: "allow" });
+    await updateAgencyUserPermission(admin, { userId: staff.id, permission: "projects.view", effect: "deny" });
+
+    const denied = await withUser(staff.id, (db) => db.query<{ can_read: boolean; can_write: boolean }>(
+      `select app.file_permission($1,'project-uploads',false,'client') as can_read,
+              app.file_permission($1,'project-uploads',true,'client') as can_write`, [client.id],
+    ));
+    expect(denied.rows[0]).toEqual({ can_read: false, can_write: false });
+
+    await updateAgencyUserPermission(admin, { userId: staff.id, permission: "projects.view", effect: "allow" });
+    const allowed = await withUser(staff.id, (db) => db.query<{ can_read: boolean; can_write: boolean }>(
+      `select app.file_permission($1,'project-uploads',false,'client') as can_read,
+              app.file_permission($1,'project-uploads',true,'client') as can_write`, [client.id],
+    ));
+    expect(allowed.rows[0]).toEqual({ can_read: true, can_write: true });
   });
 });
 
@@ -592,6 +620,28 @@ describe("agency manager and staff access", () => {
     expect(after.rows[0]).toEqual({ role: "agency_staff", can_write_crm: false, can_create_client: false });
   });
 
+  it("revokes an already-authenticated session when a Super Admin changes permissions and records the change", async () => {
+    const owner = await createUser({ platformRole: "agency_super_admin" });
+    const staff = await createUser({ platformRole: "agency_staff" });
+    const admin = agencyUser(owner, "agency_super_admin");
+    const token = await createSession(staff.id, { ip: "127.0.0.1", userAgent: "agency-team-permission-regression" });
+
+    expect(await validateSessionToken(token)).toMatchObject({ id: staff.id, platformRole: "agency_staff" });
+    await updateAgencyUserPermission(admin, {
+      userId: staff.id,
+      permission: "crm.view",
+      effect: "allow",
+      expectedRevision: "0",
+    });
+
+    expect(await validateSessionToken(token)).toBeNull();
+    const audit = await withSystem((db) => db.query<{ metadata: { changes: Array<{ permission: string; from: string; to: string }> } }>(
+      "select metadata from audit_logs where actor_user_id=$1 and target_id=$2 and action='team.permissions_updated' order by created_at desc limit 1",
+      [owner.id, staff.id],
+    ));
+    expect(audit.rows[0].metadata.changes).toEqual([{ permission: "crm.view", from: "role_default", to: "allow" }]);
+  });
+
   it("copies only selected effective actions and uses revision-checked client assignments", async () => {
     const owner = await createUser({ platformRole: "agency_super_admin" });
     const source = await createUser({ platformRole: "agency_staff" });
@@ -623,5 +673,37 @@ describe("agency manager and staff access", () => {
     await expect(assignStaff(admin, sourceClient.id, target.id, true, "1")).rejects.toMatchObject({ code: "conflict" });
     expect(await canAccess(target.id, sourceClient.id)).toBe(false);
     expect(await canAccess(target.id, extraClient.id)).toBe(true);
+  });
+
+  it("copies a source action as restricted when its module view gate denies effective access", async () => {
+    const owner = await createUser({ platformRole: "agency_super_admin" });
+    const source = await createUser({ platformRole: "agency_staff" });
+    const target = await createUser({ platformRole: "agency_staff" });
+    const admin = agencyUser(owner, "agency_super_admin");
+    await updateAgencyUserPermission(admin, { userId: source.id, permission: "website.view", effect: "deny" });
+    await updateAgencyUserPermission(admin, { userId: source.id, permission: "website.edit", effect: "allow", expectedRevision: "1" });
+
+    const org = { orgId: "copy-permission-client", name: "Copy permission client", slug: "copy-permission-client", status: "active" as const, timezone: "UTC" };
+    const staffPermissions = await loadAgencyRolePermissions("agency_staff");
+    const sourceContext = agencyOrgContext(
+      agencyUser(source, "agency_staff"), org, staffPermissions, await loadAgencyPermissionOverrides(source.id),
+    );
+    expect(sourceContext.can("website.view")).toBe(false);
+    expect(sourceContext.can("website.edit")).toBe(false);
+
+    await copyAgencyUserPermissions(admin, {
+      sourceUserId: source.id,
+      targetUserId: target.id,
+      permissions: ["website.edit"],
+      expectedRevision: "0",
+    });
+
+    const targetOverrides = await loadAgencyPermissionOverrides(target.id);
+    const targetContext = agencyOrgContext(
+      agencyUser(target, "agency_staff"), org, staffPermissions, targetOverrides,
+    );
+    expect(targetOverrides["website.edit"]).toBe("deny");
+    expect(targetContext.can("website.view")).toBe(true);
+    expect(targetContext.can("website.edit")).toBe(false);
   });
 });

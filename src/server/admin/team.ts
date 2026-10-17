@@ -1,6 +1,7 @@
 import "server-only";
 import {
   AGENCY_TEAM_MANAGED_PERMISSIONS,
+  AGENCY_TEAM_PERMISSION_VIEW_PARENT,
   PERMISSION_MATRIX,
   isAgencyTeamPermission,
   type AgencyPermissionOverrides,
@@ -301,29 +302,68 @@ export async function copyAgencyUserPermissions(
     }
     if (source.status !== "active" || target.status !== "active") throw new AppError("conflict", "Reactivate both accounts before copying permissions.");
     if (target.revision !== input.expectedRevision) throw new AppError("conflict", "The destination member changed in another session. Reload and review the latest settings.");
+    const permissionsWithParents = [...new Set<AgencyTeamPermission>([
+      ...permissions,
+      ...permissions.flatMap((permission) => {
+        const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission];
+        return parent && isAgencyTeamPermission(parent) ? [parent] : [];
+      }),
+    ])];
     const defaults = await db.query<{ role: string; permission: string }>(
       "select role,permission from role_permissions where role=any($1::text[]) and permission=any($2::text[])",
-      [[source.platform_role, target.platform_role], permissions],
+      [[source.platform_role, target.platform_role], permissionsWithParents],
     );
     const roleDefault = (role: string, permission: string) => defaults.rows.some((row) => row.role === role && row.permission === permission);
     const overrideRows = await db.query<{ user_id: string; permission: string; effect: AgencyPermissionEffect }>(
       "select user_id,permission,effect from agency_user_permission_overrides where user_id=any($1::uuid[]) and permission=any($2::text[])",
-      [[input.sourceUserId, input.targetUserId], permissions],
+      [[input.sourceUserId, input.targetUserId], permissionsWithParents],
     );
-    const sourceOverrides = new Map(overrideRows.rows.filter((row) => row.user_id === input.sourceUserId).map((row) => [row.permission, row.effect]));
-    const targetOverrides = new Map(overrideRows.rows.filter((row) => row.user_id === input.targetUserId).map((row) => [row.permission, row.effect]));
+    const overridesByUser = new Map<string, Map<AgencyTeamPermission, AgencyPermissionEffect>>();
+    for (const row of overrideRows.rows) {
+      if (!isAgencyTeamPermission(row.permission)) continue;
+      const overrides = overridesByUser.get(row.user_id) ?? new Map<AgencyTeamPermission, AgencyPermissionEffect>();
+      overrides.set(row.permission, row.effect);
+      overridesByUser.set(row.user_id, overrides);
+    }
+    const baseAccess = (userId: string, role: string, permission: AgencyTeamPermission) => {
+      const override = overridesByUser.get(userId)?.get(permission);
+      return override ? override === "allow" : roleDefault(role, permission);
+    };
+    const effectiveAccess = (userId: string, role: string, permission: AgencyTeamPermission) => {
+      const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission];
+      return (!parent || baseAccess(userId, role, parent)) && baseAccess(userId, role, permission);
+    };
+    const targetOverrides = overridesByUser.get(input.targetUserId) ?? new Map<AgencyTeamPermission, AgencyPermissionEffect>();
+    const plannedEffects = new Map<AgencyTeamPermission, AgencyPermissionEffect | null>();
+    for (const permission of permissions) {
+      const sourceAllowed = effectiveAccess(input.sourceUserId, source.platform_role, permission);
+      const targetRoleDefault = roleDefault(target.platform_role, permission);
+      plannedEffects.set(permission, sourceAllowed === targetRoleDefault ? null : sourceAllowed ? "allow" : "deny");
+    }
+    const targetAccessAfterCopy = (permission: AgencyTeamPermission) => {
+      const override = plannedEffects.has(permission)
+        ? plannedEffects.get(permission)!
+        : targetOverrides.get(permission) ?? null;
+      return override ? override === "allow" : roleDefault(target.platform_role, permission);
+    };
+    const targetEffectiveAfterCopy = (permission: AgencyTeamPermission) => {
+      const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission];
+      return (!parent || targetAccessAfterCopy(parent)) && targetAccessAfterCopy(permission);
+    };
     const copied: Array<{ permission: string; from: string; to: string }> = [];
     for (const permission of permissions) {
-      const from = sourceOverrides.get(permission) === "allow" ? true : sourceOverrides.get(permission) === "deny" ? false : roleDefault(source.platform_role, permission);
-      const to = roleDefault(target.platform_role, permission);
-      const effect = from === to ? null : from ? "allow" : "deny";
+      const effect = plannedEffects.get(permission) ?? null;
       if (effect === null) await db.query("delete from agency_user_permission_overrides where user_id=$1 and permission=$2", [input.targetUserId, permission]);
       else await db.query(
         `insert into agency_user_permission_overrides(user_id,permission,effect,reason,updated_by) values($1,$2,$3,'Copied from another teammate',$4)
          on conflict(user_id,permission) do update set effect=excluded.effect,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()`,
         [input.targetUserId, permission, effect, admin.id],
       );
-      if (targetOverrides.get(permission) !== effect) copied.push({ permission, from: sourceOverrides.get(permission) ?? (roleDefault(source.platform_role, permission) ? "role_default_allow" : "role_default_deny"), to: effect ?? "role_default" });
+      if (targetOverrides.get(permission) !== effect) copied.push({
+        permission,
+        from: effectiveAccess(input.sourceUserId, source.platform_role, permission) ? "effective_allow" : "effective_deny",
+        to: targetEffectiveAfterCopy(permission) ? "effective_allow" : "effective_deny",
+      });
     }
     await db.query("update auth_sessions set revoked_at=now() where user_id=$1 and revoked_at is null", [input.targetUserId]);
     await bumpMemberRevision(db, input.targetUserId, admin.id);

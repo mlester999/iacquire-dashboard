@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { listMarketplaceServices, saveService, saveCategory, setServiceFlags, listCatalogForAdmin, listPriceHistory } from "@/server/catalog/service";
 import { createProjectRequest, decideQuote, getProject, listProjects, postClientMessage, respondToMilestone, markQuoteViewed, attachClientFile } from "@/server/projects/client";
@@ -221,6 +222,11 @@ describe("project requests: submission and tenant isolation", () => {
     expect((await listAgencyProjects(manager)).some((p) => p.id === id)).toBe(true);
     await assignProject(manager, id, manager.id);
     expect((await getAgencyProject(manager, id))!.assignedTo?.id).toBe(manager.id);
+
+    await updateAgencyUserPermission(superAdmin, { userId: staffAssigned.id, permission: "projects.view", effect: "deny" });
+    await expect(listAgencyProjects(staffAssigned)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(updateProjectStatus(staffAssigned, id, { status: "under_review" })).rejects.toMatchObject({ code: "forbidden" });
+    await updateAgencyUserPermission(superAdmin, { userId: staffAssigned.id, permission: "projects.view", effect: null });
   });
 });
 

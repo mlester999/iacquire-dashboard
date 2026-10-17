@@ -11,7 +11,7 @@ import { Card, Input, Select } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { PageHero } from "@/components/ui/workspace";
 import { assignStaffAction, copyAgencyUserPermissionsAction, updateAgencyTeamMemberAction } from "@/app/(admin)/admin/actions";
-import { AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PERMISSION_INFO, AGENCY_TEAM_PROTECTED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSION_INFO, isAgencyTeamPermission, type AgencyPermissionOverrides, type AgencyTeamPermission, type Permission } from "@/lib/permissions";
+import { AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PERMISSION_INFO, AGENCY_TEAM_PERMISSION_VIEW_PARENT, AGENCY_TEAM_PROTECTED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSION_INFO, isAgencyTeamPermission, type AgencyPermissionOverrides, type AgencyTeamPermission, type Permission } from "@/lib/permissions";
 import type { AgencyTeamView } from "@/server/admin/team";
 import { formatDate, relativeTime } from "@/lib/utils";
 
@@ -30,8 +30,7 @@ function permissionInfo(permission: Permission): { label: string; group: string;
     : AGENCY_TEAM_PROTECTED_PERMISSION_INFO[permission];
 }
 
-function effective(member: Member, permission: Permission, defaults: AgencyTeamView["permissionDefaults"]) {
-  if (member.status !== "active") return false;
+function roleOrCustomPermission(member: Member, permission: Permission, defaults: AgencyTeamView["permissionDefaults"]) {
   if (isAgencyTeamPermission(permission)) {
     const override = member.permissionOverrides[permission];
     if (override) return override === "allow";
@@ -39,7 +38,19 @@ function effective(member: Member, permission: Permission, defaults: AgencyTeamV
   return defaults[member.role as "agency_manager" | "agency_staff"][permission] === true;
 }
 
-function permissionSource(member: Member, permission: Permission) {
+function effective(member: Member, permission: Permission, defaults: AgencyTeamView["permissionDefaults"]) {
+  if (member.status !== "active") return false;
+  const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission as AgencyTeamPermission];
+  if (parent && !roleOrCustomPermission(member, parent, defaults)) return false;
+  return roleOrCustomPermission(member, permission, defaults);
+}
+
+function permissionSource(member: Member, permission: Permission, defaults: AgencyTeamView["permissionDefaults"]) {
+  if (member.status !== "active") return "Suspended account";
+  const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission as AgencyTeamPermission];
+  if (parent && !roleOrCustomPermission(member, parent, defaults)) {
+    return `Blocked by ${parent === "website.view" ? "Website Studio" : "Projects"} view access`;
+  }
   const role = roleLabel(member.role);
   const note = isAgencyTeamPermission(permission) ? "" : AGENCY_TEAM_PROTECTED_PERMISSION_INFO[permission].note.toLowerCase();
   const protectedSource = note.includes("super admin only")
@@ -56,7 +67,7 @@ function permissionSource(member: Member, permission: Permission) {
       ? `Custom ${member.permissionOverrides[permission]} override`
       : `${role} role default`
     : protectedSource;
-  return member.status === "active" ? source : `Suspended account · ${source}`;
+  return source;
 }
 
 function auditValue(value: unknown): string {
@@ -135,7 +146,7 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
   const allowedGroups = new Set(allowed.map((permission) => permissionInfo(permission).group));
   const effectiveChanges = ALL_TEAM_PERMISSIONS.filter((permission) =>
     effective(member, permission, data.permissionDefaults) !== effective(draftMember, permission, data.permissionDefaults)
-    || permissionSource(member, permission) !== permissionSource(draftMember, permission));
+    || permissionSource(member, permission, data.permissionDefaults) !== permissionSource(draftMember, permission, data.permissionDefaults));
   const overrideCount = Object.keys(member.permissionOverrides).length;
   const searchLower = search.trim().toLowerCase();
   const visiblePermissions = AGENCY_TEAM_MANAGED_PERMISSIONS.filter((permission) => {
@@ -160,7 +171,7 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
   const compareMember = data.members.find((item) => item.id === compareUserId && item.id !== member.id) ?? null;
   const permissionDifferences = compareMember ? ALL_TEAM_PERMISSIONS.filter((permission) =>
     effective(member, permission, data.permissionDefaults) !== effective(compareMember, permission, data.permissionDefaults)
-    || permissionSource(member, permission) !== permissionSource(compareMember, permission)) : [];
+    || permissionSource(member, permission, data.permissionDefaults) !== permissionSource(compareMember, permission, data.permissionDefaults)) : [];
   const comparisonDifferences = compareMember ? [
     ...(member.role !== compareMember.role ? [{ label: "Role", current: roleLabel(member.role), other: roleLabel(compareMember.role) }] : []),
     ...(member.status !== compareMember.status ? [{ label: "Account status", current: member.status, other: compareMember.status }] : []),
@@ -168,8 +179,8 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
     ...(member.clients.map((item) => item.id).sort().join(",") !== compareMember.clients.map((item) => item.id).sort().join(",") ? [{ label: "Explicit client assignments", current: member.clients.map((item) => item.name).join(", ") || "None", other: compareMember.clients.map((item) => item.name).join(", ") || "None" }] : []),
     ...permissionDifferences.map((permission) => ({
       label: permissionInfo(permission).label,
-      current: `${effective(member, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · ${permissionSource(member, permission)}`,
-      other: `${effective(compareMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · ${permissionSource(compareMember, permission)}`,
+      current: `${effective(member, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · ${permissionSource(member, permission, data.permissionDefaults)}`,
+      other: `${effective(compareMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · ${permissionSource(compareMember, permission, data.permissionDefaults)}`,
     })),
   ] : [];
   const copyMember = data.members.find((item) => item.id === copySourceId && item.id !== member.id && item.role !== "agency_super_admin") ?? null;
@@ -187,6 +198,18 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
     return sourceAllowed === targetRoleDefault ? null : sourceAllowed ? "allow" : "deny";
   };
   const copyChanges = copyMember ? selectedCopy.filter((permission) => (member.permissionOverrides[permission] ?? null) !== copiedOverride(permission)) : [];
+  const copyPreviewMember = copyMember ? { ...member, permissionOverrides: { ...member.permissionOverrides } } : null;
+  if (copyPreviewMember) {
+    for (const permission of selectedCopy) {
+      const effect = copiedOverride(permission);
+      if (effect === null) delete copyPreviewMember.permissionOverrides[permission];
+      else copyPreviewMember.permissionOverrides[permission] = effect;
+    }
+  }
+  const copyBlockedPermissions = copyMember && copyPreviewMember
+    ? selectedCopy.filter((permission) => effective(copyMember, permission, data.permissionDefaults)
+      && !effective(copyPreviewMember, permission, data.permissionDefaults))
+    : [];
   const visibleActivity = member.activity.filter((event) => !importantOnly || /^(team\.|auth\.invitation_|agency\.|tenant\.staff_(assigned|unassigned)$|crm\.support_session|support\.)/.test(event.action));
   const clientSearchLower = clientSearch.trim().toLowerCase();
   const visibleClients = data.clients.filter((client) => !clientSearchLower || client.name.toLowerCase().includes(clientSearchLower));
@@ -239,10 +262,17 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
 
   const copyPermissions = () => {
     if (!copyMember || !selectedCopy.length || hasUnsavedChanges) return;
+    const blockedCount = copyBlockedPermissions.length;
     setPending(true);
     void copyAgencyUserPermissionsAction({ sourceUserId: copyMember.id, targetUserId: member.id, permissions: selectedCopy, expectedRevision: member.revision }).then((result) => {
       if (!result.ok) toast.error(result.error);
-      else { toast.success(`Copied ${selectedCopy.length} selected permission states.`); setCopyConfirm(false); router.refresh(); }
+      else {
+        toast.success(blockedCount
+          ? `Copied ${selectedCopy.length} selected states; ${blockedCount} remain restricted by this member's module access.`
+          : `Copied ${selectedCopy.length} selected permission states.`);
+        setCopyConfirm(false);
+        router.refresh();
+      }
     }).finally(() => setPending(false));
   };
 
@@ -331,16 +361,16 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
         return <details key={group} open={expandAll || searchLower.length > 0 || filter !== "all"} className="overflow-hidden rounded-2xl border border-line bg-surface"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 border-b border-line bg-surface-2 px-4 py-3"><span className="text-sm font-semibold text-ink">{group}</span><span className="text-[11px] text-muted">{groupPermissions.filter((permission) => effective(draftMember, permission, data.permissionDefaults)).length} allowed of {groupPermissions.length}</span></summary><div className="grid gap-2 p-3 md:grid-cols-2">{groupPermissions.map((permission) => {
           const info = permissionInfo(permission);
           const isAllowed = effective(draftMember, permission, data.permissionDefaults);
-          return <div key={permission} className="flex min-h-[84px] items-center gap-3 rounded-xl border border-line p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium text-ink">{info.label}</p><p className="mt-1 text-[11px] text-muted">{isAllowed ? "Allowed" : "Restricted"} · {permissionSource(draftMember, permission)}</p>{isAgencyTeamPermission(permission) ? info.note && <p className="mt-1 text-[10px] text-faint">{info.note}</p> : <p className="mt-1 text-[10px] text-faint">{AGENCY_TEAM_PROTECTED_PERMISSION_INFO[permission].note}</p>}</div>{isAgencyTeamPermission(permission) ? <Select aria-label={`${info.label} access`} className="w-36 text-[12px]" value={draftOverrides[permission] ?? "default"} disabled={pending || member.status !== "active"} onChange={(event) => setDraftOverrides((current) => {
+          return <div key={permission} className="flex min-h-[84px] items-center gap-3 rounded-xl border border-line p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium text-ink">{info.label}</p><p className="mt-1 text-[11px] text-muted">{isAllowed ? "Allowed" : "Restricted"} · {permissionSource(draftMember, permission, data.permissionDefaults)}</p>{isAgencyTeamPermission(permission) ? info.note && <p className="mt-1 text-[10px] text-faint">{info.note}</p> : <p className="mt-1 text-[10px] text-faint">{AGENCY_TEAM_PROTECTED_PERMISSION_INFO[permission].note}</p>}</div>{isAgencyTeamPermission(permission) ? <Select aria-label={`${info.label} access`} className="w-36 text-[12px]" value={draftOverrides[permission] ?? "default"} disabled={pending || member.status !== "active"} onChange={(event) => setDraftOverrides((current) => {
             const next = { ...current };
             const value = toOverrideValue(event.target.value);
             if (value === null) delete next[permission]; else next[permission] = value;
             return next;
-          })}><option value="default">Role default</option><option value="allow">Allow</option><option value="deny">Deny</option></Select> : <span className="shrink-0 rounded-lg bg-surface-2 px-2 py-1 text-[10px] font-medium text-muted">{permissionSource(draftMember, permission)}</span>}</div>;
+          })}><option value="default">Role default</option><option value="allow">Allow</option><option value="deny">Deny</option></Select> : <span className="shrink-0 rounded-lg bg-surface-2 px-2 py-1 text-[10px] font-medium text-muted">{permissionSource(draftMember, permission, data.permissionDefaults)}</span>}</div>;
         })}</div></details>;
       })}
       {!hasVisiblePermissions && <Card className="p-6 text-center text-sm text-muted">No permissions match this search and filter.</Card>}
-      {hasUnsavedChanges && <Card className="space-y-3 border-warning/30 bg-warning-soft/40 p-4"><div><h3 className="text-sm font-semibold text-ink">Preview unsaved access changes</h3><p className="mt-1 text-[12px] text-muted">This preview includes all {ALL_TEAM_PERMISSIONS.length} permission states and their source. Client scope remains a separate boundary.</p></div><div className="grid gap-2 sm:grid-cols-2"><p className="rounded-lg bg-surface p-3 text-[12px]"><strong>Role:</strong> {roleLabel(member.role)} → {roleLabel(role)}</p><p className="rounded-lg bg-surface p-3 text-[12px]"><strong>Status:</strong> {member.status} → {status}</p><p className="rounded-lg bg-surface p-3 text-[12px] sm:col-span-2"><strong>Client scope:</strong> {member.scopeMode === "all_clients" ? "All current and future clients" : `${member.clients.length} assigned clients`} → {scopeMode === "all_clients" ? "All current and future clients" : `${member.clients.length} assigned clients`}</p></div>{effectiveChanges.length ? <ul className="max-h-96 space-y-1 overflow-y-auto">{effectiveChanges.map((permission) => <li key={permission} className="rounded-lg bg-surface p-2.5 text-[12px]"><span className="font-medium">{permissionInfo(permission).label}:</span> {effective(member, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(member, permission)} → {effective(draftMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(draftMember, permission)}</li>)}</ul> : <p className="text-[12px] text-muted">No permission state or source changes; the role, status or scope change is shown above.</p>}</Card>}
+      {hasUnsavedChanges && <Card className="space-y-3 border-warning/30 bg-warning-soft/40 p-4"><div><h3 className="text-sm font-semibold text-ink">Preview unsaved access changes</h3><p className="mt-1 text-[12px] text-muted">This preview includes all {ALL_TEAM_PERMISSIONS.length} permission states and their source. Client scope remains a separate boundary.</p></div><div className="grid gap-2 sm:grid-cols-2"><p className="rounded-lg bg-surface p-3 text-[12px]"><strong>Role:</strong> {roleLabel(member.role)} → {roleLabel(role)}</p><p className="rounded-lg bg-surface p-3 text-[12px]"><strong>Status:</strong> {member.status} → {status}</p><p className="rounded-lg bg-surface p-3 text-[12px] sm:col-span-2"><strong>Client scope:</strong> {member.scopeMode === "all_clients" ? "All current and future clients" : `${member.clients.length} assigned clients`} → {scopeMode === "all_clients" ? "All current and future clients" : `${member.clients.length} assigned clients`}</p></div>{effectiveChanges.length ? <ul className="max-h-96 space-y-1 overflow-y-auto">{effectiveChanges.map((permission) => <li key={permission} className="rounded-lg bg-surface p-2.5 text-[12px]"><span className="font-medium">{permissionInfo(permission).label}:</span> {effective(member, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(member, permission, data.permissionDefaults)} → {effective(draftMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(draftMember, permission, data.permissionDefaults)}</li>)}</ul> : <p className="text-[12px] text-muted">No permission state or source changes; the role, status or scope change is shown above.</p>}</Card>}
       <Card className="space-y-3 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-ink">Compare permissions</h3><p className="mt-1 text-[12px] text-muted">Compare effective action access, role, status, client scope and assignments.</p></div><Select aria-label="Choose team member to compare" className="w-full sm:w-72" value={compareUserId} onChange={(event) => setCompareUserId(event.target.value)}><option value="">Choose a teammate…</option>{data.members.filter((item) => item.id !== member.id && item.role !== "agency_super_admin").map((item) => <option key={item.id} value={item.id}>{item.name} · {roleLabel(item.role)}</option>)}</Select></div>{compareMember && <div className="overflow-x-auto rounded-xl border border-line"><table className="w-full min-w-[560px] text-left text-[12px]"><thead className="bg-surface-2 text-muted"><tr><th className="p-3 font-medium">Access detail</th><th className="p-3 font-medium">{member.name}</th><th className="p-3 font-medium">{compareMember.name}</th></tr></thead><tbody className="divide-y divide-line">{comparisonDifferences.map((difference) => <tr key={difference.label}><td className="p-3 text-ink">{difference.label}</td><td className="p-3">{difference.current}</td><td className="p-3">{difference.other}</td></tr>)}{!comparisonDifferences.length && <tr><td colSpan={3} className="p-4 text-muted">These members have matching role, scope, assignments and supported permission states.</td></tr>}</tbody></table></div>}</Card>
 
       <Card className="space-y-3 p-4">
@@ -350,14 +380,15 @@ export function AgencyTeamMemberDetails({ data, memberId, timeZone }: { data: Ag
           <p className="text-[11px] text-muted">Choose source states by action group. Search narrows the list; changing the source clears the selection.</p>
           <div className="space-y-2">{copyPermissionGroups.map((group) => {
             const permissions = visibleCopyPermissions.filter((permission) => AGENCY_TEAM_PERMISSION_INFO[permission].group === group);
-            return <details key={group} open={copySearchLower.length > 0} className="overflow-hidden rounded-xl border border-line"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 bg-surface-2 px-3 py-2.5 text-[12px] font-semibold text-ink"><span>{group}</span><span className="font-normal text-muted">{permissions.filter((permission) => copySelection.has(permission)).length} of {permissions.length} selected</span></summary><div className="grid gap-2 border-t border-line p-2 sm:grid-cols-2">{permissions.map((permission) => <label key={permission} className="flex min-h-14 items-start gap-2.5 rounded-lg border border-line p-2.5 text-[12px]"><input type="checkbox" checked={copySelection.has(permission)} disabled={hasUnsavedChanges} onChange={(event) => { const checked = event.target.checked; setCopySelection((current) => { const next = new Set(current); if (checked) next.add(permission); else next.delete(permission); return next; }); setCopyConfirm(false); }} className="mt-0.5 size-4 shrink-0 accent-primary" /><span className="min-w-0 flex-1"><span className="block font-medium text-ink">{AGENCY_TEAM_PERMISSION_INFO[permission].label}</span><span className="mt-1 block text-[10px] text-muted">Source: {effective(copyMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(copyMember, permission)}</span></span></label>)}</div></details>;
+            return <details key={group} open={copySearchLower.length > 0} className="overflow-hidden rounded-xl border border-line"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 bg-surface-2 px-3 py-2.5 text-[12px] font-semibold text-ink"><span>{group}</span><span className="font-normal text-muted">{permissions.filter((permission) => copySelection.has(permission)).length} of {permissions.length} selected</span></summary><div className="grid gap-2 border-t border-line p-2 sm:grid-cols-2">{permissions.map((permission) => <label key={permission} className="flex min-h-14 items-start gap-2.5 rounded-lg border border-line p-2.5 text-[12px]"><input type="checkbox" checked={copySelection.has(permission)} disabled={hasUnsavedChanges} onChange={(event) => { const checked = event.target.checked; setCopySelection((current) => { const next = new Set(current); if (checked) next.add(permission); else next.delete(permission); return next; }); setCopyConfirm(false); }} className="mt-0.5 size-4 shrink-0 accent-primary" /><span className="min-w-0 flex-1"><span className="block font-medium text-ink">{AGENCY_TEAM_PERMISSION_INFO[permission].label}</span><span className="mt-1 block text-[10px] text-muted">Source: {effective(copyMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(copyMember, permission, data.permissionDefaults)}</span></span></label>)}</div></details>;
           })}{!visibleCopyPermissions.length && <p className="rounded-xl border border-dashed border-line-strong p-4 text-center text-[12px] text-muted">No operational permissions match this search.</p>}</div>
           <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[12px] text-muted">{selectedCopy.length} selected · {copyChanges.length} override change{copyChanges.length === 1 ? "" : "s"} for this member</p><Button variant={copyConfirm ? "primary" : "secondary"} disabled={!selectedCopy.length || pending || hasUnsavedChanges} loading={pending} onClick={() => copyConfirm ? copyPermissions() : setCopyConfirm(true)}>{copyConfirm ? "Confirm copy" : "Preview selected changes"}</Button></div>
-          {copyConfirm && <div role="status" className="space-y-2 rounded-lg bg-warning-soft p-3 text-[12px] text-warning-ink"><p>Copy {selectedCopy.length} selected states from {copyMember.name}. The preview shows both access and override source changes:</p><ul className="max-h-64 list-inside list-disc space-y-1 overflow-y-auto">{copyChanges.length ? copyChanges.map((permission) => {
+          {copyConfirm && copyMember && copyPreviewMember && <div role="status" className="space-y-2 rounded-lg bg-warning-soft p-3 text-[12px] text-warning-ink"><p>Copy {selectedCopy.length} selected states from {copyMember.name}. This preview shows each destination permission after its module gates are applied:</p><ul className="max-h-64 list-inside list-disc space-y-1 overflow-y-auto">{selectedCopy.map((permission) => {
             const currentEffect = member.permissionOverrides[permission] ?? null;
             const nextEffect = copiedOverride(permission);
-            return <li key={permission}>{AGENCY_TEAM_PERMISSION_INFO[permission].label}: {effective(member, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {currentEffect ? `custom ${currentEffect}` : `${roleLabel(member.role)} default`} → {effective(copyMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {nextEffect ? `custom ${nextEffect}` : `${roleLabel(member.role)} default`}</li>;
-          }) : <li>No override source changes; selected access states already match.</li>}</ul><p>Role, client scope and assignments will remain unchanged.</p></div>}
+            return <li key={permission}>{AGENCY_TEAM_PERMISSION_INFO[permission].label}: {effective(member, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(member, permission, data.permissionDefaults)} → {effective(copyPreviewMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"} · {permissionSource(copyPreviewMember, permission, data.permissionDefaults)} (source: {effective(copyMember, permission, data.permissionDefaults) ? "Allowed" : "Restricted"}; {nextEffect ? `copied override ${nextEffect}` : "role default"}){currentEffect ? ` · previous custom ${currentEffect}` : ""}</li>;
+          })}</ul><p>Role, client scope and assignments will remain unchanged.</p></div>}
+          {copyConfirm && copyBlockedPermissions.length > 0 && <p role="alert" className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-[12px] text-warning-ink">{copyBlockedPermissions.map((permission) => `${AGENCY_TEAM_PERMISSION_INFO[permission].label} is ${permissionSource(copyPreviewMember!, permission, data.permissionDefaults).toLowerCase()}`).join(". ")}. The copy will not change module view access.</p>}
         </>}
       </Card>
 

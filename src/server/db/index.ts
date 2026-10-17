@@ -321,6 +321,7 @@ const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0041_crm_action_permissions": ["0040_agency_workforce_permissions"],
   "0042_company_delete_permission": ["0041_crm_action_permissions"],
   "0043_agency_manager_operational_defaults": ["0042_company_delete_permission"],
+  "0044_agency_module_view_overrides": ["0043_agency_manager_operational_defaults"],
 };
 
 /**

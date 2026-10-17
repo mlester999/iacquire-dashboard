@@ -10,7 +10,8 @@ import {
 import { listSubmissions, markSubmissionSpam, processSubmissions } from "@/server/websites/forms";
 import { createWebsite, getWebsite, publishWebsite } from "@/server/websites/service";
 import type { ProbeFetcher } from "@/server/websites/probe";
-import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 
 type Person = { id: string; email: string };
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -211,6 +212,35 @@ describe("buying a domain needs the owner's approval, and nothing is bought auto
     const d = (await listDomains(as(owner))).find((x) => x.id === id)!;
     expect(d).toMatchObject({ acquisition: "purchased", registrar: "Namecheap (customer account)", status: "pending_dns" });
     await expect(approveDomainPurchase(as(owner), id)).rejects.toThrow(/isn't waiting/);
+  });
+
+  it("blocks direct quote and purchase-record writes without the domain grant and client scope", async () => {
+    const employee = await createUser({ platformRole: "agency_staff" });
+    const unassignedEmployee = await createUser({ platformRole: "agency_staff" });
+    await withSystem((db) => db.query("insert into staff_assignments (org_id,user_id) values ($1,$2)", [org.id, employee.id]));
+    await updateAgencyUserPermission(agencyUser(staff, "agency_super_admin"), {
+      userId: employee.id,
+      permission: "website.domains",
+      effect: "allow",
+    });
+    const requested = await requestDomainPurchase(as(manager, org, "admin"), { hostname: "restricted-domainco-shop.com" });
+    const secondRequest = await requestDomainPurchase(as(manager, org, "admin"), { hostname: "restricted-domainco-quote.com" });
+    await expect(quoteDomainPurchase(unassignedEmployee.id, { orgId: org.id, domainId: requested.id, costUsd: 18 })).rejects.toMatchObject({ code: "forbidden" });
+    await quoteDomainPurchase(employee.id, { orgId: org.id, domainId: requested.id, costUsd: 18 });
+    await updateAgencyUserPermission(agencyUser(staff, "agency_super_admin"), {
+      userId: employee.id,
+      permission: "website.domains",
+      effect: "deny",
+    });
+
+    await expect(quoteDomainPurchase(employee.id, { orgId: org.id, domainId: secondRequest.id, costUsd: 18 })).rejects.toMatchObject({ code: "forbidden" });
+    await approveDomainPurchase(as(owner), requested.id);
+    await expect(recordDomainPurchase(employee.id, { orgId: org.id, domainId: requested.id, registrar: "Registrar", renewsAt: "2027-10-14" })).rejects.toMatchObject({ code: "forbidden" });
+    await updateAgencyUserPermission(agencyUser(staff, "agency_super_admin"), {
+      userId: employee.id,
+      permission: "website.domains",
+      effect: null,
+    });
   });
 
   it("reminds the owner before a domain renews, once per window", async () => {

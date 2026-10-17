@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { withSystem } from "@/server/db";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 import { resetEnvCache } from "@/server/env";
 import { saveOnboardingStep } from "@/server/onboarding/service";
 import { createWebsite, getDraft, saveDraft } from "@/server/websites/service";
 import { agencyOrgContext } from "@/server/websites/studio-ctx";
 import { loadAgencyPermissionOverrides, loadAgencyRolePermissions } from "@/server/tenancy/context";
 import { getManagedWebsite, listManagedWebsites, reviewQueue, studioOverview } from "@/server/websites/admin";
+import { getAgencyWebsiteView } from "@/server/websites/agency";
 import { acquireEditLock, addComment, listComments, releaseEditLock, requestChanges, resolveComment, setArchived } from "@/server/websites/review";
 import {
   buildFromTemplate, checkTemplate, createTemplate, duplicateTemplate, getTemplateDraft, isOfferable, listLibrary, listPublishedCards, listTemplateVersions, saveTemplateDraft, setTemplateStatus,
@@ -116,6 +118,29 @@ describe("what each agency role can see across clients", () => {
 });
 
 describe("agency permissions inside a client's website", () => {
+  it("enforces Website Studio view and review overrides in reads and editor contexts", async () => {
+    const draft = (await getDraft(staffCtxA))!;
+    await updateAgencyUserPermission(superAdmin, { userId: staffRow.id, permission: "website.view", effect: "deny" });
+    await expect(listManagedWebsites(staff)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(studioOverview(staff)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(getAgencyWebsiteView(staff, orgA.id)).rejects.toMatchObject({ code: "forbidden" });
+
+    const deniedContext = agencyOrgContext(
+      staff,
+      { orgId: orgA.id, name: orgA.name, slug: orgA.slug, status: "active", timezone: "UTC" },
+      await loadAgencyRolePermissions("agency_staff"),
+      await loadAgencyPermissionOverrides(staffRow.id),
+    );
+    expect(deniedContext.can("website.edit")).toBe(false);
+    await expect(saveDraft(deniedContext, { content: draft.content, expectedRevision: draft.revision })).rejects.toMatchObject({ code: "forbidden" });
+
+    await updateAgencyUserPermission(superAdmin, { userId: staffRow.id, permission: "website.view", effect: null });
+    await updateAgencyUserPermission(superAdmin, { userId: staffRow.id, permission: "website.review", effect: "deny" });
+    await expect(reviewQueue(staff)).rejects.toMatchObject({ code: "forbidden" });
+    expect(await listManagedWebsites(staff)).toHaveLength(1);
+    await updateAgencyUserPermission(superAdmin, { userId: staffRow.id, permission: "website.review", effect: null });
+  });
+
   it("lets staff edit but not publish or archive, and super admins do both", async () => {
     expect(staffCtxA.can("website.edit")).toBe(true);
     expect(staffCtxA.can("website.review")).toBe(true);

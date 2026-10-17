@@ -20,8 +20,13 @@ function isStaff(user: SessionUser) {
 /** The request's tenant must be one this agency user may work on (super admins: all; staff: assigned only). */
 async function authorizeRequest(db: Queryable, user: SessionUser, requestId: string, permission: "projects.manage" | "quotes.manage" = "projects.manage") {
   if (!isStaff(user)) throw new AppError("forbidden", "Agency access is required.");
-  const permissionCheck = await db.query<{ allowed: boolean }>("select coalesce(app.user_has_agency_permission($1,$2),false) as allowed", [user.id, permission]);
-  if (permissionCheck.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role does not allow this project action.");
+  const permissionCheck = await db.query<{ can_view: boolean; can_act: boolean }>(
+    `select coalesce(app.user_has_agency_permission($1,'projects.view'),false) as can_view,
+            coalesce(app.user_has_agency_permission($1,$2),false) as can_act`,
+    [user.id, permission],
+  );
+  if (permissionCheck.rows[0]?.can_view !== true) throw new AppError("forbidden", "Your role does not allow viewing client projects.");
+  if (permissionCheck.rows[0]?.can_act !== true) throw new AppError("forbidden", "Your role does not allow this project action.");
   if (!z.string().uuid().safeParse(requestId).success) throw new AppError("not_found", "Project not found.");
   const r = (await db.query<{ id: string; org_id: string; ref: string; title: string; status: ProjectStatus; status_before_hold: ProjectStatus | null; created_by: string | null }>(
     "select id, org_id, ref, title, status, status_before_hold, created_by from client_project_requests where id = $1 for update", [requestId],

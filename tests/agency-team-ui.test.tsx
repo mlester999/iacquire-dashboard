@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { InviteStaff } from "@/components/admin/invite-staff";
 import { AgencyTeamMemberDetails } from "@/components/admin/agency-team-member-details";
+import { TeamManagement } from "@/components/admin/team-management";
 import type { AgencyTeamView } from "@/server/admin/team";
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   assignStaffAction: vi.fn(),
   copyPermissionsAction: vi.fn(),
   updateMemberAction: vi.fn(),
+  revokeInvitationAction: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -43,7 +45,17 @@ vi.mock("@/app/(admin)/admin/actions", () => ({
   assignStaffAction: mocks.assignStaffAction,
   copyAgencyUserPermissionsAction: mocks.copyPermissionsAction,
   updateAgencyTeamMemberAction: mocks.updateMemberAction,
+  revokeInvitationAction: mocks.revokeInvitationAction,
 }));
+
+vi.mock("motion/react", async () => {
+  const React = await import("react");
+  type MotionDivProps = React.HTMLAttributes<HTMLDivElement> & { initial?: unknown; animate?: unknown; transition?: unknown };
+  const Div = React.forwardRef<HTMLDivElement, MotionDivProps>(function Div({ initial: _initial, animate: _animate, transition: _transition, ...props }, ref) {
+    return <div {...props} ref={ref} />;
+  });
+  return { motion: { div: Div } };
+});
 
 vi.mock("@/components/ui/button", async () => {
   const React = await import("react");
@@ -87,7 +99,8 @@ vi.mock("@/components/ui/primitives", async () => {
   function Card({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) { return <div {...props}>{children}</div>; }
   function Badge({ children }: React.HTMLAttributes<HTMLSpanElement>) { return <span>{children}</span>; }
   function Field({ label, htmlFor, children }: FieldProps) { return <label htmlFor={htmlFor}><span>{label}</span>{children}</label>; }
-  return { Card, Badge, Field, Input, Select };
+  function ProgressBar({ label, value }: { label: string; value: number }) { return <progress aria-label={label} value={value} max={100} />; }
+  return { Card, Badge, Field, Input, Select, ProgressBar };
 });
 
 vi.mock("@/components/ui/status", async () => {
@@ -105,8 +118,8 @@ vi.mock("@/components/ui/workspace", async () => {
 });
 
 const roleDefaults: AgencyTeamView["permissionDefaults"] = {
-  agency_manager: { "crm.view": true, "website.publish": false },
-  agency_staff: { "crm.view": false, "website.publish": false },
+  agency_manager: { "crm.view": true, "website.publish": false, "projects.view": true, "projects.manage": true, "website.view": true, "website.edit": true },
+  agency_staff: { "crm.view": false, "website.publish": false, "projects.view": true, "projects.manage": true, "website.view": true, "website.edit": true },
 };
 
 function makeMember(input: Partial<AgencyTeamView["members"][number]> & Pick<AgencyTeamView["members"][number], "id" | "name" | "email" | "role">): AgencyTeamView["members"][number] {
@@ -186,6 +199,16 @@ describe("agency team administration UI", () => {
     expect(await screen.findByText(/development mailbox/)).toBeTruthy();
   });
 
+  it("links directory members to their dedicated detail pages and keeps Super Admin read-only", () => {
+    const view = makeView();
+    view.members.push(makeMember({ id: "owner-1", name: "Admin Owner", email: "owner@example.test", role: "agency_super_admin", scopeMode: "all_clients" }));
+    const { container } = render(<TeamManagement data={view} timeZone="UTC" />);
+
+    expect(container.querySelector('a[href="/admin/team/staff-1"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/admin/team/manager-1"]')).toBeTruthy();
+    expect(container.querySelector('a[href="/admin/team/owner-1"]')).toBeNull();
+  });
+
   it("cancels an invite permission draft without losing invite fields or persisting the draft", () => {
     render(<InviteStaff clients={[{ id: "client-1", name: "Client Alpha" }]} roleDefaults={roleDefaults} />);
     fireEvent.click(screen.getByRole("button", { name: "Invite teammate" }));
@@ -225,6 +248,7 @@ describe("agency team administration UI", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Publish client websites access" }), { target: { value: "allow" } });
 
     expect(screen.getByText("Preview unsaved access changes")).toBeTruthy();
+    expect(screen.getByText("2 unsaved role, status, scope or permission changes.")).toBeTruthy();
     expect(screen.getAllByText("Open Native CRM").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     expect(screen.getByRole("dialog", { name: "Confirm high impact access changes" })).toBeTruthy();
@@ -237,6 +261,48 @@ describe("agency team administration UI", () => {
       permissionOverrides: { "crm.view": "allow", "website.publish": "allow" },
       expectedRevision: "3",
     })));
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+  });
+
+  it("shows live effective access counts and opens the matching filtered permissions", () => {
+    renderDetails();
+    const allowedSummary = screen.getByRole("button", { name: "2 Allowed action areas; open allowed permissions" });
+    expect(allowedSummary.textContent).toContain("Allowed action areas");
+
+    fireEvent.click(allowedSummary);
+    expect(screen.getByRole("tab", { name: "Permissions" }).getAttribute("aria-selected")).toBe("true");
+    expect((screen.getByRole("combobox", { name: "Filter permission state" }) as HTMLSelectElement).value).toBe("allowed");
+    expect(screen.getByRole("combobox", { name: "Edit client websites access" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Open Native CRM access" })).toBeNull();
+  });
+
+  it("filters by allowed, restricted and customized states and expands and collapses permission groups", () => {
+    const view = makeView();
+    view.members[0].permissionOverrides = { "crm.view": "allow", "website.edit": "deny" };
+    const { container } = renderDetails(view);
+    fireEvent.click(screen.getByRole("tab", { name: "Permissions" }));
+
+    const groups = () => [...container.querySelectorAll<HTMLDetailsElement>("details")];
+    expect(groups().length).toBeGreaterThan(1);
+    expect(groups().every((group) => !group.open)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(groups().every((group) => group.open)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(groups().every((group) => !group.open)).toBe(true);
+
+    const filter = screen.getByRole("combobox", { name: "Filter permission state" }) as HTMLSelectElement;
+    fireEvent.change(filter, { target: { value: "allowed" } });
+    expect(screen.getByRole("combobox", { name: "Open Native CRM access" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Edit client websites access" })).toBeNull();
+
+    fireEvent.change(filter, { target: { value: "restricted" } });
+    expect(screen.queryByRole("combobox", { name: "Open Native CRM access" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Edit client websites access" })).toBeTruthy();
+
+    fireEvent.change(filter, { target: { value: "customized" } });
+    expect(screen.getByRole("combobox", { name: "Open Native CRM access" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Edit client websites access" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Manage client projects and updates access" })).toBeNull();
   });
 
   it("shows protected actions as policy controlled and keeps them outside per-person overrides", () => {
@@ -245,6 +311,35 @@ describe("agency team administration UI", () => {
     fireEvent.change(screen.getByLabelText("Search permissions"), { target: { value: "Manage agency team and permissions" } });
     expect(screen.getByText("Super Admin only")).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "Manage agency team and permissions access" })).toBeNull();
+  });
+
+  it("shows module access as the parent gate when a child action is individually allowed", () => {
+    const view = makeView();
+    view.members[0].permissionOverrides = {
+      "website.view": "deny",
+      "website.edit": "allow",
+      "projects.view": "deny",
+      "projects.manage": "allow",
+    };
+    renderDetails(view);
+    fireEvent.click(screen.getByRole("tab", { name: "Permissions" }));
+
+    const websiteEdit = screen.getByRole("combobox", { name: "Edit client websites access" }) as HTMLSelectElement;
+    const projectManage = screen.getByRole("combobox", { name: "Manage client projects and updates access" }) as HTMLSelectElement;
+    expect(websiteEdit.value).toBe("allow");
+    expect(projectManage.value).toBe("allow");
+    expect(websiteEdit.parentElement?.textContent).toContain("Blocked by Website Studio view access");
+    expect(projectManage.parentElement?.textContent).toContain("Blocked by Projects view access");
+  });
+
+  it("previews invitation actions as blocked when their module view access is denied", async () => {
+    render(<InviteStaff clients={[]} roleDefaults={roleDefaults} />);
+    fireEvent.click(screen.getByRole("button", { name: "Invite teammate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Customize permissions (optional)" }));
+    fireEvent.click(screen.getByRole("switch", { name: "View Website Studio for invitation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+
+    expect(screen.getByRole("switch", { name: "Edit client websites for invitation" }).parentElement?.textContent).toContain("Blocked by Website Studio view access");
   });
 
   it("searches, previews and confirms a scoped permission copy, and compares members", async () => {
@@ -273,6 +368,23 @@ describe("agency team administration UI", () => {
     }));
   });
 
+  it("shows the destination's module-gated outcome when copying an allowed website action", () => {
+    const view = makeView();
+    view.members[0].permissionOverrides = { "website.view": "deny" };
+    view.members[1].permissionOverrides = { "website.view": "allow", "website.edit": "allow" };
+    renderDetails(view);
+    fireEvent.click(screen.getByRole("tab", { name: "Permissions" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Copy permissions from teammate" }), { target: { value: "manager-1" } });
+    fireEvent.change(screen.getByLabelText("Search permissions to copy"), { target: { value: "Edit client websites" } });
+    fireEvent.click(screen.getByRole("button", { name: "Select matching (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview selected changes" }));
+
+    const preview = screen.getByRole("status");
+    expect(preview.textContent).toContain("Edit client websites: Restricted · Blocked by Website Studio view access → Restricted · Blocked by Website Studio view access (source: Allowed; role default)");
+    expect(screen.getByRole("alert").textContent).toContain("The copy will not change module view access");
+    expect(mocks.copyPermissionsAction).not.toHaveBeenCalled();
+  });
+
   it("asks before navigating away from unsaved edits and lets the owner stay or discard", async () => {
     renderDetails();
     fireEvent.click(screen.getByRole("tab", { name: "Permissions" }));
@@ -292,7 +404,7 @@ describe("agency team administration UI", () => {
   it("confirms client scope changes and filters the activity log", async () => {
     const view = makeView();
     view.members[0].activity = [
-      { actorName: "Owner", actorRole: "agency_super_admin", action: "team.permissions_updated", result: "success", occurredAt: "2026-10-01T12:00:00.000Z", targetType: "user", metadata: {} },
+      { actorName: "Owner", actorRole: "agency_super_admin", action: "team.permissions_updated", result: "success", occurredAt: "2026-10-01T12:00:00.000Z", targetType: "user", metadata: { changes: [{ permission: "contacts.delete", from: "role_default_deny", to: "allow" }] } },
       { actorName: "Staff One", actorRole: "agency_staff", action: "auth.login", result: "success", occurredAt: "2026-10-01T11:00:00.000Z", targetType: "session", metadata: {} },
     ];
     renderDetails(view);
@@ -306,6 +418,7 @@ describe("agency team administration UI", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Activity Log" }));
     fireEvent.click(screen.getByRole("button", { name: "Important events" }));
     expect(screen.getByText("Permissions changed")).toBeTruthy();
+    expect(screen.getByText("Archive and delete contacts: role default deny → allow")).toBeTruthy();
     expect(screen.queryByText("Auth · Login")).toBeNull();
   });
 });

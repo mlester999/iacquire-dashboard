@@ -7,6 +7,7 @@ import { addMember, createOrg, createUser } from "./support/fixtures";
 const DOWN = readFileSync("supabase/rollbacks/0041_crm_action_permissions.down.sql", "utf8");
 const DOWN_0042 = readFileSync("supabase/rollbacks/0042_company_delete_permission.down.sql", "utf8");
 const DOWN_0043 = readFileSync("supabase/rollbacks/0043_agency_manager_operational_defaults.down.sql", "utf8");
+const DOWN_0044 = readFileSync("supabase/rollbacks/0044_agency_module_view_overrides.down.sql", "utf8");
 const UP_0042 = readFileSync("supabase/migrations/0042_company_delete_permission.sql", "utf8");
 class Done extends Error {}
 
@@ -38,6 +39,10 @@ async function runDown0043(db: { query: (sql: string) => Promise<unknown> }) {
   for (const statement of statements(DOWN_0043)) await db.query(statement);
 }
 
+async function runDown0044(db: { query: (sql: string) => Promise<unknown> }) {
+  for (const statement of statements(DOWN_0044)) await db.query(statement);
+}
+
 async function runDown0042(db: { query: (sql: string) => Promise<unknown> }) {
   await runDown0043(db);
   for (const statement of statements(DOWN_0042)) await db.query(statement);
@@ -67,6 +72,46 @@ describe("migration 0043 rollback safety", () => {
 
     expect(report.manager).toEqual(["agency.crm.read", "agency.workforce.manage"]);
     expect(report.staff).toEqual(["agency.crm.read"]);
+  });
+});
+
+describe("migration 0044 rollback safety", () => {
+  it("refuses to remove permissions that are already in use", async () => {
+    const manager = await createUser({ platformRole: "agency_manager" });
+    await expect(withSystem(async (db) => {
+      await db.query(
+        "insert into agency_user_permission_overrides(user_id,permission,effect) values($1,'projects.view','deny')",
+        [manager.id],
+      );
+      await runDown0044(db);
+    })).rejects.toThrow(/cannot rollback 0044 while Projects or Website Studio view overrides exist/);
+
+    const constraint = await withSystem((db) => db.query<{ definition: string }>(
+      "select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid='agency_user_permission_overrides'::regclass and conname='agency_user_permission_overrides_permission_check'",
+    ));
+    expect(constraint.rows[0].definition).toContain("projects.view");
+    expect(constraint.rows[0].definition).toContain("website.view");
+  });
+
+  it("restores the 0043 permission constraints when no module view overrides exist", async () => {
+    let agencyConstraint = "";
+    let invitationConstraint = "";
+    await expect(withSystem(async (db) => {
+      await runDown0044(db);
+      const rows = await db.query<{ name: string; definition: string }>(
+        `select conname as name,pg_get_constraintdef(oid) as definition from pg_constraint
+         where conrelid in ('agency_user_permission_overrides'::regclass,'invitation_agency_permission_overrides'::regclass)
+           and conname in ('agency_user_permission_overrides_permission_check','invitation_agency_permission_overrides_permission_check')`,
+      );
+      agencyConstraint = rows.rows.find((row) => row.name === "agency_user_permission_overrides_permission_check")?.definition ?? "";
+      invitationConstraint = rows.rows.find((row) => row.name === "invitation_agency_permission_overrides_permission_check")?.definition ?? "";
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+
+    expect(agencyConstraint).not.toContain("projects.view");
+    expect(agencyConstraint).not.toContain("website.view");
+    expect(invitationConstraint).not.toContain("projects.view");
+    expect(invitationConstraint).not.toContain("website.view");
   });
 });
 

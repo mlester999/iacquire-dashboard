@@ -21,6 +21,15 @@ export const verifyRecordValue = (token: string) => `iacquire-site-verification=
 // Hostnames
 // ---------------------------------------------------------------------------
 
+async function requireAgencyDomainAccess(db: Queryable, userId: string, orgId: string) {
+  const { rows } = await db.query<{ allowed: boolean }>(
+    `select coalesce(app.user_can_access_org($1,$2),false)
+       and coalesce(app.user_has_agency_permission($1,'website.domains'),false) as allowed`,
+    [userId, orgId],
+  );
+  if (rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role or client scope does not allow domain management.");
+}
+
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const BLOCKED_SUFFIX = [".local", ".localhost", ".internal", ".lan", ".home", ".corp", ".test", ".invalid", ".example", ".onion"];
 
@@ -307,6 +316,7 @@ export async function requestDomainPurchase(ctx: OrgContext, input: { hostname: 
 export async function quoteDomainPurchase(agencyUserId: string, input: { orgId: string; domainId: string; costUsd: number; renewsAt?: string }): Promise<void> {
   if (!(input.costUsd > 0 && input.costUsd <= 500)) throw new AppError("invalid_input", "Enter the first-year price in US dollars.");
   await withSystem(async (db) => {
+    await requireAgencyDomainAccess(db, agencyUserId, input.orgId);
     const { rows } = await db.query<{ id: string; acquisition: string; hostname: string }>("select id, acquisition, hostname from website_domains where id = $1 and org_id = $2 and removed_at is null for update", [input.domainId, input.orgId]);
     if (!rows[0] || rows[0].acquisition !== "purchase_requested") throw new AppError("conflict", "That domain isn't waiting for a quote.");
     await db.query("update website_domains set purchase_cost_micros = $2, renews_at = $3 where id = $1", [input.domainId, Math.round(input.costUsd * 1_000_000), input.renewsAt ?? null]);
@@ -338,6 +348,7 @@ export async function approveDomainPurchase(ctx: OrgContext, domainId: string): 
 export async function recordDomainPurchase(agencyUserId: string, input: { orgId: string; domainId: string; registrar: string; renewsAt: string }): Promise<void> {
   if (!input.registrar.trim()) throw new AppError("invalid_input", "Record which registrar holds the domain.");
   await withSystem(async (db) => {
+    await requireAgencyDomainAccess(db, agencyUserId, input.orgId);
     const { rows } = await db.query<{ id: string; acquisition: string; hostname: string }>("select id, acquisition, hostname from website_domains where id = $1 and org_id = $2 and removed_at is null for update", [input.domainId, input.orgId]);
     if (!rows[0] || rows[0].acquisition !== "purchase_approved") throw new AppError("conflict", "The owner hasn't approved buying this domain, so it can't be recorded as purchased.");
     await db.query("update website_domains set acquisition = 'purchased', registrar = $2, renews_at = $3 where id = $1", [input.domainId, input.registrar.trim().slice(0, 80), input.renewsAt]);

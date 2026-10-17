@@ -10,8 +10,17 @@ import { LIFECYCLE_LABEL, type Lifecycle } from "@/lib/website/lifecycle";
  * Every Website Studio read follows the database's current client scope: Super Admins see every client, Managers follow their configured scope,
  * and Staff see assigned clients. Nothing is invented: every figure is a count of real rows, and "no data" is reported as no data.
  */
-function scope(user: SessionUser): { userId: string } {
+async function scope(user: SessionUser, requiredPermission?: "website.review"): Promise<{ userId: string }> {
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
+  const { rows } = await withSystem((db) => db.query<{ can_view: boolean; can_review: boolean }>(
+    `select coalesce(app.user_has_agency_permission($1,'website.view'),false) as can_view,
+            coalesce(app.user_has_agency_permission($1,'website.review'),false) as can_review`,
+    [user.id],
+  ));
+  if (rows[0]?.can_view !== true) throw new AppError("forbidden", "Your role does not allow viewing Website Studio.");
+  if (requiredPermission === "website.review" && rows[0]?.can_review !== true) {
+    throw new AppError("forbidden", "Your role does not allow reviewing client websites.");
+  }
   return { userId: user.id };
 }
 
@@ -96,13 +105,13 @@ function map(r: Row): ManagedWebsite {
 }
 
 export async function listManagedWebsites(user: SessionUser): Promise<ManagedWebsite[]> {
-  const s = scope(user);
+  const s = await scope(user);
   const { rows } = await withSystem((db) => db.query<Row>(`${MANAGED_SQL} order by w.draft_updated_at desc`, [s.userId]));
   return rows.map(map);
 }
 
 export async function getManagedWebsite(user: SessionUser, orgId: string): Promise<ManagedWebsite | null> {
-  const s = scope(user);
+  const s = await scope(user);
   const { rows } = await withSystem((db) => db.query<Row>(`${MANAGED_SQL} and w.org_id = $2 and w.kind = 'website'`, [s.userId, orgId]));
   return rows[0] ? map(rows[0]) : null;
 }
@@ -137,7 +146,7 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export async function studioOverview(user: SessionUser): Promise<StudioOverview> {
-  const s = scope(user);
+  const s = await scope(user);
   const sites = await listManagedWebsites(user);
   const orgIds = sites.map((x) => x.orgId);
   const usage = await withSystem(async (db) => {
@@ -181,6 +190,7 @@ export async function studioOverview(user: SessionUser): Promise<StudioOverview>
 // ---------------------------------------------------------------------------
 
 export async function reviewQueue(user: SessionUser): Promise<{ waiting: ManagedWebsite[]; changes: ManagedWebsite[]; approved: ManagedWebsite[]; failed: ManagedWebsite[]; comments: ManagedWebsite[] }> {
+  await scope(user, "website.review");
   const all = (await listManagedWebsites(user)).filter((x) => !x.archived);
   return {
     waiting: all.filter((x) => x.approval === "submitted"),
@@ -197,7 +207,7 @@ export interface DomainRow {
 }
 
 export async function domainsOverview(user: SessionUser): Promise<{ domains: DomainRow[]; baseDomain: string; usage: Array<{ orgName: string; orgId: string; requests: number; bytes: number; enquiries: number }> }> {
-  const s = scope(user);
+  const s = await scope(user);
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; website_id: string; org_id: string; org_name: string; hostname: string; kind: "platform" | "custom"; status: DomainView["status"]; ssl_status: DomainView["sslStatus"]; live_ok: boolean | null; routing_ok: boolean | null; is_primary: boolean;
       dns_detail: string | null; ssl_detail: string | null; dns_checked_at: Date | null; renews_at: Date | null; acquisition: DomainView["acquisition"] }>(
@@ -226,7 +236,7 @@ export async function domainsOverview(user: SessionUser): Promise<{ domains: Dom
 
 /** Clients the user may manage, for pickers (media library, "create a website for…"). */
 export async function managedClients(user: SessionUser): Promise<Array<{ id: string; name: string; hasWebsite: boolean }>> {
-  const s = scope(user);
+  const s = await scope(user);
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; name: string; has: boolean }>(
       `select o.id, o.name, exists (select 1 from websites w where w.org_id = o.id and w.kind = 'website') as has from organizations o

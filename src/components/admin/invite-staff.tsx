@@ -8,13 +8,32 @@ import { Button } from "@/components/ui/button";
 import { Dialog, Switch } from "@/components/ui/overlays";
 import { Badge, Field, Input } from "@/components/ui/primitives";
 import { inviteStaffAction } from "@/app/(admin)/admin/actions";
-import { AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PERMISSION_INFO, type AgencyPermissionOverrides } from "@/lib/permissions";
+import { AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PERMISSION_INFO, AGENCY_TEAM_PERMISSION_VIEW_PARENT, type AgencyPermissionOverrides, type AgencyTeamPermission } from "@/lib/permissions";
 import type { AgencyTeamView } from "@/server/admin/team";
 
 type TeamRole = "agency_staff" | "agency_manager";
 type ScopeMode = "all_clients" | "assigned_clients";
 type Delivery = { status: string; error: string | null };
 type RoleDefaults = AgencyTeamView["permissionDefaults"];
+
+function invitationBasePermission(role: TeamRole, permission: AgencyTeamPermission, roleDefaults: RoleDefaults, overrides: AgencyPermissionOverrides) {
+  const override = overrides[permission];
+  return override ? override === "allow" : roleDefaults[role][permission] === true;
+}
+
+function invitationEffectivePermission(role: TeamRole, permission: AgencyTeamPermission, roleDefaults: RoleDefaults, overrides: AgencyPermissionOverrides) {
+  const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission];
+  return (!parent || invitationBasePermission(role, parent, roleDefaults, overrides))
+    && invitationBasePermission(role, permission, roleDefaults, overrides);
+}
+
+function invitationPermissionSource(role: TeamRole, permission: AgencyTeamPermission, roleDefaults: RoleDefaults, overrides: AgencyPermissionOverrides) {
+  const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission];
+  if (parent && !invitationBasePermission(role, parent, roleDefaults, overrides)) {
+    return `Blocked by ${parent === "website.view" ? "Website Studio" : "Projects"} view access`;
+  }
+  return overrides[permission] ? `Custom ${overrides[permission]}` : `${role === "agency_manager" ? "Agency Manager" : "Agency Staff"} role default`;
+}
 
 export function InviteStaff({ clients = [], roleDefaults }: { clients?: Array<{ id: string; name: string }>; roleDefaults: RoleDefaults }) {
   const router = useRouter();
@@ -153,13 +172,13 @@ export function InviteStaff({ clients = [], roleDefaults }: { clients?: Array<{ 
     >
       <div className="mx-auto w-full max-w-6xl space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface-2 p-4"><div><p className="text-sm font-semibold text-ink">{Object.keys(draftOverrides).length} customized actions</p><p className="mt-1 text-[12px] text-muted">Role defaults update dynamically. Inherited permissions are not copied into the draft.</p></div><Button variant="ghost" onClick={() => setDraftOverrides({})}>Reset to role defaults</Button></div>
-        {previewingPermissions && <section aria-live="polite" className="rounded-2xl border border-primary/25 bg-primary-soft/40 p-4"><h2 className="text-sm font-semibold text-ink">Preview permission changes</h2><p className="mt-1 text-[12px] text-muted">These overrides stay private in the invitation draft and apply only after the teammate accepts.</p>{permissionDraftChanges.length ? <ul className="mt-3 grid gap-2 sm:grid-cols-2">{permissionDraftChanges.map((permission) => <li key={permission} className="rounded-lg bg-surface p-3 text-[12px]"><strong>{AGENCY_TEAM_PERMISSION_INFO[permission].label}</strong><br />{roleDefaults[role][permission] ? "Allowed by role default" : "Denied by role default"} → {draftOverrides[permission] === "allow" ? "Allowed" : "Restricted"}</li>)}</ul> : <p className="mt-3 text-[12px] text-muted">No custom permission overrides. The invitee will use the role defaults listed above.</p>}</section>}
+        {previewingPermissions && <section aria-live="polite" className="rounded-2xl border border-primary/25 bg-primary-soft/40 p-4"><h2 className="text-sm font-semibold text-ink">Preview permission changes</h2><p className="mt-1 text-[12px] text-muted">These overrides stay private in the invitation draft and apply only after the teammate accepts.</p>{permissionDraftChanges.length ? <ul className="mt-3 grid gap-2 sm:grid-cols-2">{permissionDraftChanges.map((permission) => <li key={permission} className="rounded-lg bg-surface p-3 text-[12px]"><strong>{AGENCY_TEAM_PERMISSION_INFO[permission].label}</strong><br />{invitationEffectivePermission(role, permission, roleDefaults, {}) ? "Allowed" : "Restricted"} · {invitationPermissionSource(role, permission, roleDefaults, {})} → {invitationEffectivePermission(role, permission, roleDefaults, draftOverrides) ? "Allowed" : "Restricted"} · {invitationPermissionSource(role, permission, roleDefaults, draftOverrides)}</li>)}</ul> : <p className="mt-3 text-[12px] text-muted">No custom permission overrides. The invitee will use the role defaults listed above.</p>}</section>}
         {groups.map((group) => <section key={group} className="overflow-hidden rounded-2xl border border-line"><div className="border-b border-line bg-surface-2 px-4 py-3"><h2 className="text-sm font-semibold text-ink">{group}</h2></div><div className="grid gap-2 p-3 md:grid-cols-2">{AGENCY_TEAM_MANAGED_PERMISSIONS.filter((permission) => AGENCY_TEAM_PERMISSION_INFO[permission].group === group).map((permission) => {
           const info = AGENCY_TEAM_PERMISSION_INFO[permission];
           const fallback = roleDefaults[role][permission] === true;
           const effect = draftOverrides[permission];
           const checked = effect ? effect === "allow" : fallback;
-          return <div key={permission} className="flex min-h-16 items-center gap-3 rounded-xl border border-line bg-surface p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium text-ink">{info.label}</p><p className="mt-1 text-[11px] text-muted">{effect ? `Custom ${effect === "allow" ? "allow" : "deny"}` : fallback ? "Allowed · role default" : "Denied · role default"}</p></div><Switch aria-label={`${info.label} for invitation`} checked={checked} onCheckedChange={(allow) => setDraftOverrides((current) => {
+          return <div key={permission} className="flex min-h-16 items-center gap-3 rounded-xl border border-line bg-surface p-3"><div className="min-w-0 flex-1"><p className="text-[13px] font-medium text-ink">{info.label}</p><p className="mt-1 text-[11px] text-muted">{invitationEffectivePermission(role, permission, roleDefaults, draftOverrides) ? "Allowed" : "Restricted"} · {invitationPermissionSource(role, permission, roleDefaults, draftOverrides)}</p></div><Switch aria-label={`${info.label} for invitation`} checked={checked} onCheckedChange={(allow) => setDraftOverrides((current) => {
             const next = { ...current };
             if (allow === fallback) delete next[permission];
             else next[permission] = allow ? "allow" : "deny";

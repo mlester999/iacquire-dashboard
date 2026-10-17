@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 import { requireUserOrThrow } from "@/server/auth/session";
 import { agencyCanAccessOrg, loadAgencyPermissionOverrides, loadAgencyRolePermissions, requireOrgContextOrThrow, type Membership, type OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
-import { isAgencyTeamPermission, PERMISSION_MATRIX, type AgencyPermissionOverrides, type OrgRole, type Permission } from "@/lib/permissions";
+import { AGENCY_TEAM_PERMISSION_VIEW_PARENT, isAgencyTeamPermission, PERMISSION_MATRIX, type AgencyPermissionOverrides, type AgencyTeamPermission, type OrgRole, type Permission } from "@/lib/permissions";
 
 /**
  * An organization context for an agency user working inside one client's tenant. It carries the agency role, so every check still goes through the
@@ -23,10 +23,15 @@ export function agencyOrgContext(
     orgId: org.orgId, name: org.name, slug: org.slug, kind: "client", status: org.status, role: role as unknown as OrgRole,
     isDemo: org.isDemo === true, onboardingCompletedAt: null, timezone: org.timezone,
   };
-  const can = (permission: Permission) => {
+  const baseCan = (permission: Permission) => {
     if (role === "agency_super_admin") return rolePermissions.has(permission);
     const override = isAgencyTeamPermission(permission) ? overrides[permission] : undefined;
     return override ? override === "allow" : rolePermissions.has(permission);
+  };
+  const can = (permission: Permission) => {
+    const parent = AGENCY_TEAM_PERMISSION_VIEW_PARENT[permission as AgencyTeamPermission];
+    if (parent && !baseCan(parent)) return false;
+    return baseCan(permission);
   };
   const permissions = (Object.keys(PERMISSION_MATRIX) as Permission[]).filter(can);
   return { user, org: membership, role: role as unknown as OrgRole, permissions, can, memberships: [] };
