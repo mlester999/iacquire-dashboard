@@ -11,6 +11,7 @@ import { canChat, AGENT_BY_KEY, type AgentRoleKey, type AgentStatus } from "@/li
 import {
   HermesError,
   startRun,
+  startAgentRun,
   stopRun,
   streamRunEvents,
   toolActivityLabel,
@@ -409,7 +410,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
 
   try {
     try {
-      const started = await startRun(r.conn, r.request);
+      const started = await startAgentRun(r.agentId, r.orgId, r.conn, r.request);
       hermesRunId = started.runId;
     } catch (err) {
       if (err instanceof HermesError && ["unreachable", "auth_failed", "not_found", "timeout"].includes(err.kind)) {

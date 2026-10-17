@@ -7,6 +7,7 @@ import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import { immutablePolicy, POLICY_VERSION, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { suggestedProfileName } from "@/server/workforce/service";
+import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/workforce/tool-policies";
 
 /**
  * Generates the agency runbook for provisioning a dedicated Hermes profile for one tenant employee.
@@ -47,22 +48,17 @@ export function buildSoul(role: AgentRoleKey, companyName: string): string {
   ].join("\n");
 }
 
-export function buildConfigYaml(): string {
+export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS): string {
+  const known = new Set(HERMES_BLOCKABLE_TOOLSETS.map((toolset) => toolset.key));
+  if (blockedToolsets.some((toolset) => !known.has(toolset as (typeof HERMES_BLOCKABLE_TOOLSETS)[number]["key"]))) {
+    throw new AppError("invalid_input", "This Hermes policy contains an unsupported toolset.");
+  }
+  const disabled = [...new Set(blockedToolsets)];
   return [
     "# Merge into this profile's config.yaml. Keys verified against Hermes Agent docs",
     "# (agent.disabled_toolsets; terminal backend security). Re-check after Hermes upgrades.",
     "agent:",
-    "  disabled_toolsets:",
-    "    - terminal",
-    "    - file",
-    "    - code_execution",
-    "    - browser",
-    "    - computer_use",
-    "    - cronjob",
-    "    - delegation",
-    "    - connections",
-    "    - catalog",
-    "    - kanban",
+    ...(disabled.length ? ["  disabled_toolsets:", ...disabled.map((toolset) => `    - ${toolset}`)] : ["  disabled_toolsets: []"]),
     "terminal:",
     "  # Defence in depth: even if a shell tool were re-enabled, commands run in a container.",
     "  backend: docker",
@@ -74,10 +70,15 @@ export function buildConfigYaml(): string {
 
 export async function getProvisioningBundle(agentId: string): Promise<ProvisioningBundle> {
   const row = await withSystem(async (db) => {
-    const { rows } = await db.query<{ role_key: AgentRoleKey; org_name: string; slug: string; kind: string; hermes_profile: string | null }>(
-      `select a.role_key, o.name as org_name, o.slug, o.kind, a.hermes_profile
+    const { rows } = await db.query<{ role_key: AgentRoleKey; org_id: string; org_name: string; slug: string; kind: string; hermes_profile: string | null; blocked_toolsets: string[] }>(
+      `select a.role_key, o.id as org_id, o.name as org_name, o.slug, o.kind, a.hermes_profile,
+       coalesce(
+         (select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='agent' and p.agent_id=a.id),
+         (select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='client' and p.org_id=o.id),
+         (select p.blocked_toolsets from hermes_tool_policies p where p.scope_kind='client_default'),
+         $2::text[]) as blocked_toolsets
        from agent_instances a join organizations o on o.id = a.org_id where a.id = $1`,
-      [agentId],
+      [agentId, DEFAULT_BLOCKED_TOOLSETS],
     );
     return rows[0];
   });
@@ -87,7 +88,7 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
   return {
     profile,
     soul: buildSoul(row.role_key, row.org_name),
-    configYaml: buildConfigYaml(),
+    configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS) : buildConfigYaml(),
     envTemplate: [
       "# ~/.hermes/profiles/" + profile + "/.env  (never paste these values into chat or tickets)",
       "API_SERVER_ENABLED=true",
@@ -108,14 +109,14 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
       {
         title: "Verify tool restrictions from the VPS",
         command: `curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8642/p/${profile}/v1/toolsets`,
-        note: "No terminal, file, code, browser, cron, delegation or connection tools should be listed as enabled.",
+        note: row.kind === "client" ? `No blocked toolsets should appear as enabled: ${row.blocked_toolsets.join(", ") || "none selected"}. The portal cannot verify hidden tools or apply this configuration remotely.` : "Confirm the existing internal profile identity and review its actual exposed tools; the tool inventory is incomplete.",
       },
       { title: "Connect it in the portal", note: "Admin → Workforce → Connect profile: enter the HTTPS API URL, profile name and key. Then run the health check." },
     ],
     verification: [
       "Authenticated GET /p/<profile>/v1/capabilities succeeds with run_submission and run_events_sse.",
-      "GET /p/<profile>/v1/toolsets lists no restricted tools (the portal enforces this).",
-      "The employee's configuration has been applied in the portal.",
+      row.kind === "client" ? `GET /p/<profile>/v1/toolsets lists no restricted tools. The portal does not apply this file remotely.` : "The existing internal profile identity and authenticated API contract are verified; tool inventory completeness remains unverified.",
+      row.kind === "client" ? "A gateway administrator has applied this saved configuration and verified the profile-level restrictions." : "A Super Admin has acknowledged Full Hermes Capabilities for the verified internal profile; the tool inventory is still incomplete.",
     ],
   };
 }

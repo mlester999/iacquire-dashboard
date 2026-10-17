@@ -17,7 +17,7 @@ export const STUDIO_SECTIONS = [
 export const ADMIN_SECTIONS: Record<string, string> = {
   clients: "Clients", crm: "Client CRMs", workforce: "Internal Workforce", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
   maintenance: "Maintenance", services: "Service catalog", portfolio: "Portfolio", "setup-templates": "Setup templates", integrations: "Integrations",
-  health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", team: "Agency team", audit: "Audit log",
+  health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", team: "Team & Permissions", audit: "Audit log",
 };
 
 const CLIENT_PAGES: Record<string, string> = { crm: "CRM", setup: "Setup", integrations: "Integrations", activation: "Activation", provisioning: "Provisioning", offboarding: "Offboarding", website: "Website" };

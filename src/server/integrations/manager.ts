@@ -26,10 +26,70 @@ async function authorize(user:SessionUser,orgId:string|null,write=false) {
   if(!role || role==="none")throw new AppError("forbidden","Agency access is required.");
   if(write && role!=="agency_super_admin") throw new AppError("forbidden","Only agency super admins can configure, test or revoke service credentials.");
   if(orgId) await assertAgencyAccess({...user,platformRole:role},orgId,write?"super_admin":"staff");
-  else if(role!=="agency_super_admin") throw new AppError("forbidden","Global infrastructure settings require agency super admin access.");
+  else if(role!=="agency_super_admin") {
+    const {rows:permissions}=await withSystem(db=>db.query<{allowed:boolean}>("select coalesce(app.user_has_agency_permission($1,'agency.integrations.health'),false) as allowed",[user.id]));
+    if(permissions[0]?.allowed!==true) throw new AppError("forbidden","Global integration health requires agency manager access.");
+  }
   return role;
 }
 type ConnectionRow={id:string;org_id:string|null;provider:IntegrationProvider;label:string;environment:string;config:Record<string,unknown>;credential_id:string|null;status:IntegrationState;last_success_at:Date|null;last_failure_at:Date|null;last_error:string|null;capabilities:Record<string,unknown>;revision:number;};
+
+type IntegrationHealthRow={provider:string;environment:string;status:string;last_success_at:Date|null;last_failure_at:Date|null};
+type LegacyIntegrationHealthRow={provider:string;status:string;last_checked_at:Date|null};
+
+function healthState(value:string):IntegrationState {
+  if(value==="connected"||value==="credentials_saved"||value==="testing"||value==="permission_limited"||value==="needs_attention"||value==="disconnected"||value==="error")return value;
+  if(value==="degraded")return "needs_attention";
+  if(value==="disabled")return "disconnected";
+  if(value==="pending")return "credentials_saved";
+  return "not_configured";
+}
+
+async function listHealthOnlyIntegrations(user:SessionUser,orgId:string|null) {
+  const [connections,legacy]=await Promise.all([
+    orgId
+      ? withUser(user.id,db=>db.query<IntegrationHealthRow>("select provider,environment,status,last_success_at,last_failure_at from integration_connections where org_id=$1 order by provider",[orgId]))
+      : withServiceRole(db=>db.query<IntegrationHealthRow>("select provider,environment,status,last_success_at,last_failure_at from integration_connections where org_id is null order by provider")),
+    withUser(user.id,db=>db.query<LegacyIntegrationHealthRow>("select provider,status,last_checked_at from integration_status where org_id is not distinct from $1::uuid",[orgId])),
+  ]);
+  const byProvider=new Map(connections.rows.map(row=>[row.provider,row]));
+  const legacyByProvider=new Map(legacy.rows.map(row=>[row.provider,row]));
+  let gateway:Pick<IntegrationHealthRow,"status"|"environment"|"last_success_at"|"last_failure_at">|null=null;
+  if(!orgId) {
+    const {rows}=await withServiceRole(db=>db.query<IntegrationHealthRow>("select 'hermes' as provider,environment,status,last_success_at,last_failure_at from hermes_gateways where status<>'disconnected' order by created_at desc limit 1"));
+    gateway=rows[0]??null;
+  }
+  return {
+    secureStoreReady:false,
+    agencyWorkflows:[],
+    mappedWorkflowIds:[],
+    hermesGateways:[],
+    hermesSetup:null,
+    hermesSetups:{},
+    connections:INTEGRATION_PROVIDERS.filter(provider=>provider!=="llm"||!orgId).map(provider=>{
+      const connection=provider==="hermes"&&!orgId&&gateway?gateway:byProvider.get(provider);
+      const statusRow=legacyByProvider.get(provider);
+      const status=connection?healthState(connection.status):statusRow?healthState(statusRow.status):"not_configured";
+      const lastChecked=statusRow?.last_checked_at??null;
+      return {
+        id:null,
+        provider,
+        label:INTEGRATION_NAMES[provider],
+        environment:connection?.environment??"managed",
+        status,
+        config:{},
+        capabilities:{},
+        lastSuccessAt:date(connection?.last_success_at??(status==="connected"?lastChecked:null)),
+        lastFailureAt:date(connection?.last_failure_at??(["error","needs_attention","permission_limited"].includes(status)?lastChecked:null)),
+        lastError:null,
+        fingerprint:null,
+        rotatedAt:null,
+        hasCredential:false,
+        checks:[],
+      } satisfies IntegrationView;
+    }),
+  };
+}
 
 export const integrationSaveSchema=z.object({
   provider:z.enum(["hermes","ghl","n8n","llm"]),label:z.string().trim().min(2).max(120),environment:z.enum(["development","staging","production"]),
@@ -42,6 +102,7 @@ export type IntegrationSaveInput=z.input<typeof integrationSaveSchema>;
 
 export async function listIntegrationManager(user:SessionUser,orgId:string|null):Promise<{connections:IntegrationView[];secureStoreReady:boolean;agencyWorkflows:Array<{id:string;name:string}>;mappedWorkflowIds:string[];hermesGateways:HermesGatewayView[];hermesSetup:HermesSetupSummary|null;hermesSetups:Record<string,HermesSetupSummary>}> {
   const role=await authorize(user,orgId);
+  if(role!=="agency_super_admin")return listHealthOnlyIntegrations(user,orgId);
   const rows=await withUser(user.id,db=>db.query<ConnectionRow>("select * from integration_connections where org_id is not distinct from $1::uuid order by provider",[orgId])).then(r=>r.rows);
   const registeredHermesGateways=await withServiceRole(listHermesGateways);
   // Client-scoped integration pages need gateway choices, but must not reveal how many other

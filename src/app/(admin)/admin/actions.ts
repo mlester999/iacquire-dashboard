@@ -5,7 +5,7 @@ import { z } from "zod";
 import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { requireAgencyOrThrow, requireAgencyOrgAccessOrThrow } from "@/server/tenancy/context";
+import { requireAgencyOrThrow, requireAgencyOrgAccessOrThrow, requireAgencyPermissionOrThrow } from "@/server/tenancy/context";
 import {
   assignStaff,
   billingSchema,
@@ -33,6 +33,9 @@ import { getProvisioningBundle, updateProvisioningJob } from "@/server/workforce
 import { syncGhl, verifyGhlConnection } from "@/server/integrations/ghl";
 import { agencyReply, updateTicket, TICKET_STATUSES, type TicketStatus } from "@/server/support/service";
 import { createInvitation } from "@/server/auth/service";
+import { updateAgencyTeamMember, updateAgencyUserPermission } from "@/server/admin/team";
+import { AGENCY_DELEGABLE_PERMISSIONS, type AgencyPermission } from "@/lib/permissions";
+import { acknowledgeInternalFullCapabilities, resetHermesToolPolicy, saveHermesToolPolicy, type HermesBlockableToolset, type HermesPolicyCapability } from "@/server/workforce/tool-policies";
 import { notifyOrgRoles } from "@/server/notifications";
 
 async function agentOrg(agentId: string) {
@@ -52,7 +55,7 @@ async function agentKind(agentId: string) {
 
 export async function createClientAction(input: z.input<typeof createTenantSchema>) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireAgencyPermissionOrThrow("agency.clients.create");
     const res = await createClientTenant(admin, input);
     revalidatePath("/admin/clients");
     return { ok: true as const, data: res };
@@ -64,7 +67,8 @@ export async function createClientAction(input: z.input<typeof createTenantSchem
 
 export async function inviteClientUserAction(orgId: string, email: string, role: "owner" | "admin" | "member") {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireAgencyPermissionOrThrow("agency.clients.invite_users");
+    await requireAgencyOrgAccessOrThrow(orgId);
     if (!z.string().email().safeParse(email).success) throw new AppError("invalid_input", "Enter a valid email.");
     const res = await inviteOrgUser(admin, orgId, email, role);
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: "team.invited", targetType: "invitation", targetId: res.id, result: "success", metadata: { role } });
@@ -350,15 +354,127 @@ export async function updateTicketAction(ticketId: string, changes: { status?: s
   }
 }
 
-export async function inviteStaffAction(email: string, platformRole: "agency_staff" | "agency_super_admin") {
+export async function inviteStaffAction(
+  email: string,
+  platformRole: "agency_staff" | "agency_manager",
+  scopeMode: "all_clients" | "assigned_clients",
+  initialClientIds: string[],
+) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     if (!z.string().email().safeParse(email).success) throw new AppError("invalid_input", "Enter a valid email.");
-    const res = await createInvitation({ orgId: null, email, platformRole, invitedBy: admin.id });
-    await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "team.invited", targetType: "invitation", targetId: res.id, result: "success", metadata: { platformRole } });
+    if (scopeMode === "all_clients" && platformRole !== "agency_manager") throw new AppError("invalid_input", "Only an Agency Manager can have all-client scope.");
+    if (initialClientIds.length > 100 || initialClientIds.some((id) => !z.string().uuid().safeParse(id).success)) throw new AppError("invalid_input", "The selected client list is invalid.");
+    const res = await createInvitation({ orgId: null, email, platformRole, agencyScopeMode: scopeMode, initialClientIds, invitedBy: admin.id });
+    await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "team.invited", targetType: "invitation", targetId: res.id, result: "success", metadata: { platformRole, scopeMode, initialAssignmentCount: initialClientIds.length, emailDelivery: res.delivery?.status ?? "unknown" } });
     revalidatePath("/admin/team");
-    return { ok: true as const, data: { link: res.link } };
+    return { ok: true as const, data: { link: res.link, delivery: publicDelivery(res.delivery) } };
   } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function updateAgencyTeamMemberAction(input: {
+  userId: string;
+  platformRole: "agency_manager" | "agency_staff";
+  status: "active" | "disabled";
+  scopeMode: "all_clients" | "assigned_clients";
+}) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const parsed = z.object({
+      userId: z.string().uuid(),
+      platformRole: z.enum(["agency_manager", "agency_staff"]),
+      status: z.enum(["active", "disabled"]),
+      scopeMode: z.enum(["all_clients", "assigned_clients"]),
+    }).parse(input);
+    await updateAgencyTeamMember(admin, parsed);
+    revalidatePath("/admin/team");
+    revalidatePath("/admin");
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Check the role, scope and account status." };
+    return actionError(err);
+  }
+}
+
+export async function setAgencyUserPermissionAction(input: {
+  userId: string;
+  permission: string;
+  effect: "allow" | "deny" | null;
+  reason?: string;
+}) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const allowed = (value: string): value is AgencyPermission => AGENCY_DELEGABLE_PERMISSIONS.includes(value as AgencyPermission);
+    const parsed = z.object({ userId: z.string().uuid(), permission: z.string().refine(allowed), effect: z.enum(["allow", "deny"]).nullable(), reason: z.string().trim().max(300).optional() }).parse(input);
+    await updateAgencyUserPermission(admin, parsed);
+    revalidatePath("/admin/team");
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "This permission is protected or the change is invalid." };
+    return actionError(err);
+  }
+}
+
+export async function saveHermesToolPolicyAction(input: {
+  scopeKind: "client_default" | "client" | "agent";
+  orgId?: string;
+  agentId?: string;
+  name: string;
+  allowedCapabilities: string[];
+  blockedToolsets: string[];
+  approvalMode: "client_rules" | "approval_required" | "read_only";
+}) {
+  try {
+    const admin = await requireAgencyPermissionOrThrow("agency.tool_policies.manage");
+    const parsed = z.object({
+      scopeKind: z.enum(["client_default", "client", "agent"]),
+      orgId: z.string().uuid().optional(),
+      agentId: z.string().uuid().optional(),
+      name: z.string().trim().min(1).max(80),
+      allowedCapabilities: z.array(z.string()).max(40),
+      blockedToolsets: z.array(z.string()).max(24),
+      approvalMode: z.enum(["client_rules", "approval_required", "read_only"]),
+    }).parse(input);
+    await saveHermesToolPolicy(admin, {
+      ...parsed,
+      allowedCapabilities: parsed.allowedCapabilities as HermesPolicyCapability[],
+      blockedToolsets: parsed.blockedToolsets as HermesBlockableToolset[],
+    });
+    revalidatePath("/admin/workforce/policies");
+    revalidatePath("/admin/workforce");
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Check the policy scope, capabilities and approval mode." };
+    return actionError(err);
+  }
+}
+
+export async function resetHermesToolPolicyAction(input: { scopeKind: "client" | "agent"; orgId?: string; agentId?: string }) {
+  try {
+    const admin = await requireAgencyPermissionOrThrow("agency.tool_policies.manage");
+    const parsed = z.object({ scopeKind: z.enum(["client", "agent"]), orgId: z.string().uuid().optional(), agentId: z.string().uuid().optional() }).parse(input);
+    await resetHermesToolPolicy(admin, parsed);
+    revalidatePath("/admin/workforce/policies");
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Choose a valid client or employee." };
+    return actionError(err);
+  }
+}
+
+export async function acknowledgeInternalHermesCapabilitiesAction(agentIds: string[]) {
+  try {
+    const admin = await requireAgencyPermissionOrThrow("agency.workforce.full_capabilities.acknowledge");
+    const parsed = z.array(z.string().uuid()).min(1).max(6).parse(agentIds);
+    if (new Set(parsed).size !== parsed.length) throw new AppError("invalid_input", "Select each internal employee only once.");
+    await acknowledgeInternalFullCapabilities(admin, parsed);
+    revalidatePath("/admin/workforce/policies");
+    revalidatePath("/admin/workforce");
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Select one or more verified internal profiles." };
     return actionError(err);
   }
 }

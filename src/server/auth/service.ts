@@ -430,12 +430,42 @@ export interface InvitationResult {
  * with the result once that transaction has committed.
  */
 export async function createInvitation(
-  input: { orgId: string | null; email: string; role?: OrgRole; platformRole?: Exclude<PlatformRole, "none">; invitedBy: string | null },
+  input: {
+    orgId: string | null;
+    email: string;
+    role?: OrgRole;
+    platformRole?: Exclude<PlatformRole, "none">;
+    agencyScopeMode?: "all_clients" | "assigned_clients";
+    initialClientIds?: string[];
+    invitedBy: string | null;
+  },
   db?: Queryable,
 ): Promise<InvitationResult> {
   const email = normalizeEmail(input.email);
+  const platformRole = input.platformRole ?? "agency_staff";
+  const agencyScopeMode = input.orgId
+    ? null
+    : input.agencyScopeMode ?? (platformRole === "agency_manager" ? "all_clients" : "assigned_clients");
+  const initialClientIds = [...new Set(input.initialClientIds ?? [])];
+  if (!input.orgId && platformRole === "agency_super_admin") {
+    throw new InvitationError("Super Admin ownership cannot be granted through an invitation.");
+  }
+  if (!input.orgId && platformRole === "agency_staff" && agencyScopeMode !== "assigned_clients") {
+    throw new InvitationError("Agency Staff can only be invited with assigned-client scope.");
+  }
+  if ((input.orgId || agencyScopeMode === "all_clients") && initialClientIds.length) {
+    throw new InvitationError("Initial client assignments require assigned-client scope.");
+  }
+  if (initialClientIds.length > 100) throw new InvitationError("Choose no more than 100 initial client assignments.");
   const token = randomToken(32);
   const run = async (q: Queryable) => {
+    if (initialClientIds.length) {
+      const eligible = await q.query<{ id: string }>(
+        "select id from organizations where id = any($1::uuid[]) and kind = 'client' and status <> 'archived'",
+        [initialClientIds],
+      );
+      if (eligible.rows.length !== initialClientIds.length) throw new InvitationError("One or more selected clients are unavailable.");
+    }
     // Re-inviting supersedes any outstanding invitation for the same address and tenant.
     await q.query(
       `update invitations set revoked_at = now()
@@ -444,10 +474,16 @@ export async function createInvitation(
       [email, input.orgId],
     );
     const { rows } = await q.query<{ id: string }>(
-      `insert into invitations (org_id, email, role, platform_role, token_hash, invited_by, expires_at)
-       values ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7)) returning id`,
-      [input.orgId, email, input.orgId ? input.role ?? "member" : null, input.orgId ? null : input.platformRole ?? "agency_staff", sha256(token), input.invitedBy, INVITE_DAYS],
+      `insert into invitations (org_id, email, role, platform_role, token_hash, invited_by, expires_at, agency_scope_mode)
+       values ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7), $8) returning id`,
+      [input.orgId, email, input.orgId ? input.role ?? "member" : null, input.orgId ? null : platformRole, sha256(token), input.invitedBy, INVITE_DAYS, agencyScopeMode],
     );
+    if (initialClientIds.length) {
+      await q.query(
+        "insert into invitation_client_assignments (invitation_id, org_id) select $1, unnest($2::uuid[])",
+        [rows[0].id, initialClientIds],
+      );
+    }
     const orgName = input.orgId
       ? (await q.query<{ name: string }>("select name from organizations where id = $1", [input.orgId])).rows[0]?.name
       : null;
@@ -455,7 +491,7 @@ export async function createInvitation(
     const inviter = input.invitedBy
       ? (await q.query<{ full_name: string | null }>("select full_name from users where id = $1", [input.invitedBy])).rows[0]?.full_name?.replace(/\s+/g, " ").trim()
       : null;
-    const roleLabel = ROLE_LABELS[input.orgId ? input.role ?? "member" : input.platformRole ?? "agency_staff"];
+    const roleLabel = ROLE_LABELS[input.orgId ? input.role ?? "member" : platformRole];
     const who = [inviter ? `Invited by: ${inviter}` : "", `Role: ${roleLabel}`].filter(Boolean).join("\n");
     const message: OutgoingEmail = {
       to: email,
@@ -467,7 +503,9 @@ export async function createInvitation(
   };
   const created = await (db ? run(db) : withSystem(run));
   if (db) return { ...created, delivery: null };
-  return { ...created, delivery: await deliverInvitation(created.message) };
+  const delivery = await deliverInvitation(created.message);
+  await recordInvitationDelivery(created.id, delivery);
+  return { ...created, delivery };
 }
 
 /** Sends an invitation email and reports the real outcome. Never throws: the invitation already exists. */
@@ -477,6 +515,14 @@ export async function deliverInvitation(message: OutgoingEmail): Promise<EmailDe
   } catch (err) {
     return { id: "", status: "failed", error: err instanceof Error ? err.message.slice(0, 200) : "The email could not be queued." };
   }
+}
+
+/** Persists the provider's actual invitation outcome without storing any invitation token or credential. */
+export async function recordInvitationDelivery(invitationId: string, delivery: EmailDelivery): Promise<void> {
+  await withSystem((db) => db.query(
+    "update invitations set email_delivery_status=$2,email_delivery_error=$3 where id=$1",
+    [invitationId, delivery.status, delivery.status === "failed" ? delivery.error?.replace(/\s+/g, " ").slice(0, 300) ?? "Email provider rejected the message." : null],
+  ));
 }
 
 export async function getInvitation(token: string): Promise<InvitationDetails | null> {
@@ -516,10 +562,10 @@ export async function getInvitation(token: string): Promise<InvitationDetails | 
 }
 
 export async function applyInvitation(db: Queryable, inviteId: string, userId: string) {
-  const { rows } = await db.query<{ org_id: string | null; role: OrgRole | null; platform_role: string | null; invited_by: string | null }>(
+  const { rows } = await db.query<{ org_id: string | null; role: OrgRole | null; platform_role: string | null; invited_by: string | null; agency_scope_mode: "all_clients" | "assigned_clients" | null }>(
     `update invitations set accepted_at = now()
      where id = $1 and accepted_at is null and revoked_at is null and expires_at > now()
-     returning org_id, role, platform_role, invited_by`,
+     returning org_id, role, platform_role, invited_by, agency_scope_mode`,
     [inviteId],
   );
   const inv = rows[0];
@@ -531,7 +577,47 @@ export async function applyInvitation(db: Queryable, inviteId: string, userId: s
       [inv.org_id, userId, inv.role, inv.invited_by],
     );
   } else if (inv.platform_role) {
+    if (inv.platform_role === "agency_super_admin") throw new InvitationError("Super Admin ownership cannot be granted through an invitation.");
+    if (!(["agency_staff", "agency_manager"] as string[]).includes(inv.platform_role) || !inv.agency_scope_mode) {
+      throw new InvitationError("This agency invitation is no longer valid.");
+    }
+    if (inv.platform_role === "agency_staff" && inv.agency_scope_mode !== "assigned_clients") {
+      throw new InvitationError("Agency Staff invitations must use assigned-client scope.");
+    }
     await db.query("update users set platform_role = $2 where id = $1", [userId, inv.platform_role]);
+    if (inv.platform_role === "agency_manager" && inv.agency_scope_mode === "all_clients") {
+      await db.query("delete from agency_user_client_scopes where user_id = $1", [userId]);
+    } else {
+      await db.query(
+        `insert into agency_user_client_scopes (user_id, scope_mode, updated_by) values ($1, 'assigned_clients', $2)
+         on conflict (user_id) do update set scope_mode = 'assigned_clients', updated_by = excluded.updated_by, updated_at = now()`,
+        [userId, inv.invited_by],
+      );
+    }
+    const assignments = await db.query<{ count: string }>(
+      `select count(*)::text as count from invitation_client_assignments x
+       join organizations o on o.id = x.org_id and o.kind = 'client' and o.status <> 'archived'
+       where x.invitation_id = $1`,
+      [inviteId],
+    );
+    const { rows: initialClients } = await db.query<{ org_id: string }>(
+      `select x.org_id from invitation_client_assignments x
+       join organizations o on o.id = x.org_id and o.kind = 'client' and o.status <> 'archived'
+       where x.invitation_id = $1`,
+      [inviteId],
+    );
+    const requestedCount = Number(assignments.rows[0]?.count ?? "0");
+    if (requestedCount !== initialClients.length || (inv.agency_scope_mode === "all_clients" && requestedCount > 0)) {
+      throw new InvitationError("This agency invitation has an invalid client scope.");
+    }
+    if (initialClients.length) {
+      await db.query(
+        `insert into staff_assignments (org_id, user_id, assigned_by)
+         select x.org_id, $2, $3 from invitation_client_assignments x where x.invitation_id = $1
+         on conflict do nothing`,
+        [inviteId, userId, inv.invited_by],
+      );
+    }
   }
   await recordAudit(
     { orgId: inv.org_id, actorKind: "user", actorUserId: userId, action: "auth.invitation_accepted", targetType: "invitation", targetId: inviteId, result: "success" },

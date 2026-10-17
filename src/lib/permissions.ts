@@ -8,15 +8,15 @@
 
 export const ORG_ROLES = ["owner", "admin", "member", "sales_rep", "support", "viewer", "appointment_setter"] as const;
 export type OrgRole = (typeof ORG_ROLES)[number];
-export type PlatformRole = "none" | "agency_staff" | "agency_super_admin";
-export type EffectiveRole = OrgRole | "agency_staff" | "agency_super_admin";
+export type PlatformRole = "none" | "agency_staff" | "agency_manager" | "agency_super_admin";
+export type EffectiveRole = OrgRole | "agency_staff" | "agency_manager" | "agency_super_admin";
 
 const row = (...roles: EffectiveRole[]): readonly EffectiveRole[] => roles;
 const CLIENT = ["owner", "admin", "member", "sales_rep", "support", "viewer", "appointment_setter"] as const;
 /** Everyone who works conversations and records, as opposed to read-only viewers. */
 const WORKING = ["owner", "admin", "member", "sales_rep", "support", "appointment_setter"] as const;
 const OWNER_ADMIN = ["owner", "admin"] as const;
-const STAFF = ["agency_staff", "agency_super_admin"] as const;
+const STAFF = ["agency_staff", "agency_manager", "agency_super_admin"] as const;
 
 export const PERMISSION_MATRIX = {
   "workspace.view": row(...CLIENT, ...STAFF),
@@ -142,6 +142,22 @@ export const PERMISSION_MATRIX = {
   "crm.provider.manage": row("owner"),
   "crm.api.manage": row(...OWNER_ADMIN),
   "crm.permissions.manage": row(...OWNER_ADMIN),
+  // Agency permissions are enforced independently from client membership permissions.
+  // A manager's client scope is checked separately by app.staff_assigned/app.can_access_org.
+  "agency.clients.create": row("agency_manager", "agency_super_admin"),
+  "agency.clients.invite_users": row("agency_manager", "agency_super_admin"),
+  "agency.team.manage": row("agency_super_admin"),
+  "agency.tool_policies.view": row("agency_manager", "agency_super_admin"),
+  "agency.tool_policies.manage": row("agency_super_admin"),
+  "agency.integrations.health": row("agency_manager", "agency_super_admin"),
+  "agency.integrations.manage": row("agency_super_admin"),
+  "agency.crm.read": row(...STAFF),
+  "agency.crm.manage": row(...STAFF),
+  "agency.security.manage": row("agency_super_admin"),
+  "agency.billing.manage": row("agency_super_admin"),
+  "agency.settings.manage": row("agency_super_admin"),
+  "agency.audit.view": row("agency_super_admin"),
+  "agency.workforce.full_capabilities.acknowledge": row("agency_super_admin"),
 } as const satisfies Record<string, readonly EffectiveRole[]>;
 
 export type Permission = keyof typeof PERMISSION_MATRIX;
@@ -165,8 +181,31 @@ export const ROLE_LABELS: Record<EffectiveRole, string> = {
   viewer: "Viewer",
   appointment_setter: "Appointment Setter",
   agency_staff: "Agency Staff",
+  agency_manager: "Agency Manager",
   agency_super_admin: "Agency Super Admin",
 };
+
+export const AGENCY_PERMISSION_INFO = {
+  "agency.clients.create": { label: "Create client workspaces", group: "Clients", delegable: true },
+  "agency.clients.invite_users": { label: "Invite client users", group: "Clients", delegable: true },
+  "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", delegable: false },
+  "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", delegable: false },
+  "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", delegable: false },
+  "agency.integrations.health": { label: "View integration health", group: "Integrations", delegable: false },
+  "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", delegable: false },
+  "agency.crm.read": { label: "Read assigned client CRM records", group: "Client operations", delegable: true },
+  "agency.crm.manage": { label: "Update assigned client CRM records", group: "Client operations", delegable: true },
+  "agency.security.manage": { label: "Change agency security settings", group: "Agency security", delegable: false },
+  "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", delegable: false },
+  "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", delegable: false },
+  "agency.audit.view": { label: "Review agency audit history", group: "Agency security", delegable: false },
+  "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", delegable: false },
+} as const satisfies Record<Extract<Permission, `agency.${string}`>, { label: string; group: string; delegable: boolean }>;
+
+export type AgencyPermission = keyof typeof AGENCY_PERMISSION_INFO;
+export const AGENCY_DELEGABLE_PERMISSIONS = Object.entries(AGENCY_PERMISSION_INFO)
+  .filter(([, value]) => value.delegable)
+  .map(([permission]) => permission) as Array<AgencyPermission>;
 
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   owner: "Full control, including billing, autonomous mode and the final say on escalations.",
@@ -244,6 +283,11 @@ export function effectivePermission(role: EffectiveRole | null | undefined, perm
   const override = role === "owner" ? undefined : overrides?.[permission];
   if (override && isDelegablePermission(permission)) return override === "grant";
   return roleHasPermission(role, permission);
+}
+
+/** Default agency-role permission, excluding per-user overrides (which are server-resolved). */
+export function agencyRoleHasPermission(role: PlatformRole, permission: AgencyPermission): boolean {
+  return role !== "none" && roleHasPermission(role, permission);
 }
 
 /** Which tenant roles a person with `actor` role may grant to others. */

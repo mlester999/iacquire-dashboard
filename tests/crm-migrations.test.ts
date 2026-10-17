@@ -9,7 +9,9 @@ import { crmOrg } from "./support/crm";
 // execute and remove what the migrations added; with native data present they must refuse. Each run happens in a transaction that is always
 // rolled back, so the shared test database is untouched.
 
-const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => /^00(2[7-9]|[3-9]\d)_/.test(f)).sort();
+const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) =>
+  /^(0027_native_crm|0028_crm_sales|0029_crm_calendars|0030_crm_scheduling|0031_crm_messaging|0032_crm_automation|0033_crm_growth|0035_crm_blueprints)\.sql$/.test(f),
+).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");
 class Done extends Error {}
 

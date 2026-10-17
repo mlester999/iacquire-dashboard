@@ -95,7 +95,7 @@ alter table invitations drop constraint invitations_role_check;
 alter table invitations add constraint invitations_role_check check (role in ('owner', 'admin', 'member', 'sales_rep', 'support', 'viewer'));
 alter table role_permissions drop constraint role_permissions_role_check;
 alter table role_permissions add constraint role_permissions_role_check
-  check (role in ('owner', 'admin', 'member', 'sales_rep', 'support', 'viewer', 'agency_staff', 'agency_super_admin'));
+  check (role in ('owner', 'admin', 'member', 'sales_rep', 'support', 'viewer', 'agency_staff', 'agency_manager', 'agency_super_admin'));
 
 -- Notification kinds (back to the 0025 list)
 delete from notifications where kind in ('crm_import_finished', 'crm_assigned', 'crm_support_access', 'crm_task_due');

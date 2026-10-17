@@ -3,7 +3,7 @@ import { z } from "zod";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { createInvitation, deliverInvitation, normalizeEmail } from "@/server/auth/service";
+import { createInvitation, deliverInvitation, normalizeEmail, recordInvitationDelivery } from "@/server/auth/service";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { sha256 } from "@/server/security/crypto";
 import { ensureAgentInstances } from "@/server/workforce/service";
@@ -41,7 +41,11 @@ export const createTenantSchema = z.object({
 });
 
 export async function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>) {
-  if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can create client workspaces.");
+  const access = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select coalesce(app.user_has_agency_permission($1, 'agency.clients.create'), false) as allowed",
+    [admin.id],
+  ));
+  if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow creating client workspaces.");
   const data = createTenantSchema.parse(input);
   const created = await withSystem(async (db) => {
     let slug = slugify(data.name);
@@ -56,6 +60,12 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
       [data.name, slug, data.industry, data.website, data.timezone, admin.id],
     );
     const orgId = rows[0].id;
+    if (admin.platformRole === "agency_manager") {
+      const { rows: scope } = await db.query<{ scope_mode: string }>("select scope_mode from agency_user_client_scopes where user_id=$1", [admin.id]);
+      if (scope[0]?.scope_mode === "assigned_clients") {
+        await db.query("insert into staff_assignments(org_id,user_id,assigned_by) values($1,$2,$2) on conflict do nothing", [orgId, admin.id]);
+      }
+    }
     await db.query("insert into company_profiles (org_id) values ($1)", [orgId]);
     await db.query("insert into usage_limits (org_id, updated_by) values ($1, $2)", [orgId, admin.id]);
     await db.query("insert into billing_accounts (org_id, updated_by) values ($1, $2)", [orgId, admin.id]);
@@ -80,6 +90,7 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
   });
   // The owner email goes out only after the workspace and invitation are committed, and the real outcome is returned.
   const emailDelivery = await deliverInvitation(created.invite.message);
+  await recordInvitationDelivery(created.invite.id, emailDelivery);
   return { orgId: created.orgId, slug: created.slug, inviteLink: created.invite.link, emailDelivery };
 }
 
@@ -206,9 +217,14 @@ export async function updateBilling(admin: SessionUser, orgId: string, input: z.
 export async function assignStaff(admin: SessionUser, orgId: string, staffUserId: string, assign: boolean) {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can assign staff.");
   await withSystem(async (db) => {
-    const { rows } = await db.query<{ platform_role: string }>("select platform_role from users where id = $1", [staffUserId]);
-    if (rows[0]?.platform_role !== "agency_staff") throw new AppError("invalid_input", "Only agency staff can be assigned.");
-    if (assign) await db.query("insert into staff_assignments (org_id, user_id, assigned_by) values ($1, $2, $3) on conflict do nothing", [orgId, staffUserId, admin.id]);
+    const { rows } = await db.query<{ platform_role: string; status: string }>("select platform_role,status from users where id = $1", [staffUserId]);
+    if (!rows[0] || !["agency_staff", "agency_manager"].includes(rows[0].platform_role)) throw new AppError("invalid_input", "Only Agency Managers and Agency Staff can be assigned.");
+    if (assign && rows[0].status !== "active") throw new AppError("invalid_input", "Reactivate this team member before assigning clients.");
+    if (assign) {
+      const { rows: clients } = await db.query<{ kind: string; status: string }>("select kind,status from organizations where id=$1", [orgId]);
+      if (clients[0]?.kind !== "client" || ["suspended", "archived"].includes(clients[0].status)) throw new AppError("invalid_input", "Only active client workspaces can be assigned.");
+      await db.query("insert into staff_assignments (org_id, user_id, assigned_by) values ($1, $2, $3) on conflict do nothing", [orgId, staffUserId, admin.id]);
+    }
     else await db.query("delete from staff_assignments where org_id = $1 and user_id = $2", [orgId, staffUserId]);
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: assign ? "tenant.staff_assigned" : "tenant.staff_unassigned", targetType: "user", targetId: staffUserId, result: "success" }, db);
   });

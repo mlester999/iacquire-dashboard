@@ -1,4 +1,6 @@
 import "server-only";
+import { withSystem } from "@/server/db";
+import { AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 
 /**
@@ -205,8 +207,10 @@ export function restrictedToolsIn(toolsets: HermesToolset[]): string[] {
   return [...found].sort();
 }
 
-export async function startRun(conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
-  if(!hasVerifiedCompleteToolInventory(conn))throw new HermesError("bad_response","Live employee runs are blocked until complete profile tool permissions can be verified.");
+async function submitRun(conn: HermesConnection, input: StartRunInput, allowAcknowledgedInternalProfile = false): Promise<{ runId: string }> {
+  if (!allowAcknowledgedInternalProfile && !hasVerifiedCompleteToolInventory(conn)) {
+    throw new HermesError("bad_response", "Live employee runs are blocked until complete profile tool permissions can be verified.");
+  }
   const body: Record<string, unknown> = { input: input.input };
   if (input.instructions) body.instructions = input.instructions;
   if (input.sessionId) body.session_id = input.sessionId;
@@ -219,6 +223,63 @@ export async function startRun(conn: HermesConnection, input: StartRunInput): Pr
   const json = (await res.json().catch(() => null)) as { run_id?: unknown } | null;
   if (!json || typeof json.run_id !== "string" || !json.run_id) throw new HermesError("bad_response", "Hermes did not return a run id.");
   return { runId: json.run_id };
+}
+
+export async function startRun(conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+  return submitRun(conn, input);
+}
+
+/**
+ * The one exception to the complete-inventory gate: an existing internal profile whose exact
+ * identity and authenticated API contract were verified, and which its Super Admin explicitly
+ * acknowledged. Client profiles can never use this path.
+ */
+export async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+  const { rows } = await withSystem((db) => db.query<{
+    org_kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; enabled: boolean;
+    hermes_profile: string | null; hermes_gateway_id: string | null; checked_profile: string | null;
+    check_status: string | null; identity_verified: boolean; api_contract_verified: boolean;
+    check_gateway_id: string | null; acknowledged_profile: string | null; agent_policy_override_id: string | null;
+  }>(
+    `select o.kind as org_kind,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,
+       c.profile_id as checked_profile,c.status as check_status,c.identity_verified,c.api_contract_verified,c.gateway_id as check_gateway_id,
+       ack.verified_profile as acknowledged_profile,agent_policy.id as agent_policy_override_id
+     from agent_instances a join organizations o on o.id=a.org_id
+     left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+     left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+     left join hermes_tool_policies p on p.id=ack.policy_id and p.scope_kind='internal_agency'
+     left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+     where a.id=$1 and (ack.policy_id is null or p.id is not null)`,
+    [agentId],
+  ));
+  const profile = rows[0];
+  const expected = profile ? AGENCY_HERMES_PROFILE_IDS[profile.role_key] : null;
+  if (!profile || profile.org_kind !== "agency" || !profile.enabled || !expected
+      || profile.hermes_profile !== expected || conn.profile !== expected
+      || profile.checked_profile !== expected || profile.acknowledged_profile !== expected
+      || profile.check_status !== "verified" || !profile.identity_verified || !profile.api_contract_verified
+      || profile.hermes_gateway_id !== profile.check_gateway_id || profile.agent_policy_override_id) {
+    throw new HermesError("bad_response", "This internal profile needs a current identity check and Super Admin full-capabilities acknowledgement before it can run.");
+  }
+
+  const capabilities = await getCapabilities(conn);
+  const identities = await getProfileModels(conn);
+  if (capabilities.contract !== "hermes.api_server.capabilities" || !capabilities.authenticated
+      || !capabilities.supportsRuns || !capabilities.supportsEvents || !identities.includes(expected)) {
+    throw new HermesError("bad_response", "The authenticated Hermes API no longer verifies this internal profile.");
+  }
+  return submitRun(conn, input, true);
+}
+
+/** Selects the internal-profile exception only after matching the requested agent to its org. */
+export async function startAgentRun(agentId: string, orgId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+  const { rows } = await withSystem((db) => db.query<{ kind: string }>(
+    "select o.kind from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2",
+    [agentId, orgId],
+  ));
+  if (!rows[0]) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+  if (rows[0].kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, conn, input);
+  return startRun(conn, input);
 }
 
 export async function stopRun(conn: HermesConnection, runId: string): Promise<void> {

@@ -186,7 +186,7 @@ describe("tenant administration", () => {
 
   it("staff cannot create tenants", async () => {
     const staff = await createUser({ platformRole: "agency_staff" });
-    await expect(createClientTenant(agencyUser(staff, "agency_staff"), { name: "Nope", ownerEmail: "x@y.example" })).rejects.toThrow(/super admins/);
+    await expect(createClientTenant(agencyUser(staff, "agency_staff"), { name: "Nope", ownerEmail: "x@y.example" })).rejects.toThrow(/does not allow creating client workspaces/);
   });
 
   it("refuses protected GHL locations in code as well as in the database", () => {

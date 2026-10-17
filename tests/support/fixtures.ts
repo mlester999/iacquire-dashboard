@@ -74,7 +74,7 @@ export function ctxFor(user: { id: string; email: string }, org: { id: string; n
   };
 }
 
-export function agencyUser(user: { id: string; email: string }, platformRole: "agency_staff" | "agency_super_admin"): SessionUser {
+export function agencyUser(user: { id: string; email: string }, platformRole: "agency_staff" | "agency_manager" | "agency_super_admin"): SessionUser {
   return {
     sessionId: crypto.randomUUID(),
     id: user.id,

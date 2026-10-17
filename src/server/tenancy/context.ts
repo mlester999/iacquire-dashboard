@@ -6,7 +6,7 @@ import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { ORG_COOKIE, getCurrentUser, requireUser, requireUserOrThrow } from "@/server/auth/session";
 import type { SessionUser } from "@/server/auth/service";
-import { PERMISSION_MATRIX, effectivePermission, isDelegablePermission, type OrgRole, type Permission, type PermissionOverrides } from "@/lib/permissions";
+import { PERMISSION_MATRIX, effectivePermission, isDelegablePermission, type AgencyPermission, type OrgRole, type Permission, type PermissionOverrides } from "@/lib/permissions";
 
 export interface Membership {
   orgId: string;
@@ -152,14 +152,23 @@ export async function requireAgencyOrThrow(level: "staff" | "super_admin" = "sta
   return user;
 }
 
+/** Agency-level permission check for global actions. Overrides can never grant owner/security permissions. */
+export async function requireAgencyPermissionOrThrow(permission: AgencyPermission): Promise<SessionUser> {
+  const user = await requireAgencyOrThrow();
+  const { rows } = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select coalesce(app.user_has_agency_permission($1, $2), false) as allowed",
+    [user.id, permission],
+  ));
+  if (rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow this action.");
+  return user;
+}
+
 /** Whether an agency user may administer a specific client tenant. */
 export async function agencyCanAccessOrg(user: SessionUser, orgId: string): Promise<boolean> {
-  if (user.platformRole === "agency_super_admin") return true;
-  if (user.platformRole !== "agency_staff") return false;
   const { rows } = await withSystem((db) =>
-    db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [orgId, user.id]),
+    db.query<{ allowed: boolean }>("select app.user_can_access_org($1, $2) as allowed", [user.id, orgId]),
   );
-  return rows.length > 0;
+  return rows[0]?.allowed === true;
 }
 
 export async function requireAgencyOrgAccessOrThrow(orgId: string, level: "staff" | "super_admin" = "staff") {

@@ -19,6 +19,7 @@ const NAV = [
   { href: "/admin/clients", label: "Clients", icon: Building2, group: "Operations" },
   { href: "/admin/crm", label: "Client CRMs", icon: Contact, group: "Operations" },
   { href: "/admin/workforce", label: "Internal Workforce", icon: Sparkles, exact: true, superOnly: true, group: "Operations" },
+  { href: "/admin/workforce/policies", label: "Tool policies", icon: ShieldCheck, managerOrSuper: true, group: "Operations" },
   { href: "/admin/workforce/clients", label: "Client Workforces", icon: Building2, exact: true, group: "Operations" },
   { href: "/admin/support", label: "Support inbox", icon: Inbox, group: "Operations" },
   { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, group: "Client experience" },
@@ -27,21 +28,27 @@ const NAV = [
   { href: "/admin/services", label: "Service catalog", icon: Boxes, superOnly: true, group: "Client experience" },
   { href: "/admin/portfolio", label: "Portfolio", icon: Briefcase, superOnly: true, group: "Client experience" },
   { href: "/admin/setup-templates", label: "Setup templates", icon: ScrollText, superOnly: true, group: "Platform" },
-  { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, superOnly: true, group: "Platform" },
+  { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, managerOrSuper: true, group: "Platform" },
   { href: "/admin/health", label: "System health", icon: HeartPulse, group: "Platform" },
   { href: "/admin/billing", label: "Billing & finance", icon: Landmark, group: "Platform" },
   { href: "/admin/usage", label: "Usage & costs", icon: Wallet, group: "Platform" },
   { href: "/admin/requests", label: "Access requests", icon: UserPlus, superOnly: true, group: "Platform" },
-  { href: "/admin/team", label: "Agency team", icon: Users, superOnly: true, group: "Platform" },
+  { href: "/admin/team", label: "Team & Permissions", icon: Users, superOnly: true, group: "Platform" },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText, superOnly: true, group: "Platform" },
 ];
 const GROUPS = ["Operations", "Client experience", "Platform"];
 
-function Nav({ superAdmin, compact, onNavigate }: { superAdmin: boolean; compact: boolean; onNavigate?: () => void }) {
+function canViewNav(item: (typeof NAV)[number], platformRole: string) {
+  if (item.superOnly && platformRole !== "agency_super_admin") return false;
+  if (item.managerOrSuper && platformRole !== "agency_manager" && platformRole !== "agency_super_admin") return false;
+  return true;
+}
+
+function Nav({ platformRole, compact, onNavigate }: { platformRole: string; compact: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState<string[]>([]);
   return <nav aria-label="Agency navigation" className="space-y-4">{GROUPS.map((group) => {
-    const items = NAV.filter((n) => n.group === group && (!n.superOnly || superAdmin));
+    const items = NAV.filter((n) => n.group === group && canViewNav(n, platformRole));
     const closed = !compact && collapsed.includes(group);
     if (!items.length) return null;
     return <div key={group}>
@@ -68,7 +75,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
   const pathname = usePathname();
   const router = useRouter();
   const crumbs = adminCrumbs(pathname);
-  const visibleNav = NAV.filter((n) => (!n.superOnly || superAdmin) && n.label.toLowerCase().includes(query.toLowerCase()));
+  const visibleNav = NAV.filter((n) => canViewNav(n, user.platformRole) && n.label.toLowerCase().includes(query.toLowerCase()));
   React.useEffect(() => {
     const shortcut = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCommandOpen((s) => !s); } };
     document.addEventListener("keydown", shortcut);
@@ -77,10 +84,10 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
   const sidebar = (small = false) => <div className="workspace-nav flex h-full flex-col text-white">
     <div className={cn("flex h-[76px] shrink-0 items-center px-5", small && "justify-center px-2")}>{small ? <Link href="/admin" aria-label="iAcquire dashboard"><Image src="/brand/icon.svg" alt="" width={36} height={36} /></Link> : <Link href="/admin" className="[&_span]:!text-white" aria-label="iAcquire agency dashboard"><Logo /></Link>}</div>
     {!small && <div className="mx-4 mb-4 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5"><p className="flex items-center gap-2 text-[12px] font-semibold"><ShieldCheck className="size-3.5 text-[#9ebcff]" />Agency workspace</p><p className="mt-1 text-[11px] text-[#a6b3cd]">{superAdmin ? "Super admin access" : "Assigned client access"}</p></div>}
-    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav superAdmin={superAdmin} compact={small} onNavigate={() => setOpen(false)} /></div>
+    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav platformRole={user.platformRole} compact={small} onNavigate={() => setOpen(false)} /></div>
     <div className="mt-3 space-y-2 border-t border-white/10 p-3">
       {hasWorkspace && <Link href="/overview" aria-label={small ? "Open client portal" : undefined} className={cn("workspace-nav-link flex min-h-10 items-center gap-3 rounded-xl px-3 text-[12px]", small && "justify-center px-1")}><ArrowLeftRight className="size-4 shrink-0" />{!small && "Client portal"}</Link>}
-      <div className={cn("flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2", small && "flex-col border-0 bg-transparent p-0")}><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#263456] text-[12px] font-semibold">{initials(user.name)}</span>{!small && <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-semibold">{user.name}</p><p className="mt-0.5 text-[10px] text-[#a6b3cd]">{superAdmin ? "Agency Super Admin" : "Agency Staff"}</p></div>}<LogoutTrigger className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/10 hover:text-white" aria-label="Sign out"><LogOut className="size-4" /></LogoutTrigger></div>
+      <div className={cn("flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2", small && "flex-col border-0 bg-transparent p-0")}><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#263456] text-[12px] font-semibold">{initials(user.name)}</span>{!small && <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-semibold">{user.name}</p><p className="mt-0.5 text-[10px] text-[#a6b3cd]">{superAdmin ? "Agency Super Admin" : user.platformRole === "agency_manager" ? "Agency Manager" : "Agency Staff"}</p></div>}<LogoutTrigger className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/10 hover:text-white" aria-label="Sign out"><LogOut className="size-4" /></LogoutTrigger></div>
       <button type="button" onClick={() => setCompact((s) => !s)} className="hidden min-h-8 w-full items-center justify-center gap-2 rounded-lg text-[11px] text-[#a6b3cd] hover:bg-white/5 lg:flex" aria-label={small ? "Expand sidebar" : "Compact sidebar"}>{small ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-3.5" /> Compact navigation</>}</button>
     </div>
   </div>;
@@ -92,7 +99,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
       {qaDemo && <p className="border-b border-warning/20 bg-warning-soft px-4 py-2 text-center text-[11px] font-medium text-warning-ink">Local design review · synthetic records · external services disabled</p>}
       <header className="sticky top-0 z-20 flex h-16 min-w-0 items-center justify-between gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur-lg sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => setOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2 lg:hidden" aria-label="Open admin navigation"><MenuIcon className="size-5" /></button><nav aria-label="Breadcrumb" className="min-w-0"><ol className="flex min-w-0 items-center gap-2 text-[12px]"><li className="hidden items-center gap-2 sm:flex"><Link href="/admin" className="text-muted hover:text-ink">Agency</Link><ChevronRight className="size-3 text-faint" aria-hidden /></li>{crumbs.map((crumb, i) => { const last = i === crumbs.length - 1; return <li key={`${crumb.label}-${i}`} className={cn("min-w-0 items-center gap-2", last ? "flex" : "hidden md:flex")}>{crumb.href ? <Link href={crumb.href} className="truncate text-muted hover:text-ink">{crumb.label}</Link> : <span aria-current={last ? "page" : undefined} className="truncate font-medium text-ink">{crumb.label}</span>}{!last && <ChevronRight className="size-3 shrink-0 text-faint" aria-hidden />}</li>; })}</ol></nav></div>
-        <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => { setQuery(""); setCommandOpen(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-[12px] text-muted shadow-soft" aria-label="Search navigation"><Search className="size-4" /><span className="hidden sm:block">Jump to…</span><kbd className="hidden rounded border border-line bg-surface-2 px-1.5 text-[10px] md:block">⌘ K</kbd></button><button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button><span className="hidden rounded-full border border-line bg-surface px-2.5 py-1.5 text-[10px] font-medium text-muted xl:block">{superAdmin ? "Super admin" : "Agency staff"}</span></div>
+        <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => { setQuery(""); setCommandOpen(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-[12px] text-muted shadow-soft" aria-label="Search navigation"><Search className="size-4" /><span className="hidden sm:block">Jump to…</span><kbd className="hidden rounded border border-line bg-surface-2 px-1.5 text-[10px] md:block">⌘ K</kbd></button><button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button><span className="hidden rounded-full border border-line bg-surface px-2.5 py-1.5 text-[10px] font-medium text-muted xl:block">{superAdmin ? "Super admin" : user.platformRole === "agency_manager" ? "Agency Manager" : "Agency Staff"}</span></div>
       </header>
       <main id="admin-main" className="page-in mx-auto w-full max-w-[1600px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">{children}</main>
     </div>
