@@ -171,8 +171,11 @@ describe("row-level security", () => {
 
     const trustedRole = await withServiceRole(async (db) => {
       const role = (await db.query<{ role: string }>("select current_user as role")).rows[0].role;
-      // This reads no credential values; it proves the privileged status lookup has table access.
-      await db.query("select id from integration_credentials limit 0");
+      // Match the agency workforce's status-only lookup; no credential values are read.
+      await db.query(
+        "select id from integration_credentials where id = any($1::uuid[]) and revoked_at is null",
+        [[]],
+      );
       return role;
     });
     expect(trustedRole).toBe("service_role");
