@@ -5,6 +5,7 @@ import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import { usageSummary, type UsageSummary } from "@/server/usage";
 import type { SessionUser } from "@/server/auth/service";
 import type { AgentRoleKey, AgentStatus } from "@/lib/agents";
+import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 
 export interface TenantDetail {
   org: {
@@ -225,7 +226,7 @@ export async function listAllAgents(user: SessionUser) {
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d,
               (select coalesce(sum(total_tokens),0)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as tokens_30d
        from agent_instances a join organizations o on o.id = a.org_id join agent_roles ro on ro.key = a.role_key
-       where o.kind in ('agency','client') order by case when o.kind='agency' then 0 else 1 end, o.name, ro.sort_order`,
+       where o.kind = 'client' order by o.name, ro.sort_order`,
     );
     return rows;
   });
@@ -233,16 +234,34 @@ export async function listAllAgents(user: SessionUser) {
 
 /** Agency-owned employee identities are returned separately from client workforce rows. */
 export async function listAgencyAgents(user: SessionUser) {
+  const agencyId = await ensureAgencyWorkforceRegistry(user);
   return withUser(user.id, async (db) => {
     const { rows } = await db.query<{
       id: string; org_id: string; org_name: string; role_key: AgentRoleKey; display_name: string;
       enabled: boolean; status: AgentStatus; hermes_profile: string | null;
       last_health_check_at: Date | null; last_health_detail: string | null;
+      last_health_ok: boolean | null; hermes_gateway_id: string | null; gateway_status: string | null;
+      has_credential: boolean; has_config: boolean; pending_approvals: number; runs_30d: number;
+      last_activity_at: Date | null;
+      profile_check_status: string | null; profile_check_detail: string | null; profile_check_at: Date | null;
+      profile_verified_at: Date | null; profile_identity_verified: boolean | null; tool_permissions_status: string | null;
     }>(
       `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
-              a.last_health_check_at,a.last_health_detail
+              a.last_health_check_at,a.last_health_detail,a.last_health_ok,a.hermes_gateway_id,g.status as gateway_status,
+              (a.credential_id is not null and c.revoked_at is null) as has_credential,
+              (a.active_config_version_id is not null) as has_config,
+              (select count(*)::int from approval_requests p where p.agent_instance_id=a.id and p.status='pending') as pending_approvals,
+              (select count(*)::int from agent_runs r where r.agent_instance_id=a.id and r.started_at > now() - interval '30 days') as runs_30d,
+              (select max(r.started_at) from agent_runs r where r.agent_instance_id=a.id) as last_activity_at,
+              pc.status as profile_check_status,pc.detail as profile_check_detail,pc.checked_at as profile_check_at,
+              pc.verified_at as profile_verified_at,pc.identity_verified as profile_identity_verified,
+              pc.tool_permissions_status
        from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
-       where o.kind='agency' order by ro.sort_order`,
+       left join integration_credentials c on c.id=a.credential_id
+       left join hermes_gateways g on g.id=a.hermes_gateway_id
+       left join agency_hermes_profile_checks pc on pc.agent_instance_id=a.id and pc.org_id=a.org_id
+       where o.kind='agency' and o.id=$1 order by ro.sort_order`,
+      [agencyId],
     );
     return rows;
   });

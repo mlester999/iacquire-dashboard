@@ -15,7 +15,7 @@ export const STUDIO_SECTIONS = [
 
 /** Top-level agency screens. The sidebar shows the same names. */
 export const ADMIN_SECTIONS: Record<string, string> = {
-  clients: "Clients", crm: "Client CRMs", workforce: "AI Workforce", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
+  clients: "Clients", crm: "Client CRMs", workforce: "Internal Workforce", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
   maintenance: "Maintenance", services: "Service catalog", portfolio: "Portfolio", "setup-templates": "Setup templates", integrations: "Integrations",
   health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", team: "Agency team", audit: "Audit log",
 };
@@ -42,6 +42,8 @@ export function adminCrumbs(pathname: string): Crumb[] {
       trail.push({ label: STUDIO_LABEL.templates, href: `${base}/templates` });
       if (b) trail.push({ label: "Template Designer" });
     } else if (a) trail.push({ label: STUDIO_LABEL[a] ?? a.replace(/-/g, " ") });
+  } else if (area === "workforce" && a === "clients") {
+    trail.push({ label: "Client Workforces" });
   } else {
     trail.push({ label: ADMIN_SECTIONS[area] ?? area.replace(/-/g, " "), href: base });
     if (area === "clients" && a) {

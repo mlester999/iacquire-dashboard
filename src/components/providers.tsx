@@ -4,6 +4,7 @@ import * as React from "react";
 import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/overlays";
+import { LogoutConfirmationProvider } from "@/components/auth/logout-confirmation";
 
 export type ThemePreference = "light" | "dark" | "system";
 
@@ -67,21 +68,23 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeContext.Provider value={{ theme, resolved, setTheme }}>
-      <MotionConfig reducedMotion="user">
-        <TooltipProvider>
-          {children}
-          <Toaster
-            position="top-center"
-            theme={resolved}
-            toastOptions={{
-              classNames: {
-                toast: "!rounded-2xl !border !border-line !bg-surface !text-ink !shadow-float !font-sans",
-                description: "!text-muted",
-              },
-            }}
-          />
-        </TooltipProvider>
-      </MotionConfig>
+      <LogoutConfirmationProvider>
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider>
+            {children}
+            <Toaster
+              position="top-center"
+              theme={resolved}
+              toastOptions={{
+                classNames: {
+                  toast: "!rounded-2xl !border !border-line !bg-surface !text-ink !shadow-float !font-sans",
+                  description: "!text-muted",
+                },
+              }}
+            />
+          </TooltipProvider>
+        </MotionConfig>
+      </LogoutConfirmationProvider>
     </ThemeContext.Provider>
   );
 }

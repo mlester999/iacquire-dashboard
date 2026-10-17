@@ -2,6 +2,8 @@ import { NextResponse,type NextRequest } from "next/server";
 import { z } from "zod";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { listIntegrationManager,saveIntegrationConnection,testIntegrationConnection,disconnectIntegration,integrationSaveSchema,mapAgencyWorkflows,syncGhlMetadata,mapGhlAssets,listLlmModels } from "@/server/integrations/manager";
+import { saveHermesSetupDraft, saveHermesSetupProgress } from "@/server/integrations/hermes/setup";
+import { withSystem } from "@/server/db";
 import { AppError,toPublicError } from "@/server/errors";
 import { INTEGRATION_PROVIDERS } from "@/lib/integrations";
 import { env } from "@/server/env";
@@ -31,13 +33,25 @@ export async function POST(req:NextRequest) {
     if(Number(req.headers.get("content-length") ?? 0)>20_000)throw new AppError("invalid_input","Connection request is too large.");
     const limit=await consumeRateLimit({name:"integration-admin",limit:20,windowSeconds:60},user.id);
     if(!limit.allowed)throw new AppError("rate_limited","Wait a moment before testing another connection.");
-    const body:unknown=await req.json();const action=z.object({action:z.enum(["save","test","disconnect","map_workflows","sync_metadata","map_ghl_assets","list_models"])}).passthrough().parse(body);
+    const body:unknown=await req.json();const action=z.object({action:z.enum(["save","test","disconnect","map_workflows","sync_metadata","map_ghl_assets","list_models","save_hermes_draft","save_hermes_progress"])}).passthrough().parse(body);
     const orgId=scope(req);
     if(action.action==="list_models"){const d=z.object({baseUrl:z.string().max(500),apiFormat:z.enum(["openai","anthropic"]),secret:z.string().trim().max(4096).optional()}).parse(body);return response({ok:true,models:await listLlmModels(user,d)});}
     if(action.action==="sync_metadata")return response({ok:true,result:await syncGhlMetadata(user,orgId)});
     if(action.action==="map_ghl_assets"){if(!orgId)throw new AppError("invalid_input","Select a client first.");const d=z.object({pipelineId:z.string().nullish(),calendarIds:z.array(z.string()).max(20).optional()}).parse(body);await mapGhlAssets(user,orgId,{pipelineId:d.pipelineId,calendarIds:d.calendarIds});return response({ok:true});}
     if(action.action==="map_workflows"){if(!orgId)throw new AppError("invalid_input","Select a client for workflow mapping.");const d=z.object({workflowIds:z.array(z.string())}).parse(body);await mapAgencyWorkflows(user,orgId,d.workflowIds);return response({ok:true});}
-    if(action.action==="save") {const d=z.object({input:integrationSaveSchema}).parse(body);const gatewayId=await saveIntegrationConnection(user,orgId,d.input);return response({ok:true,...(typeof gatewayId==="string"?{gatewayId}:{})});}
+    if(action.action==="save_hermes_draft" || action.action==="save_hermes_progress") {
+      if(orgId)throw new AppError("invalid_input","Agency Hermes setup cannot be changed from a client connection view.");
+      const payload={...(body as Record<string,unknown>)};delete payload.action;
+      if(action.action==="save_hermes_draft")return response({ok:true,...await saveHermesSetupDraft(user,payload)});
+      return response({ok:true,...await saveHermesSetupProgress(user,payload)});
+    }
+    if(action.action==="save") {
+      const d=z.object({input:integrationSaveSchema}).parse(body);
+      const gatewayId=await saveIntegrationConnection(user,orgId,d.input);
+      if(typeof gatewayId!=="string")return response({ok:true});
+      const gateway=(await withSystem(db=>db.query<{revision:number}>("select revision from hermes_gateways where id=$1",[gatewayId]))).rows[0];
+      return response({ok:true,gatewayId,...(gateway?{gatewayRevision:gateway.revision}:{})});
+    }
     const d=z.object({provider:z.enum(INTEGRATION_PROVIDERS),gatewayId:z.string().uuid().optional()}).parse(body);
     if(action.action==="test")return response({ok:true,result:await testIntegrationConnection(user,orgId,d.provider,d.gatewayId)});
     await disconnectIntegration(user,orgId,d.provider,d.gatewayId);return response({ok:true});

@@ -28,7 +28,12 @@ const CRED_FILE = path.resolve(".data/dev-credentials.local.json");
 
 async function upsertOrg(db: Queryable, o: { name: string; slug: string; kind: "agency" | "client"; isDemo?: boolean; industry?: string; website?: string; timezone?: string }) {
   const existing = await db.query<{ id: string }>("select id from organizations where slug = $1", [o.slug]);
-  if (existing.rows[0]) return existing.rows[0].id;
+  if (existing.rows[0]) {
+    // An older agency org may have been created before workforce rows were seeded. Repair only
+    // missing agency identities; never rewrite existing client workforce choices or mappings.
+    if (o.kind === "agency") await ensureAgentInstances(existing.rows[0].id, db);
+    return existing.rows[0].id;
+  }
   const { rows } = await db.query<{ id: string }>(
     `insert into organizations (name, slug, kind, status, is_demo, industry, website, timezone, onboarding_completed_at)
      values ($1, $2, $3, 'active', $4, $5, $6, $7, case when $3 = 'agency' then now() end) returning id`,

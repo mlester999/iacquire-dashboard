@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { currentSettings, getAgentByRole, listConfigVersions } from "@/server/workforce/service";
 import { withSystem, withUser } from "@/server/db";
@@ -16,6 +16,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const meta = AGENT_BY_SLUG[slug];
   if (!meta) notFound();
   const ctx = await requireOrgContext();
+  if (ctx.org.kind !== "client") redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/workforce" : ctx.user.platformRole === "agency_staff" ? "/admin/workforce/clients" : "/no-workspace");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
   const canConfigure = ctx.can("agents.configure");

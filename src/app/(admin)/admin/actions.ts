@@ -22,6 +22,7 @@ import {
   usageLimitsSchema,
 } from "@/server/admin/tenants";
 import { connectHermesProfile, decideHeldVersion, runHealthCheck } from "@/server/workforce/service";
+import { connectAgencyHermesProfile, testAgencyHermesProfile, testAllAgencyHermesProfiles } from "@/server/workforce/agency";
 import { getProvisioningBundle, updateProvisioningJob } from "@/server/workforce/provisioning";
 import { syncGhl, verifyGhlConnection } from "@/server/integrations/ghl";
 import { agencyReply, updateTicket, TICKET_STATUSES, type TicketStatus } from "@/server/support/service";
@@ -32,6 +33,15 @@ async function agentOrg(agentId: string) {
   const { rows } = await withSystem((db) => db.query<{ org_id: string }>("select org_id from agent_instances where id = $1", [agentId]));
   if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
   return rows[0].org_id;
+}
+
+async function agentKind(agentId: string) {
+  const { rows } = await withSystem((db) => db.query<{ kind: string }>(
+    "select o.kind from agent_instances a join organizations o on o.id=a.org_id where a.id=$1",
+    [agentId],
+  ));
+  if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
+  return rows[0].kind;
 }
 
 export async function createClientAction(input: z.input<typeof createTenantSchema>) {
@@ -101,6 +111,7 @@ export async function setAgentEnabledAction(orgId: string, agentId: string, enab
 export async function connectHermesAction(agentId: string, input: { baseUrl?: string; gatewayId?: string; profile: string; apiKey: string }) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
+    if (await agentKind(agentId) === "agency") throw new AppError("forbidden", "Map iAcquire employees from the Internal Workforce page so their existing profile identity is confirmed.");
     const orgId = await agentOrg(agentId);
     await connectHermesProfile({ agentId, ...input, agencyUserId: admin.id });
     const health = await runHealthCheck(agentId, { userId: admin.id, kind: "agency" });
@@ -108,6 +119,42 @@ export async function connectHermesAction(agentId: string, input: { baseUrl?: st
     revalidatePath("/admin/workforce");
     revalidatePath("/admin/integrations");
     return { ok: true as const, data: health };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function connectAgencyHermesProfileAction(agentId: string, input: { gatewayId: string; profile: string; apiKey: string; confirmedExistingProfile: boolean }) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const health = await connectAgencyHermesProfile(admin, { agentId, ...input });
+    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/integrations");
+    return { ok: true as const, data: health };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function testAgencyHermesProfileAction(agentId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const health = await testAgencyHermesProfile(admin, agentId);
+    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/integrations");
+    return { ok: true as const, data: health };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function testAllAgencyProfilesAction() {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const result = await testAllAgencyHermesProfiles(admin);
+    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/integrations");
+    return { ok: true as const, data: result };
   } catch (err) {
     return actionError(err);
   }

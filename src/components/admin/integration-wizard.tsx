@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Info, KeyRound, XCircle } from "lucide-react";
 import { Badge, Field, Input, ProgressBar, Select } from "@/components/ui/primitives";
@@ -10,6 +11,8 @@ import { Dialog } from "@/components/ui/overlays";
 import { INTEGRATION_NAMES, INTEGRATION_STATE_LABEL, type IntegrationProvider, type IntegrationState, type IntegrationView } from "@/lib/integrations";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS } from "@/lib/agents";
 import { cn, formatDateTime } from "@/lib/utils";
+import { useLogoutUnsavedChanges } from "@/components/auth/logout-confirmation";
+import type { HermesSetupDraftConfig, HermesSetupSummary } from "@/server/integrations/hermes/setup";
 
 export type WizardProvider = Extract<IntegrationProvider, "hermes" | "ghl" | "n8n">;
 export interface WizardResult {
@@ -19,7 +22,9 @@ export interface WizardResult {
   syncedAt?: string | null;
 }
 export interface WizardApi {
-  save(input: unknown): Promise<{ gatewayId?: string } | void>;
+  save(input: unknown): Promise<{ gatewayId?: string; gatewayRevision?: number } | void>;
+  saveHermesDraft(input: { gatewayId: string | null; expectedDraftRevision: number; expectedGatewayRevision: number | null; config: HermesSetupDraftConfig }): Promise<{ revision: number; updatedAt: string | null }>;
+  saveHermesProgress(stepIndex: number, gatewayId: string | null): Promise<void>;
   test(provider: WizardProvider, gatewayId?: string): Promise<WizardResult>;
   syncMetadata(): Promise<WizardResult>;
   mapGhlAssets(input: { pipelineId: string | null; calendarIds: string[] }): Promise<void>;
@@ -79,7 +84,10 @@ export interface WizardGateway {
   lastError: string | null;
   revision: number;
   mappedProfileCount: number;
+  clientMappedProfileCount: number;
   capabilities: Record<string, unknown>;
+  updatedAt: string | null;
+  lastChangedBy: string | null;
 }
 export const GHL_SCOPE_CHOICES = [
   "locations.readonly",
@@ -167,10 +175,12 @@ export function ConnectionWizard({
   orgId,
   companyName,
   hermesGateways = [],
+  setupState,
   storeReady,
   api,
   timeZone,
   onClose,
+  onReload,
   initialStep = 0,
 }: {
   /** Always the latest server view, so the final step reports the persisted status. */
@@ -178,14 +188,17 @@ export function ConnectionWizard({
   orgId: string | null;
   companyName?: string;
   hermesGateways?: WizardGateway[];
+  setupState?: HermesSetupSummary;
   storeReady: boolean;
   api: WizardApi;
   timeZone: string;
   onClose: () => void;
+  onReload?: () => void;
   /** Dev preview only: open at a later step so every screen can be reviewed without a live service. */
   initialStep?: number;
 }) {
   const provider = connection.provider as WizardProvider;
+  const pathname = usePathname();
   const isGatewayWizard = provider === "hermes" && !orgId;
   const flow = isGatewayWizard ? HERMES_GATEWAY_FLOW : FLOWS[provider];
   const reduce = useReducedMotion();
@@ -199,24 +212,90 @@ export function ConnectionWizard({
   const [mapped, setMapped] = React.useState(false);
   const heading = React.useRef<HTMLHeadingElement>(null);
   const cfg = connection.config;
+  const restoredDraft = setupState?.draft && !setupState.draft.stale ? setupState.draft.config : null;
 
-  const [label, setLabel] = React.useState(connection.label);
-  const [environment, setEnvironment] = React.useState(connection.environment);
-  const [baseUrl, setBaseUrl] = React.useState(text(cfg.baseUrl));
+  const [label, setLabel] = React.useState(restoredDraft?.label ?? connection.label);
+  const [environment, setEnvironment] = React.useState<"development" | "staging" | "production">((restoredDraft?.environment ?? connection.environment) as "development" | "staging" | "production");
+  const [baseUrl, setBaseUrl] = React.useState(restoredDraft?.baseUrl ?? text(cfg.baseUrl));
   const [gatewayId, setGatewayId] = React.useState(text(cfg.gatewayId));
-  const [gatewayType, setGatewayType] = React.useState(text(cfg.gatewayType) === "single_profile" ? "single_profile" : "multiplexed_profiles");
-  const [reportedGatewayId, setReportedGatewayId] = React.useState(text(cfg.reportedGatewayId));
+  const selectedGateway = hermesGateways.find((item) => item.id === gatewayId) ?? null;
+  const [gatewayType, setGatewayType] = React.useState(restoredDraft?.gatewayType ?? (text(cfg.gatewayType) === "single_profile" ? "single_profile" : "multiplexed_profiles"));
+  const [reportedGatewayId, setReportedGatewayId] = React.useState(restoredDraft?.reportedGatewayId ?? text(cfg.reportedGatewayId));
   const [accessClientId, setAccessClientId] = React.useState("");
   const [accessClientSecret, setAccessClientSecret] = React.useState("");
+  const [replacingCredentials, setReplacingCredentials] = React.useState(false);
   const [profile, setProfile] = React.useState(text(cfg.profile));
   const [roleKey, setRoleKey] = React.useState(text(cfg.roleKey) || AGENT_ROLE_KEYS[0]);
-  const [declaredVersion, setDeclaredVersion] = React.useState(text(cfg.declaredVersion));
+  const [declaredVersion, setDeclaredVersion] = React.useState(restoredDraft?.declaredVersion ?? text(cfg.declaredVersion));
   const [locationId, setLocationId] = React.useState(text(cfg.locationId));
   const [apiVersion, setApiVersion] = React.useState(text(cfg.apiVersion) || "2021-07-28");
   const [scopes, setScopes] = React.useState<string[]>(strings(cfg.scopes).length ? strings(cfg.scopes) : ["locations.readonly", "opportunities.readonly", "calendars.readonly", "calendars/events.readonly"]);
   const [approved, setApproved] = React.useState<string[]>(strings(cfg.approvedWorkflowIds));
   const [pipelineId, setPipelineId] = React.useState(text(cfg.pipelineId));
   const [calendarIds, setCalendarIds] = React.useState<string[]>(strings(cfg.calendarIds));
+
+  const [draftStatus, setDraftStatus] = React.useState<"idle" | "saving" | "saved" | "failed">(restoredDraft ? "saved" : "idle");
+  const [draftError, setDraftError] = React.useState<string | null>(null);
+  const [closeWarningOpen, setCloseWarningOpen] = React.useState(false);
+  const [progressError, setProgressError] = React.useState<string | null>(null);
+  const gatewayIdRef = React.useRef(gatewayId);
+  const gatewayRevisionRef = React.useRef<number | null>(setupState?.gatewayRevision ?? null);
+  const draftRevisionRef = React.useRef(setupState?.draft?.revision ?? 0);
+  const draftQueueRef = React.useRef<Promise<void>>(Promise.resolve());
+  const draftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiRef = React.useRef(api);
+  const safeDraft = React.useMemo<HermesSetupDraftConfig>(() => ({ label, environment, baseUrl, gatewayType, reportedGatewayId, declaredVersion }), [label, environment, baseUrl, gatewayType, reportedGatewayId, declaredVersion]);
+  const safeDraftSignature = JSON.stringify(safeDraft);
+  const currentSignatureRef = React.useRef(safeDraftSignature);
+  const [baselineSignature, setBaselineSignature] = React.useState(safeDraftSignature);
+  React.useEffect(() => { currentSignatureRef.current = safeDraftSignature; }, [safeDraftSignature]);
+  React.useEffect(() => { apiRef.current = api; }, [api]);
+  React.useEffect(() => { gatewayIdRef.current = gatewayId; }, [gatewayId]);
+  const hasUnsavedSecret = Boolean(secret || accessClientId || accessClientSecret);
+  const nonSecretDirty = isGatewayWizard && safeDraftSignature !== baselineSignature;
+  const hasUnsavedChanges = nonSecretDirty || (!isGatewayWizard && (hasUnsavedSecret || (!saved && (label !== connection.label || environment !== connection.environment || baseUrl !== text(cfg.baseUrl) || locationId !== text(cfg.locationId)))));
+  useLogoutUnsavedChanges(isGatewayWizard ? "Hermes setup" : "integration setup", hasUnsavedChanges, hasUnsavedSecret, pathname);
+
+  const persistDraft = React.useCallback((config: HermesSetupDraftConfig, signature: string) => {
+    const task = draftQueueRef.current.catch(() => undefined).then(async () => {
+      const result = await apiRef.current.saveHermesDraft({
+        gatewayId: gatewayIdRef.current || null,
+        expectedDraftRevision: draftRevisionRef.current,
+        expectedGatewayRevision: gatewayRevisionRef.current,
+        config,
+      });
+      draftRevisionRef.current = result.revision;
+      if (currentSignatureRef.current === signature) {
+        setBaselineSignature(signature);
+        setDraftStatus("saved");
+        setDraftError(null);
+      }
+    });
+    draftQueueRef.current = task.then(() => undefined, () => undefined);
+    setDraftStatus("saving");
+    setDraftError(null);
+    return task.then(() => true, (cause: unknown) => {
+      if (currentSignatureRef.current === signature) {
+        setDraftStatus("failed");
+        setDraftError(cause instanceof Error ? cause.message : "The setup draft could not be saved.");
+      }
+      return false;
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!isGatewayWizard || !nonSecretDirty) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    const config = safeDraft;
+    const signature = safeDraftSignature;
+    draftTimerRef.current = setTimeout(() => {
+      draftTimerRef.current = null;
+      void persistDraft(config, signature);
+    }, 700);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [isGatewayWizard, nonSecretDirty, persistDraft, safeDraft, safeDraftSignature]);
 
   const step = flow[index].key;
   React.useEffect(() => {
@@ -242,6 +321,7 @@ export function ConnectionWizard({
       label,
       environment,
       config,
+      ...(isGatewayWizard && gatewayId && gatewayRevisionRef.current !== null ? { gatewayRevision: gatewayRevisionRef.current } : {}),
       ...(!isGatewayWizard && secret ? { secret } : {}),
       ...(isGatewayWizard && accessClientId.trim() ? { accessClientId: accessClientId.trim() } : {}),
       ...(isGatewayWizard && accessClientSecret.trim() ? { accessClientSecret: accessClientSecret.trim() } : {}),
@@ -261,18 +341,37 @@ export function ConnectionWizard({
   }
   const go = (delta: number) => {
     setError(null);
-    setIndex((i) => Math.max(0, Math.min(flow.length - 1, i + delta)));
+    const next = Math.max(0, Math.min(flow.length - 1, index + delta));
+    setIndex(next);
+    setProgressError(null);
+    if (isGatewayWizard) void apiRef.current.saveHermesProgress(next, gatewayIdRef.current || null).catch((cause: unknown) => {
+      setProgressError(cause instanceof Error ? cause.message : "Wizard position could not be saved.");
+    });
   };
   const saveAndContinue = () =>
     run("save", async () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+      await draftQueueRef.current.catch(() => undefined);
       const savedConnection = await api.save(buildInput());
-      if (savedConnection && "gatewayId" in savedConnection && savedConnection.gatewayId) setGatewayId(savedConnection.gatewayId);
+      if (savedConnection && "gatewayId" in savedConnection && savedConnection.gatewayId) {
+        gatewayIdRef.current = savedConnection.gatewayId;
+        setGatewayId(savedConnection.gatewayId);
+      }
+      if (savedConnection && "gatewayRevision" in savedConnection && typeof savedConnection.gatewayRevision === "number") {
+        gatewayRevisionRef.current = savedConnection.gatewayRevision;
+      }
+      setBaselineSignature(safeDraftSignature);
+      draftRevisionRef.current = 0;
+      setDraftStatus("saved");
+      setDraftError(null);
       setSaved(true);
       setResult(null);
       setSynced(null);
       setSecret("");
       setAccessClientId("");
       setAccessClientSecret("");
+      setReplacingCredentials(false);
       go(1);
     });
   const runTest = () =>
@@ -300,9 +399,42 @@ export function ConnectionWizard({
       setMapped(true);
     });
 
+  async function requestClose() {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = null;
+    if (nonSecretDirty) {
+      const persisted = await persistDraft(safeDraft, safeDraftSignature);
+      if (!persisted) {
+        setError("Your latest settings could not be saved. Retry the save before closing this wizard.");
+        return;
+      }
+    }
+    if (hasUnsavedSecret || (!isGatewayWizard && hasUnsavedChanges)) {
+      setCloseWarningOpen(true);
+      return;
+    }
+    setSecret("");
+    setAccessClientId("");
+    setAccessClientSecret("");
+    onClose();
+  }
+
+  function discardAndClose() {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = null;
+    setSecret("");
+    setAccessClientId("");
+    setAccessClientSecret("");
+    setCloseWarningOpen(false);
+    onClose();
+  }
+
+  const retryDraft = () => void persistDraft(safeDraft, safeDraftSignature);
+
   // ---- step bodies --------------------------------------------------------------------------
   const secretLabel = provider === "ghl" ? "Private Integration token" : provider === "n8n" ? "n8n API key" : "Profile API_SERVER_KEY";
-  const needsSecret = !connection.hasCredential && !saved;
+  const gatewayLocal = isGatewayWizard && (baseUrl.startsWith("http://localhost") || baseUrl.startsWith("http://127.0.0.1") || baseUrl.startsWith("http://[::1]"));
+  const needsSecret = isGatewayWizard ? (!connection.hasCredential && !saved && !gatewayLocal) || (connection.hasCredential && replacingCredentials) : !connection.hasCredential && !saved;
 
   function Body() {
     switch (step) {
@@ -311,7 +443,7 @@ export function ConnectionWizard({
           <div className="space-y-4">
             <Field label="Connection label" htmlFor="w-label"><Input id="w-label" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={120} /></Field>
             <Field label="Environment" htmlFor="w-env">
-              <Select id="w-env" value={environment} onChange={(e) => setEnvironment(e.target.value)}>
+              <Select id="w-env" value={environment} onChange={(e) => setEnvironment(e.target.value as "development" | "staging" | "production")}>
                 <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
               </Select>
             </Field>
@@ -320,7 +452,7 @@ export function ConnectionWizard({
                 <Input id="w-url" type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://hermes-api.iacquire.online" autoComplete="off" />
               </Field>
               <Field label="Gateway type" htmlFor="w-gateway-type">
-                <Select id="w-gateway-type" value={gatewayType} onChange={(e) => setGatewayType(e.target.value)}>
+                <Select id="w-gateway-type" value={gatewayType} onChange={(e) => setGatewayType(e.target.value as "multiplexed_profiles" | "single_profile")}>
                   <option value="multiplexed_profiles">One gateway with separate profiles</option>
                   <option value="single_profile">Single profile gateway</option>
                 </Select>
@@ -357,7 +489,7 @@ export function ConnectionWizard({
           <div className="space-y-4">
             <Field label="Connection label" htmlFor="w-label"><Input id="w-label" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={120} /></Field>
             <Field label="Environment" htmlFor="w-env">
-              <Select id="w-env" value={environment} onChange={(e) => setEnvironment(e.target.value)}>
+              <Select id="w-env" value={environment} onChange={(e) => setEnvironment(e.target.value as "development" | "staging" | "production")}>
                 <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
               </Select>
             </Field>
@@ -393,7 +525,7 @@ export function ConnectionWizard({
               <Input id="w-location" value={locationId} onChange={(e) => setLocationId(e.target.value.trim())} autoComplete="off" spellCheck={false} />
             </Field>
             <Field label="Environment" htmlFor="w-env">
-              <Select id="w-env" value={environment} onChange={(e) => setEnvironment(e.target.value)}>
+              <Select id="w-env" value={environment} onChange={(e) => setEnvironment(e.target.value as "development" | "staging" | "production")}>
                 <option value="development">Development</option><option value="staging">Staging</option><option value="production">Production</option>
               </Select>
             </Field>
@@ -408,12 +540,20 @@ export function ConnectionWizard({
         return (
           <div className="space-y-4">
             {isGatewayWizard ? <>
-              <Field label="Cloudflare Access service token ID" htmlFor="w-access-id" hint={connection.hasCredential ? "Leave both values empty to keep the stored service token. Enter both to rotate it." : "Used by the server to pass Cloudflare Access. It is stored in Supabase Vault and never sent to the browser after saving."}>
-                <Input id="w-access-id" type="password" autoComplete="new-password" value={accessClientId} onChange={(e) => setAccessClientId(e.target.value)} placeholder={connection.hasCredential ? "Existing token securely stored" : "Service token ID"} maxLength={512} />
-              </Field>
-              <Field label="Cloudflare Access service token secret" htmlFor="w-access-secret" hint="This is separate from every Hermes profile API_SERVER_KEY.">
-                <Input id="w-access-secret" type="password" autoComplete="new-password" value={accessClientSecret} onChange={(e) => setAccessClientSecret(e.target.value)} placeholder={connection.hasCredential ? "Existing token securely stored" : "Service token secret"} maxLength={2048} />
-              </Field>
+              {connection.hasCredential && !replacingCredentials ? <div className="space-y-3 rounded-2xl border border-success/20 bg-success-soft/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-semibold text-ink">Cloudflare Access — Credentials Saved</p><p className="mt-1 text-xs text-muted">Stored in Supabase Vault. The saved values are never returned to this screen.</p></div><Badge tone="success">Credentials Saved</Badge></div>
+                <p className="text-xs text-muted">Last verified: {connection.lastSuccessAt ? formatDateTime(connection.lastSuccessAt, timeZone) : "Not yet verified"}</p>
+                <p className="text-xs text-muted">Last rotated: {setupState?.credentialsRotatedAt ? formatDateTime(setupState.credentialsRotatedAt, timeZone) : "Not recorded"}</p>
+                <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => setReplacingCredentials(true)}>Replace Credentials</Button><Button variant="soft" loading={busy === "test"} onClick={() => void runTest()}>Test saved credentials</Button></div>
+                {result && <ResultBanner result={result} />}
+              </div> : <>
+                <Field label="Cloudflare Access service token ID" htmlFor="w-access-id" hint={connection.hasCredential ? "Enter both new values to rotate the stored service token." : "Used by the server to pass Cloudflare Access. It is stored in Supabase Vault and never sent to the browser after saving."}>
+                  <Input id="w-access-id" type="password" autoComplete="new-password" value={accessClientId} onChange={(e) => setAccessClientId(e.target.value)} placeholder={connection.hasCredential ? "New service token ID" : "Service token ID"} maxLength={512} />
+                </Field>
+                <Field label="Cloudflare Access service token secret" htmlFor="w-access-secret" hint="This is separate from every Hermes profile API_SERVER_KEY.">
+                  <Input id="w-access-secret" type="password" autoComplete="new-password" value={accessClientSecret} onChange={(e) => setAccessClientSecret(e.target.value)} placeholder={connection.hasCredential ? "New service token secret" : "Service token secret"} maxLength={2048} />
+                </Field>
+              </>}
               <Notice>Cloudflare Access authenticates iAcquire to the protected hostname. Each employee will still use its own Hermes profile API key.</Notice>
             </> : <Field label={secretLabel} htmlFor="w-secret" hint={connection.hasCredential ? "Leave empty to keep the stored credential. Enter a new value to rotate it; the old portal credential is revoked." : "Enter it only here. Never paste private keys into chat, tickets or email."}>
               <Input id="w-secret" type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={connection.hasCredential ? "Existing credential securely stored" : "Enter credential securely"} maxLength={4096} />
@@ -440,7 +580,7 @@ export function ConnectionWizard({
           <div className="space-y-4">
             <p className="text-[13px] leading-relaxed text-muted">
               {provider === "hermes" && (isGatewayWizard
-                ? "The portal tests all six mapped agency profiles with their own Hermes keys and the shared Cloudflare Access token. No AI run is started. The gateway stays unverified until every employee passes."
+                ? "The portal sends a Cloudflare-authenticated, read-only request to the Hermes health endpoint. This verifies gateway connectivity only; each agency profile is checked separately."
                 : "The portal reaches the gateway, signs in with this employee's own key, and checks which profile answers. No AI run is started.")}
               {provider === "ghl" && "The portal reads only this location: it confirms the token belongs to it, then tests each read permission you selected. Nothing is written."}
               {provider === "n8n" && "The portal authenticates with the API key and reads the workflow list. It never edits, runs or activates a workflow."}
@@ -479,21 +619,14 @@ export function ConnectionWizard({
           </div>
         );
       case "agencyWorkforce": {
-        const profiles = list(caps.agencyProfiles);
+        const step = setupState?.steps.find((item) => item.index === 3);
         return (
           <div className="space-y-4">
-            <p className="text-[13px] leading-relaxed text-muted">Map the six existing iAcquire employee profiles from the gateway administrator&apos;s verified inventory. The portal does not guess profile IDs or create replacement agency profiles.</p>
-            {profiles.length ? <ul className="space-y-2">{profiles.map((item) => {
-              const role = text(item.roleKey);
-              const label = text(item.label) || (role && AGENT_BY_KEY[role as keyof typeof AGENT_BY_KEY]?.shortName) || "Agency employee";
-              const status = text(item.status) || "setup_required";
-              return <li key={role || label} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
-                <span className="min-w-0"><span className="block text-[13px] font-medium text-ink">{label}</span><span className="block break-all font-mono text-[11px] text-muted">{text(item.profile) || "No profile mapped"}</span></span>
-                <Badge tone={status === "online" ? "success" : status === "setup_required" ? "neutral" : "warning"}>{status.replaceAll("_", " ")}</Badge>
-              </li>;
-            })}</ul> : <Notice tone="warning">Run the gateway test after mapping profiles to see their individual health.</Notice>}
-            <Link href="/admin/workforce" className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 text-sm font-medium text-primary hover:bg-surface-2">Map agency profiles</Link>
-            <Notice>Hermes&apos; profile list is available to its administrator through the CLI. The public API profile route does not discover or enumerate profiles.</Notice>
+            <p className="text-[13px] leading-relaxed text-muted">The six existing iAcquire identities have separate profile keys and individual read-only checks. The portal does not create profiles or use Hermes&apos; default profile as a substitute.</p>
+            <Row ok={step?.complete === true} title={step?.complete ? "Agency profiles verified" : "Agency profile mapping and checks"}>{step?.detail ?? `${selectedGateway?.mappedProfileCount ?? 0} of 6 existing agency identities mapped to this gateway.`}</Row>
+            <p className="text-xs text-muted">Client profile mappings on this gateway: {selectedGateway?.clientMappedProfileCount ?? 0}. Client identity checks stay in their own client workspaces.</p>
+            <Link href="/admin/workforce?from=integrations" className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 text-sm font-medium text-primary hover:bg-surface-2">Open Internal Workforce</Link>
+            <Notice>Compare each prefilled profile ID with the authorized Hermes inventory before confirming. Profile keys are stored separately in Vault.</Notice>
           </div>
         );
       }
@@ -623,18 +756,24 @@ export function ConnectionWizard({
           <div className="space-y-4">
             <div className="rounded-2xl border border-line p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={tone(connection.status)}>{stateLabel(connection.status)}</Badge>
+                <Badge tone={tone(connection.status)}>{isGatewayWizard ? connection.status === "connected" ? "Gateway connected" : "Gateway needs attention" : stateLabel(connection.status)}</Badge>
                 <span className="text-xs text-muted">{mode}</span>
               </div>
               <dl className="mt-3 grid gap-2 text-[13px] sm:grid-cols-2">
-                <div><dt className="text-xs text-muted">Last successful test</dt><dd>{connection.lastSuccessAt ? formatDateTime(connection.lastSuccessAt, timeZone) : "Not yet verified"}</dd></div>
+                <div><dt className="text-xs text-muted">{isGatewayWizard ? "Last gateway health check" : "Last successful test"}</dt><dd>{connection.lastSuccessAt ? formatDateTime(connection.lastSuccessAt, timeZone) : "Not yet verified"}</dd></div>
                 <div><dt className="text-xs text-muted">Last failed test</dt><dd>{connection.lastFailureAt ? formatDateTime(connection.lastFailureAt, timeZone) : "None recorded"}</dd></div>
               </dl>
               {connection.lastError && <p className="mt-3 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">{connection.lastError}</p>}
             </div>
+            {isGatewayWizard && <div className="space-y-2 rounded-2xl border border-line p-4">
+              <h3 className="text-sm font-semibold">Combined readiness</h3>
+              <Row ok={caps.gatewayHealthVerified === true} title="Protected Hermes gateway">Cloudflare-authenticated health endpoint; does not imply any employee profile is connected.</Row>
+              <Row ok={setupState?.steps.find((item) => item.index === 3)?.complete === true} title="Six iAcquire employee profiles">{setupState?.steps.find((item) => item.index === 3)?.detail ?? "Run the profile checks from Internal Workforce."}</Row>
+              <Row ok={setupState?.steps.find((item) => item.index === 4)?.complete === true} title="Client profile provisioning">{setupState?.steps.find((item) => item.index === 4)?.detail ?? "No restricted client provisioning service is verified."}</Row>
+            </div>}
             {provider === "n8n" && <ExecutionSummary caps={caps} />}
             {connection.status !== "connected" && <Notice tone="warning">This connection is not fully verified. Open diagnostics from its card, correct the issue and test again.</Notice>}
-            <Notice>“Connected” only ever appears after a real test succeeds. This does not activate workflows, messaging or client outreach.</Notice>
+            <Notice>{isGatewayWizard ? "Gateway Connected reflects the protected health endpoint only. Profile checks and client provisioning have separate readiness states." : "Connected only appears after a real test succeeds. This does not activate workflows, messaging or client outreach."}</Notice>
           </div>
         );
       }
@@ -646,17 +785,17 @@ export function ConnectionWizard({
   const primary = (() => {
     switch (step) {
       case "auth":
-        return <Button loading={busy === "save"} disabled={!storeReady || (needsSecret && (isGatewayWizard ? (!accessClientId.trim() || !accessClientSecret.trim()) : secret.trim().length < 16))} onClick={() => void saveAndContinue()}><KeyRound className="size-4" /> Save securely &amp; continue</Button>;
+        return <Button loading={busy === "save"} disabled={(!storeReady && !gatewayLocal) || (needsSecret && (isGatewayWizard ? (!accessClientId.trim() || !accessClientSecret.trim()) : secret.trim().length < 16))} onClick={() => void saveAndContinue()}><KeyRound className="size-4" /> Save securely &amp; continue</Button>;
       case "test":
         return isGatewayWizard
-          ? <><Button variant="secondary" loading={busy === "test"} disabled={!saved && connection.status === "not_configured"} onClick={() => void runTest()}>{result ? "Test again" : "Test profiles"}</Button><Button onClick={() => go(1)} disabled={!saved && connection.status === "not_configured"}>Continue <ArrowRight className="size-4" /></Button></>
+                ? <><Button variant="secondary" loading={busy === "test"} disabled={!saved && connection.status === "not_configured"} onClick={() => void runTest()}>{result ? "Test gateway again" : "Test gateway"}</Button><Button onClick={() => go(1)} disabled={!saved && connection.status === "not_configured"}>Continue <ArrowRight className="size-4" /></Button></>
           : result && OK_STATES.includes(result.status)
           ? <><Button variant="secondary" loading={busy === "test"} onClick={() => void runTest()}>Test again</Button><Button onClick={() => go(1)}>Continue <ArrowRight className="size-4" /></Button></>
           : <Button loading={busy === "test"} disabled={!saved && connection.status === "not_configured"} onClick={() => void runTest()}>{result ? "Test again" : "Run live test"}</Button>;
       case "metadata":
         return <><Button variant="secondary" loading={busy === "sync"} disabled={!verified && !OK_STATES.includes(connection.status)} onClick={() => void sync()}>Sync metadata</Button><Button onClick={() => go(1)} disabled={!verified && !OK_STATES.includes(connection.status)}>Continue <ArrowRight className="size-4" /></Button></>;
       case "mapping":
-        return <><Button variant="secondary" loading={busy === "map"} disabled={!pipelineId && !calendarIds.length && !text(cfg.pipelineId) && !strings(cfg.calendarIds).length} onClick={() => void saveMapping()}>Save mapping</Button><Button onClick={onClose}>Finish</Button></>;
+        return <><Button variant="secondary" loading={busy === "map"} disabled={!pipelineId && !calendarIds.length && !text(cfg.pipelineId) && !strings(cfg.calendarIds).length} onClick={() => void saveMapping()}>Save mapping</Button><Button onClick={() => void requestClose()}>Finish</Button></>;
       case "approve":
         return <><Button variant="secondary" loading={busy === "save" || busy === "test"} disabled={!(caps.workflows as unknown[] | undefined)?.length} onClick={() => void approveAndRetest()}>Save approvals &amp; re-test</Button><Button onClick={() => go(1)}>Continue <ArrowRight className="size-4" /></Button></>;
       case "inventory":
@@ -664,32 +803,37 @@ export function ConnectionWizard({
       case "capabilities":
         return <Button onClick={() => go(1)}>Continue <ArrowRight className="size-4" /></Button>;
       default:
-        return last ? <Button onClick={onClose}>Done</Button> : <Button onClick={() => go(1)} disabled={(step === "endpoint" && (isGatewayWizard ? !baseUrl : (!gatewayId || !profile))) || (step === "instance" && !baseUrl) || (step === "location" && locationId.length < 10)}>Continue <ArrowRight className="size-4" /></Button>;
+        return last ? <Button onClick={() => void requestClose()}>Done</Button> : <Button onClick={() => go(1)} disabled={(step === "endpoint" && (isGatewayWizard ? !baseUrl : (!gatewayId || !profile))) || (step === "instance" && !baseUrl) || (step === "location" && locationId.length < 10)}>Continue <ArrowRight className="size-4" /></Button>;
     }
   })();
 
   return (
+    <>
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) {
-          setSecret("");
-          setAccessClientId("");
-          setAccessClientSecret("");
-          onClose();
-        }
+        if (!open) void requestClose();
       }}
       title={`Connect ${INTEGRATION_NAMES[provider]}`}
       description="Configuration is saved first. A separate live test must succeed before this connection can show Connected."
       size="lg"
       footer={
         <>
-          <Button variant="secondary" onClick={() => (index > 0 ? go(-1) : onClose())}>{index > 0 ? "Back" : "Cancel"}</Button>
+          <Button variant="secondary" onClick={() => (index > 0 ? go(-1) : void requestClose())}>{index > 0 ? "Back" : "Cancel"}</Button>
           {primary}
         </>
       }
     >
       <div className="space-y-5">
+        {isGatewayWizard && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-xs" role="status" aria-live="polite">
+          <span className={cn(draftStatus === "failed" ? "text-danger-ink" : draftStatus === "saving" || nonSecretDirty ? "text-warning-ink" : "text-muted")}>
+            {draftStatus === "failed" ? "Save failed" : draftStatus === "saving" ? "Saving…" : nonSecretDirty ? "Unsaved changes" : draftStatus === "saved" || gatewayId ? "Saved to this agency" : "Not saved yet"}
+          </span>
+          {draftStatus === "failed" && <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={retryDraft}>Retry save</Button>{onReload&&draftError?.includes("changed in another session")&&!hasUnsavedSecret&&<Button size="sm" variant="secondary" onClick={onReload}>Reload current settings</Button>}</div>}
+        </div>}
+        {setupState?.draft?.stale && <Notice tone="warning">Another administrator saved newer gateway settings after this draft was started. The current saved configuration is loaded; edit and save it to replace this older draft.</Notice>}
+        {progressError && <p className="rounded-xl bg-warning-soft p-3 text-xs text-warning-ink" role="status">{progressError}</p>}
+        {draftError && <p className="rounded-xl bg-danger-soft p-3 text-xs text-danger-ink" role="alert">{draftError}</p>}
         <div>
           <div className="mb-2 flex items-center justify-between text-xs text-muted">
             <span>Step {index + 1} of {flow.length}</span>
@@ -713,6 +857,18 @@ export function ConnectionWizard({
         </AnimatePresence>
       </div>
     </Dialog>
+    <Dialog
+      open={closeWarningOpen}
+      onOpenChange={setCloseWarningOpen}
+      title="Close this setup?"
+      description={hasUnsavedSecret ? "Cloudflare values entered on this screen have not been saved. Closing clears them; they are not kept in the draft." : "Some integration settings have not been saved yet. Closing this wizard will discard those edits."}
+      icon={<AlertTriangle />}
+      size="sm"
+      footer={<><Button variant="secondary" onClick={() => setCloseWarningOpen(false)}>Return to setup</Button><Button variant="danger" onClick={discardAndClose}>Close without saving</Button></>}
+    >
+      <p className="text-xs leading-relaxed text-muted">Saved gateway drafts remain available to agency administrators. Unsaved credentials and other unsaved edits will be cleared.</p>
+    </Dialog>
+    </>
   );
 }
 

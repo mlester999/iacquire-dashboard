@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { listAgents } from "@/server/workforce/service";
 import { withUser } from "@/server/db";
@@ -11,6 +12,7 @@ import { IconTile } from "@/components/overview/panel";
 export const metadata = { title: "AI Workforce" };
 export default async function WorkforcePage() {
   const ctx = await requireOrgContext();
+  if (ctx.org.kind !== "client") redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/workforce" : ctx.user.platformRole === "agency_staff" ? "/admin/workforce/clients" : "/no-workspace");
   const agents = await listAgents(ctx.user.id, ctx.org.orgId);
   const caps = await withUser(ctx.user.id, (db) => db.query<{ key: string; capabilities: string[] }>("select key, capabilities from agent_roles"));
   const capMap = Object.fromEntries(caps.rows.map((r) => [r.key, r.capabilities]));

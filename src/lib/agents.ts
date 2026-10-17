@@ -11,6 +11,16 @@ export const AGENT_ROLE_KEYS = [
 
 export type AgentRoleKey = (typeof AGENT_ROLE_KEYS)[number];
 
+/** Existing iAcquire Hermes employees, confirmed by the agency's Hermes profile inventory. */
+export const AGENCY_HERMES_PROFILE_IDS: Record<AgentRoleKey, string> = {
+  operations_manager: "iacquire-operations-manager",
+  lead_hunter: "iacquire-lead-hunter",
+  appointment_setter: "iacquire-appointment-setter",
+  sales_assistant: "iacquire-sales-assistant",
+  crm_manager: "iacquire-crm-manager",
+  performance_analyst: "iacquire-analyst",
+};
+
 export interface RoleQuestion {
   id: string;
   label: string;

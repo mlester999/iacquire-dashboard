@@ -5,7 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { resolveCredential, saveCredential } from "@/server/security/credentials";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, compileKnowledgeContext, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
 import { getCapabilities, getToolsets, getProfileModels, HermesError, restrictedToolsIn, hasVerifiedCompleteToolInventory, type HermesConnection } from "@/server/integrations/hermes/client";
@@ -371,6 +371,11 @@ export async function loadConnection(db: Queryable, agentId: string): Promise<He
   return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, ...(access ?? {}) };
 }
 
+/** Server-only profile connection for a trusted service check. Credentials are never serialized to a client. */
+export async function loadHermesConnectionForAgent(agentId: string): Promise<HermesConnection | null> {
+  return withSystem((db) => loadConnection(db, agentId));
+}
+
 /** Agency-only: attach a Hermes profile endpoint and its per-profile API key to a tenant employee. */
 export async function connectHermesProfile(input: {
   agentId: string;
@@ -392,6 +397,9 @@ export async function connectHermesProfile(input: {
     );
     const agent = rows[0];
     if (!agent) throw new AppError("not_found", "AI employee not found.");
+    if (agent.kind === "agency" && AGENCY_HERMES_PROFILE_IDS[agent.role_key as AgentRoleKey] !== profile) {
+      throw new AppError("invalid_input", "Internal iAcquire employees must use their existing role-specific Hermes profile.");
+    }
     let gatewayId: string | null = null;
     if (input.gatewayId) {
       const { rows: gatewayRows } = await db.query<{ id: string; base_url: string; gateway_type: string }>(
@@ -481,18 +489,21 @@ export async function runHealthCheck(
   actor: { userId: string | null; kind: "agency" | "system" | "user" },
   opts: { skipSetupSync?: boolean } = {},
 ): Promise<HealthResult> {
-  const { conn, orgId, enabled, hasConfig } = await withSystem(async (db) => {
-    const { rows } = await db.query<{ org_id: string; enabled: boolean; active_config_version_id: string | null }>(
-      "select org_id, enabled, active_config_version_id from agent_instances where id = $1",
+  const { conn, orgId, orgKind, roleKey, enabled, hasConfig } = await withSystem(async (db) => {
+    const { rows } = await db.query<{ org_id: string; org_kind: "agency" | "client"; role_key: AgentRoleKey; enabled: boolean; active_config_version_id: string | null }>(
+      "select a.org_id, o.kind as org_kind, a.role_key, a.enabled, a.active_config_version_id from agent_instances a join organizations o on o.id=a.org_id where a.id = $1",
       [agentId],
     );
     if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
-    return { conn: await loadConnection(db, agentId), orgId: rows[0].org_id, enabled: rows[0].enabled, hasConfig: Boolean(rows[0].active_config_version_id) };
+    return { conn: await loadConnection(db, agentId), orgId: rows[0].org_id, orgKind: rows[0].org_kind, roleKey: rows[0].role_key, enabled: rows[0].enabled, hasConfig: Boolean(rows[0].active_config_version_id) };
   });
 
   let result: HealthResult;
   if (!enabled) result = { ok: false, status: "disabled", detail: "This employee isn't enabled for the workspace." };
   else if (!conn) result = { ok: false, status: "setup_required", detail: "No dedicated Hermes profile is connected yet." };
+  else if (orgKind === "agency" && conn.profile !== AGENCY_HERMES_PROFILE_IDS[roleKey]) {
+    result = { ok: false, status: "error", detail: "The saved Hermes profile does not match this employee's verified iAcquire identity." };
+  }
   else {
     try {
       const caps = await getCapabilities(conn);

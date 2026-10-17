@@ -9,14 +9,15 @@ import { saveCredential,resolveCredential,revokeCredential,credentialStoreReady 
 import { validateIntegrationEndpoint,validateLlmEndpoint } from "@/server/integrations/safety";
 import { inspectGhl,inspectHermes,inspectN8n,inspectLlm,fetchLlmModels,GHL_READ_SCOPES,type Inspection } from "@/server/integrations/inspection";
 import { assertAssignableLocation,setIntegrationStatus } from "@/server/admin/tenants";
-import { isReservedProfile, runHealthCheck } from "@/server/workforce/service";
+import { isReservedProfile } from "@/server/workforce/service";
 import { listHermesGateways, loadHermesAccessCredentials, saveHermesGateway, validateHermesGatewayUrl, type HermesGatewayView } from "@/server/integrations/hermes/gateways";
 import { INTEGRATION_PROVIDERS,INTEGRATION_NAMES,LLM_PRESET_IDS,type IntegrationProvider,type IntegrationState,type IntegrationView } from "@/lib/integrations";
-import { AGENT_BY_KEY,AGENT_ROLE_KEYS } from "@/lib/agents";
+import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { env } from "@/server/env";
 import { invalidateLlmConfig } from "@/server/llm/client";
 import { supabaseConfigStatus } from "@/server/supabase/config";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
+import { listHermesSetupSummaries, type HermesSetupSummary } from "@/server/integrations/hermes/setup";
 
 const date=(v:Date|string|null)=>v?new Date(v).toISOString():null;
 async function authorize(user:SessionUser,orgId:string|null,write=false) {
@@ -34,14 +35,20 @@ export const integrationSaveSchema=z.object({
   provider:z.enum(["hermes","ghl","n8n","llm"]),label:z.string().trim().min(2).max(120),environment:z.enum(["development","staging","production"]),
   secret:z.string().trim().min(16).max(4096).optional(),
   accessClientId:z.string().trim().min(1).max(512).optional(),accessClientSecret:z.string().trim().min(1).max(2048).optional(),
+  gatewayRevision:z.number().int().positive().optional(),
   config:z.object({baseUrl:z.string().max(500).optional(),gatewayId:z.string().uuid().optional(),profile:z.string().regex(/^[a-z0-9][a-z0-9_-]{1,62}$/).optional(),roleKey:z.enum(AGENT_ROLE_KEYS).optional(),gatewayType:z.enum(["multiplexed_profiles","profile_gateway","single_profile"]).optional(),reportedGatewayId:z.string().trim().max(120).optional(),locationId:z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(),authMethod:z.enum(["bearer","private_integration","api_key"]).optional(),apiVersion:z.enum(["v3","2021-07-28"]).optional(),pipelineId:z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(),calendarIds:z.array(z.string().regex(/^[A-Za-z0-9]{10,40}$/)).max(20).optional(),scopes:z.array(z.enum(GHL_READ_SCOPES)).max(10).optional(),approvedWorkflowIds:z.array(z.string().regex(/^[A-Za-z0-9_-]{1,80}$/)).max(40).optional(),declaredVersion:z.string().trim().max(80).optional(),declaredEdition:z.enum(["unknown","community","enterprise"]).optional(),llmPreset:z.enum(LLM_PRESET_IDS).optional(),apiFormat:z.enum(["openai","anthropic"]).optional(),model:z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:\/@+-]{0,119}$/,"Enter a valid model name.").optional()}).strict(),
 }).strict();
 export type IntegrationSaveInput=z.input<typeof integrationSaveSchema>;
 
-export async function listIntegrationManager(user:SessionUser,orgId:string|null):Promise<{connections:IntegrationView[];secureStoreReady:boolean;agencyWorkflows:Array<{id:string;name:string}>;mappedWorkflowIds:string[];hermesGateways:HermesGatewayView[]}> {
+export async function listIntegrationManager(user:SessionUser,orgId:string|null):Promise<{connections:IntegrationView[];secureStoreReady:boolean;agencyWorkflows:Array<{id:string;name:string}>;mappedWorkflowIds:string[];hermesGateways:HermesGatewayView[];hermesSetup:HermesSetupSummary|null;hermesSetups:Record<string,HermesSetupSummary>}> {
   const role=await authorize(user,orgId);
   const rows=await withUser(user.id,db=>db.query<ConnectionRow>("select * from integration_connections where org_id is not distinct from $1::uuid order by provider",[orgId])).then(r=>r.rows);
-  const hermesGateways=await withSystem(listHermesGateways);
+  const registeredHermesGateways=await withSystem(listHermesGateways);
+  // Client-scoped integration pages need gateway choices, but must not reveal how many other
+  // clients or internal agency employees are mapped to each shared gateway.
+  const hermesGateways=orgId
+    ? registeredHermesGateways.map(gateway=>({...gateway,mappedProfileCount:0,clientMappedProfileCount:0}))
+    : registeredHermesGateways;
   const meta=await withSystem(db=>db.query<{id:string;fingerprint:string;rotated_at:Date|null;revoked_at:Date|null}>("select c.id,c.fingerprint,r.rotated_at,c.revoked_at from integration_credentials c left join credential_references r on r.id=c.credential_reference_id where c.org_id is not distinct from $1::uuid",[orgId]));
   const checks=await withUser(user.id,db=>db.query<{connection_id:string;status:string;detail:string;verification_mode:string;capabilities:Record<string,unknown>;checked_at:Date}>("select k.connection_id,k.status,k.detail,k.verification_mode,k.capabilities,k.checked_at from integration_connection_checks k join integration_connections c on c.id=k.connection_id where c.org_id is not distinct from $1::uuid order by checked_at desc limit 80",[orgId]));
   const secureStoreReady=await withSystem(credentialStoreReady);
@@ -53,7 +60,9 @@ export async function listIntegrationManager(user:SessionUser,orgId:string|null)
   }) : [];
   const mappedN8n=orgId && mappedWorkflowIds.length ? (await withUser(user.id,db=>db.query<{status:string;detail:string|null;last_checked_at:Date|null}>("select status,detail,last_checked_at from integration_status where org_id=$1 and provider='n8n'",[orgId]))).rows[0] : null;
   const primaryGateway=!orgId ? (hermesGateways.slice().reverse().find(g=>g.status!=="disconnected") ?? hermesGateways[hermesGateways.length-1]) : null;
-  return {secureStoreReady,agencyWorkflows,mappedWorkflowIds,hermesGateways,connections:INTEGRATION_PROVIDERS.filter(p=>p!=="llm" || !orgId).map(provider=>{
+  const hermesSetups=!orgId && role==="agency_super_admin" ? await withSystem(db=>listHermesSetupSummaries(db,user.id,hermesGateways)) : {};
+  const hermesSetup=role==="agency_super_admin" && !orgId ? (primaryGateway ? hermesSetups[primaryGateway.id] : hermesSetups.new) : null;
+  return {secureStoreReady,agencyWorkflows,mappedWorkflowIds,hermesGateways,hermesSetup,hermesSetups,connections:INTEGRATION_PROVIDERS.filter(p=>p!=="llm" || !orgId).map(provider=>{
     const r=rows.find(c=>c.provider===provider); const cred=meta.rows.find(c=>c.id===r?.credential_id);
     const gateway=provider==="hermes" ? primaryGateway : null;
     const mapped=provider==="n8n" && mappedN8n && !r;
@@ -87,6 +96,7 @@ export async function saveIntegrationConnection(user:SessionUser,orgId:string|nu
       gatewayType,
       reportedGatewayId:config.reportedGatewayId,
       declaredVersion:config.declaredVersion,
+      gatewayRevision:d.gatewayRevision,
       accessClientId:d.accessClientId,
       accessClientSecret:d.accessClientSecret,
     }));
@@ -171,8 +181,8 @@ export async function saveIntegrationConnection(user:SessionUser,orgId:string|nu
 async function testHermesGateway(user:SessionUser,gatewayId?:string):Promise<Inspection> {
   const gateway=await withSystem(async db=>{
     const result=gatewayId
-      ? await db.query<{id:string;base_url:string;declared_version:string|null;profile_creation_status:string;revision:number;status:string}>("select id,base_url,declared_version,profile_creation_status,revision,status from hermes_gateways where id=$1",[gatewayId])
-      : await db.query<{id:string;base_url:string;declared_version:string|null;profile_creation_status:string;revision:number;status:string}>("select id,base_url,declared_version,profile_creation_status,revision,status from hermes_gateways where status <> 'disconnected' order by created_at limit 1");
+      ? await db.query<{id:string;base_url:string;declared_version:string|null;reported_gateway_id:string|null;profile_creation_status:string;revision:number;status:string}>("select id,base_url,declared_version,reported_gateway_id,profile_creation_status,revision,status from hermes_gateways where id=$1",[gatewayId])
+      : await db.query<{id:string;base_url:string;declared_version:string|null;reported_gateway_id:string|null;profile_creation_status:string;revision:number;status:string}>("select id,base_url,declared_version,reported_gateway_id,profile_creation_status,revision,status from hermes_gateways where status <> 'disconnected' order by created_at limit 1");
     return result.rows[0] ?? null;
   });
   if(!gateway)throw new AppError("not_found","Register an approved Hermes gateway before testing it.");
@@ -181,43 +191,35 @@ async function testHermesGateway(user:SessionUser,gatewayId?:string):Promise<Ins
   const startedUpdate=await withSystem(db=>db.query("update hermes_gateways set status='testing' where id=$1 and revision=$2 and status not in ('disconnected','testing')",[gateway.id,gateway.revision]));
   if(!startedUpdate.rowCount)throw new AppError("conflict","The gateway changed before its test started. Reload and try again.");
   const started=Date.now();
-  const {org,agents}=await withSystem(async db=>{
-    const orgs=await db.query<{id:string}>("select id from organizations where kind='agency' order by created_at limit 1");
-    if(!orgs.rows[0])return {org:null,agents:[] as Array<{id:string;role_key:string;hermes_gateway_id:string|null;hermes_profile:string|null}>};
-    const employees=await db.query<{id:string;role_key:string;hermes_gateway_id:string|null;hermes_profile:string|null}>("select id,role_key,hermes_gateway_id,hermes_profile from agent_instances where org_id=$1",[orgs.rows[0].id]);
-    return {org:orgs.rows[0],agents:employees.rows};
-  });
-  const profileHealth=await Promise.all(AGENT_ROLE_KEYS.map(async roleKey=>{
-    const agent=agents.find(row=>row.role_key===roleKey);
-    if(!agent || !agent.hermes_profile || agent.hermes_gateway_id!==gateway.id) {
-      return {roleKey,label:AGENT_BY_KEY[roleKey].shortName,profile:agent?.hermes_profile??null,status:"setup_required",detail:"Map this existing agency employee to the gateway and verify its own profile key."};
-    }
-    try {
-      const health=await runHealthCheck(agent.id,{userId:user.id,kind:"agency"},{skipSetupSync:true});
-      return {roleKey,label:AGENT_BY_KEY[roleKey].shortName,profile:agent.hermes_profile,status:health.status,detail:health.detail};
-    } catch {
-      return {roleKey,label:AGENT_BY_KEY[roleKey].shortName,profile:agent.hermes_profile,status:"error",detail:"The profile health check failed safely."};
-    }
-  }));
-  const connected=Boolean(org) && profileHealth.length===6 && profileHealth.every(p=>p.status==="online");
-  const detail=connected
-    ? "The protected gateway authenticated and all six mapped agency profiles passed identity, capability and tool-safety checks."
-    : `${profileHealth.filter(p=>p.status==="online").length} of 6 agency profiles passed. Map and verify each existing profile before the gateway can show Connected.`;
-  const result:Inspection={
-    status:connected?"connected":"needs_attention",
-    detail,
-    capabilities:{
-      gatewayHost:new URL(gateway.base_url).host,
-      authenticatedProfiles:profileHealth.filter(p=>p.status==="online").length,
-      requiredAgencyProfiles:6,
-      agencyProfiles:profileHealth,
-      declaredVersion:gateway.declared_version,
-      installedVersionDetected:false,
-      profileCreation:{status:gateway.profile_creation_status,automaticProvisioningVerified:false},
-      verificationOperation:"six_profile_read_only_health_checks",
-      safeReadOnlyTest:true,
-    },
-  };
+  let gatewayHost="unavailable";
+  try { gatewayHost=new URL(gateway.base_url).host; } catch { /* historic invalid URLs are reported as unavailable */ }
+  let access:Awaited<ReturnType<typeof loadHermesAccessCredentials>>=null;
+  let result:Inspection;
+  try {
+    access=await withSystem(db=>loadHermesAccessCredentials(db,gateway.id));
+    if(!access && env().NODE_ENV!=="test") throw new AppError("integration_unavailable","Cloudflare Access credentials are unavailable for this gateway.");
+    const healthUrl=new URL("/health",validateHermesGatewayUrl(gateway.base_url));
+    const response=await fetch(healthUrl,{method:"GET",headers:{Accept:"application/json",...(access?{"CF-Access-Client-Id":access.accessClientId,"CF-Access-Client-Secret":access.accessClientSecret}:{})},cache:"no-store",redirect:"error",signal:AbortSignal.timeout(8000)});
+    if(response.status===401 || response.status===403) throw new AppError("forbidden","Cloudflare Access rejected the saved gateway credentials.");
+    if(response.status===404) throw new AppError("not_found","The Hermes gateway health route was not found.");
+    if(!response.ok) throw new AppError("upstream_error",`Hermes gateway returned HTTP ${response.status}.`);
+    const body:unknown=await response.json().catch(()=>null);
+    const value=body && typeof body==="object" && !Array.isArray(body) ? body as Record<string,unknown> : {};
+    const healthStatus=typeof value.status==="string" ? value.status.slice(0,40).toLowerCase() : "";
+    const reportedId=typeof value.gateway_id==="string" ? value.gateway_id.slice(0,120) : typeof value.id==="string" ? value.id.slice(0,120) : null;
+    const identitySupported=reportedId!==null;
+    const identityVerified=gateway.reported_gateway_id ? identitySupported && reportedId===gateway.reported_gateway_id : null;
+    const mismatch=Boolean(gateway.reported_gateway_id && identitySupported && reportedId!==gateway.reported_gateway_id);
+    const healthy=healthStatus==="ok" || healthStatus==="healthy";
+    result={
+      status:healthy&&!mismatch?"connected":"needs_attention",
+      detail:mismatch?"The health endpoint reported a different gateway identity.":healthy?"Cloudflare Access authenticated the request and the Hermes gateway health endpoint responded.":"The gateway responded, but its health status was not recognized.",
+      capabilities:{gatewayHost:healthUrl.host,gatewayHealthVerified:healthy&&!mismatch,gatewayIdentitySupported:identitySupported,gatewayIdentityVerified:identitySupported?identityVerified:null,reportedGatewayId:reportedId,healthStatus:healthy?healthStatus:"unrecognized",version:typeof value.version==="string"?value.version.slice(0,80):null,profileChecksRun:0,verificationOperation:"cloudflare_authenticated_read_only_health",safeReadOnlyTest:true},
+    };
+  } catch(error) {
+    result={status:"error",detail:error instanceof AppError?error.message:"Hermes gateway could not be reached or returned an unsupported health response.",capabilities:{gatewayHost,gatewayHealthVerified:false,profileChecksRun:0,verificationOperation:"cloudflare_authenticated_read_only_health",safeReadOnlyTest:true}};
+  }
+  const connected=result.status==="connected";
   const elapsed=Math.max(0,Date.now()-started);
   await withSystem(async db=>{
     const saved=await db.query(
@@ -225,11 +227,11 @@ async function testHermesGateway(user:SessionUser,gatewayId?:string):Promise<Ins
         last_success_at=case when $2='connected' then now() else last_success_at end,
         last_failure_at=case when $2<>'connected' then now() else last_failure_at end,
         last_error=case when $2='connected' then null else $5 end where id=$1 and revision=$6`,
-      [gateway.id,result.status,JSON.stringify(result.capabilities),elapsed,result.status==="connected"?null:detail,gateway.revision],
+      [gateway.id,result.status,JSON.stringify(result.capabilities),elapsed,connected?null:result.detail,gateway.revision],
     );
-    if(!saved.rowCount)throw new AppError("conflict","Gateway settings changed during the profile tests. Run the current verification again.");
-    await setIntegrationStatus(db,null,"hermes",connected?"connected":"error",detail);
-    await recordAudit({orgId:null,actorUserId:user.id,actorKind:"agency",action:"hermes.gateway_tested",targetType:"hermes_gateway",targetId:gateway.id,result:connected?"success":"failure",metadata:{status:result.status,verifiedProfiles:profileHealth.filter(p=>p.status==="online").length,totalProfiles:6,mode:process.env.NODE_ENV==="test"?"mock":"live_read_only"}},db);
+    if(!saved.rowCount)throw new AppError("conflict","Gateway settings changed during the health test. Run the current verification again.");
+    await setIntegrationStatus(db,null,"hermes",connected?"connected":"error",result.detail);
+    await recordAudit({orgId:null,actorUserId:user.id,actorKind:"agency",action:"hermes.gateway_tested",targetType:"hermes_gateway",targetId:gateway.id,result:connected?"success":"failure",metadata:{status:result.status,profileChecksRun:0,mode:process.env.NODE_ENV==="test"?"mock":"live_read_only"}},db);
   });
   return result;
 }

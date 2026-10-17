@@ -11,6 +11,7 @@ export const HERMES_GATEWAY_TYPES = ["multiplexed_profiles", "single_profile"] a
 
 export const hermesGatewaySaveSchema = z.object({
   gatewayId: z.string().uuid().optional(),
+  gatewayRevision: z.number().int().positive().optional(),
   label: z.string().trim().min(2).max(120),
   environment: z.enum(["development", "staging", "production"]),
   baseUrl: z.string().trim().max(500),
@@ -42,7 +43,13 @@ export interface HermesGatewayView {
   lastLatencyMs: number | null;
   lastError: string | null;
   revision: number;
+  /** Exact profile mappings on the agency-owned employee registry. */
   mappedProfileCount: number;
+  clientMappedProfileCount: number;
+  updatedAt: string | null;
+  lastChangedBy: string | null;
+  credentialRotatedAt: string | null;
+  credentialFingerprint: string | null;
 }
 
 const asDate = (value: Date | string | null) => value ? new Date(value).toISOString() : null;
@@ -58,18 +65,22 @@ export async function listHermesGateways(db: Queryable): Promise<HermesGatewayVi
     id: string; label: string; environment: HermesGatewayView["environment"]; base_url: string;
     gateway_type: HermesGatewayView["gatewayType"]; reported_gateway_id: string | null; declared_version: string | null;
     status: string; access_credential_id: string | null; access_revoked: boolean | null; profile_creation_status: string;
+    credential_rotated_at: Date | null; credential_fingerprint: string | null;
     capabilities: Record<string, unknown>; last_success_at: Date | null; last_failure_at: Date | null;
     last_health_check_at: Date | null; last_latency_ms: number | null; last_error: string | null;
-    revision: number; mapped_profile_count: number;
+    revision: number; mapped_profile_count: number; client_mapped_profile_count: number; updated_at: Date | null; last_changed_by: string | null;
   }>(
     `select g.id,g.label,g.environment,g.base_url,g.gateway_type,g.reported_gateway_id,g.declared_version,g.status,
             g.access_credential_id,(c.revoked_at is not null or r.revoked_at is not null) as access_revoked,
             g.profile_creation_status,g.capabilities,g.last_success_at,g.last_failure_at,g.last_health_check_at,
-            g.last_latency_ms,g.last_error,g.revision,
-            (select count(*)::int from agent_instances a where a.hermes_gateway_id=g.id and a.hermes_profile is not null) as mapped_profile_count
+            g.last_latency_ms,g.last_error,g.revision,r.rotated_at as credential_rotated_at,c.fingerprint as credential_fingerprint,
+            (select count(*)::int from agent_instances a join organizations o on o.id=a.org_id where a.hermes_gateway_id=g.id and a.hermes_profile is not null and o.kind='agency') as mapped_profile_count,
+            (select count(*)::int from agent_instances a join organizations o on o.id=a.org_id where a.hermes_gateway_id=g.id and a.hermes_profile is not null and o.kind='client') as client_mapped_profile_count,
+            g.updated_at,u.full_name as last_changed_by
      from hermes_gateways g
      left join integration_credentials c on c.id=g.access_credential_id
      left join credential_references r on r.id=c.credential_reference_id
+     left join users u on u.id=g.updated_by
      order by g.created_at,g.label`,
   );
   return rows.map((row) => {
@@ -95,6 +106,11 @@ export async function listHermesGateways(db: Queryable): Promise<HermesGatewayVi
       lastError: row.last_error,
       revision: row.revision,
       mappedProfileCount: row.mapped_profile_count,
+      clientMappedProfileCount: row.client_mapped_profile_count,
+      updatedAt: asDate(row.updated_at),
+      lastChangedBy: row.last_changed_by,
+      credentialRotatedAt: asDate(row.credential_rotated_at),
+      credentialFingerprint: row.credential_fingerprint,
     };
   });
 }
@@ -107,12 +123,16 @@ export async function saveHermesGateway(db: Queryable, user: SessionUser, raw: H
   const hasClientId = Boolean(input.accessClientId?.trim());
   const hasClientSecret = Boolean(input.accessClientSecret?.trim());
   if (hasClientId !== hasClientSecret) throw new AppError("invalid_input", "Enter both Cloudflare Access service-token values, or leave both blank for local development.");
-  if (!local && !hasClientId) throw new AppError("invalid_input", "Cloudflare Access service credentials are required for an HTTPS Hermes gateway.");
-
+  // Serialize gateway creation with shared draft writes so another administrator cannot have
+  // a late autosave recreate the just-consumed new-gateway draft with a stale base revision.
+  await db.query("select id from organizations where kind='agency' order by created_at limit 1 for update");
   const old = input.gatewayId
-    ? (await db.query<{ id: string; base_url: string; access_credential_id: string | null }>("select id,base_url,access_credential_id from hermes_gateways where id=$1 for update", [input.gatewayId])).rows[0]
-    : (await db.query<{ id: string; base_url: string; access_credential_id: string | null }>("select id,base_url,access_credential_id from hermes_gateways where base_url=$1 for update", [baseUrl])).rows[0];
+    ? (await db.query<{ id: string; base_url: string; access_credential_id: string | null; revision: number }>("select id,base_url,access_credential_id,revision from hermes_gateways where id=$1 for update", [input.gatewayId])).rows[0]
+    : (await db.query<{ id: string; base_url: string; access_credential_id: string | null; revision: number }>("select id,base_url,access_credential_id,revision from hermes_gateways where base_url=$1 for update", [baseUrl])).rows[0];
   if (input.gatewayId && !old) throw new AppError("not_found", "Hermes gateway not found.");
+  if (old && (input.gatewayRevision === undefined || input.gatewayRevision !== old.revision)) {
+    throw new AppError("conflict", "Gateway settings changed in another session. Reload the saved configuration before continuing.");
+  }
   if (old && input.gatewayType === "single_profile") {
     const mapped = await db.query<{ count: number }>(
       "select count(*)::int as count from agent_instances where hermes_gateway_id=$1 and hermes_profile is not null",
@@ -146,9 +166,9 @@ export async function saveHermesGateway(db: Queryable, user: SessionUser, raw: H
     id = old.id;
     await db.query(
       `update hermes_gateways set label=$2,environment=$3,base_url=$4,gateway_type=$5,reported_gateway_id=$6,
-         declared_version=$7,access_credential_id=$8,status='credentials_saved',capabilities='{}',last_error=null,
+         declared_version=$7,access_credential_id=$8,updated_by=$9,status='credentials_saved',capabilities='{}',last_error=null,
          last_latency_ms=null,revision=revision+1 where id=$1`,
-      [id, ...values.slice(0, 7)],
+      [id, ...values.slice(0, 8)],
     );
   } else {
     const inserted = await db.query<{ id: string }>(
@@ -158,6 +178,26 @@ export async function saveHermesGateway(db: Queryable, user: SessionUser, raw: H
     );
     id = inserted.rows[0].id;
   }
+  const revision = old ? old.revision + 1 : 1;
+  await db.query(
+    `insert into hermes_gateway_configuration_history(gateway_id,revision,configuration,changed_by)
+     values($1,$2,$3,$4)`,
+    [id, revision, JSON.stringify({
+      label: input.label,
+      environment: input.environment,
+      baseUrl,
+      gatewayType: input.gatewayType,
+      reportedGatewayId: input.reportedGatewayId || null,
+      declaredVersion: input.declaredVersion || null,
+      accessConfigured: Boolean(accessCredentialId),
+    }), user.id],
+  );
+  await db.query(
+    `delete from hermes_gateway_setup_drafts
+     where organization_id=(select id from organizations where kind='agency' order by created_at limit 1)
+       and (gateway_id=$1 or ($2::boolean and gateway_id is null))`,
+    [id, !input.gatewayId],
+  );
   // Existing profile connections on this exact approved endpoint become explicit mappings.
   // Their profiles, per-profile credentials and live operating state are left intact.
   await db.query(

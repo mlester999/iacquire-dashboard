@@ -70,9 +70,9 @@ export async function loginAction(_: FormState, formData: FormData): Promise<For
   redirect(safeNext(formData.get("next")));
 }
 
-export async function logoutAction() {
+export async function logoutAction(): Promise<{ ok: true }> {
   await signOutCurrent();
-  redirect("/login?signed_out=1");
+  return { ok: true };
 }
 
 export async function forgotPasswordAction(_: FormState, formData: FormData): Promise<FormState> {

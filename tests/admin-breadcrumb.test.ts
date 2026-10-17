@@ -33,6 +33,8 @@ describe("agency breadcrumbs follow the route", () => {
     expect(labels("/admin")).toEqual(["Dashboard"]);
     expect(labels("/admin/health")).toEqual(["System health"]);
     expect(labels("/admin/setup-templates")).toEqual(["Setup templates"]);
+    expect(labels("/admin/workforce")).toEqual(["Internal Workforce"]);
+    expect(labels("/admin/workforce/clients")).toEqual(["Client Workforces"]);
   });
 
   it("links every ancestor to its own screen and leaves the current page unlinked", () => {
