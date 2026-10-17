@@ -75,6 +75,11 @@ export async function ensureAgencyWorkforceRegistry(admin: SessionUser): Promise
 export async function listClientWorkforceSummaries(user: SessionUser) {
   return withUser(user.id, async (db) => {
     if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
+    const permission = await db.query<{ allowed: boolean }>(
+      "select coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as allowed",
+      [user.id],
+    );
+    if (!permission.rows[0]?.allowed) throw new AppError("forbidden", "Your agency role does not allow client workforce monitoring.");
     const { rows } = await db.query<{
       id: string;
       name: string;

@@ -5,7 +5,6 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import type { SessionUser } from "@/server/auth/service";
-import { roleHasPermission } from "@/lib/permissions";
 import { STATUS_TRANSITIONS, PROJECT_STATUS_LABEL, type MilestoneStatus, type ProjectStatus } from "@/lib/projects";
 import { loadProjectDetail, storeProjectFile } from "@/server/projects/client";
 import { REQUEST_COLUMNS, iso, quoteContentHash, toQuoteView, toRequestView, type ProjectDetail, type QuoteRow, type RequestRow, type RequestView } from "@/server/projects/shared";
@@ -15,12 +14,14 @@ import { REQUEST_COLUMNS, iso, quoteContentHash, toQuoteView, toRequestView, typ
 // ---------------------------------------------------------------------------
 
 function isStaff(user: SessionUser) {
-  return user.platformRole === "agency_staff" || user.platformRole === "agency_super_admin";
+  return user.platformRole === "agency_staff" || user.platformRole === "agency_manager" || user.platformRole === "agency_super_admin";
 }
 
 /** The request's tenant must be one this agency user may work on (super admins: all; staff: assigned only). */
 async function authorizeRequest(db: Queryable, user: SessionUser, requestId: string, permission: "projects.manage" | "quotes.manage" = "projects.manage") {
-  if (!isStaff(user) || !roleHasPermission(user.platformRole as "agency_staff" | "agency_super_admin", permission)) throw new AppError("forbidden", "Agency access is required.");
+  if (!isStaff(user)) throw new AppError("forbidden", "Agency access is required.");
+  const permissionCheck = await db.query<{ allowed: boolean }>("select coalesce(app.user_has_agency_permission($1,$2),false) as allowed", [user.id, permission]);
+  if (permissionCheck.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role does not allow this project action.");
   if (!z.string().uuid().safeParse(requestId).success) throw new AppError("not_found", "Project not found.");
   const r = (await db.query<{ id: string; org_id: string; ref: string; title: string; status: ProjectStatus; status_before_hold: ProjectStatus | null; created_by: string | null }>(
     "select id, org_id, ref, title, status, status_before_hold, created_by from client_project_requests where id = $1 for update", [requestId],
@@ -31,8 +32,8 @@ async function authorizeRequest(db: Queryable, user: SessionUser, requestId: str
 }
 
 async function agencyAccessInTx(db: Queryable, user: SessionUser, orgId: string): Promise<boolean> {
-  if (user.platformRole === "agency_super_admin") return true;
-  return (await db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [orgId, user.id])).rows.length > 0;
+  const { rows } = await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, orgId]);
+  return rows[0]?.allowed === true;
 }
 
 const CLIENT_ROLES: Array<"owner" | "admin"> = ["owner", "admin"];
@@ -62,6 +63,8 @@ export interface AgencyProjectItem extends RequestView {
 
 export async function listAgencyProjects(user: SessionUser, filters: { status?: string; orgId?: string; assignedToMe?: boolean; needsReview?: boolean } = {}): Promise<AgencyProjectItem[]> {
   if (!isStaff(user)) throw new AppError("forbidden", "Agency access is required.");
+  const view = await withSystem((db) => db.query<{ allowed: boolean }>("select coalesce(app.user_has_agency_permission($1,'projects.view'),false) as allowed", [user.id]));
+  if (view.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role does not allow viewing client projects.");
   const status = filters.status && filters.status !== "all" ? filters.status : null;
   const { rows } = await withSystem((db) =>
     db.query<RequestRow & { org_name: string; assigned_to_name: string | null; quote_status: string | null; open_tasks: number; ms_done: number; ms_total: number; agreed_price_cents: number | null }>(
@@ -76,13 +79,13 @@ export async function listAgencyProjects(user: SessionUser, filters: { status?: 
        left join service_catalog s on s.id = r.service_id
        left join users au on au.id = r.assigned_to
        left join client_projects cp on cp.request_id = r.id
-       where ($1::boolean or exists (select 1 from staff_assignments sa where sa.org_id = r.org_id and sa.user_id = $2))
-         and ($3::text is null or r.status = $3)
-         and ($4::uuid is null or r.org_id = $4)
-         and (not $5::boolean or r.assigned_to = $2)
-         and (not $6::boolean or exists (select 1 from project_review_tasks t where t.request_id = r.id and t.status = 'open'))
+       where app.user_can_access_org($1,r.org_id)
+         and ($2::text is null or r.status = $2)
+         and ($3::uuid is null or r.org_id = $3)
+         and (not $4::boolean or r.assigned_to = $1)
+         and (not $5::boolean or exists (select 1 from project_review_tasks t where t.request_id = r.id and t.status = 'open'))
        order by (r.status in ('submitted','under_review','discovery_needed')) desc, r.last_activity_at desc limit 300`,
-      [user.platformRole === "agency_super_admin", user.id, status, filters.orgId ?? null, Boolean(filters.assignedToMe), Boolean(filters.needsReview)],
+      [user.id, status, filters.orgId ?? null, Boolean(filters.assignedToMe), Boolean(filters.needsReview)],
     ),
   );
   return rows.map((r) => ({ ...toRequestView(r), orgName: r.org_name, assignedToName: r.assigned_to_name, quoteStatus: r.quote_status, openTasks: r.open_tasks, milestonesDone: r.ms_done, milestonesTotal: r.ms_total, agreedPriceCents: r.agreed_price_cents }));
@@ -102,6 +105,8 @@ export interface AgencyProjectDetail extends ProjectDetail {
 export async function getAgencyProject(user: SessionUser, requestId: string): Promise<AgencyProjectDetail | null> {
   if (!isStaff(user) || !z.string().uuid().safeParse(requestId).success) return null;
   return withSystem(async (db) => {
+    const view = await db.query<{ allowed: boolean }>("select coalesce(app.user_has_agency_permission($1,'projects.view'),false) as allowed", [user.id]);
+    if (view.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role does not allow viewing client projects.");
     const head = (await db.query<{ org_id: string; org_name: string; internal_notes: string | null; assigned_to: string | null; created_by_name: string | null; suggested_service_ids: string[] }>(
       `select r.org_id, o.name as org_name, r.internal_notes, r.assigned_to, cu.full_name as created_by_name, r.suggested_service_ids
        from client_project_requests r join organizations o on o.id = r.org_id left join users cu on cu.id = r.created_by where r.id = $1`,
@@ -112,7 +117,7 @@ export async function getAgencyProject(user: SessionUser, requestId: string): Pr
     if (!detail) return null;
     const assignable = (await db.query<{ id: string; name: string }>(
       `select u.id, coalesce(nullif(u.full_name,''), u.email::text) as name from users u
-       where u.status = 'active' and (u.platform_role = 'agency_super_admin' or (u.platform_role = 'agency_staff' and exists (select 1 from staff_assignments sa where sa.user_id = u.id and sa.org_id = $1)))
+       where u.status = 'active' and u.platform_role in ('agency_super_admin','agency_manager','agency_staff') and app.user_can_access_org(u.id,$1)
        order by name`,
       [head.org_id],
     )).rows;
@@ -139,11 +144,13 @@ export async function getAgencyProject(user: SessionUser, requestId: string): Pr
 
 export async function agencyProjectStats(user: SessionUser) {
   if (!isStaff(user)) throw new AppError("forbidden", "Agency access is required.");
+  const view = await withSystem((db) => db.query<{ allowed: boolean }>("select coalesce(app.user_has_agency_permission($1,'projects.view'),false) as allowed", [user.id]));
+  if (view.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role does not allow viewing client projects.");
   const { rows } = await withSystem((db) =>
     db.query<{ status: string; n: number }>(
       `select r.status, count(*)::int as n from client_project_requests r
-       where ($1::boolean or exists (select 1 from staff_assignments sa where sa.org_id = r.org_id and sa.user_id = $2)) group by r.status`,
-      [user.platformRole === "agency_super_admin", user.id],
+       where app.user_can_access_org($1,r.org_id) group by r.status`,
+      [user.id],
     ),
   );
   return Object.fromEntries(rows.map((r) => [r.status, r.n])) as Record<string, number>;
@@ -457,11 +464,13 @@ export async function completeReviewTask(user: SessionUser, taskId: string) {
 /** Clients that have project requests inside the viewer's scope, for the queue's client filter. */
 export async function listProjectClients(user: SessionUser): Promise<Array<{ id: string; name: string }>> {
   if (!isStaff(user)) throw new AppError("forbidden", "Agency access is required.");
+  const view = await withSystem((db) => db.query<{ allowed: boolean }>("select coalesce(app.user_has_agency_permission($1,'projects.view'),false) as allowed", [user.id]));
+  if (view.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role does not allow viewing client projects.");
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; name: string }>(
       `select distinct o.id, o.name from client_project_requests r join organizations o on o.id = r.org_id
-       where ($1::boolean or exists (select 1 from staff_assignments sa where sa.org_id = r.org_id and sa.user_id = $2)) order by o.name`,
-      [user.platformRole === "agency_super_admin", user.id],
+       where app.user_can_access_org($1,r.org_id) order by o.name`,
+      [user.id],
     ),
   );
   return rows;

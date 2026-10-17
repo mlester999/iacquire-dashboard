@@ -493,9 +493,9 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
          from client_setup_tasks t where t.org_id = o.id and not t.hidden and not t.service_excluded
        ) p on i.id is not null
        where o.kind = 'client'
-         and ($1::boolean or exists (select 1 from staff_assignments s where s.org_id = o.id and s.user_id = $2))
+         and app.user_can_access_org($1,o.id)
        order by o.created_at desc`,
-      [role === "agency_super_admin", user.id],
+      [user.id],
     );
   });
   return rows.map((r) => {

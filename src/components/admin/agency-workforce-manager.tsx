@@ -46,12 +46,13 @@ export function AgencyWorkforceManager({
     profileIdentityVerified: agent.profile_identity_verified,
     gatewayStatus: agent.gateway_status,
     toolPermissionsStatus: agent.tool_permissions_status,
+    fullCapabilitiesAcknowledged: agent.enabled && agent.full_capabilities_acknowledged,
   })] as const));
   const mapped = agents.filter((agent) => agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key] && agent.hermes_gateway_id).length;
   const verified = agents.filter((agent) => readinessByAgent.get(agent.id)?.connection === "verified").length;
   const toolsAwaitingReview = agents.filter((agent) => {
     const readiness = readinessByAgent.get(agent.id);
-    return readiness?.connection === "verified" && readiness.tools !== "verified";
+    return readiness?.connection === "verified" && readiness.tools !== "verified" && readiness.tools !== "acknowledged";
   }).length;
   const pendingApprovals = agents.reduce((total, agent) => total + agent.pending_approvals, 0);
   const recentRuns = agents.reduce((total, agent) => total + agent.runs_30d, 0);
@@ -91,7 +92,7 @@ export function AgencyWorkforceManager({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Pending approvals" value={pendingApprovals} detail="Open requests for agency employees" icon={<ShieldCheck className="size-4" />} />
         <MetricCard label="Recent activity" value={recentRuns} detail="Recorded runs in the last 30 days" tone="violet" icon={<Activity className="size-4" />} />
-        <MetricCard label="Tool reviews pending" value={toolsAwaitingReview} detail="Connected profiles needing a live permission review" tone={toolsAwaitingReview ? "amber" : "green"} icon={<Wrench className="size-4" />} />
+        <MetricCard label="Tool reviews pending" value={toolsAwaitingReview} detail="Connected profiles needing review or a complete inventory check" tone={toolsAwaitingReview ? "amber" : "green"} icon={<Wrench className="size-4" />} />
         <div className="col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4 lg:col-span-1">
           <div><p className="text-sm font-semibold text-ink">Profile verification</p><p className="mt-1 text-xs leading-relaxed text-muted">Each check reads the saved profile with its own key. No AI task is started.</p></div>
           {canManage && <Button onClick={() => void testAll()} loading={testing} variant="secondary"><Stethoscope className="size-4" />Test all six</Button>}
@@ -130,8 +131,9 @@ export function AgencyWorkforceManager({
             review_needed: "Review needed",
             incomplete: "Inventory incomplete",
             unavailable: "Unavailable",
+            acknowledged: "Full capabilities authorized",
           }[readiness.tools];
-          const toolTone = readiness.tools === "verified" ? "success" : readiness.tools === "review_needed" || readiness.tools === "incomplete" ? "warning" : readiness.tools === "unavailable" ? "danger" : "neutral";
+          const toolTone = readiness.tools === "verified" ? "success" : readiness.tools === "acknowledged" ? "violet" : readiness.tools === "review_needed" || readiness.tools === "incomplete" ? "warning" : readiness.tools === "unavailable" ? "danger" : "neutral";
           const currentCheckDetail = readiness.checkIsCurrent
             ? agent.profile_check_detail
             : null;
@@ -156,7 +158,7 @@ export function AgencyWorkforceManager({
               </div>
               <div className="rounded-xl border border-line p-3 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2"><p className="flex items-center gap-1.5 font-medium text-ink"><Wrench className="size-3.5" />Tool readiness</p><StatusPill tone={toolTone} size="sm">{toolLabel}</StatusPill></div>
-                <p className="mt-2 leading-relaxed text-muted">{readiness.tools === "verified" ? "The complete tool inventory was checked and is ready for review." : readiness.tools === "review_needed" ? "Profile connectivity passed. Review exposed tools before enabling active use." : readiness.tools === "incomplete" ? "The installed API could not prove a complete tool inventory." : readiness.tools === "unavailable" ? "The tool inventory could not be read." : "Tool permissions are evaluated separately from profile connectivity."}</p>
+                <p className="mt-2 leading-relaxed text-muted">{readiness.tools === "verified" ? "The complete tool inventory was checked and is ready for review." : readiness.tools === "acknowledged" ? "A Super Admin authorized Full Hermes Capabilities for this verified internal profile. Its restricted or incomplete tool inventory remains unverified." : readiness.tools === "review_needed" ? "Profile connectivity passed. Review exposed tools before enabling active use." : readiness.tools === "incomplete" ? "The installed API could not prove a complete tool inventory." : readiness.tools === "unavailable" ? "The tool inventory could not be read." : "Tool permissions are evaluated separately from profile connectivity."}</p>
                 {readiness.tools === "verified" && <CheckCircle2 className="mt-2 size-4 text-success" aria-label="Tool inventory verified" />}
                 {readiness.connection === "failed" && <CircleAlert className="mt-2 size-4 text-danger" aria-label="Profile connection check failed" />}
               </div>

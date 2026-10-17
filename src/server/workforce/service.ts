@@ -266,11 +266,11 @@ export async function applyDraftVersion(db: Queryable, orgId: string, versionId:
 }
 
 /** Agency review of a held version. */
-export async function decideHeldVersion(db: Queryable, input: { versionId: string; approve: boolean; agencyUserId: string }) {
+export async function decideHeldVersion(db: Queryable, input: { orgId: string; versionId: string; approve: boolean; agencyUserId: string }) {
   const { rows } = await db.query<{ id: string; org_id: string; agent_instance_id: string; settings: AgentSettings }>(
     `update agent_config_versions set status = $2, decided_by = $3, decided_at = now()
-     where id = $1 and status = 'pending_agency_review' returning id, org_id, agent_instance_id, settings`,
-    [input.versionId, input.approve ? "applied" : "rejected", input.agencyUserId],
+     where id = $1 and org_id = $4 and status = 'pending_agency_review' returning id, org_id, agent_instance_id, settings`,
+    [input.versionId, input.approve ? "applied" : "rejected", input.agencyUserId, input.orgId],
   );
   const v = rows[0];
   if (!v) throw new AppError("conflict", "This version has already been reviewed.");

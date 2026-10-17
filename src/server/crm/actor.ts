@@ -5,7 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
-import type { Permission } from "@/lib/permissions";
+import { PERMISSION_MATRIX, type Permission } from "@/lib/permissions";
 
 /**
  * Who is acting on a client's CRM. Every CRM service takes an actor instead of trusting an organization ID from a request:
@@ -41,13 +41,29 @@ export const AGENCY_READ_PERMISSIONS: ReadonlySet<Permission> = new Set<Permissi
   "crm.view", "contacts.view", "companies.view", "sales.view", "appointments.view", "inbox.view", "inbox.view_all", "workflows.view", "analytics.view", "calls.view", "team.view",
 ]);
 
-/** A super admin's write session adds configuration and record maintenance. Bulk deletion, exports, campaigns and permission changes stay with the client. */
+/** A support write session adds scoped record maintenance. Exports, campaigns and permission administration stay with the client. */
 export const AGENCY_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
   ...AGENCY_READ_PERMISSIONS,
   "contacts.edit", "contacts.assign", "contacts.merge", "contacts.import", "companies.edit", "tags.manage", "fields.manage", "smartlists.share",
   "pipelines.manage", "opportunities.edit", "opportunities.reopen", "calendars.manage", "appointments.book", "appointments.manage",
-  "notes.write", "tasks.manage", "workflows.manage", "templates.manage", "forms.manage", "reviews.manage", "crm.provider.manage",
+  "notes.write", "inbox.reply", "inbox.notes", "inbox.assign", "tasks.manage", "workflows.manage", "templates.manage", "forms.manage", "reviews.manage", "crm.provider.manage",
 ]);
+
+const AGENCY_MEMBER_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
+  ...AGENCY_WRITE_PERMISSIONS,
+  "contacts.delete", "contacts.export", "contacts.bulk", "opportunities.delete",
+]);
+
+async function agencyPermissionSet(userId: string, db?: Queryable): Promise<Set<Permission>> {
+  const permissions = Object.keys(PERMISSION_MATRIX) as Permission[];
+  const read = (q: Queryable) => q.query<{ permission: string }>(
+    `select p.permission from unnest($2::text[]) as p(permission)
+     where coalesce(app.user_has_agency_permission($1,p.permission),false)`,
+    [userId, permissions],
+  );
+  const { rows } = db ? await read(db) : await withSystem(read);
+  return new Set(rows.map((row) => row.permission).filter((permission): permission is Permission => permission in PERMISSION_MATRIX));
+}
 
 export function memberActor(ctx: OrgContext): CrmActor {
   if (ctx.org.kind !== "client") throw new AppError("invalid_input", "The CRM belongs to client workspaces.");
@@ -127,10 +143,12 @@ const WRITE_MINUTES = 30;
  * tenancy's agencyCanAccessOrg, kept here so CRM services (and scripts and workers) never import request-bound code.
  */
 export async function agencyCanAccessClient(user: Pick<SessionUser, "id" | "platformRole">, orgId: string): Promise<boolean> {
-  if (user.platformRole === "agency_super_admin") return true;
-  if (user.platformRole !== "agency_staff") return false;
-  const { rows } = await withSystem((db) => db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [orgId, user.id]));
-  return rows.length > 0;
+  if (user.platformRole === "none") return false;
+  const { rows } = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select app.user_can_access_org($1,$2) as allowed",
+    [user.id, orgId],
+  ));
+  return rows[0]?.allowed === true;
 }
 
 async function clientOrg(db: Queryable, orgId: string) {
@@ -154,13 +172,18 @@ export async function activeSupportSession(user: Pick<SessionUser, "id">, orgId:
 }
 
 /**
- * Opens a support session on one client's CRM. Staff must be assigned to the client; only super admins can open a write session.
+ * Opens a support session on one client's CRM. Staff must be assigned, and write sessions require an explicit CRM write grant.
  * The reason is recorded, the access is audited, and for a write session the client's owner and managers are told.
  */
 export async function startSupportSession(user: SessionUser, orgId: string, input: { mode: "read" | "write"; reason: string }): Promise<SupportSession> {
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
   if (!(await agencyCanAccessClient(user, orgId))) throw new AppError("forbidden", "You are not assigned to this client.");
-  if (input.mode === "write" && user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only agency super admins can open a session that changes client records.");
+  const capability = input.mode === "write" ? "agency.crm.manage" : "agency.crm.read";
+  const canOpen = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select coalesce(app.user_has_agency_permission($1,$2),false) as allowed",
+    [user.id, capability],
+  ));
+  if (canOpen.rows[0]?.allowed !== true) throw new AppError("forbidden", input.mode === "write" ? "Only agency super admins can open a session that changes client records unless CRM write access was explicitly granted." : "Your role does not allow a CRM support session.");
   const reason = input.reason.trim();
   if (reason.length < 5) throw new AppError("invalid_input", "Say why you need access (at least 5 characters). The client can see it.");
   return withSystem(async (db) => {
@@ -203,8 +226,13 @@ export async function agencyActor(user: SessionUser, orgId: string): Promise<Crm
     const org = await clientOrg(db, orgId);
     const session = await activeSupportSession(user, orgId, db);
     if (!session) throw new AppError("forbidden", "Open a support session for this client first. Access is time-limited and recorded.");
-    const write = session.mode === "write" && user.platformRole === "agency_super_admin";
-    const allowed = write ? AGENCY_WRITE_PERMISSIONS : AGENCY_READ_PERMISSIONS;
+    const write = session.mode === "write";
+    const permissions = await agencyPermissionSet(user.id, db);
+    const accessPermission = write ? "agency.crm.manage" : "agency.crm.read";
+    if (!permissions.has(accessPermission)) throw new AppError("forbidden", "Your CRM support permission has changed. Start a new authorized session.");
+    const allowed = user.platformRole === "agency_super_admin"
+      ? (write ? AGENCY_WRITE_PERMISSIONS : AGENCY_READ_PERMISSIONS)
+      : write ? AGENCY_MEMBER_WRITE_PERMISSIONS : AGENCY_READ_PERMISSIONS;
     return {
       kind: "agency",
       orgId: org.id,
@@ -216,7 +244,7 @@ export async function agencyActor(user: SessionUser, orgId: string): Promise<Crm
       supportSessionId: session.id,
       supportMode: write ? "write" : "read",
       label: `${user.fullName || user.email} (iAcquire)`,
-      can: (p) => allowed.has(p),
+      can: (p) => allowed.has(p) && (user.platformRole === "agency_super_admin" || permissions.has(p)),
     } satisfies CrmActor;
   });
 }

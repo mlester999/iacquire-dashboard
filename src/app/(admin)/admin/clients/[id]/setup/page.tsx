@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireAgency } from "@/server/tenancy/context";
+import { requireAgencyOrgPermissionOrThrow } from "@/server/tenancy/context";
 import { getAgencySetupSnapshot } from "@/server/setup/snapshots";
 import { AppError } from "@/server/errors";
 import { SetupManager } from "@/components/admin/setup/manager";
@@ -9,7 +9,7 @@ export const metadata = { title: "Client setup" };
 export default async function ClientSetupPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const user = await requireAgency();
+  const user = await requireAgencyOrgPermissionOrThrow(id, "setup.manage");
   let snapshot;
   try {
     snapshot = await getAgencySetupSnapshot(user, id);

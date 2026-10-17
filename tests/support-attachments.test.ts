@@ -3,10 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll,beforeAll,describe,expect,it,vi } from "vitest";
 import { resetEnvCache } from "@/server/env";
-import { addMember,createOrg,createUser,ctxFor } from "./support/fixtures";
-import { withSystem } from "@/server/db";
+import { addMember,agencyUser,createOrg,createUser,ctxFor } from "./support/fixtures";
+import { withSystem,withUser } from "@/server/db";
 import { createTicket } from "@/server/support/service";
 import { attachSupportFile,listSupportAttachments,supportAttachmentDownload } from "@/server/support/attachments";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 
 let uploads:string;
 beforeAll(async()=>{
@@ -40,6 +41,15 @@ describe("private support attachments — local PostgreSQL",()=>{
     expect((await listSupportAttachments(owner.id,ticket.id))).toHaveLength(1);
     await expect(supportAttachmentDownload(owner.id,internal.id)).rejects.toThrow(/not found/);
     expect(await supportAttachmentDownload(staff.id,internal.id)).toMatch(/^\/api\/files\//);
+    const superAdmin=await createUser({platformRole:"agency_super_admin"});
+    await updateAgencyUserPermission(agencyUser(superAdmin,"agency_super_admin"),{userId:staff.id,permission:"agency.support.view",effect:"deny"});
+    const readAccess=await withUser(staff.id,(db)=>db.query<{allowed:boolean}>("select app.file_permission($1,'support-attachments',false,'internal') as allowed",[org.id]));
+    expect(readAccess.rows[0]?.allowed).toBe(false);
+    await expect(supportAttachmentDownload(staff.id,internal.id)).rejects.toThrow(/not found/);
+    await updateAgencyUserPermission(agencyUser(superAdmin,"agency_super_admin"),{userId:staff.id,permission:"agency.support.manage",effect:"deny"});
+    const writeAccess=await withUser(staff.id,(db)=>db.query<{allowed:boolean}>("select app.file_permission($1,'support-attachments',true,'internal') as allowed",[org.id]));
+    expect(writeAccess.rows[0]?.allowed).toBe(false);
+    await expect(attachSupportFile(staff.id,ticket.id,{name:"blocked.txt",bytes:Buffer.from("No write access")},true)).rejects.toThrow(/access to this file/);
     await withSystem((db)=>db.query("update support_tickets set status='closed' where id=$1",[ticket.id]));
     await expect(attachSupportFile(owner.id,ticket.id,{name:"late.txt",bytes:Buffer.from("late")})).rejects.toThrow(/closed/);
   });

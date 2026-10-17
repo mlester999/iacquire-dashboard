@@ -214,18 +214,24 @@ export async function updateBilling(admin: SessionUser, orgId: string, input: z.
   });
 }
 
-export async function assignStaff(admin: SessionUser, orgId: string, staffUserId: string, assign: boolean) {
+export async function assignStaff(admin: SessionUser, orgId: string, staffUserId: string, assign: boolean, expectedRevision?: string) {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can assign staff.");
   await withSystem(async (db) => {
-    const { rows } = await db.query<{ platform_role: string; status: string }>("select platform_role,status from users where id = $1", [staffUserId]);
+    const activeAdmin = await db.query("select 1 from users where id=$1 and status='active' and platform_role='agency_super_admin'", [admin.id]);
+    if (!activeAdmin.rows.length) throw new AppError("forbidden", "Only active agency super admins can assign staff.");
+    const { rows } = await db.query<{ platform_role: string; status: string }>("select platform_role,status from users where id = $1 for update", [staffUserId]);
     if (!rows[0] || !["agency_staff", "agency_manager"].includes(rows[0].platform_role)) throw new AppError("invalid_input", "Only Agency Managers and Agency Staff can be assigned.");
     if (assign && rows[0].status !== "active") throw new AppError("invalid_input", "Reactivate this team member before assigning clients.");
+    await db.query("insert into agency_team_member_versions(user_id) values($1) on conflict(user_id) do nothing", [staffUserId]);
+    const version = await db.query<{ revision: string }>("select revision::text as revision from agency_team_member_versions where user_id=$1 for update", [staffUserId]);
+    if (expectedRevision !== undefined && expectedRevision !== (version.rows[0]?.revision ?? "0")) throw new AppError("conflict", "This team member changed in another session. Reload the page and review the latest settings.");
     if (assign) {
       const { rows: clients } = await db.query<{ kind: string; status: string }>("select kind,status from organizations where id=$1", [orgId]);
       if (clients[0]?.kind !== "client" || ["suspended", "archived"].includes(clients[0].status)) throw new AppError("invalid_input", "Only active client workspaces can be assigned.");
       await db.query("insert into staff_assignments (org_id, user_id, assigned_by) values ($1, $2, $3) on conflict do nothing", [orgId, staffUserId, admin.id]);
     }
     else await db.query("delete from staff_assignments where org_id = $1 and user_id = $2", [orgId, staffUserId]);
+    await db.query("update agency_team_member_versions set revision=revision+1,updated_by=$2,updated_at=now() where user_id=$1", [staffUserId, admin.id]);
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: assign ? "tenant.staff_assigned" : "tenant.staff_unassigned", targetType: "user", targetId: staffUserId, result: "success" }, db);
   });
 }

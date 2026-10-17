@@ -16,7 +16,6 @@ export interface SavedComponentView {
 
 const MAX_PER_SITE = 100;
 const isAgency = (ctx: OrgContext) => ctx.user.platformRole !== "none";
-const agencyRole = (ctx: OrgContext) => (ctx.user.platformRole === "none" ? null : ctx.user.platformRole);
 
 /**
  * Sections this website's team has saved, plus the agency's shared ones. Saved sections are copied into a page when used, never linked, so
@@ -46,10 +45,10 @@ export async function saveComponent(ctx: OrgContext, input: { name: string; sect
   if (!parsed.ok) throw new AppError("invalid_input", `That section can't be saved: ${parsed.error}`);
   if (JSON.stringify(parsed.section).length > 55_000) throw new AppError("invalid_input", "That section is too large to save. Save a smaller part of the page.");
   if (input.scope === "agency") {
-    if (!isAgency(ctx) || !roleHasPermission(agencyRole(ctx), "website.templates.design")) throw new AppError("forbidden", "Only the agency team can share a section with every website.");
+    if (!isAgency(ctx) || !ctx.can("website.templates.design")) throw new AppError("forbidden", "Only the agency team can share a section with every website.");
     // A shared section reaches every client, so it can never point at one client's uploaded image.
     if (JSON.stringify(parsed.section).includes('"kind":"asset"')) throw new AppError("invalid_input", "A shared section can use built-in artwork only. Remove uploaded images from it first: they belong to one client.");
-    const status = roleHasPermission(agencyRole(ctx), "website.templates.publish") ? "published" : "draft";
+    const status = ctx.can("website.templates.publish") ? "published" : "draft";
     return withSystem(async (db) => {
       const { rows } = await db.query<{ id: string }>("insert into website_patterns (name, section, status, created_by) values ($1, $2, $3, $4) returning id", [name, JSON.stringify(parsed.section), status, ctx.user.id]);
       await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "agency", action: "website.component_saved", targetType: "website_pattern", targetId: rows[0].id, result: "success", metadata: { scope: "agency", status } }, db);
@@ -73,7 +72,7 @@ export async function deleteComponent(ctx: OrgContext, id: string): Promise<void
     return db.query("update website_components set deleted_at = now() where id = $1 and org_id = $2 and deleted_at is null", [id, ctx.org.orgId]);
   });
   if (own?.rowCount) return;
-  if (isAgency(ctx) && roleHasPermission(agencyRole(ctx), "website.templates.design")) {
+  if (isAgency(ctx) && ctx.can("website.templates.design")) {
     const res = await withSystem((db) => db.query("update website_patterns set status = 'archived' where id = $1 and status <> 'archived'", [id]));
     if (res.rowCount) {
       await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "agency", action: "website.component_removed", targetType: "website_pattern", targetId: id, result: "success" });

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { requireAgencyOrThrow, requireAgencyOrgAccessOrThrow, requireAgencyPermissionOrThrow } from "@/server/tenancy/context";
+import { requireAgencyOrThrow, requireAgencyOrgAccessOrThrow, requireAgencyOrgPermissionOrThrow, requireAgencyPermissionOrThrow } from "@/server/tenancy/context";
 import {
   assignStaff,
   billingSchema,
@@ -33,8 +33,8 @@ import { getProvisioningBundle, updateProvisioningJob } from "@/server/workforce
 import { syncGhl, verifyGhlConnection } from "@/server/integrations/ghl";
 import { agencyReply, updateTicket, TICKET_STATUSES, type TicketStatus } from "@/server/support/service";
 import { createInvitation } from "@/server/auth/service";
-import { updateAgencyTeamMember, updateAgencyUserPermission } from "@/server/admin/team";
-import { AGENCY_DELEGABLE_PERMISSIONS, type AgencyPermission } from "@/lib/permissions";
+import { copyAgencyUserPermissions, updateAgencyTeamMember, updateAgencyUserPermission, updateAgencyUserPermissions } from "@/server/admin/team";
+import { AGENCY_TEAM_MANAGED_PERMISSIONS, isAgencyTeamPermission, type AgencyPermissionOverrides, type AgencyTeamPermission } from "@/lib/permissions";
 import { acknowledgeInternalFullCapabilities, resetHermesToolPolicy, saveHermesToolPolicy, type HermesBlockableToolset, type HermesPolicyCapability } from "@/server/workforce/tool-policies";
 import { notifyOrgRoles } from "@/server/notifications";
 
@@ -191,7 +191,7 @@ export async function testAllAgencyProfilesAction() {
 export async function healthCheckAction(agentId: string) {
   try {
     const orgId = await agentOrg(agentId);
-    const user = await requireAgencyOrgAccessOrThrow(orgId);
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.view");
     const health = await runHealthCheck(agentId, { userId: user.id, kind: "agency" });
     revalidatePath(`/admin/clients/${orgId}`);
     revalidatePath("/admin/workforce");
@@ -204,7 +204,7 @@ export async function healthCheckAction(agentId: string) {
 export async function provisioningBundleAction(agentId: string) {
   try {
     const orgId = await agentOrg(agentId);
-    await requireAgencyOrgAccessOrThrow(orgId);
+    await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.view");
     return { ok: true as const, data: await getProvisioningBundle(agentId) };
   } catch (err) {
     return actionError(err);
@@ -213,8 +213,8 @@ export async function provisioningBundleAction(agentId: string) {
 
 export async function updateProvisioningJobAction(orgId: string, jobId: string, status: "in_progress" | "failed" | "cancelled", detail?: string) {
   try {
-    const user = await requireAgencyOrgAccessOrThrow(orgId);
-    await updateProvisioningJob(user.id, jobId, status, detail);
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
+    await updateProvisioningJob(user.id, orgId, jobId, status, detail);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const };
   } catch (err) {
@@ -224,8 +224,8 @@ export async function updateProvisioningJobAction(orgId: string, jobId: string, 
 
 export async function decideHeldVersionAction(orgId: string, versionId: string, approve: boolean) {
   try {
-    const user = await requireAgencyOrgAccessOrThrow(orgId);
-    await withSystem((db) => decideHeldVersion(db, { versionId, approve, agencyUserId: user.id }));
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
+    await withSystem((db) => decideHeldVersion(db, { orgId, versionId, approve, agencyUserId: user.id }));
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const };
   } catch (err) {
@@ -235,7 +235,7 @@ export async function decideHeldVersionAction(orgId: string, versionId: string, 
 
 export async function decideHeldKnowledgeAction(orgId: string, section: string, approve: boolean) {
   try {
-    const user = await requireAgencyOrgAccessOrThrow(orgId);
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
     await withSystem(async (db) => {
       const res = await db.query(
         approve
@@ -275,7 +275,7 @@ export async function setGhlMappingAction(orgId: string, input: z.input<typeof g
 
 export async function verifyGhlAction(orgId: string) {
   try {
-    const user = await requireAgencyOrgAccessOrThrow(orgId);
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.integrations.health");
     const res = await verifyGhlConnection(orgId, user.id);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const, data: res };
@@ -286,7 +286,7 @@ export async function verifyGhlAction(orgId: string) {
 
 export async function syncGhlAction(orgId: string) {
   try {
-    const user = await requireAgencyOrgAccessOrThrow(orgId);
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.integrations.health");
     const res = await syncGhl(orgId, user.id);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const, data: res };
@@ -319,11 +319,13 @@ export async function updateBillingAction(orgId: string, input: z.input<typeof b
   }
 }
 
-export async function assignStaffAction(orgId: string, staffUserId: string, assign: boolean) {
+export async function assignStaffAction(orgId: string, staffUserId: string, assign: boolean, expectedRevision?: string) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
-    await assignStaff(admin, orgId, staffUserId, assign);
+    await assignStaff(admin, orgId, staffUserId, assign, expectedRevision);
     revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath(`/admin/team/${staffUserId}`);
+    revalidatePath("/admin/team");
     return { ok: true as const };
   } catch (err) {
     return actionError(err);
@@ -359,13 +361,18 @@ export async function inviteStaffAction(
   platformRole: "agency_staff" | "agency_manager",
   scopeMode: "all_clients" | "assigned_clients",
   initialClientIds: string[],
+  permissionOverrides: AgencyPermissionOverrides = {},
 ) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     if (!z.string().email().safeParse(email).success) throw new AppError("invalid_input", "Enter a valid email.");
     if (scopeMode === "all_clients" && platformRole !== "agency_manager") throw new AppError("invalid_input", "Only an Agency Manager can have all-client scope.");
     if (initialClientIds.length > 100 || initialClientIds.some((id) => !z.string().uuid().safeParse(id).success)) throw new AppError("invalid_input", "The selected client list is invalid.");
-    const res = await createInvitation({ orgId: null, email, platformRole, agencyScopeMode: scopeMode, initialClientIds, invitedBy: admin.id });
+    const permissionEntries = Object.entries(permissionOverrides);
+    if (permissionEntries.length > AGENCY_TEAM_MANAGED_PERMISSIONS.length || permissionEntries.some(([permission, effect]) => !isAgencyTeamPermission(permission) || !["allow", "deny"].includes(effect))) {
+      throw new AppError("invalid_input", "One or more customized permissions are not supported.");
+    }
+    const res = await createInvitation({ orgId: null, email, platformRole, agencyScopeMode: scopeMode, initialClientIds, agencyPermissionOverrides: permissionOverrides, invitedBy: admin.id });
     await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "team.invited", targetType: "invitation", targetId: res.id, result: "success", metadata: { platformRole, scopeMode, initialAssignmentCount: initialClientIds.length, emailDelivery: res.delivery?.status ?? "unknown" } });
     revalidatePath("/admin/team");
     return { ok: true as const, data: { link: res.link, delivery: publicDelivery(res.delivery) } };
@@ -379,6 +386,8 @@ export async function updateAgencyTeamMemberAction(input: {
   platformRole: "agency_manager" | "agency_staff";
   status: "active" | "disabled";
   scopeMode: "all_clients" | "assigned_clients";
+  expectedRevision: string;
+  permissionOverrides?: AgencyPermissionOverrides;
 }) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
@@ -387,9 +396,13 @@ export async function updateAgencyTeamMemberAction(input: {
       platformRole: z.enum(["agency_manager", "agency_staff"]),
       status: z.enum(["active", "disabled"]),
       scopeMode: z.enum(["all_clients", "assigned_clients"]),
+      expectedRevision: z.string().regex(/^\d{1,20}$/),
+      permissionOverrides: z.record(z.string(), z.enum(["allow", "deny"])).optional(),
     }).parse(input);
+    if (parsed.permissionOverrides && Object.keys(parsed.permissionOverrides).some((permission) => !isAgencyTeamPermission(permission))) throw new AppError("invalid_input", "One or more permissions are protected or unsupported.");
     await updateAgencyTeamMember(admin, parsed);
     revalidatePath("/admin/team");
+    revalidatePath(`/admin/team/${parsed.userId}`);
     revalidatePath("/admin");
     return { ok: true as const };
   } catch (err) {
@@ -403,16 +416,66 @@ export async function setAgencyUserPermissionAction(input: {
   permission: string;
   effect: "allow" | "deny" | null;
   reason?: string;
+  expectedRevision?: string;
 }) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
-    const allowed = (value: string): value is AgencyPermission => AGENCY_DELEGABLE_PERMISSIONS.includes(value as AgencyPermission);
-    const parsed = z.object({ userId: z.string().uuid(), permission: z.string().refine(allowed), effect: z.enum(["allow", "deny"]).nullable(), reason: z.string().trim().max(300).optional() }).parse(input);
+    const parsed = z.object({ userId: z.string().uuid(), permission: z.string().refine(isAgencyTeamPermission), effect: z.enum(["allow", "deny"]).nullable(), reason: z.string().trim().max(300).optional(), expectedRevision: z.string().regex(/^\d{1,20}$/).optional() }).parse(input);
     await updateAgencyUserPermission(admin, parsed);
     revalidatePath("/admin/team");
+    revalidatePath(`/admin/team/${parsed.userId}`);
     return { ok: true as const };
   } catch (err) {
     if (err instanceof z.ZodError) return { ok: false as const, error: "This permission is protected or the change is invalid." };
+    return actionError(err);
+  }
+}
+
+export async function updateAgencyUserPermissionsAction(input: {
+  userId: string;
+  permissions: Partial<Record<AgencyTeamPermission, "allow" | "deny" | null>>;
+  expectedRevision: string;
+  reason?: string;
+}) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const parsed = z.object({
+      userId: z.string().uuid(),
+      permissions: z.record(z.string(), z.enum(["allow", "deny"]).nullable()),
+      expectedRevision: z.string().regex(/^\d{1,20}$/),
+      reason: z.string().trim().max(300).optional(),
+    }).parse(input);
+    if (Object.keys(parsed.permissions).some((permission) => !isAgencyTeamPermission(permission))) throw new AppError("invalid_input", "One or more permissions are protected or unsupported.");
+    await updateAgencyUserPermissions(admin, parsed as typeof input);
+    revalidatePath("/admin/team");
+    revalidatePath(`/admin/team/${parsed.userId}`);
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Check the selected permissions and access states." };
+    return actionError(err);
+  }
+}
+
+export async function copyAgencyUserPermissionsAction(input: {
+  sourceUserId: string;
+  targetUserId: string;
+  permissions: AgencyTeamPermission[];
+  expectedRevision: string;
+}) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const parsed = z.object({
+      sourceUserId: z.string().uuid(),
+      targetUserId: z.string().uuid(),
+      permissions: z.array(z.string().refine(isAgencyTeamPermission)).max(AGENCY_TEAM_MANAGED_PERMISSIONS.length),
+      expectedRevision: z.string().regex(/^\d{1,20}$/),
+    }).parse(input);
+    await copyAgencyUserPermissions(admin, { ...parsed, permissions: parsed.permissions as AgencyTeamPermission[] });
+    revalidatePath("/admin/team");
+    revalidatePath(`/admin/team/${parsed.targetUserId}`);
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Choose a teammate and supported permissions to copy." };
     return actionError(err);
   }
 }

@@ -11,7 +11,7 @@ import {
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { recordAudit } from "@/server/audit";
 import { appUrl, sendEmail, type EmailDelivery, type OutgoingEmail } from "@/server/email";
-import { ROLE_LABELS, type OrgRole, type PlatformRole } from "@/lib/permissions";
+import { isAgencyTeamPermission, ROLE_LABELS, type AgencyTeamPermission, type OrgRole, type PlatformRole } from "@/lib/permissions";
 
 export const SESSION_ABSOLUTE_DAYS = 30;
 export const SESSION_IDLE_DAYS = 7;
@@ -437,6 +437,7 @@ export async function createInvitation(
     platformRole?: Exclude<PlatformRole, "none">;
     agencyScopeMode?: "all_clients" | "assigned_clients";
     initialClientIds?: string[];
+    agencyPermissionOverrides?: Partial<Record<AgencyTeamPermission, "allow" | "deny">>;
     invitedBy: string | null;
   },
   db?: Queryable,
@@ -447,6 +448,13 @@ export async function createInvitation(
     ? null
     : input.agencyScopeMode ?? (platformRole === "agency_manager" ? "all_clients" : "assigned_clients");
   const initialClientIds = [...new Set(input.initialClientIds ?? [])];
+  const agencyPermissionOverrides = Object.entries(input.agencyPermissionOverrides ?? {});
+  if (input.orgId && agencyPermissionOverrides.length) {
+    throw new InvitationError("Agency permission drafts can only be attached to agency invitations.");
+  }
+  if (agencyPermissionOverrides.some(([permission, effect]) => !isAgencyTeamPermission(permission) || (effect !== "allow" && effect !== "deny"))) {
+    throw new InvitationError("One or more customized permissions are not supported.");
+  }
   if (!input.orgId && platformRole === "agency_super_admin") {
     throw new InvitationError("Super Admin ownership cannot be granted through an invitation.");
   }
@@ -478,6 +486,14 @@ export async function createInvitation(
        values ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7), $8) returning id`,
       [input.orgId, email, input.orgId ? input.role ?? "member" : null, input.orgId ? null : platformRole, sha256(token), input.invitedBy, INVITE_DAYS, agencyScopeMode],
     );
+    if (agencyPermissionOverrides.length) {
+      for (const [permission, effect] of agencyPermissionOverrides) {
+        await q.query(
+          "insert into invitation_agency_permission_overrides(invitation_id,permission,effect) values($1,$2,$3)",
+          [rows[0].id, permission, effect],
+        );
+      }
+    }
     if (initialClientIds.length) {
       await q.query(
         "insert into invitation_client_assignments (invitation_id, org_id) select $1, unnest($2::uuid[])",
@@ -585,6 +601,7 @@ export async function applyInvitation(db: Queryable, inviteId: string, userId: s
       throw new InvitationError("Agency Staff invitations must use assigned-client scope.");
     }
     await db.query("update users set platform_role = $2 where id = $1", [userId, inv.platform_role]);
+    await db.query("insert into agency_team_member_versions(user_id) values($1) on conflict(user_id) do nothing", [userId]);
     if (inv.platform_role === "agency_manager" && inv.agency_scope_mode === "all_clients") {
       await db.query("delete from agency_user_client_scopes where user_id = $1", [userId]);
     } else {
@@ -616,6 +633,21 @@ export async function applyInvitation(db: Queryable, inviteId: string, userId: s
          select x.org_id, $2, $3 from invitation_client_assignments x where x.invitation_id = $1
          on conflict do nothing`,
         [inviteId, userId, inv.invited_by],
+      );
+    }
+    const permissionDraft = await db.query<{ permission: string; effect: "allow" | "deny" }>(
+      "select permission,effect from invitation_agency_permission_overrides where invitation_id=$1 order by permission",
+      [inviteId],
+    );
+    if (permissionDraft.rows.some((row) => !isAgencyTeamPermission(row.permission) || !["allow", "deny"].includes(row.effect))) {
+      throw new InvitationError("This agency invitation has an invalid permission draft.");
+    }
+    for (const permission of permissionDraft.rows) {
+      await db.query(
+        `insert into agency_user_permission_overrides(user_id,permission,effect,reason,updated_by)
+         values($1,$2,$3,'Customized before invitation',$4)
+         on conflict(user_id,permission) do update set effect=excluded.effect,reason=excluded.reason,updated_by=excluded.updated_by,updated_at=now()`,
+        [userId, permission.permission, permission.effect, inv.invited_by],
       );
     }
   }

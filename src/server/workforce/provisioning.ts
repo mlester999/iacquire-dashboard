@@ -145,11 +145,11 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
   return rows.length;
 }
 
-export async function updateProvisioningJob(agencyUserId: string, jobId: string, status: "in_progress" | "failed" | "cancelled", detail?: string) {
+export async function updateProvisioningJob(agencyUserId: string, orgId: string, jobId: string, status: "in_progress" | "failed" | "cancelled", detail?: string) {
   await withSystem(async (db) => {
     const res = await db.query(
-      "update agent_provisioning_jobs set status = $2, detail = $3, handled_by = $4 where id = $1 and status in ('requested', 'in_progress', 'awaiting_health_check')",
-      [jobId, status, detail?.slice(0, 1000) ?? null, agencyUserId],
+      "update agent_provisioning_jobs set status = $3, detail = $4, handled_by = $5 where id = $1 and org_id = $2 and status in ('requested', 'in_progress', 'awaiting_health_check')",
+      [jobId, orgId, status, detail?.slice(0, 1000) ?? null, agencyUserId],
     );
     if (!res.rowCount) throw new AppError("conflict", "This provisioning request is already closed.");
   });

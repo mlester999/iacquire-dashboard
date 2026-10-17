@@ -11,6 +11,7 @@ import { createCompany, getCompanyDetail, normalizeDomain, updateCompany } from 
 import { addNote, deleteNote, editNote, listNotes } from "@/server/crm/notes";
 import { getTimeline } from "@/server/crm/timeline";
 import { effectivePermission, PERMISSION_MATRIX } from "@/lib/permissions";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 import { coerceFieldValue } from "@/lib/crm/fields";
 import { agencyPeople, crmOrg, eventsFor, type CrmOrg } from "./support/crm";
 import { createUser, addMember } from "./support/fixtures";
@@ -435,8 +436,12 @@ describe("agency support access", () => {
     await withSystem((db) => db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [a.org.id, agency.staff.id]));
     await expect(agencyActor(agency.staff, a.org.id)).rejects.toThrow(/support session/);
     await expect(startSupportSession(agency.staff, a.org.id, { mode: "write", reason: "Fixing data" })).rejects.toThrow(/super admins/);
+    const beforeSupport = await withUser(agency.staff.id, (db) => db.query("select id from contacts where org_id=$1", [a.org.id]));
+    expect(beforeSupport.rows).toHaveLength(0);
     await expect(startSupportSession(agency.staff, a.org.id, { mode: "read", reason: "x" })).rejects.toThrow(/why/);
     await startSupportSession(agency.staff, a.org.id, { mode: "read", reason: "Client asked why a lead is missing" });
+    const duringSupport = await withUser(agency.staff.id, (db) => db.query("select id from contacts where org_id=$1", [a.org.id]));
+    expect(duringSupport.rows.length).toBeGreaterThan(0);
     const reader = await agencyActor(agency.staff, a.org.id);
     expect(reader.supportMode).toBe("read");
     const page = await listContacts(reader, { pageSize: 5 });
@@ -446,6 +451,16 @@ describe("agency support access", () => {
     // Agency staff are never given export rights in a support session.
     expect(reader.can("contacts.export")).toBe(false);
     await expect(agencyActor(agency.staff, b.org.id)).rejects.toThrow(/not assigned/);
+
+    await updateAgencyUserPermission(agency.superAdmin, { userId: agency.staff.id, permission: "agency.crm.manage", effect: "allow" });
+    await updateAgencyUserPermission(agency.superAdmin, { userId: agency.staff.id, permission: "tags.manage", effect: "allow" });
+    await startSupportSession(agency.staff, a.org.id, { mode: "write", reason: "Client approved a focused tag cleanup" });
+    const delegatedWriter = await agencyActor(agency.staff, a.org.id);
+    expect(delegatedWriter.supportMode).toBe("write");
+    expect(delegatedWriter.can("tags.manage")).toBe(true);
+    expect(delegatedWriter.can("contacts.export")).toBe(false);
+    await expect(createTag(delegatedWriter, { name: "Delegated support tag" })).resolves.toMatchObject({ id: expect.any(String) });
+    await endSupportSession(agency.staff, a.org.id);
 
     await startSupportSession(agency.superAdmin, a.org.id, { mode: "write", reason: "Client asked us to clean up tags" });
     const writer = await agencyActor(agency.superAdmin, a.org.id);

@@ -5,7 +5,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { notifyAgency, notifyUser, sendAgencySlackAlert } from "@/server/notifications";
-import { agencyCanAccessOrg, type OrgContext } from "@/server/tenancy/context";
+import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 
 export const TICKET_STATUSES = ["open", "in_progress", "waiting_for_client", "resolved", "closed"] as const;
@@ -42,6 +42,24 @@ export interface TicketRow {
   is_assigned: boolean;
   org_name?: string;
   org_id?: string;
+}
+
+type AgencySupportPermission = "agency.support.view" | "agency.support.manage";
+
+async function assertAgencySupportPermission(user: Pick<SessionUser, "id" | "platformRole">, orgId: string | null, permission: AgencySupportPermission) {
+  const { rows } = await withSystem((db) => db.query<{ active: boolean; platform_role: string; in_scope: boolean; allowed: boolean }>(
+    `select u.status='active' as active,u.platform_role,
+       ($2::uuid is null or app.user_can_access_org(u.id,$2)) as in_scope,
+       coalesce(app.user_has_agency_permission(u.id,$3),false) as allowed
+     from users u where u.id=$1`,
+    [user.id, orgId, permission],
+  ));
+  const current = rows[0];
+  if (!current?.active || current.platform_role !== user.platformRole || current.platform_role === "none") {
+    throw new AppError("forbidden", "Agency access is required; authorization has changed.");
+  }
+  if (!current.in_scope) throw new AppError("not_found", "Support request not found.");
+  if (!current.allowed) throw new AppError("forbidden", "Your agency role does not allow this support action.");
 }
 
 export async function createTicket(ctx: OrgContext, input: z.input<typeof newTicketSchema>) {
@@ -163,21 +181,31 @@ export async function clientReply(ctx: OrgContext, ticketId: string, body: strin
 // ---------------------------------------------------------------------------
 
 export async function listAgencyTickets(user: SessionUser, status?: TicketStatus | "active"): Promise<TicketRow[]> {
+  await assertAgencySupportPermission(user, null, "agency.support.view");
   return withUser(user.id, async (db) => {
     const { rows } = await db.query<TicketRow>(
       `select t.id, t.ref, t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at, t.last_message_at,
               t.external_notification, cu.full_name as created_by_name, au.full_name as assigned_to_name, (t.assigned_to is not null) as is_assigned, o.name as org_name, t.org_id
        from support_tickets t join organizations o on o.id = t.org_id
        left join users cu on cu.id = t.created_by left join users au on au.id = t.assigned_to
-       where ($1::text is null or ($1 = 'active' and t.status in ('open', 'in_progress', 'waiting_for_client')) or t.status = $1)
+       where app.user_can_access_org($2,t.org_id)
+         and ($1::text is null or ($1 = 'active' and t.status in ('open', 'in_progress', 'waiting_for_client')) or t.status = $1)
        order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.last_message_at desc limit 200`,
-      [status ?? null],
+      [status ?? null, user.id],
     );
     return rows;
   });
 }
 
 export async function getTicketForAgency(user: SessionUser, ticketId: string) {
+  const org = await withSystem((db) => db.query<{ org_id: string }>("select org_id from support_tickets where id=$1", [ticketId]));
+  if (!org.rows[0]) return null;
+  try {
+    await assertAgencySupportPermission(user, org.rows[0].org_id, "agency.support.view");
+  } catch (error) {
+    if (error instanceof AppError && error.code === "not_found") return null;
+    throw error;
+  }
   return withUser(user.id, async (db) => {
     const { rows } = await db.query<TicketRow>(
       `select t.id, t.ref, t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at, t.last_message_at,
@@ -196,7 +224,7 @@ export async function getTicketForAgency(user: SessionUser, ticketId: string) {
   });
 }
 
-async function assertAgencyTicketAccess(user: SessionUser, ticketId: string) {
+async function assertAgencyTicketAccess(user: SessionUser, ticketId: string, permission: AgencySupportPermission) {
   const { rows } = await withSystem((db) =>
     db.query<{ org_id: string; created_by: string | null; ref: string; status: TicketStatus }>(
       "select org_id, created_by, ref, status from support_tickets where id = $1",
@@ -204,14 +232,15 @@ async function assertAgencyTicketAccess(user: SessionUser, ticketId: string) {
     ),
   );
   const t = rows[0];
-  if (!t || !(await agencyCanAccessOrg(user, t.org_id))) throw new AppError("not_found", "Support request not found.");
+  if (!t) throw new AppError("not_found", "Support request not found.");
+  await assertAgencySupportPermission(user, t.org_id, permission);
   return t;
 }
 
 export async function agencyReply(user: SessionUser, ticketId: string, body: string, opts: { internal: boolean; status?: TicketStatus }) {
   const text = body.trim();
   if (!text || text.length > 5000) throw new AppError("invalid_input", "Replies can be up to 5,000 characters.");
-  const t = await assertAgencyTicketAccess(user, ticketId);
+  const t = await assertAgencyTicketAccess(user, ticketId, "agency.support.manage");
   await withSystem(async (db) => {
     await db.query(
       "insert into support_messages (ticket_id, org_id, author_id, author_kind, body, internal) values ($1, $2, $3, 'agency', $4, $5)",
@@ -239,7 +268,7 @@ export async function agencyReply(user: SessionUser, ticketId: string, body: str
 }
 
 export async function updateTicket(user: SessionUser, ticketId: string, changes: { status?: TicketStatus; assignToMe?: boolean; priority?: string }) {
-  const t = await assertAgencyTicketAccess(user, ticketId);
+  const t = await assertAgencyTicketAccess(user, ticketId, "agency.support.manage");
   if (changes.status && !TICKET_STATUSES.includes(changes.status)) throw new AppError("invalid_input", "Unknown status.");
   if (changes.priority && !["low", "normal", "high", "urgent"].includes(changes.priority)) throw new AppError("invalid_input", "Unknown priority.");
   await withSystem(async (db) => {

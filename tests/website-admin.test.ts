@@ -4,6 +4,7 @@ import { resetEnvCache } from "@/server/env";
 import { saveOnboardingStep } from "@/server/onboarding/service";
 import { createWebsite, getDraft, saveDraft } from "@/server/websites/service";
 import { agencyOrgContext } from "@/server/websites/studio-ctx";
+import { loadAgencyPermissionOverrides, loadAgencyRolePermissions } from "@/server/tenancy/context";
 import { getManagedWebsite, listManagedWebsites, reviewQueue, studioOverview } from "@/server/websites/admin";
 import { acquireEditLock, addComment, listComments, releaseEditLock, requestChanges, resolveComment, setArchived } from "@/server/websites/review";
 import {
@@ -70,8 +71,8 @@ beforeAll(async () => {
   await createWebsite(asOwner(orgA, ownerA), { templateKey: "local.crew" });
   await createWebsite(asOwner(orgB, ownerB), { templateKey: "care.haven" });
   const org = (o: typeof orgA) => ({ orgId: o.id, name: o.name, slug: o.slug, status: "active" as const, timezone: "UTC" });
-  staffCtxA = agencyOrgContext(staff, org(orgA));
-  superCtxA = agencyOrgContext(superAdmin, org(orgA));
+  staffCtxA = agencyOrgContext(staff, org(orgA), await loadAgencyRolePermissions("agency_staff"), await loadAgencyPermissionOverrides(staff.id));
+  superCtxA = agencyOrgContext(superAdmin, org(orgA), await loadAgencyRolePermissions("agency_super_admin"), {});
 });
 afterAll(() => {
   delete process.env.SITES_BASE_DOMAIN;

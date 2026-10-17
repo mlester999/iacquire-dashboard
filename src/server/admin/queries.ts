@@ -8,6 +8,12 @@ import type { AgentRoleKey, AgentStatus } from "@/lib/agents";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 
 export interface TenantDetail {
+  access: {
+    team: boolean;
+    workforce: boolean;
+    integrations: boolean;
+    setup: boolean;
+  };
   org: {
     id: string;
     name: string;
@@ -66,6 +72,14 @@ export interface TenantDetail {
 export async function getTenantDetail(user: SessionUser, orgId: string): Promise<TenantDetail> {
   if (!(await agencyCanAccessOrg(user, orgId))) throw new AppError("not_found", "Client not found.");
   return withSystem(async (db) => {
+    const accessResult = await db.query<{ team: boolean; workforce: boolean; integrations: boolean; setup: boolean }>(
+      `select coalesce(app.user_has_agency_permission($1,'agency.clients.invite_users'),false) as team,
+              coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as workforce,
+              coalesce(app.user_has_agency_permission($1,'agency.integrations.health'),false) as integrations,
+              coalesce(app.user_has_agency_permission($1,'setup.manage'),false) as setup`,
+      [user.id],
+    );
+    const access = accessResult.rows[0] ?? { team: false, workforce: false, integrations: false, setup: false };
     const { rows: org } = await db.query<TenantDetail["org"]>(
       "select id, name, slug, status, kind, is_demo, industry, website, timezone, created_at, onboarding_completed_at, suspended_reason from organizations where id = $1",
       [orgId],
@@ -145,19 +159,20 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       [orgId],
     );
     return {
+      access,
       org: org[0],
-      members: members.rows,
-      invitations: invitations.rows,
-      agents: agents.rows,
-      heldVersions: held.rows,
-      heldKnowledge: heldKnowledge.rows,
-      provisioning: provisioning.rows,
-      ghl: ghl.rows[0] ?? null,
-      integrations: integrations.rows,
-      billing: billing.rows[0] ?? null,
+      members: access.team ? members.rows : [],
+      invitations: access.team ? invitations.rows : [],
+      agents: access.workforce ? agents.rows : [],
+      heldVersions: access.workforce ? held.rows : [],
+      heldKnowledge: access.workforce ? heldKnowledge.rows : [],
+      provisioning: access.workforce ? provisioning.rows : [],
+      ghl: access.integrations ? ghl.rows[0] ?? null : null,
+      integrations: access.integrations ? integrations.rows : [],
+      billing: access.setup ? billing.rows[0] ?? null : null,
       usage: await usageSummary(db, orgId),
-      staff: staff.rows,
-      failedRuns: failedRuns.rows,
+      staff: access.team ? staff.rows : [],
+      failedRuns: access.workforce ? failedRuns.rows : [],
     };
   });
 }
@@ -249,6 +264,7 @@ export async function listAgencyAgents(user: SessionUser) {
       profile_check_status: string | null; profile_check_profile_id: string | null; profile_check_gateway_id: string | null;
       profile_check_detail: string | null; profile_check_at: Date | null;
       profile_verified_at: Date | null; profile_identity_verified: boolean | null; tool_permissions_status: string | null;
+      full_capabilities_acknowledged: boolean;
     }>(
       `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
               a.last_health_check_at,a.last_health_detail,a.last_health_ok,a.hermes_gateway_id,g.status as gateway_status,
@@ -260,10 +276,14 @@ export async function listAgencyAgents(user: SessionUser) {
               pc.status as profile_check_status,pc.profile_id as profile_check_profile_id,pc.gateway_id as profile_check_gateway_id,
               pc.detail as profile_check_detail,pc.checked_at as profile_check_at,
               pc.verified_at as profile_verified_at,pc.identity_verified as profile_identity_verified,
-              pc.tool_permissions_status
+              pc.tool_permissions_status,
+              coalesce(ack_policy.id is not null and ack.verified_profile=a.hermes_profile and agent_policy.id is null,false) as full_capabilities_acknowledged
        from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
        left join hermes_gateways g on g.id=a.hermes_gateway_id
        left join agency_hermes_profile_checks pc on pc.agent_instance_id=a.id and pc.org_id=a.org_id
+       left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+       left join hermes_tool_policies ack_policy on ack_policy.id=ack.policy_id and ack_policy.scope_kind='internal_agency' and ack_policy.name='Full Hermes Capabilities'
+       left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
        where o.kind='agency' and o.id=$1 order by ro.sort_order`,
       [agencyId],
     );

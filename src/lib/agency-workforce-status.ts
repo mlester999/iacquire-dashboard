@@ -1,5 +1,5 @@
 export type AgencyConnectionState = "setup_required" | "not_tested" | "verified" | "failed";
-export type AgencyToolReviewState = "not_checked" | "verified" | "review_needed" | "incomplete" | "unavailable";
+export type AgencyToolReviewState = "not_checked" | "verified" | "review_needed" | "incomplete" | "unavailable" | "acknowledged";
 
 export interface AgencyWorkforceStatusInput {
   mappedCorrectly: boolean;
@@ -12,6 +12,7 @@ export interface AgencyWorkforceStatusInput {
   profileIdentityVerified: boolean | null;
   gatewayStatus: string | null;
   toolPermissionsStatus: string | null;
+  fullCapabilitiesAcknowledged?: boolean;
 }
 
 /** A profile check is current only when it matches the profile and gateway saved on the employee. */
@@ -52,6 +53,10 @@ export function deriveAgencyWorkforceStatus(input: AgencyWorkforceStatusInput): 
       default: tools = "not_checked";
     }
   }
+
+  // A verified internal profile may run under the explicit Super Admin acknowledgement.
+  // Keep this distinct from verified inventory so the unresolved tool inventory remains visible.
+  if (input.fullCapabilitiesAcknowledged && checkIsCurrent && connection === "verified" && tools !== "verified") tools = "acknowledged";
 
   return { connection, tools, checkIsCurrent };
 }

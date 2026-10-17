@@ -297,6 +297,29 @@ export function listMigrationFiles(): string[] {
 
 const migrationPrefix = (file: string) => file.slice(0, file.indexOf("_"));
 
+/** Select exact migration versions while retaining repository order. */
+export function selectMigrationFiles(versions?: readonly string[]): string[] {
+  const files = listMigrationFiles();
+  if (versions === undefined) return files;
+  if (!versions.length) throw new Error("Pass at least one exact migration version after --only.");
+  if (new Set(versions).size !== versions.length) throw new Error("A migration version was requested more than once.");
+
+  const byVersion = new Map(files.map((file) => [file.replace(/\.sql$/, ""), file]));
+  const unknown = versions.filter((version) => !byVersion.has(version));
+  if (unknown.length) throw new Error(`Unknown migration version(s): ${unknown.join(", ")}. Pass exact filenames without .sql.`);
+
+  const selected = new Set(versions);
+  return files.filter((file) => selected.has(file.replace(/\.sql$/, "")));
+}
+
+const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
+  "0039_agency_team_permission_overrides": [
+    "0037_service_role_integration_credential_access",
+    "0038_agency_team_and_hermes_policies",
+  ],
+  "0040_agency_workforce_permissions": ["0039_agency_team_permission_overrides"],
+};
+
 /**
  * Versions already applied. Besides this app's own table, the Supabase CLI history is honoured
  * when it exists, so a database migrated with `supabase db push` is never migrated twice.
@@ -330,7 +353,8 @@ async function recordInSupabaseHistory(target: Driver, file: string) {
     .catch(() => undefined);
 }
 
-export async function runMigrations(d?: Driver): Promise<string[]> {
+export async function runMigrations(d?: Driver, selectedVersions?: readonly string[]): Promise<string[]> {
+  const files = selectMigrationFiles(selectedVersions);
   const target = d ?? (await driver());
   const applied = await appliedVersions(target);
   if (target.kind === "pglite" && !applied.has(COMPAT_VERSION)) {
@@ -339,23 +363,29 @@ export async function runMigrations(d?: Driver): Promise<string[]> {
 insert into schema_migrations (version) values ('${COMPAT_VERSION}');`);
   }
   const ran: string[] = [];
-  for (const file of listMigrationFiles()) {
+  for (const file of files) {
     const version = file.replace(/\.sql$/, "");
     if (applied.has(version)) continue;
+    const missingPrerequisites = (MIGRATION_PREREQUISITES[version] ?? []).filter((required) => !applied.has(required));
+    if (missingPrerequisites.length) {
+      throw new Error(`Cannot apply ${version} before ${missingPrerequisites.join(", ")}.`);
+    }
     const sql = fs.readFileSync(path.join(migrationsDir(), file), "utf8");
     // `version` is constrained by MIGRATION_FILE, so interpolation is safe.
     await target.execScript(`${sql}
 insert into schema_migrations (version) values ('${version}');`);
     await recordInSupabaseHistory(target, file);
+    applied.add(version);
     ran.push(version);
   }
   return ran;
 }
 
-export async function pendingMigrations(): Promise<string[]> {
+export async function pendingMigrations(selectedVersions?: readonly string[]): Promise<string[]> {
+  const files = selectMigrationFiles(selectedVersions);
   const d = await driver();
   const applied = await appliedVersions(d);
-  return listMigrationFiles()
+  return files
     .map((f) => f.replace(/\.sql$/, ""))
     .filter((v) => !applied.has(v));
 }

@@ -61,7 +61,9 @@ function useAction() {
 }
 
 export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string }) {
-  const [tab, setTab] = React.useState(["overview","workforce","reviews","integrations","usage","billing","team"].includes(initialTab)?initialTab:"overview");
+  const visibleTabs = ["overview", ...(data.access.workforce ? ["workforce", "reviews"] : []), ...(data.access.integrations ? ["integrations"] : []), "usage", ...(data.access.setup ? ["billing"] : []), ...(data.access.team ? ["team"] : [])];
+  const [tab, setTab] = React.useState(visibleTabs.includes(initialTab) ? initialTab : "overview");
+  const activeTab = visibleTabs.includes(tab) ? tab : "overview";
   const held = data.heldVersions.length + data.heldKnowledge.length;
   // The owner's pending invitation (expired ones included) can be re-sent straight from the header.
   const ownerInvite = data.invitations.find((i) => i.role === "owner") ?? null;
@@ -93,11 +95,11 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
           }
           action={
             <>
-              <ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
+              {data.access.setup && <ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
                 <ClipboardCheck className="size-4" /> Setup manager
-              </ButtonLink>
+              </ButtonLink>}
               {superAdmin && ownerInvite && <ResendInvitationButton orgId={data.org.id} invitation={ownerInvite} label="Resend invite" />}
-              <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink>
+              {data.access.integrations && <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink>}
               <ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink>
               <ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="secondary" size="sm"><ShieldCheck className="size-4" /> Readiness review</ButtonLink>
               {superAdmin && <ButtonLink href={`/admin/clients/${data.org.id}/offboarding`} variant="secondary" size="sm"><DoorClosed className="size-4" /> Offboarding</ButtonLink>}
@@ -106,10 +108,12 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
         >
           <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {([
-              { label: "Client team", value: activeMembers, icon: <Users />, tone: "primary" },
-              { label: "Included AI employees", value: enabledAgents, icon: <Sparkles />, tone: "violet" },
-              { label: "Awaiting review", value: held, icon: <ClipboardCheck />, tone: held > 0 ? "warning" : "success" },
-              { label: "Assigned agency staff", value: assignedStaff, icon: <UserCheck />, tone: "primary" },
+              ...(data.access.team ? [{ label: "Client team", value: activeMembers, icon: <Users />, tone: "primary" as const }] : []),
+              ...(data.access.workforce ? [
+                { label: "Included AI employees", value: enabledAgents, icon: <Sparkles />, tone: "violet" as const },
+                { label: "Awaiting review", value: held, icon: <ClipboardCheck />, tone: held > 0 ? "warning" as const : "success" as const },
+                { label: "Assigned agency staff", value: assignedStaff, icon: <UserCheck />, tone: "primary" as const },
+              ] : []),
             ] as Array<{ label: string; value: number; icon: React.ReactNode; tone: StatusTone }>).map((s) => (
               <StatTile key={s.label} label={s.label} value={s.value} icon={s.icon} tone={s.tone} />
             ))}
@@ -117,26 +121,28 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
         </PageHero>
       <Tabs
         id="client-tabs"
-        value={tab}
+        value={activeTab}
         onValueChange={setTab}
         items={[
           { value: "overview", label: "Overview" },
-          { value: "workforce", label: "AI workforce", count: enabledAgents || undefined },
-          { value: "reviews", label: "Reviews", count: held || undefined },
-          { value: "integrations", label: "Integrations" },
+          ...(data.access.workforce ? [
+            { value: "workforce", label: "AI workforce", count: enabledAgents || undefined },
+            { value: "reviews", label: "Reviews", count: held || undefined },
+          ] : []),
+          ...(data.access.integrations ? [{ value: "integrations", label: "Integrations" }] : []),
           { value: "usage", label: "Usage & limits" },
-          { value: "billing", label: "Billing" },
-          { value: "team", label: "Team & staff", count: activeMembers + data.invitations.length || undefined },
+          ...(data.access.setup ? [{ value: "billing", label: "Billing" }] : []),
+          ...(data.access.team ? [{ value: "team", label: "Team & staff", count: activeMembers + data.invitations.length || undefined }] : []),
         ]}
       >
-      <motion.div key={tab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
-      {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
-      {tab === "workforce" && <WorkforceTab data={data} superAdmin={superAdmin} />}
-      {tab === "reviews" && <ReviewsTab data={data} />}
-      {tab === "integrations" && <IntegrationsTab data={data} superAdmin={superAdmin} />}
-      {tab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}
-      {tab === "billing" && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
-      {tab === "team" && <TeamTab data={data} superAdmin={superAdmin} />}
+      <motion.div key={activeTab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
+      {activeTab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
+      {activeTab === "workforce" && data.access.workforce && <WorkforceTab data={data} superAdmin={superAdmin} />}
+      {activeTab === "reviews" && data.access.workforce && <ReviewsTab data={data} />}
+      {activeTab === "integrations" && data.access.integrations && <IntegrationsTab data={data} superAdmin={superAdmin} />}
+      {activeTab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}
+      {activeTab === "billing" && data.access.setup && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
+      {activeTab === "team" && data.access.team && <TeamTab data={data} superAdmin={superAdmin} />}
       </motion.div>
       </Tabs>
     </div>
@@ -157,11 +163,11 @@ function OverviewTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin:
   const owner = data.members.find((m) => m.role === "owner") ?? null;
   const suspended = data.org.status === "suspended";
   const milestones: Array<{ label: string; hint: string; done: boolean }> = [
-    { label: "Owner accepted invitation", done: Boolean(owner), hint: owner ? owner.full_name || owner.email : "Waiting for the owner to accept" },
+    ...(data.access.team ? [{ label: "Owner accepted invitation", done: Boolean(owner), hint: owner ? owner.full_name || owner.email : "Waiting for the owner to accept" }] : []),
     { label: "Onboarding completed", done: Boolean(data.org.onboarding_completed_at), hint: data.org.onboarding_completed_at ? `Submitted ${formatDate(data.org.onboarding_completed_at, timeZone)}` : "The company questionnaire has not been submitted" },
-    { label: `Employees online (${online}/${enabled})`, done: enabled > 0 && online === enabled, hint: enabled === 0 ? "No AI employees are enabled" : online === enabled ? "Every enabled employee passed its health check" : `${enabled - online} enabled ${enabled - online === 1 ? "employee is" : "employees are"} not online` },
-    { label: "CRM location verified", done: data.ghl?.status === "connected", hint: data.ghl ? data.ghl.location_name || `Location ${data.ghl.location_id}` : "No CRM location is mapped yet" },
-    { label: "Setup fee paid or waived", done: ["paid", "waived"].includes(data.billing?.setup_payment_status ?? ""), hint: sentenceCase(data.billing?.setup_payment_status ?? "not_invoiced") },
+    ...(data.access.workforce ? [{ label: `Employees online (${online}/${enabled})`, done: enabled > 0 && online === enabled, hint: enabled === 0 ? "No AI employees are enabled" : online === enabled ? "Every enabled employee passed its health check" : `${enabled - online} enabled ${enabled - online === 1 ? "employee is" : "employees are"} not online` }] : []),
+    ...(data.access.integrations ? [{ label: "CRM location verified", done: data.ghl?.status === "connected", hint: data.ghl ? data.ghl.location_name || `Location ${data.ghl.location_id}` : "No CRM location is mapped yet" }] : []),
+    ...(data.access.setup ? [{ label: "Setup fee paid or waived", done: ["paid", "waived"].includes(data.billing?.setup_payment_status ?? ""), hint: sentenceCase(data.billing?.setup_payment_status ?? "not_invoiced") }] : []),
   ];
   const doneCount = milestones.filter((m) => m.done).length;
   return (

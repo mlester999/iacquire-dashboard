@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { withServiceRole, withSystem } from "@/server/db";
 import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 import {
   connectAgencyHermesProfile,
   getAgencyProfileHistory,
@@ -13,6 +14,8 @@ import { ensureAgencyWorkforceRegistry, listClientWorkforceSummaries } from "@/s
 import { listIntegrationManager, saveIntegrationConnection, testIntegrationConnection } from "@/server/integrations/manager";
 import { connectHermesProfile } from "@/server/workforce/service";
 import { listHermesGateways } from "@/server/integrations/hermes/gateways";
+import { acknowledgeInternalFullCapabilities, getHermesToolPolicyView } from "@/server/workforce/tool-policies";
+import { startAgentRun } from "@/server/integrations/hermes/client";
 import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
@@ -209,6 +212,13 @@ describe("agency Hermes workforce isolation", () => {
     expect(staffManager.hermesGateways.every((gateway) => gateway.mappedProfileCount === 0 && gateway.clientMappedProfileCount === 0)).toBe(true);
     expect(JSON.stringify(staffManager)).not.toContain("synthetic-other-client-profile");
 
+    await updateAgencyUserPermission(admin, {
+      userId: staff.id,
+      permission: "agency.workforce.view",
+      effect: "deny",
+    });
+    await expect(listClientWorkforceSummaries(staff)).rejects.toMatchObject({ code: "forbidden" });
+
     const { rows: checkCountBefore } = await withSystem((db) => db.query<{ count: number }>(
       "select count(*)::int as count from agency_hermes_profile_checks where agent_instance_id=$1",
       [salesAgentId],
@@ -236,6 +246,71 @@ describe("agency Hermes workforce isolation", () => {
       apiKey: PROFILE_KEYS[AGENCY_HERMES_PROFILE_IDS.sales_assistant],
       confirmedExistingProfile: true,
     })).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("lets only a Super Admin acknowledge all six verified internal profiles and unlocks that internal run path", async () => {
+    await ensureAgencyWorkforceRegistry(admin);
+    const { rows: agents } = await withSystem((db) => db.query<{ id: string; role_key: typeof AGENT_ROLE_KEYS[number] }>(
+      "select id,role_key from agent_instances where org_id=$1 order by role_key",
+      [agencyOrgId],
+    ));
+    expect(agents.map((agent) => agent.role_key).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
+
+    for (const agent of agents) {
+      const profile = AGENCY_HERMES_PROFILE_IDS[agent.role_key];
+      await connectAgencyHermesProfile(admin, {
+        agentId: agent.id,
+        gatewayId,
+        profile,
+        apiKey: PROFILE_KEYS[profile],
+        confirmedExistingProfile: true,
+      });
+    }
+
+    const agentIds = agents.map((agent) => agent.id);
+    await expect(acknowledgeInternalFullCapabilities(staff, agentIds)).rejects.toMatchObject({ code: "forbidden" });
+    await withSystem((db) => db.query("update agent_instances set enabled=false where id=$1", [agentIds[0]]));
+    await expect(acknowledgeInternalFullCapabilities(admin, agentIds)).rejects.toMatchObject({ code: "conflict" });
+    await withSystem((db) => db.query("update agent_instances set enabled=true where id=$1", [agentIds[0]]));
+    await acknowledgeInternalFullCapabilities(admin, agentIds);
+
+    const view = await getHermesToolPolicyView(admin);
+    const internalProfiles = view.agents.filter((agent) => agent.orgKind === "agency");
+    expect(internalProfiles).toHaveLength(AGENT_ROLE_KEYS.length);
+    expect(internalProfiles.every((agent) => agent.identityMapped && agent.fullCapabilitiesAcknowledged)).toBe(true);
+    expect(view.internalDefault.acknowledgedFullCapabilities).toBe(true);
+    const workforceCards = await listAgencyAgents(admin);
+    expect(workforceCards).toHaveLength(AGENT_ROLE_KEYS.length);
+    expect(workforceCards.every((agent) => agent.full_capabilities_acknowledged)).toBe(true);
+
+    const selectedAgent = agents.find((agent) => agent.role_key === "sales_assistant")!;
+    const runStart = mock.requests.length;
+    const result = await startAgentRun(selectedAgent.id, agencyOrgId, {
+      baseUrl: mock.url,
+      profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant,
+      apiKey: PROFILE_KEYS[AGENCY_HERMES_PROFILE_IDS.sales_assistant],
+    }, { input: "synthetic acknowledged internal run", idempotencyKey: `acknowledged-${crypto.randomUUID()}` });
+    expect(result.runId).toBeTruthy();
+    expect(mock.requests.slice(runStart).map((request) => request.method)).toEqual(["GET", "GET", "POST"]);
+  });
+
+  it("keeps client live runs blocked when the gateway cannot prove a complete tool inventory", async () => {
+    const { rows } = await withSystem((db) => db.query<{ id: string; role_key: typeof AGENT_ROLE_KEYS[number] }>(
+      "select id,role_key from agent_instances where org_id=$1 order by role_key limit 1",
+      [clientOrg.id],
+    ));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ run_id: "must-not-start" }));
+    try {
+      await expect(startAgentRun(rows[0].id, clientOrg.id, {
+        baseUrl: "https://gateway.example.test",
+        profile: "client-test-profile",
+        apiKey: "synthetic-client-profile-key",
+      }, { input: "synthetic client request", idempotencyKey: `blocked-client-${crypto.randomUUID()}` }))
+        .rejects.toMatchObject({ kind: "bad_response" });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("rejects out-of-scope, default and unmapped profile verification rows at the database boundary", async () => {

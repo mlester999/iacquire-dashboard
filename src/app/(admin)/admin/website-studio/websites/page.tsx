@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { Globe, Plus } from "lucide-react";
-import { requireAgency } from "@/server/tenancy/context";
+import { agencyUserHasPermission, requireAgency } from "@/server/tenancy/context";
 import { listManagedWebsites, managedClients } from "@/server/websites/admin";
-import { roleHasPermission } from "@/lib/permissions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui/primitives";
 import { AvatarTile } from "@/components/ui/status";
 import { PageHero } from "@/components/ui/workspace";
@@ -14,7 +13,7 @@ export default async function ClientWebsitesPage() {
   const user = await requireAgency();
   const [sites, clients] = await Promise.all([listManagedWebsites(user), managedClients(user)]);
   const without = clients.filter((c) => !c.hasWebsite);
-  const canEdit = roleHasPermission(user.platformRole === "none" ? null : user.platformRole, "website.edit");
+  const canEdit = await agencyUserHasPermission(user.id, "website.edit");
   return (
     <div className="module-stack">
       <PageHero

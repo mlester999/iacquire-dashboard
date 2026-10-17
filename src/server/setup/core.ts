@@ -5,7 +5,6 @@ import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles, type NotificationInput } from "@/server/notifications";
 import { sendEmail } from "@/server/email";
 import { env } from "@/server/env";
-import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { publishSetupChange } from "@/server/setup/hub";
 import { publishSetupRevision } from "@/server/setup/realtime";
@@ -317,7 +316,13 @@ export async function assertAgencyAccess(admin: SessionUser, orgId: string, leve
   if (!actualRole || actualRole === "none" || actualRole !== admin.platformRole) throw new AppError("forbidden", "Agency access is required; authorization has changed. Sign in again.");
   if (admin.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
   if (level === "super_admin" && admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can do this.");
-  if (!(await agencyCanAccessOrg(admin, orgId))) throw new AppError("not_found", "Client not found.");
+  const access = await withSystem((db) => db.query<{ in_scope: boolean; can_manage_setup: boolean }>(
+    `select app.user_can_access_org($1,$2) as in_scope,
+       coalesce(app.user_has_agency_permission($1,'setup.manage'),false) as can_manage_setup`,
+    [admin.id, orgId],
+  ));
+  if (access.rows[0]?.in_scope !== true) throw new AppError("not_found", "Client not found.");
+  if (access.rows[0]?.can_manage_setup !== true) throw new AppError("forbidden", "Your agency role does not allow Setup Center operations.");
 }
 
 /** Hold role and assignment authorization for the duration of a privileged setup write. */
@@ -325,10 +330,13 @@ export async function lockAgencySetupAccess(db: Queryable, admin: SessionUser, o
   const { rows } = await db.query<{ platform_role: string }>("select platform_role from users where id=$1 and status='active' for share", [admin.id]);
   const role=rows[0]?.platform_role;
   if (!role || role==="none" || role!==admin.platformRole) throw new AppError("forbidden", "Agency authorization has changed. Sign in again.");
-  if (role==="agency_staff") {
-    const assignment=await db.query("select 1 from staff_assignments where user_id=$1 and org_id=$2 for share", [admin.id,orgId]);
-    if (!assignment.rows.length) throw new AppError("forbidden", "You are no longer assigned to this client.");
-  }
+  const access=await db.query<{in_scope:boolean;can_manage_setup:boolean}>(
+    `select app.user_can_access_org($1,$2) as in_scope,
+       coalesce(app.user_has_agency_permission($1,'setup.manage'),false) as can_manage_setup`,
+    [admin.id,orgId],
+  );
+  if(access.rows[0]?.in_scope!==true) throw new AppError("forbidden", "You are no longer assigned to this client.");
+  if(access.rows[0]?.can_manage_setup!==true) throw new AppError("forbidden", "Your agency role no longer allows Setup Center operations.");
 }
 
 /** Cached page context cannot authorize an owner/admin response after a membership change. */

@@ -6,7 +6,18 @@ import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { ORG_COOKIE, getCurrentUser, requireUser, requireUserOrThrow } from "@/server/auth/session";
 import type { SessionUser } from "@/server/auth/service";
-import { PERMISSION_MATRIX, effectivePermission, isDelegablePermission, type AgencyPermission, type OrgRole, type Permission, type PermissionOverrides } from "@/lib/permissions";
+import {
+  isAgencyTeamPermission,
+  PERMISSION_MATRIX,
+  effectivePermission,
+  isDelegablePermission,
+  type AgencyPermission,
+  type AgencyPermissionOverrides,
+  type OrgRole,
+  type Permission,
+  type PermissionOverrides,
+  type PlatformRole,
+} from "@/lib/permissions";
 
 export interface Membership {
   orgId: string;
@@ -70,6 +81,30 @@ export async function loadPermissionOverrides(userId: string, orgId: string): Pr
   const out: PermissionOverrides = {};
   for (const r of rows) if (isDelegablePermission(r.permission)) out[r.permission] = r.effect;
   return out;
+}
+
+/** Per-person agency action overrides. Role defaults remain in role_permissions and are resolved on every request. */
+export async function loadAgencyPermissionOverrides(userId: string): Promise<AgencyPermissionOverrides> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ permission: string; effect: "allow" | "deny" }>("select permission,effect from agency_user_permission_overrides where user_id=$1", [userId]),
+  );
+  const out: AgencyPermissionOverrides = {};
+  for (const row of rows) if (isAgencyTeamPermission(row.permission)) out[row.permission] = row.effect;
+  return out;
+}
+
+export async function loadAgencyRolePermissions(role: PlatformRole): Promise<Set<Permission>> {
+  if (role === "none") return new Set();
+  const { rows } = await withSystem((db) => db.query<{ permission: string }>("select permission from role_permissions where role=$1", [role]));
+  return new Set(rows.map((row) => row.permission).filter((permission): permission is Permission => permission in PERMISSION_MATRIX));
+}
+
+export async function agencyUserHasPermission(userId: string, permission: AgencyPermission | Permission): Promise<boolean> {
+  const { rows } = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select coalesce(app.user_has_agency_permission($1,$2),false) as allowed",
+    [userId, permission],
+  ));
+  return rows[0]?.allowed === true;
 }
 
 export function buildContext(user: SessionUser, org: Membership, memberships: Membership[], overrides: PermissionOverrides = {}): OrgContext {
@@ -169,6 +204,17 @@ export async function agencyCanAccessOrg(user: SessionUser, orgId: string): Prom
     db.query<{ allowed: boolean }>("select app.user_can_access_org($1, $2) as allowed", [user.id, orgId]),
   );
   return rows[0]?.allowed === true;
+}
+
+/** Checked against the current profile and client-scope function on each request. */
+export async function requireAgencyOrgPermissionOrThrow(orgId: string, permission: Permission): Promise<SessionUser> {
+  const user = await requireAgencyOrThrow();
+  const { rows } = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,$3) as allowed",
+    [user.id, orgId, permission],
+  ));
+  if (rows[0]?.allowed !== true) throw new AppError("forbidden", "Your role or client scope does not allow this action.");
+  return user;
 }
 
 export async function requireAgencyOrgAccessOrThrow(orgId: string, level: "staff" | "super_admin" = "staff") {

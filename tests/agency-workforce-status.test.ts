@@ -23,6 +23,30 @@ describe("agency workforce connection and tool readiness", () => {
     });
   });
 
+  it("shows a current Super Admin acknowledgement as authorized while preserving inventory uncertainty", () => {
+    expect(deriveAgencyWorkforceStatus({ ...verifiedRestricted, fullCapabilitiesAcknowledged: true })).toEqual({
+      connection: "verified",
+      tools: "acknowledged",
+      checkIsCurrent: true,
+    });
+    expect(deriveAgencyWorkforceStatus({ ...verifiedRestricted, toolPermissionsStatus: "verified", fullCapabilitiesAcknowledged: true })).toMatchObject({
+      connection: "verified",
+      tools: "verified",
+    });
+  });
+
+  it("does not let an acknowledgement replace a current verified identity check", () => {
+    expect(deriveAgencyWorkforceStatus({ ...verifiedRestricted, profileCheckProfileId: "old-profile", fullCapabilitiesAcknowledged: true })).toEqual({
+      connection: "not_tested",
+      tools: "not_checked",
+      checkIsCurrent: false,
+    });
+    expect(deriveAgencyWorkforceStatus({ ...verifiedRestricted, profileCheckStatus: "cloudflare_auth_failed", fullCapabilitiesAcknowledged: true })).toMatchObject({
+      connection: "failed",
+      tools: "not_checked",
+    });
+  });
+
   it("shows a failed current profile check without calling the gateway connection verified", () => {
     expect(deriveAgencyWorkforceStatus({ ...verifiedRestricted, profileCheckStatus: "cloudflare_auth_failed" })).toEqual({
       connection: "failed",

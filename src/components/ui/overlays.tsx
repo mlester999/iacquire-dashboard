@@ -18,6 +18,7 @@ export function Dialog({
   children,
   footer,
   size = "md",
+  fullScreen = false,
   trigger,
   icon,
   ariaLabel,
@@ -29,6 +30,7 @@ export function Dialog({
   children?: React.ReactNode;
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  fullScreen?: boolean;
   trigger?: React.ReactNode;
   /** Optional icon rendered in a tinted tile beside the title. */
   icon?: React.ReactNode;
@@ -68,9 +70,10 @@ export function Dialog({
             >
               <motion.div
                 className={cn(
-                  "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-line bg-surface shadow-float outline-none",
-                  "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100vw-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl",
-                  width,
+                  fullScreen
+                    ? "fixed inset-0 z-50 flex h-dvh max-h-dvh w-full flex-col rounded-none border-0 bg-surface shadow-float outline-none sm:inset-3 sm:h-[calc(100dvh-24px)] sm:max-h-[calc(100dvh-24px)] sm:w-[calc(100vw-24px)] sm:rounded-2xl sm:border"
+                    : "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-line bg-surface shadow-float outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100vw-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl",
+                  !fullScreen && width,
                 )}
                 initial={{ opacity: 0, y: 24, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}

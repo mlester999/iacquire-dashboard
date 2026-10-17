@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
-import { agencyReply, clientReply, createTicket, getTicketForClient, listAgencyTickets, listTickets, updateTicket } from "@/server/support/service";
+import { agencyReply, clientReply, createTicket, getTicketForAgency, getTicketForClient, listAgencyTickets, listTickets, updateTicket } from "@/server/support/service";
 import { answerHelpQuestion, REDIRECT_MESSAGE } from "@/server/help/service";
 import { completeOnboarding, getOnboarding, saveOnboardingProgress } from "@/server/onboarding/service";
 import { createResearchRequest, leadsToCsv, normalizeScore, parseResearchOutput, requestCrmImport, reviewLeads } from "@/server/leads/service";
 import { assertAssignableLocation, createClientTenant } from "@/server/admin/tenants";
+import { updateAgencyUserPermission } from "@/server/admin/team";
 import { saveKnowledgeSection, uploadKnowledgeDocument, readKnowledgeDocument } from "@/server/knowledge/service";
 import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 
@@ -50,6 +51,32 @@ describe("human support", () => {
     const staff = await createUser({ platformRole: "agency_staff" });
     const t = await createTicket(ctxFor(owner, org, "owner"), { subject: "Billing question", message: "Where is my invoice?" });
     await expect(agencyReply(agencyUser(staff, "agency_staff"), t.id, "hi", { internal: false })).rejects.toThrow(/not found/);
+  });
+
+  it("filters the agency support inbox by client scope and enforces each person's support grants", async () => {
+    const superAdmin = await createUser({ platformRole: "agency_super_admin" });
+    const assignedStaff = await createUser({ platformRole: "agency_staff" });
+    const unassignedStaff = await createUser({ platformRole: "agency_staff" });
+    const ticket = await createTicket(ctxFor(owner, org, "owner"), { subject: "Assigned support", message: "Please check this setup." });
+    await withSystem((db) => db.query(
+      "insert into staff_assignments(org_id,user_id,assigned_by) values($1,$2,$3)",
+      [org.id, assignedStaff.id, superAdmin.id],
+    ));
+
+    const assignedUser = agencyUser(assignedStaff, "agency_staff");
+    const unassignedUser = agencyUser(unassignedStaff, "agency_staff");
+    expect((await listAgencyTickets(assignedUser)).some((row) => row.id === ticket.id)).toBe(true);
+    expect((await listAgencyTickets(unassignedUser)).some((row) => row.id === ticket.id)).toBe(false);
+    await expect(getTicketForAgency(unassignedUser, ticket.id)).resolves.toBeNull();
+    await expect(agencyReply(unassignedUser, ticket.id, "No access", { internal: false })).rejects.toThrow(/not found/);
+
+    const adminUser = agencyUser(superAdmin, "agency_super_admin");
+    await updateAgencyUserPermission(adminUser, { userId: assignedStaff.id, permission: "agency.support.manage", effect: "deny" });
+    await expect(agencyReply(assignedUser, ticket.id, "No write grant", { internal: false })).rejects.toThrow(/does not allow/);
+    await expect(updateTicket(assignedUser, ticket.id, { status: "resolved" })).rejects.toThrow(/does not allow/);
+
+    await updateAgencyUserPermission(adminUser, { userId: assignedStaff.id, permission: "agency.support.view", effect: "deny" });
+    await expect(listAgencyTickets(assignedUser)).rejects.toThrow(/does not allow/);
   });
 });
 

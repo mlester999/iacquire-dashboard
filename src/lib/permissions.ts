@@ -151,8 +151,12 @@ export const PERMISSION_MATRIX = {
   "agency.tool_policies.manage": row("agency_super_admin"),
   "agency.integrations.health": row("agency_manager", "agency_super_admin"),
   "agency.integrations.manage": row("agency_super_admin"),
+  "agency.workforce.view": row(...STAFF),
+  "agency.workforce.manage": row("agency_manager", "agency_super_admin"),
   "agency.crm.read": row(...STAFF),
-  "agency.crm.manage": row(...STAFF),
+  "agency.crm.manage": row("agency_super_admin"),
+  "agency.support.view": row(...STAFF),
+  "agency.support.manage": row(...STAFF),
   "agency.security.manage": row("agency_super_admin"),
   "agency.billing.manage": row("agency_super_admin"),
   "agency.settings.manage": row("agency_super_admin"),
@@ -193,8 +197,12 @@ export const AGENCY_PERMISSION_INFO = {
   "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", delegable: false },
   "agency.integrations.health": { label: "View integration health", group: "Integrations", delegable: false },
   "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", delegable: false },
+  "agency.workforce.view": { label: "View assigned client AI workforce", group: "Client operations", delegable: true },
+  "agency.workforce.manage": { label: "Manage assigned client AI workforce", group: "Client operations", delegable: true },
   "agency.crm.read": { label: "Read assigned client CRM records", group: "Client operations", delegable: true },
   "agency.crm.manage": { label: "Update assigned client CRM records", group: "Client operations", delegable: true },
+  "agency.support.view": { label: "Read assigned client support tickets", group: "Client operations", delegable: true },
+  "agency.support.manage": { label: "Reply to and update assigned client support tickets", group: "Client operations", delegable: true },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", delegable: false },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", delegable: false },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", delegable: false },
@@ -203,9 +211,16 @@ export const AGENCY_PERMISSION_INFO = {
 } as const satisfies Record<Extract<Permission, `agency.${string}`>, { label: string; group: string; delegable: boolean }>;
 
 export type AgencyPermission = keyof typeof AGENCY_PERMISSION_INFO;
-export const AGENCY_DELEGABLE_PERMISSIONS = Object.entries(AGENCY_PERMISSION_INFO)
-  .filter(([, value]) => value.delegable)
-  .map(([permission]) => permission) as Array<AgencyPermission>;
+export const AGENCY_DELEGABLE_PERMISSIONS = [
+  "agency.clients.create",
+  "agency.clients.invite_users",
+  "agency.workforce.view",
+  "agency.workforce.manage",
+  "agency.crm.read",
+  "agency.crm.manage",
+  "agency.support.view",
+  "agency.support.manage",
+] as const satisfies readonly AgencyPermission[];
 
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   owner: "Full control, including billing, autonomous mode and the final say on escalations.",
@@ -230,7 +245,7 @@ export const DELEGABLE_PERMISSIONS = [
   "companies.view", "companies.edit", "tags.manage", "fields.manage", "smartlists.share",
   "sales.view", "pipelines.manage", "opportunities.edit", "opportunities.reopen", "opportunities.delete",
   "appointments.view", "appointments.book", "appointments.manage", "calendars.manage", "calendars.connect",
-  "tasks.manage", "notes.write", "inbox.view_all", "inbox.assign",
+  "tasks.manage", "notes.write", "inbox.view", "inbox.view_all", "inbox.reply", "inbox.notes", "inbox.assign",
   "workflows.view", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "calls.view", "analytics.export",
 ] as const satisfies readonly Permission[];
 export type DelegablePermission = (typeof DELEGABLE_PERMISSIONS)[number];
@@ -262,6 +277,9 @@ export const DELEGABLE_PERMISSION_INFO: Record<DelegablePermission, { label: str
   "tasks.manage": { label: "Create and complete tasks", group: "Work" },
   "notes.write": { label: "Write notes", group: "Work" },
   "inbox.view_all": { label: "See every conversation", group: "Messaging" },
+  "inbox.view": { label: "See assigned conversations", group: "Messaging" },
+  "inbox.reply": { label: "Reply to conversations", group: "Messaging" },
+  "inbox.notes": { label: "Add internal conversation notes", group: "Messaging" },
   "inbox.assign": { label: "Assign conversations", group: "Messaging" },
   "workflows.view": { label: "See automations", group: "Automation" },
   "workflows.manage": { label: "Build and change automations", group: "Automation" },
@@ -272,6 +290,148 @@ export const DELEGABLE_PERMISSION_INFO: Record<DelegablePermission, { label: str
   "calls.view": { label: "See call records", group: "Reporting" },
   "analytics.export": { label: "Export reports", group: "Reporting" },
 };
+
+/**
+ * Action permissions the agency Super Admin may customize for a Manager or Staff account.
+ * This deliberately excludes owner/security, billing, credential, Hermes policy, bulk-send and
+ * provider-switch controls. Every entry is backed by a database or server authorization check.
+ */
+export const AGENCY_TEAM_MANAGED_PERMISSIONS = [
+  ...AGENCY_DELEGABLE_PERMISSIONS,
+  ...DELEGABLE_PERMISSIONS,
+  "crm.view",
+  "setup.manage",
+  "projects.manage",
+  "quotes.manage",
+  "website.publish",
+] as const satisfies readonly Permission[];
+
+export type AgencyTeamPermission = (typeof AGENCY_TEAM_MANAGED_PERMISSIONS)[number];
+
+const AGENCY_TEAM_EXTRA_PERMISSION_INFO = {
+  "crm.view": { label: "Open Native CRM", group: "Native CRM" },
+  "setup.manage": { label: "Manage Setup Center operations", group: "Setup Center" },
+  "projects.manage": { label: "Manage client projects and updates", group: "Projects and quotes" },
+  "quotes.manage": { label: "Prepare and manage client quotes", group: "Projects and quotes" },
+  "website.publish": { label: "Publish client websites", group: "Website Studio" },
+} as const satisfies Record<
+  Exclude<AgencyTeamPermission, AgencyPermission | DelegablePermission>,
+  { label: string; group: string }
+>;
+
+export const AGENCY_TEAM_PERMISSION_INFO = {
+  ...AGENCY_PERMISSION_INFO,
+  ...DELEGABLE_PERMISSION_INFO,
+  ...AGENCY_TEAM_EXTRA_PERMISSION_INFO,
+} as const satisfies Record<AgencyTeamPermission, { label: string; group: string }>;
+
+export type AgencyTeamProtectedPermission = Exclude<Permission, AgencyTeamPermission>;
+
+/** Permissions shown on agency member details but intentionally controlled by role or client-level policy. */
+export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
+  "workspace.view": { label: "View client workspace", group: "Workspace", note: "Client scope and resource access still apply." },
+  "workspace.manage_profile": { label: "Edit client workspace profile", group: "Workspace", note: "Client owner or agency role control." },
+  "team.view": { label: "View client team", group: "Team and access", note: "Client scope and resource access still apply." },
+  "team.manage": { label: "Manage client users and roles", group: "Team and access", note: "Client owner or agency role control." },
+  "agents.use": { label: "Use client AI agents", group: "AI workforce", note: "Agent availability and client policy still apply." },
+  "agents.configure": { label: "Configure client AI agents", group: "AI workforce", note: "Client owner control." },
+  "knowledge.view": { label: "View shared knowledge", group: "Knowledge", note: "Client scope and resource access still apply." },
+  "knowledge.edit": { label: "Edit shared knowledge", group: "Knowledge", note: "Client owner or agency role control." },
+  "leads.view": { label: "View leads", group: "Leads", note: "Client scope and resource access still apply." },
+  "leads.research": { label: "Research leads", group: "Leads", note: "Client owner control." },
+  "leads.review": { label: "Review leads", group: "Leads", note: "Client owner control." },
+  "leads.export": { label: "Export leads", group: "Leads", note: "Client owner control." },
+  "retention.view": { label: "View retention programs", group: "Retention", note: "Client scope and resource access still apply." },
+  "retention.edit": { label: "Edit retention programs", group: "Retention", note: "Client owner or agency role control." },
+  "retention.activate": { label: "Activate retention programs", group: "Retention", note: "Requires client owner approval." },
+  "analytics.view": { label: "View analytics", group: "Reports", note: "Client scope and resource access still apply." },
+  "approvals.view": { label: "View approvals", group: "Approvals", note: "Client scope and resource access still apply." },
+  "approvals.decide": { label: "Review and decide approvals", group: "Approvals", note: "Client owner or agency role control." },
+  "approvals.decide_high": { label: "Approve high impact actions", group: "Approvals", note: "Reserved for the client owner." },
+  "activity.view": { label: "View client activity log", group: "Security and activity", note: "Client scope and resource access still apply." },
+  "integrations.view": { label: "View client integrations", group: "Integrations", note: "Client scope and resource access still apply." },
+  "usage.view": { label: "View client usage", group: "Usage and billing", note: "Client scope and resource access still apply." },
+  "billing.view": { label: "View client billing", group: "Usage and billing", note: "Client billing rules still apply." },
+  "support.use": { label: "Use client support tools", group: "Support", note: "Client scope and support workflow rules still apply." },
+  "setup.view": { label: "View setup tasks", group: "Setup Center", note: "Client scope and resource access still apply." },
+  "setup.respond": { label: "Respond to setup requests", group: "Setup Center", note: "Client owner or agency role control." },
+  "setup.activate": { label: "Activate completed setup", group: "Setup Center", note: "Super Admin approval is required." },
+  "projects.view": { label: "View client projects", group: "Projects and quotes", note: "Client scope and resource access still apply." },
+  "projects.request": { label: "Request client work", group: "Projects and quotes", note: "Client owner or agency role control." },
+  "projects.approve_quote": { label: "Approve client quotes", group: "Projects and quotes", note: "Reserved for the client owner." },
+  "catalog.manage": { label: "Manage service catalog", group: "Agency operations", note: "Super Admin only." },
+  "portfolio.manage": { label: "Manage agency portfolio", group: "Agency operations", note: "Super Admin only." },
+  "maintenance.view": { label: "View maintenance plans", group: "Maintenance", note: "Client scope and resource access still apply." },
+  "maintenance.request": { label: "Request maintenance", group: "Maintenance", note: "Client owner or agency role control." },
+  "maintenance.manage_plan": { label: "Manage maintenance plan", group: "Maintenance", note: "Reserved for the client owner." },
+  "maintenance.manage": { label: "Operate maintenance service", group: "Maintenance", note: "Client scope and agency role control." },
+  "automation.pause": { label: "Pause client automation", group: "Automation", note: "Client owner or agency role control." },
+  "automation.go_autonomous": { label: "Enable autonomous AI actions", group: "Automation", note: "Reserved for the client owner." },
+  "inbox.resume_ai": { label: "Resume AI replies", group: "Inbox and messaging", note: "Client inbox rules and conversation access still apply." },
+  "escalations.respond": { label: "Respond to escalations", group: "Escalations", note: "Client escalation policy still applies." },
+  "escalations.configure": { label: "Configure escalation rules", group: "Escalations", note: "Client owner or agency role control." },
+  "messaging.configure": { label: "Configure messaging", group: "Messaging", note: "Client owner or agency role control." },
+  "consent.manage": { label: "Manage contact consent", group: "Privacy and consent", note: "Client owner or agency role control." },
+  "staff.availability": { label: "Manage staff availability", group: "Team and access", note: "Client team membership rules still apply." },
+  "credits.topup": { label: "Add client credits", group: "Usage and billing", note: "Client owner or agency role control." },
+  "billing.configure": { label: "Configure client billing", group: "Usage and billing", note: "Client owner or agency role control." },
+  "billing.agency_view": { label: "View agency billing", group: "Agency security", note: "Agency role control." },
+  "billing.agency_manage": { label: "Manage agency billing", group: "Agency security", note: "Super Admin only." },
+  "website.view": { label: "View client website", group: "Website Studio", note: "Client scope and resource access still apply." },
+  "website.edit": { label: "Edit client website", group: "Website Studio", note: "Client scope and resource access still apply." },
+  "website.domains": { label: "Manage website domains", group: "Website Studio", note: "Client scope and resource access still apply." },
+  "website.approve": { label: "Approve website changes", group: "Website Studio", note: "Reserved for the client owner." },
+  "website.templates.design": { label: "Design shared Website Studio templates", group: "Website Studio", note: "Agency role default; shared templates remain agency-controlled." },
+  "website.templates.publish": { label: "Publish shared Website Studio templates", group: "Website Studio", note: "Super Admin only." },
+  "website.review": { label: "Review websites for clients", group: "Website Studio", note: "Agency role and client scope still apply." },
+  "incidents.view": { label: "View service incidents", group: "Incidents", note: "Client scope and incident visibility still apply." },
+  "incidents.manage": { label: "Manage service incidents", group: "Incidents", note: "Agency role and client scope still apply." },
+  "offboarding.view": { label: "View offboarding status", group: "Offboarding", note: "Client owner or agency role control." },
+  "offboarding.request": { label: "Request client offboarding", group: "Offboarding", note: "Reserved for the client owner." },
+  "offboarding.manage": { label: "Manage client offboarding", group: "Offboarding", note: "Super Admin only." },
+  "data.export": { label: "Export all client data", group: "Data and security", note: "Client owner or Super Admin control." },
+  "finance.manage": { label: "Manage agency finance", group: "Agency security", note: "Super Admin only." },
+  "campaigns.send": { label: "Send bulk campaigns", group: "Campaigns and messaging", note: "Reserved for the client owner." },
+  "crm.provider.manage": { label: "Switch client CRM provider", group: "Native CRM", note: "Reserved for the client owner." },
+  "crm.api.manage": { label: "Manage client CRM API connection", group: "Native CRM", note: "Client owner or agency role control." },
+  "crm.permissions.manage": { label: "Manage client CRM roles", group: "Native CRM", note: "Client owner or agency role control." },
+  "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", note: "Super Admin only." },
+  "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", note: "Agency role control." },
+  "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", note: "Super Admin only." },
+  "agency.integrations.health": { label: "View integration health", group: "Integrations", note: "Agency role control." },
+  "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", note: "Super Admin only." },
+  "agency.security.manage": { label: "Change agency security settings", group: "Agency security", note: "Super Admin only." },
+  "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", note: "Super Admin only." },
+  "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", note: "Super Admin only." },
+  "agency.audit.view": { label: "Review agency audit history", group: "Agency security", note: "Super Admin only." },
+  "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", note: "Super Admin only." },
+} as const satisfies Record<AgencyTeamProtectedPermission, { label: string; group: string; note: string }>;
+
+export const AGENCY_TEAM_PROTECTED_PERMISSIONS = Object.keys(AGENCY_TEAM_PROTECTED_PERMISSION_INFO) as AgencyTeamProtectedPermission[];
+
+export type AgencyPermissionOverrides = Partial<Record<AgencyTeamPermission, "allow" | "deny">>;
+
+/** Client CRM defaults available only inside an active, audited agency support session. */
+export const AGENCY_SUPPORT_SESSION_ROLE_DEFAULTS = {
+  agency_staff: ["crm.view", "contacts.view", "companies.view", "inbox.view", "inbox.view_all", "workflows.view", "calls.view"],
+  agency_manager: ["crm.view", "contacts.view", "companies.view", "inbox.view", "inbox.view_all", "workflows.view", "calls.view"],
+} as const satisfies Record<"agency_staff" | "agency_manager", readonly Permission[]>;
+
+export const isAgencyTeamPermission = (p: unknown): p is AgencyTeamPermission =>
+  typeof p === "string" && (AGENCY_TEAM_MANAGED_PERMISSIONS as readonly string[]).includes(p);
+
+/** Agency overrides are separate from client member overrides and can never modify a Super Admin. */
+export function effectiveAgencyTeamPermission(
+  role: PlatformRole | null | undefined,
+  permission: AgencyTeamPermission,
+  overrides?: AgencyPermissionOverrides,
+): boolean {
+  if (!role || role === "none") return false;
+  if (role === "agency_super_admin") return roleHasPermission(role, permission);
+  const override = overrides?.[permission];
+  if (override) return override === "allow";
+  return roleHasPermission(role, permission);
+}
 
 export const isDelegablePermission = (p: unknown): p is DelegablePermission => typeof p === "string" && (DELEGABLE_PERMISSIONS as readonly string[]).includes(p);
 

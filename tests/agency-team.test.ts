@@ -1,6 +1,8 @@
 import { describe,expect,it } from "vitest";
 import { withSystem } from "@/server/db";
 import { agencyTeamView } from "@/server/admin/team";
+import { applyInvitation, createInvitation } from "@/server/auth/service";
+import { recordAudit } from "@/server/audit";
 import { ensureInstanceStandalone } from "@/server/setup/core";
 import { agencyUser,createOrg,createUser } from "./support/fixtures";
 
@@ -27,5 +29,37 @@ describe("agency team read-only overview",()=>{
   it("rejects cached or forged super-admin claims",async()=>{
     const user=await createUser({platformRole:"agency_staff"});
     await expect(agencyTeamView(agencyUser(user,"agency_super_admin"))).rejects.toThrow(/super admins/);
+  });
+
+  it("includes creation and acceptance events from the teammate's invitation in activity", async () => {
+    const owner = await createUser({ platformRole: "agency_super_admin", name: "Agency Owner" });
+    const email = `invite-activity-${crypto.randomUUID()}@example.test`;
+    const staff = await createUser({ email, platformRole: "agency_staff", name: "Invited Staff" });
+    const invitation = await withSystem((db) => createInvitation({
+      orgId: null,
+      email,
+      platformRole: "agency_staff",
+      agencyScopeMode: "assigned_clients",
+      invitedBy: owner.id,
+    }, db));
+
+    await withSystem(async (db) => {
+      await recordAudit({
+        actorUserId: owner.id,
+        actorKind: "agency",
+        action: "team.invited",
+        targetType: "invitation",
+        targetId: invitation.id,
+        result: "success",
+      }, db);
+      await applyInvitation(db, invitation.id, staff.id);
+    });
+
+    const view = await agencyTeamView(agencyUser(owner, "agency_super_admin"));
+    const member = view.members.find((item) => item.id === staff.id)!;
+    expect(member.activity.map((event) => event.action)).toEqual(expect.arrayContaining([
+      "team.invited",
+      "auth.invitation_accepted",
+    ]));
   });
 });

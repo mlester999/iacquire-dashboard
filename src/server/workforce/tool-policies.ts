@@ -325,11 +325,11 @@ export async function acknowledgeInternalFullCapabilities(admin: SessionUser, ag
     const policy = await db.query<{ id: string }>("select id from hermes_tool_policies where scope_kind='internal_agency' and name='Full Hermes Capabilities' for update");
     if (!policy.rows[0]) throw new AppError("internal", "The internal Full Hermes Capabilities policy is unavailable.");
     const { rows } = await db.query<{
-      id: string; org_id: string; role_key: AgentRoleKey; hermes_profile: string | null; hermes_gateway_id: string | null;
+      id: string; org_id: string; role_key: AgentRoleKey; enabled: boolean; hermes_profile: string | null; hermes_gateway_id: string | null;
       check_profile: string | null; check_gateway_id: string | null; check_status: string | null;
       identity_verified: boolean; api_contract_verified: boolean; credential_ready: boolean;
     }>(
-      `select a.id,a.org_id,a.role_key,a.hermes_profile,a.hermes_gateway_id,c.profile_id as check_profile,c.gateway_id as check_gateway_id,
+      `select a.id,a.org_id,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,c.profile_id as check_profile,c.gateway_id as check_gateway_id,
          c.status as check_status,c.identity_verified,c.api_contract_verified,
          (a.credential_id is not null and cred.revoked_at is null) as credential_ready
        from agent_instances a join organizations o on o.id=a.org_id and o.kind='agency'
@@ -339,12 +339,13 @@ export async function acknowledgeInternalFullCapabilities(admin: SessionUser, ag
       [ids],
     );
     if (rows.length !== ids.length || rows.some((agent) =>
-      agent.hermes_profile !== AGENCY_HERMES_PROFILE_IDS[agent.role_key]
+      !agent.enabled
+      || agent.hermes_profile !== AGENCY_HERMES_PROFILE_IDS[agent.role_key]
       || agent.check_profile !== AGENCY_HERMES_PROFILE_IDS[agent.role_key]
       || agent.hermes_gateway_id !== agent.check_gateway_id
       || agent.check_status !== "verified" || !agent.identity_verified || !agent.api_contract_verified || !agent.credential_ready
     )) {
-      throw new AppError("conflict", "Run a verified, authenticated profile identity check before acknowledging Full Hermes Capabilities.");
+      throw new AppError("conflict", "Enable each profile and complete a verified, authenticated identity check before acknowledging Full Hermes Capabilities.");
     }
     const agencyOrgId = rows[0].org_id;
     if (rows.some((agent) => agent.org_id !== agencyOrgId) || new Set(rows.map((agent) => agent.role_key)).size !== rows.length) {
