@@ -2,7 +2,7 @@ import "server-only";
 import type { SessionUser } from "@/server/auth/service";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "@/lib/agents";
 import { AppError } from "@/server/errors";
-import { withServiceRole, withSystem } from "@/server/db";
+import { withServiceRole, withSystem, withUser } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import {
@@ -49,6 +49,24 @@ export interface AgencyProfileVerification {
   verifiedAt: string | null;
 }
 
+export interface AgencyProfileHistoryEvent {
+  action: "connected" | "profile_checked";
+  result: "success" | "denied" | "failure";
+  status: string | null;
+  actorKind: "user" | "agency" | "agent" | "system";
+  occurredAt: string;
+}
+
+export interface AgencyHermesToolReview {
+  roleKey: AgentRoleKey;
+  profile: string;
+  checkedAt: string;
+  inventoryComplete: boolean;
+  restrictedTools: string[];
+  toolsets: Array<{ name: string; enabled: boolean; tools: string[] }>;
+  truncated: boolean;
+}
+
 function requireSuperAdmin(admin: SessionUser) {
   if (admin.platformRole !== "agency_super_admin") {
     throw new AppError("forbidden", "Only a Super Admin can manage the internal AI workforce.");
@@ -75,6 +93,14 @@ async function getAgencyAgent(agentId: string) {
   const agent = rows[0];
   if (!agent || agent.kind !== "agency") throw new AppError("not_found", "Internal AI employee not found.");
   return agent;
+}
+
+async function getExistingAgencyWorkforceId(): Promise<string> {
+  const { rows } = await withSystem((db) => db.query<{ id: string }>(
+    "select id from organizations where kind='agency' order by created_at limit 1",
+  ));
+  if (!rows[0]) throw new AppError("not_found", "The iAcquire internal workforce is unavailable.");
+  return rows[0].id;
 }
 
 async function verifyCandidateProfileKey(gatewayId: string, profile: string, rawApiKey: string) {
@@ -251,6 +277,77 @@ async function verifyAgencyProfile(admin: SessionUser, agentId: string): Promise
 
   const saved = await saveCheck(admin, agent, result);
   return { ...result, ...saved };
+}
+
+/** Bounded, secret-free connection history for an iAcquire employee. */
+export async function getAgencyProfileHistory(admin: SessionUser, agentId: string): Promise<AgencyProfileHistoryEvent[]> {
+  requireSuperAdmin(admin);
+  const agencyId = await getExistingAgencyWorkforceId();
+  const agent = await getAgencyAgent(agentId);
+  if (agent.org_id !== agencyId) throw new AppError("not_found", "Internal employee not found.");
+
+  const { rows } = await withUser(admin.id, (db) => db.query<{
+    action: "agent.hermes_connected" | "agent.hermes_profile_checked";
+    result: "success" | "denied" | "failure";
+    status: string | null;
+    actor_kind: "user" | "agency" | "agent" | "system";
+    created_at: Date;
+  }>(
+    `select action,result,metadata->>'status' as status,actor_kind,created_at
+     from audit_logs
+     where org_id=$1 and agent_instance_id=$2
+       and action in ('agent.hermes_connected','agent.hermes_profile_checked')
+     order by created_at desc,id desc limit 20`,
+    [agencyId, agentId],
+  ));
+
+  return rows.map((row) => ({
+    action: row.action === "agent.hermes_connected" ? "connected" : "profile_checked",
+    result: row.result,
+    status: row.status && /^[a-z_]{1,40}$/.test(row.status) ? row.status : null,
+    actorKind: row.actor_kind,
+    occurredAt: new Date(row.created_at).toISOString(),
+  }));
+}
+
+/** Fetches the live read-only toolset inventory without returning credentials or changing Hermes. */
+export async function reviewAgencyHermesToolPermissions(admin: SessionUser, agentId: string): Promise<AgencyHermesToolReview> {
+  requireSuperAdmin(admin);
+  const agencyId = await getExistingAgencyWorkforceId();
+  const agent = await getAgencyAgent(agentId);
+  const expectedProfile = AGENCY_HERMES_PROFILE_IDS[agent.role_key];
+  if (agent.org_id !== agencyId || agent.hermes_profile !== expectedProfile || !agent.hermes_gateway_id || !agent.credential_ready) {
+    throw new AppError("conflict", "Verify this employee's existing profile connection before reviewing its tools.");
+  }
+  const connection = await loadHermesConnectionForAgent(agentId);
+  if (!connection || connection.profile !== expectedProfile) {
+    throw new AppError("integration_unavailable", "The saved profile credential or approved gateway is unavailable.");
+  }
+
+  let toolsets;
+  try {
+    toolsets = await getToolsets(connection);
+  } catch (error) {
+    const failure = classifyHermesFailure(error);
+    throw new AppError("integration_unavailable", `Tool permissions could not be read. ${failure.detail}`);
+  }
+
+  const maxToolsets = 24;
+  const maxToolsPerSet = 80;
+  const truncated = toolsets.length > maxToolsets || toolsets.some((toolset) => toolset.tools.length > maxToolsPerSet);
+  return {
+    roleKey: agent.role_key,
+    profile: expectedProfile,
+    checkedAt: new Date().toISOString(),
+    inventoryComplete: hasVerifiedCompleteToolInventory(connection),
+    restrictedTools: restrictedToolsIn(toolsets).slice(0, 100),
+    toolsets: toolsets.slice(0, maxToolsets).map((toolset) => ({
+      name: toolset.name.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 120),
+      enabled: toolset.enabled,
+      tools: toolset.tools.slice(0, maxToolsPerSet).map((tool) => tool.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 120)),
+    })),
+    truncated,
+  };
 }
 
 export async function connectAgencyHermesProfile(

@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { withServiceRole, withSystem } from "@/server/db";
 import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
-import { connectAgencyHermesProfile, testAgencyHermesProfile, testAllAgencyHermesProfiles } from "@/server/workforce/agency";
+import {
+  connectAgencyHermesProfile,
+  getAgencyProfileHistory,
+  reviewAgencyHermesToolPermissions,
+  testAgencyHermesProfile,
+  testAllAgencyHermesProfiles,
+} from "@/server/workforce/agency";
 import { ensureAgencyWorkforceRegistry, listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
 import { listIntegrationManager, saveIntegrationConnection, testIntegrationConnection } from "@/server/integrations/manager";
 import { connectHermesProfile } from "@/server/workforce/service";
@@ -123,6 +129,23 @@ describe("agency Hermes workforce isolation", () => {
     expect(workforce.find((agent) => agent.id === salesAgentId)?.has_credential).toBe(true);
     const gateways = await withServiceRole(listHermesGateways);
     expect(gateways.find((gateway) => gateway.id === gatewayId)?.id).toBe(gatewayId);
+    const history = await getAgencyProfileHistory(admin, salesAgentId);
+    expect(history.map((event) => event.action)).toContain("connected");
+    expect(history.map((event) => event.action)).toContain("profile_checked");
+    expect(JSON.stringify(history)).not.toContain(PROFILE_KEYS[AGENCY_HERMES_PROFILE_IDS.sales_assistant]);
+    await expect(getAgencyProfileHistory(staff, salesAgentId)).rejects.toMatchObject({ code: "forbidden" });
+    const reviewStart = mock.requests.length;
+    const toolReview = await reviewAgencyHermesToolPermissions(admin, salesAgentId);
+    expect(toolReview).toMatchObject({
+      roleKey: "sales_assistant",
+      profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant,
+      inventoryComplete: true,
+      restrictedTools: [],
+      toolsets: [{ name: "core", enabled: true, tools: ["web_search", "memory", "clarify"] }],
+    });
+    expect(mock.requests.slice(reviewStart)).toEqual([{ method: "GET", path: "/v1/toolsets", profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant }]);
+    expect(JSON.stringify(toolReview)).not.toContain(PROFILE_KEYS[AGENCY_HERMES_PROFILE_IDS.sales_assistant]);
+    await expect(reviewAgencyHermesToolPermissions(staff, salesAgentId)).rejects.toMatchObject({ code: "forbidden" });
     await expect(listAgencyAgents(staff)).rejects.toMatchObject({ code: "forbidden" });
   });
 

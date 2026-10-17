@@ -35,8 +35,24 @@ export function AgencyWorkforceManager({
   const [testing, setTesting] = React.useState(false);
   const [testError, setTestError] = React.useState<string | null>(null);
   const [results, setResults] = React.useState<AgencyProfileVerification[] | null>(null);
+  const readinessByAgent = new Map(agents.map((agent) => [agent.id, deriveAgencyWorkforceStatus({
+    mappedCorrectly: agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key],
+    profileId: agent.hermes_profile,
+    gatewayId: agent.hermes_gateway_id,
+    hasCredential: agent.has_credential,
+    profileCheckStatus: agent.profile_check_status,
+    profileCheckProfileId: agent.profile_check_profile_id,
+    profileCheckGatewayId: agent.profile_check_gateway_id,
+    profileIdentityVerified: agent.profile_identity_verified,
+    gatewayStatus: agent.gateway_status,
+    toolPermissionsStatus: agent.tool_permissions_status,
+  })] as const));
   const mapped = agents.filter((agent) => agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key] && agent.hermes_gateway_id).length;
-  const verified = agents.filter((agent) => agent.profile_check_status === "verified" && agent.profile_identity_verified === true).length;
+  const verified = agents.filter((agent) => readinessByAgent.get(agent.id)?.connection === "verified").length;
+  const toolsAwaitingReview = agents.filter((agent) => {
+    const readiness = readinessByAgent.get(agent.id);
+    return readiness?.connection === "verified" && readiness.tools !== "verified";
+  }).length;
   const pendingApprovals = agents.reduce((total, agent) => total + agent.pending_approvals, 0);
   const recentRuns = agents.reduce((total, agent) => total + agent.runs_30d, 0);
 
@@ -72,9 +88,10 @@ export function AgencyWorkforceManager({
         aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Profiles mapped" value={`${mapped}/6`} detail="Exact existing Hermes identities" icon={<Bot className="size-4" />} /><MetricCard label="Profiles verified" value={`${verified}/6`} detail="Read-only identity and API checks" tone="green" icon={<ShieldCheck className="size-4" />} /></div>}
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Pending approvals" value={pendingApprovals} detail="Open requests for agency employees" icon={<ShieldCheck className="size-4" />} />
         <MetricCard label="Recent activity" value={recentRuns} detail="Recorded runs in the last 30 days" tone="violet" icon={<Activity className="size-4" />} />
+        <MetricCard label="Tool reviews pending" value={toolsAwaitingReview} detail="Connected profiles needing a live permission review" tone={toolsAwaitingReview ? "amber" : "green"} icon={<Wrench className="size-4" />} />
         <div className="col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4 lg:col-span-1">
           <div><p className="text-sm font-semibold text-ink">Profile verification</p><p className="mt-1 text-xs leading-relaxed text-muted">Each check reads the saved profile with its own key. No AI task is started.</p></div>
           {canManage && <Button onClick={() => void testAll()} loading={testing} variant="secondary"><Stethoscope className="size-4" />Test all six</Button>}
@@ -100,19 +117,7 @@ export function AgencyWorkforceManager({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {agents.map((agent) => {
           const role = AGENT_BY_KEY[agent.role_key];
-          const expectedProfile = AGENCY_HERMES_PROFILE_IDS[agent.role_key];
-          const readiness = deriveAgencyWorkforceStatus({
-            mappedCorrectly: agent.hermes_profile === expectedProfile,
-            profileId: agent.hermes_profile,
-            gatewayId: agent.hermes_gateway_id,
-            hasCredential: agent.has_credential,
-            profileCheckStatus: agent.profile_check_status,
-            profileCheckProfileId: agent.profile_check_profile_id,
-            profileCheckGatewayId: agent.profile_check_gateway_id,
-            profileIdentityVerified: agent.profile_identity_verified,
-            gatewayStatus: agent.gateway_status,
-            toolPermissionsStatus: agent.tool_permissions_status,
-          });
+          const readiness = readinessByAgent.get(agent.id)!;
           const connectionLabel = {
             setup_required: "Setup required",
             not_tested: "Not tested",
@@ -160,7 +165,7 @@ export function AgencyWorkforceManager({
               <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium text-ink">Shared gateway</p><StatusPill status={agent.gateway_status ?? "not_configured"} size="sm" /></div>
               {agent.last_activity_at && <p className="mt-2 text-[11px] text-muted">Latest recorded run: {formatDateTime(agent.last_activity_at, timeZone)}</p>}
             </div>
-            <HermesProfileMapper key={`${agent.id}:${agent.hermes_profile ?? "none"}:${agent.hermes_gateway_id ?? "none"}:${agent.has_credential}`} agentId={agent.id} roleKey={agent.role_key} currentProfile={agent.hermes_profile} currentGatewayId={agent.hermes_gateway_id} hasCredential={agent.has_credential} gateways={gateways} canManage={canManage} />
+            <HermesProfileMapper key={`${agent.id}:${agent.hermes_profile ?? "none"}:${agent.hermes_gateway_id ?? "none"}:${agent.has_credential}`} agentId={agent.id} roleKey={agent.role_key} currentProfile={agent.hermes_profile} currentGatewayId={agent.hermes_gateway_id} hasCredential={agent.has_credential} gateways={gateways} canManage={canManage} canReviewTools={readiness.connection === "verified"} timeZone={timeZone} />
           </Card>;
         })}
       </div>

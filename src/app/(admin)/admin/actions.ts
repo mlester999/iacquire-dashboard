@@ -22,7 +22,13 @@ import {
   usageLimitsSchema,
 } from "@/server/admin/tenants";
 import { connectHermesProfile, decideHeldVersion, runHealthCheck } from "@/server/workforce/service";
-import { connectAgencyHermesProfile, testAgencyHermesProfile, testAllAgencyHermesProfiles } from "@/server/workforce/agency";
+import {
+  connectAgencyHermesProfile,
+  getAgencyProfileHistory,
+  reviewAgencyHermesToolPermissions,
+  testAgencyHermesProfile,
+  testAllAgencyHermesProfiles,
+} from "@/server/workforce/agency";
 import { getProvisioningBundle, updateProvisioningJob } from "@/server/workforce/provisioning";
 import { syncGhl, verifyGhlConnection } from "@/server/integrations/ghl";
 import { agencyReply, updateTicket, TICKET_STATUSES, type TicketStatus } from "@/server/support/service";
@@ -143,6 +149,24 @@ export async function testAgencyHermesProfileAction(agentId: string) {
     revalidatePath("/admin/workforce");
     revalidatePath("/admin/integrations");
     return { ok: true as const, data: health };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function getAgencyProfileHistoryAction(agentId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    return { ok: true as const, data: await getAgencyProfileHistory(admin, agentId) };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function reviewAgencyHermesToolsAction(agentId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    return { ok: true as const, data: await reviewAgencyHermesToolPermissions(admin, agentId) };
   } catch (err) {
     return actionError(err);
   }
