@@ -32,10 +32,12 @@ JSON also check `Origin` against `Host` (server actions get the equivalent check
    helpers with pinned `search_path`). `iaq_app_user` has no grants at all on credentials,
    sessions, tokens, invitations or the email outbox.
 
-`withSystem(…)` runs as the table owner for trusted server work (auth, audit writes, background
-execution, agency operations authorized in code). Two rules keep this safe:
+`withSystem(…)` runs under the trusted database login for server work (auth, audit writes,
+background execution, agency operations authorized in code). `withServiceRole(…)` switches to
+Supabase's `service_role` for narrowly scoped operations that need its explicit grants, such as
+credential metadata reads. Both bypass RLS, so callers authorize first. Two rules keep this safe:
 
-- Callers authorize first; RLS does not apply inside `withSystem`.
+- Callers authorize first; RLS does not apply inside either trusted wrapper.
 - **Never open a transaction inside another.** Pass the `db` handle you were given. On the
   single-connection embedded database a nested transaction deadlocks the whole server; on a pool it
   holds two connections. `src/server/db/index.ts` throws `NestedTransactionError` in development and

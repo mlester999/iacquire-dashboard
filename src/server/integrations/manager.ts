@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { withSystem,withUser,type Queryable } from "@/server/db";
+import { withServiceRole, withSystem,withUser,type Queryable } from "@/server/db";
 import type { SessionUser } from "@/server/auth/service";
 import { AppError } from "@/server/errors";
 import { assertAgencyAccess } from "@/server/setup/core";
@@ -43,13 +43,13 @@ export type IntegrationSaveInput=z.input<typeof integrationSaveSchema>;
 export async function listIntegrationManager(user:SessionUser,orgId:string|null):Promise<{connections:IntegrationView[];secureStoreReady:boolean;agencyWorkflows:Array<{id:string;name:string}>;mappedWorkflowIds:string[];hermesGateways:HermesGatewayView[];hermesSetup:HermesSetupSummary|null;hermesSetups:Record<string,HermesSetupSummary>}> {
   const role=await authorize(user,orgId);
   const rows=await withUser(user.id,db=>db.query<ConnectionRow>("select * from integration_connections where org_id is not distinct from $1::uuid order by provider",[orgId])).then(r=>r.rows);
-  const registeredHermesGateways=await withSystem(listHermesGateways);
+  const registeredHermesGateways=await withServiceRole(listHermesGateways);
   // Client-scoped integration pages need gateway choices, but must not reveal how many other
   // clients or internal agency employees are mapped to each shared gateway.
   const hermesGateways=orgId
     ? registeredHermesGateways.map(gateway=>({...gateway,mappedProfileCount:0,clientMappedProfileCount:0}))
     : registeredHermesGateways;
-  const meta=await withSystem(db=>db.query<{id:string;fingerprint:string;rotated_at:Date|null;revoked_at:Date|null}>("select c.id,c.fingerprint,r.rotated_at,c.revoked_at from integration_credentials c left join credential_references r on r.id=c.credential_reference_id where c.org_id is not distinct from $1::uuid",[orgId]));
+  const meta=await withServiceRole(db=>db.query<{id:string;fingerprint:string;rotated_at:Date|null;revoked_at:Date|null}>("select c.id,c.fingerprint,r.rotated_at,c.revoked_at from integration_credentials c left join credential_references r on r.id=c.credential_reference_id where c.org_id is not distinct from $1::uuid",[orgId]));
   const checks=await withUser(user.id,db=>db.query<{connection_id:string;status:string;detail:string;verification_mode:string;capabilities:Record<string,unknown>;checked_at:Date}>("select k.connection_id,k.status,k.detail,k.verification_mode,k.capabilities,k.checked_at from integration_connection_checks k join integration_connections c on c.id=k.connection_id where c.org_id is not distinct from $1::uuid order by checked_at desc limit 80",[orgId]));
   const secureStoreReady=await withSystem(credentialStoreReady);
   const mappedWorkflowIds=orgId ? (await withUser(user.id,db=>db.query<{workflow_id:string}>("select workflow_id from automation_template_mappings where org_id=$1",[orgId]))).rows.map(m=>m.workflow_id) : [];

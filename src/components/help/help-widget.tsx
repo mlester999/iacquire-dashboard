@@ -44,12 +44,10 @@ function useIsDesktop() {
 export function HelpWidget({
   firstName,
   canOpenTickets,
-  aiAvailable,
   raised,
 }: {
   firstName: string | null;
   canOpenTickets: boolean;
-  aiAvailable: boolean;
   /** Lift the launcher above a bottom composer (chat pages). */
   raised?: boolean;
 }) {
@@ -142,7 +140,7 @@ export function HelpWidget({
             >
               <HelpHeader view={view} setView={setView} onClose={() => setOpen(false)} canOpenTickets={canOpenTickets} />
               <div className="relative min-h-0 flex-1">
-                {view === "chat" && <AssistantView firstName={firstName} aiAvailable={aiAvailable} onHuman={() => setView("human")} canOpenTickets={canOpenTickets} />}
+                {view === "chat" && <AssistantView firstName={firstName} onHuman={() => setView("human")} canOpenTickets={canOpenTickets} />}
                 {view === "human" && <HumanView onDone={() => setView("requests")} />}
                 {view === "requests" && <RequestsView onNew={() => setView("human")} onNavigate={() => setOpen(false)} />}
               </div>
@@ -188,8 +186,9 @@ function HelpHeader({ view, setView, onClose, canOpenTickets }: { view: View; se
   );
 }
 
-function AssistantView({ firstName, aiAvailable, onHuman, canOpenTickets }: { firstName: string | null; aiAvailable: boolean; onHuman: () => void; canOpenTickets: boolean }) {
+function AssistantView({ firstName, onHuman, canOpenTickets }: { firstName: string | null; onHuman: () => void; canOpenTickets: boolean }) {
   const [messages, setMessages] = React.useState<HelpMessage[]>([]);
+  const [aiAvailable, setAiAvailable] = React.useState<boolean | null>(null);
   const [input, setInput] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -201,7 +200,10 @@ function AssistantView({ firstName, aiAvailable, onHuman, canOpenTickets }: { fi
     loaded.current = true;
     fetch("/api/help")
       .then((r) => (r.ok ? r.json() : { messages: [] }))
-      .then((d: { messages: HelpMessage[] }) => setMessages(d.messages ?? []))
+      .then((d: { messages: HelpMessage[]; aiAvailable?: boolean }) => {
+        setMessages(d.messages ?? []);
+        setAiAvailable(typeof d.aiAvailable === "boolean" ? d.aiAvailable : null);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -233,7 +235,7 @@ function AssistantView({ firstName, aiAvailable, onHuman, canOpenTickets }: { fi
       <div ref={scrollRef} className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl rounded-tl-md border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink">
           Hi{firstName ? ` ${firstName}` : ""}! I&apos;m the iAcquire Assistant. I can help with your workspace, AI employees, approvals, and settings.
-          {!aiAvailable && <span className="mt-1 block text-[12.5px] text-muted">Answers come from the iAcquire help center.</span>}
+          {aiAvailable === false && <span className="mt-1 block text-[12.5px] text-muted">Answers come from the iAcquire help center.</span>}
         </motion.div>
         {messages.length === 0 && (
           <div className="space-y-2">

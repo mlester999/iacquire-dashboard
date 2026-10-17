@@ -34,11 +34,11 @@ export function PortalShell({ data, children }: { data: ShellData; children: Rea
           {data.org.isDemo && <DemoBanner />}
           <Topbar onOpenMenu={() => setMenuOpen(true)} />
           {showSetup && <SetupBanner />}
-          <main id="main" key={pathname} className="page-in mx-auto w-full max-w-[1600px] px-4 pb-28 pt-6 sm:px-6 lg:px-8">
+          <main id="main" className="page-in mx-auto w-full max-w-[1600px] px-4 pb-28 pt-6 sm:px-6 lg:px-8">
             {children}
           </main>
         </div>
-        <HelpWidget firstName={firstName(data.user.name)} canOpenTickets={data.permissions.includes("support.use")} aiAvailable={data.helpAiAvailable} />
+        <HelpWidget firstName={firstName(data.user.name)} canOpenTickets={data.permissions.includes("support.use")} />
         <GuidedTour autoStart={data.org.onboardingComplete} />
       </div>
     </ShellProvider>

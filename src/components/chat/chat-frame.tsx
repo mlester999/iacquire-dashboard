@@ -10,7 +10,7 @@ export function ChatFrame({ data, children }: { data: ShellData; children: React
     <ShellProvider value={data}>
       <div className="app-backdrop relative h-dvh overflow-hidden">
         {children}
-        <HelpWidget firstName={firstName(data.user.name)} canOpenTickets={data.permissions.includes("support.use")} aiAvailable={data.helpAiAvailable} raised />
+        <HelpWidget firstName={firstName(data.user.name)} canOpenTickets={data.permissions.includes("support.use")} raised />
       </div>
     </ShellProvider>
   );

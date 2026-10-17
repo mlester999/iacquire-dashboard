@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { withSystem, withUser } from "@/server/db";
+import { withServiceRole, withSystem, withUser } from "@/server/db";
 import { addMember, createOrg, createUser } from "./support/fixtures";
 
 // Every table that carries tenant data. A failing entry here means cross-tenant reads are possible.
@@ -161,6 +161,26 @@ describe("row-level security", () => {
     for (const table of ["auth_credentials", "auth_sessions", "auth_tokens", "integration_credentials", "email_outbox", "invitations"]) {
       await expect(withUser(ownerA.id, (db) => db.query(`select * from ${table} limit 1`))).rejects.toThrow(/permission denied/);
     }
+  });
+
+  it("uses a transaction-local service role only for explicitly trusted credential reads", async () => {
+    const appRole = await withUser(ownerA.id, async (db) =>
+      (await db.query<{ role: string }>("select current_user as role")).rows[0].role,
+    );
+    expect(appRole).toBe("iaq_app_user");
+
+    const trustedRole = await withServiceRole(async (db) => {
+      const role = (await db.query<{ role: string }>("select current_user as role")).rows[0].role;
+      // This reads no credential values; it proves the privileged status lookup has table access.
+      await db.query("select id from integration_credentials limit 0");
+      return role;
+    });
+    expect(trustedRole).toBe("service_role");
+
+    const appRoleAfter = await withUser(ownerA.id, async (db) =>
+      (await db.query<{ role: string }>("select current_user as role")).rows[0].role,
+    );
+    expect(appRoleAfter).toBe("iaq_app_user");
   });
 
   it("users cannot escalate their own platform role", async () => {

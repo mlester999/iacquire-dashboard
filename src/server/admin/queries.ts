@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem, withUser } from "@/server/db";
+import { withServiceRole, withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import { usageSummary, type UsageSummary } from "@/server/usage";
@@ -234,6 +234,9 @@ export async function listAllAgents(user: SessionUser) {
 
 /** Agency-owned employee identities are returned separately from client workforce rows. */
 export async function listAgencyAgents(user: SessionUser) {
+  // This function is Super Admin-only: ensureAgencyWorkforceRegistry enforces that boundary and
+  // returns the one agency organization to scope this trusted read to. Keep credential status
+  // resolution out of iaq_app_user, which intentionally has no access to integration_credentials.
   const agencyId = await ensureAgencyWorkforceRegistry(user);
   const { rows } = await withUser(user.id, async (db) => {
     return db.query<{
@@ -243,7 +246,8 @@ export async function listAgencyAgents(user: SessionUser) {
       last_health_ok: boolean | null; hermes_gateway_id: string | null; gateway_status: string | null;
       credential_id: string | null; has_config: boolean; pending_approvals: number; runs_30d: number;
       last_activity_at: Date | null;
-      profile_check_status: string | null; profile_check_detail: string | null; profile_check_at: Date | null;
+      profile_check_status: string | null; profile_check_profile_id: string | null; profile_check_gateway_id: string | null;
+      profile_check_detail: string | null; profile_check_at: Date | null;
       profile_verified_at: Date | null; profile_identity_verified: boolean | null; tool_permissions_status: string | null;
     }>(
       `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
@@ -253,7 +257,8 @@ export async function listAgencyAgents(user: SessionUser) {
               (select count(*)::int from approval_requests p where p.agent_instance_id=a.id and p.status='pending') as pending_approvals,
               (select count(*)::int from agent_runs r where r.agent_instance_id=a.id and r.started_at > now() - interval '30 days') as runs_30d,
               (select max(r.started_at) from agent_runs r where r.agent_instance_id=a.id) as last_activity_at,
-              pc.status as profile_check_status,pc.detail as profile_check_detail,pc.checked_at as profile_check_at,
+              pc.status as profile_check_status,pc.profile_id as profile_check_profile_id,pc.gateway_id as profile_check_gateway_id,
+              pc.detail as profile_check_detail,pc.checked_at as profile_check_at,
               pc.verified_at as profile_verified_at,pc.identity_verified as profile_identity_verified,
               pc.tool_permissions_status
        from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
@@ -264,7 +269,7 @@ export async function listAgencyAgents(user: SessionUser) {
     );
   });
   const credentialIds = rows.flatMap((agent) => agent.credential_id ? [agent.credential_id] : []);
-  const activeCredentialIds = new Set((await withSystem((db) => db.query<{ id: string }>(
+  const activeCredentialIds = new Set((await withServiceRole((db) => db.query<{ id: string }>(
     `select id from integration_credentials where id = any($1::uuid[]) and revoked_at is null`,
     [credentialIds],
   ))).rows.map((credential) => credential.id));

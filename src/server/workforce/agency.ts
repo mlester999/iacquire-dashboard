@@ -2,11 +2,13 @@ import "server-only";
 import type { SessionUser } from "@/server/auth/service";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "@/lib/agents";
 import { AppError } from "@/server/errors";
-import { withSystem } from "@/server/db";
+import { withServiceRole, withSystem } from "@/server/db";
 import { recordAudit } from "@/server/audit";
+import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import {
   connectHermesProfile,
   loadHermesConnectionForAgent,
+  validateHermesBaseUrl,
 } from "@/server/workforce/service";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 import {
@@ -54,7 +56,7 @@ function requireSuperAdmin(admin: SessionUser) {
 }
 
 async function getAgencyAgent(agentId: string) {
-  const { rows } = await withSystem((db) => db.query<{
+  const { rows } = await withServiceRole((db) => db.query<{
     id: string;
     org_id: string;
     kind: string;
@@ -73,6 +75,45 @@ async function getAgencyAgent(agentId: string) {
   const agent = rows[0];
   if (!agent || agent.kind !== "agency") throw new AppError("not_found", "Internal AI employee not found.");
   return agent;
+}
+
+async function verifyCandidateProfileKey(gatewayId: string, profile: string, rawApiKey: string) {
+  const apiKey = rawApiKey.trim();
+  if (apiKey.length < 24) throw new AppError("invalid_input", "The profile API key looks too short. Use the profile's own API_SERVER_KEY.");
+
+  const { baseUrl, access } = await withServiceRole(async (db) => {
+    const { rows } = await db.query<{ id: string; base_url: string }>(
+      "select id,base_url from hermes_gateways where id=$1 and status <> 'disconnected'",
+      [gatewayId],
+    );
+    const gateway = rows[0];
+    if (!gateway) throw new AppError("not_found", "Approved Hermes gateway not found.");
+    return {
+      baseUrl: validateHermesBaseUrl(gateway.base_url),
+      access: await loadHermesAccessCredentials(db, gateway.id),
+    };
+  });
+
+  const connection = { baseUrl, profile, apiKey, ...(access ?? {}) };
+  try {
+    const capabilities = await getCapabilities(connection);
+    if (capabilities.contract !== "hermes.api_server.capabilities" || !capabilities.authenticated) {
+      throw new AppError("integration_unavailable", "The approved gateway did not confirm the expected authenticated Hermes API. The saved credential was left unchanged.");
+    }
+    const identities = await getProfileModels(connection);
+    if (!identities.includes(profile)) {
+      throw new AppError("invalid_input", "The candidate key did not verify this existing Hermes profile. The saved credential was left unchanged.");
+    }
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (error instanceof HermesError) {
+      if (error.status === 401) throw new AppError("invalid_input", "Hermes rejected the candidate profile key. The saved credential was left unchanged.");
+      if (error.status === 403) throw new AppError("integration_unavailable", "Cloudflare Access rejected the approved gateway credentials. The saved profile credential was left unchanged.");
+      if (error.kind === "not_found") throw new AppError("invalid_input", "The existing Hermes profile was not found on the approved gateway. The saved credential was left unchanged.");
+      throw new AppError("integration_unavailable", "The approved gateway could not verify the candidate profile key. The saved credential was left unchanged.");
+    }
+    throw error;
+  }
 }
 
 async function saveCheck(admin: SessionUser, agent: Awaited<ReturnType<typeof getAgencyAgent>>, result: Omit<AgencyProfileVerification, "checkedAt" | "verifiedAt">) {
@@ -233,6 +274,10 @@ export async function connectAgencyHermesProfile(
   if (otherGateways.rows.some((row) => row.hermes_gateway_id !== input.gatewayId)) {
     throw new AppError("conflict", "All six iAcquire employees must use the same approved shared Hermes gateway.");
   }
+
+  // Verify the candidate against the existing role-specific identity before Vault rotation can
+  // revoke the currently working key. Failed checks leave the saved credential untouched.
+  await verifyCandidateProfileKey(input.gatewayId, expectedProfile, input.apiKey);
 
   await connectHermesProfile({
     agentId: agent.id,

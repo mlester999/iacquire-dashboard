@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem, withUser, type Queryable } from "@/server/db";
+import { withServiceRole, withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { resolveCredential, saveCredential } from "@/server/security/credentials";
@@ -373,7 +373,7 @@ export async function loadConnection(db: Queryable, agentId: string): Promise<He
 
 /** Server-only profile connection for a trusted service check. Credentials are never serialized to a client. */
 export async function loadHermesConnectionForAgent(agentId: string): Promise<HermesConnection | null> {
-  return withSystem((db) => loadConnection(db, agentId));
+  return withServiceRole((db) => loadConnection(db, agentId));
 }
 
 /** Agency-only: attach a Hermes profile endpoint and its per-profile API key to a tenant employee. */
@@ -390,7 +390,7 @@ export async function connectHermesProfile(input: {
   if (!/^[a-z0-9][a-z0-9_-]{1,62}$/.test(profile)) throw new AppError("invalid_input", "Profile names use lowercase letters, numbers, dashes and underscores.");
   const apiKey = input.apiKey.trim();
   if (apiKey.length < 24) throw new AppError("invalid_input", "The profile API key looks too short. Use the profile's own API_SERVER_KEY.");
-  return withSystem(async (db) => {
+  return withServiceRole(async (db) => {
     const { rows } = await db.query<{ org_id: string; kind: string; role_key: string }>(
       "select a.org_id, o.kind, a.role_key from agent_instances a join organizations o on o.id = a.org_id where a.id = $1",
       [input.agentId],
@@ -489,14 +489,15 @@ export async function runHealthCheck(
   actor: { userId: string | null; kind: "agency" | "system" | "user" },
   opts: { skipSetupSync?: boolean } = {},
 ): Promise<HealthResult> {
-  const { conn, orgId, orgKind, roleKey, enabled, hasConfig } = await withSystem(async (db) => {
+  const { orgId, orgKind, roleKey, enabled, hasConfig } = await withSystem(async (db) => {
     const { rows } = await db.query<{ org_id: string; org_kind: "agency" | "client"; role_key: AgentRoleKey; enabled: boolean; active_config_version_id: string | null }>(
       "select a.org_id, o.kind as org_kind, a.role_key, a.enabled, a.active_config_version_id from agent_instances a join organizations o on o.id=a.org_id where a.id = $1",
       [agentId],
     );
     if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
-    return { conn: await loadConnection(db, agentId), orgId: rows[0].org_id, orgKind: rows[0].org_kind, roleKey: rows[0].role_key, enabled: rows[0].enabled, hasConfig: Boolean(rows[0].active_config_version_id) };
+    return { orgId: rows[0].org_id, orgKind: rows[0].org_kind, roleKey: rows[0].role_key, enabled: rows[0].enabled, hasConfig: Boolean(rows[0].active_config_version_id) };
   });
+  const conn = await loadHermesConnectionForAgent(agentId);
 
   let result: HealthResult;
   if (!enabled) result = { ok: false, status: "disabled", detail: "This employee isn't enabled for the workspace." };

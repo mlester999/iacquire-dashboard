@@ -11,12 +11,12 @@ import { cn } from "@/lib/utils";
 interface UnsavedState {
   label: string;
   returnHref: string;
-  containsSecret: boolean;
+  secretLabel: string | null;
 }
 
 interface LogoutContextValue {
   requestLogout: () => void;
-  setUnsavedState: (state: UnsavedState | null) => void;
+  setUnsavedState: (registrationId: string, state: UnsavedState | null) => void;
 }
 
 const LogoutContext = React.createContext<LogoutContextValue | null>(null);
@@ -24,7 +24,7 @@ const LogoutContext = React.createContext<LogoutContextValue | null>(null);
 export function LogoutConfirmationProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [unsaved, setUnsaved] = React.useState<UnsavedState | null>(null);
+  const [unsavedById, setUnsavedById] = React.useState<Record<string, UnsavedState>>({});
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const pendingRef = React.useRef(false);
@@ -32,7 +32,16 @@ export function LogoutConfirmationProvider({ children }: { children: React.React
     setError(null);
     setOpen(true);
   }, []);
-  const setUnsavedState = React.useCallback((state: UnsavedState | null) => setUnsaved(state), []);
+  const setUnsavedState = React.useCallback((registrationId: string, state: UnsavedState | null) => {
+    setUnsavedById((current) => {
+      const next = { ...current };
+      if (state) next[registrationId] = state;
+      else delete next[registrationId];
+      return next;
+    });
+  }, []);
+  const unsavedEntries = Object.entries(unsavedById);
+  const unsaved = unsavedEntries[0]?.[1] ?? null;
 
   async function confirmLogout() {
     if (pendingRef.current) return;
@@ -63,7 +72,7 @@ export function LogoutConfirmationProvider({ children }: { children: React.React
         }}
         title="Log out of iAcquire?"
         description={unsaved
-          ? <>Your {unsaved.label.toLowerCase()} has changes that may not be saved yet. {unsaved.containsSecret ? "Any Cloudflare credentials entered but not saved will be cleared." : "Recent edits still being saved may be lost."}</>
+          ? <>Your {unsaved.label.toLowerCase()} has changes that may not be saved yet. {unsaved.secretLabel ? `Any ${unsaved.secretLabel} entered but not saved will be cleared.` : "Recent edits still being saved may be lost."}{unsavedEntries.length > 1 ? ` You also have ${unsavedEntries.length - 1} other unsaved change${unsavedEntries.length === 2 ? "" : "s"}.` : ""}</>
           : "This ends your iAcquire session on this device. You can sign in again later."}
         icon={unsaved ? <AlertTriangle /> : <LogOut />}
         size="sm"
@@ -87,12 +96,19 @@ export function useLogoutConfirmation() {
   return context;
 }
 
-export function useLogoutUnsavedChanges(label: string, dirty: boolean, containsSecret: boolean, returnHref: string) {
+export function useLogoutUnsavedChanges(
+  label: string,
+  dirty: boolean,
+  containsSecret: boolean,
+  returnHref: string,
+  secretLabel = "credentials",
+  registrationId = label,
+) {
   const { setUnsavedState } = useLogoutConfirmation();
   React.useEffect(() => {
-    setUnsavedState(dirty ? { label, containsSecret, returnHref } : null);
-    return () => setUnsavedState(null);
-  }, [dirty, label, containsSecret, returnHref, setUnsavedState]);
+    setUnsavedState(registrationId, dirty ? { label, secretLabel: containsSecret ? secretLabel : null, returnHref } : null);
+    return () => setUnsavedState(registrationId, null);
+  }, [dirty, label, containsSecret, returnHref, secretLabel, registrationId, setUnsavedState]);
 }
 
 export function LogoutTrigger({ className, children, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {

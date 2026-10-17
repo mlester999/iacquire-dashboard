@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin, requireUserOrThrow } from "@/server/auth/session";
 import { getOrgContext } from "@/server/tenancy/context";
-import { askHelp, recentHelpMessages } from "@/server/help/service";
+import { askHelp, helpAiAvailable, recentHelpMessages } from "@/server/help/service";
 import { toPublicError } from "@/server/errors";
 import { firstName } from "@/lib/utils";
 
@@ -28,8 +28,8 @@ export async function POST(req: Request) {
 export async function GET() {
   try {
     const user = await requireUserOrThrow();
-    const messages = await recentHelpMessages(user.id);
-    return NextResponse.json({ messages });
+    const [messages, aiAvailable] = await Promise.all([recentHelpMessages(user.id), helpAiAvailable()]);
+    return NextResponse.json({ messages, aiAvailable });
   } catch (err) {
     const e = toPublicError(err);
     return NextResponse.json({ error: e.message }, { status: e.status });

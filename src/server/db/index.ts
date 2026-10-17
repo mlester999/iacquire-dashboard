@@ -208,6 +208,20 @@ export async function withSystem<T>(fn: (db: Queryable) => Promise<T>): Promise<
 }
 
 /**
+ * Executes as Supabase's service_role for narrowly scoped server operations that need its
+ * explicit grants (for example credential metadata). The database login must be allowed to
+ * assume service_role; the transaction-local switch is automatically reset before the pooled
+ * connection is reused. Callers still authorize before entering this boundary.
+ */
+export async function withServiceRole<T>(fn: (db: Queryable) => Promise<T>): Promise<T> {
+  const d = await driver();
+  return runTransaction("withServiceRole", async (tx) => {
+    await tx.query("set local role service_role");
+    return fn(tx);
+  }, d);
+}
+
+/**
  * Runs queries as the signed-in user under row-level security. Tenant isolation is enforced
  * by PostgreSQL policies in addition to application checks.
  */

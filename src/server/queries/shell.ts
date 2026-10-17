@@ -21,7 +21,6 @@ export interface ShellData {
   pendingApprovals: number;
   /** Setup Center summary for the sidebar. Hidden once the system is activated. */
   setup: { visible: boolean; percent: number | null; needsAttention: number };
-  helpAiAvailable: boolean;
   /** Custom projects needing the client's attention: a quote to decide, a deliverable to approve, or a question to answer. */
   projectsAttention: number;
   /** Conversations with unread customer messages, plus escalations waiting for this person. */
@@ -30,7 +29,7 @@ export interface ShellData {
   crmMode: "native" | "ghl" | "hybrid" | null;
 }
 
-export async function getShellData(ctx: OrgContext, helpAiAvailable: boolean): Promise<ShellData> {
+export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const { agents, unread, approvals, setup, projectsAttention, inboxAttention, crmMode } = await withUser(ctx.user.id, async (db) => {
     const a = await db.query<{ role_key: string; display_name: string; status: AgentStatus; enabled: boolean }>(
       `select a.role_key, a.display_name, a.status, a.enabled from agent_instances a
@@ -122,7 +121,6 @@ export async function getShellData(ctx: OrgContext, helpAiAvailable: boolean): P
     unreadNotifications: unread,
     pendingApprovals: approvals,
     setup,
-    helpAiAvailable,
     projectsAttention,
     inboxAttention,
     crmMode,

@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
-import { withSystem } from "@/server/db";
+import { withServiceRole, withSystem } from "@/server/db";
 import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
 import { connectAgencyHermesProfile, testAgencyHermesProfile, testAllAgencyHermesProfiles } from "@/server/workforce/agency";
 import { ensureAgencyWorkforceRegistry, listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
 import { listIntegrationManager, saveIntegrationConnection, testIntegrationConnection } from "@/server/integrations/manager";
 import { connectHermesProfile } from "@/server/workforce/service";
+import { listHermesGateways } from "@/server/integrations/hermes/gateways";
 import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
@@ -89,6 +90,27 @@ describe("agency Hermes workforce isolation", () => {
     });
     expect(mapped).toMatchObject({ status: "verified", identityVerified: true, apiContractVerified: true });
 
+    const previousCredential = await withSystem(async (db) => {
+      const { rows } = await db.query<{ credential_id: string }>("select credential_id from agent_instances where id=$1", [salesAgentId]);
+      return (await db.query<{ id: string; revoked_at: Date | null }>("select id,revoked_at from integration_credentials where id=$1", [rows[0].credential_id])).rows[0];
+    });
+    const invalidCandidate = "synthetic-invalid-replacement-key-0123456789";
+    const requestStart = mock.requests.length;
+    await expect(connectAgencyHermesProfile(admin, {
+      agentId: salesAgentId,
+      gatewayId,
+      profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant,
+      apiKey: invalidCandidate,
+      confirmedExistingProfile: true,
+    })).rejects.toThrow("Hermes rejected the candidate profile key");
+    expect(mock.requests.slice(requestStart)).toEqual([{ method: "GET", path: "/v1/capabilities", profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant }]);
+    const afterRejectedCandidate = await withServiceRole(async (db) => {
+      const { rows } = await db.query<{ credential_id: string }>("select credential_id from agent_instances where id=$1", [salesAgentId]);
+      return (await db.query<{ id: string; revoked_at: Date | null }>("select id,revoked_at from integration_credentials where id=$1", [rows[0].credential_id])).rows[0];
+    });
+    expect(afterRejectedCandidate).toEqual(previousCredential);
+    expect(JSON.stringify(mapped)).not.toContain(invalidCandidate);
+
     await ensureAgencyWorkforceRegistry(admin);
     const { rows: persisted } = await withSystem((db) => db.query<{ hermes_profile: string | null; hermes_gateway_id: string | null; status: string }>(
       "select hermes_profile,hermes_gateway_id,status from agent_instances where id=$1",
@@ -99,6 +121,8 @@ describe("agency Hermes workforce isolation", () => {
     const workforce = await listAgencyAgents(admin);
     expect(workforce).toHaveLength(AGENT_ROLE_KEYS.length);
     expect(workforce.find((agent) => agent.id === salesAgentId)?.has_credential).toBe(true);
+    const gateways = await withServiceRole(listHermesGateways);
+    expect(gateways.find((gateway) => gateway.id === gatewayId)?.id).toBe(gatewayId);
     await expect(listAgencyAgents(staff)).rejects.toMatchObject({ code: "forbidden" });
   });
 

@@ -254,7 +254,14 @@ export function ConnectionWizard({
   const hasUnsavedSecret = Boolean(secret || accessClientId || accessClientSecret);
   const nonSecretDirty = isGatewayWizard && safeDraftSignature !== baselineSignature;
   const hasUnsavedChanges = nonSecretDirty || (!isGatewayWizard && (hasUnsavedSecret || (!saved && (label !== connection.label || environment !== connection.environment || baseUrl !== text(cfg.baseUrl) || locationId !== text(cfg.locationId)))));
-  useLogoutUnsavedChanges(isGatewayWizard ? "Hermes setup" : "integration setup", hasUnsavedChanges, hasUnsavedSecret, pathname);
+  useLogoutUnsavedChanges(
+    isGatewayWizard ? "Hermes setup" : "integration setup",
+    hasUnsavedChanges,
+    hasUnsavedSecret,
+    pathname,
+    isGatewayWizard ? "Cloudflare Access or Hermes profile credentials" : "integration credentials",
+    `integration-wizard:${pathname}`,
+  );
 
   const persistDraft = React.useCallback((config: HermesSetupDraftConfig, signature: string) => {
     const task = draftQueueRef.current.catch(() => undefined).then(async () => {
