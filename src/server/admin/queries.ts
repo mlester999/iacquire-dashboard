@@ -235,20 +235,20 @@ export async function listAllAgents(user: SessionUser) {
 /** Agency-owned employee identities are returned separately from client workforce rows. */
 export async function listAgencyAgents(user: SessionUser) {
   const agencyId = await ensureAgencyWorkforceRegistry(user);
-  return withUser(user.id, async (db) => {
-    const { rows } = await db.query<{
+  const { rows } = await withUser(user.id, async (db) => {
+    return db.query<{
       id: string; org_id: string; org_name: string; role_key: AgentRoleKey; display_name: string;
       enabled: boolean; status: AgentStatus; hermes_profile: string | null;
       last_health_check_at: Date | null; last_health_detail: string | null;
       last_health_ok: boolean | null; hermes_gateway_id: string | null; gateway_status: string | null;
-      has_credential: boolean; has_config: boolean; pending_approvals: number; runs_30d: number;
+      credential_id: string | null; has_config: boolean; pending_approvals: number; runs_30d: number;
       last_activity_at: Date | null;
       profile_check_status: string | null; profile_check_detail: string | null; profile_check_at: Date | null;
       profile_verified_at: Date | null; profile_identity_verified: boolean | null; tool_permissions_status: string | null;
     }>(
       `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
               a.last_health_check_at,a.last_health_detail,a.last_health_ok,a.hermes_gateway_id,g.status as gateway_status,
-              (a.credential_id is not null and c.revoked_at is null) as has_credential,
+              a.credential_id,
               (a.active_config_version_id is not null) as has_config,
               (select count(*)::int from approval_requests p where p.agent_instance_id=a.id and p.status='pending') as pending_approvals,
               (select count(*)::int from agent_runs r where r.agent_instance_id=a.id and r.started_at > now() - interval '30 days') as runs_30d,
@@ -257,14 +257,21 @@ export async function listAgencyAgents(user: SessionUser) {
               pc.verified_at as profile_verified_at,pc.identity_verified as profile_identity_verified,
               pc.tool_permissions_status
        from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
-       left join integration_credentials c on c.id=a.credential_id
        left join hermes_gateways g on g.id=a.hermes_gateway_id
        left join agency_hermes_profile_checks pc on pc.agent_instance_id=a.id and pc.org_id=a.org_id
        where o.kind='agency' and o.id=$1 order by ro.sort_order`,
       [agencyId],
     );
-    return rows;
   });
+  const credentialIds = rows.flatMap((agent) => agent.credential_id ? [agent.credential_id] : []);
+  const activeCredentialIds = new Set((await withSystem((db) => db.query<{ id: string }>(
+    `select id from integration_credentials where id = any($1::uuid[]) and revoked_at is null`,
+    [credentialIds],
+  ))).rows.map((credential) => credential.id));
+  return rows.map(({ credential_id, ...agent }) => ({
+    ...agent,
+    has_credential: credential_id !== null && activeCredentialIds.has(credential_id),
+  }));
 }
 
 export async function listUsageByTenant(user: SessionUser) {

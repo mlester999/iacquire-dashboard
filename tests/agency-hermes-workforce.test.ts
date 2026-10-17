@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { withSystem } from "@/server/db";
-import { listAllAgents } from "@/server/admin/queries";
+import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
 import { connectAgencyHermesProfile, testAgencyHermesProfile, testAllAgencyHermesProfiles } from "@/server/workforce/agency";
 import { ensureAgencyWorkforceRegistry, listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
 import { listIntegrationManager, saveIntegrationConnection, testIntegrationConnection } from "@/server/integrations/manager";
@@ -95,6 +95,11 @@ describe("agency Hermes workforce isolation", () => {
       [salesAgentId],
     ));
     expect(persisted[0]).toMatchObject({ hermes_profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant, hermes_gateway_id: gatewayId, status: "provisioning" });
+
+    const workforce = await listAgencyAgents(admin);
+    expect(workforce).toHaveLength(AGENT_ROLE_KEYS.length);
+    expect(workforce.find((agent) => agent.id === salesAgentId)?.has_credential).toBe(true);
+    await expect(listAgencyAgents(staff)).rejects.toMatchObject({ code: "forbidden" });
   });
 
   it("requires Super Admin, checks the exact existing profile read-only, and keeps Test All separate from client employees", async () => {
