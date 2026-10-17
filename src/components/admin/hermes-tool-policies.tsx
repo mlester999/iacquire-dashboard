@@ -164,9 +164,46 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
   onConfirm: () => void;
 }) {
   const selectable = profiles.filter((profile) => profile.identityMapped && profile.enabled && profile.expectedProfile);
-  return <Card className="space-y-4 border-violet/20 p-5"><div className="flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-soft text-violet"><Bot className="size-4" /></span><div><h2 className="text-sm font-semibold text-ink">Internal agency profiles · Full Hermes Capabilities</h2><p className="mt-1 text-[12px] leading-relaxed text-muted">Acknowledge only profiles with a verified identity and authenticated API check. Each profile is recorded separately; the current gateway configuration is not changed.</p></div></div>
-    <div className="space-y-2">{profiles.map((profile) => <div key={profile.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-3"><div className="min-w-0 flex-1"><p className="text-[12px] font-semibold text-ink">{AGENT_BY_KEY[profile.roleKey].shortName}</p><p className="mt-1 break-all font-mono text-[10px] text-muted">{profile.profile ?? "Not mapped"}</p><p className="mt-1 text-[10px] text-muted">Identity: {profile.lastProfileCheck ?? "not checked"} · Tool inventory: {profile.toolPermissionsStatus ?? "unverified"}</p>{profile.fullCapabilitiesAcknowledged && <p className="mt-1 text-[10px] text-violet">Acknowledged by {profile.acknowledgedBy ?? "Super Admin"}{profile.acknowledgedAt ? ` · ${formatDate(profile.acknowledgedAt, timeZone)}` : ""}</p>}</div><StatusPill tone={profile.identityMapped ? profile.fullCapabilitiesAcknowledged ? "violet" : "success" : "warning"}>{profile.fullCapabilitiesAcknowledged ? "Acknowledged" : profile.identityMapped ? "Verified · Not acknowledged" : "Identity check needed"}</StatusPill><Switch id={`agency-ack-${profile.id}`} aria-label={`Acknowledge Full Hermes Capabilities for ${profile.displayName}`} checked={selected.includes(profile.id)} disabled={!profile.identityMapped || !profile.enabled} onCheckedChange={(checked) => setSelected((current) => checked ? [...new Set([...current, profile.id])] : current.filter((id) => id !== profile.id))} /></div>)}{!profiles.length && <p className="rounded-xl bg-surface-2 p-3 text-[12px] text-muted">No existing internal employee records were found. Connect or verify them from Internal Workforce first.</p>}</div>
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4"><p className="text-[11px] text-muted">Unverified inventory stays visible after acknowledgement.</p><Button variant="secondary" disabled={!selectable.length || !selected.length} onClick={onConfirm}><CheckCircle2 className="size-4" /> Acknowledge {selected.length} selected</Button></div>
+  return <Card className="space-y-4 border-violet/20 p-5">
+    <div className="flex items-start gap-3">
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-soft text-violet"><Bot className="size-4" /></span>
+      <div>
+        <h2 className="text-sm font-semibold text-ink">Internal agency profiles · Full Hermes Capabilities</h2>
+        <p className="mt-1 text-[12px] leading-relaxed text-muted">Acknowledge only profiles with a verified identity and authenticated API check. Each profile is recorded separately; the current gateway configuration is not changed.</p>
+      </div>
+    </div>
+    <p className="text-[11px] text-muted">A checked switch shows an acknowledgement already saved or a profile selected below. Saved acknowledgements stay on and cannot be changed here.</p>
+    <div className="space-y-2">
+      {profiles.map((profile) => {
+        const acknowledged = profile.fullCapabilitiesAcknowledged;
+        const checked = acknowledged || selected.includes(profile.id);
+        const canAcknowledge = profile.identityMapped && profile.enabled && Boolean(profile.expectedProfile) && !acknowledged;
+        return <div key={profile.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-semibold text-ink">{AGENT_BY_KEY[profile.roleKey].shortName}</p>
+            <p className="mt-1 break-all font-mono text-[10px] text-muted">{profile.profile ?? "Not mapped"}</p>
+            <p className="mt-1 text-[10px] text-muted">Identity: {profile.lastProfileCheck ?? "not checked"} · Tool inventory: {profile.toolPermissionsStatus ?? "unverified"}</p>
+            {acknowledged && <p className="mt-1 text-[10px] text-violet">Acknowledged by {profile.acknowledgedBy ?? "Super Admin"}{profile.acknowledgedAt ? ` · ${formatDate(profile.acknowledgedAt, timeZone)}` : ""}</p>}
+          </div>
+          <StatusPill tone={profile.identityMapped ? acknowledged ? "violet" : "success" : "warning"}>
+            {acknowledged ? "Acknowledged" : profile.identityMapped ? "Verified · Not acknowledged" : "Identity check needed"}
+          </StatusPill>
+          <Switch
+            id={`agency-ack-${profile.id}`}
+            aria-label={acknowledged ? `Full Hermes Capabilities acknowledged for ${profile.displayName}` : `Select ${profile.displayName} for Full Hermes Capabilities acknowledgement`}
+            checked={checked}
+            disabled={!canAcknowledge}
+            className={acknowledged ? "disabled:opacity-100" : undefined}
+            onCheckedChange={(nextChecked) => setSelected((current) => nextChecked ? [...new Set([...current, profile.id])] : current.filter((id) => id !== profile.id))}
+          />
+        </div>;
+      })}
+      {!profiles.length && <p className="rounded-xl bg-surface-2 p-3 text-[12px] text-muted">No existing internal employee records were found. Connect or verify them from Internal Workforce first.</p>}
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+      <p className="text-[11px] text-muted">Unverified inventory stays visible after acknowledgement.</p>
+      <Button variant="secondary" disabled={!selectable.length || !selected.length} onClick={onConfirm}><CheckCircle2 className="size-4" /> Acknowledge {selected.length} selected</Button>
+    </div>
     {selectable.length < profiles.length && <p className="text-[11px] text-warning-ink">One or more profiles need an identity/API check or are disabled. Review them in Internal Workforce before acknowledgement.</p>}
   </Card>;
 }
