@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Activity, AlertTriangle, ArrowRight, Bot, Building2, CheckCircle2, Clock, Clock3, Database, Mail, MessageSquare, ShieldCheck, Sparkles, Workflow, XCircle } from "lucide-react";
-import { requireAgency } from "@/server/tenancy/context";
+import { requireAgencyPermissionOrThrow } from "@/server/tenancy/context";
 import { getSystemHealth } from "@/server/admin/health";
 import { getOpsOverview } from "@/server/ops/overview";
 import { IncidentsPanel } from "@/components/admin/incidents-panel";
@@ -46,7 +46,7 @@ function ServiceCard({ icon, name, state, detail, chips, note }: { icon: React.R
   return <Card className="flex min-w-0 flex-col p-5"><div className="flex flex-wrap items-center justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-primary-soft text-primary-ink">{icon}</span><StatusPill tone={semantic.tone} icon={<StatusIcon className="size-3" aria-hidden />}>{semantic.text}</StatusPill></div><h2 className="mt-4 text-[15px] font-semibold">{name}</h2>{chips && <div className="mt-3 flex flex-wrap items-center gap-1.5">{chips}</div>}{detail && <div className="mt-3 break-words text-[13px] leading-relaxed text-muted">{detail}</div>}{note && <p className="mt-auto border-t border-line pt-3 text-[11.5px] leading-relaxed text-muted [&:not(:first-child)]:mt-4">{note}</p>}</Card>;
 }
 export default async function HealthPage() {
-  const user = await requireAgency(); const [h, ops] = await Promise.all([getSystemHealth(), getOpsOverview(user)]);
+  const user = await requireAgencyPermissionOrThrow("agency.security.manage"); const [h, ops] = await Promise.all([getSystemHealth(), getOpsOverview(user)]);
   const states: ServiceState[] = [!h.database.ok ? "error" : h.database.driver !== "postgres" || h.database.pendingMigrations.length ? "attention" : "verified", h.hermes.total === 0 ? "not_configured" : h.hermes.error || h.hermes.offline ? "error" : h.hermes.setupRequired ? "attention" : "verified", h.ghl.mapped === 0 ? "not_configured" : h.ghl.errors ? "error" : h.ghl.connected < h.ghl.mapped ? "attention" : "verified", h.n8n.configured ? h.n8n.reachable ? h.n8n.appointmentProcessor?.active ? "attention" : "verified" : "error" : "not_configured"];
   const failures = states.filter((s) => s === "error").length + (ops.openCritical ? 1 : 0);
   return <div className="module-stack space-y-6"><PageHero tone="dark" icon={<Activity />} eyebrow="Platform observability" title="Know what's working. See what needs you." description="Current database connectivity and recorded provider signals. Configuration alone is never presented as a verified connection." aside={<div className="rounded-2xl border border-white/15 bg-white/[.035] p-5"><p className="flex items-center gap-2 text-sm font-semibold"><span className={`size-2 rounded-full ${failures ? "bg-danger" : "bg-primary"}`} />{failures ? `${failures} service checks need review` : "Latest service snapshot"}</p><p className="mt-3 text-xs leading-relaxed hero-description">Checked {formatDateTime(h.checkedAt, user.timezone)}<br />Provider timestamps may be older than this page snapshot.</p></div>} />

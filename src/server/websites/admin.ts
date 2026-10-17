@@ -7,12 +7,12 @@ import { platformHost, type DomainView } from "@/server/websites/service";
 import { LIFECYCLE_LABEL, type Lifecycle } from "@/lib/website/lifecycle";
 
 /**
- * Everything the agency's Website Studio shows is read here, and every read is scoped: a super admin sees every client; agency staff see only the
- * clients they are assigned to. Nothing is invented: every figure is a count of real rows, and "no data" is reported as no data.
+ * Every Website Studio read follows the database's current client scope: Super Admins see every client, Managers follow their configured scope,
+ * and Staff see assigned clients. Nothing is invented: every figure is a count of real rows, and "no data" is reported as no data.
  */
-function scope(user: SessionUser): { all: boolean; userId: string } {
+function scope(user: SessionUser): { userId: string } {
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
-  return { all: user.platformRole === "agency_super_admin", userId: user.id };
+  return { userId: user.id };
 }
 
 export { LIFECYCLE_LABEL, type Lifecycle };
@@ -64,7 +64,7 @@ const MANAGED_SQL = `
     where x.website_id = w.id and x.removed_at is null order by x.is_primary desc, x.created_at limit 1
   ) d on true
   where o.kind = 'client' and o.status <> 'archived'
-    and ($1::boolean or w.org_id in (select org_id from staff_assignments where user_id = $2))`;
+    and app.user_can_access_org($1,w.org_id)`;
 
 function lifecycleOf(r: Row): Lifecycle {
   if (r.archived_at) return "archived";
@@ -97,13 +97,13 @@ function map(r: Row): ManagedWebsite {
 
 export async function listManagedWebsites(user: SessionUser): Promise<ManagedWebsite[]> {
   const s = scope(user);
-  const { rows } = await withSystem((db) => db.query<Row>(`${MANAGED_SQL} order by w.draft_updated_at desc`, [s.all, s.userId]));
+  const { rows } = await withSystem((db) => db.query<Row>(`${MANAGED_SQL} order by w.draft_updated_at desc`, [s.userId]));
   return rows.map(map);
 }
 
 export async function getManagedWebsite(user: SessionUser, orgId: string): Promise<ManagedWebsite | null> {
   const s = scope(user);
-  const { rows } = await withSystem((db) => db.query<Row>(`${MANAGED_SQL} and w.org_id = $3 and w.kind = 'website'`, [s.all, s.userId, orgId]));
+  const { rows } = await withSystem((db) => db.query<Row>(`${MANAGED_SQL} and w.org_id = $2 and w.kind = 'website'`, [s.userId, orgId]));
   return rows[0] ? map(rows[0]) : null;
 }
 
@@ -150,14 +150,16 @@ export async function studioOverview(user: SessionUser): Promise<StudioOverview>
     const { rows } = await db.query<{ created_at: Date; action: string; actor: string | null; org_name: string | null; org_id: string | null }>(
       `select a.created_at, a.action, u.full_name as actor, o.name as org_name, a.org_id
        from audit_logs a left join users u on u.id = a.actor_user_id left join organizations o on o.id = a.org_id
-       where a.action like 'website.%' and (a.org_id is null or $1::boolean or a.org_id in (select org_id from staff_assignments where user_id = $2))
-       order by a.created_at desc limit 12`, [s.all, s.userId]);
+       where a.action like 'website.%'
+         and (coalesce(app.user_has_agency_permission($1,'agency.security.manage'),false)
+           or (a.org_id is not null and app.user_can_access_org($1,a.org_id)))
+       order by a.created_at desc limit 12`, [s.userId]);
     return rows.map((r) => ({ at: new Date(r.created_at).toISOString(), action: r.action, label: ACTION_LABEL[r.action] ?? r.action.replace("website.", "").replace(/_/g, " "), actor: r.actor, orgName: r.org_name, orgId: r.org_id }));
   });
   const withoutSite = await withSystem(async (db) =>
     Number((await db.query<{ n: string }>(
       `select count(*) as n from organizations o where o.kind = 'client' and o.status in ('active', 'onboarding') and not exists (select 1 from websites w where w.org_id = o.id and w.kind = 'website')
-         and ($1::boolean or o.id in (select org_id from staff_assignments where user_id = $2))`, [s.all, s.userId])).rows[0].n));
+         and app.user_can_access_org($1,o.id)`, [s.userId])).rows[0].n));
   const live = sites.filter((x) => !x.archived);
   return {
     total: live.length,
@@ -201,8 +203,8 @@ export async function domainsOverview(user: SessionUser): Promise<{ domains: Dom
       dns_detail: string | null; ssl_detail: string | null; dns_checked_at: Date | null; renews_at: Date | null; acquisition: DomainView["acquisition"] }>(
       `select d.id, d.website_id, d.org_id, o.name as org_name, d.hostname, d.kind, d.status, d.ssl_status, d.live_ok, d.routing_ok, d.is_primary, d.dns_detail, d.ssl_detail, d.dns_checked_at, d.renews_at, d.acquisition
        from website_domains d join organizations o on o.id = d.org_id
-       where d.removed_at is null and o.status <> 'archived' and ($1::boolean or d.org_id in (select org_id from staff_assignments where user_id = $2))
-       order by (d.status in ('pending_dns', 'error') or d.ssl_status = 'error' or d.live_ok = false) desc, o.name, d.hostname`, [s.all, s.userId]));
+       where d.removed_at is null and o.status <> 'archived' and app.user_can_access_org($1,d.org_id)
+       order by (d.status in ('pending_dns', 'error') or d.ssl_status = 'error' or d.live_ok = false) desc, o.name, d.hostname`, [s.userId]));
   const domains = rows.map((r): DomainRow => {
     let why: string | null = null;
     if (r.status === "pending_dns") why = "DNS ownership not verified yet.";
@@ -217,7 +219,7 @@ export async function domainsOverview(user: SessionUser): Promise<{ domains: Dom
     (await db.query<{ org_id: string; name: string; requests: string; bytes: string; forms: string }>(
       `select u.org_id, o.name, sum(u.requests) as requests, sum(u.bytes_served) as bytes, sum(u.form_submissions) as forms
        from website_usage_daily u join organizations o on o.id = u.org_id
-       where u.day > current_date - 30 and ($1::boolean or u.org_id in (select org_id from staff_assignments where user_id = $2)) group by u.org_id, o.name order by 3 desc limit 25`, [s.all, s.userId])).rows
+       where u.day > current_date - 30 and app.user_can_access_org($1,u.org_id) group by u.org_id, o.name order by 3 desc limit 25`, [s.userId])).rows
       .map((r) => ({ orgId: r.org_id, orgName: r.name, requests: Number(r.requests), bytes: Number(r.bytes), enquiries: Number(r.forms) })));
   return { domains, baseDomain: platformHost("example").replace(/^example\./, ""), usage };
 }
@@ -228,6 +230,6 @@ export async function managedClients(user: SessionUser): Promise<Array<{ id: str
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; name: string; has: boolean }>(
       `select o.id, o.name, exists (select 1 from websites w where w.org_id = o.id and w.kind = 'website') as has from organizations o
-       where o.kind = 'client' and o.status in ('active', 'onboarding') and ($1::boolean or o.id in (select org_id from staff_assignments where user_id = $2)) order by o.name`, [s.all, s.userId]));
+       where o.kind = 'client' and o.status in ('active', 'onboarding') and app.user_can_access_org($1,o.id) order by o.name`, [s.userId]));
   return rows.map((r) => ({ id: r.id, name: r.name, hasWebsite: r.has }));
 }

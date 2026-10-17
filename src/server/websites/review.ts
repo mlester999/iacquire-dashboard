@@ -113,7 +113,7 @@ export async function requestChanges(ctx: OrgContext, note: string): Promise<voi
 
 /** Archiving takes a website out of service and out of the agency's lists; nothing is deleted, and it can be restored. */
 export async function setArchived(ctx: OrgContext, archived: boolean): Promise<void> {
-  if (!ctx.can("website.publish")) throw new AppError("forbidden", "Only the business owner or an agency super admin can archive a website.");
+  if (!ctx.can("website.archive")) throw new AppError("forbidden", "Your role doesn't allow archiving or restoring a website.");
   await withSystem(async (db) => {
     const w = (await db.query<{ id: string; published_publication_id: string | null }>("select id, published_publication_id from websites where org_id = $1 and kind = 'website' for update", [ctx.org.orgId])).rows[0];
     if (!w) throw new AppError("not_found", "Create your website first.");

@@ -1,4 +1,4 @@
-import { requireAgency, listMemberships } from "@/server/tenancy/context";
+import { requireAgency, listMemberships, loadAgencyPermissions } from "@/server/tenancy/context";
 import { AdminShell } from "@/components/admin/admin-shell";
 
 export const dynamic = "force-dynamic";
@@ -6,9 +6,9 @@ export const metadata = { title: { default: "Admin", template: "%s · iAcquire A
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAgency();
-  const memberships = await listMemberships(user.id);
+  const [memberships, permissions] = await Promise.all([listMemberships(user.id), loadAgencyPermissions(user.id)]);
   return (
-    <AdminShell user={{ name: user.fullName || user.email, email: user.email, platformRole: user.platformRole }} hasWorkspace={memberships.length > 0} qaDemo={process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production"}>
+    <AdminShell user={{ name: user.fullName || user.email, email: user.email, platformRole: user.platformRole }} permissions={permissions} hasWorkspace={memberships.length > 0} qaDemo={process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production"}>
       {children}
     </AdminShell>
   );

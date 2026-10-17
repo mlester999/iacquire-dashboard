@@ -261,10 +261,10 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
       note: string | null;
     }>("select check_key, status, detail, source, checked_at, attested_by, evidence_url, note from client_setup_checks where org_id = $1", [orgId]);
     const jobs = await db.query<{ id: string; status: string }>("select id, status from provisioning_jobs where org_id = $1 and status in ('failed', 'running')", [orgId]);
-    const staff = await db.query<{ id: string; name: string; role: "agency_staff" | "agency_super_admin" }>(
+    const staff = await db.query<{ id: string; name: string; role: "agency_staff" | "agency_manager" | "agency_super_admin" }>(
       `select u.id, coalesce(nullif(u.full_name, ''), u.email::text) as name, u.platform_role as role from users u
-       where u.status = 'active' and (u.platform_role = 'agency_super_admin'
-         or (u.platform_role = 'agency_staff' and exists (select 1 from staff_assignments s where s.user_id = u.id and s.org_id = $1)))
+       where u.status = 'active' and u.platform_role in ('agency_super_admin','agency_manager','agency_staff')
+         and app.user_can_access_org(u.id,$1)
        order by u.platform_role desc, name`,
       [orgId],
     );

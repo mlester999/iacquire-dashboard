@@ -37,8 +37,8 @@ export interface FinanceEntryRow {
 
 export interface FinancialReport {
   period: Period;
-  /** "agency" is every client plus overhead and reserve; "assigned" is only the clients this staff member looks after. */
-  scope: "agency" | "assigned";
+  /** "agency" includes agency-wide overhead and reserve; "client_scope" includes only clients this user may access. */
+  scope: "agency" | "client_scope";
   received: { setupMicros: number; maintenanceMicros: number; projectsMicros: number; domainsMicros: number; otherMicros: number; grossMicros: number; refundedMicros: number; netMicros: number };
   /** Credits clients paid for in advance. They are owed back as service, so they are held apart from income until they are used. */
   prepaid: { topUpsMicros: number; heldForClientsMicros: number };
@@ -55,8 +55,14 @@ export interface FinancialReport {
   caveats: string[];
 }
 
-export function requireFinanceView(user: Pick<SessionUser, "platformRole">) {
-  if (user.platformRole === "none") throw new AppError("forbidden", "Only agency staff can view finance.");
+async function financeAccess(user: Pick<SessionUser, "id">) {
+  const { rows } = await withSystem((db) => db.query<{ allowed: boolean; agency_wide: boolean }>(
+    `select coalesce(app.user_has_agency_permission($1,'billing.agency_view'),false) as allowed,
+            coalesce(app.user_has_agency_permission($1,'agency.security.manage'),false) as agency_wide`,
+    [user.id],
+  ));
+  if (rows[0]?.allowed !== true) throw new AppError("forbidden", "Only agency staff can view finance.");
+  return { agencyWide: rows[0].agency_wide === true };
 }
 function requireFinanceManage(user: Pick<SessionUser, "platformRole">) {
   if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can change finance records.");
@@ -69,13 +75,11 @@ function requireFinanceManage(user: Pick<SessionUser, "platformRole">) {
  * distribute" is a planning figure and says what it leaves out.
  */
 export async function getFinancialReport(user: SessionUser, period: Period): Promise<FinancialReport> {
-  requireFinanceView(user);
-  const agencyWide = user.platformRole === "agency_super_admin";
+  const { agencyWide } = await financeAccess(user);
   return withSystem(async (db) => {
-    // Staff see only clients they are assigned to; the same filter applies to every figure below.
-    const scopeSql = agencyWide ? "true" : "o.id in (select org_id from staff_assignments where user_id = $3)";
-    const base = [period.from, period.to];
-    const params = agencyWide ? base : [...base, user.id];
+    // The database resolves Super Admin, all-client Manager and assigned-client Staff scope live.
+    const scopeSql = agencyWide ? "true" : "app.user_can_access_org($3,o.id)";
+    const params = agencyWide ? [period.from, period.to] : [period.from, period.to, user.id];
 
     const settings = (await db.query<{ setup_reserve_usd: number; tax_set_aside_bps: number | null }>("select setup_reserve_usd, tax_set_aside_bps from agency_billing_settings")).rows[0] ?? { setup_reserve_usd: 200, tax_set_aside_bps: null };
 
@@ -103,10 +107,13 @@ export async function getFinancialReport(user: SessionUser, period: Period): Pro
       params,
     )).rows[0];
 
-    const held = (await db.query<{ v: string }>(`select coalesce(sum(a.balance_micros), 0)::text as v from credit_accounts a join organizations o on o.id = a.org_id where ${agencyWide ? "true" : "o.id in (select org_id from staff_assignments where user_id = $1)"}`, agencyWide ? [] : [user.id])).rows[0];
+    const held = (await db.query<{ v: string }>(
+      `select coalesce(sum(a.balance_micros), 0)::text as v from credit_accounts a join organizations o on o.id = a.org_id where ${agencyWide ? "true" : "app.user_can_access_org($1,o.id)"}`,
+      agencyWide ? [] : [user.id],
+    )).rows[0];
 
-    // Entries: the agency-wide kinds are for super admins only; staff see the direct costs of their own clients.
-    const entryScope = agencyWide ? "true" : "(e.org_id is not null and e.org_id in (select org_id from staff_assignments where user_id = $3))";
+    // Agency-wide entries are for Super Admins only; other users see entries for clients in their live scope.
+    const entryScope = agencyWide ? "true" : "(e.org_id is not null and app.user_can_access_org($3,e.org_id))";
     const entryRows = await db.query<{ id: string; kind: EntryKind; category: string; description: string; amount_micros: string; period_on: string; org_id: string | null; org_name: string | null; created_at: Date; voided_at: Date | null; void_reason: string | null }>(
       `select e.id, e.kind, e.category, e.description, e.amount_micros::text, to_char(e.period_on, 'YYYY-MM-DD') as period_on, e.org_id, o.name as org_name, e.created_at, e.voided_at, e.void_reason
        from agency_finance_entries e left join organizations o on o.id = e.org_id
@@ -137,7 +144,7 @@ export async function getFinancialReport(user: SessionUser, period: Period): Pro
     );
 
     const recon = (await db.query<{ n: string }>(
-      `select count(*)::text as n from organizations o cross join lateral app.credit_reconciliation(o.id) r where o.kind = 'client' and ${agencyWide ? "true" : "o.id in (select org_id from staff_assignments where user_id = $1)"} and not r.consistent`,
+      `select count(*)::text as n from organizations o cross join lateral app.credit_reconciliation(o.id) r where o.kind = 'client' and ${agencyWide ? "true" : "app.user_can_access_org($1,o.id)"} and not r.consistent`,
       agencyWide ? [] : [user.id],
     )).rows[0];
 
@@ -170,7 +177,7 @@ export async function getFinancialReport(user: SessionUser, period: Period): Pro
     if (agencyWide && costs.overheadMicros === 0) caveats.push("No overhead has been entered for this period. Enter hosting, software and other running costs, or the estimate will be too high.");
     if (usage.uncollectedMicros > 0) caveats.push("Some usage could not be collected because credits ran out. It is shown above but is not income until collected.");
     if (Number(recon.n) > 0) caveats.push(`${recon.n} client credit ledger${Number(recon.n) === 1 ? " does" : "s do"} not reconcile. Resolve this before relying on these figures.`);
-    if (!agencyWide) caveats.push("You see only the clients you are assigned to. Agency-wide costs, reserve and the distribution estimate are visible to super admins.");
+    if (!agencyWide) caveats.push("You see clients in your current access scope. Agency-wide costs, reserve and the distribution estimate are visible to super admins.");
 
     const clients: ClientFinanceRow[] = clientRows.rows.map((c) => {
       const row = { receivedMicros: Number(c.received), refundedMicros: Number(c.refunded), usageChargedMicros: Number(c.charged), providerCostMicros: Number(c.wholesale), paymentFeesMicros: Number(c.fees), directCostsMicros: Number(c.direct) };
@@ -179,7 +186,7 @@ export async function getFinancialReport(user: SessionUser, period: Period): Pro
 
     return {
       period,
-      scope: agencyWide ? "agency" : "assigned",
+      scope: agencyWide ? "agency" : "client_scope",
       received,
       prepaid: { topUpsMicros: Number(pay.topups), heldForClientsMicros: Number(held.v) },
       usage,

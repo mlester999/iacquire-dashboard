@@ -9,6 +9,7 @@ import {
   DraftConflictError, PublishBlockedError, createWebsite, decideApproval, getDraft, getWebsite, listPublications, listVersions, preflight, publishWebsite,
   regenerateDraft, restoreVersion, rollbackWebsite, saveDraft, saveVersion, submitForApproval, unpublishWebsite,
 } from "@/server/websites/service";
+import { setArchived } from "@/server/websites/review";
 import { isRef, type Section, type SiteContent } from "@/lib/website/doc";
 import type { ProbeFetcher } from "@/server/websites/probe";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -66,7 +67,8 @@ afterAll(() => {
 
 describe("creating the website", () => {
   it("builds a first draft from confirmed workspace facts, with its own included address", async () => {
-    const { subdomain } = await createWebsite(as(owner), { templateKey: "local.crew" });
+    const createOnly = { ...as(owner), can: (permission: string) => permission === "website.create" } as ReturnType<typeof as>;
+    const { subdomain } = await createWebsite(createOnly, { templateKey: "local.crew" });
     expect(subdomain).toBe("roof-co");
     const site = (await getWebsite(as(owner)))!;
     expect(site).toMatchObject({ name: "Roof Co", templateKey: "local.crew", platformHost: "roof-co.sites.test.example", draftRevision: 0, hasUnpublishedChanges: false, published: null });
@@ -79,10 +81,17 @@ describe("creating the website", () => {
     expect((await listVersions(as(owner)))[0]).toMatchObject({ version: 1, source: "generated" });
   });
 
-  it("allows one main website per workspace and only to people who may edit", async () => {
+  it("allows one main website per workspace and keeps create separate from edit", async () => {
     await expect(createWebsite(as(owner), { templateKey: "corp.summit" })).rejects.toThrow(/already has a website/);
-    await expect(createWebsite(as(rep, org, "sales_rep"), { templateKey: "corp.summit" })).rejects.toThrow(/Only owners and managers/);
+    const editOnly = { ...as(owner), can: (permission: string) => permission === "website.edit" } as ReturnType<typeof as>;
+    await expect(createWebsite(editOnly, { templateKey: "corp.summit" })).rejects.toThrow(/doesn't allow creating a website/);
+    await expect(createWebsite(as(rep, org, "sales_rep"), { templateKey: "corp.summit" })).rejects.toThrow(/doesn't allow creating a website/);
     await expect(createWebsite(as(owner), { templateKey: "nope.nope" })).rejects.toThrow(/Choose one of the templates/);
+  });
+
+  it("does not let publish permission implicitly archive a website", async () => {
+    const publishOnly = { ...as(owner), can: (permission: string) => permission === "website.publish" } as ReturnType<typeof as>;
+    await expect(setArchived(publishOnly, true)).rejects.toThrow(/doesn't allow archiving or restoring/);
   });
 
   it("gives other workspaces their own distinct, valid addresses", async () => {
@@ -318,17 +327,22 @@ describe("publishing", () => {
     await expect(unpublishWebsite(as(owner))).rejects.toThrow(/isn't published/);
   });
 
-  it("lets a super admin publish for a managed client only after the owner approved that exact draft", async () => {
+  it("requires exact-draft client-owner approval before Agency Manager or Super Admin publishing", async () => {
     const d = (await getDraft(as(owner)))!;
     const next = structuredClone(d.content);
     next.business.tagline = "Ready for the agency to publish";
     await saveDraft(as(owner), { content: next, expectedRevision: d.revision });
-    const agency = { ...ctxFor(superAdmin, org, "owner"), role: "agency_super_admin" as const, can: (p: string) => ["website.publish", "website.view", "website.edit"].includes(p) };
-    const acting = agency as unknown as ReturnType<typeof as>;
-    await expect(publishWebsite(acting, { acknowledgeClaims: true }, { probe: broken })).rejects.toThrow(/owner needs to approve/);
+    const managerUser = await createUser({ platformRole: "agency_manager" });
+    const managerContext = { ...ctxFor(managerUser, org, "owner"), role: "agency_manager" as const, can: (p: string) => ["website.publish", "website.view", "website.edit"].includes(p) };
+    const actingManager = managerContext as unknown as ReturnType<typeof as>;
+    const adminContext = { ...ctxFor(superAdmin, org, "owner"), role: "agency_super_admin" as const, can: (p: string) => ["website.publish", "website.view", "website.edit"].includes(p) };
+    const actingAdmin = adminContext as unknown as ReturnType<typeof as>;
+
+    await expect(publishWebsite(actingManager, { acknowledgeClaims: true }, { probe: broken })).rejects.toThrow(/owner needs to approve/);
+    await expect(publishWebsite(actingAdmin, { acknowledgeClaims: true }, { probe: broken })).rejects.toThrow(/owner needs to approve/);
     await submitForApproval(as(manager, org, "admin"));
     await decideApproval(as(owner), { approve: true });
-    await expect(publishWebsite(acting, { acknowledgeClaims: true }, { probe: async () => ({ status: 200, body: "" }) })).resolves.toMatchObject({ health: "unhealthy" });
+    await expect(publishWebsite(actingManager, { acknowledgeClaims: true }, { probe: async () => ({ status: 200, body: "" }) })).resolves.toMatchObject({ health: "unhealthy" });
   });
 });
 

@@ -607,6 +607,10 @@ describe("billing visibility and tenant isolation", () => {
     const staff = await createUser({ platformRole: "agency_staff" });
     const scoped = await getAgencyBillingOverview({ id: staff.id, platformRole: "agency_staff" });
     expect(scoped.clients).toEqual([]);
+    expect(scoped.unmatchedEvents).toEqual([]);
+    const manager = await createUser({ platformRole: "agency_manager" });
+    const managerScope = await getAgencyBillingOverview({ id: manager.id, platformRole: "agency_manager" });
+    expect(managerScope.clients.map((client) => client.orgId)).toContain(orgA.id);
     await expect(getAgencyBillingOverview({ id: owner.id, platformRole: "none" })).rejects.toThrow(/Agency access/);
   });
 

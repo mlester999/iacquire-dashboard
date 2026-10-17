@@ -26,7 +26,7 @@ export function NewWebsite({ cards, preferIndustry }: { cards: GalleryCard[]; pr
       setBusy(false);
       return void toast.error(res.error);
     }
-    router.push("/website/edit");
+    router.push("/website");
   };
   return (
     <>

@@ -150,26 +150,31 @@ export async function setClientPause(ctx: OrgContext, input: { scope: ClientPaus
  * The reason is kept in the audit log, not in a client-readable column.
  */
 export async function setAgencyPause(user: Pick<SessionUser, "id" | "platformRole">, input: { orgId: string | null; paused: boolean; reason: string }) {
-  if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
-  const isSuper = user.platformRole === "agency_super_admin";
-  if (!isSuper && (input.orgId === null || !input.paused)) {
-    throw new AppError("forbidden", input.orgId === null ? "Only a super admin can pause the whole platform." : "Only a super admin can lift an emergency pause.");
-  }
   const reason = trimReason(input.reason);
   if (input.paused && !reason) throw new AppError("invalid_input", "Record why automation is being paused.");
   return withSystem(async (db) => {
+    const actor = await db.query<{ platform_role: string; super_admin: boolean }>(
+      `select u.platform_role,coalesce(app.user_has_agency_permission(u.id,'agency.security.manage'),false) as super_admin
+       from users u where u.id=$1 and u.status='active' and u.platform_role <> 'none' for share`,
+      [user.id],
+    );
+    if (!actor.rows[0]) throw new AppError("forbidden", "Agency access is required.");
+    const isSuper = actor.rows[0].super_admin === true;
+    if (!isSuper && (input.orgId === null || !input.paused)) {
+      throw new AppError("forbidden", input.orgId === null ? "Only a super admin can pause the whole platform." : "Only a super admin can lift an emergency pause.");
+    }
     let target = input.orgId;
     if (target === null) {
       const { rows } = await db.query<{ id: string }>("select id from organizations where kind = 'agency' limit 1");
       target = rows[0]?.id ?? null;
       if (!target) throw new AppError("not_found", "Agency workspace not found.");
     } else {
-      const { rows } = await db.query<{ kind: string }>("select kind from organizations where id = $1", [target]);
+      const { rows } = await db.query<{ kind: string; allowed: boolean }>(
+        "select o.kind,app.user_can_access_org($2,o.id) as allowed from organizations o where o.id = $1",
+        [target, user.id],
+      );
       if (!rows[0]) throw new AppError("not_found", "Workspace not found.");
-      if (!isSuper) {
-        const assigned = await db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [target, user.id]);
-        if (!assigned.rows.length) throw new AppError("forbidden", "You are not assigned to this client.");
-      }
+      if (!isSuper && (rows[0].kind !== "client" || rows[0].allowed !== true)) throw new AppError("forbidden", "You are not assigned to this client.");
     }
     await db.query(
       `insert into automation_pauses (org_id, scope, active, reason, set_by, set_at) values ($1, 'agency', $2, null, $3, now())

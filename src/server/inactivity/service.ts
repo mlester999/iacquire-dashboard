@@ -120,12 +120,11 @@ export interface ReviewRow {
 /** Open and recent reviews across the clients this person looks after. */
 export async function listReviews(user: Pick<SessionUser, "id" | "platformRole">): Promise<ReviewRow[]> {
   if (user.platformRole === "none") throw new AppError("forbidden", "Only agency staff can view account reviews.");
-  const scope = user.platformRole === "agency_super_admin" ? "true" : "o.id in (select org_id from staff_assignments where user_id = $1)";
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; org_id: string; name: string; status: ReviewRow["status"]; inactive_days: number; notices_sent: number; opened_at: Date; closed_at: Date | null; closed_note: string | null }>(
       `select r.id, r.org_id, o.name, r.status, r.inactive_days, r.notices_sent, r.opened_at, r.closed_at, r.closed_note from account_activity_reviews r join organizations o on o.id = r.org_id
-       where ${scope} and (r.status = 'open' or r.closed_at > now() - interval '90 days') order by (r.status = 'open') desc, r.opened_at desc limit 100`,
-      user.platformRole === "agency_super_admin" ? [] : [user.id],
+       where app.user_can_access_org($1,o.id) and (r.status = 'open' or r.closed_at > now() - interval '90 days') order by (r.status = 'open') desc, r.opened_at desc limit 100`,
+      [user.id],
     ),
   );
   return rows.map((r) => ({ id: r.id, orgId: r.org_id, orgName: r.name, status: r.status, inactiveDays: r.inactive_days, noticesSent: r.notices_sent, openedAt: new Date(r.opened_at).toISOString(), closedAt: r.closed_at ? new Date(r.closed_at).toISOString() : null, closedNote: r.closed_note }));

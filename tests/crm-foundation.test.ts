@@ -7,7 +7,7 @@ import { createTag, deleteTag, listTags, mergeTags, tagContacts, updateTag } fro
 import { createCustomField, listCustomFields, setRecordFields, updateCustomField } from "@/server/crm/fields";
 import { countContacts, listContacts, listCompanies } from "@/server/crm/directory";
 import { createSmartList, deleteSmartList, duplicateSmartList, listSmartLists, pinSmartList, setDefaultSmartList, updateSmartList } from "@/server/crm/smart-lists";
-import { createCompany, getCompanyDetail, normalizeDomain, updateCompany } from "@/server/crm/companies";
+import { createCompany, deleteCompany, getCompanyDetail, normalizeDomain, setCompaniesArchived, updateCompany } from "@/server/crm/companies";
 import { addNote, deleteNote, editNote, listNotes } from "@/server/crm/notes";
 import { getTimeline } from "@/server/crm/timeline";
 import { effectivePermission, PERMISSION_MATRIX } from "@/lib/permissions";
@@ -99,6 +99,19 @@ describe("contacts", () => {
     await expect(setContactsArchived(a.actor("support"), [mine.id], true)).rejects.toThrow(/archive/);
     await expect(assignContacts(a.actor("sales"), [mine.id], a.people.support.id)).rejects.toThrow(/assign/);
     await expect(assignContacts(a.actor("manager"), [mine.id], a.people.sales.id)).resolves.toEqual({ changed: 1 });
+  });
+
+  it("requires the company-delete action instead of reusing contact deletion", async () => {
+    const owner = a.actor("owner");
+    const company = await createCompany(owner, { name: `Permission check ${crypto.randomUUID()}` });
+    const contactsOnly = { ...owner, can: (permission: string) => permission === "contacts.delete" };
+    const companiesOnly = { ...owner, can: (permission: string) => permission === "companies.delete" };
+
+    await expect(setCompaniesArchived(contactsOnly, [company.id], true)).rejects.toThrow(/company archive permission/);
+    await expect(deleteCompany(contactsOnly, company.id)).rejects.toThrow(/company delete permission/);
+    await expect(setCompaniesArchived(companiesOnly, [company.id], true)).resolves.toMatchObject({ changed: 1 });
+    await expect(setCompaniesArchived(companiesOnly, [company.id], false)).resolves.toMatchObject({ changed: 1 });
+    await expect(deleteCompany(companiesOnly, company.id)).resolves.toBeUndefined();
   });
 
   it("refuses to assign a contact to someone outside the workspace", async () => {
@@ -454,11 +467,22 @@ describe("agency support access", () => {
 
     await updateAgencyUserPermission(agency.superAdmin, { userId: agency.staff.id, permission: "agency.crm.manage", effect: "allow" });
     await updateAgencyUserPermission(agency.superAdmin, { userId: agency.staff.id, permission: "tags.manage", effect: "allow" });
+    await updateAgencyUserPermission(agency.superAdmin, { userId: agency.staff.id, permission: "contacts.create", effect: "allow" });
+    await updateAgencyUserPermission(agency.superAdmin, { userId: agency.staff.id, permission: "contacts.edit", effect: "deny" });
     await startSupportSession(agency.staff, a.org.id, { mode: "write", reason: "Client approved a focused tag cleanup" });
     const delegatedWriter = await agencyActor(agency.staff, a.org.id);
     expect(delegatedWriter.supportMode).toBe("write");
     expect(delegatedWriter.can("tags.manage")).toBe(true);
+    expect(delegatedWriter.can("contacts.create")).toBe(true);
+    expect(delegatedWriter.can("contacts.edit")).toBe(false);
     expect(delegatedWriter.can("contacts.export")).toBe(false);
+    const databasePermissions = await withUser(agency.staff.id, (db) => db.query<{ create: boolean; edit: boolean }>(
+      "select app.has_permission($1,'contacts.create') as create,app.has_permission($1,'contacts.edit') as edit",
+      [a.org.id],
+    ));
+    expect(databasePermissions.rows[0]).toEqual({ create: true, edit: false });
+    const createdWithCreateOnly = await createContact(delegatedWriter, { firstName: "Create-only agency access" });
+    await expect(updateContact(delegatedWriter, createdWithCreateOnly.id, { firstName: "Edit must stay blocked" })).rejects.toThrow(/role doesn't allow/);
     await expect(createTag(delegatedWriter, { name: "Delegated support tag" })).resolves.toMatchObject({ id: expect.any(String) });
     await endSupportSession(agency.staff, a.org.id);
 
@@ -499,6 +523,15 @@ describe("granular permissions", () => {
     await withSystem((db) => db.query("insert into member_permission_overrides (org_id, user_id, permission, effect) values ($1, $2, 'contacts.export', 'grant')", [c.org.id, c.people.sales.id]));
     const can = await withUser(c.people.sales.id, (db) => db.query<{ ok: boolean }>("select app.has_permission($1, 'contacts.export') as ok", [c.org.id]));
     expect(can.rows[0].ok).toBe(true);
+    await withSystem((db) => db.query(
+      "insert into member_permission_overrides (org_id,user_id,permission,effect) values ($1,$2,'contacts.delete','grant'),($1,$2,'companies.delete','revoke')",
+      [c.org.id, c.people.sales.id],
+    ));
+    const separateDelete = await withUser(c.people.sales.id, (db) => db.query<{ contact: boolean; company: boolean }>(
+      "select app.has_permission($1,'contacts.delete') as contact,app.has_permission($1,'companies.delete') as company",
+      [c.org.id],
+    ));
+    expect(separateDelete.rows[0]).toEqual({ contact: true, company: false });
     await withSystem((db) => db.query("insert into member_permission_overrides (org_id, user_id, permission, effect) values ($1, $2, 'contacts.view', 'revoke')", [c.org.id, c.people.viewer.id]));
     const viewerSees = await withUser(c.people.viewer.id, (db) => db.query("select 1 from contacts where org_id = $1", [c.org.id]));
     expect(viewerSees.rows).toHaveLength(0);

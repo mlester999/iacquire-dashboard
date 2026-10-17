@@ -71,16 +71,25 @@ export async function agencyTeamView(admin: SessionUser): Promise<AgencyTeamView
       "select user_id,permission,effect from agency_user_permission_overrides",
     );
     const memberIds = members.rows.map((m) => m.id);
-    const memberEmails = members.rows.map((member) => member.email.toLowerCase());
-    const activity = await db.query<{ actor_user_id: string | null; actor_name: string | null; actor_role: string | null; target_id: string | null; target_type: string | null; target_email: string | null; action: string; result: string; metadata: Record<string, unknown>; created_at: Date }>(
-      `select a.actor_user_id,actor.full_name as actor_name,actor.platform_role as actor_role,
-         a.target_id,a.target_type,invite.email::text as target_email,a.action,a.result,a.metadata,a.created_at from audit_logs a
+    const activity = await db.query<{ member_id: string; actor_user_id: string | null; actor_name: string | null; actor_role: string | null; target_id: string | null; target_type: string | null; target_email: string | null; action: string; result: string; metadata: Record<string, unknown>; created_at: Date }>(
+      `select member.id as member_id,a.actor_user_id,actor.full_name as actor_name,actor.platform_role as actor_role,
+         a.target_id,a.target_type,invite.email::text as target_email,a.action,a.result,a.metadata,a.created_at
+       from users member
+       cross join lateral (
+         select a.*
+         from audit_logs a
+         left join invitations invite on a.target_type='invitation' and a.target_id=invite.id::text
+         where a.actor_user_id=member.id
+            or (a.target_type='user' and a.target_id=member.id::text)
+            or (a.target_type='invitation' and lower(invite.email::text)=lower(member.email::text))
+         order by a.created_at desc,a.id desc
+         limit 30
+       ) a
        left join users actor on actor.id=a.actor_user_id
        left join invitations invite on a.target_type='invitation' and a.target_id=invite.id::text
-       where a.actor_user_id = any($1::uuid[]) or (a.target_type='user' and a.target_id = any($2::text[]))
-          or (a.target_type='invitation' and lower(invite.email::text)=any($3::text[]))
-       order by a.created_at desc limit 200`,
-      [memberIds, memberIds, memberEmails],
+       where member.id=any($1::uuid[])
+       order by member.id,a.created_at desc,a.id desc`,
+      [memberIds],
     );
     const invitations = await db.query<{ id: string; email: string; platform_role: string; agency_scope_mode: AgencyScopeMode; initial_assignments: number; custom_permission_count: number; email_delivery_status: string | null; expires_at: Date }>(
       `select i.id,i.email::text as email,i.platform_role,i.agency_scope_mode,
@@ -108,7 +117,7 @@ export async function agencyTeamView(admin: SessionUser): Promise<AgencyTeamView
         clients: assignments.rows.filter((a) => a.user_id === m.id).map((a) => ({ id: a.org_id, name: a.name })),
         permissionOverrides: Object.fromEntries(overrides.rows.filter((o) => o.user_id === m.id && isAgencyTeamPermission(o.permission)).map((o) => [o.permission, o.effect])) as AgencyPermissionOverrides,
         revision: m.permission_revision ?? "0",
-        activity: activity.rows.filter((a) => a.actor_user_id === m.id || a.target_id === m.id || (a.target_type === "invitation" && a.target_email?.toLowerCase() === m.email.toLowerCase())).slice(0, 30).map((a) => ({
+        activity: activity.rows.filter((a) => a.member_id === m.id).map((a) => ({
           actorName: a.actor_name,
           actorRole: a.actor_role,
           action: a.action,

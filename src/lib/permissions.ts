@@ -33,8 +33,8 @@ export const PERMISSION_MATRIX = {
   "leads.export": row(...OWNER_ADMIN),
   "appointments.view": row(...CLIENT, ...STAFF),
   // Booking policy, the event ledger and approving AI bookings are the owner's and managers'; anyone who works with customers can book for them.
-  "appointments.manage": row(...OWNER_ADMIN),
-  "appointments.book": row(...WORKING),
+  "appointments.manage": row(...OWNER_ADMIN, "agency_manager"),
+  "appointments.book": row(...WORKING, "agency_manager"),
   "sales.view": row(...CLIENT, ...STAFF),
   "notes.write": row(...WORKING),
   "tasks.manage": row(...WORKING),
@@ -79,7 +79,8 @@ export const PERMISSION_MATRIX = {
   "escalations.respond": row("owner", "admin", "sales_rep", "support", "appointment_setter"),
   "escalations.configure": row(...OWNER_ADMIN),
   "contacts.view": row(...CLIENT),
-  "contacts.edit": row(...WORKING),
+  "contacts.create": row(...WORKING, "agency_manager"),
+  "contacts.edit": row(...WORKING, "agency_manager"),
   "contacts.merge": row(...OWNER_ADMIN),
   "messaging.configure": row(...OWNER_ADMIN),
   "consent.manage": row(...OWNER_ADMIN),
@@ -89,12 +90,14 @@ export const PERMISSION_MATRIX = {
   "billing.agency_view": row(...STAFF),
   "billing.agency_manage": row("agency_super_admin"),
   // Website Studio. Anyone on the team can see the site; editing and domains are owner/manager (agency staff help build);
-  // approval is the owner's; publishing is the owner's or a super admin acting for a managed client.
+  // approval remains the client's owner's; Managers and Super Admins may publish only after that exact draft is approved.
   "website.view": row(...CLIENT, ...STAFF),
+  "website.create": row(...OWNER_ADMIN, ...STAFF),
   "website.edit": row(...OWNER_ADMIN, ...STAFF),
   "website.domains": row(...OWNER_ADMIN, ...STAFF),
   "website.approve": row("owner"),
-  "website.publish": row("owner", "agency_super_admin"),
+  "website.publish": row("owner", "agency_manager", "agency_super_admin"),
+  "website.archive": row("owner", "agency_super_admin"),
   // Designing and maintaining the agency template library, publishing a template to clients, and reviewing a client's site and leaving comments on it.
   "website.templates.design": row(...STAFF),
   "website.templates.publish": row("agency_super_admin"),
@@ -118,15 +121,18 @@ export const PERMISSION_MATRIX = {
   "contacts.export": row(...OWNER_ADMIN),
   "contacts.bulk": row(...OWNER_ADMIN),
   "companies.view": row(...CLIENT),
-  "companies.edit": row(...WORKING),
+  "companies.create": row(...WORKING, "agency_manager"),
+  "companies.edit": row(...WORKING, "agency_manager"),
+  "companies.delete": row(...OWNER_ADMIN),
   "tags.manage": row(...OWNER_ADMIN),
   "fields.manage": row(...OWNER_ADMIN),
   "smartlists.share": row(...OWNER_ADMIN),
   "pipelines.manage": row(...OWNER_ADMIN),
-  "opportunities.edit": row("owner", "admin", "member", "sales_rep", "appointment_setter"),
+  "opportunities.edit": row("owner", "admin", "member", "sales_rep", "appointment_setter", "agency_manager"),
+  "opportunities.create": row("owner", "admin", "member", "sales_rep", "appointment_setter", "agency_manager"),
   "opportunities.reopen": row(...OWNER_ADMIN),
   "opportunities.delete": row(...OWNER_ADMIN),
-  "calendars.manage": row(...OWNER_ADMIN),
+  "calendars.manage": row(...OWNER_ADMIN, "agency_manager"),
   "calendars.connect": row(...WORKING),
   "workflows.view": row(...OWNER_ADMIN),
   "workflows.manage": row(...OWNER_ADMIN),
@@ -154,7 +160,7 @@ export const PERMISSION_MATRIX = {
   "agency.workforce.view": row(...STAFF),
   "agency.workforce.manage": row("agency_manager", "agency_super_admin"),
   "agency.crm.read": row(...STAFF),
-  "agency.crm.manage": row("agency_super_admin"),
+  "agency.crm.manage": row("agency_manager", "agency_super_admin"),
   "agency.support.view": row(...STAFF),
   "agency.support.manage": row(...STAFF),
   "agency.security.manage": row("agency_super_admin"),
@@ -222,6 +228,16 @@ export const AGENCY_DELEGABLE_PERMISSIONS = [
   "agency.support.manage",
 ] as const satisfies readonly AgencyPermission[];
 
+/** Client actions that Agency Managers and Staff can have individually customized. */
+export const AGENCY_TEAM_OPERATIONAL_PERMISSIONS = [
+  "contacts.view", "contacts.create", "contacts.edit", "contacts.assign", "contacts.merge", "contacts.delete", "contacts.import", "contacts.export", "contacts.bulk",
+  "companies.view", "companies.create", "companies.edit", "companies.delete", "tags.manage", "fields.manage", "smartlists.share",
+  "sales.view", "pipelines.manage", "opportunities.create", "opportunities.edit", "opportunities.reopen", "opportunities.delete",
+  "appointments.view", "appointments.book", "appointments.manage", "calendars.manage",
+  "tasks.manage", "notes.write", "inbox.view", "inbox.view_all", "inbox.reply", "inbox.notes", "inbox.assign",
+  "workflows.view", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "calls.view", "analytics.export",
+] as const satisfies readonly Permission[];
+
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   owner: "Full control, including billing, autonomous mode and the final say on escalations.",
   admin: "Runs the workspace day to day: team, AI settings, inbox and approvals.",
@@ -241,9 +257,9 @@ export const INVITABLE_ROLES: readonly OrgRole[] = ["admin", "sales_rep", "appoi
  * delegable: they always follow the role.
  */
 export const DELEGABLE_PERMISSIONS = [
-  "contacts.view", "contacts.edit", "contacts.assign", "contacts.merge", "contacts.delete", "contacts.import", "contacts.export", "contacts.bulk",
-  "companies.view", "companies.edit", "tags.manage", "fields.manage", "smartlists.share",
-  "sales.view", "pipelines.manage", "opportunities.edit", "opportunities.reopen", "opportunities.delete",
+  "contacts.view", "contacts.create", "contacts.edit", "contacts.assign", "contacts.merge", "contacts.delete", "contacts.import", "contacts.export", "contacts.bulk",
+  "companies.view", "companies.create", "companies.edit", "companies.delete", "tags.manage", "fields.manage", "smartlists.share",
+  "sales.view", "pipelines.manage", "opportunities.create", "opportunities.edit", "opportunities.reopen", "opportunities.delete",
   "appointments.view", "appointments.book", "appointments.manage", "calendars.manage", "calendars.connect",
   "tasks.manage", "notes.write", "inbox.view", "inbox.view_all", "inbox.reply", "inbox.notes", "inbox.assign",
   "workflows.view", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "calls.view", "analytics.export",
@@ -252,21 +268,25 @@ export type DelegablePermission = (typeof DELEGABLE_PERMISSIONS)[number];
 /** Plain-language names for the permissions that can be adjusted per person, grouped as the Team & Permissions screen shows them. */
 export const DELEGABLE_PERMISSION_INFO: Record<DelegablePermission, { label: string; group: "Contacts" | "Sales" | "Calendar" | "Work" | "Messaging" | "Automation" | "Reporting" }> = {
   "contacts.view": { label: "See contacts", group: "Contacts" },
-  "contacts.edit": { label: "Add and edit contacts", group: "Contacts" },
+  "contacts.create": { label: "Create contacts", group: "Contacts" },
+  "contacts.edit": { label: "Edit contacts", group: "Contacts" },
   "contacts.assign": { label: "Assign contacts and deals to others", group: "Contacts" },
   "contacts.merge": { label: "Merge duplicate contacts", group: "Contacts" },
-  "contacts.delete": { label: "Archive and delete records", group: "Contacts" },
+  "contacts.delete": { label: "Archive and delete contacts", group: "Contacts" },
   "contacts.import": { label: "Import spreadsheets", group: "Contacts" },
   "contacts.export": { label: "Export contacts", group: "Contacts" },
   "contacts.bulk": { label: "Change many records at once", group: "Contacts" },
   "companies.view": { label: "See companies", group: "Contacts" },
-  "companies.edit": { label: "Add and edit companies", group: "Contacts" },
+  "companies.create": { label: "Create companies", group: "Contacts" },
+  "companies.edit": { label: "Edit companies", group: "Contacts" },
+  "companies.delete": { label: "Archive and delete companies", group: "Contacts" },
   "tags.manage": { label: "Create, rename and merge tags", group: "Contacts" },
   "fields.manage": { label: "Manage custom fields", group: "Contacts" },
   "smartlists.share": { label: "Share Smart Lists with the team", group: "Contacts" },
   "sales.view": { label: "See pipelines and deals", group: "Sales" },
   "pipelines.manage": { label: "Change pipelines and stages", group: "Sales" },
-  "opportunities.edit": { label: "Create and move deals", group: "Sales" },
+  "opportunities.create": { label: "Create deals", group: "Sales" },
+  "opportunities.edit": { label: "Edit and move deals", group: "Sales" },
   "opportunities.reopen": { label: "Reopen closed deals", group: "Sales" },
   "opportunities.delete": { label: "Archive deals", group: "Sales" },
   "appointments.view": { label: "See appointments", group: "Calendar" },
@@ -298,32 +318,42 @@ export const DELEGABLE_PERMISSION_INFO: Record<DelegablePermission, { label: str
  */
 export const AGENCY_TEAM_MANAGED_PERMISSIONS = [
   ...AGENCY_DELEGABLE_PERMISSIONS,
-  ...DELEGABLE_PERMISSIONS,
+  ...AGENCY_TEAM_OPERATIONAL_PERMISSIONS,
   "crm.view",
   "setup.manage",
   "projects.manage",
   "quotes.manage",
   "website.publish",
+  "website.create",
+  "website.edit",
+  "website.domains",
+  "website.review",
+  "website.archive",
 ] as const satisfies readonly Permission[];
 
 export type AgencyTeamPermission = (typeof AGENCY_TEAM_MANAGED_PERMISSIONS)[number];
 
 const AGENCY_TEAM_EXTRA_PERMISSION_INFO = {
-  "crm.view": { label: "Open Native CRM", group: "Native CRM" },
+  "crm.view": { label: "Open Native CRM", group: "Native CRM", note: "CRM access requires an active, audited support session and client scope." },
   "setup.manage": { label: "Manage Setup Center operations", group: "Setup Center" },
   "projects.manage": { label: "Manage client projects and updates", group: "Projects and quotes" },
   "quotes.manage": { label: "Prepare and manage client quotes", group: "Projects and quotes" },
-  "website.publish": { label: "Publish client websites", group: "Website Studio" },
+  "website.publish": { label: "Publish client websites", group: "Website Studio", note: "Website Studio's client review and publishing checks still apply." },
+  "website.create": { label: "Create client websites", group: "Website Studio", note: "Creates a private first draft; client scope and template availability still apply." },
+  "website.edit": { label: "Edit client websites", group: "Website Studio", note: "Client scope and website resource checks still apply." },
+  "website.domains": { label: "Manage client website domains", group: "Website Studio", note: "Client scope and domain verification checks still apply." },
+  "website.review": { label: "Review client websites", group: "Website Studio", note: "Client scope and website review workflow checks still apply." },
+  "website.archive": { label: "Archive and restore client websites", group: "Website Studio", note: "Archiving takes a site offline; it is reversible and does not delete content." },
 } as const satisfies Record<
   Exclude<AgencyTeamPermission, AgencyPermission | DelegablePermission>,
-  { label: string; group: string }
+  { label: string; group: string; note?: string }
 >;
 
 export const AGENCY_TEAM_PERMISSION_INFO = {
   ...AGENCY_PERMISSION_INFO,
   ...DELEGABLE_PERMISSION_INFO,
   ...AGENCY_TEAM_EXTRA_PERMISSION_INFO,
-} as const satisfies Record<AgencyTeamPermission, { label: string; group: string }>;
+} as const satisfies Record<AgencyTeamPermission, { label: string; group: string; note?: string }>;
 
 export type AgencyTeamProtectedPermission = Exclude<Permission, AgencyTeamPermission>;
 
@@ -377,13 +407,11 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "billing.configure": { label: "Configure client billing", group: "Usage and billing", note: "Client owner or agency role control." },
   "billing.agency_view": { label: "View agency billing", group: "Agency security", note: "Agency role control." },
   "billing.agency_manage": { label: "Manage agency billing", group: "Agency security", note: "Super Admin only." },
+  "calendars.connect": { label: "Connect a personal calendar", group: "Calendar", note: "This connection is not available through agency support access; use the person's client workspace account." },
   "website.view": { label: "View client website", group: "Website Studio", note: "Client scope and resource access still apply." },
-  "website.edit": { label: "Edit client website", group: "Website Studio", note: "Client scope and resource access still apply." },
-  "website.domains": { label: "Manage website domains", group: "Website Studio", note: "Client scope and resource access still apply." },
   "website.approve": { label: "Approve website changes", group: "Website Studio", note: "Reserved for the client owner." },
   "website.templates.design": { label: "Design shared Website Studio templates", group: "Website Studio", note: "Agency role default; shared templates remain agency-controlled." },
   "website.templates.publish": { label: "Publish shared Website Studio templates", group: "Website Studio", note: "Super Admin only." },
-  "website.review": { label: "Review websites for clients", group: "Website Studio", note: "Agency role and client scope still apply." },
   "incidents.view": { label: "View service incidents", group: "Incidents", note: "Client scope and incident visibility still apply." },
   "incidents.manage": { label: "Manage service incidents", group: "Incidents", note: "Agency role and client scope still apply." },
   "offboarding.view": { label: "View offboarding status", group: "Offboarding", note: "Client owner or agency role control." },

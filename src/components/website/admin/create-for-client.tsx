@@ -23,7 +23,7 @@ export function CreateForClient({ orgId, clientName, cards, canCreate }: { orgId
       setBusy(false);
       return void toast.error(res.error);
     }
-    router.push(`/admin/website-studio/websites/${orgId}/edit`);
+    router.push(`/admin/website-studio/websites/${orgId}`);
   };
   return (
     <>

@@ -15,6 +15,7 @@ export default async function WebsitePage() {
   const ctx = await requireOrgContext("website.view");
   const site = await getWebsite(ctx);
   const canEdit = ctx.can("website.edit");
+  const canCreate = ctx.can("website.create");
   const cards = await listPublishedCards();
 
   if (!site) {
@@ -23,7 +24,7 @@ export default async function WebsitePage() {
         <PageHero
           eyebrow="Your business, online" title="Make a space that feels like your business." icon={<Globe className="size-4" />} tone="blue"
           description="Choose a style, review a private draft built from your business details, and make it your own. You decide when it goes live. No website has been created or published yet."
-          action={canEdit ? (
+          action={canCreate ? (
             <Link href="/website/new" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl brand-gradient px-5 text-sm font-medium text-white shadow-glow transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-10">
               <Palette className="size-4" aria-hidden /> Choose a style
             </Link>
@@ -35,7 +36,7 @@ export default async function WebsitePage() {
           <p className="text-[12px] leading-relaxed text-muted">These previews use sample content. Your private draft will use your company details, and publication stays under your control.</p>
         </section>
         <section aria-label="Your website journey" className="grid gap-4 rounded-[22px] border border-line bg-surface/70 p-5 sm:grid-cols-3">{[{title:"Choose your style",copy:"Explore the layouts and find a direction that suits your business.",icon:<Palette className="size-4"/>},{title:"Review and refine",copy:"Edit words, pages and images while everything stays private.",icon:<CheckCircle2 className="size-4"/>},{title:"Publish when ready",copy:"Review readiness and approvals before visitors see your site.",icon:<ArrowRight className="size-4"/>}].map(step=><div key={step.title} className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink" aria-hidden>{step.icon}</span><div><h3 className="text-[13px] font-semibold">{step.title}</h3><p className="mt-1 text-[12px] leading-relaxed text-muted">{step.copy}</p></div></div>)}</section>
-        {!canEdit && <p className="rounded-xl bg-surface-2/70 p-4 text-[14px] text-ink-2 ring-1 ring-inset ring-line">Your team hasn&apos;t created the website yet. Someone with edit access can start it from here.</p>}
+        {!canCreate && <p className="rounded-xl bg-surface-2/70 p-4 text-[14px] text-ink-2 ring-1 ring-inset ring-line">Your team hasn&apos;t created the website yet. Someone with website creation access can start it from here.</p>}
       </div>
     );
   }

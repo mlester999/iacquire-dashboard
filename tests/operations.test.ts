@@ -20,6 +20,7 @@ let other: Awaited<ReturnType<typeof createOrg>>;
 let otherOwner: { id: string; email: string };
 let staff: ReturnType<typeof agencyUser>;
 let unassignedStaff: ReturnType<typeof agencyUser>;
+let platformIncidentId: string;
 
 const obs = (over: Partial<Observation> = {}): Observation => ({
   key: `test:${m.org.id}:a`, source: "integration", orgId: m.org.id, subject: "thing", severity: "warning", title: "Something is wrong", detail: "It failed.", clientVisible: true, ...over,
@@ -204,7 +205,7 @@ describe("who can see an incident", () => {
     visible = (await withSystem((db) => recordUnhealthy(db, obs({ key: `vis:${m.org.id}:a`, title: "Visible to client", safeActions: ["agency-only detail"] })))).id;
     hidden = (await withSystem((db) => recordUnhealthy(db, obs({ key: `vis:${m.org.id}:b`, clientVisible: false, title: "Hidden from client" })))).id;
     await withSystem((db) => recordUnhealthy(db, obs({ key: `vis:${other.id}:a`, orgId: other.id, title: "Other client's incident" })));
-    await withSystem((db) => recordUnhealthy(db, obs({ key: "vis:platform", orgId: null, clientVisible: false, title: "Platform wide" })));
+    platformIncidentId = (await withSystem((db) => recordUnhealthy(db, obs({ key: "vis:platform", orgId: null, clientVisible: false, title: "Platform wide" })))).id;
   });
   const titlesFor = async (userId: string) => (await withUser(userId, (db) => db.query<{ title: string }>("select title from incidents where title in ('Visible to client', 'Hidden from client', 'Other client''s incident', 'Platform wide')"))).rows.map((r) => r.title).sort();
 
@@ -217,13 +218,27 @@ describe("who can see an incident", () => {
     expect(await titlesFor(m.people.sales.id)).toEqual([]);
     expect(await titlesFor(otherOwner.id)).toEqual(["Other client's incident"]);
   });
-  it("shows agency staff everything, and lists only assigned clients when using the staff view", async () => {
+  it("limits staff to assigned-client incidents, gives managers their live scope, and reserves platform incidents for Super Admin", async () => {
     expect((await titlesFor(m.superAdmin.id)).length).toBe(4);
     const titles = (await listIncidentsForAgency(staff)).map((i) => i.title);
     expect(titles).toContain("Visible to client");
-    expect(titles).toContain("Platform wide");
+    expect(titles).not.toContain("Platform wide");
     expect(titles).not.toContain("Other client's incident");
-    expect((await listIncidentsForAgency(m.superAdmin)).map((i) => i.title)).toContain("Other client's incident");
+    await expect(incidentTimeline(staff, platformIncidentId)).rejects.toMatchObject({ code: "not_found" });
+    await expect(acknowledgeIncident(staff, platformIncidentId)).rejects.toMatchObject({ code: "not_found" });
+
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    const managerTitles = (await listIncidentsForAgency(manager)).map((i) => i.title);
+    expect(managerTitles).toContain("Visible to client");
+    expect(managerTitles).toContain("Other client's incident");
+    expect(managerTitles).not.toContain("Platform wide");
+
+    const forgedAdmin = { ...staff, platformRole: "agency_super_admin" as const };
+    const forgedTitles = (await listIncidentsForAgency(forgedAdmin)).map((i) => i.title);
+    expect(forgedTitles).not.toContain("Platform wide");
+    await expect(incidentTimeline(forgedAdmin, platformIncidentId)).rejects.toMatchObject({ code: "not_found" });
+    expect((await listIncidentsForAgency(m.superAdmin)).map((i) => i.title)).toContain("Platform wide");
+    expect((await incidentTimeline(m.superAdmin, platformIncidentId)).length).toBeGreaterThan(0);
   });
   it("gives the client view without agency-only fields", async () => {
     const list = await listIncidentsForClient(m.ctx("owner"));

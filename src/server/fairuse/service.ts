@@ -153,11 +153,20 @@ export interface PolicyRow {
   note: string | null;
 }
 
-export async function listPolicies(user: Pick<SessionUser, "platformRole">): Promise<PolicyRow[]> {
-  if (user.platformRole === "none") throw new AppError("forbidden", "Only agency staff can view fair-use thresholds.");
+export async function listPolicies(user: Pick<SessionUser, "id" | "platformRole">): Promise<PolicyRow[]> {
+  const access = await withSystem((db) => db.query<{ allowed: boolean; agency_wide: boolean }>(
+    `select coalesce(app.user_has_agency_permission($1,'usage.view'),false) as allowed,
+            coalesce(app.user_has_agency_permission($1,'agency.security.manage'),false) as agency_wide`,
+    [user.id],
+  ));
+  if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Only agency staff can view fair-use thresholds.");
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; org_id: string | null; name: string | null; metric: FairUseMetric; warn_value: string | null; limit_value: string | null; enforcement: "report_only" | "block_new"; note: string | null }>(
-      "select p.id, p.org_id, o.name, p.metric, p.warn_value::text, p.limit_value::text, p.enforcement, p.note from fair_use_policies p left join organizations o on o.id = p.org_id order by p.org_id nulls first, p.metric",
+      `select p.id, p.org_id, o.name, p.metric, p.warn_value::text, p.limit_value::text, p.enforcement, p.note
+       from fair_use_policies p left join organizations o on o.id = p.org_id
+       where p.org_id is null or $2::boolean or app.user_can_access_org($1,p.org_id)
+       order by p.org_id nulls first, p.metric`,
+      [user.id, access.rows[0].agency_wide],
     ),
   );
   return rows.map((r) => ({ id: r.id, orgId: r.org_id, orgName: r.name, metric: r.metric, label: METRIC_INFO[r.metric].label, warn: r.warn_value === null ? null : Number(r.warn_value), limit: r.limit_value === null ? null : Number(r.limit_value), enforcement: r.enforcement, note: r.note }));
@@ -211,12 +220,16 @@ export interface FleetRow {
 
 /** Latest recorded measurements across the clients this person looks after, so cost drivers are visible before limits are chosen. */
 export async function fleetFairUse(user: Pick<SessionUser, "id" | "platformRole">): Promise<FleetRow[]> {
-  if (user.platformRole === "none") throw new AppError("forbidden", "Only agency staff can view usage.");
-  const scope = user.platformRole === "agency_super_admin" ? "true" : "o.id in (select org_id from staff_assignments where user_id = $1)";
+  const permission = await withSystem((db) => db.query<{ allowed: boolean }>(
+    "select coalesce(app.user_has_agency_permission($1,'usage.view'),false) as allowed", [user.id],
+  ));
+  if (permission.rows[0]?.allowed !== true) throw new AppError("forbidden", "Only agency staff can view usage.");
   const { rows } = await withSystem((db) =>
     db.query<{ org_id: string; name: string; metric: FairUseMetric; value: string; state: FairUseState }>(
-      `select o.id as org_id, o.name, s.metric, s.value::text, s.state from organizations o join fair_use_status s on s.org_id = o.id where o.kind = 'client' and ${scope} order by o.name, s.metric`,
-      user.platformRole === "agency_super_admin" ? [] : [user.id],
+      `select o.id as org_id, o.name, s.metric, s.value::text, s.state
+       from organizations o join fair_use_status s on s.org_id = o.id
+       where o.kind = 'client' and app.user_can_access_org($1,o.id) order by o.name, s.metric`,
+      [user.id],
     ),
   );
   const byOrg = new Map<string, FleetRow>();

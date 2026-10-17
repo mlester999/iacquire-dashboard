@@ -199,17 +199,24 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
       ? Number((await withSystem((s) => s.query<{ n: number }>("select count(*)::int as n from access_requests where status = 'new'"))).rows[0].n)
       : 0;
   return withUser(user.id, async (db) => {
+    const permissions = await db.query<{ workforce: boolean; support: boolean }>(
+      `select coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as workforce,
+              coalesce(app.user_has_agency_permission($1,'agency.support.view'),false) as support`,
+      [user.id],
+    );
+    const canViewWorkforce = permissions.rows[0]?.workforce === true;
+    const canViewSupport = permissions.rows[0]?.support === true;
     const n = async (sql: string) => Number((await db.query<{ n: number }>(sql)).rows[0]?.n ?? 0);
     const scope = "o.kind = 'client'";
     return {
       clients: await n(`select count(*)::int as n from organizations o where ${scope}`),
       activeClients: await n(`select count(*)::int as n from organizations o where ${scope} and o.status = 'active'`),
-      agentsOnline: await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('online','busy')`),
-      agentsEnabled: await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled`),
-      openTickets: await n("select count(*)::int as n from support_tickets where status in ('open','in_progress','waiting_for_client')"),
-      urgentTickets: await n("select count(*)::int as n from support_tickets where status in ('open','in_progress') and priority in ('high','urgent')"),
-      provisioningOpen: await n(`select count(*)::int as n from agent_provisioning_jobs j join organizations o on o.id = j.org_id where ${scope} and j.status in ('requested','in_progress','awaiting_health_check')`),
-      heldReviews: await n(`select count(*)::int as n from agent_config_versions v join organizations o on o.id = v.org_id where ${scope} and v.status = 'pending_agency_review'`),
+      agentsOnline: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('online','busy')`) : 0,
+      agentsEnabled: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled`) : 0,
+      openTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('open','in_progress','waiting_for_client')") : 0,
+      urgentTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('open','in_progress') and priority in ('high','urgent')") : 0,
+      provisioningOpen: canViewWorkforce ? await n(`select count(*)::int as n from agent_provisioning_jobs j join organizations o on o.id = j.org_id where ${scope} and j.status in ('requested','in_progress','awaiting_health_check')`) : 0,
+      heldReviews: canViewWorkforce ? await n(`select count(*)::int as n from agent_config_versions v join organizations o on o.id = v.org_id where ${scope} and v.status = 'pending_agency_review'`) : 0,
       newAccessRequests,
       messagesThisMonth: await n("select coalesce(sum(quantity),0)::int as n from usage_events where kind = 'agent_message' and created_at >= date_trunc('month', now())"),
       tokensThisMonth: await n("select coalesce(sum(coalesce(input_tokens,0)+coalesce(output_tokens,0)),0)::int as n from usage_events where created_at >= date_trunc('month', now())"),
@@ -219,6 +226,11 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
 
 export async function listAllAgents(user: SessionUser) {
   return withUser(user.id, async (db) => {
+    const access = await db.query<{ allowed: boolean }>(
+      "select coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as allowed",
+      [user.id],
+    );
+    if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow viewing client workforce status.");
     const { rows } = await db.query<{
       id: string;
       org_id: string;

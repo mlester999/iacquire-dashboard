@@ -216,6 +216,11 @@ describe("project requests: submission and tenant isolation", () => {
     expect(await getAgencyProject(staffAssigned, id)).not.toBeNull();
     expect((await listAgencyProjects(staffAssigned)).some((p) => p.id === id)).toBe(true);
     expect((await listAgencyProjects(superAdmin)).some((p) => p.id === id)).toBe(true);
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    expect(await getAgencyProject(manager, id)).not.toBeNull();
+    expect((await listAgencyProjects(manager)).some((p) => p.id === id)).toBe(true);
+    await assignProject(manager, id, manager.id);
+    expect((await getAgencyProject(manager, id))!.assignedTo?.id).toBe(manager.id);
   });
 });
 

@@ -24,7 +24,7 @@ export default function AdminStudioPreviewClient({ view }: { view: "websites" | 
     return (
       <ClientWebsiteWorkspace
         orgId={SAMPLE_SITES[1].orgId} timeZone="UTC" site={SAMPLE_SITES[1]} summary={SAMPLE_SUMMARY} review={SAMPLE_REVIEW} comments={SAMPLE_COMMENTS} publications={SAMPLE_PUBLICATIONS}
-        preflight={SAMPLE_PREFLIGHT} perms={{ edit: true, publish: true, review: true, domains: true }} frameFor={frameFor}
+        preflight={SAMPLE_PREFLIGHT} perms={{ edit: true, publish: true, archive: true, review: true, domains: true }} frameFor={frameFor}
       />
     );
   }

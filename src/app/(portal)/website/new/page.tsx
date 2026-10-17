@@ -11,7 +11,7 @@ import { PageHero } from "@/components/ui/workspace";
 export const metadata = { title: "Choose a website style" };
 
 export default async function NewWebsitePage() {
-  const ctx = await requireOrgContext("website.edit");
+  const ctx = await requireOrgContext("website.create");
   if (await getWebsite(ctx)) redirect("/website");
   const details = await buildSiteDetails(ctx);
   return (

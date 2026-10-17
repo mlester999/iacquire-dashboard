@@ -174,7 +174,7 @@ function requireEdit(ctx: OrgContext) {
 // ---------------------------------------------------------------------------
 
 export async function createWebsite(ctx: OrgContext, input: { templateKey: string }): Promise<{ websiteId: string; subdomain: string }> {
-  requireEdit(ctx);
+  if (!ctx.can("website.create")) throw new AppError("forbidden", "Your role doesn't allow creating a website.");
   if (ctx.org.kind !== "client") throw new AppError("invalid_input", "Websites are built inside a client workspace.");
   const details = await buildSiteDetails(ctx);
   const content = (await buildFromTemplate(input.templateKey, details)).content;

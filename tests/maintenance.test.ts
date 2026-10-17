@@ -71,6 +71,8 @@ describe("optional managed maintenance", () => {
     const sub = list.subscriptions.find((s) => s.orgId === org.id)!;
     expect(sub.status).toBe("requested");
     expect(sub.eligible).toBe(true);
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    expect((await listAgencyMaintenance(manager)).subscriptions.some((s) => s.orgId === org.id)).toBe(true);
     const outsider = agencyUser(await createUser({ platformRole: "agency_staff" }), "agency_staff");
     await expect(activateMaintenance(outsider, sub.id)).rejects.toThrow(/not found/i);
     await activateMaintenance(staff, sub.id, { billingStartOn: "2026-11-01" });

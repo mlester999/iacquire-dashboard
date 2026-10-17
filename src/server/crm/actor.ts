@@ -41,17 +41,18 @@ export const AGENCY_READ_PERMISSIONS: ReadonlySet<Permission> = new Set<Permissi
   "crm.view", "contacts.view", "companies.view", "sales.view", "appointments.view", "inbox.view", "inbox.view_all", "workflows.view", "analytics.view", "calls.view", "team.view",
 ]);
 
-/** A support write session adds scoped record maintenance. Exports, campaigns and permission administration stay with the client. */
+/** A support write session adds scoped maintenance. Bulk sends, full data exports and permission administration remain client-controlled. */
 export const AGENCY_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
   ...AGENCY_READ_PERMISSIONS,
-  "contacts.edit", "contacts.assign", "contacts.merge", "contacts.import", "companies.edit", "tags.manage", "fields.manage", "smartlists.share",
-  "pipelines.manage", "opportunities.edit", "opportunities.reopen", "calendars.manage", "appointments.book", "appointments.manage",
-  "notes.write", "inbox.reply", "inbox.notes", "inbox.assign", "tasks.manage", "workflows.manage", "templates.manage", "forms.manage", "reviews.manage", "crm.provider.manage",
+  "contacts.create", "contacts.edit", "contacts.assign", "contacts.merge", "contacts.import",
+  "companies.create", "companies.edit", "companies.delete", "tags.manage", "fields.manage", "smartlists.share",
+  "pipelines.manage", "opportunities.create", "opportunities.edit", "opportunities.reopen", "calendars.manage", "appointments.book", "appointments.manage",
+  "notes.write", "inbox.reply", "inbox.notes", "inbox.assign", "tasks.manage", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "analytics.export", "crm.provider.manage",
 ]);
 
 const AGENCY_MEMBER_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
   ...AGENCY_WRITE_PERMISSIONS,
-  "contacts.delete", "contacts.export", "contacts.bulk", "opportunities.delete",
+  "contacts.delete", "contacts.export", "contacts.bulk", "companies.delete", "opportunities.delete",
 ]);
 
 async function agencyPermissionSet(userId: string, db?: Queryable): Promise<Set<Permission>> {
@@ -91,6 +92,16 @@ export function assertCan(actor: CrmActor, permission: Permission, message?: str
     if (actor.kind === "agency" && actor.supportMode === "read") throw new AppError("forbidden", "This support session is read-only. A super admin can open a write session with a reason.");
     throw new AppError("forbidden", message ?? "Your role doesn't allow this. Ask a workspace owner for access.");
   }
+}
+
+/** New create grants are separate for people, while existing API and agent credentials keep their edit scope. */
+export function assertCanCreate(actor: CrmActor, permission: "contacts.create" | "companies.create" | "opportunities.create") {
+  if (actor.kind === "member" || actor.kind === "agency") {
+    assertCan(actor, permission);
+    return;
+  }
+  const legacyEditPermission = permission.replace(".create", ".edit") as Permission;
+  assertCan(actor, legacyEditPermission);
 }
 
 /** Audit columns for an actor. */

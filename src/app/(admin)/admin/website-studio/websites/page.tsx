@@ -13,14 +13,17 @@ export default async function ClientWebsitesPage() {
   const user = await requireAgency();
   const [sites, clients] = await Promise.all([listManagedWebsites(user), managedClients(user)]);
   const without = clients.filter((c) => !c.hasWebsite);
-  const canEdit = await agencyUserHasPermission(user.id, "website.edit");
+  const [canCreate, canEdit] = await Promise.all([
+    agencyUserHasPermission(user.id, "website.create"),
+    agencyUserHasPermission(user.id, "website.edit"),
+  ]);
   return (
     <div className="module-stack">
       <PageHero
         eyebrow="Website Studio" icon={<Globe className="size-5" />} title="Client Websites"
         description={user.platformRole === "agency_super_admin" ? "Every client website, with its status, domain and what needs a person's attention." : "The websites of the clients you are assigned to, with their status, domain and what needs attention."}
       />
-      {without.length > 0 && (
+      {without.length > 0 && canCreate && (
         <Card>
           <CardHeader><CardTitle>Clients without a website</CardTitle><CardDescription>Choose a design and create a private first draft from the client&apos;s own business details. Nothing goes live until it is published.</CardDescription></CardHeader>
           <CardContent>

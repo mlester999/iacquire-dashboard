@@ -417,6 +417,9 @@ describe("progress rules", () => {
     await expect(addTaskAttachment(a, org.id, created.result.taskId, { label: "Bad", url: "http://example.com/x" })).rejects.toThrow();
     await expect(updateTaskDetails(a, org.id, created.result.taskId, { assignedTo: (await createUser({ platformRole: "agency_staff" })).id })).rejects.toThrow(/has access to this client/);
     await updateTaskDetails(a, org.id, created.result.taskId, { assignedTo: a.id });
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    await updateTaskDetails(a, org.id, created.result.taskId, { assignedTo: manager.id });
+    expect((await getAgencySetupSnapshot(a, org.id)).staff.map((person) => person.id)).toContain(manager.id);
     await setResponsibleStaff(a, org.id, a.id);
     expect((await getAgencySetupSnapshot(a, org.id)).responsibleUserId).toBe(a.id);
   });

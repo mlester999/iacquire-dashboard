@@ -145,6 +145,8 @@ describe("the scheduled check", () => {
     expect(mine.map((f) => f.orgId)).toEqual([m.org.id]);
     expect(mine[0].metrics.find((x) => x.metric === "storage_bytes")).toMatchObject({ valueText: "4.0 KB", state: "warning" });
     expect(await fleetFairUse(unassigned)).toEqual([]);
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    expect((await fleetFairUse(manager)).map((row) => row.orgId)).toContain(m.org.id);
     expect((await fleetFairUse(superAdmin)).length).toBeGreaterThanOrEqual(1);
     const seen = await withUser(m.people.owner.id, (db) => db.query<{ org_id: string }>("select distinct org_id from fair_use_status"));
     expect(seen.rows.map((r) => r.org_id)).toEqual([m.org.id]);

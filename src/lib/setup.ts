@@ -341,6 +341,6 @@ export interface AgencySetupSnapshot {
   tasks: AgencyTaskView[];
   events: AgencyEventView[];
   checks: AgencyCheckView[];
-  staff: Array<{ id: string; name: string; role: "agency_staff" | "agency_super_admin" }>;
+  staff: Array<{ id: string; name: string; role: "agency_staff" | "agency_manager" | "agency_super_admin" }>;
   canActivate: boolean;
 }

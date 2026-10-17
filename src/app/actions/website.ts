@@ -31,7 +31,7 @@ const int = (n: unknown) => {
 
 export async function createWebsiteAction(templateKey: string, orgId?: string) {
   return guard(async () => {
-    const ctx = await studioContext(orgId, "website.edit");
+    const ctx = await studioContext(orgId, "website.create");
     const res = await createWebsite(ctx, { templateKey: String(templateKey) });
     refresh();
     return res;
@@ -292,7 +292,7 @@ export async function requestChangesAction(note: string, orgId?: string) {
 }
 export async function setArchivedAction(archived: boolean, orgId?: string) {
   return guard(async () => {
-    await setArchived(await studioContext(orgId, "website.publish"), archived === true);
+    await setArchived(await studioContext(orgId, "website.archive"), archived === true);
     refresh();
     revalidatePath("/admin/website-studio", "layout");
     return {};

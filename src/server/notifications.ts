@@ -96,14 +96,15 @@ export async function notifyOrgRoles(db: Queryable, orgId: string, roles: OrgRol
   );
 }
 
-/** Notifies agency staff assigned to the tenant plus all super admins. */
+/** Notifies agency users whose current client scope includes the tenant. */
 export async function notifyAgency(db: Queryable, orgId: string | null, n: NotificationInput) {
   await db.query(
     `insert into notifications (org_id, user_id, kind, severity, title, body, link, dedupe_key)
      select null, u.id, $2, $3, $4, $5, $6, $7 from users u
-     where u.status = 'active' and (u.platform_role = 'agency_super_admin'
-       or (u.platform_role = 'agency_staff' and $1::uuid is not null
-           and exists (select 1 from staff_assignments s where s.user_id = u.id and s.org_id = $1::uuid)))
+     where u.status = 'active' and u.platform_role in ('agency_staff','agency_manager','agency_super_admin') and (
+       ($1::uuid is null and coalesce(app.user_has_agency_permission(u.id,'agency.security.manage'),false))
+       or ($1::uuid is not null and app.user_can_access_org(u.id,$1::uuid))
+     )
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
   );

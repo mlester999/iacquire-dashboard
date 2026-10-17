@@ -177,6 +177,13 @@ describe("emergency pauses", () => {
     await expect(setAgencyPause(agencyUser(staff, "agency_staff"), { orgId: null, paused: true, reason: "x" })).rejects.toThrow(/super admin/);
   });
 
+  it("lets a full-scope Manager pause any current client while still reserving resume for Super Admin", async () => {
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    await setAgencyPause(manager, { orgId: other.id, paused: true, reason: "Reviewing the account" });
+    await expect(setAgencyPause(manager, { orgId: other.id, paused: false, reason: "" })).rejects.toThrow(/super admin/);
+    await setAgencyPause(agencyUser(superAdmin, "agency_super_admin"), { orgId: other.id, paused: false, reason: "" });
+  });
+
   it("a platform-wide pause stops every tenant and survives until a super admin lifts it", async () => {
     // Make sure the agency workspace has an owner-less row to hold the global switch.
     expect(agencyOrg.id).toBeTruthy();

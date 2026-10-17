@@ -85,7 +85,7 @@ async function selectedIds(actor: CrmActor, sel: Selection): Promise<string[]> {
 }
 
 export async function createContactAction(orgId: string | null, input: ContactInput) {
-  return act(orgId, "contacts.edit", (actor) => createContact(actor, input));
+  return act(orgId, "contacts.create", (actor) => createContact(actor, input));
 }
 
 export async function updateContactAction(orgId: string | null, id: string, patch: ContactPatch & { customFields?: Record<string, unknown> }, version?: number) {
@@ -153,7 +153,7 @@ export async function timelineAction(orgId: string | null, target: { contactId?:
 // ---------------------------------------------------------------------------
 
 export async function createCompanyAction(orgId: string | null, input: CompanyInput) {
-  return act(orgId, "companies.edit", (actor) => createCompany(actor, input));
+  return act(orgId, "companies.create", (actor) => createCompany(actor, input));
 }
 
 export async function updateCompanyAction(orgId: string | null, id: string, input: Partial<CompanyInput>, version?: number) {
@@ -280,7 +280,7 @@ export async function deleteStageAction(orgId: string | null, stageId: string, m
   return act(orgId, "pipelines.manage", (actor) => deleteStage(actor, uuid.parse(stageId), moveTo ? uuid.parse(moveTo) : null));
 }
 export async function createOpportunityAction(orgId: string | null, input: OpportunityInput) {
-  return act(orgId, "opportunities.edit", (actor) => createOpportunity(actor, input));
+  return act(orgId, "opportunities.create", (actor) => createOpportunity(actor, input));
 }
 export async function updateOpportunityAction(orgId: string | null, id: string, patch: Parameters<typeof updateOpportunity>[2], version?: number) {
   return act(orgId, "opportunities.edit", (actor) => updateOpportunity(actor, uuid.parse(id), patch, version));

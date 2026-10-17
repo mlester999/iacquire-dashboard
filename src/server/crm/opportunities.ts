@@ -3,7 +3,7 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyUser } from "@/server/notifications";
-import { assertCan, auditActor, crmRead, crmWrite, eventActor, type CrmActor } from "@/server/crm/actor";
+import { assertCan, assertCanCreate, auditActor, crmRead, crmWrite, eventActor, type CrmActor } from "@/server/crm/actor";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { ensureDefaultPipeline, type StageKind } from "@/server/crm/pipelines";
@@ -115,7 +115,7 @@ export async function createOpportunityInTx(db: Queryable, actor: CrmActor, inpu
 }
 
 export async function createOpportunity(actor: CrmActor, input: OpportunityInput, opts: { idempotencyKey?: string } = {}): Promise<{ id: string }> {
-  assertCan(actor, "opportunities.edit");
+  assertCanCreate(actor, "opportunities.create");
   if (input.ownerId && input.ownerId !== actor.userId) assertCan(actor, "contacts.assign", "Assigning deals to someone else needs the assign permission.");
   return crmWrite(actor, async (db) => {
     const r = await createOpportunityInTx(db, actor, input, { via: actor.kind === "agent" ? "agent" : actor.kind === "api" ? "api" : "manual", idempotencyKey: opts.idempotencyKey });

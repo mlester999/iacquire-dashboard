@@ -3,52 +3,50 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { adminCrumbs } from "@/lib/admin-breadcrumb";
 import { motion } from "motion/react";
-import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { useTheme } from "@/components/providers";
 import { LogoutTrigger } from "@/components/auth/logout-confirmation";
 import { cn, initials } from "@/lib/utils";
+import type { Permission } from "@/lib/permissions";
+import { canViewAdminNavigation } from "@/lib/admin-nav";
 
-const NAV = [
+type AdminNavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; superOnly?: boolean; managerOrSuper?: boolean; group: string; permission?: Permission; allPermissions?: readonly Permission[] };
+
+const NAV: AdminNavItem[] = [
   { href: "/admin", label: "Dashboard", icon: Gauge, exact: true, group: "Operations" },
   { href: "/admin/clients", label: "Clients", icon: Building2, group: "Operations" },
-  { href: "/admin/crm", label: "Client CRMs", icon: Contact, group: "Operations" },
+  { href: "/admin/crm", label: "Client CRMs", icon: Contact, permission: "agency.crm.read", group: "Operations" },
   { href: "/admin/workforce", label: "Internal Workforce", icon: Sparkles, exact: true, superOnly: true, group: "Operations" },
-  { href: "/admin/workforce/policies", label: "Tool policies", icon: ShieldCheck, managerOrSuper: true, group: "Operations" },
-  { href: "/admin/workforce/clients", label: "Client Workforces", icon: Building2, exact: true, group: "Operations" },
-  { href: "/admin/support", label: "Support inbox", icon: Inbox, group: "Operations" },
-  { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, group: "Client experience" },
-  { href: "/admin/projects", label: "Custom projects", icon: FolderKanban, group: "Client experience" },
-  { href: "/admin/maintenance", label: "Maintenance", icon: Wrench, group: "Client experience" },
+  { href: "/admin/workforce/policies", label: "Tool policies", icon: ShieldCheck, managerOrSuper: true, permission: "agency.tool_policies.view", group: "Operations" },
+  { href: "/admin/workforce/clients", label: "Client Workforces", icon: Building2, exact: true, permission: "agency.workforce.view", group: "Operations" },
+  { href: "/admin/support", label: "Support inbox", icon: Inbox, permission: "agency.support.view", group: "Operations" },
+  { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, permission: "website.view", group: "Client experience" },
+  { href: "/admin/projects", label: "Custom projects", icon: FolderKanban, permission: "projects.view", group: "Client experience" },
+  { href: "/admin/maintenance", label: "Maintenance", icon: Wrench, permission: "maintenance.manage", group: "Client experience" },
   { href: "/admin/services", label: "Service catalog", icon: Boxes, superOnly: true, group: "Client experience" },
   { href: "/admin/portfolio", label: "Portfolio", icon: Briefcase, superOnly: true, group: "Client experience" },
   { href: "/admin/setup-templates", label: "Setup templates", icon: ScrollText, superOnly: true, group: "Platform" },
-  { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, managerOrSuper: true, group: "Platform" },
-  { href: "/admin/health", label: "System health", icon: HeartPulse, group: "Platform" },
-  { href: "/admin/billing", label: "Billing & finance", icon: Landmark, group: "Platform" },
-  { href: "/admin/usage", label: "Usage & costs", icon: Wallet, group: "Platform" },
+  { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, managerOrSuper: true, permission: "agency.integrations.health", group: "Platform" },
+  { href: "/admin/health", label: "System health", icon: HeartPulse, superOnly: true, group: "Platform" },
+  { href: "/admin/billing", label: "Billing & finance", icon: Landmark, permission: "billing.agency_view", group: "Platform" },
+  { href: "/admin/usage", label: "Usage & costs", icon: Wallet, permission: "usage.view", group: "Platform" },
   { href: "/admin/requests", label: "Access requests", icon: UserPlus, superOnly: true, group: "Platform" },
   { href: "/admin/team", label: "Team & Permissions", icon: Users, superOnly: true, group: "Platform" },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText, superOnly: true, group: "Platform" },
 ];
 const GROUPS = ["Operations", "Client experience", "Platform"];
 
-function canViewNav(item: (typeof NAV)[number], platformRole: string) {
-  if (item.superOnly && platformRole !== "agency_super_admin") return false;
-  if (item.managerOrSuper && platformRole !== "agency_manager" && platformRole !== "agency_super_admin") return false;
-  return true;
-}
-
-function Nav({ platformRole, compact, onNavigate }: { platformRole: string; compact: boolean; onNavigate?: () => void }) {
+function Nav({ platformRole, permissions, compact, onNavigate }: { platformRole: string; permissions: ReadonlySet<Permission>; compact: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState<string[]>([]);
   return <nav aria-label="Agency navigation" className="space-y-4">{GROUPS.map((group) => {
-    const items = NAV.filter((n) => n.group === group && canViewNav(n, platformRole));
+    const items = NAV.filter((n) => n.group === group && canViewAdminNavigation(n, platformRole, permissions));
     const closed = !compact && collapsed.includes(group);
     if (!items.length) return null;
     return <div key={group}>
@@ -65,17 +63,18 @@ function Nav({ platformRole, compact, onNavigate }: { platformRole: string; comp
   })}</nav>;
 }
 
-export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { user: { name: string; email: string; platformRole: string }; hasWorkspace: boolean; children: React.ReactNode; qaDemo?: boolean }) {
+export function AdminShell({ user, permissions: permissionList, hasWorkspace, children, qaDemo = false }: { user: { name: string; email: string; platformRole: string }; permissions: Permission[]; hasWorkspace: boolean; children: React.ReactNode; qaDemo?: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [compact, setCompact] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const firstCommandLink = React.useRef<HTMLAnchorElement>(null);
   const { resolved, setTheme } = useTheme();
   const superAdmin = user.platformRole === "agency_super_admin";
+  const permissions = React.useMemo(() => new Set(permissionList), [permissionList]);
   const pathname = usePathname();
-  const router = useRouter();
   const crumbs = adminCrumbs(pathname);
-  const visibleNav = NAV.filter((n) => canViewNav(n, user.platformRole) && n.label.toLowerCase().includes(query.toLowerCase()));
+  const visibleNav = NAV.filter((n) => canViewAdminNavigation(n, user.platformRole, permissions) && n.label.toLowerCase().includes(query.toLowerCase()));
   React.useEffect(() => {
     const shortcut = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setCommandOpen((s) => !s); } };
     document.addEventListener("keydown", shortcut);
@@ -84,7 +83,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
   const sidebar = (small = false) => <div className="workspace-nav flex h-full flex-col text-white">
     <div className={cn("flex h-[76px] shrink-0 items-center px-5", small && "justify-center px-2")}>{small ? <Link href="/admin" aria-label="iAcquire dashboard"><Image src="/brand/icon.svg" alt="" width={36} height={36} /></Link> : <Link href="/admin" className="[&_span]:!text-white" aria-label="iAcquire agency dashboard"><Logo /></Link>}</div>
     {!small && <div className="mx-4 mb-4 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5"><p className="flex items-center gap-2 text-[12px] font-semibold"><ShieldCheck className="size-3.5 text-[#9ebcff]" />Agency workspace</p><p className="mt-1 text-[11px] text-[#a6b3cd]">{superAdmin ? "Super admin access" : "Assigned client access"}</p></div>}
-    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav platformRole={user.platformRole} compact={small} onNavigate={() => setOpen(false)} /></div>
+    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav platformRole={user.platformRole} permissions={permissions} compact={small} onNavigate={() => setOpen(false)} /></div>
     <div className="mt-3 space-y-2 border-t border-white/10 p-3">
       {hasWorkspace && <Link href="/overview" aria-label={small ? "Open client portal" : undefined} className={cn("workspace-nav-link flex min-h-10 items-center gap-3 rounded-xl px-3 text-[12px]", small && "justify-center px-1")}><ArrowLeftRight className="size-4 shrink-0" />{!small && "Client portal"}</Link>}
       <div className={cn("flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2", small && "flex-col border-0 bg-transparent p-0")}><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#263456] text-[12px] font-semibold">{initials(user.name)}</span>{!small && <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-semibold">{user.name}</p><p className="mt-0.5 text-[10px] text-[#a6b3cd]">{superAdmin ? "Agency Super Admin" : user.platformRole === "agency_manager" ? "Agency Manager" : "Agency Staff"}</p></div>}<LogoutTrigger className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/10 hover:text-white" aria-label="Sign out"><LogOut className="size-4" /></LogoutTrigger></div>
@@ -104,8 +103,8 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
       <main id="admin-main" className="page-in mx-auto w-full max-w-[1600px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">{children}</main>
     </div>
     <Dialog open={commandOpen} onOpenChange={setCommandOpen} title={<span className="inline-flex items-center gap-2"><Command className="size-4 text-primary" /> Navigate your workspace</span>} description="Find an agency module. Results respect your access level." size="md">
-      <Input autoFocus aria-label="Search agency modules" placeholder="Search clients, team, integrations…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && visibleNav[0]) { router.push(visibleNav[0].href); setCommandOpen(false); } }} />
-      <ul className="mt-3 space-y-1">{visibleNav.map((n) => <li key={n.href}><Link href={n.href} onClick={() => setCommandOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" /><span className="flex-1">{n.label}</span><span className="text-[11px] text-muted">{n.group}</span></Link></li>)}</ul>{!visibleNav.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}
+      <Input autoFocus aria-label="Search agency modules" placeholder="Search clients, team, integrations…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && visibleNav[0]) firstCommandLink.current?.click(); }} />
+      <ul className="mt-3 space-y-1">{visibleNav.map((n, index) => <li key={n.href}><Link ref={index === 0 ? firstCommandLink : undefined} href={n.href} onClick={() => setCommandOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" /><span className="flex-1">{n.label}</span><span className="text-[11px] text-muted">{n.group}</span></Link></li>)}</ul>{!visibleNav.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}
     </Dialog>
   </div>;
 }

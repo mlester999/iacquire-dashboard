@@ -60,8 +60,12 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
       [data.name, slug, data.industry, data.website, data.timezone, admin.id],
     );
     const orgId = rows[0].id;
-    if (admin.platformRole === "agency_manager") {
-      const { rows: scope } = await db.query<{ scope_mode: string }>("select scope_mode from agency_user_client_scopes where user_id=$1", [admin.id]);
+    if (admin.platformRole === "agency_manager" || admin.platformRole === "agency_staff") {
+      const { rows: scope } = await db.query<{ scope_mode: string }>(
+        `select coalesce((select scope_mode from agency_user_client_scopes where user_id=$1),
+          case when $2='agency_manager' then 'all_clients' else 'assigned_clients' end) as scope_mode`,
+        [admin.id, admin.platformRole],
+      );
       if (scope[0]?.scope_mode === "assigned_clients") {
         await db.query("insert into staff_assignments(org_id,user_id,assigned_by) values($1,$2,$2) on conflict do nothing", [orgId, admin.id]);
       }

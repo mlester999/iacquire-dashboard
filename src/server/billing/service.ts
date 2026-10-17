@@ -156,8 +156,14 @@ export async function approveProviderFee(ctx: OrgContext, feeId: string) {
 
 type AgencyUser = Pick<SessionUser, "id" | "platformRole">;
 
-function requireAgencyView(user: AgencyUser) {
-  if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
+async function agencyBillingAccess(user: AgencyUser) {
+  const { rows } = await withSystem((db) => db.query<{ allowed: boolean; agency_wide: boolean }>(
+    `select coalesce(app.user_has_agency_permission($1,'billing.agency_view'),false) as allowed,
+            coalesce(app.user_has_agency_permission($1,'agency.security.manage'),false) as agency_wide`,
+    [user.id],
+  ));
+  if (rows[0]?.allowed !== true) throw new AppError("forbidden", "Agency access is required.");
+  return { agencyWide: rows[0].agency_wide === true };
 }
 function requireSuper(user: AgencyUser) {
   if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a super admin can change billing settings.");
@@ -252,10 +258,10 @@ export interface AgencyBillingOverview {
 }
 
 export async function getAgencyBillingOverview(user: AgencyUser): Promise<AgencyBillingOverview> {
-  requireAgencyView(user);
+  const { agencyWide } = await agencyBillingAccess(user);
   return withSystem(async (db) => {
-    const scope = user.platformRole === "agency_super_admin" ? "true" : "o.id in (select org_id from staff_assignments where user_id = $1)";
-    const params = user.platformRole === "agency_super_admin" ? [] : [user.id];
+    const scope = agencyWide ? "true" : "app.user_can_access_org($1,o.id)";
+    const params = agencyWide ? [] : [user.id];
     const settings = await db.query<{ usd_php_rate: string | null; fx_source: string | null; fx_updated_at: Date | null; live_payments_review_at: Date | null }>("select usd_php_rate, fx_source, fx_updated_at, live_payments_review_at from agency_billing_settings");
     const totals = await db.query<Record<string, string>>(
       `select
@@ -286,7 +292,14 @@ export async function getAgencyBillingOverview(user: AgencyUser): Promise<Agency
       params,
     );
     const events = await db.query<{ id: string; event_type: string; outcome: string; detail: string | null; received_at: Date }>(
-      "select id, event_type, outcome, detail, received_at from payment_webhook_events where outcome in ('rejected', 'error') or (outcome = 'ignored' and event_type in ('payment.failed', 'refund.succeeded', 'payment.refunded', 'dispute.created')) order by received_at desc limit 25",
+      `select e.id, e.event_type, e.outcome, e.detail, e.received_at from payment_webhook_events e
+       where (e.outcome in ('rejected', 'error') or (e.outcome = 'ignored' and e.event_type in ('payment.failed', 'refund.succeeded', 'payment.refunded', 'dispute.created')))
+         and ($2::boolean or exists (
+           select 1 from payments p join organizations o on o.id=p.org_id
+           where p.id=e.payment_id and app.user_can_access_org($1,o.id)
+         ))
+       order by e.received_at desc limit 25`,
+      [user.id, agencyWide],
     );
     const rate = await currentRate(db);
     const setupCount = Number(t.setup_count);

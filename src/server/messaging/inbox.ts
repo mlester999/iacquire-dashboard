@@ -398,10 +398,8 @@ export async function attestChannelSender(user: Pick<SessionUser, "id" | "platfo
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
   if (input.evidence.trim().length < 5) throw new AppError("invalid_input", "Record what you checked, for example where you confirmed the sender.");
   await withSystem(async (db) => {
-    if (user.platformRole !== "agency_super_admin") {
-      const a = await db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [input.orgId, user.id]);
-      if (!a.rows[0]) throw new AppError("forbidden", "You are not assigned to this client.");
-    }
+    const access = await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, input.orgId]);
+    if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "You are not assigned to this client.");
     await db.query("insert into messaging_settings (org_id) values ($1) on conflict do nothing", [input.orgId]);
     await db.query(
       `insert into messaging_channels (org_id, channel, sender_identity, sender_verified_at, registration_status, last_checked_at, detail)

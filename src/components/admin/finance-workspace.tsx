@@ -202,7 +202,7 @@ function Entries({ r, canManage }: { r: FinancialReport; canManage: boolean }) {
         </Card>
       )}
       <Card>
-        <CardHeader><div><CardTitle>Entries in {r.period.label.toLowerCase()}</CardTitle><CardDescription>{r.scope === "assigned" ? "Costs belonging to your assigned clients." : "Everything recorded for this period."}</CardDescription></div></CardHeader>
+        <CardHeader><div><CardTitle>Entries in {r.period.label.toLowerCase()}</CardTitle><CardDescription>{r.scope === "client_scope" ? "Costs belonging to clients in your access scope." : "Everything recorded for this period."}</CardDescription></div></CardHeader>
         <CardContent className="px-0 pb-0">
           {r.entries.length === 0 ? (
             <EmptyState compact icon={<Receipt />} title="No entries in this period" description="Costs, tax set-asides and reserve movements you record appear here." />

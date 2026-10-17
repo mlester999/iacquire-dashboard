@@ -98,7 +98,7 @@ export async function deleteDraftTemplateAction(id: string) {
 export async function createWebsiteForClientAction(orgId: string, templateKey: string) {
   return guard(async () => {
     needUuid(orgId);
-    const ctx = await studioContext(orgId, "website.edit");
+    const ctx = await studioContext(orgId, "website.create");
     const res = await createWebsite(ctx, { templateKey: String(templateKey) });
     refresh();
     return res;

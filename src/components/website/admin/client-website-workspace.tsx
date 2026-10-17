@@ -33,7 +33,7 @@ interface Props {
   comments: CommentView[];
   publications: PublicationView[];
   preflight: Preflight;
-  perms: { edit: boolean; publish: boolean; review: boolean; domains: boolean };
+  perms: { edit: boolean; publish: boolean; archive: boolean; review: boolean; domains: boolean };
   frameFor?: SiteFrameSrc;
 }
 
@@ -93,7 +93,7 @@ export function ClientWebsiteWorkspace({ orgId, timeZone, site, summary, review,
               <div className="flex flex-wrap gap-2 border-t border-line pt-4">
                 {perms.publish && !site.archived && <Button variant="brand" onClick={() => setPublish(true)}>Publish…</Button>}
                 {perms.review && !site.archived && <Button variant="secondary" onClick={() => setChanges(true)}>Request changes</Button>}
-                {perms.publish && <Button variant="secondary" onClick={() => setArchive(true)}>{site.archived ? <><ArchiveRestore className="size-4" /> Restore website</> : <><Archive className="size-4" /> Archive website</>}</Button>}
+                {perms.archive && <Button variant="secondary" onClick={() => setArchive(true)}>{site.archived ? <><ArchiveRestore className="size-4" /> Restore website</> : <><Archive className="size-4" /> Archive website</>}</Button>}
               </div>
               <p className="text-[12px] leading-relaxed text-muted">Publishing needs the business owner&apos;s approval of this exact draft (or the owner publishing it). Saving never makes anything live. {preflight.blockers.length > 0 ? `Right now ${preflight.blockers.length} thing${preflight.blockers.length === 1 ? " blocks" : "s block"} publishing.` : "Nothing is blocking publication right now."}</p>
             </CardContent>

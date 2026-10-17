@@ -37,8 +37,10 @@ let orgB: Awaited<ReturnType<typeof createOrg>>;
 let ownerA: { id: string; email: string };
 let ownerB: { id: string; email: string };
 let staffRow: { id: string; email: string };
+let managerRow: { id: string; email: string };
 let superRow: { id: string; email: string };
 let staff: SessionUser;
+let manager: SessionUser;
 let superAdmin: SessionUser;
 let staffCtxA: ReturnType<typeof agencyOrgContext>;
 let superCtxA: ReturnType<typeof agencyOrgContext>;
@@ -59,10 +61,11 @@ beforeAll(async () => {
   process.env.SITES_CNAME_TARGET = "cname.sites.test.example";
   resetEnvCache();
   [orgA, orgB] = await Promise.all([createOrg({ name: "Admin Test Alpha" }), createOrg({ name: "Admin Test Beta" })]);
-  [ownerA, ownerB, staffRow, superRow] = await Promise.all([createUser(), createUser(), createUser({ platformRole: "agency_staff" }), createUser({ platformRole: "agency_super_admin" })]);
+  [ownerA, ownerB, staffRow, managerRow, superRow] = await Promise.all([createUser(), createUser(), createUser({ platformRole: "agency_staff" }), createUser({ platformRole: "agency_manager" }), createUser({ platformRole: "agency_super_admin" })]);
   await addMember(orgA.id, ownerA.id, "owner");
   await addMember(orgB.id, ownerB.id, "owner");
   staff = agencyUser(staffRow, "agency_staff");
+  manager = agencyUser(managerRow, "agency_manager");
   superAdmin = agencyUser(superRow, "agency_super_admin");
   // The staff member is assigned to Alpha only.
   await withSystem((db) => db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [orgA.id, staffRow.id]));
@@ -81,9 +84,10 @@ afterAll(() => {
 });
 
 describe("what each agency role can see across clients", () => {
-  it("shows a super admin every client website and an assigned staff member only theirs", async () => {
+  it("shows a super admin and full-scope Manager every client website, while Staff see only assigned clients", async () => {
     const all = (await listManagedWebsites(superAdmin)).map((s) => s.orgId);
     expect(all).toEqual(expect.arrayContaining([orgA.id, orgB.id]));
+    expect((await listManagedWebsites(manager)).map((s) => s.orgId)).toEqual(expect.arrayContaining([orgA.id, orgB.id]));
     const mine = (await listManagedWebsites(staff)).map((s) => s.orgId);
     expect(mine).toContain(orgA.id);
     expect(mine).not.toContain(orgB.id);

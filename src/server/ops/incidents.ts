@@ -182,16 +182,17 @@ export async function escalateUnacknowledged(now = new Date(), afterMinutes = 30
 // Reading
 // ---------------------------------------------------------------------------
 
-/** Agency view: every incident the caller may see (all tenants for super admins, assigned tenants plus platform-wide for staff). */
+/** Agency view: Super Admins see platform incidents; every agency role sees only incidents in its current client scope. */
 export async function listIncidentsForAgency(user: SessionUser, opts: { includeResolvedDays?: number; limit?: number } = {}): Promise<IncidentRow[]> {
   const limit = Math.min(200, opts.limit ?? 100);
   const { rows } = await withSystem((db) =>
     db.query<DbIncident>(
       `select ${COLUMNS} from incidents i left join organizations o on o.id = i.org_id
        where (i.status <> 'resolved' or i.resolved_at > now() - make_interval(days => $2))
-         and ($3 or i.org_id is null or exists (select 1 from staff_assignments s where s.user_id = $1 and s.org_id = i.org_id))
-       order by (i.status = 'resolved'), case i.severity when 'critical' then 0 when 'warning' then 1 else 2 end, i.detected_at desc limit $4`,
-      [user.id, opts.includeResolvedDays ?? 7, user.platformRole === "agency_super_admin", limit],
+          and (coalesce(app.user_has_agency_permission($1,'agency.security.manage'),false)
+            or (i.org_id is not null and app.user_can_access_org($1,i.org_id)))
+       order by (i.status = 'resolved'), case i.severity when 'critical' then 0 when 'warning' then 1 else 2 end, i.detected_at desc limit $3`,
+      [user.id, opts.includeResolvedDays ?? 7, limit],
     ),
   );
   return rows.map((r) => toRow(r));
@@ -233,7 +234,15 @@ async function loadForAgency(user: SessionUser, incidentId: string) {
   const { rows } = await withSystem((db) => db.query<{ id: string; org_id: string | null; status: IncidentStatus }>("select id, org_id, status from incidents where id = $1", [incidentId]));
   const inc = rows[0];
   if (!inc) throw new AppError("not_found", "Incident not found.");
-  if (inc.org_id && !(await agencyCanAccessOrg(user, inc.org_id))) throw new AppError("not_found", "Incident not found.");
+  if (inc.org_id) {
+    if (!(await agencyCanAccessOrg(user, inc.org_id))) throw new AppError("not_found", "Incident not found.");
+  } else {
+    const platformAccess = await withSystem((db) => db.query<{ allowed: boolean }>(
+      "select coalesce(app.user_has_agency_permission($1,'agency.security.manage'),false) as allowed",
+      [user.id],
+    ));
+    if (platformAccess.rows[0]?.allowed !== true) throw new AppError("not_found", "Incident not found.");
+  }
   return inc;
 }
 

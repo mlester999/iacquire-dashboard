@@ -168,18 +168,24 @@ describe("per client and per viewer", () => {
 
   it("limits assigned staff to their own clients and hides the agency-wide figures from them", async () => {
     const r = await getFinancialReport(staff, period);
-    expect(r.scope).toBe("assigned");
+    expect(r.scope).toBe("client_scope");
     expect(r.clients.map((c) => c.orgId)).toEqual([a.id]);
     expect(r.distributable).toBeNull();
     expect(r.received.setupMicros).toBe(usd(1499)); // only client A's setup
     expect(r.entries.every((e) => e.orgId === a.id && e.kind === "direct_cost")).toBe(true); // no overhead, reserve or tax
     expect(r.costs.overheadMicros).toBe(0);
     expect(r.reserve.setAsideMicros).toBe(0);
-    expect(r.caveats.some((c) => /only the clients you are assigned to/.test(c))).toBe(true);
+    expect(r.caveats.some((c) => /clients in your current access scope/.test(c))).toBe(true);
+    const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
+    const managerReport = await getFinancialReport(manager, period);
+    expect(managerReport.scope).toBe("client_scope");
+    expect(managerReport.clients.map((c) => c.orgId)).toEqual(expect.arrayContaining([a.id, b.id]));
+    expect(managerReport.distributable).toBeNull(); // all client access does not expose agency overhead or distribution figures
     const none = await getFinancialReport(unassigned, period);
     expect(none.clients).toEqual([]);
     expect(none.received.grossMicros).toBe(0);
-    await expect(getFinancialReport({ ...superAdmin, platformRole: "none" }, period)).rejects.toMatchObject({ code: "forbidden" });
+    const clientUser = agencyUser(await createUser(), "agency_staff");
+    await expect(getFinancialReport(clientUser, period)).rejects.toMatchObject({ code: "forbidden" });
   });
 
   it("is invisible to clients and respects staff assignment at the database level", async () => {

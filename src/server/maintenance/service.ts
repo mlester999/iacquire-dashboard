@@ -235,7 +235,6 @@ export interface AgencyMaintenanceRow {
 export async function listAgencyMaintenance(user: SessionUser) {
   assertManage(user);
   return withSystem(async (db) => {
-    const scope = [user.platformRole === "agency_super_admin", user.id];
     const subs = (await db.query<SubRow & { org_id: string; org_name: string; request_note: string | null; cancel_note: string | null; internal_notes: string | null; state: string | null; used: number }>(
       `select s.id, s.status, s.monthly_price_cents, s.currency, s.monthly_request_allowance, s.terms_version, s.accepted_at, s.activated_at,
          s.billing_start_on::text as billing_start_on, s.renewal_on::text as renewal_on, s.cancel_requested_at,
@@ -243,16 +242,16 @@ export async function listAgencyMaintenance(user: SessionUser) {
          (select i.state from client_setup_instances i where i.org_id = s.org_id) as state,
          (select count(*)::int from maintenance_requests m where m.subscription_id = s.id and m.kind = 'managed_change' and m.counts_against_allowance and m.status <> 'declined' and m.period_month = date_trunc('month', now())::date) as used
        from maintenance_subscriptions s join organizations o on o.id = s.org_id
-       where s.status in ('requested','active','cancel_requested') and ($1::boolean or exists (select 1 from staff_assignments sa where sa.org_id = s.org_id and sa.user_id = $2))
+       where s.status in ('requested','active','cancel_requested') and app.user_can_access_org($1,s.org_id)
        order by case s.status when 'requested' then 0 when 'cancel_requested' then 1 else 2 end, o.name`,
-      scope,
+      [user.id],
     )).rows;
     const reqs = (await db.query<{ id: string; ref: string; kind: string; title: string; description: string; status: string; counts_against_allowance: boolean; org_id: string; org_name: string; ticket_id: string | null; created_at: Date; internal_notes: string | null }>(
       `select m.id, m.ref, m.kind, m.title, m.description, m.status, m.counts_against_allowance, m.org_id, o.name as org_name, m.ticket_id, m.created_at, m.internal_notes
        from maintenance_requests m join organizations o on o.id = m.org_id
-       where m.status not in ('completed','declined') and ($1::boolean or exists (select 1 from staff_assignments sa where sa.org_id = m.org_id and sa.user_id = $2))
+       where m.status not in ('completed','declined') and app.user_can_access_org($1,m.org_id)
        order by m.created_at desc limit 200`,
-      scope,
+      [user.id],
     )).rows;
     return {
       subscriptions: subs.map((s) => ({ ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" })),
@@ -263,7 +262,7 @@ export async function listAgencyMaintenance(user: SessionUser) {
 
 async function subscriptionForAgency(db: Parameters<Parameters<typeof withSystem>[0]>[0], user: SessionUser, id: string) {
   const s = (await db.query<{ id: string; org_id: string; status: string }>("select id, org_id, status from maintenance_subscriptions where id = $1 for update", [id])).rows[0];
-  const ok = s && (user.platformRole === "agency_super_admin" || (await db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [s.org_id, user.id])).rows[0]);
+  const ok = s && (await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, s.org_id])).rows[0]?.allowed === true;
   if (!s || !ok) throw new AppError("not_found", "Maintenance plan not found.");
   return s;
 }
@@ -305,7 +304,7 @@ export async function updateMaintenanceRequest(user: SessionUser, requestId: str
   const d = z.object({ status: z.enum(["open", "in_progress", "waiting_for_client", "completed", "declined"]).optional(), resolutionNote: z.string().trim().max(2000).optional(), waiveAllowance: z.boolean().optional(), internalNotes: z.string().trim().max(4000).optional() }).parse(changes);
   await withSystem(async (db) => {
     const m = (await db.query<{ org_id: string; kind: string; title: string; ref: string }>("select org_id, kind, title, ref from maintenance_requests where id = $1 for update", [requestId])).rows[0];
-    const ok = m && (user.platformRole === "agency_super_admin" || (await db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [m.org_id, user.id])).rows[0]);
+    const ok = m && (await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, m.org_id])).rows[0]?.allowed === true;
     if (!m || !ok) throw new AppError("not_found", "Request not found.");
     if (d.waiveAllowance && m.kind !== "managed_change") throw new AppError("conflict", "Only managed requests use the allowance.");
     await db.query(

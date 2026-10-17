@@ -2,7 +2,7 @@ import "server-only";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
+import { assertCan, assertCanCreate, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { readFieldValues, writeFieldValues, type RecordFieldValue } from "@/server/crm/fields";
@@ -102,7 +102,7 @@ export async function createCompanyInTx(db: Queryable, actor: CrmActor, input: C
 }
 
 export async function createCompany(actor: CrmActor, input: CompanyInput): Promise<{ id: string }> {
-  assertCan(actor, "companies.edit");
+  assertCanCreate(actor, "companies.create");
   return crmWrite(actor, async (db) => {
     const r = await createCompanyInTx(db, actor, input, actor.kind === "agent" ? "agent" : actor.kind === "api" ? "api" : "manual");
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.company_created", targetType: "crm_company", targetId: r.id, result: "success" }, db);
@@ -155,7 +155,7 @@ export async function updateCompany(actor: CrmActor, id: string, input: Partial<
 }
 
 export async function setCompaniesArchived(actor: CrmActor, ids: string[], archived: boolean): Promise<{ changed: number }> {
-  assertCan(actor, "contacts.delete", "Archiving companies needs the archive permission.");
+  assertCan(actor, "companies.delete", "Archiving companies needs the company archive permission.");
   return crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "companies");
     const res = await db.query(
@@ -171,7 +171,7 @@ export async function setCompaniesArchived(actor: CrmActor, ids: string[], archi
 
 /** Deleting a company unlinks its people (they are kept) and keeps its opportunities without a company. */
 export async function deleteCompany(actor: CrmActor, id: string): Promise<void> {
-  assertCan(actor, "contacts.delete", "Deleting companies needs the archive permission.");
+  assertCan(actor, "companies.delete", "Deleting companies needs the company delete permission.");
   await crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "companies");
     const res = await db.query<{ name: string }>("update crm_companies set deleted_at = now(), domain = null where id = $1 and org_id = $2 and deleted_at is null returning name", [id, actor.orgId]);

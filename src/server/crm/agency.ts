@@ -1,5 +1,6 @@
 import "server-only";
 import { withSystem } from "@/server/db";
+import { AppError } from "@/server/errors";
 import type { SessionUser } from "@/server/auth/service";
 import type { CrmMode } from "@/lib/crm/types";
 
@@ -23,6 +24,12 @@ export interface AgencyCrmRow {
 export async function agencyCrmPortfolio(user: Pick<SessionUser, "id" | "platformRole">): Promise<AgencyCrmRow[]> {
   if (user.platformRole === "none") return [];
   return withSystem(async (db) => {
+    const access = await db.query<{ allowed: boolean }>(
+      `select coalesce(app.user_has_agency_permission($1,'agency.crm.read'),false) as allowed`,
+      [user.id],
+    );
+    if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow viewing client CRM summaries.");
+
     const { rows } = await db.query<{
       id: string; name: string; status: string; mode: CrmMode | null; contacts: string; new_contacts: string; open_deals: string; overdue: string; last_activity: Date | null;
       session_mode: "read" | "write" | null; session_expires: Date | null;
@@ -38,9 +45,9 @@ export async function agencyCrmPortfolio(user: Pick<SessionUser, "id" | "platfor
        left join crm_workspaces w on w.org_id = o.id
        left join lateral (select mode, expires_at from crm_support_sessions ss where ss.org_id = o.id and ss.user_id = $1 and ss.ended_at is null and ss.expires_at > now() order by ss.started_at desc limit 1) s on true
        where o.kind = 'client' and o.status <> 'archived'
-         and ($2::boolean or exists (select 1 from staff_assignments sa where sa.org_id = o.id and sa.user_id = $1))
+         and app.user_can_access_org($1,o.id)
        order by lower(o.name)`,
-      [user.id, user.platformRole === "agency_super_admin"],
+      [user.id],
     );
     return rows.map((r) => ({
       orgId: r.id, name: r.name, status: r.status, mode: r.mode ?? "native", contacts: Number(r.contacts), newContacts7d: Number(r.new_contacts), openDeals: Number(r.open_deals),

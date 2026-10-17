@@ -104,8 +104,9 @@ export const detailsSchema = z.object({
 
 async function assertAssignable(db: Queryable, orgId: string, userId: string) {
   const { rows } = await db.query(
-    `select 1 from users u where u.id = $1 and u.status = 'active' and (u.platform_role = 'agency_super_admin'
-       or (u.platform_role = 'agency_staff' and exists (select 1 from staff_assignments s where s.user_id = u.id and s.org_id = $2)))`,
+    `select 1 from users u where u.id = $1 and u.status = 'active'
+       and u.platform_role in ('agency_super_admin','agency_manager','agency_staff')
+       and app.user_can_access_org(u.id,$2)`,
     [userId, orgId],
   );
   if (!rows.length) throw new AppError("invalid_input", "Choose an agency team member who has access to this client.");

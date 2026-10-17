@@ -198,7 +198,7 @@ export async function assignProject(user: SessionUser, requestId: string, assign
   await withSystem(async (db) => {
     const r = await authorizeRequest(db, user, requestId);
     if (assigneeId) {
-      const ok = (await db.query("select 1 from users u where u.id = $1 and u.status = 'active' and (u.platform_role = 'agency_super_admin' or (u.platform_role = 'agency_staff' and exists (select 1 from staff_assignments sa where sa.user_id = u.id and sa.org_id = $2)))", [assigneeId, r.org_id])).rows[0];
+      const ok = (await db.query("select 1 from users u where u.id = $1 and u.status = 'active' and u.platform_role in ('agency_super_admin','agency_manager','agency_staff') and app.user_can_access_org(u.id,$2)", [assigneeId, r.org_id])).rows[0];
       if (!ok) throw new AppError("invalid_input", "Choose a team member who works on this client.");
     }
     await db.query("update client_project_requests set assigned_to = $2 where id = $1", [requestId, assigneeId]);

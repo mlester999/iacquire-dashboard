@@ -107,6 +107,17 @@ export async function agencyUserHasPermission(userId: string, permission: Agency
   return rows[0]?.allowed === true;
 }
 
+/** Loads the current, database-resolved agency permissions for server-rendered navigation. */
+export async function loadAgencyPermissions(userId: string): Promise<Permission[]> {
+  const permissions = Object.keys(PERMISSION_MATRIX) as Permission[];
+  const { rows } = await withSystem((db) => db.query<{ permission: string }>(
+    `select p.permission from unnest($2::text[]) as p(permission)
+     where coalesce(app.user_has_agency_permission($1,p.permission),false)`,
+    [userId, permissions],
+  ));
+  return rows.map((row) => row.permission).filter((permission): permission is Permission => permission in PERMISSION_MATRIX);
+}
+
 export function buildContext(user: SessionUser, org: Membership, memberships: Membership[], overrides: PermissionOverrides = {}): OrgContext {
   const can = (p: Permission) => effectivePermission(org.role, p, overrides);
   const permissions = (Object.keys(PERMISSION_MATRIX) as Permission[]).filter(can);

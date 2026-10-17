@@ -3,7 +3,7 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyUser } from "@/server/notifications";
-import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
+import { assertCan, assertCanCreate, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { readFieldValues, writeFieldValues, type RecordFieldValue } from "@/server/crm/fields";
@@ -216,7 +216,7 @@ export async function createContactInTx(db: Queryable, actor: CrmActor, input: C
 }
 
 export async function createContact(actor: CrmActor, input: ContactInput): Promise<CreateContactResult> {
-  assertCan(actor, "contacts.edit");
+  assertCanCreate(actor, "contacts.create");
   if (input.ownerId && input.ownerId !== actor.userId) assertCan(actor, "contacts.assign", "Assigning contacts to someone else needs the assign permission.");
   return crmWrite(actor, async (db) => {
     const r = await createContactInTx(db, actor, input, { via: actor.kind === "agent" ? "agent" : actor.kind === "api" ? "api" : "manual", onDuplicate: "error", enforceRequiredFields: actor.kind === "member" || actor.kind === "agency" });
