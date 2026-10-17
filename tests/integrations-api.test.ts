@@ -3,9 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { AppError } from "@/server/errors";
+import { resetEnvCache } from "@/server/env";
 
 const SECRET = "synthetic-api-secret-" + "z".repeat(32);
 const ORG = "11111111-1111-4111-8111-111111111111";
+const GATEWAY_ID = "33333333-3333-4333-8333-333333333333";
 
 const requireAgencyOrThrow = vi.fn();
 const manager = {
@@ -26,13 +28,27 @@ vi.mock("@/server/integrations/manager", async () => {
 
 const admin = { id: "22222222-2222-4222-8222-222222222222", platformRole: "agency_super_admin" };
 const ghlSave = { provider: "ghl", label: "Synthetic CRM", environment: "development", secret: SECRET, config: { locationId: "syntheticLocation1234", scopes: ["locations.readonly"] } };
+const hermesGatewaySave = {
+  provider: "hermes",
+  label: "Synthetic Hermes gateway",
+  environment: "production",
+  accessClientId: "synthetic-cloudflare-client-id",
+  accessClientSecret: "synthetic-cloudflare-client-secret",
+  config: { baseUrl: "https://hermes-api.iacquire.online", gatewayType: "multiplexed_profiles" },
+};
 
-async function call(method: "GET" | "POST", opts: { origin?: string | null; body?: unknown; raw?: string; length?: number; query?: string } = {}) {
+async function call(method: "GET" | "POST", opts: { origin?: string | null; host?: string; forwardedHost?: string; body?: unknown; raw?: string; length?: number; query?: string } = {}) {
   const { GET, POST } = await import("@/app/api/admin/integrations/route");
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (opts.origin !== null) headers.origin = opts.origin ?? "http://localhost:3000";
+  const origin = opts.origin === undefined ? "https://www.iacquire.online" : opts.origin;
+  const requestHost = opts.host ?? "www.iacquire.online";
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    host: requestHost,
+    "x-forwarded-host": opts.forwardedHost ?? requestHost,
+  };
+  if (origin !== null) headers.origin = origin;
   if (opts.length !== undefined) headers["content-length"] = String(opts.length);
-  const req = new NextRequest(`http://localhost:3000/api/admin/integrations${opts.query ?? ""}`, {
+  const req = new NextRequest(`https://${requestHost}/api/admin/integrations${opts.query ?? ""}`, {
     method,
     headers,
     ...(method === "POST" ? { body: opts.raw ?? JSON.stringify(opts.body ?? {}) } : {}),
@@ -44,9 +60,16 @@ async function call(method: "GET" | "POST", opts: { origin?: string | null; body
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("APP_URL", "https://iacquire.online/");
+  vi.stubEnv("NODE_ENV", "test");
+  resetEnvCache();
   requireAgencyOrThrow.mockResolvedValue(admin);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  resetEnvCache();
+});
 
 describe("credential administration API", () => {
   it("rejects unauthenticated and non-agency callers before touching the manager", async () => {
@@ -69,12 +92,40 @@ describe("credential administration API", () => {
     expect(requireAgencyOrThrow).toHaveBeenCalledWith();
   });
 
-  it("refuses a missing or foreign Origin so another site cannot submit a credential", async () => {
-    for (const origin of [null, "https://evil.example.com", "http://localhost:3999"]) {
+  it("refuses a missing, malformed, or foreign Origin so another site cannot submit a credential", async () => {
+    for (const origin of [null, "not-an-origin", "https://evil.example.com", "https://www.iacquire.online.evil.example", "http://iacquire.online"]) {
       const res = await call("POST", { origin, body: { action: "save", input: ghlSave } });
       expect(res.status).toBe(403);
       expect(res.text).not.toContain(SECRET);
     }
+    const forgedForwardedHost = await call("POST", { forwardedHost: "evil.example.com", body: { action: "save", input: ghlSave } });
+    expect(forgedForwardedHost.status).toBe(403);
+    const mismatchedHost = await call("POST", { host: "evil.example.com", body: { action: "save", input: ghlSave } });
+    expect(mismatchedHost.status).toBe(403);
+    expect(manager.saveIntegrationConnection).not.toHaveBeenCalled();
+  });
+
+  it.each(["https://www.iacquire.online", "https://iacquire.online"])("accepts a Super Admin save from the production portal origin %s", async (origin) => {
+    manager.saveIntegrationConnection.mockResolvedValueOnce(GATEWAY_ID);
+    const host = new URL(origin).host;
+    const res = await call("POST", { origin, host, forwardedHost: host, body: { action: "save", input: hermesGatewaySave } });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.text)).toEqual({ ok: true, gatewayId: GATEWAY_ID });
+    expect(res.text).not.toContain(hermesGatewaySave.accessClientId);
+    expect(res.text).not.toContain(hermesGatewaySave.accessClientSecret);
+    expect(manager.saveIntegrationConnection).toHaveBeenCalledWith(admin, null, expect.objectContaining({
+      provider: "hermes",
+      accessClientId: hermesGatewaySave.accessClientId,
+      accessClientSecret: hermesGatewaySave.accessClientSecret,
+    }));
+  });
+
+  it("rejects an unauthorized writer even when the portal Origin is valid", async () => {
+    requireAgencyOrThrow.mockRejectedValueOnce(new AppError("forbidden", "Agency access is required."));
+    const res = await call("POST", { body: { action: "save", input: hermesGatewaySave } });
+    expect(res.status).toBe(403);
+    expect(res.text).not.toContain("Connection changes must come from the portal.");
+    expect(res.text).not.toContain(hermesGatewaySave.accessClientSecret);
     expect(manager.saveIntegrationConnection).not.toHaveBeenCalled();
   });
 
