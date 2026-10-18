@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,287 tests in 98 files passed** with `--maxWorkers=2` (the default fully parallel run had two timing-sensitive existing tests time out under load; each passed alone and the constrained run is green) |
+| `npm test` | **1,300 tests in 100 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -14,19 +14,27 @@ Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the
 **Apart from migration `0026` and read-only checks on the hosted database (below), nothing has been run against a hosted Supabase project, Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email provider or domain registrar.**
 The hosted Supabase project has migrations `0001`–`0026`: `0001`–`0025` were already applied when it was inspected, and `0026` was applied on 2026-10-15 at your request (atomically, with the database empty: 0 organizations, websites, versions, publications and enquiries). Read-only checks afterwards: all five new tables have row level security, the three permissions exist, `app.submit_site_form` has 16 arguments and `iaq_site_runtime` can execute it, `iaq_site_runtime` holds no table privileges, `anon`/`authenticated` hold none on the new tables, and no client role can read template content. 154 public tables, 26 migrations recorded. No deployment was made. The repository has a remote; the commits to `master` were pushed at your request.
 
-A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` were then applied on 2026-10-18 with the repository's `--only` runner, one transaction per migration. The hosted project now records `0045_ai_workforce_experience`, `0046_knowledge_document_extraction` and `0047_aqi_assistant`; 210 public tables exist. No application deployment was made by this work.
+A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` were then applied on 2026-10-18 with the repository's `--only` runner, one transaction per migration. The hosted project now records `0045_ai_workforce_experience`, `0046_knowledge_document_extraction` and `0047_aqi_assistant`; 210 public tables exist. Cost-control migration `0048` remains local only.
+
+The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for `c3e1bdb` by `vercel[bot]`; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. The AQi base code is therefore deployed, but the later cost-control/support changes are committed only on the local branch and are not pushed or deployed. There is no `.github/workflows` or Vercel config in the repository; the integration is external.
+
+Read-only production database audit after deployment: the global `llm` integration exists with model `deepseek-flash` and format `openai`, but its status is **`credentials_saved`**, not `connected` or `permission_limited`. `resolveLlmConfig()` therefore returns no provider, so AQi is deployed but its provider is **not operationally available** in production. One AQi configuration is published, migration `0048` is absent, and the hosted `aqi_messages` count is 2. No live AQi response or cost evidence exists.
 
 ### AQi platform assistant (2026-10-18, migration 0047)
 
 | Gate | Result |
 | --- | --- |
 | AQi schema, RLS, seed knowledge and conversation privacy | Locally verified (`tests/aqi-migration-0047.test.ts`) |
-| Provider streaming, SSE fallback and provider failure | Locally verified against an OpenAI-compatible local SSE server (`tests/aqi-llm-stream.test.ts`); **no live provider run** |
-| Context, suggestions, knowledge retrieval, conversation CRUD, durable sources and publish/rollback | Locally verified (`tests/aqi.test.ts`, 7 tests) |
-| Navigation safety and cross-role denial | Locally verified (`tests/aqi-security.test.ts`) |
-| Floating launcher, streaming panel, source citations, feedback comment, close confirmation, history, expand, mobile, Super Admin screen and retrieval preview | Browser QA passed with **4 pages, 11 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Provider streaming, SSE fallback, provider failure, 429, timeout, cancellation and interrupted stream | Locally verified against an OpenAI-compatible local SSE server (`tests/aqi-llm-stream.test.ts`, 8 tests); **no live provider run** |
+| Context, suggestions, knowledge retrieval, conversation CRUD, durable sources, citation validation and publish/rollback | Locally verified (`tests/aqi.test.ts`, 8 tests) |
+| Navigation safety, actual agency permissions and cross-role denial | Locally verified (`tests/aqi-security.test.ts`, 5 tests) |
+| Atomic AQi budgets, model pricing, per-user limits and concurrent reservation race | Locally verified (`tests/aqi-cost-controls.test.ts`, 4 tests; migration 0048 local only) |
+| Support escalation with consent, real Support service and duplicate suppression | Locally verified (`tests/aqi-support.test.ts`, 2 tests) |
+| Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
+| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 13 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
 | Migration 0047 | **Applied to hosted Supabase 2026-10-18**; six tables, RLS policies and seeded config/knowledge/questions verified |
-| Live provider acceptance | **Blocked** — no AQi provider credential is configured here |
+| Migration 0048 | **Not applied hosted**; local only until approved |
+| Live provider acceptance | **Blocked** — production integration is `credentials_saved`; no live provider response was verified |
 
 AQi details: [aqi.md](aqi.md).
 

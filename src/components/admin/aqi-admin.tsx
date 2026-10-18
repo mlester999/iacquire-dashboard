@@ -12,7 +12,9 @@ import {
   deleteAqiQuestionAction,
   previewAqiRetrievalAction,
   publishAqiConfigAction,
+  saveAqiBudgetAction,
   saveAqiConfigAction,
+  saveAqiModelPriceAction,
   saveAqiKnowledgeAction,
   saveAqiQuestionAction,
   testAqiProviderAction,
@@ -20,7 +22,7 @@ import {
 import type { AqiAdminData, AqiConfig } from "@/server/aqi/service";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 
-type Tab = "overview" | "provider" | "instructions" | "knowledge" | "questions" | "testing" | "history" | "usage";
+type Tab = "overview" | "provider" | "instructions" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets";
 
 const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "overview", label: "Overview", icon: <Sparkles className="size-3.5" /> },
@@ -31,6 +33,7 @@ const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "testing", label: "Testing & publishing", icon: <FlaskConical className="size-3.5" /> },
   { key: "history", label: "Version history", icon: <History className="size-3.5" /> },
   { key: "usage", label: "Usage & health", icon: <CheckCircle2 className="size-3.5" /> },
+  { key: "budgets", label: "Budgets & pricing", icon: <KeyRound className="size-3.5" /> },
 ];
 
 export function AqiAdmin({ data }: { data: AqiAdminData }) {
@@ -50,6 +53,11 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
   const [previewPath, setPreviewPath] = React.useState("/workforce");
   const [previewing, setPreviewing] = React.useState(false);
   const [previewResult, setPreviewResult] = React.useState<Array<{ id: string; title: string; category: string; body: string }>>([]);
+  const globalBudget = data.budgets.find((budget) => budget.orgId === null);
+  const [budget, setBudget] = React.useState({ enabled: globalBudget?.enabled ?? false, orgUsd: (globalBudget?.monthlyOrgMicros ?? 0) / 1_000_000, userUsd: (globalBudget?.monthlyUserMicros ?? 0) / 1_000_000 });
+  const [price, setPrice] = React.useState({ model: data.published.config.model, inputUsd: 0, outputUsd: 0, enabled: true });
+  const [budgetBusy, setBudgetBusy] = React.useState(false);
+  const [now] = React.useState(() => Date.now());
   const changed = (Object.keys(config) as Array<keyof AqiConfig>).filter((key) => config[key] !== data.published.config[key]);
 
   const set = <K extends keyof AqiConfig>(key: K, value: AqiConfig[K]) => setConfig((current) => ({ ...current, [key]: value }));
@@ -77,6 +85,24 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
     setPreviewing(false);
     if (!result.ok) return toast.error(result.error);
     setPreviewResult(result.data.entries);
+  }
+
+  async function saveBudget() {
+    setBudgetBusy(true);
+    const result = await saveAqiBudgetAction({ orgId: null, enabled: budget.enabled, monthlyOrgUsd: budget.orgUsd, monthlyUserUsd: budget.userUsd });
+    setBudgetBusy(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success("AQi budget saved");
+    router.refresh();
+  }
+
+  async function savePrice() {
+    setBudgetBusy(true);
+    const result = await saveAqiModelPriceAction({ model: price.model, inputUsdPerMillion: price.inputUsd, outputUsdPerMillion: price.outputUsd, enabled: price.enabled });
+    setBudgetBusy(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success("Model price saved");
+    router.refresh();
   }
 
   async function testProvider() {
@@ -183,6 +209,8 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <Field label="Model" htmlFor="aqi-model"><Input id="aqi-model" value={config.model} onChange={(event) => set("model", event.target.value)} /></Field>
             <Field label="Maximum output tokens" htmlFor="aqi-max"><Input id="aqi-max" type="number" min={128} max={2000} value={config.maxTokens} onChange={(event) => set("maxTokens", Number(event.target.value))} /></Field>
+            <Field label="Maximum context tokens" htmlFor="aqi-context"><Input id="aqi-context" type="number" min={1000} max={64000} value={config.maxContextTokens} onChange={(event) => set("maxContextTokens", Number(event.target.value))} /></Field>
+            <Field label="Knowledge review threshold (days)" htmlFor="aqi-freshness"><Input id="aqi-freshness" type="number" min={7} max={3650} value={config.knowledgeFreshnessDays} onChange={(event) => set("knowledgeFreshnessDays", Number(event.target.value))} /></Field>
             <Field label="Temperature" htmlFor="aqi-temp"><Input id="aqi-temp" type="number" min={0} max={1} step={0.05} value={config.temperature} onChange={(event) => set("temperature", Number(event.target.value))} /></Field>
             <div className="rounded-xl border border-line bg-surface-2 p-3 text-[12.5px] text-muted">Configured provider: {data.health.provider ?? "none"}. Credentials stay in the existing secure integration store.</div>
           </CardContent>
@@ -217,7 +245,10 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
                       <p className="truncate text-[13px] font-medium">{entry.title}</p>
                       <p className="mt-0.5 text-[11px] text-muted">{entry.category} · {entry.routePrefix ?? "all pages"} · updated <span suppressHydrationWarning>{relativeTime(entry.updatedAt)}</span></p>
                     </button>
-                    <StatusPill size="sm" tone={entry.status === "published" ? "success" : entry.status === "archived" ? "neutral" : "warning"}>{entry.status}</StatusPill>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <StatusPill size="sm" tone={entry.status === "published" ? "success" : entry.status === "archived" ? "neutral" : "warning"}>{entry.status}</StatusPill>
+                      {entry.status === "published" && now - new Date(entry.updatedAt).getTime() > data.published.config.knowledgeFreshnessDays * 86_400_000 && <StatusPill size="sm" tone="warning">review stale</StatusPill>}
+                    </div>
                   </div>
                   <div className="mt-2 flex gap-2">
                     <Button size="sm" variant="ghost" onClick={() => editKnowledge(entry)}>Edit</Button>
@@ -354,13 +385,52 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
         </Card>
       )}
 
+      {tab === "budgets" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>Global AQi budget</CardTitle><CardDescription>Server-side monthly limits. A request is rejected before the provider call when the budget is exhausted. $0 means no cap while enabled; leave budgets off until prices are configured.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Enforce AQi budgets</span><input type="checkbox" checked={budget.enabled} onChange={(event) => setBudget({ ...budget, enabled: event.target.checked })} aria-label="Enforce AQi budgets" /></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Workspace monthly budget (USD)" htmlFor="aqi-org-budget"><Input id="aqi-org-budget" type="number" min={0} step="0.01" value={budget.orgUsd} onChange={(event) => setBudget({ ...budget, orgUsd: Number(event.target.value) })} /></Field>
+                <Field label="Per-user monthly budget (USD)" htmlFor="aqi-user-budget"><Input id="aqi-user-budget" type="number" min={0} step="0.01" value={budget.userUsd} onChange={(event) => setBudget({ ...budget, userUsd: Number(event.target.value) })} /></Field>
+              </div>
+              <Button variant="brand" onClick={() => void saveBudget()} loading={budgetBusy}><Save className="size-4" /> Save budget</Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Model pricing</CardTitle><CardDescription>Prices are configured per million tokens and used only for estimates. Missing pricing blocks budgeted calls; it never guesses a provider price.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <Field label="Model" htmlFor="price-model"><Input id="price-model" value={price.model} onChange={(event) => setPrice({ ...price, model: event.target.value })} /></Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Input USD / 1M tokens" htmlFor="price-input"><Input id="price-input" type="number" min={0} step="0.0001" value={price.inputUsd} onChange={(event) => setPrice({ ...price, inputUsd: Number(event.target.value) })} /></Field>
+                <Field label="Output USD / 1M tokens" htmlFor="price-output"><Input id="price-output" type="number" min={0} step="0.0001" value={price.outputUsd} onChange={(event) => setPrice({ ...price, outputUsd: Number(event.target.value) })} /></Field>
+              </div>
+              <Button variant="secondary" onClick={() => void savePrice()} loading={budgetBusy}><Save className="size-4" /> Save model price</Button>
+              <div className="border-t border-line pt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Configured prices</p>
+                {data.prices.length === 0 ? <p className="mt-2 text-[12px] text-muted">No model prices configured. Budgeted calls stay blocked until a price is saved.</p> : (
+                  <ul className="mt-2 space-y-1">
+                    {data.prices.map((item) => <li key={item.model} className="flex items-center justify-between gap-2 rounded-lg bg-surface-2 px-2.5 py-2 text-[12px]"><span className="font-medium">{item.model}</span><span className="text-muted">${(item.inputMicrosPerMillion / 1_000_000).toFixed(4)} in · ${(item.outputMicrosPerMillion / 1_000_000).toFixed(4)} out {item.enabled ? "" : "· off"}</span></li>)}
+                  </ul>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {tab === "usage" && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Messages" value={String(data.usage.messages)} detail="Recorded AQi turns" />
           <Metric label="Failed turns" value={String(data.usage.failures)} detail="Provider or empty responses" />
-          <Metric label="Input tokens" value={data.usage.inputTokens.toLocaleString()} detail="Only when reported by provider" />
-          <Metric label="Output tokens" value={data.usage.outputTokens.toLocaleString()} detail="Only when reported by provider" />
-          <Card className="sm:col-span-2 xl:col-span-4"><CardHeader><CardTitle>Health</CardTitle><CardDescription>{data.health.detail}</CardDescription></CardHeader><CardContent className="text-[13px]"><p>Provider: {data.health.provider ?? "not configured"} · Model: {data.health.model ?? "not configured"}</p><p className="mt-1 text-muted">AQi does not display a cost estimate because the provider does not report a reliable per-request cost here.</p></CardContent></Card>
+          <Metric label="Input tokens" value={data.usage.inputTokens.toLocaleString()} detail="Estimated when provider omits usage" />
+          <Metric label="Output tokens" value={data.usage.outputTokens.toLocaleString()} detail="Estimated when provider omits usage" />
+          <Metric label="Recorded cost" value={`$${(data.usage.costMicros / 1_000_000).toFixed(4)}`} detail="Based on configured model prices" />
+          <Metric label="Reserved" value={`$${(data.usage.reservedMicros / 1_000_000).toFixed(4)}`} detail="In-flight budget reservations" />
+          <Metric label="Estimated charges" value={String(data.usage.estimatedCosts)} detail="Provider omitted usage; token estimate used" />
+          <Metric label="Rate-limited turns" value={String(data.usage.rateLimits)} detail="Rejected before the provider call" />
+          <Card className="sm:col-span-2 xl:col-span-4"><CardHeader><CardTitle>Health</CardTitle><CardDescription>{data.health.detail}</CardDescription></CardHeader><CardContent className="text-[13px]"><p>Provider: {data.health.provider ?? "not configured"} · Model: {data.health.model ?? "not configured"}</p><p className="mt-1 text-muted">Costs are estimates from configured pricing; no provider invoice is implied. A request that fails before usage is reported is released without a cost charge.</p></CardContent></Card>
         </div>
       )}
     </div>

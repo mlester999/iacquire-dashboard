@@ -14,6 +14,7 @@ import {
   renameAqiConversation,
   retrieveAqiKnowledge,
   runAqiTurn,
+  validateAqiCitations,
   saveAqiDraftConfig,
 } from "@/server/aqi/service";
 import { DEFAULT_AQI_CONFIG } from "@/server/aqi/service";
@@ -81,6 +82,13 @@ describe("AQi context and knowledge", () => {
     const meta = events.find((event) => event.type === "meta") as { conversationId: string } | undefined;
     const conversation = await getAqiConversation(viewer, meta!.conversationId);
     expect(conversation.messages.at(-1)?.sources?.length).toBeGreaterThan(0);
+  });
+
+  it("removes citations that do not map to retrieved sources", () => {
+    const result = validateAqiCitations("Use [K1] but not [K3].", [{ id: "a", title: "A", category: "C" }]);
+    expect(result.cited).toEqual([1]);
+    expect(result.content).toBe("Use [K1] but not .");
+    expect(result.warning).toMatch(/did not match/);
   });
 
   it("lets a Super Admin preview retrieval without an answer", async () => {

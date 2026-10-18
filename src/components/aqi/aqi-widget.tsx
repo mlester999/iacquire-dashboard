@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Copy,
   History,
+  LifeBuoy,
   Maximize2,
   Minimize2,
   Pencil,
@@ -28,7 +29,7 @@ import {
 import { LogoMark } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/primitives";
+import { Field, Input, Textarea } from "@/components/ui/primitives";
 import { cn, relativeTime } from "@/lib/utils";
 
 interface Bootstrap {
@@ -55,6 +56,7 @@ interface Message {
   feedbackComment: string | null;
   createdAt: string;
   sources?: Array<{ id: string; title: string; category: string }>;
+  citationWarning?: string | null;
 }
 
 type View = "chat" | "history";
@@ -100,6 +102,12 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [olderLoading, setOlderLoading] = React.useState(false);
   const [feedbackFor, setFeedbackFor] = React.useState<{ id: string; rating: 1 | -1 } | null>(null);
   const [feedbackText, setFeedbackText] = React.useState("");
+  const [supportOpen, setSupportOpen] = React.useState(false);
+  const [supportSubject, setSupportSubject] = React.useState("");
+  const [supportConsent, setSupportConsent] = React.useState(false);
+  const [supportBusy, setSupportBusy] = React.useState(false);
+  const [supportError, setSupportError] = React.useState<string | null>(null);
+  const [supportResult, setSupportResult] = React.useState<{ id: string; ref: string; existing: boolean } | null>(null);
   const [closeConfirm, setCloseConfirm] = React.useState(false);
   const [newSession, setNewSession] = React.useState(false);
   const [loadingConversation, setLoadingConversation] = React.useState(false);
@@ -145,6 +153,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (closeConfirm) setCloseConfirm(false);
+        else if (supportOpen) setSupportOpen(false);
         else requestClose();
       }
     };
@@ -357,6 +366,26 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     if (!res.ok) setError("Your feedback could not be saved. Please try again.");
   }
 
+  async function createSupportRequest() {
+    if (!conversationId || !supportConsent) return;
+    setSupportBusy(true);
+    setSupportError(null);
+    try {
+      const res = await fetch("/api/aqi/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, subject: supportSubject, consent: true }),
+      });
+      const data = (await res.json().catch(() => null)) as { id?: string; ref?: string; existing?: boolean; error?: string } | null;
+      if (!res.ok || !data?.id || !data.ref) throw new Error(data?.error ?? "The support request could not be created.");
+      setSupportResult({ id: data.id, ref: data.ref, existing: Boolean(data.existing) });
+    } catch (err) {
+      setSupportError(err instanceof Error ? err.message : "The support request could not be created.");
+    } finally {
+      setSupportBusy(false);
+    }
+  }
+
   async function rename() {
     if (!renaming) return;
     const res = await fetch(`/api/aqi/conversations/${renaming.id}`, {
@@ -497,7 +526,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                             ))}
                           </div>
                         </div>
-                        <p className="text-center text-[11.5px] text-muted">Still stuck? <Link href="/support" className="font-medium text-primary hover:underline">Talk to the iAcquire team</Link>.</p>
+                        <p className="text-center text-[11.5px] text-muted">Still stuck? <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="font-medium text-primary hover:underline">Get help from iAcquire</button> or <Link href="/support" className="font-medium text-primary hover:underline">open Support</Link>.</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -531,6 +560,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                                       </ul>
                                     </div>
                                   ) : null}
+                                  {message.citationWarning && <p className="mt-1.5 text-[10.5px] leading-snug text-warning-ink">{message.citationWarning}</p>}
                                   {feedbackFor?.id === message.id && feedbackFor.rating === -1 && (
                                     <div className="mt-2 space-y-1.5 border-t border-line/70 pt-2">
                                       <Textarea
@@ -591,7 +621,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                       />
                       <Button type="button" size="icon" variant="brand" onClick={() => void send(input)} disabled={!input.trim() || streaming || Boolean(bootstrap && !bootstrap.health.available)} aria-label="Send to AQi"><Send className="size-4" /></Button>
                     </div>
-                    <p className="mt-1.5 px-1 text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.</p>
+                    <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
+                      <p className="text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.</p>
+                      <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-primary hover:underline"><LifeBuoy className="size-3" /> Get help</button>
+                    </div>
                   </div>
                 </>
               )}
@@ -611,6 +644,34 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                 <Button variant="secondary" onClick={() => void discardAndClose()}>Close without saving</Button>
                 <Button variant="ghost" onClick={() => setCloseConfirm(false)}>Keep chatting</Button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {supportOpen && (
+          <motion.div className="fixed inset-0 z-[70] grid place-items-center bg-black/35 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div role="dialog" aria-modal="true" aria-labelledby="aqi-support-title" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-float">
+              <h2 id="aqi-support-title" className="text-[16px] font-semibold tracking-tight">Get help from iAcquire</h2>
+              {supportResult ? (
+                <div className="mt-3 space-y-3">
+                  <p className="rounded-xl border border-success/25 bg-success-soft p-3 text-[12.5px] text-success-ink">{supportResult.existing ? "An open request already exists" : "Support request created"}: <strong>{supportResult.ref}</strong>. The iAcquire team can see it in the existing Support queue.</p>
+                  <div className="flex gap-2"><Button variant="brand" onClick={() => { setSupportOpen(false); setSupportResult(null); setSupportConsent(false); setSupportSubject(""); }}>Done</Button><Link href={`/support/${supportResult.id}`} className="inline-flex h-9 items-center rounded-xl border border-line px-3 text-[12px] font-medium">Open request</Link></div>
+                </div>
+              ) : (
+                <>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">This creates a real request in the existing Support system. The last messages in this AQi conversation and the current page may be shared. Nothing is sent until you confirm.</p>
+                  {!conversationId && <p className="mt-2 rounded-xl border border-warning/25 bg-warning-soft p-2.5 text-[12px] text-warning-ink">Start a conversation first so there is context to share.</p>}
+                  <div className="mt-3 space-y-3">
+                    <Field label="Subject (optional)" htmlFor="aqi-support-subject"><Input id="aqi-support-subject" maxLength={160} value={supportSubject} onChange={(event) => setSupportSubject(event.target.value)} placeholder="What do you need help with?" /></Field>
+                    <label className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-0.5" checked={supportConsent} onChange={(event) => setSupportConsent(event.target.checked)} disabled={!conversationId} /> I agree to share this conversation&apos;s messages and current page with iAcquire support.</label>
+                    {supportError && <p className="rounded-xl border border-danger/25 bg-danger-soft p-2.5 text-[12px] text-danger-ink">{supportError}</p>}
+                    <div className="flex flex-wrap gap-2"><Button variant="brand" disabled={!conversationId || !supportConsent} loading={supportBusy} onClick={() => void createSupportRequest()}><LifeBuoy className="size-4" /> Create request</Button><Button variant="ghost" onClick={() => { setSupportOpen(false); setSupportError(null); }}>Cancel</Button></div>
+                    <p className="text-[10.5px] text-faint">If Support is unavailable, open <Link href="/support" className="text-primary underline">Support</Link> or contact an administrator. AQi never claims a ticket exists without this confirmed result.</p>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}

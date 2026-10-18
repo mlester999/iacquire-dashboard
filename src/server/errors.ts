@@ -8,6 +8,8 @@ export type ErrorCode =
   | "conflict"
   | "rate_limited"
   | "usage_limit"
+  | "budget_exhausted"
+  | "billing_unavailable"
   | "agent_unavailable"
   | "integration_unavailable"
   | "upstream_error"
@@ -21,6 +23,8 @@ const STATUS: Record<ErrorCode, number> = {
   conflict: 409,
   rate_limited: 429,
   usage_limit: 429,
+  budget_exhausted: 429,
+  billing_unavailable: 503,
   agent_unavailable: 503,
   integration_unavailable: 503,
   upstream_error: 502,

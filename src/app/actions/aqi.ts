@@ -8,7 +8,9 @@ import {
   deleteAqiQuestion,
   previewAqiRetrieval,
   publishAqiConfig,
+  saveAqiBudget,
   saveAqiDraftConfig,
+  saveAqiModelPrice,
   saveAqiKnowledge,
   saveAqiQuestion,
   testAqiProvider,
@@ -95,6 +97,28 @@ export async function deleteAqiQuestionAction(id: string) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     await deleteAqiQuestion(admin, id);
+    refresh();
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function saveAqiBudgetAction(input: { orgId?: string | null; enabled: boolean; monthlyOrgUsd: number; monthlyUserUsd: number }) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    await saveAqiBudget(admin, input);
+    refresh();
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function saveAqiModelPriceAction(input: { model: string; inputUsdPerMillion: number; outputUsdPerMillion: number; enabled: boolean }) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    await saveAqiModelPrice(admin, input);
     refresh();
     return { ok: true as const };
   } catch (err) {

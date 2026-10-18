@@ -27,6 +27,8 @@ export const aqiConfigSchema = z.object({
   greeting: z.string().trim().min(1).max(500).default("Hi, I'm AQi. What can I help you with?"),
   instructions: z.string().trim().min(1).max(4000).default("Answer from the approved iAcquireOS knowledge supplied for this request."),
   maxTokens: z.number().int().min(128).max(2000).default(700),
+  maxContextTokens: z.number().int().min(1000).max(64000).default(6000),
+  knowledgeFreshnessDays: z.number().int().min(7).max(3650).default(90),
   temperature: z.number().min(0).max(1).default(0.3),
   model: z.string().trim().min(1).max(120).default("deepseek-chat"),
 });
@@ -53,6 +55,145 @@ export async function getPublishedAqiConfig(): Promise<AqiConfigView> {
 }
 
 export type AqiPage = { path: string; label: string; description: string };
+
+export interface AqiBudget {
+  id: string;
+  orgId: string | null;
+  enabled: boolean;
+  monthlyOrgMicros: number;
+  monthlyUserMicros: number;
+}
+
+export interface AqiModelPrice {
+  model: string;
+  inputMicrosPerMillion: number;
+  outputMicrosPerMillion: number;
+  enabled: boolean;
+}
+
+export interface AqiReservation {
+  id: string | null;
+  price: AqiModelPrice | null;
+  estimatedCostMicros: number | null;
+}
+
+/** Rough, client-independent token estimate used only for context budgeting. */
+export function estimateAqiTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+export function aqiCostMicros(price: AqiModelPrice, inputTokens: number, outputTokens: number): number {
+  return Math.ceil((Math.max(0, inputTokens) * price.inputMicrosPerMillion + Math.max(0, outputTokens) * price.outputMicrosPerMillion) / 1_000_000);
+}
+
+export async function getAqiBudget(orgId: string | null): Promise<AqiBudget | null> {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; org_id: string | null; enabled: boolean; monthly_org_micros: string; monthly_user_micros: string }>(
+      `select id, org_id, enabled, monthly_org_micros::text, monthly_user_micros::text from aqi_budgets
+       where org_id = $1 or org_id is null order by org_id nulls last limit 1`,
+      [orgId],
+    );
+    const row = rows[0];
+    return row ? { id: row.id, orgId: row.org_id, enabled: row.enabled, monthlyOrgMicros: Number(row.monthly_org_micros), monthlyUserMicros: Number(row.monthly_user_micros) } : null;
+  });
+}
+
+export async function getAqiModelPrice(model: string): Promise<AqiModelPrice | null> {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ model: string; input_micros_per_million: string; output_micros_per_million: string; enabled: boolean }>(
+      "select model, input_micros_per_million::text, output_micros_per_million::text, enabled from aqi_model_prices where model = $1 and enabled",
+      [model],
+    );
+    const row = rows[0];
+    return row ? { model: row.model, inputMicrosPerMillion: Number(row.input_micros_per_million), outputMicrosPerMillion: Number(row.output_micros_per_million), enabled: row.enabled } : null;
+  });
+}
+
+/**
+ * Atomically reserves the worst-case cost of one turn. The advisory lock serialises concurrent
+ * requests for the same organization/user; the reservation is included in every subsequent spend
+ * calculation, so two simultaneous turns cannot both pass the last of a budget.
+ */
+export async function reserveAqiSpend(
+  viewer: AqiViewer,
+  config: AqiConfig,
+  inputTokens: number,
+  maxOutputTokens: number,
+  conversationId: string,
+  configVersionId: string | null,
+  pageRoute: string | null,
+): Promise<AqiReservation> {
+  const orgId = viewer.org?.orgId ?? null;
+  const price = await getAqiModelPrice(config.model);
+  const budget = await getAqiBudget(orgId);
+  if (!budget?.enabled) return { id: null, price, estimatedCostMicros: price ? aqiCostMicros(price, inputTokens, maxOutputTokens) : null };
+  if (!price) throw new AppError("billing_unavailable", `AQi pricing is not configured for model ${config.model}. Ask a Super Admin to add its current price before enabling budgets.`);
+  const estimatedCost = aqiCostMicros(price, inputTokens, maxOutputTokens);
+  const reservationId = await withSystem(async (db) => {
+    // Serialize all turns in the same budget scope. A per-user lock would let two different users
+    // pass the same organization budget at the same time.
+    await db.query("select pg_advisory_xact_lock(hashtext($1)::bigint)", [`aqi:budget:${orgId ?? "global"}`]);
+    const spent = await db.query<{ org_spent: string; user_spent: string }>(
+      `select
+         coalesce(sum(case when org_id is not distinct from $1 then coalesce(cost_micros, reserved_cost_micros, 0) else 0 end), 0)::text as org_spent,
+         coalesce(sum(case when org_id is not distinct from $1 and user_id = $2 then coalesce(cost_micros, reserved_cost_micros, 0) else 0 end), 0)::text as user_spent
+       from aqi_usage_events
+       where status in ('reserved','recorded','failed')
+         and created_at >= date_trunc('month', now() at time zone 'utc')`,
+      [orgId, viewer.user.id],
+    );
+    const orgSpent = Number(spent.rows[0].org_spent);
+    const userSpent = Number(spent.rows[0].user_spent);
+    if (budget.monthlyOrgMicros > 0 && orgSpent + estimatedCost > budget.monthlyOrgMicros) {
+      throw new AppError("budget_exhausted", "This workspace has reached its AQi budget for the month. A Super Admin can raise the budget; the request was not sent to the provider.");
+    }
+    if (budget.monthlyUserMicros > 0 && userSpent + estimatedCost > budget.monthlyUserMicros) {
+      throw new AppError("budget_exhausted", "You have reached your AQi usage budget for this month. The request was not sent to the provider.");
+    }
+    const { rows } = await db.query<{ id: string }>(
+      `insert into aqi_usage_events (org_id, user_id, kind, status, conversation_id, model, input_tokens, reserved_cost_micros, config_version_id, page_route)
+       values ($1, $2, 'reservation', 'reserved', $3, $4, $5, $6, $7, $8) returning id`,
+      [orgId, viewer.user.id, conversationId, config.model, inputTokens, estimatedCost, configVersionId, pageRoute],
+    );
+    return rows[0].id;
+  });
+  return { id: reservationId, price, estimatedCostMicros: estimatedCost };
+}
+
+export async function recordAqiUsage(
+  viewer: AqiViewer,
+  input: {
+    reservationId: string | null;
+    conversationId: string;
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    latencyMs: number | null;
+    status: "recorded" | "failed" | "released";
+    costMicros: number | null;
+    costEstimated: boolean;
+    pageRoute: string | null;
+    configVersionId: string | null;
+  },
+): Promise<void> {
+  const orgId = viewer.org?.orgId ?? null;
+  await withSystem(async (db) => {
+    if (input.reservationId) {
+      await db.query(
+        `update aqi_usage_events set kind = 'message', status = $2, cost_micros = $3, reserved_cost_micros = 0,
+           input_tokens = $4, output_tokens = $5, latency_ms = $6, cost_estimated = $7, page_route = $8
+         where id = $1 and user_id = $9`,
+        [input.reservationId, input.status, input.costMicros, input.inputTokens, input.outputTokens, input.latencyMs, input.costEstimated, input.pageRoute, viewer.user.id],
+      );
+      return;
+    }
+    await db.query(
+      `insert into aqi_usage_events (org_id, user_id, kind, status, conversation_id, model, input_tokens, output_tokens, latency_ms, cost_micros, cost_estimated, config_version_id, page_route)
+       values ($1, $2, 'message', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [orgId, viewer.user.id, input.status, input.conversationId, input.model, input.inputTokens, input.outputTokens, input.latencyMs, input.costMicros, input.costEstimated, input.configVersionId, input.pageRoute],
+    );
+  });
+}
 
 export interface AqiSuggestion {
   id: string;
@@ -109,6 +250,27 @@ export interface AqiKnowledgeResult {
   sources: Array<{ id: string; title: string; category: string }>;
 }
 
+/**
+ * Removes citation markers that do not map to an entry actually supplied in this turn. The
+ * displayed Sources list remains the authoritative record; an unsupported marker is never trusted.
+ */
+export function validateAqiCitations(content: string, sources: AqiKnowledgeResult["sources"]): { content: string; warning: string | null; cited: number[] } {
+  const valid = new Set<number>();
+  const unsupported: string[] = [];
+  for (const match of content.matchAll(/\[K(\d+)\]/g)) {
+    const index = Number(match[1]);
+    if (index >= 1 && index <= sources.length) valid.add(index);
+    else unsupported.push(match[0]);
+  }
+  let next = content;
+  for (const marker of new Set(unsupported)) next = next.split(marker).join("");
+  return {
+    content: next,
+    warning: unsupported.length ? "Some citation references did not match approved knowledge and were removed." : null,
+    cited: [...valid].sort((a, b) => a - b),
+  };
+}
+
 export async function retrieveAqiKnowledge(viewer: AqiViewer, query: string, pathname: string | null, limit = 5): Promise<AqiKnowledgeResult> {
   const page = matchAqiRoute(pathname);
   const role = viewer.org?.role ?? viewer.agencyRole;
@@ -152,7 +314,7 @@ function systemPrompt(viewer: AqiViewer, config: AqiConfig, page: AqiPage | null
   const sources = knowledge.entries.length
     ? knowledge.entries.map((entry, index) => `[K${index + 1}] ${entry.title} (${entry.category})\n${entry.body.slice(0, 1800)}`).join("\n\n")
     : "(no matching approved knowledge)";
-  return [
+  const prompt = [
     AQI_IMMUTABLE_POLICY.join("\n"),
     "",
     `Identity: ${config.identity}. ${config.description}`,
@@ -168,6 +330,10 @@ function systemPrompt(viewer: AqiViewer, config: AqiConfig, page: AqiPage | null
     "",
     "Response rules: answer in English; use short paragraphs or lists; cite knowledge as [K1] etc.; include only navigation links from the list above; never use raw HTML; if the answer is not in the knowledge, say you cannot verify it and suggest Support or the authorized administrator.",
   ].join("\n");
+  // The model receives a bounded prompt. Policy, identity and allowed routes come first; the
+  // knowledge block is intentionally last so trimming cannot remove authorization rules.
+  const maxChars = Math.max(4000, config.maxContextTokens * 4);
+  return prompt.length <= maxChars ? prompt : `${prompt.slice(0, maxChars - 120)}\n\n[Context shortened to fit the configured AQi context budget.]`;
 }
 
 export interface AqiConversationSummary {
@@ -186,6 +352,7 @@ export interface AqiMessageView {
   feedbackComment: string | null;
   createdAt: string;
   sources?: Array<{ id: string; title: string; category: string }>;
+  citationWarning?: string | null;
 }
 
 function iso(value: Date | string): string {
@@ -213,7 +380,7 @@ export async function getAqiConversation(viewer: AqiViewer, conversationId: stri
     );
     const conversation = rows[0];
     if (!conversation) throw new AppError("not_found", "Conversation not found.");
-    const { rows: messages } = await db.query<{ id: string; role: "user" | "assistant"; content: string; status: string; feedback_rating: number | null; feedback_comment: string | null; context: { sources?: Array<{ id: string; title: string; category: string }> } | null; created_at: Date }>(
+    const { rows: messages } = await db.query<{ id: string; role: "user" | "assistant"; content: string; status: string; feedback_rating: number | null; feedback_comment: string | null; context: { sources?: Array<{ id: string; title: string; category: string }>; citationWarning?: string | null } | null; created_at: Date }>(
       `select id, role, content, status, feedback_rating, feedback_comment, context, created_at from aqi_messages
        where conversation_id = $1 and ($2::timestamptz is null or created_at < $2::timestamptz)
        order by created_at desc limit 31`,
@@ -231,6 +398,7 @@ export async function getAqiConversation(viewer: AqiViewer, conversationId: stri
         feedbackComment: message.feedback_comment,
         createdAt: iso(message.created_at),
         sources: Array.isArray(message.context?.sources) ? message.context.sources : undefined,
+        citationWarning: message.context?.citationWarning ?? null,
       })),
       hasMore,
     };
@@ -336,7 +504,13 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
   if (!text) throw new AppError("invalid_input", "Type a question for AQi.");
   if (text.length > AQI_MAX_MESSAGE) throw new AppError("invalid_input", `Keep questions under ${AQI_MAX_MESSAGE.toLocaleString()} characters.`);
   const limit = await consumeRateLimit(RATE_LIMITS.aqiMessageByUser, viewer.user.id);
-  if (!limit.allowed) throw new AppError("rate_limited", "You're asking quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
+  if (!limit.allowed) {
+    await withSystem((db) => db.query(
+      "insert into aqi_usage_events (org_id, user_id, kind, status) values ($1, $2, 'rate_limit', 'failed')",
+      [viewer.org?.orgId ?? null, viewer.user.id],
+    ));
+    throw new AppError("rate_limited", "You're asking quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
+  }
   if (viewer.org) await assertWithinLimits(viewer.org.orgId, "help_request");
 
   const configView = await getPublishedAqiConfig();
@@ -393,8 +567,35 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
        order by created_at desc limit 12`,
       [prepared.conversationId],
     );
-    return rows.reverse().map((row) => ({ role: row.role, content: row.content.slice(0, 4000) }));
+    const maxChars = Math.max(2000, (configView.config.maxContextTokens - estimateAqiTokens(system)) * 4);
+    const selected: Array<{ role: "user" | "assistant"; content: string }> = [];
+    let used = 0;
+    for (const row of rows) {
+      const content = row.content.slice(0, 4000);
+      if (selected.length && used + content.length > maxChars) break;
+      selected.unshift({ role: row.role, content });
+      used += content.length;
+    }
+    return selected;
   });
+
+  let reservation: AqiReservation | null = null;
+  try {
+    reservation = await reserveAqiSpend(
+      viewer,
+      configView.config,
+      estimateAqiTokens(system) + estimateAqiTokens(history.map((row) => row.content).join("\n")),
+      configView.config.maxTokens,
+      prepared.conversationId,
+      configView.versionId,
+      page?.path ?? null,
+    );
+  } catch (err) {
+    const code = err instanceof AppError ? err.code : "budget_error";
+    await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", code, configView.config.model, null, null, null);
+    yield { type: "error", code, message: err instanceof Error ? err.message : "AQi could not check the workspace budget." };
+    return;
+  }
 
   try {
     for await (const event of llmStream({ ...llm, model: configView.config.model || llm.model }, {
@@ -414,22 +615,72 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     if (signal.aborted) throw new DOMException("aborted", "AbortError");
     if (!content.trim()) {
       await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", "empty_response", configView.config.model, inputTokens, outputTokens, Date.now() - started);
+      await recordAqiUsage(viewer, {
+        reservationId: reservation.id,
+        conversationId: prepared.conversationId,
+        model: configView.config.model,
+        inputTokens: inputTokens ?? null,
+        outputTokens: outputTokens ?? null,
+        latencyMs: Date.now() - started,
+        status: "failed",
+        costMicros: null,
+        costEstimated: false,
+        pageRoute: page?.path ?? null,
+        configVersionId: configView.versionId,
+      });
       yield { type: "error", code: "empty_response", message: "The AI provider returned no answer. Please try again." };
       return;
     }
     const latencyMs = Date.now() - started;
+    const citation = validateAqiCitations(content, knowledge.sources);
+    content = citation.content;
+    const actualInput = inputTokens ?? estimateAqiTokens(system) + estimateAqiTokens(history.map((row) => row.content).join("\n"));
+    const actualOutput = outputTokens ?? estimateAqiTokens(content);
+    const costEstimated = inputTokens === undefined || outputTokens === undefined;
+    const costMicros = reservation.price ? aqiCostMicros(reservation.price, actualInput, actualOutput) : null;
     const message = await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), "complete", null, configView.config.model, inputTokens, outputTokens, latencyMs);
-    await withSystem((db) => db.query(
-      `insert into aqi_usage_events (org_id, user_id, kind, conversation_id, model, input_tokens, output_tokens, latency_ms)
-       values ($1, $2, 'message', $3, $4, $5, $6, $7)`,
-      [viewer.org?.orgId ?? null, viewer.user.id, prepared.conversationId, configView.config.model, inputTokens ?? null, outputTokens ?? null, latencyMs],
-    ));
-    yield { type: "done", message, sources: knowledge.sources, usage: { inputTokens, outputTokens, latencyMs } };
+    if (citation.warning) {
+      await withUser(viewer.user.id, (db) => db.query(
+        "update aqi_messages set context = jsonb_set(coalesce(context, '{}'::jsonb), '{citationWarning}', to_jsonb($2::text), true) where id = $1 and user_id = $3",
+        [prepared.assistantMessageId, citation.warning, viewer.user.id],
+      ));
+      message.citationWarning = citation.warning;
+    }
+    await recordAqiUsage(viewer, {
+      reservationId: reservation.id,
+      conversationId: prepared.conversationId,
+      model: configView.config.model,
+      inputTokens: actualInput,
+      outputTokens: actualOutput,
+      latencyMs,
+      status: "recorded",
+      costMicros,
+      costEstimated,
+      pageRoute: page?.path ?? null,
+      configVersionId: configView.versionId,
+    });
+    yield { type: "done", message, sources: knowledge.sources, usage: { inputTokens: actualInput, outputTokens: actualOutput, latencyMs } };
   } catch (err) {
     const aborted = signal.aborted || (err instanceof DOMException && err.name === "AbortError");
     const status = aborted ? "cancelled" : "failed";
     const code = aborted ? "cancelled" : "provider_error";
+    const costMicros = inputTokens !== undefined && outputTokens !== undefined && reservation.price
+      ? aqiCostMicros(reservation.price, inputTokens, outputTokens)
+      : null;
     await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), status, code, configView.config.model, inputTokens, outputTokens, Date.now() - started);
+    await recordAqiUsage(viewer, {
+      reservationId: reservation.id,
+      conversationId: prepared.conversationId,
+      model: configView.config.model,
+      inputTokens: inputTokens ?? null,
+      outputTokens: outputTokens ?? null,
+      latencyMs: Date.now() - started,
+      status: aborted ? "released" : "failed",
+      costMicros: aborted ? 0 : costMicros,
+      costEstimated: false,
+      pageRoute: page?.path ?? null,
+      configVersionId: configView.versionId,
+    });
     if (!aborted) yield { type: "error", code, message: "AQi could not complete that answer. The text you typed is still here, so you can retry." };
   }
 }
@@ -469,7 +720,9 @@ export interface AqiAdminData {
   versions: Array<{ id: string; version: number; status: string; notes: string | null; createdAt: string; publishedAt: string | null; createdBy: string | null }>;
   knowledge: Array<{ id: string; title: string; category: string; body: string; routePrefix: string | null; roles: string[]; status: string; source: string; updatedAt: string }>;
   questions: Array<{ id: string; question: string; scope: string; role: string | null; routePrefix: string | null; sortOrder: number; enabled: boolean }>;
-  usage: { messages: number; failures: number; feedback: number; inputTokens: number; outputTokens: number; avgLatencyMs: number | null };
+  usage: { messages: number; failures: number; feedback: number; rateLimits: number; inputTokens: number; outputTokens: number; avgLatencyMs: number | null; costMicros: number; reservedMicros: number; estimatedCosts: number };
+  budgets: AqiBudget[];
+  prices: AqiModelPrice[];
   health: { available: boolean; provider: string | null; model: string | null; detail: string };
 }
 
@@ -494,15 +747,76 @@ export async function getAqiAdminData(): Promise<AqiAdminData> {
        from aqi_usage_events`,
     );
     const failures = await db.query<{ n: number }>("select count(*)::int as n from aqi_messages where status = 'failed'");
+    const rateLimits = await db.query<{ n: number }>("select count(*)::int as n from aqi_usage_events where kind = 'rate_limit'");
+    const budgets = await db.query<{ id: string; org_id: string | null; enabled: boolean; monthly_org_micros: string; monthly_user_micros: string }>(
+      "select id, org_id, enabled, monthly_org_micros::text, monthly_user_micros::text from aqi_budgets order by org_id nulls first",
+    );
+    const prices = await db.query<{ model: string; input_micros_per_million: string; output_micros_per_million: string; enabled: boolean }>(
+      "select model, input_micros_per_million::text, output_micros_per_million::text, enabled from aqi_model_prices order by model",
+    );
+    const cost = await db.query<{ charged: string; reserved: string; estimated: number }>(
+      `select coalesce(sum(cost_micros),0)::text as charged,
+              coalesce(sum(reserved_cost_micros),0)::text as reserved,
+              count(*) filter (where cost_estimated)::int as estimated
+       from aqi_usage_events where status in ('reserved','recorded','failed')`,
+    );
     const llm = await resolveLlmConfig();
     return {
       published,
       versions: versions.rows.map((row) => ({ id: row.id, version: row.version, status: row.status, notes: row.notes, createdAt: iso(row.created_at), publishedAt: row.published_at ? iso(row.published_at) : null, createdBy: row.created_by })),
       knowledge: knowledge.rows.map((row) => ({ id: row.id, title: row.title, category: row.category, body: row.body, routePrefix: row.route_prefix, roles: row.roles, status: row.status, source: row.source, updatedAt: iso(row.updated_at) })),
       questions: questions.rows.map((row) => ({ id: row.id, question: row.question, scope: row.scope, role: row.role, routePrefix: row.route_prefix, sortOrder: row.sort_order, enabled: row.enabled })),
-      usage: { messages: usage.rows[0].messages, failures: failures.rows[0].n, feedback: usage.rows[0].feedback, inputTokens: usage.rows[0].input_tokens, outputTokens: usage.rows[0].output_tokens, avgLatencyMs: usage.rows[0].avg_latency ? Math.round(usage.rows[0].avg_latency) : null },
+      usage: { messages: usage.rows[0].messages, failures: failures.rows[0].n, feedback: usage.rows[0].feedback, rateLimits: rateLimits.rows[0].n, inputTokens: usage.rows[0].input_tokens, outputTokens: usage.rows[0].output_tokens, avgLatencyMs: usage.rows[0].avg_latency ? Math.round(usage.rows[0].avg_latency) : null, costMicros: Number(cost.rows[0].charged), reservedMicros: Number(cost.rows[0].reserved), estimatedCosts: cost.rows[0].estimated },
+      budgets: budgets.rows.map((row) => ({ id: row.id, orgId: row.org_id, enabled: row.enabled, monthlyOrgMicros: Number(row.monthly_org_micros), monthlyUserMicros: Number(row.monthly_user_micros) })),
+      prices: prices.rows.map((row) => ({ model: row.model, inputMicrosPerMillion: Number(row.input_micros_per_million), outputMicrosPerMillion: Number(row.output_micros_per_million), enabled: row.enabled })),
       health: { available: Boolean(llm?.apiKey), provider: llm?.source ?? null, model: published.config.model || llm?.model || null, detail: llm?.apiKey ? "Configured AI provider is available." : "No AI provider is configured." },
     };
+  });
+}
+
+function usdToMicros(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1_000_000) throw new AppError("invalid_input", "Enter a monthly budget between $0 and $1,000,000.");
+  return Math.round(value * 1_000_000);
+}
+
+export async function saveAqiBudget(admin: SessionUser, input: { orgId?: string | null; enabled: boolean; monthlyOrgUsd: number; monthlyUserUsd: number }): Promise<void> {
+  if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can manage AQi budgets.");
+  const orgMicros = usdToMicros(input.monthlyOrgUsd);
+  const userMicros = usdToMicros(input.monthlyUserUsd);
+  await withSystem(async (db) => {
+    const orgId = input.orgId ?? null;
+    const updated = await db.query(
+      `update aqi_budgets set enabled = $2, monthly_org_micros = $3, monthly_user_micros = $4, updated_by = $5, updated_at = now()
+       where org_id is not distinct from $1`,
+      [orgId, input.enabled, orgMicros, userMicros, admin.id],
+    );
+    if (!updated.rowCount) {
+      await db.query(
+        `insert into aqi_budgets (org_id, enabled, monthly_org_micros, monthly_user_micros, updated_by)
+         values ($1, $2, $3, $4, $5)`,
+        [orgId, input.enabled, orgMicros, userMicros, admin.id],
+      );
+    }
+    await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "aqi.budget_saved", targetType: "aqi_budget", targetId: input.orgId ?? undefined, result: "success", metadata: { enabled: input.enabled, monthlyOrgMicros: orgMicros, monthlyUserMicros: userMicros } }, db);
+  });
+}
+
+export async function saveAqiModelPrice(admin: SessionUser, input: { model: string; inputUsdPerMillion: number; outputUsdPerMillion: number; enabled: boolean }): Promise<void> {
+  if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can manage AQi pricing.");
+  const model = input.model.trim().slice(0, 120);
+  if (!model) throw new AppError("invalid_input", "Enter the model name.");
+  const inputMicros = usdToMicros(input.inputUsdPerMillion);
+  const outputMicros = usdToMicros(input.outputUsdPerMillion);
+  await withSystem(async (db) => {
+    await db.query(
+      `insert into aqi_model_prices (model, input_micros_per_million, output_micros_per_million, enabled, updated_by)
+       values ($1, $2, $3, $4, $5)
+       on conflict (model) do update set input_micros_per_million = excluded.input_micros_per_million,
+         output_micros_per_million = excluded.output_micros_per_million, enabled = excluded.enabled,
+         updated_by = excluded.updated_by, updated_at = now()`,
+      [model, inputMicros, outputMicros, input.enabled, admin.id],
+    );
+    await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "aqi.price_saved", targetType: "aqi_model_price", targetId: model, result: "success", metadata: { inputMicros, outputMicros, enabled: input.enabled } }, db);
   });
 }
 
