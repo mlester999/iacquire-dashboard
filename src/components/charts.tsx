@@ -243,7 +243,6 @@ const RAMP = ["var(--ramp-250)", "var(--ramp-350)", "var(--ramp-450)", "var(--ra
  * the same source where the count narrows — a ratio across systems or above 100% would mislead.
  */
 export function Funnel({ stages, unavailableLabel = "Not connected" }: { stages: Array<{ label: string; value: number | null; source?: string }>; unavailableLabel?: string }) {
-  const reduce = useReducedMotion();
   const max = Math.max(1, ...stages.map((s) => s.value ?? 0));
   return (
     <ol className="space-y-3" aria-label="Funnel">
@@ -265,7 +264,7 @@ export function Funnel({ stages, unavailableLabel = "Not connected" }: { stages:
                 <motion.div
                   className="h-6 rounded-lg"
                   style={{ background: RAMP[Math.min(i, RAMP.length - 1)] }}
-                  initial={reduce ? false : { width: 0 }}
+                  initial={false}
                   animate={{ width: `${Math.max(2, (s.value / max) * 100)}%` }}
                   transition={{ duration: 0.8, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
                 />

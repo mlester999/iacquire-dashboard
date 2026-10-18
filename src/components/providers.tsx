@@ -1,12 +1,39 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/overlays";
 import { LogoutConfirmationProvider } from "@/components/auth/logout-confirmation";
+import { AqiWidget } from "@/components/aqi/aqi-widget";
 
 export type ThemePreference = "light" | "dark" | "system";
+
+/**
+ * AQi lives at the application shell, not inside each page layout. A client-side navigation between
+ * the portal, chat and agency areas therefore keeps the same widget (and its temporary chat) mounted
+ * instead of recreating it. Auth, setup and public pages are outside this surface.
+ */
+const AQI_SURFACE = /^\/(activity|add-ons|analytics|appointments|approvals|chat|crm|inbox|knowledge|leads|maintenance|notifications|our-work|overview|projects|retention|sales|settings|setup|support|website|workforce|admin)(\/|$)/;
+
+function isAqiSurface(pathname: string | null) {
+  return Boolean(pathname && AQI_SURFACE.test(pathname));
+}
+
+function AqiMount() {
+  const pathname = usePathname();
+  const [hostAllowed, setHostAllowed] = React.useState(false);
+  React.useEffect(() => {
+    // Customer websites are rendered by the same root layout. Only the configured portal host may
+    // show AQi; an unset APP_URL keeps the portal-only default.
+    const appHost = document.documentElement.dataset.appHost?.trim() ?? "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only host check after hydration
+    setHostAllowed(!appHost || window.location.host === appHost);
+  }, []);
+  if (!hostAllowed || !isAqiSurface(pathname)) return null;
+  return <AqiWidget />;
+}
 
 const ThemeContext = React.createContext<{ theme: ThemePreference; resolved: "light" | "dark"; setTheme: (t: ThemePreference) => void }>({
   theme: "light",
@@ -72,6 +99,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <MotionConfig reducedMotion="user">
           <TooltipProvider>
             {children}
+            <AqiMount />
             <Toaster
               position="top-center"
               theme={resolved}
