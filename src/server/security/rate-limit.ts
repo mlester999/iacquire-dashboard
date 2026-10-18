@@ -85,6 +85,8 @@ export const RATE_LIMITS = {
   agentPreviewByUser: { name: "agent:preview:user", limit: 10, windowSeconds: 60 },
   helpMessageByUser: { name: "help:user", limit: 20, windowSeconds: 60 },
   aqiMessageByUser: { name: "aqi:user", limit: 20, windowSeconds: 60 },
+  // Automatic conversation naming is a tiny background call, but it must never be loopable.
+  aqiTitleByUser: { name: "aqi:title:user", limit: 30, windowSeconds: 3600 },
   supportTicketByUser: { name: "ticket:user", limit: 10, windowSeconds: 3600 },
   uploadByUser: { name: "upload:user", limit: 30, windowSeconds: 3600 },
   // Re-running bounded extraction against an already stored document, per user.

@@ -21,6 +21,7 @@ import {
 } from "@/app/actions/aqi";
 import type { AqiAdminData, AqiConfig } from "@/server/aqi/service";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
+import { Markdown } from "@/components/markdown";
 
 type Tab = "overview" | "provider" | "instructions" | "conversation" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets" | "attachments";
 
@@ -46,7 +47,7 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
   const [testPrompt, setTestPrompt] = React.useState("Where do I manage my AI employees?");
-  const [testResult, setTestResult] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [testResult, setTestResult] = React.useState<{ ok: boolean; text: string; intent?: string; words?: number; sources?: Array<{ id: string; title: string; category: string }> } | null>(null);
   const [knowledge, setKnowledge] = React.useState<(typeof data.knowledge)[number] | null>(data.knowledge[0] ?? null);
   const [knowledgeDraft, setKnowledgeDraft] = React.useState({ title: "", category: "Platform overview", routePrefix: "", body: "", status: "draft" as "draft" | "published" | "archived", source: "iAcquire approved documentation", roles: "" });
   const [questionDraft, setQuestionDraft] = React.useState({ question: "", scope: "global" as "global" | "role" | "page", role: "", routePrefix: "", sortOrder: 100, enabled: true });
@@ -120,7 +121,7 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
     const result = await testAqiProviderAction(testPrompt, config);
     setTesting(false);
     if (!result.ok) return toast.error(result.error);
-    setTestResult(result.data.ok ? { ok: true, text: result.data.text } : { ok: false, text: result.data.detail });
+    setTestResult(result.data.ok ? { ok: true, text: result.data.text, intent: result.data.intent, words: result.data.words, sources: result.data.sources } : { ok: false, text: result.data.detail });
   }
 
   function editKnowledge(entry: (typeof data.knowledge)[number] | null) {
@@ -256,6 +257,7 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
               <Field label="Navigation behavior" htmlFor="aqi-nav-behavior"><Select id="aqi-nav-behavior" value={config.navigationBehavior} onChange={(event) => set("navigationBehavior", event.target.value as AqiConfig["navigationBehavior"])}><option value="link_when_relevant">Clickable link when relevant</option><option value="explain_inline">Explain inline</option></Select></Field>
               <Field label="Follow-up behavior" htmlFor="aqi-followup-behavior"><Select id="aqi-followup-behavior" value={config.followUpBehavior} onChange={(event) => set("followUpBehavior", event.target.value as AqiConfig["followUpBehavior"])}><option value="when_useful">When useful</option><option value="always">Always ask</option><option value="never">Never ask</option></Select></Field>
               <Field label="Citation behavior" htmlFor="aqi-citation-behavior"><Select id="aqi-citation-behavior" value={config.citationBehavior} onChange={(event) => set("citationBehavior", event.target.value as AqiConfig["citationBehavior"])}><option value="when_relevant">Only when relevant</option><option value="always">Always</option><option value="never">Never</option></Select></Field>
+              <Field label="Complex-answer max tokens" htmlFor="aqi-complex-tokens" hint="Reasoning models consume hidden reasoning tokens too; this budget is reserved for explicitly broad requests."><Input id="aqi-complex-tokens" type="number" min={512} max={2000} value={config.complexMaxTokens} onChange={(event) => set("complexMaxTokens", Number(event.target.value))} /></Field>
             </div>
             <Field label="Safe fallback instructions" htmlFor="aqi-fallback"><Textarea id="aqi-fallback" rows={3} value={config.fallbackInstructions} onChange={(event) => set("fallbackInstructions", event.target.value)} /></Field>
             <Field label="Role-aware guidance" htmlFor="aqi-role-guidance"><Textarea id="aqi-role-guidance" rows={3} value={config.roleGuidance} onChange={(event) => set("roleGuidance", event.target.value)} /></Field>
@@ -371,7 +373,7 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
       {tab === "testing" && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Test the configured provider</CardTitle><CardDescription>This calls the real provider with the configuration currently in this editor (including unsaved changes) and does not save a conversation.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Test the configured provider</CardTitle><CardDescription>This is a real provider generation test, not retrieval-only. It uses the same intent prompt, page context, published knowledge, link validation and citation rendering as a live AQi turn, with the configuration currently in this editor (including unsaved changes). It does not save a conversation.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <div>
                 <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Conversation probes</p>
@@ -379,7 +381,13 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
               </div>
               <Field label="Test question" htmlFor="test-prompt"><Textarea id="test-prompt" rows={3} value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} /></Field>
               <Button variant="brand" onClick={() => void testProvider()} loading={testing}><FlaskConical className="size-4" /> Run test</Button>
-              {testResult && <div className={cn("rounded-xl border p-3 text-[12.5px]", testResult.ok ? "border-success/25 bg-success-soft text-success-ink" : "border-danger/25 bg-danger-soft text-danger-ink")}>{testResult.text}</div>}
+              {testResult && (testResult.ok ? (
+                <div className="rounded-xl border border-success/25 bg-success-soft p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-success-ink"><span>Real provider generation</span><span aria-hidden>·</span><span>intent: {testResult.intent}</span><span aria-hidden>·</span><span>{testResult.words} words</span></div>
+                  <div className="mt-2 text-ink"><Markdown>{testResult.text}</Markdown></div>
+                  {testResult.sources?.length ? <div className="mt-2 border-t border-success/20 pt-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Sources</p><ol className="mt-1 space-y-0.5">{testResult.sources.map((source, index) => <li key={source.id} className="text-[11px] text-ink-2">{index + 1}. {source.title} <span className="text-muted">· {source.category}</span></li>)}</ol></div> : <p className="mt-2 text-[10.5px] text-muted">No citations were returned for this answer.</p>}
+                </div>
+              ) : <div className="rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12.5px] text-danger-ink">{testResult.text}</div>)}
             </CardContent>
           </Card>
           <Card>

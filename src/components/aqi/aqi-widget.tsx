@@ -4,14 +4,15 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { toast } from "sonner";
 import {
   ArrowLeft,
+  ArrowUpRight,
   Bookmark,
   Check,
   ChevronLeft,
   Copy,
   Download,
+  Eye,
   FileText,
   Film,
   History,
@@ -40,14 +41,22 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/overlays";
 import { Field, Input, Textarea } from "@/components/ui/primitives";
 import { EmojiPicker } from "@/components/aqi/emoji-picker";
+import { DEFAULT_AQI_CONVERSATION_TITLE, isMeaningfulAqiMessage } from "@/lib/aqi/title";
 import { cn, relativeTime } from "@/lib/utils";
 
-interface Bootstrap {
+interface Welcome {
   config: { identity: string; description: string; greeting: string; tone: string; attachments: { imagesEnabled: boolean; imageMaxMb: number; maxImages: number; documentsEnabled: boolean; documentMaxMb: number; maxDocuments: number; videosEnabled: boolean; videoMaxMb: number; maxVideos: number; videoMaxSeconds: number; visionEnabled: boolean; videoAnalysisEnabled: boolean; attachmentContextTokens: number; storageQuotaMb: number; retentionDays: number } };
   suggestions: Array<{ id: string; question: string }>;
   page: { path: string; label: string; description: string } | null;
   allowedPaths: string[];
-  health: { available: boolean; provider: string | null; model: string | null; detail: string; diagnostic?: { reason: string; connectionStatus: string | null; provider: string | null; model: string | null; host: string | null; modelListed?: boolean | null } };
+}
+
+interface Health {
+  available: boolean;
+  provider: string | null;
+  model: string | null;
+  detail: string;
+  diagnostic?: { reason: string; connectionStatus: string | null; provider: string | null; model: string | null; host: string | null; modelListed?: boolean | null };
 }
 
 interface ErrorDiagnostic {
@@ -155,19 +164,31 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [view, setView] = React.useState<View>("chat");
-  const [bootstrap, setBootstrap] = React.useState<Bootstrap | null>(null);
+  const [welcome, setWelcome] = React.useState<Welcome | null>(null);
+  const [welcomePath, setWelcomePath] = React.useState<string | null>(null);
+  const [welcomeStatus, setWelcomeStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [health, setHealth] = React.useState<Health | null>(null);
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
+  const [historyStatus, setHistoryStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [historyHasMore, setHistoryHasMore] = React.useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = React.useState(false);
+  const [historySearch, setHistorySearch] = React.useState("");
+  const [historyQuery, setHistoryQuery] = React.useState("");
   const [conversationId, setConversationId] = React.useState<string | null>(null);
   const conversationRef = React.useRef<string | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [streaming, setStreaming] = React.useState(false);
+  const sendLock = React.useRef(false);
   const [error, setError] = React.useState<string | null>(null);
   const [errorCode, setErrorCode] = React.useState<string | null>(null);
   const [errorDiagnostic, setErrorDiagnostic] = React.useState<ErrorDiagnostic | null>(null);
-  const [historySearch, setHistorySearch] = React.useState("");
-  const [renaming, setRenaming] = React.useState<{ id: string; title: string } | null>(null);
-  const [deleting, setDeleting] = React.useState<string | null>(null);
+  const [renaming, setRenaming] = React.useState<{ id: string; title: string; saving: boolean; error: string | null } | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<Conversation | null>(null);
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [sendingSuggestion, setSendingSuggestion] = React.useState<string | null>(null);
   const [hasMore, setHasMore] = React.useState(false);
   const [olderLoading, setOlderLoading] = React.useState(false);
   const [feedbackFor, setFeedbackFor] = React.useState<{ id: string; rating: 1 | -1 } | null>(null);
@@ -184,10 +205,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   const [supportError, setSupportError] = React.useState<string | null>(null);
   const [supportResult, setSupportResult] = React.useState<{ id: string; ref: string; existing: boolean } | null>(null);
   const [saved, setSaved] = React.useState(false);
+  const savedRef = React.useRef(false);
   const [saving, setSaving] = React.useState(false);
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [newChatOpen, setNewChatOpen] = React.useState(false);
   const [lifecycleBusy, setLifecycleBusy] = React.useState(false);
+  const lifecycleLock = React.useRef(false);
   const [loadingConversation, setLoadingConversation] = React.useState(false);
   const [pending, setPending] = React.useState<PendingAttachment[]>([]);
   const [dragOver, setDragOver] = React.useState(false);
@@ -200,14 +223,33 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const nearBottom = React.useRef(true);
-  const scrollTopRef = React.useRef(0);
-  const lifecycleLock = React.useRef(false);
-  const sendLock = React.useRef(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const welcomeData = React.useRef<Welcome | null>(null);
+  const welcomeCache = React.useRef<{ path: string; at: number } | null>(null);
+  const welcomeAbort = React.useRef<AbortController | null>(null);
+  const welcomeInFlightPath = React.useRef<string | null>(null);
+  const healthAbort = React.useRef<AbortController | null>(null);
+  const historyAbort = React.useRef<AbortController | null>(null);
+  const historyFetchedAt = React.useRef(0);
+  const titleRequested = React.useRef<Set<string>>(new Set());
+  const conversationsRef = React.useRef<Conversation[]>([]);
+  const savedScrollTop = React.useRef(0);
+  const restoredForOpen = React.useRef(false);
+  const noticeTimer = React.useRef<number | null>(null);
+  const historySearchRef = React.useRef<HTMLInputElement>(null);
+  const deleteReturnFocus = React.useRef<HTMLElement | null>(null);
+  const deleteDialogRef = React.useRef<HTMLDivElement>(null);
 
-  const userTurns = messages.filter((message) => message.role === "user").length;
-  const canSave = Boolean(conversationId && !saved && userTurns > 0);
-  const hasUnsavedContent = Boolean(conversationId && !saved && (userTurns > 0 || pending.length > 0 || input.trim().length > 0));
+  function announce(message: string) {
+    setNotice(message);
+    if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 4000);
+  }
+
+  function markSaved(value: boolean) {
+    savedRef.current = value;
+    setSaved(value);
+  }
 
   function showError(message: string, diagnostic?: ErrorDiagnostic | null, code = "unexpected") {
     setError(message);
@@ -221,78 +263,200 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     setErrorDiagnostic(null);
   }
 
-  const loadBootstrap = React.useCallback(async () => {
-    const res = await fetch(`/api/aqi/bootstrap?path=${encodeURIComponent(pathname ?? "")}`, { cache: "no-store" });
-    const data = (await res.json()) as Bootstrap & { error?: string };
-    if (res.ok) setBootstrap(data);
-  }, [pathname]);
+  const healthFetchedAt = React.useRef(0);
+  const loadWelcome = React.useCallback(async (path: string, force = false) => {
+    const cached = welcomeCache.current;
+    if (!force && cached && cached.path === path && Date.now() - cached.at < 60_000) return;
+    // Opening the panel while the idle prefetch is already asking for the same page must join that
+    // request rather than abort and duplicate it.
+    if (!force && welcomeInFlightPath.current === path && welcomeAbort.current && !welcomeAbort.current.signal.aborted) return;
+    welcomeAbort.current?.abort();
+    const controller = new AbortController();
+    welcomeAbort.current = controller;
+    welcomeInFlightPath.current = path;
+    // Keep already-rendered suggestions visible while a page change resolves; only a true first
+    // load shows skeletons.
+    if (!welcomeData.current) setWelcomeStatus("loading");
+    try {
+      const res = await fetch(`/api/aqi/bootstrap?path=${encodeURIComponent(path)}`, { cache: "no-store", signal: controller.signal });
+      if (!res.ok) throw new Error("welcome");
+      const data = (await res.json()) as Welcome;
+      if (controller.signal.aborted) return;
+      welcomeData.current = data;
+      setWelcome(data);
+      setWelcomePath(path);
+      setWelcomeStatus("ready");
+      welcomeCache.current = { path, at: Date.now() };
+    } catch {
+      if (controller.signal.aborted) return;
+      setWelcomeStatus(welcomeData.current ? "ready" : "error");
+    } finally {
+      if (!controller.signal.aborted && welcomeInFlightPath.current === path) welcomeInFlightPath.current = null;
+    }
+  }, []);
 
-  const loadConversations = React.useCallback(async () => {
-    const res = await fetch("/api/aqi/conversations", { cache: "no-store" });
-    const data = (await res.json()) as { conversations?: Conversation[] };
-    if (res.ok && data.conversations) setConversations(data.conversations);
+  const loadHealth = React.useCallback(async (force = false) => {
+    if (!force && healthFetchedAt.current && Date.now() - healthFetchedAt.current < 30_000) return;
+    healthAbort.current?.abort();
+    const controller = new AbortController();
+    healthAbort.current = controller;
+    try {
+      const res = await fetch("/api/aqi/health", { cache: "no-store", signal: controller.signal });
+      if (!res.ok) throw new Error("health");
+      const data = (await res.json()) as Health;
+      if (controller.signal.aborted) return;
+      setHealth(data);
+      healthFetchedAt.current = Date.now();
+    } catch {
+      if (!controller.signal.aborted) setHealth(null);
+    }
+  }, []);
+
+  const loadHistory = React.useCallback(async (options: { query?: string; append?: boolean } = {}) => {
+    if (options.append) setHistoryLoadingMore(true);
+    else if (!conversationsRef.current.length) setHistoryStatus("loading");
+    historyAbort.current?.abort();
+    const controller = new AbortController();
+    historyAbort.current = controller;
+    const query = options.query ?? "";
+    const before = options.append ? conversationsRef.current.at(-1)?.lastMessageAt ?? null : null;
+    const params = new URLSearchParams({ limit: "20" });
+    if (query.trim()) params.set("q", query.trim());
+    if (before) params.set("before", before);
+    try {
+      const res = await fetch(`/api/aqi/conversations?${params.toString()}`, { cache: "no-store", signal: controller.signal });
+      if (!res.ok) throw new Error("history");
+      const data = (await res.json()) as { conversations?: Conversation[]; hasMore?: boolean };
+      if (controller.signal.aborted) return;
+      const next = data.conversations ?? [];
+      setConversations((current) => {
+        if (!options.append) return next;
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...next.filter((item) => !seen.has(item.id))];
+      });
+      setHistoryHasMore(Boolean(data.hasMore));
+      setHistoryStatus("ready");
+      setHistoryQuery(query);
+      historyFetchedAt.current = Date.now();
+    } catch {
+      if (controller.signal.aborted) return;
+      if (options.append) setError("Earlier conversations could not be loaded. Please try again.");
+      else setHistoryStatus("error");
+    } finally {
+      if (!controller.signal.aborted) setHistoryLoadingMore(false);
+    }
   }, []);
 
   React.useEffect(() => {
-    if (!open) return;
-    // Fetching external bootstrap/history is the effect's purpose; state updates happen after the requests resolve.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadBootstrap();
-    void loadConversations();
-    if (view !== "chat") return;
-    const timer = window.setTimeout(() => textareaRef.current?.focus(), 80);
-    return () => window.clearTimeout(timer);
-  }, [open, view, loadBootstrap, loadConversations]);
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  // Warm the welcome payload and provider health off the critical path. This is one small request
+  // per shell mount and per page change, not per open.
+  React.useEffect(() => {
+    let cancelled = false;
+    const start = () => {
+      if (cancelled) return;
+      void loadWelcome(pathname ?? "/");
+      void loadHealth();
+    };
+    const hasIdle = typeof window.requestIdleCallback === "function" && typeof window.cancelIdleCallback === "function";
+    const idle = hasIdle ? window.requestIdleCallback(start, { timeout: 1200 }) : window.setTimeout(start, 350);
+    return () => {
+      cancelled = true;
+      if (hasIdle) window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle);
+    };
+  }, [pathname, loadWelcome, loadHealth]);
 
   React.useEffect(() => {
     if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadBootstrap();
-  }, [pathname, open, loadBootstrap]);
+    const kick = window.setTimeout(() => {
+      void loadWelcome(pathname ?? "/");
+      void loadHealth();
+      if (!historyFetchedAt.current) void loadHistory({ query: "" });
+    }, 0);
+    const timer = window.setTimeout(() => textareaRef.current?.focus(), 80);
+    return () => {
+      window.clearTimeout(kick);
+      window.clearTimeout(timer);
+    };
+  }, [open, pathname, loadWelcome, loadHealth, loadHistory]);
+
+  React.useEffect(() => {
+    if (!open) {
+      restoredForOpen.current = false;
+      return;
+    }
+    if (restoredForOpen.current) return;
+    restoredForOpen.current = true;
+    if (!messages.length) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = savedScrollTop.current;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, messages.length]);
 
   React.useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (discardOpen) setDiscardOpen(false);
-      else if (newChatOpen) setNewChatOpen(false);
-      else if (deleting) setDeleting(null);
-      else if (renaming) setRenaming(null);
-      else if (supportOpen) setSupportOpen(false);
+      if (discardOpen) {
+        if (!lifecycleBusy) setDiscardOpen(false);
+        return;
+      }
+      if (newChatOpen) {
+        if (!lifecycleBusy) setNewChatOpen(false);
+        return;
+      }
+      if (deleteTarget) {
+        if (!deleteBusy) {
+          setDeleteTarget(null);
+          setDeleteError(null);
+          restoreDeleteFocus();
+        }
+        return;
+      }
+      if (supportOpen) setSupportOpen(false);
       else if (preview) setPreview(null);
       else if (sourcePreview) setSourcePreview(null);
       else if (emojiOpen) setEmojiOpen(false);
-      else closePanel();
+      else requestClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // The panel DOM is hidden on close, so remember where the reader was and restore it when the
-  // panel or the chat view is mounted again. Closing must not scroll the conversation.
-  React.useLayoutEffect(() => {
-    if (!open || view !== "chat") return;
-    const element = scrollRef.current;
-    if (!element) return;
-    element.scrollTop = nearBottom.current ? element.scrollHeight : scrollTopRef.current;
-  }, [open, view]);
+  React.useEffect(() => {
+    if (nearBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
 
   React.useEffect(() => {
-    if (!open || view !== "chat" || !nearBottom.current) return;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, open, view]);
+    if (view !== "history") return;
+    const query = historySearch.trim();
+    if (query === historyQuery) return;
+    const timer = window.setTimeout(() => void loadHistory({ query }), 250);
+    return () => window.clearTimeout(timer);
+  }, [historySearch, historyQuery, view, loadHistory]);
 
-  React.useEffect(() => () => {
-    // Reached only when the authenticated shell ends (logout/session end) or the page unloads.
-    // Closing the panel does not unmount the widget and must never act like Stop.
-    abortRef.current?.abort();
-    abortRef.current = null;
-  }, []);
-
-  function closePanel() {
+  function requestClose() {
+    if (scrollRef.current) savedScrollTop.current = scrollRef.current.scrollTop;
     setOpen(false);
-    setEmojiOpen(false);
     launcherRef.current?.focus();
+  }
+
+  function restoreDeleteFocus() {
+    window.requestAnimationFrame(() => {
+      if (deleteReturnFocus.current?.isConnected) deleteReturnFocus.current.focus();
+      else historySearchRef.current?.focus();
+    });
+  }
+
+  function openHistory() {
+    setView("history");
+    if (Date.now() - historyFetchedAt.current > 30_000 || historyQuery !== historySearch.trim()) {
+      void loadHistory({ query: historySearch });
+    }
   }
 
   function clearPendingAttachments() {
@@ -303,26 +467,44 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     setPending([]);
   }
 
-  function resetToBlankChat() {
+  function clearActiveConversation() {
     abortRef.current?.abort();
     abortRef.current = null;
-    clearPendingAttachments();
     setStreaming(false);
+    conversationRef.current = null;
+    setConversationId(null);
+    setMessages([]);
+    setHasMore(false);
+    setInput("");
+    clearPendingAttachments();
+    clearError();
+    markSaved(false);
+  }
+
+  function startNew() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+    conversationRef.current = null;
     setConversationId(null);
     setMessages([]);
     clearError();
     setHasMore(false);
-    setSaved(false);
     setView("chat");
     setInput("");
+    setRenaming(null);
     setFeedbackFor(null);
     setFeedbackText("");
     setFeedbackReason("");
+    clearPendingAttachments();
+    markSaved(false);
+    savedScrollTop.current = 0;
+    nearBottom.current = true;
     window.setTimeout(() => textareaRef.current?.focus(), 50);
   }
 
   async function discardTemporaryChat(): Promise<boolean> {
-    if (!conversationId || saved) return true;
+    if (!conversationId || savedRef.current) return true;
     const res = await fetch(`/api/aqi/conversations/${conversationId}/discard`, { method: "POST" }).catch(() => null);
     if (!res) {
       showError("I couldn't discard that chat. Check your connection and try again.");
@@ -343,10 +525,10 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     clearError();
     try {
       if (!(await discardTemporaryChat())) return;
-      resetToBlankChat();
+      startNew();
       setDiscardOpen(false);
-      void loadConversations();
-      toast.success("Unsaved chat discarded");
+      void loadHistory({ query: historyQuery });
+      announce("Unsaved chat discarded.");
     } finally {
       lifecycleLock.current = false;
       setLifecycleBusy(false);
@@ -360,9 +542,9 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     clearError();
     try {
       if (!(await discardTemporaryChat())) return;
-      resetToBlankChat();
+      startNew();
       setNewChatOpen(false);
-      void loadConversations();
+      void loadHistory({ query: historyQuery });
     } finally {
       lifecycleLock.current = false;
       setLifecycleBusy(false);
@@ -370,7 +552,8 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   }
 
   function requestNewChat() {
-    if (hasUnsavedContent) {
+    const hasContent = Boolean(conversationId && !savedRef.current && (messages.some((message) => message.role === "user") || pending.length > 0 || input.trim()));
+    if (hasContent) {
       setNewChatOpen(true);
       return;
     }
@@ -378,20 +561,36 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   }
 
   async function saveConversation() {
-    if (!conversationId || saved || saving) return;
+    if (!conversationId || savedRef.current || saving) return;
     setSaving(true);
     clearError();
     try {
       const res = await fetch(`/api/aqi/conversations/${conversationId}/save`, { method: "POST" });
       const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
       if (!res.ok) throw new AqiUiError(data?.error ?? "I couldn't save that conversation.", data?.code ?? "save_failed");
-      setSaved(true);
-      void loadConversations();
-      toast.success("Conversation saved", { description: "You'll find it in your AQi history." });
+      markSaved(true);
+      void maybeGenerateTitle(conversationId);
+      void loadHistory({ query: historyQuery });
+      announce("Conversation saved to your history.");
     } catch (err) {
       showError(err instanceof AqiUiError ? err.message : "I couldn't save that conversation. Please try again.", null, err instanceof AqiUiError ? err.code : "save_failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function maybeGenerateTitle(id: string) {
+    if (!id || titleRequested.current.has(id)) return;
+    titleRequested.current.add(id);
+    try {
+      const res = await fetch(`/api/aqi/conversations/${id}/title`, { method: "POST" });
+      if (!res.ok) return;
+      const data = (await res.json().catch(() => null)) as { title?: string | null; generated?: boolean } | null;
+      if (data?.generated && data.title) {
+        setConversations((current) => current.map((item) => (item.id === id ? { ...item, title: data.title! } : item)));
+      }
+    } catch {
+      // Naming is best-effort; a failure never interrupts the conversation or replaces the title.
     }
   }
 
@@ -407,10 +606,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
       setMessages((current) => [...(data.messages ?? []), ...current]);
       setHasMore(Boolean(data.hasMore));
       window.requestAnimationFrame(() => {
-        if (element) {
-          element.scrollTop += element.scrollHeight - previousHeight;
-          scrollTopRef.current = element.scrollTop;
-        }
+        if (element) element.scrollTop += element.scrollHeight - previousHeight;
       });
     } catch {
       showError("Earlier messages could not be loaded. Please try again.");
@@ -421,7 +617,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
 
   async function openConversation(id: string) {
     if (streaming) {
-      toast.info("Wait for the current answer to finish, or stop it first.");
+      announce("Wait for the current answer to finish, or stop it first.");
       return;
     }
     setLoadingConversation(true);
@@ -430,13 +626,19 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
       const res = await fetch(`/api/aqi/conversations/${id}`, { cache: "no-store" });
       const data = (await res.json()) as { conversation?: Conversation; messages?: Message[]; hasMore?: boolean; error?: string };
       if (!res.ok || !data.conversation) throw new Error(data.error ?? "That conversation could not be opened.");
+      conversationRef.current = data.conversation.id;
       setConversationId(data.conversation.id);
       setMessages(data.messages ?? []);
       setHasMore(Boolean(data.hasMore));
-      setSaved(true);
+      markSaved(true);
       setView("chat");
       nearBottom.current = true;
-      scrollTopRef.current = 0;
+      savedScrollTop.current = 0;
+      // A refresh can interrupt naming. Repair a placeholder title only when the conversation
+      // already contains a real topic; greeting-only chats keep the neutral title.
+      if (data.conversation.title === DEFAULT_AQI_CONVERSATION_TITLE && (data.messages ?? []).some((message) => message.role === "user" && isMeaningfulAqiMessage(message.content))) {
+        void maybeGenerateTitle(data.conversation.id);
+      }
     } catch {
       showError("That conversation could not be opened. Please try again.");
     } finally {
@@ -444,7 +646,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     }
   }
 
-  const limits = bootstrap?.config.attachments ?? DEFAULT_ATTACHMENT_LIMITS;
+  const limits = welcome?.config.attachments ?? DEFAULT_ATTACHMENT_LIMITS;
   const readyAttachments = pending.filter((item) => item.status === "ready" && item.id);
   const uploadsBusy = pending.some((item) => item.status === "uploading");
 
@@ -458,12 +660,13 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   async function ensureConversation(): Promise<string> {
     if (conversationRef.current) return conversationRef.current;
     const res = await fetch("/api/aqi/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: pathname }) });
-    const data = (await res.json().catch(() => null)) as { conversation?: { id: string }; error?: string } | null;
+    const data = (await res.json().catch(() => null)) as { conversation?: Conversation; error?: string } | null;
     if (!res.ok || !data?.conversation) throw new Error(data?.error ?? "AQi could not start a conversation.");
-    conversationRef.current = data.conversation.id;
-    setConversationId(data.conversation.id);
-    setSaved(false);
-    return data.conversation.id;
+    const conversation = data.conversation;
+    conversationRef.current = conversation.id;
+    setConversationId(conversation.id);
+    markSaved(false);
+    return conversation.id;
   }
 
   function updatePending(key: string, patch: Partial<PendingAttachment>) {
@@ -538,12 +741,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
 
   async function send(text: string) {
     const clean = text.trim();
-    // A ref guard closes the window between the first click and React applying the streaming
-    // state, so a rapid double click can never start the same provider turn twice.
     if (sendLock.current || streaming || uploadsBusy) return;
     if (pending.some((item) => item.status === "failed")) { showError("One attachment didn't upload. Retry or remove it before sending."); return; }
     if (!clean && !readyAttachments.length) return;
     sendLock.current = true;
+    // A follow-up after "hey" must still get a real title, while a greeting-first turn must not.
+    const priorMeaningful = messages.some((message) => message.role === "user" && isMeaningfulAqiMessage(message.content));
     clearError();
     setInput("");
     let id = conversationId;
@@ -586,12 +789,14 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
         id = data.conversation.id;
         conversationRef.current = id;
         setConversationId(id);
-        setSaved(false);
+        markSaved(false);
       }
+      const activeId = id;
+      if (!activeId) throw new Error("AQi could not start a conversation.");
       const res = await fetch("/api/aqi/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: id, message: clean, path: pathname, attachmentIds: readyAttachments.map((item) => item.id) }),
+        body: JSON.stringify({ conversationId: activeId, message: clean, path: pathname, attachmentIds: readyAttachments.map((item) => item.id) }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -613,7 +818,9 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
           const event = parseSseBlock(block);
           if (!event) continue;
           if (event.type === "meta") {
-            setConversationId(String(event.conversationId));
+            const metaId = String(event.conversationId);
+            conversationRef.current = metaId;
+            setConversationId(metaId);
             setMessages((current) => current.map((message) => (message.id === assistantMessage.id ? { ...message, id: String(event.messageId) } : message)));
           } else if (event.type === "delta") {
             setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? { ...message, content: message.content + String(event.text) } : message)));
@@ -622,7 +829,13 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
             setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? finalMessage : message)));
             setStreaming(false);
             setPending([]);
-            void loadConversations();
+            // A temporary chat is not in history; saving it later loads the saved summary. A chat
+            // saved before this turn finished can refresh its saved row now.
+            if (savedRef.current) void loadHistory({ query: historyQuery });
+            const knownTitle = conversationsRef.current.find((item) => item.id === activeId)?.title;
+            if ((priorMeaningful || isMeaningfulAqiMessage(clean)) && (!knownTitle || knownTitle === DEFAULT_AQI_CONVERSATION_TITLE)) {
+              void maybeGenerateTitle(activeId);
+            }
           } else if (event.type === "error") {
             throw new AqiUiError(String(event.message), String(event.code ?? "unexpected"), event.diagnostic as ErrorDiagnostic | undefined);
           }
@@ -638,8 +851,8 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
         else showError("I couldn't finish that response. Please try again.");
       }
     } finally {
-      sendLock.current = false;
       abortRef.current = null;
+      sendLock.current = false;
     }
   }
 
@@ -712,40 +925,79 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     }
   }
 
-  async function rename() {
-    if (!renaming) return;
-    const res = await fetch(`/api/aqi/conversations/${renaming.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: renaming.title }),
-    });
-    if (!res.ok) showError("That name could not be saved.");
-    else {
+  function startRename(conversation: Conversation) {
+    setRenaming({ id: conversation.id, title: conversation.title, saving: false, error: null });
+  }
+
+  async function saveRename() {
+    const current = renaming;
+    if (!current || current.saving) return;
+    const title = current.title.trim();
+    if (!title) {
+      setRenaming({ ...current, error: "Enter a name for this conversation." });
+      return;
+    }
+    if (title.length > 120) {
+      setRenaming({ ...current, error: "Keep the name under 120 characters." });
+      return;
+    }
+    setRenaming({ ...current, saving: true, error: null });
+    try {
+      const res = await fetch(`/api/aqi/conversations/${current.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      const data = (await res.json().catch(() => null)) as { title?: string; error?: string } | null;
+      if (!res.ok) throw new Error("rename");
+      const saved = typeof data?.title === "string" && data.title.trim() ? data.title : title;
+      setConversations((items) => items.map((item) => (item.id === current.id ? { ...item, title: saved } : item)));
       setRenaming(null);
-      void loadConversations();
+      announce("Conversation renamed.");
+    } catch {
+      setRenaming({ ...current, saving: false, error: "Couldn't rename this conversation. Please try again." });
     }
   }
 
-  async function deleteSavedConversation(id: string) {
-    if (id === conversationId && streaming) {
-      toast.info("Stop the current answer before deleting this conversation.");
-      return;
-    }
-    const res = await fetch(`/api/aqi/conversations/${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
-      showError(data?.error ?? "That conversation could not be deleted. Please try again.");
-      return;
-    }
-    setDeleting(null);
-    if (conversationId === id) resetToBlankChat();
-    void loadConversations();
-    toast.success("Conversation deleted");
+  function askDelete(conversation: Conversation) {
+    deleteReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDeleteTarget(conversation);
+    setDeleteError(null);
   }
 
-  const visibleConversations = conversations.filter((conversation) => conversation.title.toLowerCase().includes(historySearch.toLowerCase()));
+  function cancelDelete() {
+    if (deleteBusy) return;
+    setDeleteTarget(null);
+    setDeleteError(null);
+    restoreDeleteFocus();
+  }
+
+  async function confirmDelete() {
+    const target = deleteTarget;
+    if (!target || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/aqi/conversations/${target.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete");
+      // Only after the server confirms: remove the row and clear the active selection.
+      setConversations((items) => items.filter((item) => item.id !== target.id));
+      if (conversationId === target.id) clearActiveConversation();
+      setDeleteTarget(null);
+      announce("Conversation deleted.");
+      restoreDeleteFocus();
+    } catch {
+      setDeleteError("Couldn't delete this conversation. Please try again.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  const suggestions = welcome?.suggestions ?? [];
+  const contextLabel = view === "chat" && welcome?.page && welcomePath === (pathname ?? "/") ? welcome.page.label : null;
   const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
   const canRetry = Boolean(lastAssistant && (lastAssistant.status === "failed" || lastAssistant.status === "cancelled") && !streaming);
+  const canSave = Boolean(conversationId && !saved && messages.some((message) => message.role === "user"));
 
   return (
     <>
@@ -782,7 +1034,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={closePanel}
+              onClick={requestClose}
               aria-hidden
             />
             <motion.div
@@ -802,7 +1054,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
             >
               <header className="relative shrink-0 overflow-hidden border-b border-line bg-surface">
                 <div aria-hidden className="absolute inset-0 opacity-90" style={{ background: "radial-gradient(420px 170px at 0% 0%, rgba(44,91,255,0.16), transparent 70%), radial-gradient(320px 160px at 100% 0%, rgba(139,92,255,0.14), transparent 70%)" }} />
-                <div className="relative flex items-center gap-3 px-4 pb-3 pt-4">
+                <div className="relative flex items-center gap-3 px-4 pb-1.5 pt-4">
                   {view === "history" ? (
                     <button type="button" onClick={() => setView("chat")} className="flex size-9 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2" aria-label="Back to AQi chat"><ArrowLeft className="size-4" /></button>
                   ) : (
@@ -810,16 +1062,26 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-ink">{view === "history" ? "Conversations" : "AQi"} {view === "chat" && <span className="rounded-full bg-primary-soft px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-primary-ink">Platform guide</span>}</p>
-                    <p className="truncate text-[12px] text-muted">{view === "history" ? "Your private AQi history" : bootstrap?.page ? `Helping with ${bootstrap.page.label}` : "Help with iAcquireOS"}</p>
+                    {/* Identity stays fixed. Page awareness is a separate, reserved row below. */}
+                    <p className="truncate text-[12px] text-muted">{view === "history" ? "Your private AQi history" : "Your iAcquireOS assistant"}</p>
                   </div>
                   {view === "chat" && (
                     <>
-                      <button type="button" onClick={() => setView("history")} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Conversation history"><History className="size-4" /></button>
+                      <button type="button" onClick={openHistory} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Conversation history"><History className="size-4" /></button>
                       <button type="button" onClick={() => setExpanded((value) => !value)} className="hidden size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink sm:flex" aria-label={expanded ? "Collapse AQi" : "Expand AQi"}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>
                     </>
                   )}
-                  <button type="button" onClick={closePanel} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Close AQi" title="Close AQi — your chat stays here"><X className="size-4" /></button>
+                  <button type="button" onClick={requestClose} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Close AQi" title="Close AQi — your chat stays here"><X className="size-4" /></button>
                 </div>
+                {view === "chat" ? (
+                  <div className="relative flex h-7 items-center px-4 pb-2">
+                    <span className={cn("inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-[10.5px] font-medium text-muted transition-opacity duration-200", contextLabel ? "opacity-100" : "opacity-0")} aria-hidden={contextLabel ? undefined : true}>
+                      <Eye className="size-3 shrink-0" aria-hidden /><span className="truncate">Viewing: {contextLabel ?? "—"}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="h-2" />
+                )}
               </header>
 
               {view === "chat" && canSave && (
@@ -840,57 +1102,74 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
 
               {view === "history" ? (
                 <HistoryView
-                  conversations={visibleConversations}
+                  conversations={conversations}
+                  activeId={conversationId}
                   search={historySearch}
-                  setSearch={setHistorySearch}
+                  onSearch={setHistorySearch}
+                  searchRef={historySearchRef}
+                  loading={historyStatus === "loading" || loadingConversation}
+                  loadingMore={historyLoadingMore}
+                  hasMore={historyHasMore}
+                  error={historyStatus === "error"}
                   renaming={renaming}
-                  setRenaming={setRenaming}
-                  deleting={deleting}
-                  setDeleting={setDeleting}
-                  loading={loadingConversation}
-                  onOpen={(id) => void openConversation(id)}
-                  onRename={() => void rename()}
-                  onDelete={(id) => void deleteSavedConversation(id)}
+                  onRenameStart={startRename}
+                  onRenameChange={(title) => setRenaming((current) => (current ? { ...current, title, error: null } : current))}
+                  onRenameSave={() => void saveRename()}
+                  onRenameCancel={() => setRenaming(null)}
+                  onOpen={(id) => { setRenaming(null); void openConversation(id); }}
+                  onLoadMore={() => void loadHistory({ query: historyQuery, append: true })}
+                  onDelete={askDelete}
                   onNew={requestNewChat}
+                  onRetry={() => void loadHistory({ query: historySearch })}
                 />
               ) : (
                 <>
-                  <div ref={scrollRef} onScroll={() => { const element = scrollRef.current; if (!element) return; scrollTopRef.current = element.scrollTop; nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+                  <div ref={scrollRef} onScroll={() => { const element = scrollRef.current; if (element) nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
                     {messages.length === 0 ? (
-                      <div className="space-y-4">
+                      <div className="flex min-h-full flex-col">
                         <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
-                          <p className="text-[13.5px] leading-relaxed text-ink">{bootstrap?.config.greeting ?? "Hi, I'm AQi. What can I help you with?"}</p>
-                          <p className="mt-2 text-[12px] leading-relaxed text-muted">I explain iAcquireOS, help you find the right page and tell you honestly when something is unavailable. I can&apos;t change settings or act on your behalf.</p>
+                          <p className="text-[13.5px] leading-relaxed text-ink">Hey! How can I help you today?</p>
+                          <p className="mt-2 text-[12px] leading-relaxed text-muted">Ask me anything about iAcquireOS.</p>
                         </div>
-                        {bootstrap && !bootstrap.health.available && (
-                          <div className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 p-3.5 text-[12px] text-ink-2">
-                            <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><LifeBuoy className="size-3.5" /></span>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium leading-relaxed text-ink">{bootstrap.health.detail}</p>
-                              <div className="mt-2 flex flex-wrap items-center gap-3">
-                                <button type="button" onClick={() => { clearError(); void loadBootstrap(); }} className="text-[11.5px] font-semibold text-primary hover:underline">Check again</button>
-                                <Link href="/support" className="text-[11.5px] font-medium text-muted hover:text-ink">Contact support</Link>
+                        <div className="mt-4">
+                          {suggestions.length > 0 ? (
+                            <div>
+                              <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
+                              <div className="grid gap-2">
+                                {suggestions.map((suggestion) => (
+                                  <button
+                                    key={suggestion.id}
+                                    type="button"
+                                    onClick={() => { setSendingSuggestion(suggestion.question); void send(suggestion.question).finally(() => setSendingSuggestion(null)); }}
+                                    disabled={streaming || Boolean(sendingSuggestion) || uploadsBusy}
+                                    className="group flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-[12.5px] leading-snug text-ink-2 shadow-soft transition-[border-color,background-color,transform] duration-150 hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <span className="line-clamp-2">{suggestion.question}</span>
+                                    {sendingSuggestion === suggestion.question
+                                      ? <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" aria-hidden />
+                                      : <ArrowUpRight className="size-3.5 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />}
+                                  </button>
+                                ))}
                               </div>
-                              {bootstrap.health.diagnostic && (
-                                <details className="mt-2 border-t border-line pt-2 text-[10.5px] text-muted">
-                                  <summary className="cursor-pointer font-medium text-ink-2">Diagnostic details</summary>
-                                  <p className="mt-1">Status: {bootstrap.health.diagnostic.connectionStatus ?? "no connection"} · Reason: {bootstrap.health.diagnostic.reason} · Provider: {bootstrap.health.diagnostic.provider ?? "unknown"} · Model: {bootstrap.health.diagnostic.model ?? "unknown"}</p>
-                                </details>
+                            </div>
+                          ) : welcomeStatus === "loading" || welcomeStatus === "idle" ? (
+                            <div aria-busy="true">
+                              <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
+                              <div className="grid gap-2">
+                                {[0, 1, 2, 3].map((index) => <div key={index} className="skeleton h-[52px] rounded-xl" aria-hidden />)}
+                              </div>
+                              <span role="status" className="sr-only">Loading suggested questions</span>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-line-strong bg-surface px-3.5 py-3">
+                              <p className="text-[12px] leading-relaxed text-muted">Ask about a feature, a page, or a task and I&apos;ll point you to the right place.</p>
+                              {welcomeStatus === "error" && (
+                                <button type="button" onClick={() => void loadWelcome(pathname ?? "/", true)} className="mt-2 text-[11.5px] font-semibold text-primary hover:underline">Reload suggestions</button>
                               )}
                             </div>
-                          </div>
-                        )}
-                        <div>
-                          <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
-                          <div className="grid gap-2">
-                            {(bootstrap?.suggestions ?? []).map((suggestion) => (
-                              <button key={suggestion.id} type="button" onClick={() => void send(suggestion.question)} disabled={!bootstrap?.health.available} className="rounded-xl border border-line bg-surface px-3 py-2.5 text-left text-[12.5px] leading-snug text-ink-2 transition hover:border-line-strong hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
-                                {suggestion.question}
-                              </button>
-                            ))}
-                          </div>
+                          )}
                         </div>
-                        <p className="text-center text-[11.5px] text-muted">Still stuck? <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="font-medium text-primary hover:underline">Get help from iAcquire</button> or <Link href="/support" className="font-medium text-primary hover:underline">open Support</Link>.</p>
+                        <p className="mt-auto pt-5 text-center text-[11.5px] text-muted">Still stuck? <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="font-medium text-primary hover:underline">Get help from iAcquire</button> or <Link href="/support" className="font-medium text-primary hover:underline">open Support</Link>.</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -906,7 +1185,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                             <div className={cn("max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", message.role === "user" ? "bg-primary text-white" : "border border-line bg-surface text-ink")}>
                               {message.role === "assistant" ? (
                                 <>
-                                  {message.content ? <Markdown>{internalLinksAllowed(message.content, bootstrap?.allowedPaths ?? [])}</Markdown> : message.role === "assistant" ? <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span> : null}
+                                  {message.content ? <Markdown>{internalLinksAllowed(message.content, welcome?.allowedPaths ?? [])}</Markdown> : <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span>}
                           {message.attachments?.length ? (
                             <div className="mt-2 grid grid-cols-2 gap-1.5">
                               {message.attachments.map((attachment) => attachment.kind === "image" ? (
@@ -1000,7 +1279,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                 <p className="font-medium leading-relaxed text-ink">{error}</p>
                                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                   {canRetry && <button type="button" onClick={retry} className="inline-flex items-center gap-1 rounded-lg bg-surface px-2.5 py-1.5 text-[11.5px] font-semibold text-ink-2 shadow-sm ring-1 ring-line hover:bg-surface-2"><RotateCcw className="size-3" /> Try again</button>}
-                                  {bootstrap && !bootstrap.health.available && <button type="button" onClick={() => { clearError(); void loadBootstrap(); }} className="text-[11.5px] font-semibold text-primary hover:underline">Check again</button>}
+                                  {health && !health.available && <button type="button" onClick={() => { clearError(); void loadHealth(true); }} className="text-[11.5px] font-semibold text-primary hover:underline">Check again</button>}
                                   {errorCode === "session_expired" ? <Link href="/login" className="text-[11.5px] font-semibold text-primary hover:underline">Sign in again</Link> : <Link href="/support" className="text-[11.5px] font-medium text-muted hover:text-ink">Contact support</Link>}
                                 </div>
                                 {errorDiagnostic && (
@@ -1023,6 +1302,24 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                   </div>
 
                   <div className="shrink-0 border-t border-line bg-surface px-3 pb-3 pt-2.5">
+                    {health && !health.available && (
+                      <div role="status" className="mb-2 flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[11.5px] text-ink-2">
+                        <LifeBuoy className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <p className="leading-relaxed">{health.detail}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <button type="button" onClick={() => void loadHealth(true)} className="font-semibold text-primary hover:underline">Check again</button>
+                            <Link href="/support" className="font-medium text-muted hover:text-ink">Contact support</Link>
+                          </div>
+                          {health.diagnostic && (
+                            <details className="mt-1.5 border-t border-line pt-1.5 text-[10px] text-muted">
+                              <summary className="cursor-pointer font-medium text-ink-2">Diagnostic details</summary>
+                              <p className="mt-1">Status: {health.diagnostic.connectionStatus ?? "no connection"} · Reason: {health.diagnostic.reason} · Provider: {health.diagnostic.provider ?? "unknown"} · Model: {health.diagnostic.model ?? "unknown"}</p>
+                            </details>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {streaming ? (
                       <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-muted"><span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-primary" /> AQi is answering…</span><button type="button" onClick={stop} className="flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-ink-2 hover:bg-surface"><Square className="size-3" /> Stop</button></div>
                     ) : canRetry ? (
@@ -1090,6 +1387,22 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {notice && (
+          <motion.p
+            role="status"
+            aria-live="polite"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.18 }}
+            className={cn("pointer-events-none fixed left-1/2 z-[65] -translate-x-1/2 rounded-full bg-ink px-3 py-1.5 text-[11.5px] font-medium text-surface shadow-float sm:left-auto sm:right-10 sm:translate-x-0", view === "history" ? "bottom-8" : "bottom-28")}
+          >
+            {notice}
+          </motion.p>
+        )}
+      </AnimatePresence>
+
       <Dialog
         open={discardOpen}
         onOpenChange={(next) => { if (!lifecycleBusy) setDiscardOpen(next); }}
@@ -1119,6 +1432,59 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
           </>
         }
       />
+
+      <AnimatePresence>
+        {deleteTarget && (
+          <motion.div
+            className="fixed inset-0 z-[70] grid place-items-center bg-black/35 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onMouseDown={(event) => { if (event.target === event.currentTarget && !deleteBusy) cancelDelete(); }}
+          >
+            <motion.div
+              ref={deleteDialogRef}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="aqi-delete-title"
+              aria-describedby="aqi-delete-desc"
+              initial={{ y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 8, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-float"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  if (!deleteBusy) cancelDelete();
+                  return;
+                }
+                if (event.key !== "Tab") return;
+                const nodes = deleteDialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])');
+                if (!nodes?.length) return;
+                const first = nodes[0];
+                const last = nodes[nodes.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-danger-soft text-danger-ink"><Trash2 className="size-5" aria-hidden /></span>
+                <div className="min-w-0">
+                  <h2 id="aqi-delete-title" className="text-[15.5px] font-semibold tracking-tight text-ink">Delete this conversation?</h2>
+                  <p id="aqi-delete-desc" className="mt-1 text-[12.5px] leading-relaxed text-muted">This conversation will be permanently deleted. This action cannot be undone.</p>
+                </div>
+              </div>
+              <p className="mt-3 truncate rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] font-medium text-ink">{deleteTarget.title === DEFAULT_AQI_CONVERSATION_TITLE ? "New conversation (no title yet)" : deleteTarget.title}</p>
+              {deleteError && <p role="alert" className="mt-3 rounded-xl border border-danger/20 bg-danger-soft px-3 py-2 text-[12px] leading-relaxed text-danger-ink">{deleteError}</p>}
+              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="secondary" onClick={cancelDelete} disabled={deleteBusy} autoFocus>Cancel</Button>
+                <Button variant="danger" onClick={() => void confirmDelete()} loading={deleteBusy} aria-busy={deleteBusy}>{deleteBusy ? "Deleting…" : "Delete conversation"}</Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {supportOpen && (
@@ -1183,71 +1549,152 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
 
 function HistoryView({
   conversations,
+  activeId,
   search,
-  setSearch,
-  renaming,
-  setRenaming,
-  deleting,
-  setDeleting,
+  onSearch,
+  searchRef,
   loading,
+  loadingMore,
+  hasMore,
+  error,
+  renaming,
+  onRenameStart,
+  onRenameChange,
+  onRenameSave,
+  onRenameCancel,
   onOpen,
-  onRename,
+  onLoadMore,
   onDelete,
   onNew,
+  onRetry,
 }: {
   conversations: Conversation[];
+  activeId: string | null;
   search: string;
-  setSearch: (value: string) => void;
-  renaming: { id: string; title: string } | null;
-  setRenaming: (value: { id: string; title: string } | null) => void;
-  deleting: string | null;
-  setDeleting: (value: string | null) => void;
+  onSearch: (value: string) => void;
+  searchRef: React.RefObject<HTMLInputElement | null>;
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: boolean;
+  renaming: { id: string; title: string; saving: boolean; error: string | null } | null;
+  onRenameStart: (conversation: Conversation) => void;
+  onRenameChange: (title: string) => void;
+  onRenameSave: () => void;
+  onRenameCancel: () => void;
   onOpen: (id: string) => void;
-  onRename: () => void;
-  onDelete: (id: string) => void;
+  onLoadMore: () => void;
+  onDelete: (conversation: Conversation) => void;
   onNew: () => void;
+  onRetry: () => void;
 }) {
+  const trimmed = search.trim();
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="space-y-2 border-b border-line p-3">
         <Button variant="brand" className="w-full" onClick={onNew}><Plus className="size-4" /> New chat</Button>
-        <label className="flex items-center gap-2 rounded-xl border border-line bg-surface px-2.5">
-          <Search className="size-3.5 text-muted" />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" className="h-9 min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint" aria-label="Search conversations" />
+        <label className="flex items-center gap-2 rounded-xl border border-line bg-surface px-2.5 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10">
+          <Search className="size-3.5 shrink-0 text-muted" aria-hidden />
+          <input
+            ref={searchRef}
+            type="search"
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search conversations"
+            className="h-10 min-w-0 flex-1 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-faint"
+            aria-label="Search conversations"
+          />
+          {loading && conversations.length > 0 && <Loader2 className="size-3.5 shrink-0 animate-spin text-muted" aria-label="Loading conversations" />}
         </label>
-        <p className="px-1 text-[10.5px] leading-relaxed text-faint">New chats appear here after you save them.</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {loading ? <p className="p-3 text-[12.5px] text-muted">Opening conversation…</p> : conversations.length === 0 ? <p className="p-3 text-[12.5px] text-muted">No saved conversations yet. Start a chat and choose Save conversation to keep it here.</p> : (
-          <ul className="space-y-1">
-            {conversations.map((conversation) => (
-              <li key={conversation.id} className="rounded-xl border border-transparent p-2.5 hover:border-line hover:bg-surface-2">
-                {renaming?.id === conversation.id ? (
-                  <div className="flex items-center gap-1.5">
-                    <input autoFocus value={renaming.title} onChange={(event) => setRenaming({ ...renaming, title: event.target.value })} onKeyDown={(event) => { if (event.key === "Enter") onRename(); if (event.key === "Escape") setRenaming(null); }} className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[12.5px] outline-none" aria-label="Conversation name" />
-                    <button type="button" onClick={onRename} className="grid size-8 place-items-center rounded-lg text-success-ink hover:bg-success-soft" aria-label="Save name"><Check className="size-3.5" /></button>
-                    <button type="button" onClick={() => setRenaming(null)} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-surface" aria-label="Cancel rename"><X className="size-3.5" /></button>
-                  </div>
-                ) : deleting === conversation.id ? (
-                  <div className="space-y-1.5">
-                    <p className="text-[12px] font-medium text-danger-ink">Delete this saved conversation?</p>
-                    <p className="text-[10.5px] leading-relaxed text-muted">Its messages will be removed for good. This can&apos;t be undone.</p>
-                    <div className="flex gap-1"><button type="button" onClick={() => onDelete(conversation.id)} className="rounded-lg bg-danger px-2 py-1 text-[11px] font-semibold text-white">Delete conversation</button><button type="button" onClick={() => setDeleting(null)} className="rounded-lg px-2 py-1 text-[11px] text-muted">Cancel</button></div>
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-2">
-                    <button type="button" onClick={() => onOpen(conversation.id)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-[12.5px] font-medium text-ink">{conversation.title}</p>
-                      <p className="mt-0.5 text-[10.5px] text-muted"><span suppressHydrationWarning>{relativeTime(conversation.lastMessageAt)}</span></p>
-                    </button>
-                    <button type="button" onClick={() => setRenaming({ id: conversation.id, title: conversation.title })} className="grid size-7 place-items-center rounded-lg text-muted hover:bg-surface hover:text-ink" aria-label={`Rename ${conversation.title}`}><Pencil className="size-3" /></button>
-                    <button type="button" onClick={() => setDeleting(conversation.id)} className="grid size-7 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink" aria-label={`Delete ${conversation.title}`}><Trash2 className="size-3" /></button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+        {error ? (
+          <div className="mx-1 my-3 rounded-xl border border-line bg-surface-2 px-4 py-4">
+            <p className="text-[12.5px] font-medium text-ink">We couldn&apos;t load your conversations.</p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">Please try again in a moment.</p>
+            <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>Try again</Button>
+          </div>
+        ) : loading && conversations.length === 0 ? (
+          <div className="space-y-1.5 p-1" aria-busy="true">
+            {[0, 1, 2].map((index) => <div key={index} className="skeleton h-[52px] rounded-xl" aria-hidden />)}
+            <span role="status" className="sr-only">Loading conversations</span>
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="mx-1 my-3 rounded-xl border border-dashed border-line-strong px-4 py-5">
+            <p className="text-[12.5px] font-medium text-ink">{trimmed ? "No conversations match your search" : "No saved conversations yet."}</p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">{trimmed ? "Try another title or clear your search." : "Start a chat and choose Save conversation to keep it here."}</p>
+          </div>
+        ) : (
+          <>
+            <ul className="space-y-1">
+              {conversations.map((conversation) => {
+                const active = conversation.id === activeId;
+                return (
+                  <li key={conversation.id} className="group">
+                    <div className={cn("rounded-xl border px-1.5 py-1.5 transition-colors duration-150", active ? "border-primary/30 bg-primary-soft/40" : "border-transparent hover:border-line hover:bg-surface-2")}>
+                      {renaming?.id === conversation.id ? (
+                        <form
+                          onSubmit={(event) => { event.preventDefault(); onRenameSave(); }}
+                          className="space-y-1.5 px-1 py-1"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              value={renaming.title}
+                              onChange={(event) => onRenameChange(event.target.value)}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape" && !renaming.saving) {
+                                  event.stopPropagation();
+                                  onRenameCancel();
+                                }
+                              }}
+                              maxLength={120}
+                              disabled={renaming.saving}
+                              aria-label="Conversation name"
+                              aria-invalid={Boolean(renaming.error)}
+                              className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-[12.5px] text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                            />
+                            {renaming.saving
+                              ? <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-label="Saving name" />
+                              : <button type="submit" className="grid size-9 shrink-0 place-items-center rounded-lg text-success-ink hover:bg-success-soft focus-visible:outline-2 focus-visible:outline-primary" aria-label="Save name"><Check className="size-4" /></button>}
+                            <button type="button" onClick={onRenameCancel} disabled={renaming.saving} className="grid size-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50" aria-label="Cancel rename"><X className="size-4" /></button>
+                          </div>
+                          {renaming.error
+                            ? <p role="alert" className="text-[10.5px] leading-relaxed text-danger-ink">{renaming.error}</p>
+                            : <p className="text-[10px] text-faint">Enter saves · Esc cancels</p>}
+                        </form>
+                      ) : (
+                        <div className="flex items-start gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onOpen(conversation.id)}
+                            aria-current={active ? "true" : undefined}
+                            className="min-w-0 flex-1 rounded-lg px-1.5 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                          >
+                            <span className="flex items-start gap-1.5">
+                              {active && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />}
+                              <span className="line-clamp-2 break-words text-[12.5px] font-medium leading-snug text-ink">{conversation.title}</span>
+                            </span>
+                            <span className="mt-0.5 block text-[10.5px] text-muted"><span suppressHydrationWarning>{relativeTime(conversation.lastMessageAt)}</span></span>
+                          </button>
+                          <div className="flex shrink-0 items-center gap-0.5 pt-0.5 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                            <button type="button" onClick={() => onRenameStart(conversation)} title="Rename conversation" aria-label={`Rename ${conversation.title}`} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-surface hover:text-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-7"><Pencil className="size-3.5" /></button>
+                            <button type="button" onClick={() => onDelete(conversation)} title="Delete conversation" aria-label={`Delete ${conversation.title}`} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink focus-visible:outline-2 focus-visible:outline-primary sm:size-7"><Trash2 className="size-3.5" /></button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {hasMore && (
+              <div className="px-1 pb-1 pt-2">
+                <Button variant="secondary" size="sm" className="w-full" loading={loadingMore} onClick={onLoadMore}>Load more</Button>
+              </div>
+            )}
+          </>
         )}
       </div>
       <div className="border-t border-line p-3"><Link href="/support" className="flex items-center justify-center gap-1.5 text-[12px] font-medium text-primary hover:underline">Talk to the iAcquire team <ChevronLeft className="size-3 rotate-180" /></Link></div>

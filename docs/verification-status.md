@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,319 tests in 103 files passed** with `--maxWorkers=2` |
+| `npm test` | **1,342 tests in 106 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -36,7 +36,11 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 | Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
 | Intent-aware greetings, response length, page-context restraint, clickable navigation, source preview | Locally verified plus real DeepSeek greeting/navigation probes |
 | Copy, like/dislike/undo, reason form and selected-state persistence | Locally/browser verified; feedback persisted through the existing message record |
-| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 21 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Stable welcome, reserved suggestion skeletons, permission-filtered suggestions, fixed header and no layout shift | Browser verified with a 2.2 s delayed bootstrap: welcome at 154 ms, four skeletons, composer usable during load, header 91.5 → 91.5 px, support link 811.25 → 811.25 px, zero extra requests over five open/close cycles |
+| Automatic conversation titles, greeting suppression, manual-rename precedence and deletion race safety | Locally verified (`tests/aqi-titles.test.ts`, 6; `tests/aqi-lifecycle.test.ts`, 11; `tests/aqi-migration-0051.test.ts`, 3) and browser verified against the configured model plus a deterministic fallback |
+| History search/pagination, inline rename, destructive delete confirmation and pending/error states | Locally and browser verified at 1440 px and 390 px: search found generated and manual titles, immediate `Deleting…`, failure retry, success removal, focus return, Escape/busy guards |
+| Lifecycle browser QA | **58 checks, 0 failures**, 1440 px + 390 px, 0 page errors, 0 failed requests, **0 axe violations**; console only the four deliberately simulated 500 responses and one pre-existing `/login` hydration warning outside AQi |
+| Floating launcher, streaming panel, source citations, feedback, support consent, close/reopen, history, reload persistence, expand, mobile, reduced motion, keyboard navigation, Super Admin real-provider test, retrieval preview and budgets | Browser QA passed with **4 pages, 25 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming/non-streaming provider only |
 | Private image/document attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document history rendering, emoji insertion, admin settings and **0 axe violations** |
 | Attachment storage/RLS and extraction | Locally verified: private bucket, RLS, image dimensions, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
 | GIF messaging | **Removed from AQi**; uploads are rejected as unsupported |
