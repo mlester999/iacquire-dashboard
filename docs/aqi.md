@@ -29,8 +29,8 @@ knowledge, conversations, messages, feedback and usage records.
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 | Hosted migration 0048 | **Applied 2026-10-18**; budget/pricing tables and usage cost fields |
 | Hosted migration 0049 | **Applied 2026-10-18**; private AQi attachment bucket, metadata, RLS and four policies |
-| Production deployment | `c3e1bdb` deployed successfully by Vercel; the AQi **base code** is live, but cost-control/support changes are committed only on the local branch and are not pushed/deployed |
-| Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed AQi build predates the resolution/error fixes |
+| Production deployment | **`48de90c` deployed successfully by Vercel**; provider, budget, support, attachment and composer changes are live. A docs-only follow-up may deploy without runtime changes |
+| Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed build includes the resolution/error fixes |
 
 ## Reused infrastructure
 

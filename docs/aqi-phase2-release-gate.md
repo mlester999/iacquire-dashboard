@@ -1,6 +1,7 @@
 # AQi Phase 2 release gate
 
-Status: **local remediation complete; staging and production release NOT approved.**
+Status: **production deployment completed by explicit authorization; staging-first gate was not satisfied.**
+
 
 This document records the production state found by the Phase 2 acceptance audit and the safe
 sequence required before the local cost-control/support changes can ship.
@@ -9,7 +10,7 @@ sequence required before the local cost-control/support changes can ship.
 
 - GitHub records a successful **Production** deployment by `vercel[bot]`:
   - environment: `Production`
-  - SHA: `c3e1bdb`
+  - SHA: `48de90c` (production deployment succeeded after the authorized push)
   - state: `success`
   - deployment URL: Vercel-generated and protected by Vercel SSO.
 - The repository has **no** `.github/workflows`, Vercel config or other deployment config. The
@@ -29,8 +30,8 @@ sequence required before the local cost-control/support changes can ship.
   resolution for 30 seconds. The local fix uses the integration model by default, removes negative
   caching, and rechecks on send.
 - Production app version and database version match for migrations through 0047. The local
-  cost-control/support/attachment changes are not deployed yet. The database is now additive-ahead
-  of the deployed app through 0049; the older app remains compatible until the next deployment.
+  cost-control/support/attachment changes are included in `48de90c`. The database is at 0049 and
+  the deployed app build matches these migrations.
 
 The earlier “local-only migrations” report was correct when written. The later user-authorized
 `--only` migration run applied 0045–0047, and the subsequent master push triggered the external
@@ -137,6 +138,8 @@ They are not live-provider acceptance.
   were verified after application.
 - Full backup/restore: **BLOCKED** by missing PostgreSQL backup/restore tooling and no isolated
   database host.
-- Staging-first gate: **FAIL** until automatic production deployment is frozen and staging exists.
+- Staging-first gate: **FAIL / bypassed by explicit production authorization.** Production was
+  deployed and migrated before a staging environment existed; run the staging acceptance steps
+  retroactively and freeze future auto-deployments.
 - Live provider: **provider-level PASS** (controlled completion and SSE probes); full deployed AQi
   UI acceptance remains blocked by Vercel SSO and the undeployed local fix.
