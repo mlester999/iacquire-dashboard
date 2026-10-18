@@ -14,9 +14,10 @@ sequence required before the local cost-control/support changes can ship.
   - deployment URL: Vercel-generated and protected by Vercel SSO.
 - The repository has **no** `.github/workflows`, Vercel config or other deployment config. The
   deployment integration is external to the repository and automatically deploys master.
-- Hosted database migrations: `0044` through `0047`; `0048_aqi_cost_controls` and
-  `0049_aqi_attachments` are **not applied**.
-- Hosted public tables: 210.
+- Hosted database migrations: `0044` through `0049`; `0048_aqi_cost_controls` and
+  `0049_aqi_attachments` were applied on 2026-10-18 with the transactional `--only` runner.
+- Hosted public tables: **213**. The private `aqi-attachments` bucket exists as non-public with a
+  50 MB limit.
 - Hosted AQi: one published configuration, 12 published knowledge entries, 8 enabled questions,
   2 messages recorded.
 - Hosted global LLM integration: model `deepseek-flash`, format `openai`, status **`connected`**.
@@ -28,7 +29,8 @@ sequence required before the local cost-control/support changes can ship.
   resolution for 30 seconds. The local fix uses the integration model by default, removes negative
   caching, and rechecks on send.
 - Production app version and database version match for migrations through 0047. The local
-  cost-control/support changes are not deployed; migration 0048 is not deployed.
+  cost-control/support/attachment changes are not deployed yet. The database is now additive-ahead
+  of the deployed app through 0049; the older app remains compatible until the next deployment.
 
 The earlier “local-only migrations” report was correct when written. The later user-authorized
 `--only` migration run applied 0045–0047, and the subsequent master push triggered the external
@@ -47,8 +49,8 @@ has not been exercised through the browser against the now-connected provider.
    - a separate Vercel/staging project and `APP_URL`;
    - its own `APP_ENCRYPTION_KEY`, `SECRET_STORE`, and provider keys.
 3. **Back up and restore-test** before touching production schema.
-4. Apply migrations 0048 and 0049 only to staging first, then verify the private bucket, RLS,
-   attachment upload/read/delete and extraction.
+4. Production 0048/0049 are already applied. Restore the pre-migration backup into staging, replay
+   both migrations there, and verify the private bucket, RLS, attachment upload/read/delete and extraction.
 5. Deploy the local commit to staging; run real-provider acceptance.
 6. Only after sign-off, take a production backup, apply 0048, deploy manually, and run smoke tests.
 
@@ -78,7 +80,7 @@ pg_restore \
 Restore verification checklist:
 
 - `schema_migrations` matches production exactly, including 0044–0047.
-- Public table count is 210 before 0048 (212 after 0048).
+- Public table count is 213 after 0048/0049 (210 before them).
 - `employee_knowledge_entries` and the six AQi tables exist.
 - RLS is enabled on employee knowledge and AQi tables.
 - Policy counts match: employee knowledge 3; AQi conversations 4; AQi messages 3; AQi knowledge 1.
@@ -129,10 +131,10 @@ They are not live-provider acceptance.
 
 - AQi base code: deployed; provider now connected and live-probed successfully, but the deployed
   build predates the resolution/error fixes.
-- AQi cost-control/support/attachment remediation: committed on the local branch, not pushed or deployed.
-- Migrations 0048 (cost controls) and 0049 (private attachments): local only.
-- Attachment bucket creation must be applied in staging before the attachment UI is deployed; the code
-  expects both `aqi_attachments` and the private `aqi-attachments` bucket.
+- AQi cost-control/support/attachment remediation: committed on the local branch; deployment status is
+  recorded by the user-authorized push to master.
+- Migrations 0048 and 0049 are applied hosted; the private bucket, metadata table, RLS and policies
+  were verified after application.
 - Full backup/restore: **BLOCKED** by missing PostgreSQL backup/restore tooling and no isolated
   database host.
 - Staging-first gate: **FAIL** until automatic production deployment is frozen and staging exists.

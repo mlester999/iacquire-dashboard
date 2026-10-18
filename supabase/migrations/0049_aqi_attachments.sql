@@ -2,7 +2,7 @@
 -- synthetic local mode); Postgres stores only bounded metadata/extracted text.
 --
 -- This migration is intentionally non-destructive. It widens the private-file bucket/size checks
--- and adds a new table. It is NOT applied to hosted Supabase by this work.
+-- and adds a new table. Applied to hosted Supabase on 2026-10-18.
 
 alter table private_files drop constraint if exists private_files_bucket_check;
 alter table private_files add constraint private_files_bucket_check

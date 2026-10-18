@@ -16,7 +16,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Platform knowledge retrieval with role/page scoping | Locally verified |
 | Super Admin configuration, knowledge, suggestions and publishing | Locally verified |
 | Feedback and usage events | Locally verified |
-| AQi budgets, model pricing, token-aware context and atomic spend reservations | Locally verified; migration 0048 **not applied hosted** |
+| AQi budgets, model pricing, token-aware context and atomic spend reservations | Locally verified; migration 0048 **applied hosted 2026-10-18** |
 | Support escalation through the existing Support system | Locally verified with explicit consent and duplicate suppression |
 | Citation validation and stale-knowledge warnings | Locally verified |
 | RLS and user/tenant isolation | Locally verified |
@@ -27,8 +27,8 @@ knowledge, conversations, messages, feedback and usage records.
 | AI image and video understanding | **Not implemented / not claimed**; media is stored, previewed and clearly marked as not inspectable by the current model |
 | Live provider acceptance | **PASS (controlled provider probe)**; full AQi UI acceptance remains blocked by Vercel SSO |
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
-| Hosted migration 0048 | **Not applied**; local-only cost controls |
-| Hosted migration 0049 | **Not applied**; local-only private AQi attachment bucket and metadata |
+| Hosted migration 0048 | **Applied 2026-10-18**; budget/pricing tables and usage cost fields |
+| Hosted migration 0049 | **Applied 2026-10-18**; private AQi attachment bucket, metadata, RLS and four policies |
 | Production deployment | `c3e1bdb` deployed successfully by Vercel; the AQi **base code** is live, but cost-control/support changes are committed only on the local branch and are not pushed/deployed |
 | Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed AQi build predates the resolution/error fixes |
 
@@ -64,7 +64,7 @@ published knowledge and configuration are readable, while all management writes 
 Super-Admin-checked server actions using the service role. Rollback:
 `supabase/rollbacks/0047_aqi_assistant.down.sql`, which refuses while conversations exist.
 
-Migration 0048 adds local-only cost controls:
+Migration 0048 adds cost controls:
 
 - `aqi_budgets` — global or organization monthly budget, per-user budget and enabled state.
 - `aqi_model_prices` — configured input/output USD per million tokens. Missing pricing blocks a
@@ -193,8 +193,8 @@ text extraction, not a multimodal model call.
 - Failed resolutions are not cached. A successful resolution is cached briefly; integration tests
   and changes invalidate it.
 - Draft tests use the editor's current configuration, including unsaved changes.
-- Hosted cost-control migration 0048 is not applied; production currently uses migrations through
-  0047. Do not deploy the budget UI without applying 0048 first.
+- Hosted migrations through 0049 are applied. The deployed application build still needs to be
+  promoted before the new budget and attachment code is live.
 - The production LLM connection is now `connected`, and controlled provider probes succeeded.
   The deployed AQi build is older than the resolution/error fixes, and the deployment URL is Vercel
   SSO protected, so the full deployed AQi UI was not tested from this environment.

@@ -1,5 +1,5 @@
--- AQi cost controls. Local-only until separately approved and applied; these tables add the budget
--- and pricing state needed to enforce spend before a provider request starts.
+-- AQi cost controls. Applied to hosted Supabase on 2026-10-18; these tables add the budget and
+-- pricing state needed to enforce spend before a provider request starts.
 create table if not exists aqi_budgets (
   id uuid primary key default gen_random_uuid(),
   org_id uuid references organizations(id) on delete cascade,
