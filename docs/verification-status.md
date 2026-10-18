@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,311 tests in 102 files passed** with `--maxWorkers=2` |
+| `npm test` | **1,310 tests in 102 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -34,10 +34,10 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 | Atomic AQi budgets, model pricing, per-user limits and concurrent reservation race | Locally verified (`tests/aqi-cost-controls.test.ts`, 4 tests); hosted migration 0048 applied |
 | Support escalation with consent, real Support service and duplicate suppression | Locally verified (`tests/aqi-support.test.ts`, 2 tests) |
 | Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
-| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 17 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
-| Private image/document/GIF attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document/GIF history rendering, emoji insertion, admin settings and **0 axe violations** |
-| Attachment storage/RLS and extraction | Locally verified (5 tests): private bucket, RLS, image dimensions, GIF, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
-| GIF search provider | **Not configured**; local GIF upload is supported and clearly presented as the fallback |
+| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 16 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Private image/document attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document history rendering, emoji insertion, admin settings and **0 axe violations** |
+| Attachment storage/RLS and extraction | Locally verified: private bucket, RLS, image dimensions, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
+| GIF messaging | **Removed from AQi**; uploads are rejected as unsupported |
 | AI image/video understanding | **Not implemented / not claimed**; media is stored, previewed and marked as not inspectable by the selected model |
 | Client-facing unavailable state and retry | Mobile 390 px browser QA passed; friendly text, no administrator/technical detail, functional Try again, **0 axe violations** |
 | Migration 0047 | **Applied to hosted Supabase 2026-10-18**; six tables, RLS policies and seeded config/knowledge/questions verified |

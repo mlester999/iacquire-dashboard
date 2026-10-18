@@ -429,13 +429,10 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
       {tab === "attachments" && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Images and GIFs</CardTitle><CardDescription>Limits are enforced by the upload endpoint, not just the browser. GIF search is local-only until an approved external provider is configured.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Images</CardTitle><CardDescription>Limits are enforced by the upload endpoint, not just the browser.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow image uploads</span><input type="checkbox" checked={config.attachments.imagesEnabled} onChange={(event) => setAttachment("imagesEnabled", event.target.checked)} /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Max image MB" htmlFor="aqi-img-mb"><Input id="aqi-img-mb" type="number" min={1} max={10} value={config.attachments.imageMaxMb} onChange={(event) => setAttachment("imageMaxMb", Number(event.target.value))} /></Field><Field label="Max images / message" htmlFor="aqi-img-n"><Input id="aqi-img-n" type="number" min={1} max={5} value={config.attachments.maxImages} onChange={(event) => setAttachment("maxImages", Number(event.target.value))} /></Field></div>
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow GIF messaging</span><input type="checkbox" checked={config.attachments.gifsEnabled} onChange={(event) => setAttachment("gifsEnabled", event.target.checked)} /></label>
-              <div className="grid gap-3 sm:grid-cols-2"><Field label="Max GIF MB" htmlFor="aqi-gif-mb"><Input id="aqi-gif-mb" type="number" min={1} max={10} value={config.attachments.gifMaxMb} onChange={(event) => setAttachment("gifMaxMb", Number(event.target.value))} /></Field><Field label="Max GIFs / message" htmlFor="aqi-gif-n"><Input id="aqi-gif-n" type="number" min={1} max={2} value={config.attachments.maxGifs} onChange={(event) => setAttachment("maxGifs", Number(event.target.value))} /></Field></div>
-              <div className="rounded-xl border border-line bg-surface-2 p-3 text-[12px] text-ink-2">GIF provider: <strong className="text-ink-2">local upload only</strong>. External GIF search is not configured, so no third-party key or request is fabricated.</div>
             </CardContent>
           </Card>
           <Card>

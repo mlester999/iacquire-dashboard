@@ -6,7 +6,7 @@ import { DEFAULT_AQI_CONFIG, deleteAqiConversation, getAqiConversation, createAq
 import { attachmentPromptContext, claimAqiAttachments, listAqiAttachments, readAqiAttachment, uploadAqiAttachment } from "@/server/aqi/attachments";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64");
-const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
+
 
 function viewerFor(ctx: ReturnType<typeof ctxFor>): AqiViewer {
   return { user: ctx.user, org: { orgId: ctx.org.orgId, name: ctx.org.name, kind: ctx.org.kind, role: ctx.org.role }, permissions: ctx.permissions, can: ctx.can, agencyRole: null };
@@ -73,16 +73,6 @@ describe("AQi private attachments", () => {
     expect(file.rows[0]?.status).toBe("deleted");
   });
 
-  it("accepts a local GIF and preserves its animated-media kind", async () => {
-    const org = await createOrg({ name: "AQi GIF Audit" });
-    const owner = await createUser();
-    await addMember(org.id, owner.id, "owner");
-    const viewer = viewerFor(ctxFor(owner, org, "owner"));
-    const conversation = await createAqiConversation(viewer, "/overview");
-    const gif = await uploadAqiAttachment(viewer, { name: "wave.gif", mime: "image/gif", bytes: GIF, conversationId: conversation.id }, DEFAULT_AQI_CONFIG.attachments);
-    expect(gif.attachment).toMatchObject({ kind: "gif", mimeType: "image/gif", extractionStatus: "not_applicable" });
-  });
-
   it("accepts a bounded MP4 and reads its duration on the server", async () => {
     const org = await createOrg({ name: "AQi Video Audit" });
     const owner = await createUser();
@@ -114,6 +104,7 @@ describe("AQi private attachments", () => {
     const otherViewer = viewerFor(ctxFor(other, org, "viewer"));
     const conversation = await createAqiConversation(viewer, "/overview");
     await expect(uploadAqiAttachment(viewer, { name: "run.exe", mime: "application/octet-stream", bytes: Buffer.from("MZ"), conversationId: conversation.id }, DEFAULT_AQI_CONFIG.attachments)).rejects.toThrow(/file type/i);
+    await expect(uploadAqiAttachment(viewer, { name: "wave.gif", mime: "image/gif", bytes: Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64"), conversationId: conversation.id }, DEFAULT_AQI_CONFIG.attachments)).rejects.toThrow(/file type/i);
     await expect(uploadAqiAttachment(viewer, { name: "large.png", mime: "image/png", bytes: Buffer.concat([PNG, Buffer.alloc(11 * 1024 * 1024)]), conversationId: conversation.id }, DEFAULT_AQI_CONFIG.attachments)).rejects.toThrow(/too large/i);
     const image = await uploadAqiAttachment(viewer, { name: "owner.png", mime: "image/png", bytes: PNG, conversationId: conversation.id }, DEFAULT_AQI_CONFIG.attachments);
     await expect(readAqiAttachment(otherViewer, image.attachment.id)).rejects.toThrow(/not found/i);

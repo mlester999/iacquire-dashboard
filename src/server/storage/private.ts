@@ -19,7 +19,7 @@ const MIMES: Record<PrivateBucket, string[]> = {
   "portfolio-assets": ["image/png", "image/jpeg", "image/webp"],
   "brand-assets": ["image/png", "image/jpeg", "image/webp"],
   "aqi-attachments": [
-    "image/png", "image/jpeg", "image/webp", "image/gif",
+    "image/png", "image/jpeg", "image/webp",
     "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain", "text/csv", "video/mp4", "video/webm",
   ],
@@ -63,7 +63,6 @@ function validSignature(bytes: Buffer, mime: string) {
   if (mime === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (mime === "image/jpeg") return bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
   if (mime === "image/webp") return bytes.subarray(0, 4).equals(Buffer.from("RIFF")) && bytes.subarray(8, 12).equals(Buffer.from("WEBP"));
-  if (mime === "image/gif") return bytes.subarray(0, 6).toString() === "GIF87a" || bytes.subarray(0, 6).toString() === "GIF89a";
   if (mime === "video/mp4") return bytes.subarray(4, 8).toString() === "ftyp";
   if (mime === "video/webm") return bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   if (mime.includes("wordprocessingml")) return bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4]));

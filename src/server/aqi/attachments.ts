@@ -9,13 +9,12 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { readPrivateFile, removePrivateFile, uploadPrivateFile } from "@/server/storage/private";
 import type { AqiViewer } from "@/server/aqi/access";
 
-export type AqiAttachmentKind = "image" | "gif" | "document" | "video";
+export type AqiAttachmentKind = "image" | "document" | "video";
 export interface AqiAttachmentLimits {
   imagesEnabled: boolean; imageMaxMb: number; maxImages: number;
   documentsEnabled: boolean; documentMaxMb: number; maxDocuments: number;
   videosEnabled: boolean; videoMaxMb: number; maxVideos: number; videoMaxSeconds: number;
-  gifsEnabled: boolean; gifMaxMb: number; maxGifs: number;
-  visionEnabled: boolean; videoAnalysisEnabled: boolean; gifProvider: "local"; attachmentContextTokens: number;
+  visionEnabled: boolean; videoAnalysisEnabled: boolean; attachmentContextTokens: number;
   storageQuotaMb: number; retentionDays: number;
 }
 export interface AqiAttachmentView {
@@ -36,7 +35,6 @@ const TYPES: Record<string, { kind: AqiAttachmentKind; mime: string; ext: string
   jpg: { kind: "image", mime: "image/jpeg", ext: "jpg" },
   jpeg: { kind: "image", mime: "image/jpeg", ext: "jpg" },
   webp: { kind: "image", mime: "image/webp", ext: "webp" },
-  gif: { kind: "gif", mime: "image/gif", ext: "gif" },
   pdf: { kind: "document", mime: "application/pdf", ext: "pdf" },
   docx: { kind: "document", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ext: "docx" },
   txt: { kind: "document", mime: "text/plain", ext: "txt" },
@@ -60,16 +58,16 @@ function typeFor(name: string, declared: string | undefined) {
 }
 
 function maxBytes(kind: AqiAttachmentKind, limits: AqiAttachmentLimits): number {
-  const mb = kind === "image" ? limits.imageMaxMb : kind === "gif" ? limits.gifMaxMb : kind === "video" ? limits.videoMaxMb : limits.documentMaxMb;
+  const mb = kind === "image" ? limits.imageMaxMb : kind === "video" ? limits.videoMaxMb : limits.documentMaxMb;
   return mb * 1024 * 1024;
 }
 
 function enabled(kind: AqiAttachmentKind, limits: AqiAttachmentLimits): boolean {
-  return kind === "image" ? limits.imagesEnabled : kind === "gif" ? limits.gifsEnabled : kind === "video" ? limits.videosEnabled : limits.documentsEnabled;
+  return kind === "image" ? limits.imagesEnabled : kind === "video" ? limits.videosEnabled : limits.documentsEnabled;
 }
 
 function countLimit(kind: AqiAttachmentKind, limits: AqiAttachmentLimits): number {
-  return kind === "image" ? limits.maxImages : kind === "gif" ? limits.maxGifs : kind === "video" ? limits.maxVideos : limits.maxDocuments;
+  return kind === "image" ? limits.maxImages : kind === "video" ? limits.maxVideos : limits.maxDocuments;
 }
 
 function mp4Duration(bytes: Buffer): number | null {
@@ -159,11 +157,11 @@ async function metadata(bytes: Buffer, kind: AqiAttachmentKind): Promise<{ width
   }
   if (kind === "document") return { width: null, height: null, durationSeconds: null };
   try {
-    const info = await sharp(bytes, { animated: kind === "gif" }).metadata();
+    const info = await sharp(bytes).metadata();
     if (!info.width || !info.height) throw new Error("no dimensions");
     return { width: info.width, height: info.height, durationSeconds: null };
   } catch {
-    throw new AppError("invalid_input", "That image could not be read. Please try a PNG, JPEG, WebP or GIF.");
+    throw new AppError("invalid_input", "That image could not be read. Please try a PNG, JPEG or WebP.");
   }
 }
 
