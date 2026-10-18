@@ -9,8 +9,15 @@ import {
   Check,
   ChevronLeft,
   Copy,
+  Download,
+  FileText,
+  Film,
   History,
+  Image as ImageIcon,
   LifeBuoy,
+  Loader2,
+  Paperclip,
+  Smile,
   Maximize2,
   Minimize2,
   Pencil,
@@ -29,10 +36,11 @@ import { LogoMark } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/primitives";
+import { EmojiPicker } from "@/components/aqi/emoji-picker";
 import { cn, relativeTime } from "@/lib/utils";
 
 interface Bootstrap {
-  config: { identity: string; description: string; greeting: string; tone: string };
+  config: { identity: string; description: string; greeting: string; tone: string; attachments: { imagesEnabled: boolean; imageMaxMb: number; maxImages: number; documentsEnabled: boolean; documentMaxMb: number; maxDocuments: number; videosEnabled: boolean; videoMaxMb: number; maxVideos: number; videoMaxSeconds: number; gifsEnabled: boolean; gifMaxMb: number; maxGifs: number; visionEnabled: boolean; videoAnalysisEnabled: boolean; gifProvider: "local"; attachmentContextTokens: number; storageQuotaMb: number; retentionDays: number } };
   suggestions: Array<{ id: string; question: string }>;
   page: { path: string; label: string; description: string } | null;
   allowedPaths: string[];
@@ -77,6 +85,41 @@ interface Message {
   createdAt: string;
   sources?: Array<{ id: string; title: string; category: string }>;
   citationWarning?: string | null;
+  attachments?: AqiAttachment[];
+}
+
+interface AqiAttachment {
+  id: string;
+  kind: "image" | "gif" | "document" | "video";
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  extractionStatus: "not_applicable" | "ready" | "failed" | "unsupported";
+  url: string;
+}
+
+const DEFAULT_ATTACHMENT_LIMITS = {
+  imagesEnabled: true, imageMaxMb: 10, maxImages: 5,
+  documentsEnabled: true, documentMaxMb: 20, maxDocuments: 5,
+  videosEnabled: true, videoMaxMb: 50, maxVideos: 1, videoMaxSeconds: 60,
+  gifsEnabled: true, gifMaxMb: 10, maxGifs: 2,
+  visionEnabled: false, videoAnalysisEnabled: false, gifProvider: "local" as const,
+  attachmentContextTokens: 4000, storageQuotaMb: 500, retentionDays: 90,
+};
+
+interface PendingAttachment extends Partial<AqiAttachment> {
+  key: string;
+  name: string;
+  kind: AqiAttachment["kind"];
+  size: number;
+  progress: number;
+  status: "uploading" | "ready" | "failed";
+  error?: string;
+  xhr?: XMLHttpRequest;
+  file?: File;
 }
 
 type View = "chat" | "history";
@@ -111,6 +154,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [bootstrap, setBootstrap] = React.useState<Bootstrap | null>(null);
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [conversationId, setConversationId] = React.useState<string | null>(null);
+  const conversationRef = React.useRef<string | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [streaming, setStreaming] = React.useState(false);
@@ -133,6 +177,13 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [closeConfirm, setCloseConfirm] = React.useState(false);
   const [newSession, setNewSession] = React.useState(false);
   const [loadingConversation, setLoadingConversation] = React.useState(false);
+  const [pending, setPending] = React.useState<PendingAttachment[]>([]);
+  const [dragOver, setDragOver] = React.useState(false);
+  const [emojiOpen, setEmojiOpen] = React.useState(false);
+  const [gifOpen, setGifOpen] = React.useState(false);
+  const [preview, setPreview] = React.useState<AqiAttachment | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const gifInputRef = React.useRef<HTMLInputElement>(null);
   const abortRef = React.useRef<AbortController | null>(null);
   const launcherRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -188,6 +239,9 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       if (event.key === "Escape") {
         if (closeConfirm) setCloseConfirm(false);
         else if (supportOpen) setSupportOpen(false);
+        else if (preview) setPreview(null);
+        else if (emojiOpen) setEmojiOpen(false);
+        else if (gifOpen) setGifOpen(false);
         else requestClose();
       }
     };
@@ -276,9 +330,104 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     }
   }
 
+  const limits = bootstrap?.config.attachments ?? DEFAULT_ATTACHMENT_LIMITS;
+  const readyAttachments = pending.filter((item) => item.status === "ready" && item.id);
+  const uploadsBusy = pending.some((item) => item.status === "uploading");
+
+  function kindFor(file: File): PendingAttachment["kind"] | null {
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (file.type === "image/gif" || ext === "gif") return "gif";
+    if (["image/png", "image/jpeg", "image/webp"].includes(file.type)) return "image";
+    if (["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/csv"].includes(file.type)) return "document";
+    if (["video/mp4", "video/webm"].includes(file.type)) return "video";
+    return null;
+  }
+
+  async function ensureConversation(): Promise<string> {
+    if (conversationRef.current) return conversationRef.current;
+    const res = await fetch("/api/aqi/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: pathname }) });
+    const data = (await res.json().catch(() => null)) as { conversation?: { id: string }; error?: string } | null;
+    if (!res.ok || !data?.conversation) throw new Error(data?.error ?? "AQi could not start a conversation.");
+    conversationRef.current = data.conversation.id;
+    setConversationId(data.conversation.id);
+    setNewSession(true);
+    return data.conversation.id;
+  }
+
+  function updatePending(key: string, patch: Partial<PendingAttachment>) {
+    setPending((current) => current.map((item) => item.key === key ? { ...item, ...patch } : item));
+  }
+
+  async function uploadFile(file: File, forcedKind?: "gif") {
+    if (!limits) return;
+    const kind = forcedKind ?? kindFor(file);
+    if (!kind) { showError("I can't work with this file type yet. Please try a supported format."); return; }
+    const allowed = kind === "image" ? limits.imagesEnabled : kind === "gif" ? limits.gifsEnabled : kind === "video" ? limits.videosEnabled : limits.documentsEnabled;
+    if (!allowed) { showError(`${kind === "video" ? "Video" : kind === "document" ? "Document" : kind === "gif" ? "GIF" : "Image"} attachments are turned off for AQi.`); return; }
+    const maxMb = kind === "image" ? limits.imageMaxMb : kind === "gif" ? limits.gifMaxMb : kind === "video" ? limits.videoMaxMb : limits.documentMaxMb;
+    if (file.size > maxMb * 1024 * 1024) { showError(`This file is too large. Please choose a file under ${maxMb} MB.`); return; }
+    const maxCount = kind === "image" ? limits.maxImages : kind === "gif" ? limits.maxGifs : kind === "video" ? limits.maxVideos : limits.maxDocuments;
+    if (pending.filter((item) => item.kind === kind).length >= maxCount) { showError(`You can attach up to ${maxCount} ${kind === "document" ? "documents" : `${kind}s`} per message.`); return; }
+    const key = crypto.randomUUID();
+    setPending((current) => [...current, { key, name: file.name, kind, size: file.size, progress: 0, status: "uploading", file }]);
+    try {
+      const conv = await ensureConversation();
+      const xhr = new XMLHttpRequest();
+      updatePending(key, { xhr });
+      xhr.upload.onprogress = (event) => { if (event.lengthComputable) updatePending(key, { progress: Math.round((event.loaded / event.total) * 100) }); };
+      xhr.onerror = () => updatePending(key, { status: "failed", error: "Upload failed. Please try again." });
+      xhr.onabort = () => setPending((current) => current.filter((item) => item.key !== key));
+      xhr.onload = () => {
+        const data = (() => { try { return JSON.parse(xhr.responseText) as { attachment?: AqiAttachment; conversationId?: string; error?: string }; } catch { return null; } })();
+        if (xhr.status >= 200 && xhr.status < 300 && data?.attachment) {
+          if (data.conversationId) setConversationId(data.conversationId);
+          updatePending(key, { ...data.attachment, key, name: data.attachment.filename, size: data.attachment.sizeBytes, progress: 100, status: "ready", file: undefined });
+        } else {
+          updatePending(key, { status: "failed", error: data?.error ?? "Upload failed. Please try again." });
+        }
+      };
+      xhr.open("POST", "/api/aqi/attachments");
+      const form = new FormData();
+      form.append("file", file);
+      form.append("conversationId", conv);
+      xhr.send(form);
+    } catch (err) {
+      updatePending(key, { status: "failed", error: err instanceof Error ? err.message : "Upload failed. Please try again." });
+    }
+  }
+
+  async function addFiles(files: FileList | File[]) {
+    for (const file of Array.from(files).slice(0, 10)) await uploadFile(file);
+  }
+
+  React.useEffect(() => { conversationRef.current = conversationId; }, [conversationId]);
+
+  function cancelPending(item: PendingAttachment) {
+    item.xhr?.abort();
+    if (item.id) void fetch(`/api/aqi/attachments/${item.id}`, { method: "DELETE" });
+    setPending((current) => current.filter((entry) => entry.key !== item.key));
+  }
+
+  function retryPending(item: PendingAttachment) {
+    if (!item.file) return;
+    setPending((current) => current.filter((entry) => entry.key !== item.key));
+    void uploadFile(item.file);
+  }
+
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? input.length;
+    const end = el?.selectionEnd ?? input.length;
+    const next = `${input.slice(0, start)}${emoji}${input.slice(end)}`;
+    setInput(next);
+    window.requestAnimationFrame(() => { if (!el) return; el.focus(); el.setSelectionRange(start + emoji.length, start + emoji.length); });
+  }
+
   async function send(text: string) {
     const clean = text.trim();
-    if (!clean || streaming) return;
+    if (streaming || uploadsBusy) return;
+    if (pending.some((item) => item.status === "failed")) { showError("One attachment didn't upload. Retry or remove it before sending."); return; }
+    if (!clean && !readyAttachments.length) return;
     clearError();
     setInput("");
     let id = conversationId;
@@ -291,6 +440,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       feedbackRating: null,
       feedbackComment: null,
       createdAt: new Date().toISOString(),
+      attachments: readyAttachments.map(({ id, kind, filename, mimeType, sizeBytes, width, height, durationSeconds, extractionStatus, url }) => ({
+        id: id!, kind: kind!, filename: filename!, mimeType: mimeType!, sizeBytes: sizeBytes!, width: width ?? null, height: height ?? null,
+        durationSeconds: durationSeconds ?? null, extractionStatus: extractionStatus ?? "not_applicable", url: url!,
+      })),
     };
     const assistantMessage: Message = {
       id: `local-assistant-${Date.now()}`,
@@ -321,7 +474,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       const res = await fetch("/api/aqi/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: id, message: clean, path: pathname }),
+        body: JSON.stringify({ conversationId: id, message: clean, path: pathname, attachmentIds: readyAttachments.map((item) => item.id) }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -351,6 +504,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
             const saved = { ...(event.message as Message), sources: Array.isArray(event.sources) ? (event.sources as Message["sources"]) : undefined };
             setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? saved : message)));
             setStreaming(false);
+            setPending([]);
             void loadConversations();
           } else if (event.type === "error") {
             throw new AqiUiError(String(event.message), String(event.code ?? "unexpected"), event.diagnostic as ErrorDiagnostic | undefined);
@@ -590,7 +744,24 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                             <div className={cn("max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", message.role === "user" ? "bg-primary text-white" : "border border-line bg-surface text-ink")}>
                               {message.role === "assistant" ? (
                                 <>
-                                  {message.content ? <Markdown>{internalLinksAllowed(message.content, bootstrap?.allowedPaths ?? [])}</Markdown> : <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span>}
+                                  {message.content ? <Markdown>{internalLinksAllowed(message.content, bootstrap?.allowedPaths ?? [])}</Markdown> : message.role === "assistant" ? <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span> : null}
+                          {message.attachments?.length ? (
+                            <div className="mt-2 grid grid-cols-2 gap-1.5">
+                              {message.attachments.map((attachment) => attachment.kind === "image" || attachment.kind === "gif" ? (
+                                <button key={attachment.id} type="button" onClick={() => setPreview(attachment)} className="group overflow-hidden rounded-xl border border-line bg-surface-2 text-left" aria-label={`Preview ${attachment.filename}`}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={attachment.url} alt={attachment.filename} className="h-24 w-full object-cover transition group-hover:scale-[1.02]" />
+                                  <span className="block truncate px-2 py-1 text-[10px] text-muted">{attachment.filename}</span>
+                                </button>
+                              ) : attachment.kind === "video" ? (
+                                <video key={attachment.id} src={attachment.url} controls preload="metadata" className="col-span-2 max-h-44 w-full rounded-xl border border-line bg-black" aria-label={attachment.filename} />
+                              ) : (
+                                <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-2.5 py-2 text-[11.5px] text-ink-2 hover:bg-surface-3">
+                                  <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}</span><Download className="size-3.5 shrink-0 text-muted" />
+                                </a>
+                              ))}
+                            </div>
+                          ) : null}
                                   {message.status === "streaming" && message.content && <span className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-primary align-middle" aria-label="AQi is writing" />}
                                   {message.status !== "streaming" && message.content && (
                                     <div className="mt-2 flex items-center gap-0.5 border-t border-line/70 pt-1.5">
@@ -628,7 +799,26 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                                   )}
                                 </>
                               ) : (
-                                <p className="whitespace-pre-wrap">{message.content}</p>
+                                <>
+                                  <p className="whitespace-pre-wrap">{message.content}</p>
+                                  {message.attachments?.length ? (
+                                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                                      {message.attachments.map((attachment) => attachment.kind === "image" || attachment.kind === "gif" ? (
+                                        <button key={attachment.id} type="button" onClick={() => setPreview(attachment)} className="group overflow-hidden rounded-xl border border-white/30 bg-white text-left" aria-label={`Preview ${attachment.filename}`}>
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={attachment.url} alt={attachment.filename} className="h-24 w-full object-cover transition group-hover:scale-[1.02]" />
+                                          <span className="block truncate px-2 py-1 text-[10px] text-ink">{attachment.filename}</span>
+                                        </button>
+                                      ) : attachment.kind === "video" ? (
+                                        <video key={attachment.id} src={attachment.url} controls preload="metadata" className="col-span-2 max-h-44 w-full rounded-xl border border-white/20 bg-black" aria-label={attachment.filename} />
+                                      ) : (
+                                        <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-white/30 bg-white px-2.5 py-2 text-[11.5px] text-ink hover:bg-white/90">
+                                          <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}</span><Download className="size-3.5 shrink-0 text-muted" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </>
                               )}
                             </div>
                           </div>
@@ -669,28 +859,67 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                     ) : canRetry ? (
                       <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-muted"><span>That answer didn&apos;t finish.</span><button type="button" onClick={retry} className="flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-ink-2 hover:bg-surface"><RotateCcw className="size-3" /> Retry</button></div>
                     ) : null}
-                    <div className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-1.5 shadow-soft focus-within:border-primary/40">
-                      <Textarea
-                        ref={textareaRef}
-                        value={input}
-                        onChange={(event) => setInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            void send(input);
-                          }
-                        }}
-                        rows={1}
-                        maxLength={2000}
-                        placeholder={bootstrap && !bootstrap.health.available ? "AQi is unavailable until a provider is connected" : "Ask about iAcquireOS…"}
-                        disabled={Boolean(bootstrap && !bootstrap.health.available) || streaming}
-                        aria-label="Ask AQi"
-                        className="max-h-28 min-h-9 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] shadow-none focus-visible:ring-0"
-                      />
-                      <Button type="button" size="icon" variant="brand" onClick={() => void send(input)} disabled={!input.trim() || streaming || Boolean(bootstrap && !bootstrap.health.available)} aria-label="Send to AQi"><Send className="size-4" /></Button>
+                    <div
+                      className={cn("relative rounded-2xl border bg-surface p-1.5 shadow-soft transition", dragOver ? "border-primary ring-4 ring-primary/10" : "border-line focus-within:border-primary/40")}
+                      onDragOver={(event) => { event.preventDefault(); setDragOver(true); }}
+                      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(false); }}
+                      onDrop={(event) => { event.preventDefault(); setDragOver(false); void addFiles(event.dataTransfer.files); }}
+                    >
+                      {dragOver && <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-2xl bg-surface/90 text-[12px] font-medium text-primary">Drop files to attach</div>}
+                      {pending.length > 0 && (
+                        <div className="mb-1.5 flex flex-wrap gap-1.5 border-b border-line px-1 pb-2">
+                          {pending.map((item) => (
+                            <div key={item.key} className="relative flex min-w-0 items-center gap-1.5 rounded-xl border border-line bg-surface-2 p-1.5 pr-6">
+                              {item.status === "ready" && item.url && (item.kind === "image" || item.kind === "gif") ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={item.url} alt="" className="size-8 rounded-lg object-cover" />
+                              ) : item.kind === "video" && item.status === "ready" && item.url ? <video src={item.url} muted className="h-8 w-12 rounded-lg bg-black object-cover" aria-label={item.name} /> : item.kind === "video" ? <Film className="size-4 text-primary" /> : item.kind === "document" ? <FileText className="size-4 text-primary" /> : <ImageIcon className="size-4 text-primary" />}
+                              <div className="min-w-0">
+                                <p className="max-w-32 truncate text-[10.5px] font-medium text-ink-2">{item.name}</p>
+                                {item.status === "uploading" ? <div className="mt-1 flex items-center gap-1 text-[9.5px] text-muted"><Loader2 className="size-2.5 animate-spin" /> {item.progress}%</div> : item.status === "failed" ? <button type="button" onClick={() => retryPending(item)} className="text-[9.5px] font-medium text-danger-ink underline">Retry upload</button> : <p className="text-[9.5px] text-muted">Ready</p>}
+                              </div>
+                              <button type="button" onClick={() => cancelPending(item)} aria-label={`Remove ${item.name}`} className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-surface text-muted hover:text-danger-ink"><X className="size-2.5" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {emojiOpen && <EmojiPicker onClose={() => setEmojiOpen(false)} onPick={(emoji) => { insertEmoji(emoji); }} />}
+                      {gifOpen && (
+                        <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-2xl border border-line bg-surface p-3 text-[11.5px] text-muted shadow-float">
+                          <p className="font-medium text-ink">GIF search isn&apos;t configured.</p>
+                          <p className="mt-1">Upload a GIF from this device, or ask a Super Admin to configure an approved GIF provider.</p>
+                          <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => gifInputRef.current?.click()}><Film className="size-3.5" /> Choose GIF</Button>
+                        </div>
+                      )}
+                      <div className="flex items-end gap-1">
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="grid size-9 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Attach files"><Paperclip className="size-4" /></button>
+                        <button type="button" onClick={() => { setEmojiOpen((value) => !value); setGifOpen(false); }} className="grid size-9 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Choose emoji" aria-expanded={emojiOpen}><Smile className="size-4" /></button>
+                        <button type="button" onClick={() => { setGifOpen((value) => !value); setEmojiOpen(false); }} className="grid size-9 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Choose GIF" aria-expanded={gifOpen}><Film className="size-4" /></button>
+                        <Textarea
+                          ref={textareaRef}
+                          value={input}
+                          onChange={(event) => setInput(event.target.value)}
+                          onPaste={(event) => { if (event.clipboardData.files.length) { event.preventDefault(); void addFiles(event.clipboardData.files); } }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                              event.preventDefault();
+                              void send(input);
+                            }
+                          }}
+                          rows={1}
+                          maxLength={2000}
+                          placeholder="Ask about iAcquireOS…"
+                          disabled={streaming}
+                          aria-label="Ask AQi"
+                          className="max-h-28 min-h-9 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-[13px] shadow-none focus-visible:ring-0"
+                        />
+                        <Button type="button" size="icon" variant="brand" onClick={() => void send(input)} disabled={(!input.trim() && !readyAttachments.length) || streaming || uploadsBusy} aria-label="Send to AQi">{uploadsBusy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}</Button>
+                      </div>
+                      <input ref={fileInputRef} type="file" multiple hidden accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.txt,.csv,.mp4,.webm" onChange={(event) => { if (event.target.files) void addFiles(event.target.files); event.target.value = ""; }} />
+                      <input ref={gifInputRef} type="file" hidden accept="image/gif,.gif" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file, "gif"); event.target.value = ""; }} />
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
-                      <p className="text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.</p>
+                      <p className="text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.{limits ? ` Images up to ${limits.imageMaxMb} MB, documents up to ${limits.documentMaxMb} MB, video up to ${limits.videoMaxSeconds}s.` : ""}</p>
                       <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-primary hover:underline"><LifeBuoy className="size-3" /> Get help</button>
                     </div>
                   </div>
@@ -740,6 +969,21 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                   </div>
                 </>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {preview && (
+          <motion.div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPreview(null)}>
+            <motion.div role="dialog" aria-modal="true" aria-label={preview.filename} initial={{ scale: 0.98 }} animate={{ scale: 1 }} className="max-h-[90dvh] w-full max-w-2xl overflow-hidden rounded-2xl bg-surface shadow-float" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+                <p className="truncate text-[12px] font-medium text-ink">{preview.filename}</p>
+                <div className="flex items-center gap-1"><a href={preview.url} download={preview.filename} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-surface-2" aria-label="Download attachment"><Download className="size-4" /></a><button type="button" onClick={() => setPreview(null)} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-surface-2" aria-label="Close image preview"><X className="size-4" /></button></div>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview.url} alt={preview.filename} className="max-h-[75dvh] w-full object-contain" />
             </motion.div>
           </motion.div>
         )}

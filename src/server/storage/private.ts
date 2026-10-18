@@ -8,7 +8,7 @@ import { AppError } from "@/server/errors";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
 import { assertStorageAllowed } from "@/server/fairuse/service";
 
-export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets";
+export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets" | "aqi-attachments";
 export interface PrivateFileInput { userId: string; orgId: string; bucket: PrivateBucket; path: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIMES: Record<PrivateBucket, string[]> = {
@@ -18,6 +18,11 @@ const MIMES: Record<PrivateBucket, string[]> = {
   "project-uploads": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg", "text/plain", "text/markdown", "text/csv"],
   "portfolio-assets": ["image/png", "image/jpeg", "image/webp"],
   "brand-assets": ["image/png", "image/jpeg", "image/webp"],
+  "aqi-attachments": [
+    "image/png", "image/jpeg", "image/webp", "image/gif",
+    "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain", "text/csv", "video/mp4", "video/webm",
+  ],
 };
 export function validPrivateFilePath(orgId: string, key: string): boolean {
   const parts = key.split("/");
@@ -58,18 +63,22 @@ function validSignature(bytes: Buffer, mime: string) {
   if (mime === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (mime === "image/jpeg") return bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
   if (mime === "image/webp") return bytes.subarray(0, 4).equals(Buffer.from("RIFF")) && bytes.subarray(8, 12).equals(Buffer.from("WEBP"));
+  if (mime === "image/gif") return bytes.subarray(0, 6).toString() === "GIF87a" || bytes.subarray(0, 6).toString() === "GIF89a";
+  if (mime === "video/mp4") return bytes.subarray(4, 8).toString() === "ftyp";
+  if (mime === "video/webm") return bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   if (mime.includes("wordprocessingml")) return bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4]));
   return !bytes.subarray(0, 8192).includes(0);
 }
 
 /** Saves validated bytes to a private bucket. Server authorization is rechecked from PostgreSQL. */
 export async function uploadPrivateFile(input: PrivateFileInput & {
-  bytes: Buffer; contentType: string; visibility?: "client" | "internal"; filename?: string;
+  bytes: Buffer; contentType: string; visibility?: "client" | "internal"; filename?: string; maxBytes?: number;
 }) {
   const visibility = input.visibility ?? (input.bucket === "project-files" ? "internal" : "client");
   await requirePermission(input, true, visibility);
-  if (!input.bytes.length || input.bytes.length > 10 * 1024 * 1024 || !MIMES[input.bucket].includes(input.contentType) || !validSignature(input.bytes, input.contentType)) {
-    throw new AppError("invalid_input", "Choose a supported file up to 10 MB with contents matching its type.");
+  const maxBytes = Math.min(50 * 1024 * 1024, input.maxBytes ?? 10 * 1024 * 1024);
+  if (!input.bytes.length || input.bytes.length > maxBytes || !MIMES[input.bucket].includes(input.contentType) || !validSignature(input.bytes, input.contentType)) {
+    throw new AppError("invalid_input", `Choose a supported file up to ${Math.round(maxBytes / 1024 / 1024)} MB with contents matching its type.`);
   }
   // Refuses only NEW storage, and only when the agency set a limit and chose to enforce it. Nothing existing is touched.
   await assertStorageAllowed(input.orgId, input.bytes.length);

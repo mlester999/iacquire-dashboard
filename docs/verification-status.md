@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,306 tests in 101 files passed** with `--maxWorkers=2` |
+| `npm test` | **1,311 tests in 102 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -14,7 +14,7 @@ Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the
 **Apart from migration `0026` and read-only checks on the hosted database (below), nothing has been run against a hosted Supabase project, Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email provider or domain registrar.**
 The hosted Supabase project has migrations `0001`–`0026`: `0001`–`0025` were already applied when it was inspected, and `0026` was applied on 2026-10-15 at your request (atomically, with the database empty: 0 organizations, websites, versions, publications and enquiries). Read-only checks afterwards: all five new tables have row level security, the three permissions exist, `app.submit_site_form` has 16 arguments and `iaq_site_runtime` can execute it, `iaq_site_runtime` holds no table privileges, `anon`/`authenticated` hold none on the new tables, and no client role can read template content. 154 public tables, 26 migrations recorded. No deployment was made. The repository has a remote; the commits to `master` were pushed at your request.
 
-A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` were then applied on 2026-10-18 with the repository's `--only` runner, one transaction per migration. The hosted project now records `0045_ai_workforce_experience`, `0046_knowledge_document_extraction` and `0047_aqi_assistant`; 210 public tables exist. Cost-control migration `0048` remains local only.
+A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` were then applied on 2026-10-18 with the repository's `--only` runner, one transaction per migration. The hosted project now records `0045_ai_workforce_experience`, `0046_knowledge_document_extraction` and `0047_aqi_assistant`; 210 public tables exist. Cost-control migration `0048` and attachment migration `0049` remain local only. A read-only check on 2026-10-18 confirmed the hosted history still ends at `0047_aqi_assistant`, 210 public tables, and no `aqi_attachments` table.
 
 The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for `c3e1bdb` by `vercel[bot]`; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. The AQi base code is therefore deployed, but the later cost-control/support changes are committed only on the local branch and are not pushed or deployed. There is no `.github/workflows` or Vercel config in the repository; the integration is external.
 
@@ -34,10 +34,15 @@ The deployed AQi build also used its seeded `deepseek-chat` instead of the integ
 | Atomic AQi budgets, model pricing, per-user limits and concurrent reservation race | Locally verified (`tests/aqi-cost-controls.test.ts`, 4 tests; migration 0048 local only) |
 | Support escalation with consent, real Support service and duplicate suppression | Locally verified (`tests/aqi-support.test.ts`, 2 tests) |
 | Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
-| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 13 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 17 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Private image/document/GIF attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document/GIF history rendering, emoji insertion, admin settings and **0 axe violations** |
+| Attachment storage/RLS and extraction | Locally verified (5 tests): private bucket, RLS, image dimensions, GIF, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
+| GIF search provider | **Not configured**; local GIF upload is supported and clearly presented as the fallback |
+| AI image/video understanding | **Not implemented / not claimed**; media is stored, previewed and marked as not inspectable by the selected model |
 | Client-facing unavailable state and retry | Mobile 390 px browser QA passed; friendly text, no administrator/technical detail, functional Try again, **0 axe violations** |
 | Migration 0047 | **Applied to hosted Supabase 2026-10-18**; six tables, RLS policies and seeded config/knowledge/questions verified |
 | Migration 0048 | **Not applied hosted**; local only until approved |
+| Migration 0049 | **Not applied hosted**; private AQi attachment bucket/metadata, local only until approved |
 | Live provider acceptance | **Provider-level PASS** — controlled production DeepSeek `llmComplete` returned `OK` and real SSE returned one delta with usage; full deployed AQi UI remains blocked by Vercel SSO |
 
 AQi details: [aqi.md](aqi.md).

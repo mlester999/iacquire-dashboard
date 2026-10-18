@@ -21,9 +21,14 @@ knowledge, conversations, messages, feedback and usage records.
 | Citation validation and stale-knowledge warnings | Locally verified |
 | RLS and user/tenant isolation | Locally verified |
 | Provider resolution and role-aware errors | Locally verified with connected DeepSeek, status/credential failures, recovery after negative cache, client-safe messages and Super Admin diagnostics |
+| Image, document, GIF and MP4 attachments | Locally verified: private storage, ownership, RLS, extraction, image dimensions, MP4 duration, history, deletion cleanup and cross-user denial |
+| Emoji picker and composer | Locally/browser verified: categories, search, recent, cursor insertion, attachments, drag/drop, paste, progress, retry and mobile composer |
+| Local GIF messaging | Locally verified: animated GIF upload/preview; external GIF search is not configured |
+| AI image and video understanding | **Not implemented / not claimed**; media is stored, previewed and clearly marked as not inspectable by the current model |
 | Live provider acceptance | **PASS (controlled provider probe)**; full AQi UI acceptance remains blocked by Vercel SSO |
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 | Hosted migration 0048 | **Not applied**; local-only cost controls |
+| Hosted migration 0049 | **Not applied**; local-only private AQi attachment bucket and metadata |
 | Production deployment | `c3e1bdb` deployed successfully by Vercel; the AQi **base code** is live, but cost-control/support changes are committed only on the local branch and are not pushed/deployed |
 | Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed AQi build predates the resolution/error fixes |
 
@@ -72,6 +77,17 @@ prior reservations, so two simultaneous turns cannot both pass the last of a bud
 calls are rejected before they start when a budget is exhausted. See
 [`0048_aqi_cost_controls.sql`](../supabase/migrations/0048_aqi_cost_controls.sql).
 
+Migration 0049 adds private AQi chat attachments:
+
+- `aqi_attachments` — conversation/message-scoped metadata, owner, organization, private-file reference,
+  media kind, extraction status/text, image dimensions, video duration and soft-deletion state.
+- A private `aqi-attachments` Storage bucket with a 50 MB object limit and image/document/video MIME
+  allowlist.
+- `app.file_permission` and the private-file bucket/size checks are widened only for this bucket and
+  require a client `agents.use` permission. RLS restricts every row to its owner and conversation.
+- Rollback: [`0049_aqi_attachments.down.sql`](../supabase/rollbacks/0049_aqi_attachments.down.sql),
+  which refuses while attachment metadata exists.
+
 ## API
 
 - `GET /api/aqi/bootstrap?path=…` — sanitized identity, suggestions, current page, allowed paths and
@@ -82,6 +98,10 @@ calls are rejected before they start when a budget is exhausted. See
 - `POST /api/aqi/feedback` — thumbs up/down and optional comment.
 - `POST /api/aqi/support` — explicit-consent escalation through the existing Support service,
   returning the real ticket reference or an honest failure.
+- `POST /api/aqi/attachments` — same-origin authenticated multipart upload with server-side size,
+  type, count, storage-quota and content validation.
+- `GET/DELETE /api/aqi/attachments/[id]` — owner/conversation-authorized inline download (with video
+  byte ranges) and deletion of unsent attachments.
 
 All routes resolve the person from the session; none accepts a role or organization from the
 browser. AQi never executes a model-generated tool call.
@@ -113,6 +133,37 @@ pricing.
   Costs are computed from configured model prices, not invented provider invoices.
 - Budgets & pricing configures a global monthly organization budget, a per-user budget, and model
   input/output prices. A budgeted call with no configured price is rejected.
+
+## Attachments and composer
+
+- Paperclip upload, multi-file selection, drag/drop, clipboard image paste, previews, upload progress,
+  cancel and retry are implemented in the AQi composer.
+- Images: PNG/JPEG/WebP, up to 10 MB and five per message by default.
+- Documents: PDF/DOCX/TXT/CSV, up to 20 MB and five per message. PDF/DOCX text uses the existing bounded
+  extraction pipeline; extracted document text is treated as untrusted evidence and cited as `[A1]`
+  separately from platform knowledge `[K1]`.
+- GIFs: local animated-GIF upload, up to 10 MB and two per message. External GIF search remains
+  unconfigured and is shown as such; no third-party key or request is invented.
+- Video: MP4/WebM, up to 50 MB and 60 seconds, one per message. MP4 duration is parsed server-side;
+  WebM is accepted only when its duration is readable. Video is playable in history but has no AI
+  analysis.
+- Emoji picker: categories, search, recent emoji through local storage, cursor insertion, Escape/outside
+  close and keyboard buttons.
+- The selected text model receives extracted document text only. It never receives image/video/GIF
+  payloads and is instructed not to describe visual content. This is a stated limitation, not a fake
+  vision capability.
+
+## Modality matrix
+
+| Provider / model | Text | Uploaded images | Uploaded documents | Uploaded video |
+| --- | --- | --- | --- | --- |
+| DeepSeek `deepseek-flash` (production, live probe) | **Yes** | Stored/previewed; **not sent** | Extracted text sent as untrusted context | Stored/playable; **not analysed** |
+| OpenAI-compatible (local SSE tests) | Yes | Not sent | Extracted text sent | Not analysed |
+| Anthropic (local SSE tests) | Yes | Not sent | Extracted text sent | Not analysed |
+
+No image/video/GIF payload is sent to a provider, and no vision or video-analysis capability is claimed.
+The admin UI labels both as unavailable rather than implying they work. Document understanding is
+text extraction, not a multimodal model call.
 
 ## Security and honest limits
 
@@ -152,7 +203,7 @@ pricing.
 ## Verification commands
 
 ```bash
-npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
+npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-attachments.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
 npm run typecheck
 npm run lint
 npm run build
@@ -162,8 +213,10 @@ Browser QA was run against an isolated PGlite database and a local SSE provider 
 covered desktop and mobile launchers, streaming, feedback, support consent, close confirmation,
 history, expansion, the Super Admin screen, retrieval preview, budgets and axe checks.
 
-Result: **4 authenticated pages, 13 interactions, 0 console errors, 0 page errors, 0 failed requests,
-0 axe violations**, including a 390 px mobile viewport with no horizontal overflow.
+Result: **4 authenticated pages, 17 interactions, 0 console errors, 0 page errors, 0 failed requests,
+0 axe violations**, including a 390 px mobile viewport with no horizontal overflow. The interactive
+flow includes emoji insertion, image + document upload, attachment history, admin attachment settings,
+support consent, feedback, close confirmation and history.
 
 A separate 390 px browser run with no provider configured verified the client-facing unavailable
 state: friendly copy, no `Super Admin`/API-key/configuration text, a functional **Try again**

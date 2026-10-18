@@ -10,8 +10,9 @@ export const maxDuration = 120;
 
 const bodySchema = z.object({
   conversationId: z.string().uuid().nullish(),
-  message: z.string().min(1).max(2000),
+  message: z.string().max(2000).default(""),
   path: z.string().max(300).nullish(),
+  attachmentIds: z.array(z.string().uuid()).max(20).optional(),
 });
 
 export async function POST(request: Request) {
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
             conversationId: parsed.data.conversationId ?? null,
             message: parsed.data.message,
             pathname: parsed.data.path ?? null,
+            attachmentIds: parsed.data.attachmentIds,
           }, controller.signal)) {
             streamController.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
           }

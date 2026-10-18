@@ -14,7 +14,8 @@ sequence required before the local cost-control/support changes can ship.
   - deployment URL: Vercel-generated and protected by Vercel SSO.
 - The repository has **no** `.github/workflows`, Vercel config or other deployment config. The
   deployment integration is external to the repository and automatically deploys master.
-- Hosted database migrations: `0044` through `0047`; `0048_aqi_cost_controls` is **not applied**.
+- Hosted database migrations: `0044` through `0047`; `0048_aqi_cost_controls` and
+  `0049_aqi_attachments` are **not applied**.
 - Hosted public tables: 210.
 - Hosted AQi: one published configuration, 12 published knowledge entries, 8 enabled questions,
   2 messages recorded.
@@ -46,7 +47,8 @@ has not been exercised through the browser against the now-connected provider.
    - a separate Vercel/staging project and `APP_URL`;
    - its own `APP_ENCRYPTION_KEY`, `SECRET_STORE`, and provider keys.
 3. **Back up and restore-test** before touching production schema.
-4. Apply migration 0048 only to staging first.
+4. Apply migrations 0048 and 0049 only to staging first, then verify the private bucket, RLS,
+   attachment upload/read/delete and extraction.
 5. Deploy the local commit to staging; run real-provider acceptance.
 6. Only after sign-off, take a production backup, apply 0048, deploy manually, and run smoke tests.
 
@@ -127,8 +129,10 @@ They are not live-provider acceptance.
 
 - AQi base code: deployed; provider now connected and live-probed successfully, but the deployed
   build predates the resolution/error fixes.
-- AQi cost-control/support remediation: committed on the local branch, not pushed or deployed.
-- Migration 0048: local only.
+- AQi cost-control/support/attachment remediation: committed on the local branch, not pushed or deployed.
+- Migrations 0048 (cost controls) and 0049 (private attachments): local only.
+- Attachment bucket creation must be applied in staging before the attachment UI is deployed; the code
+  expects both `aqi_attachments` and the private `aqi-attachments` bucket.
 - Full backup/restore: **BLOCKED** by missing PostgreSQL backup/restore tooling and no isolated
   database host.
 - Staging-first gate: **FAIL** until automatic production deployment is frozen and staging exists.

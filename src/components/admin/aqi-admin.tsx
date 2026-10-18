@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, BookOpen, CheckCircle2, FlaskConical, History, KeyRound, Plus, RotateCcw, Save, Settings2, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { Archive, BookOpen, CheckCircle2, FlaskConical, History, KeyRound, LifeBuoy, Plus, RotateCcw, Save, Settings2, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status";
@@ -22,7 +22,7 @@ import {
 import type { AqiAdminData, AqiConfig } from "@/server/aqi/service";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 
-type Tab = "overview" | "provider" | "instructions" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets";
+type Tab = "overview" | "provider" | "instructions" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets" | "attachments";
 
 const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "overview", label: "Overview", icon: <Sparkles className="size-3.5" /> },
@@ -34,6 +34,7 @@ const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "history", label: "Version history", icon: <History className="size-3.5" /> },
   { key: "usage", label: "Usage & health", icon: <CheckCircle2 className="size-3.5" /> },
   { key: "budgets", label: "Budgets & pricing", icon: <KeyRound className="size-3.5" /> },
+  { key: "attachments", label: "Messaging & attachments", icon: <LifeBuoy className="size-3.5" /> },
 ];
 
 export function AqiAdmin({ data }: { data: AqiAdminData }) {
@@ -57,6 +58,7 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
   const [budget, setBudget] = React.useState({ enabled: globalBudget?.enabled ?? false, orgUsd: (globalBudget?.monthlyOrgMicros ?? 0) / 1_000_000, userUsd: (globalBudget?.monthlyUserMicros ?? 0) / 1_000_000 });
   const [price, setPrice] = React.useState({ model: data.published.config.model, inputUsd: 0, outputUsd: 0, enabled: true });
   const [budgetBusy, setBudgetBusy] = React.useState(false);
+  const setAttachment = <K extends keyof typeof config.attachments>(key: K, value: (typeof config.attachments)[K]) => set("attachments", { ...config.attachments, [key]: value });
   const [now] = React.useState(() => Date.now());
   const changed = (Object.keys(config) as Array<keyof AqiConfig>).filter((key) => config[key] !== data.published.config[key]);
 
@@ -419,6 +421,33 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
                   </ul>
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {tab === "attachments" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>Images and GIFs</CardTitle><CardDescription>Limits are enforced by the upload endpoint, not just the browser. GIF search is local-only until an approved external provider is configured.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow image uploads</span><input type="checkbox" checked={config.attachments.imagesEnabled} onChange={(event) => setAttachment("imagesEnabled", event.target.checked)} /></label>
+              <div className="grid gap-3 sm:grid-cols-2"><Field label="Max image MB" htmlFor="aqi-img-mb"><Input id="aqi-img-mb" type="number" min={1} max={10} value={config.attachments.imageMaxMb} onChange={(event) => setAttachment("imageMaxMb", Number(event.target.value))} /></Field><Field label="Max images / message" htmlFor="aqi-img-n"><Input id="aqi-img-n" type="number" min={1} max={5} value={config.attachments.maxImages} onChange={(event) => setAttachment("maxImages", Number(event.target.value))} /></Field></div>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow GIF messaging</span><input type="checkbox" checked={config.attachments.gifsEnabled} onChange={(event) => setAttachment("gifsEnabled", event.target.checked)} /></label>
+              <div className="grid gap-3 sm:grid-cols-2"><Field label="Max GIF MB" htmlFor="aqi-gif-mb"><Input id="aqi-gif-mb" type="number" min={1} max={10} value={config.attachments.gifMaxMb} onChange={(event) => setAttachment("gifMaxMb", Number(event.target.value))} /></Field><Field label="Max GIFs / message" htmlFor="aqi-gif-n"><Input id="aqi-gif-n" type="number" min={1} max={2} value={config.attachments.maxGifs} onChange={(event) => setAttachment("maxGifs", Number(event.target.value))} /></Field></div>
+              <div className="rounded-xl border border-line bg-surface-2 p-3 text-[12px] text-ink-2">GIF provider: <strong className="text-ink-2">local upload only</strong>. External GIF search is not configured, so no third-party key or request is fabricated.</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Documents and video</CardTitle><CardDescription>Documents use the existing bounded PDF/DOCX/TXT/CSV extraction pipeline. Video is stored and playable; AI video analysis is unavailable.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow document uploads</span><input type="checkbox" checked={config.attachments.documentsEnabled} onChange={(event) => setAttachment("documentsEnabled", event.target.checked)} /></label>
+              <div className="grid gap-3 sm:grid-cols-2"><Field label="Max document MB" htmlFor="aqi-doc-mb"><Input id="aqi-doc-mb" type="number" min={1} max={20} value={config.attachments.documentMaxMb} onChange={(event) => setAttachment("documentMaxMb", Number(event.target.value))} /></Field><Field label="Max documents / message" htmlFor="aqi-doc-n"><Input id="aqi-doc-n" type="number" min={1} max={5} value={config.attachments.maxDocuments} onChange={(event) => setAttachment("maxDocuments", Number(event.target.value))} /></Field></div>
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow video uploads</span><input type="checkbox" checked={config.attachments.videosEnabled} onChange={(event) => setAttachment("videosEnabled", event.target.checked)} /></label>
+              <div className="grid gap-3 sm:grid-cols-2"><Field label="Max video MB" htmlFor="aqi-vid-mb"><Input id="aqi-vid-mb" type="number" min={1} max={50} value={config.attachments.videoMaxMb} onChange={(event) => setAttachment("videoMaxMb", Number(event.target.value))} /></Field><Field label="Max video seconds" htmlFor="aqi-vid-sec"><Input id="aqi-vid-sec" type="number" min={1} max={60} value={config.attachments.videoMaxSeconds} onChange={(event) => setAttachment("videoMaxSeconds", Number(event.target.value))} /></Field></div>
+              <Field label="Max documents context tokens" htmlFor="aqi-att-context"><Input id="aqi-att-context" type="number" min={500} max={16000} value={config.attachments.attachmentContextTokens} onChange={(event) => setAttachment("attachmentContextTokens", Number(event.target.value))} /></Field>
+              <div className="grid gap-3 sm:grid-cols-2"><Field label="Workspace storage quota (MB)" htmlFor="aqi-att-quota"><Input id="aqi-att-quota" type="number" min={1} max={100000} value={config.attachments.storageQuotaMb} onChange={(event) => setAttachment("storageQuotaMb", Number(event.target.value))} /></Field><Field label="Attachment retention (days)" htmlFor="aqi-att-retention"><Input id="aqi-att-retention" type="number" min={1} max={3650} value={config.attachments.retentionDays} onChange={(event) => setAttachment("retentionDays", Number(event.target.value))} /></Field></div>
+              <div className="space-y-2 rounded-xl border border-line bg-surface-2 p-3 text-[12px] text-ink-2"><p><strong className="text-ink">Image understanding:</strong> unavailable with the current model; images are uploaded and previewed but not sent as vision payloads.</p><p><strong className="text-ink-2">Video understanding:</strong> unavailable; video is stored and playable only.</p><p><strong className="text-ink-2">Retention:</strong> cleanup is server-owned; this setting records the intended policy but does not delete files automatically.</p></div>
             </CardContent>
           </Card>
         </div>
