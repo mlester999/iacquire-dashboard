@@ -36,8 +36,9 @@ knowledge, conversations, messages, feedback and usage records.
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 | Hosted migration 0048 | **Applied 2026-10-18**; budget/pricing tables and usage cost fields |
 | Hosted migration 0049 | **Applied 2026-10-18**; private AQi attachment bucket, metadata, RLS and four policies |
-| Migration 0051 (conversation title provenance) | **Prepared locally only**; not applied to the hosted project |
-| Migration 0052 (conversation lifecycle) | **Prepared locally only**; `saved_at`/`saved_by`, existing conversations backfilled as saved. Not applied to the hosted project |
+| Hosted migration 0050 | **Applied 2026-10-19**; two approved conversational knowledge rows added |
+| Migration 0051 (conversation title provenance) | **Applied hosted 2026-10-19**; title provenance columns and backfill verified |
+| Migration 0052 (conversation lifecycle) | **Applied hosted 2026-10-19**; `saved_at`/`saved_by`, saved index and backfill verified (2 existing conversations saved) |
 | Production deployment | **`f74afac` deployed successfully by Vercel**; provider, budget, support, attachment/composer and GIF-removal changes are live. Conversational-intelligence changes in this working tree are **not deployed** |
 | Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed build includes the resolution/error fixes |
 
@@ -105,7 +106,7 @@ Migration 0051 adds conversation title provenance:
 - Existing non-placeholder titles are backfilled as `manual`, so a migration can never cause a real
   name to be overwritten by later generation.
 - Rollback: [`0051_aqi_conversation_titles.down.sql`](../supabase/rollbacks/0051_aqi_conversation_titles.down.sql).
-  Prepared and tested locally; **not applied to the hosted project**.
+  Applied hosted 2026-10-19; tested locally.
 
 Migration 0052 adds the explicit conversation lifecycle:
 
@@ -117,7 +118,7 @@ Migration 0052 adds the explicit conversation lifecycle:
 - `aqi_conversations_saved_idx` supports the user/org history query.
 - Rollback: [`0052_aqi_conversation_lifecycle.down.sql`](../supabase/rollbacks/0052_aqi_conversation_lifecycle.down.sql).
   Temporary rows are hidden from history immediately and purged lazily after 24 hours of inactivity;
-  saved rows are never touched by that cleanup. Prepared locally; **not applied to the hosted project**.
+  saved rows are never touched by that cleanup. Applied hosted 2026-10-19; tested locally.
 
 ## API
 
@@ -363,10 +364,11 @@ text extraction, not a multimodal model call.
 - Failed resolutions are not cached. A successful resolution is cached briefly; integration tests
   and changes invalidate it.
 - Draft tests use the editor's current configuration, including unsaved changes.
-- Hosted migrations through 0049 are applied. Prepared migrations 0050 (conversational knowledge),
-  0051 (conversation titles) and 0052 (conversation lifecycle) are **local only** and have not been
-  applied to the hosted project. The deployed application build still needs to be promoted before the
-  new budget and attachment code is live.
+- Hosted migrations through 0052 are applied; 0050–0052 were applied on 2026-10-19 and verified
+  (`schema_migrations` has no AQi entries pending, the lifecycle columns/index exist, both existing
+  conversations were backfilled as saved and the two conversational-knowledge rows were inserted).
+  The deployed application build still needs to be promoted before the new budget and attachment
+  code is live.
 - The production LLM connection is now `connected`, and controlled provider probes succeeded.
   The deployed AQi build is older than the resolution/error fixes, and the deployment URL is Vercel
   SSO protected, so the full deployed AQi UI was not tested from this environment.

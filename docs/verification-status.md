@@ -50,7 +50,7 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 | Migration 0047 | **Applied to hosted Supabase 2026-10-18**; six tables, RLS policies and seeded config/knowledge/questions verified |
 | Migration 0048 | **Applied hosted 2026-10-18** |
 | Migration 0049 | **Applied hosted 2026-10-18**; private bucket, metadata table, RLS and four policies verified |
-| Migrations 0050–0052 | **Prepared and tested locally only**: conversational knowledge, title provenance and conversation lifecycle. Not applied to the hosted project |
+| Migrations 0050–0052 | **Applied hosted Supabase 2026-10-19**; pending AQi list empty, `saved_at`/`saved_by` and `title_source`/`title_generated_at` present, `aqi_conversations_saved_idx` present, 2 existing conversations backfilled as saved and 2 conversational-knowledge rows inserted |
 | Live provider acceptance | **Provider-level PASS** — controlled production DeepSeek `llmComplete` returned `OK` and real SSE returned one delta with usage; full deployed AQi UI remains blocked by Vercel SSO |
 
 AQi details: [aqi.md](aqi.md).
