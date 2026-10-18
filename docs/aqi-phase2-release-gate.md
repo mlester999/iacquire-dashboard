@@ -10,7 +10,7 @@ sequence required before the local cost-control/support changes can ship.
 
 - GitHub records a successful **Production** deployment by `vercel[bot]`:
   - environment: `Production`
-  - SHA: `48de90c` (production deployment succeeded after the authorized push)
+  - SHA: `f74afac` (production deployment succeeded after the authorized push)
   - state: `success`
   - deployment URL: Vercel-generated and protected by Vercel SSO.
 - The repository has **no** `.github/workflows`, Vercel config or other deployment config. The
@@ -30,8 +30,8 @@ sequence required before the local cost-control/support changes can ship.
   resolution for 30 seconds. The local fix uses the integration model by default, removes negative
   caching, and rechecks on send.
 - Production app version and database version match for migrations through 0047. The local
-  cost-control/support/attachment changes are included in `48de90c`. The database is at 0049 and
-  the deployed app build matches these migrations.
+  cost-control/support/attachment and GIF-removal changes are included in `f74afac`. The database is
+  at 0049. The conversational-intelligence changes are local-only and require the next approved release.
 
 The earlier “local-only migrations” report was correct when written. The later user-authorized
 `--only` migration run applied 0045–0047, and the subsequent master push triggered the external

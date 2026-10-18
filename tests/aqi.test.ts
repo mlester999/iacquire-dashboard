@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { withSystem } from "@/server/db";
+import { withSystem, withUser } from "@/server/db";
 import { saveCredential } from "@/server/security/credentials";
 import { invalidateLlmConfig, resolveLlmConfig, resolveLlmConfigDetailed } from "@/server/llm/client";
 import { effectiveAqiModel } from "@/server/aqi/service";
@@ -90,7 +90,7 @@ describe("AQi context and knowledge", () => {
   it("removes citations that do not map to retrieved sources", () => {
     const result = validateAqiCitations("Use [K1] but not [K3].", [{ id: "a", title: "A", category: "C" }]);
     expect(result.cited).toEqual([1]);
-    expect(result.content).toBe("Use [K1] but not .");
+    expect(result.content).toBe("Use ¹ but not .");
     expect(result.warning).toMatch(/did not match/);
   });
 
@@ -157,6 +157,27 @@ describe("AQi context and knowledge", () => {
 });
 
 describe("AQi conversation privacy", () => {
+  it("persists, changes and clears feedback on the correct assistant message", async () => {
+    const conversation = await createAqiConversation(viewer, "/overview");
+    const messageId = await withUser(owner.id, async (db) => {
+      const { rows } = await db.query<{ id: string }>(
+        "insert into aqi_messages (conversation_id,org_id,user_id,role,content,status) values ($1,$2,$3,'assistant','Answer','complete') returning id",
+        [conversation.id, org.id, owner.id],
+      );
+      return rows[0].id;
+    });
+    const { rateAqiMessage } = await import("@/server/aqi/service");
+    await rateAqiMessage(viewer, messageId, 1);
+    let row = await withSystem((db) => db.query<{ feedback_rating: number | null }>("select feedback_rating from aqi_messages where id=$1", [messageId]));
+    expect(row.rows[0].feedback_rating).toBe(1);
+    await rateAqiMessage(viewer, messageId, -1, "Incorrect information — missed the step");
+    row = await withSystem((db) => db.query<{ feedback_rating: number | null; feedback_comment: string | null }>("select feedback_rating,feedback_comment from aqi_messages where id=$1", [messageId]));
+    expect(row.rows[0]).toMatchObject({ feedback_rating: -1, feedback_comment: "Incorrect information — missed the step" });
+    await rateAqiMessage(viewer, messageId, 0);
+    row = await withSystem((db) => db.query<{ feedback_rating: number | null; feedback_comment: string | null }>("select feedback_rating,feedback_comment from aqi_messages where id=$1", [messageId]));
+    expect(row.rows[0]).toMatchObject({ feedback_rating: null, feedback_comment: null });
+  });
+
   it("creates, lists, renames, reads and deletes only the signed-in person's conversation", async () => {
     const created = await createAqiConversation(viewer, "/workforce");
     expect((await listAqiConversations(viewer)).some((conversation) => conversation.id === created.id)).toBe(true);

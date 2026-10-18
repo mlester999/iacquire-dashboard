@@ -19,6 +19,10 @@ knowledge, conversations, messages, feedback and usage records.
 | AQi budgets, model pricing, token-aware context and atomic spend reservations | Locally verified; migration 0048 **applied hosted 2026-10-18** |
 | Support escalation through the existing Support system | Locally verified with explicit consent and duplicate suppression |
 | Citation validation and stale-knowledge warnings | Locally verified |
+| Intent-aware greetings, response length and page-context restraint | Locally verified; real DeepSeek greeting returned 8 words with no knowledge/page prompt |
+| Clickable authorized navigation | Locally verified; real DeepSeek navigation answer produced a validated `Integrations` markdown link |
+| Polished citations and source preview | Locally/browser verified: superscript markers, numbered readable source cards and preview modal |
+| Copy, like/dislike and undo | Browser verified: real clipboard result, Copied! state, persisted selected feedback, reason + optional comment |
 | RLS and user/tenant isolation | Locally verified |
 | Provider resolution and role-aware errors | Locally verified with connected DeepSeek, status/credential failures, recovery after negative cache, client-safe messages and Super Admin diagnostics |
 | Image, document and MP4 attachments | Locally verified: private storage, ownership, RLS, extraction, image dimensions, MP4 duration, history, deletion cleanup and cross-user denial |
@@ -28,7 +32,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 | Hosted migration 0048 | **Applied 2026-10-18**; budget/pricing tables and usage cost fields |
 | Hosted migration 0049 | **Applied 2026-10-18**; private AQi attachment bucket, metadata, RLS and four policies |
-| Production deployment | **`48de90c` deployed successfully by Vercel**; provider, budget, support, attachment and composer changes are live. A docs-only follow-up may deploy without runtime changes |
+| Production deployment | **`f74afac` deployed successfully by Vercel**; provider, budget, support, attachment/composer and GIF-removal changes are live. Conversational-intelligence changes in this working tree are **not deployed** |
 | Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed build includes the resolution/error fixes |
 
 ## Reused infrastructure
@@ -110,26 +114,53 @@ browser. AQi never executes a model-generated tool call.
 The server builds the system prompt from:
 
 1. immutable AQi policy (no action claims, no secrets, no cross-tenant data, no permission bypass);
-2. the published editable identity/tone/greeting/instructions;
-3. the server-resolved role, current curated route and only the routes that role may open;
-4. published knowledge filtered by role and route, with `[K1]` source labels.
+2. the published editable identity/tone/greeting/instructions and conversation-behavior settings;
+3. the server-resolved role, and only the routes that role may open — only for navigation/how-to turns;
+4. published knowledge filtered by role and route, with `[K1]` source labels, only when the intent
+   actually needs platform knowledge.
 
-The prompt explicitly treats knowledge and user text as data, not instructions. Unpublished
-knowledge and archived entries never reach ordinary users.
+A lightweight classifier distinguishes greeting/small talk, clarification, navigation, how-to,
+simple, complex, troubleshooting and follow-up turns. Greetings skip knowledge retrieval, page
+context, route lists and citation rules, use a short output budget, and ask how AQi can help. A
+greeting combined with a real question is classified by the question. Page context is injected only
+for explicit page references such as “this page”. The prompt explicitly treats knowledge and user
+text as data, not instructions. Unpublished knowledge and archived entries never reach ordinary users.
+
+## Conversation behavior
+
+- The intent classifier and `conversation behavior` settings control verbosity, greeting, navigation,
+  follow-up and citation style.
+- Responses must answer the question first and use plain conversational text for simple answers.
+- Authorized internal paths are converted server-side to human-labelled Markdown links; unauthorized
+  or external links are removed. The browser also validates links against the authorized route list.
+- `[K#]` markers are internal. Valid markers are rendered as compact superscript numbers and the UI
+  shows numbered, clickable source cards with a readable approved-source snippet; unsupported markers
+  are removed. Sources are omitted when there are no valid citations.
+- Casual replies never get a forced Sources section.
+- The message toolbar supports real clipboard copy with a check/Copied state, persisted
+  like/dislike, change/undo feedback, and a reason-plus-comment dislike form.
+- Admin knowledge supports search and status filtering; conversation probes can test greetings and
+  navigation without saving a conversation.
 
 ## Super Admin — `/admin/aqi`
 
-The management screen has real tabs for Overview, Provider & model, Instructions, Platform
-knowledge, Suggested questions, Testing & publishing, Version history, Usage & health and Budgets &
-pricing.
+The management screen has real tabs for Overview, Provider & model, Instructions, Conversation
+behavior, Platform knowledge, Suggested questions, Testing & publishing, Version history, Usage &
+health, Budgets & pricing and Messaging & attachments.
 
 - Configuration saves create a draft; publishing archives the previous live version and records an
   audit event.
-- Knowledge and suggested questions are editable, publishable and archivable.
+- Conversation behavior controls response verbosity, greeting style, navigation, follow-up and
+  citation policy, safe fallback and role-aware guidance. These cannot override immutable security
+  policy.
+- Knowledge and suggested questions are editable, publishable, archivable, searchable and filterable;
+  freshness review and source metadata remain visible.
 - “Run test” calls the real configured provider with the editor's current configuration (including
-  unsaved changes) and does not save a conversation.
-- Usage shows message/failure/rate-limit counts, tokens, estimated cost, reservations and latency.
-  Costs are computed from configured model prices, not invented provider invoices.
+  unsaved changes) and does not save a conversation. Quick conversation probes include greetings
+  and a navigation question.
+- Usage shows message/failure/rate-limit counts, helpful/not-helpful feedback, tokens, estimated cost,
+  reservations and latency. Costs are computed from configured model prices, not invented provider
+  invoices.
 - Budgets & pricing configures a global monthly organization budget, a per-user budget, and model
   input/output prices. A budgeted call with no configured price is rejected.
 
@@ -201,7 +232,7 @@ text extraction, not a multimodal model call.
 ## Verification commands
 
 ```bash
-npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-attachments.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
+npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-conversation.test.ts tests/aqi-attachments.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
 npm run typecheck
 npm run lint
 npm run build
@@ -211,10 +242,11 @@ Browser QA was run against an isolated PGlite database and a local SSE provider 
 covered desktop and mobile launchers, streaming, feedback, support consent, close confirmation,
 history, expansion, the Super Admin screen, retrieval preview, budgets and axe checks.
 
-Result: **4 authenticated pages, 16 interactions, 0 console errors, 0 page errors, 0 failed requests,
+Result: **4 authenticated pages, 21 interactions, 0 console errors, 0 page errors, 0 failed requests,
 0 axe violations**, including a 390 px mobile viewport with no horizontal overflow. The interactive
-flow includes emoji insertion, image + document upload, attachment history, admin attachment settings,
-support consent, feedback, close confirmation and history.
+flow includes a short greeting with no sources, emoji insertion, image + document upload, attachment
+history, clickable source preview, copy confirmation, persisted like and dislike-with-reason feedback,
+support consent, close confirmation, history and admin conversation/knowledge controls.
 
 A separate 390 px browser run with no provider configured verified the client-facing unavailable
 state: friendly copy, no `Super Admin`/API-key/configuration text, a functional **Try again**

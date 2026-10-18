@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,310 tests in 102 files passed** with `--maxWorkers=2` |
+| `npm test` | **1,319 tests in 103 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -16,11 +16,11 @@ The hosted Supabase project has migrations `0001`–`0026`: `0001`–`0025` were
 
 A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` were then applied on 2026-10-18 with the repository's `--only` runner, one transaction per migration. Cost-control `0048` and attachment `0049` were applied the same way and are now recorded alongside `0047_aqi_assistant`. The hosted project has **213 public tables**, the private `aqi-attachments` bucket (non-public, 50 MB), `aqi_attachments` with RLS and four policies, one global budget row, one published AQi configuration, 12 knowledge entries and 4 recorded AQi messages.
 
-The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for **`48de90c`** by `vercel[bot]`; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. The `48de90c` build includes the provider-resolution, role-aware error, budget, support, attachment and composer changes. There is no `.github/workflows` or Vercel config in the repository; the integration is external. A docs-only status commit may deploy after `48de90c` without changing runtime behavior.
+The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for **`f74afac`** by `vercel[bot]`; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. `f74afac` includes the provider-resolution, role-aware error, budget, support, attachment/composer and GIF-removal changes. The conversational-intelligence work in the current working tree is **not pushed or deployed**. There is no `.github/workflows` or Vercel config in the repository; the integration is external.
 
 Read-only production database audit after deployment: the global `llm` integration is now **`connected`**, with model `deepseek-flash`, format `openai`, a valid Vault-backed credential and a successful model-listing check at 11:44Z. A controlled live `llmComplete` probe returned `OK`, and a real SSE `llmStream` probe returned one delta plus usage. The AQi error recorded at 10:58Z predates that check and stored `provider_unavailable` with model `deepseek-chat`; it was a genuine pre-verification failure, not a DeepSeek incompatibility.
 
-The previously deployed build used its seeded `deepseek-chat` instead of the integration's `deepseek-flash` and could cache a failed resolution for 30 seconds. The `48de90c` build makes the integration model authoritative unless explicitly overridden, removes negative caching, adds categorized resolution diagnostics and role-aware public errors, and rechecks provider availability on send. The Vercel URL is SSO protected, so the deployed AQi UI itself was not exercised. The hosted database has migrations through `0049` and 4 recorded AQi messages.
+The previously deployed build used its seeded `deepseek-chat` instead of the integration's `deepseek-flash` and could cache a failed resolution for 30 seconds. The deployed provider fix makes the integration model authoritative unless explicitly overridden, removes negative caching, adds categorized resolution diagnostics and role-aware public errors, and rechecks provider availability on send. The Vercel URL is SSO protected, so the deployed AQi UI itself was not exercised. The hosted database has migrations through `0049` and 4 recorded AQi messages.
 
 ### AQi platform assistant (2026-10-18, migration 0047)
 
@@ -34,7 +34,9 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 | Atomic AQi budgets, model pricing, per-user limits and concurrent reservation race | Locally verified (`tests/aqi-cost-controls.test.ts`, 4 tests); hosted migration 0048 applied |
 | Support escalation with consent, real Support service and duplicate suppression | Locally verified (`tests/aqi-support.test.ts`, 2 tests) |
 | Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
-| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 16 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Intent-aware greetings, response length, page-context restraint, clickable navigation, source preview | Locally verified plus real DeepSeek greeting/navigation probes |
+| Copy, like/dislike/undo, reason form and selected-state persistence | Locally/browser verified; feedback persisted through the existing message record |
+| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 21 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
 | Private image/document attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document history rendering, emoji insertion, admin settings and **0 axe violations** |
 | Attachment storage/RLS and extraction | Locally verified: private bucket, RLS, image dimensions, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
 | GIF messaging | **Removed from AQi**; uploads are rejected as unsupported |

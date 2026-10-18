@@ -22,12 +22,13 @@ import {
 import type { AqiAdminData, AqiConfig } from "@/server/aqi/service";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 
-type Tab = "overview" | "provider" | "instructions" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets" | "attachments";
+type Tab = "overview" | "provider" | "instructions" | "conversation" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets" | "attachments";
 
 const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "overview", label: "Overview", icon: <Sparkles className="size-3.5" /> },
   { key: "provider", label: "Provider & model", icon: <KeyRound className="size-3.5" /> },
   { key: "instructions", label: "Instructions", icon: <Settings2 className="size-3.5" /> },
+  { key: "conversation", label: "Conversation behavior", icon: <Sparkles className="size-3.5" /> },
   { key: "knowledge", label: "Platform knowledge", icon: <BookOpen className="size-3.5" /> },
   { key: "questions", label: "Suggested questions", icon: <Plus className="size-3.5" /> },
   { key: "testing", label: "Testing & publishing", icon: <FlaskConical className="size-3.5" /> },
@@ -60,7 +61,13 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
   const [budgetBusy, setBudgetBusy] = React.useState(false);
   const setAttachment = <K extends keyof typeof config.attachments>(key: K, value: (typeof config.attachments)[K]) => set("attachments", { ...config.attachments, [key]: value });
   const [now] = React.useState(() => Date.now());
+  const [knowledgeQuery, setKnowledgeQuery] = React.useState("");
+  const [knowledgeStatus, setKnowledgeStatus] = React.useState("all");
   const changed = (Object.keys(config) as Array<keyof AqiConfig>).filter((key) => config[key] !== data.published.config[key]);
+  const filteredKnowledge = data.knowledge.filter((entry) => {
+    const q = knowledgeQuery.trim().toLowerCase();
+    return (knowledgeStatus === "all" || entry.status === knowledgeStatus) && (!q || `${entry.title} ${entry.category} ${entry.body}`.toLowerCase().includes(q));
+  });
 
   const set = <K extends keyof AqiConfig>(key: K, value: AqiConfig[K]) => setConfig((current) => ({ ...current, [key]: value }));
 
@@ -239,12 +246,34 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
         </Card>
       )}
 
+      {tab === "conversation" && (
+        <Card>
+          <CardHeader><CardTitle>Conversation behavior</CardTitle><CardDescription>Controls how AQi interprets greetings, chooses length, uses page context, offers navigation and cites sources. Immutable security policy still overrides every setting.</CardDescription></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Response verbosity" htmlFor="aqi-verbosity" hint="Adaptive uses the detected intent."><Select id="aqi-verbosity" value={config.responseVerbosity} onChange={(event) => set("responseVerbosity", event.target.value as AqiConfig["responseVerbosity"])}><option value="adaptive">Adaptive</option><option value="concise">Concise</option><option value="balanced">Balanced</option><option value="detailed">Detailed</option></Select></Field>
+              <Field label="Greeting behavior" htmlFor="aqi-greeting-behavior"><Select id="aqi-greeting-behavior" value={config.greetingBehavior} onChange={(event) => set("greetingBehavior", event.target.value as AqiConfig["greetingBehavior"])}><option value="warm">Warm and natural</option><option value="brief">Very brief</option><option value="professional">Professional</option></Select></Field>
+              <Field label="Navigation behavior" htmlFor="aqi-nav-behavior"><Select id="aqi-nav-behavior" value={config.navigationBehavior} onChange={(event) => set("navigationBehavior", event.target.value as AqiConfig["navigationBehavior"])}><option value="link_when_relevant">Clickable link when relevant</option><option value="explain_inline">Explain inline</option></Select></Field>
+              <Field label="Follow-up behavior" htmlFor="aqi-followup-behavior"><Select id="aqi-followup-behavior" value={config.followUpBehavior} onChange={(event) => set("followUpBehavior", event.target.value as AqiConfig["followUpBehavior"])}><option value="when_useful">When useful</option><option value="always">Always ask</option><option value="never">Never ask</option></Select></Field>
+              <Field label="Citation behavior" htmlFor="aqi-citation-behavior"><Select id="aqi-citation-behavior" value={config.citationBehavior} onChange={(event) => set("citationBehavior", event.target.value as AqiConfig["citationBehavior"])}><option value="when_relevant">Only when relevant</option><option value="always">Always</option><option value="never">Never</option></Select></Field>
+            </div>
+            <Field label="Safe fallback instructions" htmlFor="aqi-fallback"><Textarea id="aqi-fallback" rows={3} value={config.fallbackInstructions} onChange={(event) => set("fallbackInstructions", event.target.value)} /></Field>
+            <Field label="Role-aware guidance" htmlFor="aqi-role-guidance"><Textarea id="aqi-role-guidance" rows={3} value={config.roleGuidance} onChange={(event) => set("roleGuidance", event.target.value)} /></Field>
+            <div className="rounded-xl border border-warning/25 bg-warning-soft p-3 text-[12.5px] text-warning-ink"><TriangleAlert className="mr-1 inline size-3.5" /> These settings control style and usefulness, not permissions, security policy or action authority.</div>
+          </CardContent>
+        </Card>
+      )}
+
       {tab === "knowledge" && (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <Card>
             <CardHeader><div className="flex items-center justify-between gap-2"><div><CardTitle>Knowledge entries</CardTitle><CardDescription>Published entries are available to AQi; drafts stay private.</CardDescription></div><Button size="sm" variant="secondary" onClick={() => editKnowledge(null)}><Plus className="size-3.5" /> New</Button></div></CardHeader>
-            <CardContent className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
-              {data.knowledge.map((entry) => (
+            <CardContent className="max-h-[620px] space-y-2 overflow-y-auto pr-1">
+              <div className="flex gap-2 pb-1">
+                <Input value={knowledgeQuery} onChange={(event) => setKnowledgeQuery(event.target.value)} placeholder="Search knowledge" aria-label="Search knowledge entries" className="h-9 flex-1 text-[12px]" />
+                <Select value={knowledgeStatus} onChange={(event) => setKnowledgeStatus(event.target.value)} aria-label="Filter knowledge by status" className="h-9 w-32 text-[12px]"><option value="all">All</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></Select>
+              </div>
+              {filteredKnowledge.map((entry) => (
                 <div key={entry.id} className="rounded-xl border border-line p-3">
                   <div className="flex items-start justify-between gap-2">
                     <button type="button" className="min-w-0 text-left" onClick={() => editKnowledge(entry)}>
@@ -344,6 +373,10 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
           <Card>
             <CardHeader><CardTitle>Test the configured provider</CardTitle><CardDescription>This calls the real provider with the configuration currently in this editor (including unsaved changes) and does not save a conversation.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
+              <div>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Conversation probes</p>
+                <div className="flex flex-wrap gap-1.5">{["hi", "hey", "hello", "what's up", "can you help me?", "Where are integrations?"].map((probe) => <button key={probe} type="button" onClick={() => setTestPrompt(probe)} className="rounded-full border border-line px-2 py-1 text-[10.5px] text-muted hover:bg-surface-2 hover:text-ink">{probe}</button>)}</div>
+              </div>
               <Field label="Test question" htmlFor="test-prompt"><Textarea id="test-prompt" rows={3} value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} /></Field>
               <Button variant="brand" onClick={() => void testProvider()} loading={testing}><FlaskConical className="size-4" /> Run test</Button>
               {testResult && <div className={cn("rounded-xl border p-3 text-[12.5px]", testResult.ok ? "border-success/25 bg-success-soft text-success-ink" : "border-danger/25 bg-danger-soft text-danger-ink")}>{testResult.text}</div>}
@@ -429,14 +462,14 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
       {tab === "attachments" && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Images</CardTitle><CardDescription>Limits are enforced by the upload endpoint, not just the browser.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Images</CardTitle><CardDescription><span className="text-ink-2">Limits are enforced by the upload endpoint, not just the browser.</span></CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow image uploads</span><input type="checkbox" checked={config.attachments.imagesEnabled} onChange={(event) => setAttachment("imagesEnabled", event.target.checked)} /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Max image MB" htmlFor="aqi-img-mb"><Input id="aqi-img-mb" type="number" min={1} max={10} value={config.attachments.imageMaxMb} onChange={(event) => setAttachment("imageMaxMb", Number(event.target.value))} /></Field><Field label="Max images / message" htmlFor="aqi-img-n"><Input id="aqi-img-n" type="number" min={1} max={5} value={config.attachments.maxImages} onChange={(event) => setAttachment("maxImages", Number(event.target.value))} /></Field></div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Documents and video</CardTitle><CardDescription>Documents use the existing bounded PDF/DOCX/TXT/CSV extraction pipeline. Video is stored and playable; AI video analysis is unavailable.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Documents and video</CardTitle><CardDescription><span className="text-ink-2">Documents use the existing bounded PDF/DOCX/TXT/CSV extraction pipeline. Video is stored and playable; AI video analysis is unavailable.</span></CardDescription></CardHeader>
             <CardContent className="space-y-3">
               <label className="flex items-center justify-between gap-3 rounded-xl border border-line p-3 text-[13px]"><span>Allow document uploads</span><input type="checkbox" checked={config.attachments.documentsEnabled} onChange={(event) => setAttachment("documentsEnabled", event.target.checked)} /></label>
               <div className="grid gap-3 sm:grid-cols-2"><Field label="Max document MB" htmlFor="aqi-doc-mb"><Input id="aqi-doc-mb" type="number" min={1} max={20} value={config.attachments.documentMaxMb} onChange={(event) => setAttachment("documentMaxMb", Number(event.target.value))} /></Field><Field label="Max documents / message" htmlFor="aqi-doc-n"><Input id="aqi-doc-n" type="number" min={1} max={5} value={config.attachments.maxDocuments} onChange={(event) => setAttachment("maxDocuments", Number(event.target.value))} /></Field></div>
@@ -460,6 +493,8 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
           <Metric label="Reserved" value={`$${(data.usage.reservedMicros / 1_000_000).toFixed(4)}`} detail="In-flight budget reservations" />
           <Metric label="Estimated charges" value={String(data.usage.estimatedCosts)} detail="Provider omitted usage; token estimate used" />
           <Metric label="Rate-limited turns" value={String(data.usage.rateLimits)} detail="Rejected before the provider call" />
+          <Metric label="Helpful feedback" value={String(data.usage.helpful)} detail="Persisted thumbs-up ratings" />
+          <Metric label="Needs improvement" value={String(data.usage.notHelpful)} detail="Persisted thumbs-down ratings" />
           <Card className="sm:col-span-2 xl:col-span-4"><CardHeader><CardTitle>Health</CardTitle><CardDescription>{data.health.detail}</CardDescription></CardHeader><CardContent className="text-[13px]"><p>Provider: {data.health.provider ?? "not configured"} · Model: {data.health.model ?? "not configured"}</p><p className="mt-1 text-muted">Costs are estimates from configured pricing; no provider invoice is implied. A request that fails before usage is reported is released without a cost charge.</p></CardContent></Card>
         </div>
       )}

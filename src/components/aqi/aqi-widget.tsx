@@ -83,7 +83,7 @@ interface Message {
   feedbackRating: number | null;
   feedbackComment: string | null;
   createdAt: string;
-  sources?: Array<{ id: string; title: string; category: string }>;
+  sources?: Array<{ id: string; title: string; category: string; snippet?: string }>;
   citationWarning?: string | null;
   attachments?: AqiAttachment[];
 }
@@ -167,6 +167,11 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [olderLoading, setOlderLoading] = React.useState(false);
   const [feedbackFor, setFeedbackFor] = React.useState<{ id: string; rating: 1 | -1 } | null>(null);
   const [feedbackText, setFeedbackText] = React.useState("");
+  const [feedbackReason, setFeedbackReason] = React.useState("");
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+  const [feedbackSaving, setFeedbackSaving] = React.useState(false);
+  const feedbackLock = React.useRef(false);
+  const copiedTimer = React.useRef<number | null>(null);
   const [supportOpen, setSupportOpen] = React.useState(false);
   const [supportSubject, setSupportSubject] = React.useState("");
   const [supportConsent, setSupportConsent] = React.useState(false);
@@ -180,6 +185,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [dragOver, setDragOver] = React.useState(false);
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<AqiAttachment | null>(null);
+  const [sourcePreview, setSourcePreview] = React.useState<{ title: string; category: string; snippet?: string; index: number } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const abortRef = React.useRef<AbortController | null>(null);
   const launcherRef = React.useRef<HTMLButtonElement>(null);
@@ -237,6 +243,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
         if (closeConfirm) setCloseConfirm(false);
         else if (supportOpen) setSupportOpen(false);
         else if (preview) setPreview(null);
+        else if (sourcePreview) setSourcePreview(null);
         else if (emojiOpen) setEmojiOpen(false);
         else requestClose();
       }
@@ -395,6 +402,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   }
 
   React.useEffect(() => { conversationRef.current = conversationId; }, [conversationId]);
+  React.useEffect(() => () => { if (copiedTimer.current) window.clearTimeout(copiedTimer.current); }, []);
 
   function cancelPending(item: PendingAttachment) {
     item.xhr?.abort();
@@ -537,14 +545,35 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     void send(lastUser.content);
   }
 
-  async function feedback(message: Message, rating: 1 | -1, comment?: string) {
-    setMessages((current) => current.map((item) => (item.id === message.id ? { ...item, feedbackRating: rating } : item)));
-    const res = await fetch("/api/aqi/feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: message.id, rating, comment: comment?.trim() || undefined }),
-    });
-    if (!res.ok) showError("Your feedback could not be saved. Please try again.");
+  async function copyMessage(message: Message) {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedId(message.id);
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      showError("I couldn't copy that response. Please select the text and try again.");
+    }
+  }
+
+  async function feedback(message: Message, rating: 1 | -1 | 0, comment?: string) {
+    if (feedbackLock.current) return;
+    feedbackLock.current = true;
+    setFeedbackSaving(true);
+    try {
+      const res = await fetch("/api/aqi/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: message.id, rating, comment: [feedbackReason, comment?.trim()].filter(Boolean).join(" — ") || undefined }),
+      });
+      if (!res.ok) throw new Error("feedback failed");
+      setMessages((current) => current.map((item) => (item.id === message.id ? { ...item, feedbackRating: rating === 0 ? null : rating } : item)));
+    } catch {
+      showError("Your feedback could not be saved. Please try again.");
+    } finally {
+      feedbackLock.current = false;
+      setFeedbackSaving(false);
+    }
   }
 
   async function createSupportRequest() {
@@ -759,34 +788,41 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                                   {message.status === "streaming" && message.content && <span className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-primary align-middle" aria-label="AQi is writing" />}
                                   {message.status !== "streaming" && message.content && (
                                     <div className="mt-2 flex items-center gap-0.5 border-t border-line/70 pt-1.5">
-                                      <button type="button" onClick={() => void navigator.clipboard.writeText(message.content)} className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" aria-label="Copy answer"><Copy className="size-3.5" /></button>
-                                      <button type="button" onClick={() => { setFeedbackFor(null); void feedback(message, 1); }} className={cn("flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink", message.feedbackRating === 1 && "text-success-ink")} aria-label="Helpful" aria-pressed={message.feedbackRating === 1}><ThumbsUp className="size-3.5" /></button>
-                                      <button type="button" onClick={() => { setFeedbackFor({ id: message.id, rating: -1 }); setFeedbackText(""); void feedback(message, -1); }} className={cn("flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink", message.feedbackRating === -1 && "text-danger-ink")} aria-label="Not helpful" aria-pressed={message.feedbackRating === -1}><ThumbsDown className="size-3.5" /></button>
-                                      {message.feedbackRating && <span className="ml-1 text-[10.5px] text-muted">Thanks</span>}
+                                      <button type="button" title="Copy response" onClick={() => void copyMessage(message)} className="flex min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={copiedId === message.id ? "Copied" : "Copy answer"} aria-live="polite">{copiedId === message.id ? <><Check className="size-3.5 text-success-ink" /><span className="text-[10px] text-success-ink">Copied!</span></> : <Copy className="size-3.5" />}</button>
+                                      <button type="button" title={message.feedbackRating === 1 ? "Remove helpful feedback" : "Mark helpful"} disabled={feedbackSaving} onClick={() => { setFeedbackFor(null); void feedback(message, message.feedbackRating === 1 ? 0 : 1); }} className={cn("flex size-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40", message.feedbackRating === 1 && "bg-success-soft text-success-ink")} aria-label={message.feedbackRating === 1 ? "Remove helpful feedback" : "Helpful"} aria-pressed={message.feedbackRating === 1}><ThumbsUp className={cn("size-3.5", message.feedbackRating === 1 && "motion-safe:scale-110 transition-transform")} /></button>
+                                      <button type="button" title={message.feedbackRating === -1 ? "Remove feedback" : "Not helpful"} disabled={feedbackSaving} onClick={() => { if (message.feedbackRating === -1) { void feedback(message, 0); } else { setFeedbackFor({ id: message.id, rating: -1 }); setFeedbackText(""); setFeedbackReason(""); } }} className={cn("flex size-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40", (message.feedbackRating === -1 || feedbackFor?.id === message.id) && "bg-danger-soft text-danger-ink")} aria-label={message.feedbackRating === -1 ? "Remove not-helpful feedback" : "Not helpful"} aria-pressed={message.feedbackRating === -1}><ThumbsDown className="size-3.5" /></button>
+                                      {message.feedbackRating === 1 && <span className="ml-1 text-[10.5px] text-success-ink">Glad that helped!</span>}
+                                      {message.feedbackRating === -1 && <span className="ml-1 text-[10.5px] text-muted">Thanks for telling us.</span>}
                                     </div>
                                   )}
                                   {message.sources?.length ? (
                                     <div className="mt-2 border-t border-line/70 pt-1.5">
                                       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Sources</p>
-                                      <ul className="mt-1 space-y-0.5">
-                                        {message.sources.slice(0, 5).map((source) => <li key={source.id} className="text-[10.5px] leading-snug text-muted">{source.title} <span className="text-faint">· {source.category}</span></li>)}
-                                      </ul>
+                                      <ol className="mt-1 space-y-0.5">
+                                        {message.sources.slice(0, 5).map((source, index) => (
+                                          <li key={source.id}>
+                                            <button type="button" onClick={() => setSourcePreview({ ...source, index: index + 1 })} className="group inline-flex max-w-full items-start gap-1 text-left text-[10.5px] leading-snug text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                                              <span className="font-mono text-[9px] text-faint">{index + 1}.</span>
+                                              <span className="truncate underline decoration-line underline-offset-2 group-hover:decoration-current">{source.title}</span>
+                                              <span className="shrink-0 text-faint">· {source.category}</span>
+                                            </button>
+                                          </li>
+                                        ))}
+                                      </ol>
                                     </div>
                                   ) : null}
                                   {message.citationWarning && <p className="mt-1.5 text-[10.5px] leading-snug text-warning-ink">{message.citationWarning}</p>}
                                   {feedbackFor?.id === message.id && feedbackFor.rating === -1 && (
-                                    <div className="mt-2 space-y-1.5 border-t border-line/70 pt-2">
-                                      <Textarea
-                                        rows={2}
-                                        maxLength={1000}
-                                        value={feedbackText}
-                                        onChange={(event) => setFeedbackText(event.target.value)}
-                                        placeholder="What was wrong? (optional)"
-                                        aria-label="Feedback about this answer"
-                                        className="min-h-14 text-[12px]"
-                                      />
+                                    <div className="mt-2 space-y-2 border-t border-line/70 pt-2">
+                                      <p className="text-[11px] font-medium text-ink-2">What could I improve?</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {["Incorrect information", "Didn't understand my question", "Not helpful", "Too much information", "Outdated information", "Other"].map((reason) => (
+                                          <button key={reason} type="button" aria-pressed={feedbackReason === reason} onClick={() => setFeedbackReason(feedbackReason === reason ? "" : reason)} className={cn("rounded-full border px-2 py-1 text-[10.5px] transition-colors", feedbackReason === reason ? "border-primary/30 bg-primary-soft text-primary" : "border-line text-muted hover:bg-surface-2")}>{reason}</button>
+                                        ))}
+                                      </div>
+                                      <Textarea rows={2} maxLength={1000} value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Anything else? (optional)" aria-label="Feedback about this answer" className="min-h-12 text-[12px]" />
                                       <div className="flex gap-1.5">
-                                        <Button type="button" size="sm" variant="secondary" onClick={() => { void feedback(message, -1, feedbackText); setFeedbackFor(null); }}>Send feedback</Button>
+                                        <Button type="button" size="sm" variant="secondary" disabled={feedbackSaving} onClick={() => { void feedback(message, -1, feedbackText); setFeedbackFor(null); }}>Send feedback</Button>
                                         <Button type="button" size="sm" variant="ghost" onClick={() => setFeedbackFor(null)}>Cancel</Button>
                                       </div>
                                     </div>
@@ -969,6 +1005,21 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={preview.url} alt={preview.filename} className="max-h-[75dvh] w-full object-contain" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {sourcePreview && (
+          <motion.div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSourcePreview(null)}>
+            <motion.div role="dialog" aria-modal="true" aria-labelledby="aqi-source-title" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md rounded-2xl border border-line bg-surface p-4 shadow-float" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Source {sourcePreview.index}</p><h3 id="aqi-source-title" className="mt-1 text-[15px] font-semibold text-ink">{sourcePreview.title}</h3><p className="mt-0.5 text-[11px] text-muted">{sourcePreview.category}</p></div>
+                <button type="button" onClick={() => setSourcePreview(null)} className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2" aria-label="Close source preview"><X className="size-4" /></button>
+              </div>
+              <p className="mt-3 whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-2">{sourcePreview.snippet ?? "This approved source is available in the AQi knowledge library."}</p>
+              <p className="mt-3 border-t border-line pt-2 text-[10.5px] text-faint">Only approved, published knowledge is shown here.</p>
             </motion.div>
           </motion.div>
         )}
