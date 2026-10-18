@@ -12,6 +12,24 @@ const GROUPS: Array<{ label: string; emojis: string[] }> = [
   { label: "Food", emojis: ["☕", "🍵", "🥤", "🍕", "🍔", "🍟", "🥗", "🍎", "🍊", "🍋", "🍓", "🍇", "🍩", "🍪", "🎂", "🍫"] },
 ];
 
+const KEYWORDS: Record<string, string[]> = {
+  smile: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🙂", "😊", "😇"],
+  happy: ["😀", "😃", "😄", "😁", "😊", "🥰", "😍"],
+  sad: ["😔", "😟", "😢", "😭", "😞", "😣"],
+  check: ["✅", "☑️", "✔️"],
+  yes: ["✅", "👍", "☑️"],
+  no: ["❌", "👎"],
+  thumb: ["👍", "👎"],
+  heart: ["❤️", "🧡", "💛", "💚", "💙", "💜", "💖"],
+  work: ["💼", "📊", "📈", "📝", "📌", "✅", "🚀"],
+  party: ["🎉", "🎊", "🥳"],
+  fire: ["🔥"],
+  rocket: ["🚀"],
+  warning: ["⚠️"],
+  lock: ["🔒", "🔑"],
+  coffee: ["☕"],
+  idea: ["💡"],
+};
 const RECENT_KEY = "iacquire-aqi-emoji-recent";
 
 export function EmojiPicker({ onPick, onClose }: { onPick: (emoji: string) => void; onClose: () => void }) {
@@ -44,8 +62,9 @@ export function EmojiPicker({ onPick, onClose }: { onPick: (emoji: string) => vo
 
   const all = GROUPS.flatMap((g) => g.emojis);
   const q = query.trim().toLowerCase();
+  const keywordHits = Object.entries(KEYWORDS).filter(([word]) => word.includes(q)).flatMap(([, emojis]) => emojis);
   const visible = q
-    ? [...new Set([...GROUPS.filter((g) => g.label.toLowerCase().includes(q)).flatMap((g) => g.emojis), ...all.filter((emoji) => emoji.includes(q))])].slice(0, 80)
+    ? [...new Set([...GROUPS.filter((g) => g.label.toLowerCase().includes(q)).flatMap((g) => g.emojis), ...keywordHits, ...all.filter((emoji) => emoji.includes(q))])].slice(0, 80)
     : GROUPS.find((g) => g.label === group)?.emojis ?? [];
 
   function choose(emoji: string) {

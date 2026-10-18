@@ -813,7 +813,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                                         <video key={attachment.id} src={attachment.url} controls preload="metadata" className="col-span-2 max-h-44 w-full rounded-xl border border-white/20 bg-black" aria-label={attachment.filename} />
                                       ) : (
                                         <a key={attachment.id} href={attachment.url} download={attachment.filename} className="col-span-2 flex items-center gap-2 rounded-xl border border-white/30 bg-white px-2.5 py-2 text-[11.5px] text-ink hover:bg-white/90">
-                                          <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}</span><Download className="size-3.5 shrink-0 text-muted" />
+                                          <FileText className="size-4 shrink-0 text-primary" /><span className="min-w-0 flex-1 truncate">{attachment.filename}{attachment.extractionStatus !== "ready" ? <span className="ml-1 text-[9px] text-muted">· text unavailable</span> : null}</span><Download className="size-3.5 shrink-0 text-muted" />
                                         </a>
                                       ))}
                                     </div>
@@ -888,7 +888,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                         <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-2xl border border-line bg-surface p-3 text-[11.5px] text-muted shadow-float">
                           <p className="font-medium text-ink">GIF search isn&apos;t configured.</p>
                           <p className="mt-1">Upload a GIF from this device, or ask a Super Admin to configure an approved GIF provider.</p>
-                          <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => gifInputRef.current?.click()}><Film className="size-3.5" /> Choose GIF</Button>
+                          <Button type="button" size="sm" variant="secondary" className="mt-2" onClick={() => gifInputRef.current?.click()}><Film className="size-3.5" /> Upload a GIF</Button>
                         </div>
                       )}
                       <div className="flex items-end gap-1">
