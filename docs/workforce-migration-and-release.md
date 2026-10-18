@@ -1,6 +1,6 @@
 # Workforce migration and release plan
 
-Status (2026-10-19): **no CRM/workforce migration was applied during the CRM branch integration**. The read-only CRM preflight found migration records `0001`–`0029` and `0034`–`0049` in `public.schema_migrations`, 213 public tables, and no `crm_blueprints`, `crm_provider_switches`, or `hermes_tool_inventory`. A later repository record reports that AQi migrations `0050`–`0052` were applied on 2026-10-19; that newer ledger state was not re-read during the CRM pass. The 11 CRM/Hermes/RLS migration filenames in the pending list remain unverified on the hosted database. A verified current backup and restore, plus reconciliation of the divergent CRM/workforce migration history, are still required before applying them.
+Status (2026-10-19, updated): the nine CRM migrations were applied to the hosted project after a `pg_dump` backup — `0030_crm_scheduling`, `0031_crm_messaging`, `0032_crm_automation`, `0033_crm_growth`, `0035_crm_blueprints`, `0036_crm_ghl_migration`, `0037_crm_setup_native`, `0038_crm_performance` and `0039_crm_provider_switch`. The hosted ledger now records **57 migrations** and **251 public tables** (was 213), and every public table has row level security enabled. Still pending on purpose: `0047_hermes_tool_inventory` (the deployed Hermes 0.21.5 gateway cannot satisfy the inventory contract, so applying it would make health refuse `online`) and `0053_rls_initplan` (needs the staging-copy verification in [rls-performance-rollout.md](rls-performance-rollout.md); the hosted database must not be touched for it).
 
 This plan covers only the workforce-owned migrations. It does not authorize or attempt to reconcile
 the concurrent CRM migration branch.
@@ -23,6 +23,23 @@ Read-only inspection on 2026-10-19 (no writes):
 - Hosted does **not** have `app.permitted_orgs` or `app.accessible_orgs` (it predates the local
   RLS-initplan migration).
 - Hosted has the composite `agent_instances_id_org_key` unique key required by the workforce FKs.
+
+### 2026-10-19 hosted write (CRM reconciliation)
+
+The divergent CRM/workforce numbering was resolved by applying the CRM files under the numbers the
+hosted ledger did not already hold, with the repository's `--only` runner and one transaction per
+migration:
+
+- Backup first: `pg_dump --format=custom` to the git-ignored `.data/backups/pre-crm-20261019T063759.dump`
+  (2,632 TOC entries; verified with `pg_restore --list`).
+- Applied: `0030_crm_scheduling`, `0031_crm_messaging`, `0032_crm_automation`, `0033_crm_growth`,
+  `0035_crm_blueprints`, `0036_crm_ghl_migration`, `0037_crm_setup_native`, `0038_crm_performance`,
+  `0039_crm_provider_switch`. None of the nine contains a `drop table`, `drop column`, `truncate` or
+  `delete from` statement.
+- Verified afterwards: 251 public tables, 57 recorded migrations, 0 public tables without row level
+  security, and the `crm_*` tables (including `crm_blueprints`, `crm_provider_switches`,
+  `crm_workflows` and `crm_forms`) present.
+- Still pending by design: `0047_hermes_tool_inventory` and `0053_rls_initplan` (reasons above).
 
 The local workforce migrations were previously numbered 0041/0042. That collided with hosted CRM
 migrations. The supported local sequence is:
