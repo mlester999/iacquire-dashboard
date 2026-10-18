@@ -11,9 +11,10 @@ import { crmOrg } from "./support/crm";
 
 const CRM_MIGRATION_NAMES = [
   "0027_native_crm.sql", "0028_crm_sales.sql", "0029_crm_calendars.sql", "0030_crm_scheduling.sql",
-  "0031_crm_messaging.sql", "0032_crm_automation.sql", "0033_crm_growth.sql", "0035_crm_blueprints.sql",
-  "0036_crm_ghl_migration.sql", "0037_crm_setup_native.sql", "0038_crm_performance.sql", "0039_crm_provider_switch.sql",
-  "0041_crm_action_permissions.sql", "0042_company_delete_permission.sql", "0053_rls_initplan.sql",
+  "0031_crm_messaging.sql", "0032_crm_automation.sql", "0033_crm_growth.sql", "0054_crm_blueprints.sql",
+  "0055_crm_ghl_migration.sql", "0056_crm_setup_native.sql", "0057_crm_performance.sql", "0058_crm_provider_switch.sql",
+  "0041_crm_action_permissions.sql", "0042_company_delete_permission.sql", "0060_rls_initplan.sql",
+  "0061_agency_manager_blueprint_permissions.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

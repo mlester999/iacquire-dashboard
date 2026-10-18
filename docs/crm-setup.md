@@ -5,7 +5,7 @@ Phase 6, package C. This covers two things:
 1. The **Setup Center** (the agency's checklist at `/admin/clients/<id>/setup`, the client's at `/setup`) now works for a client on iAcquire's own CRM. Before this, every checklist assumed GoHighLevel, so a native client that bought the CRM service could never reach activation.
 2. The **CRM setup guide** (`/crm/setup`, and `/admin/clients/<id>/crm/setup` for the agency) walks a client through setting up their CRM, one step per screen, with statuses taken from real records only.
 
-Migration: `supabase/migrations/0037_crm_setup_native.sql`. Rollback: `supabase/rollbacks/0037_crm_setup_native.down.sql`. The hosted database is not migrated by this work; 0037 needs the same explicit approval as 0027–0036.
+Migration: `supabase/migrations/0056_crm_setup_native.sql`. Rollback: `supabase/rollbacks/0056_crm_setup_native.down.sql`. The hosted database is not migrated by this work; 0056 needs the same explicit approval as 0027–0033 and 0054–0056.
 
 ## 1. Setup Center on iAcquire CRM
 
@@ -30,11 +30,11 @@ The scope follows the provider automatically. Changing `crm_workspaces.mode`, or
 
 So client creation (the mode is recorded after the checklist is created), the guide's initial provider choice and a later provider switch all keep the checklist right without calling anything. `syncSetupApplicability(db, orgId)` in `src/server/setup/core.ts` does the same recomputation on demand, and `setServices` now uses it.
 
-The CRM snapshot step's title follows whoever owns pipelines, the same signal that picks its check: "CRM snapshot installed" while GoHighLevel does (`ghl` mode, or a hybrid with pipelines on GoHighLevel), "CRM Blueprint applied" otherwise. `app.refresh_setup_applicability` swaps it, so this holds for checklists created after 0037 (`ensureSetupInstance` runs the same refresh) and after any provider change. Only the two default titles swap, and never on a completed step, an activated checklist or a title the agency renamed.
+The CRM snapshot step's title follows whoever owns pipelines, the same signal that picks its check: "CRM snapshot installed" while GoHighLevel does (`ghl` mode, or a hybrid with pipelines on GoHighLevel), "CRM Blueprint applied" otherwise. `app.refresh_setup_applicability` swaps it, so this holds for checklists created after 0056 (`ensureSetupInstance` runs the same refresh) and after any provider change. Only the two default titles swap, and never on a completed step, an activated checklist or a title the agency renamed.
 
-Existing checklists that aren't activated were updated by 0037: provider scopes set, the two sender steps added, and native workspaces given the new wording. Activated checklists keep their history exactly as it was.
+Existing checklists that aren't activated were updated by 0056: provider scopes set, the two sender steps added, and native workspaces given the new wording. Activated checklists keep their history exactly as it was.
 
-**Rollout note (existing in-setup clients).** 0027 makes every existing client without a GoHighLevel location mapping native, including a client whose sub-account the agency was still creating. 0037 then excludes that client's "GHL sub-account created" step. Nothing is deleted: its status, notes, attachments and history stay, and the agency checklist still lists it (dimmed). For each such step that had progress (any status but pending, a note, a blocked reason, a completion note or an attachment), 0037 records an internal `services_changed` event on the step with `{"reason":"crm_provider","migration":"0037","template_key":"ghl_subaccount","status":…}`. To restore the step, the owner (or a super admin in a write support session) chooses GoHighLevel in `/crm/setup` while the CRM has no records; otherwise switch providers in Settings → CRM Provider. Before migrating a database that has clients, list the affected ones:
+**Rollout note (existing in-setup clients).** 0027 makes every existing client without a GoHighLevel location mapping native, including a client whose sub-account the agency was still creating. 0056 then excludes that client's "GHL sub-account created" step. Nothing is deleted: its status, notes, attachments and history stay, and the agency checklist still lists it (dimmed). For each such step that had progress (any status but pending, a note, a blocked reason, a completion note or an attachment), 0056 records an internal `services_changed` event on the step with `{"reason":"crm_provider","migration":"0037","template_key":"ghl_subaccount","status":…}`. To restore the step, the owner (or a super admin in a write support session) chooses GoHighLevel in `/crm/setup` while the CRM has no records; otherwise switch providers in Settings → CRM Provider. Before migrating a database that has clients, list the affected ones:
 
 ```sql
 select i.org_id, t.status from client_setup_instances i
@@ -73,7 +73,7 @@ All of these read the workspace's own rows inside one transaction (`src/server/s
 
 ### The final system check
 
-`final_health` now aggregates the checks behind **required** steps only. Optional steps' checks (the two sender steps, or anything the agency made optional) still run and complete their own steps, but never hold the final check back. Every default step was required before 0037, so nothing changes for existing checklists. The `verify_integrations` preparation job follows the same rule: only the checks behind required steps decide it. It fails when a required check failed (naming it) or isn't verified (including one the engine couldn't run). A failing optional check (a sender, say) is reported in the job's result (`optionalFailures`, and a detail line naming it) but never fails the job, so it can't block activation.
+`final_health` now aggregates the checks behind **required** steps only. Optional steps' checks (the two sender steps, or anything the agency made optional) still run and complete their own steps, but never hold the final check back. Every default step was required before 0056, so nothing changes for existing checklists. The `verify_integrations` preparation job follows the same rule: only the checks behind required steps decide it. It fails when a required check failed (naming it) or isn't verified (including one the engine couldn't run). A failing optional check (a sender, say) is reported in the job's result (`optionalFailures`, and a detail line naming it) but never fails the job, so it can't block activation.
 
 ### Reaching activation as a native client (CRM service only)
 
@@ -137,7 +137,7 @@ The service reads with trusted code after authorizing the actor, and every query
 
 ## Files
 
-- `supabase/migrations/0037_crm_setup_native.sql`, `supabase/rollbacks/0037_crm_setup_native.down.sql`
+- `supabase/migrations/0056_crm_setup_native.sql`, `supabase/rollbacks/0056_crm_setup_native.down.sql`
 - `src/lib/setup.ts` (check keys `sms_sender`, `whatsapp_sender`; labels; `SetupCrmProvider`; `AgencyTaskView.crmProvider`)
 - `src/server/setup/native-evidence.ts` (new), `connectors.ts`, `automation.ts`, `core.ts`, `agency.ts`, `snapshots.ts`, `jobs.ts`, `provisioning-contract.ts`, `templates.ts`, `crm-guide.ts` (new)
 - `src/lib/onboarding/crm-setup.ts` (new), `src/lib/onboarding/crm-setup-autosave.ts` (new: the screen's save queue), `src/lib/onboarding/engine.ts` and `src/server/onboarding/service.ts` (native wording and facts in the onboarding review)

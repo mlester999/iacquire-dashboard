@@ -1,11 +1,18 @@
 # Workforce migration and release plan
 
-Status (2026-10-19, updated): the nine CRM migrations were applied to the hosted project after a `pg_dump` backup — `0030_crm_scheduling`, `0031_crm_messaging`, `0032_crm_automation`, `0033_crm_growth`, `0035_crm_blueprints`, `0036_crm_ghl_migration`, `0037_crm_setup_native`, `0038_crm_performance` and `0039_crm_provider_switch`. The hosted ledger now records **57 migrations** and **251 public tables** (was 213), and every public table has row level security enabled. Still pending on purpose: `0047_hermes_tool_inventory` (the deployed Hermes 0.21.5 gateway cannot satisfy the inventory contract, so applying it would make health refuse `online`) and `0053_rls_initplan` (needs the staging-copy verification in [rls-performance-rollout.md](rls-performance-rollout.md); the hosted database must not be touched for it).
+Status (2026-10-19, updated): the duplicate migration numbers are fixed and the hosted database is fully
+migrated. CRM files `0035`–`0039` became `0054`–`0058`, the Hermes inventory became `0059` and the RLS
+rewrite became `0060` (a later `0061` adds the manager Blueprint grants). The nine CRM migrations,
+`0059_hermes_tool_inventory`, `0060_rls_initplan` and `0061_agency_manager_blueprint_permissions` were
+applied after `pg_dump` backups, and the hosted ledger rows for the CRM files were renamed in the same
+pass. The hosted project now records **60 migrations** and **251 public tables** (was 213), every public
+table has row level security enabled, and **no migration is pending**.
 
-This plan covers only the workforce-owned migrations. It does not authorize or attempt to reconcile
-the concurrent CRM migration branch.
+This plan covers the workforce-owned migrations. The CRM migration chain was reconciled and applied
+after the earlier preflight, as recorded below. The workforce write gates are now satisfied for the
+two files that were held back; they were applied in the same pass.
 
-## What the latest hosted records show
+## Hosted pre-migration snapshot (2026-10-19)
 
 Read-only inspection on 2026-10-19 (no writes):
 
@@ -13,10 +20,11 @@ Read-only inspection on 2026-10-19 (no writes):
   `supabase_migrations.schema_migrations` ledger was present.
 - 213 public tables. The employee knowledge tables and migrations `0045`–`0046` are present.
 - AQi migrations `0047_aqi_assistant`, `0048_aqi_cost_controls`, and
-  `0049_aqi_attachments` are recorded. The separate local `0047_hermes_tool_inventory.sql` is not.
-- The latest repository record reports AQi migrations `0050_aqi_conversation_content`,
+  `0049_aqi_attachments` are recorded. The separate local `0059_hermes_tool_inventory.sql` is not.
+- A later repository record reports AQi migrations `0050_aqi_conversation_content`,
   `0051_aqi_conversation_titles`, and `0052_aqi_conversation_lifecycle` applied on 2026-10-19.
-  The CRM preflight above predates those writes; refresh the hosted ledger before any CRM migration.
+  The CRM reconciliation and later targeted writes below followed this snapshot. Refresh the full
+  hosted ledger before any future migration write.
 - `crm_blueprints`, `crm_provider_switches`, and `hermes_tool_inventory` are absent.
 - Hosted has `app.has_permission`, `app.can_access_org`, `app.current_user_id` and
   `app.touch_updated_at`.
@@ -26,20 +34,26 @@ Read-only inspection on 2026-10-19 (no writes):
 
 ### 2026-10-19 hosted write (CRM reconciliation)
 
-The divergent CRM/workforce numbering was resolved by applying the CRM files under the numbers the
-hosted ledger did not already hold, with the repository's `--only` runner and one transaction per
-migration:
+The divergent CRM/workforce numbering was resolved by applying the CRM files with the repository's
+`--only` runner and one transaction per migration:
 
 - Backup first: `pg_dump --format=custom` to the git-ignored `.data/backups/pre-crm-20261019T063759.dump`
-  (2,632 TOC entries; verified with `pg_restore --list`).
+  (2,632 TOC entries; verified with `pg_restore --list`). A second backup,
+  `.data/backups/pre-renumber-20261019T065124.dump`, was taken before the renumbering.
 - Applied: `0030_crm_scheduling`, `0031_crm_messaging`, `0032_crm_automation`, `0033_crm_growth`,
-  `0035_crm_blueprints`, `0036_crm_ghl_migration`, `0037_crm_setup_native`, `0038_crm_performance`,
-  `0039_crm_provider_switch`. None of the nine contains a `drop table`, `drop column`, `truncate` or
-  `delete from` statement.
-- Verified afterwards: 251 public tables, 57 recorded migrations, 0 public tables without row level
-  security, and the `crm_*` tables (including `crm_blueprints`, `crm_provider_switches`,
-  `crm_workflows` and `crm_forms`) present.
-- Still pending by design: `0047_hermes_tool_inventory` and `0053_rls_initplan` (reasons above).
+  the CRM files now numbered `0054`–`0058`. None of the nine contains a `drop table`, `drop column`,
+  `truncate` or `delete from` statement.
+- Renumbered afterwards: the CRM files `0035`–`0039` → `0054`–`0058`, `0047_hermes_tool_inventory` →
+  `0059_hermes_tool_inventory`, `0053_rls_initplan` → `0060_rls_initplan`, with the five hosted ledger
+  rows renamed in place (`update schema_migrations set version = …`), so nothing was applied twice.
+- Applied after the renumber: `0059_hermes_tool_inventory`, `0060_rls_initplan` (its guard checks
+  passed; it rewrote every SELECT policy it proves, and 13 per-row policies remain by design) and
+  `0061_agency_manager_blueprint_permissions` (a real authorization fix: the permission matrix grants
+  agency managers `crm.blueprints.view`/`design`, but no migration had ever inserted those rows).
+- Verified afterwards: 251 public tables, 60 recorded migrations, 0 public tables without row level
+  security, `app.permitted_orgs`/`app.accessible_orgs` present, and the `crm_*` tables (including
+  `crm_blueprints`, `crm_provider_switches`, `crm_workflows` and `crm_forms`) present. No pending
+  migrations.
 
 The local workforce migrations were previously numbered 0041/0042. That collided with hosted CRM
 migrations. The supported local sequence is:
@@ -51,43 +65,43 @@ migrations. The supported local sequence is:
 
 `0045` checks whether `app.permitted_orgs(text)` exists:
 
-- **Local branch:** it exists after `0053_rls_initplan`; policies use the statement-level
+- **Local branch:** it exists after `0060_rls_initplan`; policies use the statement-level
   `permitted_orgs` form. The local RLS-initplan guard continues to pass.
-- **Hosted:** it does not exist; policies use the existing `app.has_permission(org_id, …)` form. This
-  is still permission-checked and RLS-enforced, and is fail-closed.
+- **Hosted before migration `0060`:** it did not exist, so `0045` used the existing
+  `app.has_permission(org_id, …)` form. Migration `0060` subsequently added the statement-level
+  helpers and rewrote the applicable SELECT policies; the final hosted schema was verified after
+  that change.
 
 Both migrations are idempotent for the objects they own and can be re-run after an interrupted deploy.
 `0045` also creates the composite `(agent_instance_id, org_id)` foreign keys and refuses documents in
 another tenant.
 
-The local CRM and workforce files share numeric prefixes `0035`–`0040`, while the local Hermes inventory
-file shares `0047` with the already-applied AQi migration. RLS migration `0053` runs after the AQi
-migrations `0050`–`0052` and the earlier CRM/workforce files so it can rewrite the final policy set. The application migration runner
-stores the full filename as the version; do not use a blanket Supabase CLI push or unfiltered
-`npm run db:migrate` against the hosted URL. The exact 11 local files not recorded by the hosted preflight are:
+The local CRM and workforce files used to share numeric prefixes `0035`–`0039`, and
+`0047_hermes_tool_inventory` shared `0047` with the applied AQi migration. That is resolved: the CRM
+files are now `0054`–`0058`, the Hermes inventory is `0059`, and the RLS rewrite is `0060`, so every
+migration has a unique number. Execution order is unchanged — CRM still runs before `0060`, which
+rewrites their policies, and `0060` still runs after AQi `0050`–`0052`. The application migration
+runner stores the full filename as the version; do not use a blanket Supabase CLI push or unfiltered
+`npm run db:migrate` against the hosted URL.
 
-- `0030_crm_scheduling`, `0031_crm_messaging`, `0032_crm_automation`, `0033_crm_growth`
-- `0035_crm_blueprints`, `0036_crm_ghl_migration`, `0037_crm_setup_native`,
-  `0038_crm_performance`, `0039_crm_provider_switch`, `0053_rls_initplan`
-- `0047_hermes_tool_inventory`
+The post-write verification recorded 60 hosted migrations, 251 public tables, RLS enabled on every
+public table, and no pending migrations. The CRM migrations depend on their own ordered chain; the
+workforce migrations depend on the original workforce tables (`0002`), tenant integrity (`0005`), and
+the permission helpers. Never apply either chain from the default unfiltered runner to the hosted
+database.
 
-The workforce files with matching numeric prefixes (`0035_hermes_setup_persistence` through
-`0040_agency_workforce_permissions`) are already recorded under their full filenames. Resolve exact
-migration identities with the CRM owner before any write. The CRM migrations depend on their own
-ordered chain; the workforce migrations depend on the original workforce tables (`0002`), tenant
-integrity (`0005`), and the permission helpers. Neither chain should be applied from the default
-unfiltered runner to the hosted database.
+## Controls for any future hosted write
 
-## Approval gates
+The CRM, Hermes inventory, and RLS migrations were applied on 2026-10-19 after custom-format backups
+and schema post-checks. The backups were inspected with `pg_restore --list`, but a restore was not
+test-run. No further hosted migration is currently recorded as pending. For any future hosted write,
+all of these controls must be satisfied first:
 
-The user authorized a master push and requested migrations on 2026-10-19. That does not satisfy the
-independent recovery and migration-history checks below. Hosted writes remain blocked until all are
-true:
-
-1. A current database backup is available and its restore has been tested. This was not available
-   during this integration.
-2. The CRM owner confirms the exact hosted migration identities and the missing CRM chain.
-3. A targeted migration order is reviewed, including the filename-prefix collisions.
+1. A current database backup is available and its restore has been tested.
+2. Re-read and reconcile the full hosted migration ledger, including the AQi `0050`–`0052` entries
+   and the renumbered CRM/Hermes/RLS files.
+3. Review the exact targeted order for any remaining migration, including its compatibility and
+   rollout checks.
 4. A deployment window is scheduled and the user/operator authorization still covers that window.
 5. The gateway remediation in [hermes-live-acceptance.md](hermes-live-acceptance.md) has either been
    applied and verified, or live AI traffic remains disabled.
@@ -95,8 +109,8 @@ true:
 ## Deployment order
 
 1. Back up the hosted database, test restore, and record exact full migration filenames.
-2. Have the CRM owner confirm and review the pending CRM migrations in dependency order.
-3. Apply only the approved exact filenames with the application's `--only` option; do not use the
+2. Re-read the full hosted ledger and review the specific requested migration against its gates.
+3. Apply only an approved exact filename with the application's `--only` option; do not use the
    unfiltered runner or a prefix-only Supabase CLI push.
 4. Apply the Hermes tool-inventory migration separately after validating its compatibility with the
    hosted AQi migration `0047_aqi_assistant`.

@@ -1,7 +1,7 @@
 # CRM provider switching
 
-Status: **implemented locally** (Phase 6, package B). Migration `0039_crm_provider_switch.sql` has not been applied to the hosted database. Like
-0027–0038, the hosted run needs the user's explicit approval.
+Status: **implemented locally** (Phase 6, package B). Migration `0058_crm_provider_switch.sql` has not been applied to the hosted database. Like
+0027–0033 and 0054–0058, the hosted run needs the user's explicit approval.
 
 A workspace's CRM is split into capabilities. Each capability has exactly one owner, either iAcquire's own CRM ("native") or GoHighLevel:
 `CRM_CAPABILITIES` in `src/lib/crm/types.ts`, with contacts, companies, tags, custom fields, pipelines, opportunities, calendars, appointments,
@@ -255,7 +255,7 @@ Nothing is re-dispatched twice. Migration events are already marked dispatched, 
 - **Navigation:** the portal sidebar is capability-aware. Sections owned by GoHighLevel carry a “GHL” badge with a “Managed in
   GoHighLevel” label; their pages remain reachable and show the existing read-only ownership notices.
 
-## Data model (0039)
+## Data model (0058)
 
 - `crm_provider_switches` holds one row per switch, with:
   - the direction and capabilities, and the status;
@@ -270,12 +270,12 @@ Nothing is re-dispatched twice. Migration events are already marked dispatched, 
 - `crm_provider_switch_backups` holds the backup ZIP (`bytea`, at most 256 MB), its SHA-256 and table counts. It is trusted code only.
 - `crm_import_jobs_switch_fk`: `crm_import_jobs.switch_id` → `crm_provider_switches(id) on delete set null` (wave A added the column without
   a target).
-- Rollback: `supabase/rollbacks/0039_crm_provider_switch.down.sql`. It refuses while any switch or backup is recorded, and leaves the
+- Rollback: `supabase/rollbacks/0058_crm_provider_switch.down.sql`. It refuses while any switch or backup is recorded, and leaves the
   workspace's ownership exactly as it is.
 
 ## Setup Center and setup guide
 
-- Changing the mode or the owners re-scopes the Setup Center automatically (the 0037 triggers).
+- Changing the mode or the owners re-scopes the Setup Center automatically (the 0056 triggers).
 - Every switch step is audited as `crm.provider.switch_<step>`:
   - `backed_up`
   - `dry_run_started`

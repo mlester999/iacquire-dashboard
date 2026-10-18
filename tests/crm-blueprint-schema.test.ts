@@ -31,7 +31,9 @@ function statements(sql: string): string[] {
   return out;
 }
 
-const DOWN = readFileSync("supabase/rollbacks/0035_crm_blueprints.down.sql", "utf8");
+const DOWN = readFileSync("supabase/rollbacks/0054_crm_blueprints.down.sql", "utf8");
+const MANAGER_GRANTS_UP = readFileSync("supabase/migrations/0061_agency_manager_blueprint_permissions.sql", "utf8");
+const MANAGER_GRANTS_DOWN = readFileSync("supabase/rollbacks/0061_agency_manager_blueprint_permissions.down.sql", "utf8");
 const runDown = async (db: Queryable) => {
   for (const stmt of statements(DOWN)) await db.query(stmt);
 };
@@ -91,7 +93,7 @@ describe("rollback 0035", () => {
         functions: (await q("select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'app' and proname in ('guard_blueprint_ghl_source', 'guard_location_not_blueprint_source')")).length,
         triggers: (await q("select 1 from pg_trigger where tgname = 'ghl_location_mappings_not_blueprint_source'")).length,
         kinds: String((await q("select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'notifications_kind_check'"))[0]?.def ?? ""),
-        version: (await q("select 1 from schema_migrations where version = '0035_crm_blueprints'")).length,
+        version: (await q("select 1 from schema_migrations where version = '0054_crm_blueprints'")).length,
       };
     });
     expect(report).toMatchObject({ tables: [], calendarColumns: 0, permissions: 0, functions: 0, triggers: 0, version: 0 });
@@ -348,6 +350,25 @@ describe("draft calendars", () => {
 });
 
 describe("permissions and notification kinds", () => {
+  it("repairs manager Blueprint grants on older installs and rolls back only those grants", async () => {
+    const result = await inRolledBack(async (db) => {
+      await db.query("delete from role_permissions where role = 'agency_manager' and permission like 'crm.blueprints.%'");
+      for (const stmt of statements(MANAGER_GRANTS_UP)) await db.query(stmt);
+      const manager = (await db.query<{ permission: string }>("select permission from role_permissions where role = 'agency_manager' and permission like 'crm.blueprints.%' order by permission")).rows.map((r) => r.permission);
+      const otherRoles = (await db.query("select 1 from role_permissions where role <> 'agency_manager' and permission like 'crm.blueprints.%'")).rows.length;
+      for (const stmt of statements(MANAGER_GRANTS_DOWN)) await db.query(stmt);
+      const afterRollback = (await db.query("select 1 from role_permissions where role = 'agency_manager' and permission like 'crm.blueprints.%'")).rows.length;
+      const preservedRoles = (await db.query("select 1 from role_permissions where role <> 'agency_manager' and permission like 'crm.blueprints.%'")).rows.length;
+      return { manager, otherRoles, afterRollback, preservedRoles };
+    });
+    expect(result).toEqual({
+      manager: ["crm.blueprints.design", "crm.blueprints.view"],
+      otherRoles: 6,
+      afterRollback: 0,
+      preservedRoles: 6,
+    });
+  });
+
   it("seeds the Blueprint permissions for agency roles only, exactly as the matrix says", async () => {
     const { rows } = await withSystem((db) => db.query<{ role: string; permission: string }>("select role, permission from role_permissions where permission like 'crm.blueprints.%' order by permission, role"));
     const fromDb = rows.map((r) => `${r.permission}|${r.role}`).sort();

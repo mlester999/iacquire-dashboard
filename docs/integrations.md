@@ -112,7 +112,7 @@ the exact profile name, `SOUL.md`, `config.yaml` snippet and steps:
 5. Run the profile's read-only health check. The profile is `online` only after identity, capabilities,
    the explicit reviewed toolset allowlist and the complete runtime tool catalog are verified. The
    catalog endpoint (`GET /v1/tools`) is not in Hermes 0.21.5, so live client runs remain blocked
-   until the gateway deployment supplies it and migration 0047 is applied. See
+   until the gateway deployment supplies it and migration 0059 is applied. See
    [hermes-tool-inventory.md](hermes-tool-inventory.md).
 
 Profiles made this way are operator-managed. Six-profile automatic client provisioning is not ready;

@@ -460,8 +460,8 @@ describe("migration 0037 over existing checklists", () => {
     const nativeIdle = await client({ services: ["crm", "calendar"] });
     const ghlBusy = await client({ mode: "ghl", services: ["crm", "calendar"] });
     const ids = [nativeBusy.org.id, nativeIdle.org.id, ghlBusy.org.id];
-    const up = readFileSync("supabase/migrations/0037_crm_setup_native.sql", "utf8");
-    const down = readFileSync("supabase/rollbacks/0037_crm_setup_native.down.sql", "utf8");
+    const up = readFileSync("supabase/migrations/0056_crm_setup_native.sql", "utf8");
+    const down = readFileSync("supabase/rollbacks/0056_crm_setup_native.down.sql", "utf8");
     let report: { events: Array<{ org_id: string; task_id: string | null; reason: string; metadata: Record<string, unknown> }>; tasks: Array<Record<string, unknown>> } | null = null;
     // Always rolled back: the shared test database is untouched.
     await expect(withSystem(async (db) => {

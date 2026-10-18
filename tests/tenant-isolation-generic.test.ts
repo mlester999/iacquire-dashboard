@@ -19,7 +19,7 @@ let policies: Policy[] = [];
 const grants = new Map<string, { insert: boolean; update: boolean; delete: boolean; select: boolean }>();
 
 // Helpers that make a policy depend on who is asking and which organization the row belongs to. permitted_orgs and accessible_orgs
-// (migration 0053) are the statement-level forms of has_permission and can_access_org: `org_id = ANY ((SELECT app.permitted_orgs(p)))`.
+// (migration 0060) are the statement-level forms of has_permission and can_access_org: `org_id = ANY ((SELECT app.permitted_orgs(p)))`.
 const SCOPING = /app\.(can_access_org|has_permission|is_agency_admin|is_agency_staff|staff_assigned|can_view_conversation|file_permission|current_user_id|permitted_orgs|accessible_orgs)/;
 
 /** A policy may scope a child table through an EXISTS on a parent table, whose own row-level security then applies. */

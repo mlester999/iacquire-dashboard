@@ -106,7 +106,7 @@ only for the explicit local synthetic demo and tests; production configuration r
 - Employee-specific knowledge lives in `employee_knowledge_entries` and in
   `knowledge_documents.agent_instance_id`; the same compiler that builds run instructions reports which
   sources are included, so the UI never claims more than the provider receives. Migrations `0045`–`0046`
-  add extraction states and evidence for selectable-text PDF/DOCX files, and `0047` persists the
+  add extraction states and evidence for selectable-text PDF/DOCX files, and `0059` persists the
   complete Hermes runtime tool-inventory contract, digest, expiry and compact snapshot used by the
   live-run gate.
 - An employee goes online only after the authenticated Hermes profile identity, capabilities, the
@@ -191,7 +191,7 @@ follow-ups, handoff), `0020_onboarding_v2`, `0021_websites` (Website Studio and 
 `0025_commercial_operations` (agency finance, fair use, inactivity, offboarding),
 `0045_ai_workforce_experience` (employee-specific knowledge, document scope/risk/use evidence; see
 [ai-workforce.md](ai-workforce.md)), `0046_knowledge_document_extraction` (bounded PDF/DOCX
-processing states, extraction evidence and retry) and `0047_hermes_tool_inventory` (complete
+processing states, extraction evidence and retry) and `0059_hermes_tool_inventory` (complete
 runtime inventory contract, digest, expiry, compact snapshot and diagnostic; see
 [hermes-tool-inventory.md](hermes-tool-inventory.md)). They are numbered after the hosted project's
 existing 0041–0044 CRM migrations. Migrations `0026`–`0040` cover Website Studio, the native CRM,

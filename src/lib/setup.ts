@@ -24,7 +24,7 @@ export const CLIENT_STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 export type CompletionMode = "manual" | "verified" | "activation";
-/** A step that applies only when the workspace uses this CRM provider (null: whichever it uses). See 0037_crm_setup_native.sql. */
+/** A step that applies only when the workspace uses this CRM provider (null: whichever it uses). See 0056_crm_setup_native.sql. */
 export type SetupCrmProvider = "native" | "ghl";
 export type Section = "agency" | "client";
 export type InstanceState = "in_setup" | "ready_for_review" | "activated";

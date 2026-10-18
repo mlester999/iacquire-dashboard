@@ -21,8 +21,8 @@ import { capture, explain, planSummary, sqlStatements, type CapturedQuery } from
 import { crmOrg, type CrmOrg } from "./support/crm";
 import { ctxFor } from "./support/fixtures";
 
-const MIGRATION = readFileSync("supabase/migrations/0038_crm_performance.sql", "utf8");
-const ROLLBACK = readFileSync("supabase/rollbacks/0038_crm_performance.down.sql", "utf8");
+const MIGRATION = readFileSync("supabase/migrations/0057_crm_performance.sql", "utf8");
+const ROLLBACK = readFileSync("supabase/rollbacks/0057_crm_performance.down.sql", "utf8");
 const INDEXES: Record<string, { table: string; columns: string; where?: string }> = {
   contacts_directory_recent_idx: { table: "contacts", columns: "(org_id, created_at DESC NULLS LAST, id DESC)", where: "((deleted_at IS NULL) AND (archived_at IS NULL))" },
   contacts_directory_name_idx: { table: "contacts", columns: "(org_id, lower(NULLIF(display_name, ''::text)), id)", where: "((deleted_at IS NULL) AND (archived_at IS NULL))" },

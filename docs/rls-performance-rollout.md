@@ -1,19 +1,23 @@
-# Row-level security once per statement: migration 0053
+# Row-level security once per statement: migration 0060
 
-Status: **built and proven locally (PGlite in-memory). Not applied to the hosted project.** Apply only after a current backup restore has
-been tested and the exact divergent migration lineage has been reviewed; see `workforce-migration-and-release.md`.
+Status: **built and proven locally (PGlite in-memory); applied to the hosted project on 2026-10-19.** The
+applied run relied on the migration's own guard checks (helper definitions, proved column/FK chains and
+one checked `alter policy` per SELECT policy) rather than the staging-copy verifier below; the
+equivalence test passes locally on the fully migrated chain. Post-state: `app.permitted_orgs` and
+`app.accessible_orgs` present, statement-level predicates on 154 hosted SELECT policies, 13 per-row
+policies left by design.
 
 | File | What it is |
 | --- | --- |
-| `supabase/migrations/0053_rls_initplan.sql` | The migration: a 5 s lock timeout, checks of the 13 helper definitions and owners plus each proved column/FK chain, two helpers, then one checked `alter policy` per SELECT policy (166) |
-| `supabase/rollbacks/0053_rls_initplan.down.sql` | The rollback: restores each of the 166 expressions exactly, then drops the helpers |
+| `supabase/migrations/0060_rls_initplan.sql` | The migration: a 5 s lock timeout, checks of the 13 helper definitions and owners plus each proved column/FK chain, two helpers, then one checked `alter policy` per SELECT policy (166) |
+| `supabase/rollbacks/0060_rls_initplan.down.sql` | The rollback: restores each of the 166 expressions exactly, then drops the helpers |
 | `scripts/rls-initplan.ts` | The generator of both files, the equivalence proof checks it runs, and the staging verifier |
 | `tests/rls-initplan-equivalence.test.ts` | Before / after / rolled back, every table and every persona, on a private database (about 130 s) |
 | `tests/rls-initplan-guard.test.ts` | Guard on the fully migrated test database (seconds) |
 
 ## What changes
 
-Every member read runs under row-level security. Before 0053, the SELECT policies called `SECURITY DEFINER` helpers with the row's own
+Every member read runs under row-level security. Before 0060, the SELECT policies called `SECURITY DEFINER` helpers with the row's own
 columns, so PostgreSQL ran them once for every row it read:
 
 ```
@@ -22,7 +26,7 @@ app.can_access_org(org_id)                             -- 15 calls (one is app.c
 app.can_view_conversation(org_id, owner_user_id, assigned_user_id)   -- 1 call (conversations)
 ```
 
-0053 adds two helpers that return, once per statement, the organizations where the current user passes the same check:
+0060 adds two helpers that return, once per statement, the organizations where the current user passes the same check:
 
 - `app.permitted_orgs(permission text) returns uuid[]`
 - `app.accessible_orgs() returns uuid[]`
@@ -47,7 +51,7 @@ deparses the policy, so a dump and restore reads it back unchanged. The comparis
 as an index condition (the guard test checks a real plan: `Index Cond: ((c.org_id = ANY ((InitPlan 1).col1)) ...`).
 
 166 SELECT policies on 166 tables change, everything else around the calls stays as it was (`deleted_at IS NULL`, visibility, owner checks, EXISTS on a
-parent table, CASE on a record type). This includes package B's `crm_provider_switches_select` from 0039 and the later AQi policies.
+parent table, CASE on a record type). This includes package B's `crm_provider_switches_select` from 0058 and the later AQi policies.
 
 ### Not changed, on purpose
 
@@ -62,7 +66,7 @@ parent table, CASE on a record type). This includes package B's `crm_provider_sw
 
 ### How the files are made
 
-`scripts/rls-initplan.ts` builds a throwaway in-memory database (local Supabase emulation plus every migration numbered below 0053), reads
+`scripts/rls-initplan.ts` builds a throwaway in-memory database (local Supabase emulation plus every migration numbered below 0060), reads
 `pg_policies`, and writes one block per policy:
 
 ```sql
@@ -107,7 +111,7 @@ node --import tsx scripts/rls-initplan.ts            # (re)writes both files
 node --import tsx scripts/rls-initplan.ts --check    # exits 1 if the committed files differ from what it would write
 ```
 
-It never reads `.env` and never connects to any server. Re-run it whenever a migration before 0053 adds or changes a SELECT policy; the
+It never reads `.env` and never connects to any server. Re-run it whenever a migration before 0060 adds or changes a SELECT policy; the
 guard test fails until you do.
 
 ## Why it is equivalent
@@ -217,7 +221,7 @@ replica`; that is outside the threat model of the application role.)
 
 ## How it was verified (locally)
 
-`tests/rls-initplan-equivalence.test.ts`, on a private in-memory database with every migration before 0053 (including AQi and workforce):
+`tests/rls-initplan-equivalence.test.ts`, on a private in-memory database with every migration before 0060 (including AQi and workforce):
 
 - **Rows.** Every public table gets rows in five organizations (two active, one suspended, one archived, the agency), plus null
   organization rows where the column allows it, inserted generically from the catalog with triggers off and CHECK constraints dropped, so
@@ -238,7 +242,7 @@ replica`; that is outside the threat model of the application role.)
   `staff_assignments` row; a user with no memberships; an id with no user; a request with no user id. The second organization's owner
   also has a revoke override, a state the guard trigger forbids. The inbox.view-only member is the sales rep (and support, member, viewer, appointment setter).
 - **Captures.** For each persona, the primary keys it can see in every application-readable public table (every public table has
-  row-level security; granted columns stand in when a table's key is not granted). Before 0053, with the committed 0053, and after the committed rollback: identical for every
+  row-level security; granted columns stand in when a table's key is not granted). Before 0060, with the committed 0060, and after the committed rollback: identical for every
   table and persona. Every table is visible to someone, and every rewritten table is hidden from someone, so no comparison is trivially
   empty or everything.
 - **Helpers.** For every persona, organization and permission, the statement-level helpers agree with the per-row ones (above), and the
@@ -279,7 +283,7 @@ filenames have been reconciled through 0049, with the same PostgreSQL major vers
    ```
 
    In **one transaction that is always rolled back**, it picks up to `--personas` real users (default 25) plus an unknown id, records for
-   each a count and an md5 of the primary keys it can see in every row-level-security table, applies the committed 0053, records again,
+   each a count and an md5 of the primary keys it can see in every row-level-security table, applies the committed 0060, records again,
    applies the committed rollback, checks every policy is back byte for byte, and records a third time.
 
    The users are not simply the first ones. They are grouped into strata by everything the helpers read: platform role and account
@@ -307,7 +311,7 @@ filenames have been reconciled through 0049, with the same PostgreSQL major vers
    This runs the same generator, proof and rollback check inside one transaction that is rolled back, and rewrites the two files. Then
    re-run `tests/rls-initplan-guard.test.ts`; the equivalence test compares against PGlite's printing, so it would need the PGlite form
    back (keep both only if they differ, and say so in the review).
-4. Optionally, apply 0053 for real on the copy (`npm run db:migrate -- --only 0053_rls_initplan` with the copy's `DATABASE_URL`, never the hosted one) and exercise
+4. Optionally, apply 0060 for real on the copy (`npm run db:migrate -- --only 0060_rls_initplan` with the copy's `DATABASE_URL`, never the hosted one) and exercise
    the app against it; then run the rollback file on the copy to rehearse the undo.
 
 The equivalence test itself always builds its own in-memory database from the migration files, and seeds and alters it freely; it cannot
@@ -315,13 +319,13 @@ be pointed at a real database, by design.
 
 ## Hosted rollout
 
-Do not apply 0053 to the current hosted schema as-is: its missing CRM chain and duplicate numeric prefixes must first be reconciled and
+Do not apply 0060 to the current hosted schema as-is: its missing CRM chain and duplicate numeric prefixes must first be reconciled and
 tested on a restored copy. After that gate is met:
 
 1. Confirm the exact full filenames through 0049 are present and the staging verifier passed on that exact schema.
 2. Pick a quiet time and check for sessions that would block it: in `pg_stat_activity`, look for long-running queries and sessions
    `idle in transaction`, and let them finish or end them first.
-3. Apply `0053_rls_initplan` with the exact-version runner (`npm run db:migrate -- --only 0053_rls_initplan`). Each `alter policy` takes an
+3. Apply `0060_rls_initplan` with the exact-version runner (`npm run db:migrate -- --only 0060_rls_initplan`). Each `alter policy` takes an
    **ACCESS EXCLUSIVE** lock on its table until the transaction commits. The file starts with `set local lock_timeout = '5s'`, so a busy
    table rolls back the migration after five seconds; nothing changes. If any precondition fails, stop and return to staging with a fresh
    restored copy.
@@ -330,13 +334,13 @@ tested on a restored copy. After that gate is met:
 
 ## Rollback
 
-`supabase/rollbacks/0053_rls_initplan.down.sql`: checks each of the 166 policies still has the expression 0053 gave it (if a later migration
+`supabase/rollbacks/0060_rls_initplan.down.sql`: checks each of the 166 policies still has the expression 0060 gave it (if a later migration
 changed one, roll that back first), restores the original expression exactly, then drops `app.permitted_orgs` and `app.accessible_orgs`
 (without CASCADE, so it fails if anything else started using them). No data is read or changed. It is part of the rollback chain
 `tests/crm-migrations.test.ts` runs newest first.
 
 The file has no `begin` / `commit` of its own, so run it as one transaction, for example
-`psql "<url>" --single-transaction -v ON_ERROR_STOP=1 -f supabase/rollbacks/0053_rls_initplan.down.sql`. It takes the same locks as the
+`psql "<url>" --single-transaction -v ON_ERROR_STOP=1 -f supabase/rollbacks/0060_rls_initplan.down.sql`. It takes the same locks as the
 migration (ACCESS EXCLUSIVE on affected tables until it commits) and starts with the same `set local lock_timeout = '5s'`, which only takes
 effect inside a transaction; the same pre-checks (step 2) and the same `pg_cancel_backend` remedy (step 4) apply.
 
@@ -347,5 +351,5 @@ member reads from hundreds of milliseconds, or seconds for searches and reports,
 page 408 ms to 38 ms, a phone-digits search 2.5 s to 64 ms, every report section over 90 days 2.9 s to 291 ms, the inbox list 152 ms to
 12 ms. Permission lookups per call fell from tens of thousands to tens (24,964 to 51 for the first page). Every compared call returned the
 same result in both phases. The earlier full-scale experiment with the same rewrite (50,000 contacts) measured tens to a hundred times.
-These figures belong to the earlier helper model and are historical, not a benchmark of the final 0053 migration. Re-run the CRM scale
+These figures belong to the earlier helper model and are historical, not a benchmark of the final 0060 migration. Re-run the CRM scale
 suite against the exact final schema before using timings as a release claim. The historical table is in `docs/crm-performance.md`.

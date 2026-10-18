@@ -87,7 +87,7 @@ verification.
 | Reviewed toolsets, disabled toolsets, Tool Search/connector names | `src/server/integrations/hermes/tool-policy.ts` |
 | Typed `GET /v1/tools` client | `src/server/integrations/hermes/client.ts` (`getToolCatalog`) |
 | Complete-inventory verifier, digest, attestation, freshness, change detection | `src/server/integrations/hermes/inventory.ts` |
-| Persisted attestation columns | `supabase/migrations/0047_hermes_tool_inventory.sql` |
+| Persisted attestation columns | `supabase/migrations/0059_hermes_tool_inventory.sql` |
 | Health check and run gate | `src/server/workforce/service.ts`, `src/server/integrations/hermes/client.ts` (`startRun`) |
 | Integration inspection | `src/server/integrations/inspection.ts` |
 | Read-only live audit | `scripts/hermes-live-audit.ts` |
@@ -131,7 +131,7 @@ Any failure closes the gate. The live adapter re-runs this verification immediat
 
 ### Persistence and diagnostics
 
-Migration `0047` adds `tool_inventory_contract`, `tool_inventory_digest`,
+Migration `0059` adds `tool_inventory_contract`, `tool_inventory_digest`,
 `tool_inventory_verified_at`, `tool_inventory_expires_at`, `tool_inventory_tool_count`,
 `tool_inventory_snapshot` and `tool_inventory_detail` to `agent_instances`. The snapshot contains
 only the contract, profile name, digest, enabled toolsets, tool names/toolsets/sources and
@@ -232,7 +232,7 @@ These are **not** iAcquireOS changes and were not applied:
    toolsets out when they are not in the explicit list; if the profile was hand-edited, disable every
    installed plugin toolset in `agent.disabled_toolsets` as well. The complete catalog is the final
    proof: any plugin or MCP tool that still resolves is refused.
-3. **Database migration:** apply `0047_hermes_tool_inventory.sql` to the hosted database as part of
+3. **Database migration:** apply `0059_hermes_tool_inventory.sql` to the hosted database as part of
    the release window. Until it is applied, health checks cannot persist the attestation and remain
    fail-closed.
 

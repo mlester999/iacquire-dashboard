@@ -13,7 +13,7 @@
 --
 -- The native definitions a Blueprint fills (configuration values, forms, message templates, workflows, report definitions) already exist
 -- (0031 to 0033). As elsewhere in the CRM, the application role only reads its own workspace's rows (row-level security) and trusted server
--- code writes after authorizing the action. Rollback: supabase/rollbacks/0035_crm_blueprints.down.sql.
+-- code writes after authorizing the action. Rollback: supabase/rollbacks/0054_crm_blueprints.down.sql.
 
 -- ---------------------------------------------------------------------------
 -- Permissions. Generated from src/lib/permissions.ts (tests/workforce-config.test.ts compares the two).
@@ -22,8 +22,8 @@
 -- ---------------------------------------------------------------------------
 
 insert into role_permissions (role, permission) values
-  ('agency_staff', 'crm.blueprints.view'), ('agency_super_admin', 'crm.blueprints.view'),
-  ('agency_staff', 'crm.blueprints.design'), ('agency_super_admin', 'crm.blueprints.design'),
+  ('agency_staff', 'crm.blueprints.view'), ('agency_manager', 'crm.blueprints.view'), ('agency_super_admin', 'crm.blueprints.view'),
+  ('agency_staff', 'crm.blueprints.design'), ('agency_manager', 'crm.blueprints.design'), ('agency_super_admin', 'crm.blueprints.design'),
   ('agency_super_admin', 'crm.blueprints.publish'),
   ('agency_super_admin', 'crm.blueprints.apply')
 on conflict do nothing;

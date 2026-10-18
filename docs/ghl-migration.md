@@ -4,7 +4,7 @@ Moves a client's live GoHighLevel (GHL) records into iAcquire Native CRM: custom
 "businesses"), contacts (with tags and custom field values) and opportunities. It is separate from CRM Blueprints, which copy
 *configuration* from an agency template sub-account; this copies a client's *own records* from the client's own mapped location.
 
-Status: implemented and tested locally (PGlite, mocked GHL). Never run against a live GHL account. Migration `0036_crm_ghl_migration.sql`
+Status: implemented and tested locally (PGlite, mocked GHL). Never run against a live GHL account. Migration `0055_crm_ghl_migration.sql`
 is not applied to the hosted database (it needs explicit approval with the other hosted migrations).
 
 ## Rules it keeps
@@ -144,7 +144,7 @@ Reaching the preview: `DataView` (Settings → Imports & Exports) renders for an
 only with `contacts.import`), but the portal page, its nav entry and the agency mirror still require `contacts.import` until the lead
 changes them (see the package report's NEEDS-LEAD). Until then only owners and managers reach the panel in the UI.
 
-## Data model (0036)
+## Data model (0055)
 
 - `crm_import_jobs.entity` adds `custom_field`, `tag`, `pipeline` (GHL only); `status` adds `fetching` (GHL only).
 - `crm_import_jobs.source_location` (required for GHL jobs, never a protected location), `fetch_cursor` (≤4 KB, the next page),
@@ -153,7 +153,7 @@ changes them (see the package report's NEEDS-LEAD). Until then only owners and m
   cancelled), `fetch_not_before`, `fetched_at`, `switch_id` (no FK yet; provider switching adds it).
 - `crm_import_rows.flags text[]` (≤20 codes, `IMPORT_FLAG_LABELS`).
 - Indexes: work index includes `fetching`; latest job per step; switch lookup; staged GHL id lookup.
-- No new table or permission. Rollback: `supabase/rollbacks/0036_crm_ghl_migration.down.sql` (refuses while GHL migration jobs exist).
+- No new table or permission. Rollback: `supabase/rollbacks/0055_crm_ghl_migration.down.sql` (refuses while GHL migration jobs exist).
 
 ## Gap report and comparison
 
