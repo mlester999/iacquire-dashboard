@@ -39,7 +39,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Hosted migration 0050 | **Applied 2026-10-19**; two approved conversational knowledge rows added |
 | Migration 0051 (conversation title provenance) | **Applied hosted 2026-10-19**; title provenance columns and backfill verified |
 | Migration 0052 (conversation lifecycle) | **Applied hosted 2026-10-19**; `saved_at`/`saved_by`, saved index and backfill verified (2 existing conversations saved) |
-| Production deployment | **`f74afac` deployed successfully by Vercel**; provider, budget, support, attachment/composer and GIF-removal changes are live. Conversational-intelligence changes in this working tree are **not deployed** |
+| Production deployment | **`ceae6e5` deployed successfully by Vercel on 2026-10-19**; provider, budget, support, attachment/composer, GIF-removal, conversational-intelligence, title/lifecycle and migration 0050–0052 changes are live |
 | Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed build includes the resolution/error fixes |
 
 ## Reused infrastructure

@@ -6,21 +6,21 @@ Status: **production deployment completed by explicit authorization; staging-fir
 This document records the production state found by the Phase 2 acceptance audit and the safe
 sequence required before the local cost-control/support changes can ship.
 
-## Production state (read-only audit, 2026-10-18)
+## Production state (read-only audit, 2026-10-18; deployment update 2026-10-19)
 
 - GitHub records a successful **Production** deployment by `vercel[bot]`:
   - environment: `Production`
-  - SHA: `f74afac` (production deployment succeeded after the authorized push)
+  - SHA: `ceae6e5` (production deployment succeeded after the authorized push on 2026-10-19)
   - state: `success`
   - deployment URL: Vercel-generated and protected by Vercel SSO.
 - The repository has **no** `.github/workflows`, Vercel config or other deployment config. The
   deployment integration is external to the repository and automatically deploys master.
-- Hosted database migrations: `0044` through `0049`; `0048_aqi_cost_controls` and
-  `0049_aqi_attachments` were applied on 2026-10-18 with the transactional `--only` runner.
+- Hosted database migrations: through `0052`; `0048`–`0049` were applied on 2026-10-18 and
+  `0050`–`0052` on 2026-10-19 with the transactional `--only` runner.
 - Hosted public tables: **213**. The private `aqi-attachments` bucket exists as non-public with a
   50 MB limit.
-- Hosted AQi: one published configuration, 12 published knowledge entries, 8 enabled questions,
-  2 messages recorded.
+- Hosted AQi: one published configuration, 14 published knowledge entries, 8 enabled questions and
+  2 saved conversations.
 - Hosted global LLM integration: model `deepseek-flash`, format `openai`, status **`connected`**.
   The AQi failure recorded at 10:58Z predates the successful connection test at 11:44Z; at that
   earlier point the connection was not eligible. A controlled live `llmComplete` probe and a real
@@ -29,9 +29,10 @@ sequence required before the local cost-control/support changes can ship.
   `deepseek-chat` model instead of the integration's `deepseek-flash`, and cached a failed
   resolution for 30 seconds. The local fix uses the integration model by default, removes negative
   caching, and rechecks on send.
-- Production app version and database version match for migrations through 0047. The local
-  cost-control/support/attachment and GIF-removal changes are included in `f74afac`. The database is
-  at 0049. The conversational-intelligence changes are local-only and require the next approved release.
+- Production app version and hosted database version match through migration `0052`. The deployed
+  `ceae6e5` includes cost-control, support, attachment/composer, GIF-removal,
+  conversational-intelligence and conversation title/lifecycle changes. Hosted `0050`–`0052` are
+  applied and verified.
 
 The earlier “local-only migrations” report was correct when written. The later user-authorized
 `--only` migration run applied 0045–0047, and the subsequent master push triggered the external
