@@ -4,16 +4,18 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test -- --maxWorkers=2` | **2,873 tests in 157 files passed** before the AQi lifecycle merge; full merged-tree run pending |
-| `npm run typecheck` | passes before the AQi lifecycle merge; recheck pending |
-| `npm run lint` | passes before the AQi lifecycle merge; recheck pending |
-| Production build | passes for the isolated CRM tree (Next.js 16.4.2, Webpack, 8 GiB Node heap); recheck after the AQi lifecycle merge pending |
-| RLS migration check | `0060_rls_initplan` applied to hosted on 2026-10-19 (the guarded rewrite committed and its post-state verified); equivalence test run locally |
+| `npm test -- --maxWorkers=2` | **2,911 passed / 2,911 (163 files)** on the final CRM commit |
+| `npm run typecheck` | passes on the final CRM commit |
+| `npm run lint` | passes on the final CRM commit; 0 errors and 0 warnings |
+| Production build | isolated build passes on Next.js 16.4.2 with Webpack and an 8 GiB Node heap |
+| RLS migration check | `0060_rls_initplan` is up to date; 166 SELECT policies rewritten. Migration applied to hosted on 2026-10-19 after its guard checks; equivalence and rollback tests pass locally |
 | Website thumbnails | 50 regenerated; browser comparison passed 50/50 with 0 flagged templates |
 | CRM browser QA | 114 all-route desktop/light visits across six personas, 62 focused phone/dark visits, 9 focused replays; 14/14 interactions passed. 0 axe violations, 0 non-local requests and 0 5xx responses; the phone/dark matrix had 0 overflow |
 | Hosted schema | Migration numbers are now unique: CRM `0035`–`0039` → `0054`–`0058`, Hermes inventory `0047` → `0059`, RLS `0053` → `0060`. Applied on 2026-10-19 after `pg_dump` backups: the nine CRM migrations, `0059_hermes_tool_inventory`, `0060_rls_initplan` and `0061_agency_manager_blueprint_permissions`; the ledger's CRM rows were renamed in the same pass. **251 public tables, 60 migrations recorded, 0 public tables without row level security, no pending migrations.** See [workforce-migration-and-release.md](workforce-migration-and-release.md). |
 
 The CRM browser and Website Studio thumbnail runs are **local only**. They use fictional records, an embedded PGlite database and local sign-in; the browser is restricted to the exact QA loopback origin. No provider, customer message, website publication or deployment was used for this verification.
+
+The final suite, typecheck, lint and build were run from a clean worktree at commit `73a0797`, so the separate, uncommitted AQi Phase 3 work in the main checkout was not included in this CRM verification or push.
 
 The CRM migrations were applied on 2026-10-19 after a `pg_dump` custom-format backup (`pre-crm-20261019T063759.dump`, 2,632 TOC entries, kept outside the repository under the git-ignored `.data/backups/`). A second backup (`pre-renumber-20261019T065124.dump`) was taken before the renumbering. The hosted ledger now records 60 migrations and 251 public tables, no public table lacks row level security, and no migration is pending. `0059_hermes_tool_inventory` and `0060_rls_initplan` were applied in the same pass: the inventory contract is recorded but the deployed Hermes 0.21.5 gateway still fails verification, so health stays fail-closed; the RLS rewrite applied only after its guard checks passed.
 
