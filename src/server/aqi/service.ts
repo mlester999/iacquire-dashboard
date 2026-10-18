@@ -256,7 +256,7 @@ export async function listAqiSuggestions(viewer: AqiViewer, pathname: string | n
         if (!canSeeAqiSuggestion(row, viewer)) return false;
         if (row.scope === "global") return true;
         if (row.scope === "role") return Boolean(role && row.role === role);
-        if (row.scope === "page") return Boolean(page && row.route_prefix && (page.path === row.route_prefix || page.path.startsWith(`${row.route_prefix}/`) || row.route_prefix.startsWith(`${page.path}/`)));
+        if (row.scope === "page") return Boolean(page && row.route_prefix && (page.path === row.route_prefix || page.path.startsWith(`${row.route_prefix}/`)));
         return false;
       }),
     )

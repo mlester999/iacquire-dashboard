@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { generateAqiConversationTitle } from "@/server/aqi/titles";
+import { invalidateLlmConfig } from "@/server/llm/client";
+import { saveCredential } from "@/server/security/credentials";
 import {
   createAqiConversation,
   deleteAqiConversation,
@@ -206,5 +210,57 @@ describe("AQi welcome suggestions respect permissions", () => {
     const conversation = await createAqiConversation(viewer, "/crm");
     const loaded = await getAqiConversation(viewer, conversation.id);
     expect(loaded.conversation.title).toBe("New conversation");
+  });
+});
+
+describe("AQi model-generated titles", () => {
+  let server: http.Server;
+  let baseUrl: string;
+  let credentialId: string | null = null;
+
+  beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      if (req.method === "POST" && req.url?.endsWith("/chat/completions")) {
+        req.resume();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "Tracing DeepSeek Wiring" } }], usage: { prompt_tokens: 20, completion_tokens: 4 } }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    await withSystem(async (db) => {
+      await db.query("delete from integration_connections where org_id is null and provider = 'llm' and label = 'AQi title test'");
+      if (credentialId) await db.query("delete from integration_credentials where id = $1", [credentialId]);
+      await db.query("delete from credential_references where provider = 'llm' and org_id is null");
+    });
+    invalidateLlmConfig();
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  });
+
+  it("uses the configured provider model and persists a sanitized title", async () => {
+    const { viewer } = await fixtures();
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    credentialId = await withSystem(async (db) => {
+      const credential = await saveCredential(db, { orgId: null, provider: "llm", label: "AQi title test", secret: "sk-test-title-0123456789abcdef", actorId: admin.id });
+      await db.query(
+        `insert into integration_connections (org_id, provider, label, environment, config, credential_id, status, created_by)
+         values (null, 'llm', 'AQi title test', 'production', $1, $2, 'connected', $3)`,
+        [JSON.stringify({ baseUrl, model: "qa-title-model", apiFormat: "openai", llmPreset: "deepseek" }), credential.id, admin.id],
+      );
+      return credential.id;
+    });
+    invalidateLlmConfig();
+
+    const conversation = await createAqiConversation(viewer, "/crm");
+    await addTurn(viewer, conversation.id, "How do I connect DeepSeek to AQi?");
+    const result = await generateAqiConversationTitle(viewer, conversation.id);
+    expect(result).toEqual({ title: "Tracing DeepSeek Wiring", generated: true });
+    expect(await titleRow(conversation.id)).toMatchObject({ title: "Tracing DeepSeek Wiring", title_source: "auto" });
   });
 });

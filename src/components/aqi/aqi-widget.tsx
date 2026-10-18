@@ -216,6 +216,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const welcomeData = React.useRef<Welcome | null>(null);
   const welcomeCache = React.useRef<{ path: string; at: number } | null>(null);
   const welcomeAbort = React.useRef<AbortController | null>(null);
+  const welcomeInFlightPath = React.useRef<string | null>(null);
   const healthAbort = React.useRef<AbortController | null>(null);
   const historyAbort = React.useRef<AbortController | null>(null);
   const historyFetchedAt = React.useRef(0);
@@ -250,9 +251,13 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const loadWelcome = React.useCallback(async (path: string, force = false) => {
     const cached = welcomeCache.current;
     if (!force && cached && cached.path === path && Date.now() - cached.at < 60_000) return;
+    // Opening the panel while the idle prefetch is already asking for the same page must join that
+    // request rather than abort and duplicate it.
+    if (!force && welcomeInFlightPath.current === path && welcomeAbort.current && !welcomeAbort.current.signal.aborted) return;
     welcomeAbort.current?.abort();
     const controller = new AbortController();
     welcomeAbort.current = controller;
+    welcomeInFlightPath.current = path;
     // Keep already-rendered suggestions visible while a page change resolves; only a true first
     // load shows skeletons.
     if (!welcomeData.current) setWelcomeStatus("loading");
@@ -269,6 +274,8 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     } catch {
       if (controller.signal.aborted) return;
       setWelcomeStatus(welcomeData.current ? "ready" : "error");
+    } finally {
+      if (!controller.signal.aborted && welcomeInFlightPath.current === path) welcomeInFlightPath.current = null;
     }
   }, []);
 

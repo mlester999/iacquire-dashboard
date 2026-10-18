@@ -11,7 +11,10 @@ knowledge, conversations, messages, feedback and usage records.
 | AQi identity, floating launcher and chat panel | Locally verified |
 | Real provider request path + token streaming | **Live controlled probe passed** against the existing production DeepSeek credential: `deepseek-flash`, OpenAI format, `OK` response and one real SSE delta; no customer data |
 | Streaming fallback for a non-SSE JSON answer | Locally verified |
-| Conversation persistence, rename, delete, history | Locally verified |
+| Conversation persistence, search/pagination, rename, delete and history | Locally/browser verified: owner-scoped titles, keyset pagination, inline rename with saving/error states and a destructive confirmation with immediate `Deleting…` |
+| Stable welcome and suggested-question loading | Browser verified: deterministic greeting on first paint, reserved skeletons, no header/footer shift, cached suggestions and permission-filtered questions |
+| Automatic conversation titles | Locally/browser verified: configured model or deterministic fallback, persisted provenance, neutral title for a greeting, manual rename always wins and deletion cannot be recreated |
+| Close/reopen conversation lifecycle | Browser verified: messages, title, unsent draft and scroll restored; no save confirmation when the panel is closed |
 | Context-aware suggestions and approved route registry | Locally verified |
 | Platform knowledge retrieval with role/page scoping | Locally verified |
 | Super Admin configuration, knowledge, suggestions and publishing | Locally verified |
@@ -32,6 +35,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 | Hosted migration 0048 | **Applied 2026-10-18**; budget/pricing tables and usage cost fields |
 | Hosted migration 0049 | **Applied 2026-10-18**; private AQi attachment bucket, metadata, RLS and four policies |
+| Migration 0051 (conversation title provenance) | **Prepared locally only**; not applied to the hosted project |
 | Production deployment | **`f74afac` deployed successfully by Vercel**; provider, budget, support, attachment/composer and GIF-removal changes are live. Conversational-intelligence changes in this working tree are **not deployed** |
 | Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed build includes the resolution/error fixes |
 
@@ -91,13 +95,31 @@ Migration 0049 adds private AQi chat attachments:
 - Rollback: [`0049_aqi_attachments.down.sql`](../supabase/rollbacks/0049_aqi_attachments.down.sql),
   which refuses while attachment metadata exists.
 
+Migration 0051 adds conversation title provenance:
+
+- `aqi_conversations.title_source` — `default`, `auto` or `manual`. New conversations default to
+  `default`; a rename sets `manual`; successful automatic naming sets `auto`.
+- `aqi_conversations.title_generated_at` — when the automatic title was persisted.
+- Existing non-placeholder titles are backfilled as `manual`, so a migration can never cause a real
+  name to be overwritten by later generation.
+- Rollback: [`0051_aqi_conversation_titles.down.sql`](../supabase/rollbacks/0051_aqi_conversation_titles.down.sql).
+  Prepared and tested locally; **not applied to the hosted project**.
+
 ## API
 
-- `GET /api/aqi/bootstrap?path=…` — sanitized identity, suggestions, current page, allowed paths and
-  provider health. No instructions, keys or other users' data.
+- `GET /api/aqi/bootstrap?path=…` — fast welcome payload: sanitized identity, approved suggestions,
+  the verified page label and allowed paths. Provider health is deliberately excluded. No
+  instructions, keys or other users' data.
+- `GET /api/aqi/health` — provider availability and (for a Super Admin only) diagnostics, resolved
+  independently from the welcome.
 - `POST /api/aqi/chat` — same-origin, authenticated SSE turn.
-- `GET/POST /api/aqi/conversations` — list/create the signed-in person's conversations.
-- `GET/PATCH/DELETE /api/aqi/conversations/[id]` — read with older-message cursor, rename, delete.
+- `GET/POST /api/aqi/conversations` — list/create the signed-in person's conversations. The list
+  accepts `q` (title search), `before` (last-activity cursor) and `limit`, and returns `hasMore`.
+- `GET/PATCH/DELETE /api/aqi/conversations/[id]` — read with older-message cursor; rename (returns the
+  stored title and marks it manual); delete.
+- `POST /api/aqi/conversations/[id]/title` — best-effort automatic naming. It is called after a turn
+  has rendered, is rate limited, and updates only an owner-scoped conversation that still has a
+  `default` title. A deleted conversation is never recreated.
 - `POST /api/aqi/feedback` — thumbs up/down and optional comment.
 - `POST /api/aqi/support` — explicit-consent escalation through the existing Support service,
   returning the real ticket reference or an honest failure.
@@ -145,6 +167,79 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   like/dislike, change/undo feedback, and a reason-plus-comment dislike form.
 - Admin knowledge supports search and status filtering; conversation probes can test greetings and
   navigation without saving a conversation.
+
+## Welcome, suggestions and conversation lifecycle
+
+**Why the old welcome changed.** The panel first rendered a hardcoded greeting and an empty
+“Try asking” area, then replaced both when one bootstrap response returned. That response also
+included provider credential resolution, so a slow provider lookup delayed the suggestions; the
+client used two effects (sometimes issuing duplicate requests) and refetched on every open. The
+header subtitle was derived from that late page value, and the footer moved as suggestions appeared.
+
+The current behavior is deterministic and independent of provider timing:
+
+- The welcome is fixed copy — “Hey! How can I help you today?” and “Ask me anything about
+  iAcquireOS.” It is rendered on first paint and is never replaced by a model or a config paragraph.
+  AQi does not call an LLM to greet someone.
+- The header identity is fixed: **AQi**, badge **Platform guide**, subtitle **Your iAcquireOS
+  assistant**. Current-page awareness is a separate, fixed-height hint (“Viewing: Integrations”) that
+  appears only after the server verifies that the person may open that route. It never changes the
+  header's height, and unverified routes are never named.
+- `/api/aqi/bootstrap` contains only the fast welcome data; `/api/aqi/health` resolves provider
+  availability separately. The two requests cannot block each other. Results are cached for 60
+  seconds per page, and opening the panel while the idle prefetch is in flight joins that request
+  instead of duplicating it.
+- Suggested questions still come from the Super Admin's published configuration, ordered page → role
+  → global, deduplicated, limited to four. They are additionally filtered by verified capability:
+  a client without `integrations.view` is never offered an integrations question, and a page-scoped
+  question requires that page's permission. Generic platform questions remain available to everyone.
+- While suggestions load, four skeleton cards occupy the final card geometry; the footer is anchored
+  with `mt-auto`, so the support link does not move. Loaded cards have a stable minimum height and
+  two-line clamp. Reduced-motion users get the same layout with animation suppressed.
+- If no authorized suggestions exist, the “Try asking” heading is omitted and a neutral fallback is
+  shown. If retrieval fails, the fallback plus a **Reload suggestions** action is shown; raw backend
+  details are never displayed and the composer stays usable. Clicking a suggestion sends it with a
+  lock that prevents a rapid second send, and the normal user/thinking states provide the feedback.
+- Conversations are automatically persisted from the first message; there is no separate temporary
+  chat store. Closing the panel never deletes or discards the conversation, unsent draft or title.
+  Deleting is an explicit, owner-scoped action.
+
+## Automatic conversation titles
+
+- A title is generated after the first meaningful turn has already rendered. Greetings, thanks and
+  clarification-only messages do not trigger naming and keep the neutral “New conversation” title.
+- The generator uses the existing configured LLM integration (no new provider), a bounded 1,200
+  character transcript, `maxTokens: 40` and an 8-second timeout. Model output is sanitized: 2–7 words,
+  no quotes, markdown, URLs, greetings, generic labels or contact details. If the provider is absent,
+  fails, times out or returns an unusable title, a deterministic title is derived from the topic
+  (for example “Troubleshooting Automation Issues”).
+- `title_source` is the race guard. Automatic naming updates only a row that is still `default`; a
+  manual rename sets `manual` and always wins. The update is an owner-scoped `UPDATE` (never an
+  insert), so a deleted conversation cannot be recreated. Generation is coalesced per conversation
+  inside the process and rate limited per user.
+- The history list updates in place when the title arrives; no page refresh is required. A refresh
+  during generation is repaired the next time the conversation is opened, once, and never on every
+  message.
+
+## Conversation history, rename and delete
+
+- History is owner- and organization-scoped, newest first, with a keyset cursor on `last_message_at`
+  and a `hasMore` flag. Search is server-side over the stored title, so generated and manually
+  renamed conversations are both findable.
+- Each row shows the title, relative last activity, an active indicator, and rename/delete actions
+  with accessible labels and tooltips. Actions are always visible on touch and reveal on hover/focus
+  on desktop. Long titles wrap to two lines and truncate gracefully.
+- Rename is inline: the field is pre-filled and focused, Enter saves, Escape cancels, the length is
+  validated to 120 characters, an empty name is rejected, a spinner shows while saving, duplicate
+  requests are ignored and a friendly error keeps the editor open. The stored title is returned and
+  applied locally.
+- Delete opens a compact `alertdialog`: the conversation title, the permanence warning, Cancel and a
+  destructive **Delete conversation** action. It traps focus, auto-focuses Cancel, closes on Escape
+  when idle, and ignores Escape while the request is pending. Clicking Delete immediately changes the
+  action to **Deleting…** with a spinner, disables it and keeps the dialog open until the server
+  confirms. Success removes the row, clears the active selection, restores focus to the history
+  search and announces “Conversation deleted.”; failure keeps the row and dialog, shows “Couldn't
+  delete this conversation. Please try again.” and allows a retry.
 
 ## Super Admin — `/admin/aqi`
 
@@ -239,7 +334,7 @@ text extraction, not a multimodal model call.
 ## Verification commands
 
 ```bash
-npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-conversation.test.ts tests/aqi-attachments.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
+npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-conversation.test.ts tests/aqi-attachments.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts tests/aqi-titles.test.ts tests/aqi-lifecycle.test.ts tests/aqi-migration-0051.test.ts
 npm run typecheck
 npm run lint
 npm run build
@@ -261,6 +356,29 @@ authorized navigation link.
 A separate 390 px browser run with no provider configured verified the client-facing unavailable
 state: friendly copy, no `Super Admin`/API-key/configuration text, a functional **Try again**
 action, 0 console errors and 0 axe violations.
+
+The welcome/title/history lifecycle was verified in a second isolated PGlite database (seeded demo
+tenants, real Chromium, local provider, 1440 px and 390 px), with a 2.2 s delayed welcome response,
+a 3 s delayed title response and a 2.5 s delete response:
+
+- **58 checks, 0 failures.** Welcome copy visible 154 ms after the launcher click; four skeletons
+  while loading; the composer accepted text during the delay.
+- Header height **91.5 px → 91.5 px** and the support link stayed at **y = 811.25 px** across the
+  skeleton-to-loaded transition. Five rapid open/close cycles produced **zero** extra suggestion
+  requests and kept the unsent draft.
+- Empty suggestions hid “Try asking”; a simulated 500 showed a clean fallback with no backend text
+  and a working composer; 390 px suggestions excluded an integrations question the member cannot
+  use.
+- A greeting produced **zero** title requests and kept “New conversation”. The first meaningful topic
+  produced a title in history without a refresh. A manual rename beat a title response delayed by
+  three seconds; empty and failed renames kept the editor and the original title.
+- Delete showed **Deleting…** immediately, sent exactly one request, kept the dialog on failure with
+  a friendly retry, removed the row only after success, returned focus to history search and trapped
+  focus / handled Escape (including ignoring Escape while pending). The mobile delete dialog fitted
+  the 390 px viewport (358 px wide).
+- Close/reopen preserved messages and the unsent draft; **0 axe violations** on desktop and mobile;
+  **0 page errors and 0 failed requests**. The console recorded only the four deliberately simulated
+  HTTP 500 responses and one pre-existing `/login` hydration warning outside AQi.
 
 The local browser provider is simulated. Live provider acceptance was a separate controlled probe
 against the existing production DeepSeek credential: `llmComplete` returned `OK`, and `llmStream`
