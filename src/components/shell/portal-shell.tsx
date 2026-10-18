@@ -6,7 +6,6 @@ import { ShellProvider } from "@/components/shell/shell-context";
 import { Sidebar } from "@/components/shell/sidebar";
 import { DemoBanner, SetupBanner, Topbar } from "@/components/shell/topbar";
 import { Sheet } from "@/components/ui/overlays";
-import { AqiWidget } from "@/components/aqi/aqi-widget";
 import { GuidedTour } from "@/components/shell/guided-tour";
 import type { ShellData } from "@/server/queries/shell";
 
@@ -37,7 +36,6 @@ export function PortalShell({ data, children }: { data: ShellData; children: Rea
             {children}
           </main>
         </div>
-        <AqiWidget />
         <GuidedTour autoStart={data.org.onboardingComplete} />
       </div>
     </ShellProvider>

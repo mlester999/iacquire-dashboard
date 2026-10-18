@@ -180,6 +180,9 @@ describe("AQi conversation privacy", () => {
 
   it("creates, lists, renames, reads and deletes only the signed-in person's conversation", async () => {
     const created = await createAqiConversation(viewer, "/workforce");
+    expect((await listAqiConversations(viewer)).some((conversation) => conversation.id === created.id)).toBe(false);
+    const { saveAqiConversation } = await import("@/server/aqi/lifecycle");
+    await saveAqiConversation(viewer, created.id);
     expect((await listAqiConversations(viewer)).some((conversation) => conversation.id === created.id)).toBe(true);
     await renameAqiConversation(viewer, created.id, "My private AQi chat");
     const loaded = await getAqiConversation(viewer, created.id);

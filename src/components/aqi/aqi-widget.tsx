@@ -4,8 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
+  Bookmark,
   Check,
   ChevronLeft,
   Copy,
@@ -35,6 +37,7 @@ import {
 import { LogoMark } from "@/components/brand";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/overlays";
 import { Field, Input, Textarea } from "@/components/ui/primitives";
 import { EmojiPicker } from "@/components/aqi/emoji-picker";
 import { cn, relativeTime } from "@/lib/utils";
@@ -144,8 +147,10 @@ function parseSseBlock(block: string): Record<string, unknown> | null {
   }
 }
 
-export function AqiWidget({ raised = false }: { raised?: boolean }) {
+export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   const pathname = usePathname();
+  // The AI employee chat page has a bottom composer; lift the launcher there.
+  const raised = raisedProp ?? Boolean(pathname?.startsWith("/chat"));
   const reduced = useReducedMotion();
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
@@ -178,8 +183,11 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [supportBusy, setSupportBusy] = React.useState(false);
   const [supportError, setSupportError] = React.useState<string | null>(null);
   const [supportResult, setSupportResult] = React.useState<{ id: string; ref: string; existing: boolean } | null>(null);
-  const [closeConfirm, setCloseConfirm] = React.useState(false);
-  const [newSession, setNewSession] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [discardOpen, setDiscardOpen] = React.useState(false);
+  const [newChatOpen, setNewChatOpen] = React.useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = React.useState(false);
   const [loadingConversation, setLoadingConversation] = React.useState(false);
   const [pending, setPending] = React.useState<PendingAttachment[]>([]);
   const [dragOver, setDragOver] = React.useState(false);
@@ -192,9 +200,14 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const nearBottom = React.useRef(true);
+  const scrollTopRef = React.useRef(0);
+  const lifecycleLock = React.useRef(false);
+  const sendLock = React.useRef(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const meaningful = newSession && messages.filter((message) => message.role === "user").length >= 2;
+  const userTurns = messages.filter((message) => message.role === "user").length;
+  const canSave = Boolean(conversationId && !saved && userTurns > 0);
+  const hasUnsavedContent = Boolean(conversationId && !saved && (userTurns > 0 || pending.length > 0 || input.trim().length > 0));
 
   function showError(message: string, diagnostic?: ErrorDiagnostic | null, code = "unexpected") {
     setError(message);
@@ -226,9 +239,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadBootstrap();
     void loadConversations();
+    if (view !== "chat") return;
     const timer = window.setTimeout(() => textareaRef.current?.focus(), 80);
     return () => window.clearTimeout(timer);
-  }, [open, loadBootstrap, loadConversations]);
+  }, [open, view, loadBootstrap, loadConversations]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -239,58 +253,146 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   React.useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (closeConfirm) setCloseConfirm(false);
-        else if (supportOpen) setSupportOpen(false);
-        else if (preview) setPreview(null);
-        else if (sourcePreview) setSourcePreview(null);
-        else if (emojiOpen) setEmojiOpen(false);
-        else requestClose();
-      }
+      if (event.key !== "Escape") return;
+      if (discardOpen) setDiscardOpen(false);
+      else if (newChatOpen) setNewChatOpen(false);
+      else if (deleting) setDeleting(null);
+      else if (renaming) setRenaming(null);
+      else if (supportOpen) setSupportOpen(false);
+      else if (preview) setPreview(null);
+      else if (sourcePreview) setSourcePreview(null);
+      else if (emojiOpen) setEmojiOpen(false);
+      else closePanel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // The panel DOM is hidden on close, so remember where the reader was and restore it when the
+  // panel or the chat view is mounted again. Closing must not scroll the conversation.
+  React.useLayoutEffect(() => {
+    if (!open || view !== "chat") return;
+    const element = scrollRef.current;
+    if (!element) return;
+    element.scrollTop = nearBottom.current ? element.scrollHeight : scrollTopRef.current;
+  }, [open, view]);
+
   React.useEffect(() => {
-    if (nearBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    if (!open || view !== "chat" || !nearBottom.current) return;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, open, view]);
 
-  function requestClose() {
-    if (meaningful) setCloseConfirm(true);
-    else {
-      setOpen(false);
-      launcherRef.current?.focus();
-    }
-  }
+  React.useEffect(() => () => {
+    // Reached only when the authenticated shell ends (logout/session end) or the page unloads.
+    // Closing the panel does not unmount the widget and must never act like Stop.
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
-  function closeNow() {
+  function closePanel() {
     setOpen(false);
-    setCloseConfirm(false);
+    setEmojiOpen(false);
     launcherRef.current?.focus();
   }
 
-  async function discardAndClose() {
-    if (conversationId) await fetch(`/api/aqi/conversations/${conversationId}`, { method: "DELETE" }).catch(() => null);
-    setConversationId(null);
-    setMessages([]);
-    setNewSession(false);
-    closeNow();
-    void loadConversations();
+  function clearPendingAttachments() {
+    for (const item of pending) {
+      item.xhr?.abort();
+      if (item.id) void fetch(`/api/aqi/attachments/${item.id}`, { method: "DELETE" }).catch(() => undefined);
+    }
+    setPending([]);
   }
 
-  function startNew() {
+  function resetToBlankChat() {
     abortRef.current?.abort();
     abortRef.current = null;
+    clearPendingAttachments();
     setStreaming(false);
     setConversationId(null);
     setMessages([]);
     clearError();
     setHasMore(false);
-    setNewSession(false);
+    setSaved(false);
     setView("chat");
     setInput("");
+    setFeedbackFor(null);
+    setFeedbackText("");
+    setFeedbackReason("");
     window.setTimeout(() => textareaRef.current?.focus(), 50);
+  }
+
+  async function discardTemporaryChat(): Promise<boolean> {
+    if (!conversationId || saved) return true;
+    const res = await fetch(`/api/aqi/conversations/${conversationId}/discard`, { method: "POST" }).catch(() => null);
+    if (!res) {
+      showError("I couldn't discard that chat. Check your connection and try again.");
+      return false;
+    }
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+      showError(data?.error ?? "I couldn't discard that chat. Please try again.", null, data?.code ?? "discard_failed");
+      return false;
+    }
+    return true;
+  }
+
+  async function confirmDiscard() {
+    if (lifecycleLock.current) return;
+    lifecycleLock.current = true;
+    setLifecycleBusy(true);
+    clearError();
+    try {
+      if (!(await discardTemporaryChat())) return;
+      resetToBlankChat();
+      setDiscardOpen(false);
+      void loadConversations();
+      toast.success("Unsaved chat discarded");
+    } finally {
+      lifecycleLock.current = false;
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function performNewChat() {
+    if (lifecycleLock.current) return;
+    lifecycleLock.current = true;
+    setLifecycleBusy(true);
+    clearError();
+    try {
+      if (!(await discardTemporaryChat())) return;
+      resetToBlankChat();
+      setNewChatOpen(false);
+      void loadConversations();
+    } finally {
+      lifecycleLock.current = false;
+      setLifecycleBusy(false);
+    }
+  }
+
+  function requestNewChat() {
+    if (hasUnsavedContent) {
+      setNewChatOpen(true);
+      return;
+    }
+    void performNewChat();
+  }
+
+  async function saveConversation() {
+    if (!conversationId || saved || saving) return;
+    setSaving(true);
+    clearError();
+    try {
+      const res = await fetch(`/api/aqi/conversations/${conversationId}/save`, { method: "POST" });
+      const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+      if (!res.ok) throw new AqiUiError(data?.error ?? "I couldn't save that conversation.", data?.code ?? "save_failed");
+      setSaved(true);
+      void loadConversations();
+      toast.success("Conversation saved", { description: "You'll find it in your AQi history." });
+    } catch (err) {
+      showError(err instanceof AqiUiError ? err.message : "I couldn't save that conversation. Please try again.", null, err instanceof AqiUiError ? err.code : "save_failed");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function loadOlder() {
@@ -305,7 +407,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       setMessages((current) => [...(data.messages ?? []), ...current]);
       setHasMore(Boolean(data.hasMore));
       window.requestAnimationFrame(() => {
-        if (element) element.scrollTop += element.scrollHeight - previousHeight;
+        if (element) {
+          element.scrollTop += element.scrollHeight - previousHeight;
+          scrollTopRef.current = element.scrollTop;
+        }
       });
     } catch {
       showError("Earlier messages could not be loaded. Please try again.");
@@ -315,6 +420,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   }
 
   async function openConversation(id: string) {
+    if (streaming) {
+      toast.info("Wait for the current answer to finish, or stop it first.");
+      return;
+    }
     setLoadingConversation(true);
     clearError();
     try {
@@ -324,8 +433,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       setConversationId(data.conversation.id);
       setMessages(data.messages ?? []);
       setHasMore(Boolean(data.hasMore));
-      setNewSession(false);
+      setSaved(true);
       setView("chat");
+      nearBottom.current = true;
+      scrollTopRef.current = 0;
     } catch {
       showError("That conversation could not be opened. Please try again.");
     } finally {
@@ -351,7 +462,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     if (!res.ok || !data?.conversation) throw new Error(data?.error ?? "AQi could not start a conversation.");
     conversationRef.current = data.conversation.id;
     setConversationId(data.conversation.id);
-    setNewSession(true);
+    setSaved(false);
     return data.conversation.id;
   }
 
@@ -427,9 +538,12 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
 
   async function send(text: string) {
     const clean = text.trim();
-    if (streaming || uploadsBusy) return;
+    // A ref guard closes the window between the first click and React applying the streaming
+    // state, so a rapid double click can never start the same provider turn twice.
+    if (sendLock.current || streaming || uploadsBusy) return;
     if (pending.some((item) => item.status === "failed")) { showError("One attachment didn't upload. Retry or remove it before sending."); return; }
     if (!clean && !readyAttachments.length) return;
+    sendLock.current = true;
     clearError();
     setInput("");
     let id = conversationId;
@@ -470,8 +584,9 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
         const data = (await res.json()) as { conversation?: Conversation; error?: string };
         if (!res.ok || !data.conversation) throw new Error(data.error ?? "AQi could not start a conversation.");
         id = data.conversation.id;
+        conversationRef.current = id;
         setConversationId(id);
-        setNewSession(true);
+        setSaved(false);
       }
       const res = await fetch("/api/aqi/chat", {
         method: "POST",
@@ -503,8 +618,8 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
           } else if (event.type === "delta") {
             setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? { ...message, content: message.content + String(event.text) } : message)));
           } else if (event.type === "done") {
-            const saved = { ...(event.message as Message), sources: Array.isArray(event.sources) ? (event.sources as Message["sources"]) : undefined };
-            setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? saved : message)));
+            const finalMessage = { ...(event.message as Message), sources: Array.isArray(event.sources) ? (event.sources as Message["sources"]) : undefined };
+            setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? finalMessage : message)));
             setStreaming(false);
             setPending([]);
             void loadConversations();
@@ -523,6 +638,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
         else showError("I couldn't finish that response. Please try again.");
       }
     } finally {
+      sendLock.current = false;
       abortRef.current = null;
     }
   }
@@ -610,14 +726,21 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     }
   }
 
-  async function remove(id: string) {
-    const res = await fetch(`/api/aqi/conversations/${id}`, { method: "DELETE" });
-    if (!res.ok) showError("That conversation could not be deleted. Please try again.");
-    else {
-      setDeleting(null);
-      if (conversationId === id) startNew();
-      void loadConversations();
+  async function deleteSavedConversation(id: string) {
+    if (id === conversationId && streaming) {
+      toast.info("Stop the current answer before deleting this conversation.");
+      return;
     }
+    const res = await fetch(`/api/aqi/conversations/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      showError(data?.error ?? "That conversation could not be deleted. Please try again.");
+      return;
+    }
+    setDeleting(null);
+    if (conversationId === id) resetToBlankChat();
+    void loadConversations();
+    toast.success("Conversation deleted");
   }
 
   const visibleConversations = conversations.filter((conversation) => conversation.title.toLowerCase().includes(historySearch.toLowerCase()));
@@ -659,7 +782,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={requestClose}
+              onClick={closePanel}
               aria-hidden
             />
             <motion.div
@@ -695,9 +818,25 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                       <button type="button" onClick={() => setExpanded((value) => !value)} className="hidden size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink sm:flex" aria-label={expanded ? "Collapse AQi" : "Expand AQi"}>{expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>
                     </>
                   )}
-                  <button type="button" onClick={requestClose} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Close AQi"><X className="size-4" /></button>
+                  <button type="button" onClick={closePanel} className="flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink" aria-label="Close AQi" title="Close AQi — your chat stays here"><X className="size-4" /></button>
                 </div>
               </header>
+
+              {view === "chat" && canSave && (
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-warning-soft/50 px-3 py-2">
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-warning-ink">
+                    <span className="size-1.5 rounded-full bg-warning" aria-hidden /> Not saved yet
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button type="button" size="sm" variant="secondary" onClick={() => void saveConversation()} loading={saving}>
+                      <Bookmark className="size-3.5" /> Save conversation
+                    </Button>
+                    <button type="button" onClick={() => setDiscardOpen(true)} className="rounded-lg px-2 py-1 text-[11.5px] font-medium text-muted transition hover:bg-surface-2 hover:text-danger-ink" aria-label="Discard unsaved chat">
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {view === "history" ? (
                 <HistoryView
@@ -711,12 +850,12 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                   loading={loadingConversation}
                   onOpen={(id) => void openConversation(id)}
                   onRename={() => void rename()}
-                  onDelete={(id) => void remove(id)}
-                  onNew={startNew}
+                  onDelete={(id) => void deleteSavedConversation(id)}
+                  onNew={requestNewChat}
                 />
               ) : (
                 <>
-                  <div ref={scrollRef} onScroll={() => { const element = scrollRef.current; if (element) nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+                  <div ref={scrollRef} onScroll={() => { const element = scrollRef.current; if (!element) return; scrollTopRef.current = element.scrollTop; nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
                     {messages.length === 0 ? (
                       <div className="space-y-4">
                         <div className="rounded-2xl border border-line bg-surface-2/60 p-4">
@@ -951,21 +1090,35 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {closeConfirm && (
-          <motion.div className="fixed inset-0 z-[70] grid place-items-center bg-black/35 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.div role="alertdialog" aria-modal="true" aria-labelledby="aqi-close-title" initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-float">
-              <h2 id="aqi-close-title" className="text-[16px] font-semibold tracking-tight">Save this conversation?</h2>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">You&apos;ve exchanged a few messages. Save them to your private AQi history, or discard this new conversation.</p>
-              <div className="mt-4 flex flex-col gap-2">
-                <Button variant="brand" onClick={() => { setNewSession(false); closeNow(); }}><Check className="size-4" /> Save &amp; close</Button>
-                <Button variant="secondary" onClick={() => void discardAndClose()}>Close without saving</Button>
-                <Button variant="ghost" onClick={() => setCloseConfirm(false)}>Keep chatting</Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Dialog
+        open={discardOpen}
+        onOpenChange={(next) => { if (!lifecycleBusy) setDiscardOpen(next); }}
+        title="Discard this conversation?"
+        description="Your unsaved messages will be removed. Saved conversations are not affected."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" disabled={lifecycleBusy} onClick={() => setDiscardOpen(false)}>Keep conversation</Button>
+            <Button variant="danger" loading={lifecycleBusy} onClick={() => void confirmDiscard()}>Discard</Button>
+          </>
+        }
+      >
+        <p className="text-[12.5px] leading-relaxed text-muted">This chat has not been saved to your AQi history yet. Save it first if you want to keep it.</p>
+      </Dialog>
+
+      <Dialog
+        open={newChatOpen}
+        onOpenChange={(next) => { if (!lifecycleBusy) setNewChatOpen(next); }}
+        title="Start a new chat?"
+        description="Your unsaved messages in this chat will be removed. Saved conversations stay in your history."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" disabled={lifecycleBusy} onClick={() => setNewChatOpen(false)}>Keep conversation</Button>
+            <Button variant="brand" loading={lifecycleBusy} onClick={() => void performNewChat()}>Start new chat</Button>
+          </>
+        }
+      />
 
       <AnimatePresence>
         {supportOpen && (
@@ -1063,9 +1216,10 @@ function HistoryView({
           <Search className="size-3.5 text-muted" />
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" className="h-9 min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint" aria-label="Search conversations" />
         </label>
+        <p className="px-1 text-[10.5px] leading-relaxed text-faint">New chats appear here after you save them.</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {loading ? <p className="p-3 text-[12.5px] text-muted">Opening conversation…</p> : conversations.length === 0 ? <p className="p-3 text-[12.5px] text-muted">No conversations yet. Start a new chat and it will appear here.</p> : (
+        {loading ? <p className="p-3 text-[12.5px] text-muted">Opening conversation…</p> : conversations.length === 0 ? <p className="p-3 text-[12.5px] text-muted">No saved conversations yet. Start a chat and choose Save conversation to keep it here.</p> : (
           <ul className="space-y-1">
             {conversations.map((conversation) => (
               <li key={conversation.id} className="rounded-xl border border-transparent p-2.5 hover:border-line hover:bg-surface-2">
@@ -1076,9 +1230,10 @@ function HistoryView({
                     <button type="button" onClick={() => setRenaming(null)} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-surface" aria-label="Cancel rename"><X className="size-3.5" /></button>
                   </div>
                 ) : deleting === conversation.id ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] text-danger-ink">Delete this chat?</span>
-                    <div className="flex gap-1"><button type="button" onClick={() => onDelete(conversation.id)} className="rounded-lg bg-danger px-2 py-1 text-[11px] font-semibold text-white">Delete</button><button type="button" onClick={() => setDeleting(null)} className="rounded-lg px-2 py-1 text-[11px] text-muted">Cancel</button></div>
+                  <div className="space-y-1.5">
+                    <p className="text-[12px] font-medium text-danger-ink">Delete this saved conversation?</p>
+                    <p className="text-[10.5px] leading-relaxed text-muted">Its messages will be removed for good. This can&apos;t be undone.</p>
+                    <div className="flex gap-1"><button type="button" onClick={() => onDelete(conversation.id)} className="rounded-lg bg-danger px-2 py-1 text-[11px] font-semibold text-white">Delete conversation</button><button type="button" onClick={() => setDeleting(null)} className="rounded-lg px-2 py-1 text-[11px] text-muted">Cancel</button></div>
                   </div>
                 ) : (
                   <div className="flex items-start gap-2">

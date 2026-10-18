@@ -475,6 +475,7 @@ export async function listAqiConversations(viewer: AqiViewer): Promise<AqiConver
     const { rows } = await db.query<{ id: string; title: string; last_message_at: Date; created_at: Date }>(
       `select id, title, last_message_at, created_at from aqi_conversations
        where user_id = $1 and (($2::uuid is null and org_id is null) or org_id = $2::uuid)
+         and saved_at is not null
        order by last_message_at desc limit 40`,
       [viewer.user.id, viewer.org?.orgId ?? null],
     );
@@ -544,11 +545,21 @@ export async function renameAqiConversation(viewer: AqiViewer, conversationId: s
   });
 }
 
+/** Delete a saved conversation. Temporary chats are discarded instead; this action never touches them. */
 export async function deleteAqiConversation(viewer: AqiViewer, conversationId: string): Promise<void> {
+  const saved = await withUser(viewer.user.id, async (db) => (await db.query(
+    `select id from aqi_conversations
+     where id = $1 and user_id = $2 and (($3::uuid is null and org_id is null) or org_id = $3::uuid)
+       and saved_at is not null`,
+    [conversationId, viewer.user.id, viewer.org?.orgId ?? null],
+  )).rows[0]);
+  if (!saved) throw new AppError("not_found", "Conversation not found.");
   await cleanupConversationAttachments(viewer, conversationId);
   await withUser(viewer.user.id, async (db) => {
     const result = await db.query(
-      `delete from aqi_conversations where id = $1 and user_id = $2 and (($3::uuid is null and org_id is null) or org_id = $3::uuid)`,
+      `delete from aqi_conversations
+       where id = $1 and user_id = $2 and (($3::uuid is null and org_id is null) or org_id = $3::uuid)
+         and saved_at is not null`,
       [conversationId, viewer.user.id, viewer.org?.orgId ?? null],
     );
     if (!result.rowCount) throw new AppError("not_found", "Conversation not found.");
@@ -682,7 +693,20 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
        values ($1, $2, $3, 'assistant', '', 'streaming', $4, $5) returning id`,
       [conversationId, viewer.org?.orgId ?? null, viewer.user.id, model, JSON.stringify({ page: page?.path ?? null, sources: knowledge.sources })],
     );
-    await db.query("update aqi_conversations set last_message_at = now(), updated_at = now() where id = $1", [conversationId]);
+    // The composer creates the conversation before the first turn so attachments have an owner.
+    // Give that chat a meaningful history title from the first question instead of leaving the
+    // generic "New conversation" placeholder.
+    const { rows: userTurnRows } = await db.query<{ n: number }>(
+      "select count(*)::int as n from aqi_messages where conversation_id = $1 and role = 'user'",
+      [conversationId],
+    );
+    await db.query(
+      `update aqi_conversations
+       set title = case when $2::int = 1 and title = 'New conversation' then left($3, 80) else title end,
+           last_message_at = now(), updated_at = now()
+       where id = $1`,
+      [conversationId, userTurnRows[0]?.n ?? 0, text || "Attachment chat"],
+    );
     return { conversationId: conversationId!, userMessageId: userRows[0].id, assistantMessageId: assistantRows[0].id };
   });
 

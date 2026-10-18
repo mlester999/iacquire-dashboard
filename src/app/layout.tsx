@@ -31,8 +31,16 @@ const themeScript = `(function(){try{var t=localStorage.getItem('iaq-theme');var
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Per-request CSP nonce issued by src/proxy.ts.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // The portal host is public configuration, not a secret. The AQi shell uses it to stay hidden on
+  // customer website hosts that are rendered by this same root layout.
+  let appHost = "";
+  try {
+    appHost = process.env.APP_URL ? new URL(process.env.APP_URL).host : "";
+  } catch {
+    appHost = "";
+  }
   return (
-    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${instrument.variable}`}>
+    <html lang="en" suppressHydrationWarning data-app-host={appHost} className={`${geist.variable} ${geistMono.variable} ${instrument.variable}`}>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

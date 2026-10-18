@@ -3,6 +3,7 @@ import { withSystem, withUser } from "@/server/db";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import type { AqiViewer } from "@/server/aqi/access";
 import { DEFAULT_AQI_CONFIG, deleteAqiConversation, getAqiConversation, createAqiConversation } from "@/server/aqi/service";
+import { saveAqiConversation } from "@/server/aqi/lifecycle";
 import { attachmentPromptContext, claimAqiAttachments, listAqiAttachments, readAqiAttachment, uploadAqiAttachment } from "@/server/aqi/attachments";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64");
@@ -68,6 +69,7 @@ describe("AQi private attachments", () => {
     await addMember(org.id, other.id, "viewer");
     const otherAccess = await withUser(other.id, (db) => db.query<{ allowed: boolean }>("select app.file_access_allowed('aqi-attachments',$1) as allowed", [fileRef.rows[0].storage_key]));
     expect(otherAccess.rows[0].allowed).toBe(false);
+    await saveAqiConversation(viewer, conversation.id);
     await deleteAqiConversation(viewer, conversation.id);
     const file = await withSystem((db) => db.query<{ status: string }>("select status from private_files where id=$1", [fileRef.rows[0].private_file_id]));
     expect(file.rows[0]?.status).toBe("deleted");

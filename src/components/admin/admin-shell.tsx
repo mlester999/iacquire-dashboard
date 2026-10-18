@@ -8,7 +8,6 @@ import { adminCrumbs } from "@/lib/admin-breadcrumb";
 import { motion } from "motion/react";
 import { Activity, ArrowLeftRight, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/brand";
-import { AqiWidget } from "@/components/aqi/aqi-widget";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { useTheme } from "@/components/providers";
@@ -108,7 +107,6 @@ export function AdminShell({ user, permissions: permissionList, hasWorkspace, ch
       <Input autoFocus aria-label="Search agency modules" placeholder="Search clients, team, integrations…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && visibleNav[0]) firstCommandLink.current?.click(); }} />
       <ul className="mt-3 space-y-1">{visibleNav.map((n, index) => <li key={n.href}><Link ref={index === 0 ? firstCommandLink : undefined} href={n.href} onClick={() => setCommandOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" /><span className="flex-1">{n.label}</span><span className="text-[11px] text-muted">{n.group}</span></Link></li>)}</ul>{!visibleNav.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}
     </Dialog>
-    <AqiWidget />
   </div>;
 }
 
