@@ -1,5 +1,5 @@
 /**
- * Generator for the row-level-security InitPlan migration (supabase/migrations/0050_rls_initplan.sql) and its rollback.
+ * Generator for the row-level-security InitPlan migration (supabase/migrations/0053_rls_initplan.sql) and its rollback.
  *
  *   node --import tsx scripts/rls-initplan.ts            writes both files
  *   node --import tsx scripts/rls-initplan.ts --check    exits 1 when the committed files differ from what it would write
@@ -7,15 +7,15 @@
  * Two modes take a restored copy of the hosted database (never production; the URL is passed on the command line, never read from .env)
  * and run everything inside one transaction that is rolled back:
  *   --verify-staging <url> [--personas 25] [--per-stratum 3] --yes-this-is-a-restored-copy
- *       captures what real users see in every table before 0050, with it and after its rollback, and reports any difference; the
+ *       captures what real users see in every table before 0053, with it and after its rollback, and reports any difference; the
  *       users are taken round-robin from strata (platform role, membership role and status, organization status, overrides,
  *       assignments, several organizations, conversations without inbox.view_all), and it exits 1 if no client member was compared;
  *   --from-database <url> [--check] --yes-this-is-a-restored-copy
  *       generates the two files from that copy's own catalog (for a PostgreSQL version that prints expressions differently).
  *
  * By default it never connects to any server: it builds a throwaway in-memory PGlite database, applies
- * supabase/local-compat.sql and every migration numbered below 0050, reads pg_policies, and spells out one reviewed
- * `alter policy` per SELECT policy that calls a per-row permission helper. Re-run it whenever a migration before 0050 adds or
+ * supabase/local-compat.sql and every migration numbered below 0053, reads pg_policies, and spells out one reviewed
+ * `alter policy` per SELECT policy that calls a per-row permission helper. Re-run it whenever a migration before 0053 adds or
  * changes a SELECT policy (tests/rls-initplan-guard.test.ts fails until you do).
  *
  * The rewrite (see docs/rls-performance-rollout.md for the proof):
@@ -42,8 +42,8 @@ import { citext } from "@electric-sql/pglite/contrib/citext";
 import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 
-export const VERSION = "0050";
-export const NAME = "0050_rls_initplan";
+export const VERSION = "0053";
+export const NAME = "0053_rls_initplan";
 export const MIGRATION_PATH = `supabase/migrations/${NAME}.sql`;
 export const ROLLBACK_PATH = `supabase/rollbacks/${NAME}.down.sql`;
 
@@ -986,7 +986,7 @@ export async function choosePersonas(db: Db, limit: number, perStratum: number):
  * applies DDL (and holds its locks until then), so run it only on a restored copy, never on production.
  */
 export async function verifyInTransaction(db: VerifyDb, up: string, down: string, limit = 25, perStratum = 3): Promise<VerifyResult> {
-  if (await functionBody(db, "permitted_orgs")) throw new Error("app.permitted_orgs already exists: this copy already has 0050");
+  if (await functionBody(db, "permitted_orgs")) throw new Error("app.permitted_orgs already exists: this copy already has 0053");
   const { ids: users, strata, clientMembers } = await choosePersonas(db, limit, perStratum);
   const ids = [...users, "00000000-0000-4000-8000-000000000000"];
   const tableRows = (await db.query<{ t: string; key: string }>(
@@ -1039,7 +1039,7 @@ export async function verifyInTransaction(db: VerifyDb, up: string, down: string
     clientMembers,
     tables: tableRows.length,
     rowsSeen,
-    differences: [...diff(before, after, "with 0050"), ...diff(before, back, "after rollback")],
+    differences: [...diff(before, after, "with 0053"), ...diff(before, back, "after rollback")],
     rollbackRestoresPolicies: restored,
   };
 }

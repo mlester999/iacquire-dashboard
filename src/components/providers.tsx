@@ -26,10 +26,14 @@ function AqiMount() {
   const [hostAllowed, setHostAllowed] = React.useState(false);
   React.useEffect(() => {
     // Customer websites are rendered by the same root layout. Only the configured portal host may
-    // show AQi; an unset APP_URL keeps the portal-only default.
-    const appHost = document.documentElement.dataset.appHost?.trim() ?? "";
+    // show AQi; an unset APP_URL keeps the portal-only default. Compare hostnames, never host:port —
+    // the dev server, previews and proxies can serve the portal on a different port, and a mismatch
+    // here hides AQi silently.
+    const appHost = document.documentElement.dataset.appHost?.trim().toLowerCase() ?? "";
+    const currentHost = window.location.hostname.toLowerCase();
+    const loopback = (host: string) => host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
     // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only host check after hydration
-    setHostAllowed(!appHost || window.location.host === appHost);
+    setHostAllowed(!appHost || currentHost === appHost || (loopback(currentHost) && loopback(appHost)));
   }, []);
   if (!hostAllowed || !isAqiSurface(pathname)) return null;
   return <AqiWidget />;

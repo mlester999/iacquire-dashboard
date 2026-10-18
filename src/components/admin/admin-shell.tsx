@@ -16,6 +16,8 @@ import { cn, initials } from "@/lib/utils";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: Gauge, exact: true, group: "Operations" },
+  // Super Admin only: AQi configuration, knowledge, budgets and publishing.
+  { href: "/admin/aqi", label: "AQi Management", icon: Sparkles, superOnly: true, group: "Platform" },
   { href: "/admin/clients", label: "Clients", icon: Building2, group: "Operations" },
   { href: "/admin/crm", label: "Client CRMs", icon: Contact, exact: true, group: "Operations" },
   // Counts across clients (failures, setup, billing, support), never their contacts. The label is the page's own breadcrumb.

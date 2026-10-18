@@ -35,7 +35,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // customer website hosts that are rendered by this same root layout.
   let appHost = "";
   try {
-    appHost = process.env.APP_URL ? new URL(process.env.APP_URL).host : "";
+    // Hostname only: the app may be served on another port (dev server, preview) and that must not
+    // hide AQi. A different hostname still means a customer website rendered by this same layout.
+    appHost = process.env.APP_URL ? new URL(process.env.APP_URL).hostname : "";
   } catch {
     appHost = "";
   }

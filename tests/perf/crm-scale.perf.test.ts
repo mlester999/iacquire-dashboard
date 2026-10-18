@@ -4,12 +4,12 @@
 //
 // Opt-in only: `CRM_PERF=1 npx vitest run tests/perf` (vitest.config.ts leaves tests/perf out of the default suite).
 //   CRM_PERF_SCALE=0.2   seeds a fifth of the data for a quick check
-//   CRM_PERF_RUNS=5      timed calls per measurement (after one warm-up call); CRM_PERF_RUNS_PROPOSED for the 0050 phase
+//   CRM_PERF_RUNS=5      timed calls per measurement (after one warm-up call); CRM_PERF_RUNS_PROPOSED for the 0053 phase
 //   CRM_PERF_PHASE=label prefixes the phase names
-//   CRM_PERF_PROPOSAL=0  skips the 0050 (row-level security once per statement) phase
-//   CRM_PERF_STEPS=...   overrides the sequence (drop-0050, add-0050, drop-0038, add-0038, measure; proposed-rls is an alias of add-0050)
-// Default phases, on the same data: the policies as they were before 0050 (its rollback runs first) without the 0038 indexes, with them,
-// and with them plus migration 0050_rls_initplan (it replaced tests/perf/rls-initplan.proposal.sql, the experiment it was measured from).
+//   CRM_PERF_PROPOSAL=0  skips the 0053 (row-level security once per statement) phase
+//   CRM_PERF_STEPS=...   overrides the sequence (drop-0053, add-0053, drop-0038, add-0038, measure; proposed-rls is an alias of add-0053)
+// Default phases, on the same data: the policies as they were before 0053 (its rollback runs first) without the 0038 indexes, with them,
+// and with them plus migration 0053_rls_initplan (it replaced tests/perf/rls-initplan.proposal.sql, the experiment it was measured from).
 // Every measured call's result is fingerprinted; all phases must return identical results.
 // Results go to .data/perf/crm-scale-<phase>.json and the console, including which indexes each call scanned (pg_stat_user_indexes).
 //
@@ -36,14 +36,14 @@ import { runPairs } from "./pairs";
 const RUN = process.env.CRM_PERF === "1";
 const FACTOR = Number(process.env.CRM_PERF_SCALE ?? "1") || 1;
 const RUNS = Number(process.env.CRM_PERF_RUNS ?? "5") || 5;
-/** Timed calls per measurement once 0050 is in (each call takes milliseconds there, so more runs cost little). */
+/** Timed calls per measurement once 0053 is in (each call takes milliseconds there, so more runs cost little). */
 const RUNS_PROPOSED = Number(process.env.CRM_PERF_RUNS_PROPOSED ?? "5") || 5;
 const LABEL = process.env.CRM_PERF_PHASE ? `${process.env.CRM_PERF_PHASE}-` : "";
 const LONG = 120 * 60_000;
 const MIGRATION = "supabase/migrations/0038_crm_performance.sql";
 const ROLLBACK = "supabase/rollbacks/0038_crm_performance.down.sql";
-const RLS_MIGRATION = "supabase/migrations/0050_rls_initplan.sql";
-const RLS_ROLLBACK = "supabase/rollbacks/0050_rls_initplan.down.sql";
+const RLS_MIGRATION = "supabase/migrations/0053_rls_initplan.sql";
+const RLS_ROLLBACK = "supabase/rollbacks/0053_rls_initplan.down.sql";
 /** One clock for every phase, so time-relative reads (slots, upcoming) ask the same question each time. */
 const NOW = new Date();
 /**
@@ -224,11 +224,11 @@ describe.skipIf(!RUN)(`Native CRM at realistic scale (${PERF_LABEL})`, () => {
     const counts = await datasetCounts(ws.orgId);
     expect(counts["contacts (workspace)"]).toBe(scaled(TARGET, FACTOR).contacts);
     // Same data, same code; only the indexes and (last) the policies change between measurements. The database starts with every
-    // migration applied, so the default sequence first rolls 0050 back to measure the policies as they were before it.
+    // migration applied, so the default sequence first rolls 0053 back to measure the policies as they were before it.
     const has0038 = existsSync(MIGRATION) && existsSync(ROLLBACK);
-    const has0050 = existsSync(RLS_MIGRATION) && existsSync(RLS_ROLLBACK);
-    const state = { rls: (await rlsApplied()) ? "rls-0050" : "current-rls", idx: has0038 ? "with-0038" : "no-0038" };
-    const steps = (process.env.CRM_PERF_STEPS ?? `drop-0050,drop-0038,measure,add-0038,measure${process.env.CRM_PERF_PROPOSAL === "0" ? "" : ",add-0050,measure"}`).split(",");
+    const has0053 = existsSync(RLS_MIGRATION) && existsSync(RLS_ROLLBACK);
+    const state = { rls: (await rlsApplied()) ? "rls-0053" : "current-rls", idx: has0038 ? "with-0038" : "no-0038" };
+    const steps = (process.env.CRM_PERF_STEPS ?? `drop-0053,drop-0038,measure,add-0038,measure${process.env.CRM_PERF_PROPOSAL === "0" ? "" : ",add-0053,measure"}`).split(",");
     for (const step of steps) {
       if (step === "drop-0038" && has0038) {
         await runFile(ROLLBACK);
@@ -236,12 +236,12 @@ describe.skipIf(!RUN)(`Native CRM at realistic scale (${PERF_LABEL})`, () => {
       } else if (step === "add-0038" && has0038) {
         await runFile(MIGRATION);
         state.idx = "with-0038";
-      } else if (step === "drop-0050" && has0050 && (await rlsApplied())) {
+      } else if (step === "drop-0053" && has0053 && (await rlsApplied())) {
         await runFile(RLS_ROLLBACK);
         state.rls = "current-rls";
-      } else if ((step === "add-0050" || step === "proposed-rls") && has0050 && !(await rlsApplied())) {
+      } else if ((step === "add-0053" || step === "proposed-rls") && has0053 && !(await rlsApplied())) {
         await runFile(RLS_MIGRATION);
-        state.rls = "rls-0050";
+        state.rls = "rls-0053";
         const { rows } = await withSystem((db) =>
           db.query<{ rewritten: number; per_row_left: number }>(
             `select count(*) filter (where qual ~ 'app\\.(permitted_orgs|accessible_orgs)\\(')::int as rewritten,
@@ -249,10 +249,10 @@ describe.skipIf(!RUN)(`Native CRM at realistic scale (${PERF_LABEL})`, () => {
              from pg_policies where schemaname = 'public' and cmd = 'SELECT'`,
           ),
         );
-        console.log(`0050: ${rows[0].rewritten} SELECT policies use the statement-level helpers; ${rows[0].per_row_left} still call a per-row permission function`);
+        console.log(`0053: ${rows[0].rewritten} SELECT policies use the statement-level helpers; ${rows[0].per_row_left} still call a per-row permission function`);
         rlsStats = rows[0];
       } else if (step === "measure") {
-        await runPhase(`${LABEL}${state.rls}-${state.idx}`, state.rls === "rls-0050" ? RUNS_PROPOSED : RUNS);
+        await runPhase(`${LABEL}${state.rls}-${state.idx}`, state.rls === "rls-0053" ? RUNS_PROPOSED : RUNS);
       }
     }
     // Every phase must have returned exactly the same thing for every compared call.

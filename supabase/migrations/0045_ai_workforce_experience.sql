@@ -9,8 +9,8 @@
 -- (text notes and uploaded documents) without creating a second employee registry or a second chat backend.
 --
 -- Hosted/local compatibility:
---   * The local chain applies 0050_rls_initplan after all earlier schemas, including this one. These policies use the
---     statement-level helper when it already exists and otherwise use the per-row helper; 0050 rewrites the SELECT
+--   * The local chain applies 0053_rls_initplan after all earlier schemas, including this one. These policies use the
+--     statement-level helper when it already exists and otherwise use the per-row helper; 0053 rewrites the SELECT
 --     policy in a fresh install. Both paths are fail-closed and permission-checked.
 --   * This file is idempotent for objects it owns, so it can be re-run safely after an interrupted deploy.
 --
@@ -78,7 +78,7 @@ begin
       using (app.has_permission(org_id, 'knowledge.edit'::text))
       with check (app.has_permission(org_id, 'knowledge.edit'::text))$p$;
   else
-    -- The statement-level helper is already present in schemas that have applied 0050.
+    -- The statement-level helper is already present in schemas that have applied 0053.
     execute $p$create policy employee_knowledge_select on employee_knowledge_entries for select to iaq_app_user
       using (org_id = ANY ((SELECT app.permitted_orgs('knowledge.view'::text))::uuid[]))$p$;
     execute $p$create policy employee_knowledge_insert on employee_knowledge_entries for insert to iaq_app_user

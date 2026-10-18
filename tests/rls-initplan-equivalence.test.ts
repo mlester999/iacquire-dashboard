@@ -7,13 +7,13 @@ import {
   type PolicyRow,
 } from "../scripts/rls-initplan";
 
-// Migration 0050 rewrites every per-row permission call in a SELECT policy into a statement-level InitPlan. This proves, adversarially and
+// Migration 0053 rewrites every per-row permission call in a SELECT policy into a statement-level InitPlan. This proves, adversarially and
 // for the whole schema, that nobody sees a single row more or less:
-//   1. a private in-memory database gets every migration before 0050 (not the shared test database, which already has 0050);
+//   1. a private in-memory database gets every migration before 0053 (not the shared test database, which already has 0053);
 //   2. every table gets rows in five organizations (active, active, suspended, archived, and the agency), inserted generically from the
 //      catalog with triggers off and CHECK constraints dropped, so row states the application would never write are covered too;
 //   3. for each persona below, the primary keys it can see in every table are captured under row-level security;
-//   4. the committed 0050 is applied and the capture repeated: identical, for every table and persona;
+//   4. the committed 0053 is applied and the capture repeated: identical, for every table and persona;
 //   5. the committed rollback is applied: every policy expression is byte-for-byte the original, and the capture matches the first again.
 // It also proves the committed files are exactly what scripts/rls-initplan.ts generates from this schema.
 // Run it against a restored staging copy the same way (see docs/rls-performance-rollout.md); never against production data.
@@ -484,7 +484,7 @@ describe(`row-level security before and after ${VERSION} (every table, every per
     let total = 0;
     for (const seen of first.values()) for (const v of seen.values()) if (Array.isArray(v)) total += v.length;
     expect(total).toBeGreaterThan(1000);
-    // Every table is visible to someone, and every table whose read policy 0050 rewrites is also hidden from someone, so no comparison is
+    // Every table is visible to someone, and every table whose read policy 0053 rewrites is also hidden from someone, so no comparison is
     // trivially "the same empty set" or "everything". (The tables everyone may read are global catalogs with a `true` policy.)
     const visibleTo = (t: string) => personas.filter((p) => keys(first, p.key, t).length > 0).length;
     const rewritten = new Set(selectPolicies(policiesBefore).map((p) => p.tablename));
@@ -644,7 +644,7 @@ describe(`row-level security before and after ${VERSION} (every table, every per
       expect(await functionBody(db, "has_permission")).toBe(body);
     };
     // A hotfix on the target: agency super admins also need a staff assignment. Every policy text is unchanged, so only the helper check
-    // can notice; without it 0050 would show super admins rows the per-row policy hides.
+    // can notice; without it 0053 would show super admins rows the per-row policy hides.
     const hotfix = def.replace("app.user_can_access_org(app.current_user_id(), p_org)", "false");
     expect(hotfix).not.toBe(def);
     await db.exec(hotfix);

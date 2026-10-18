@@ -6,8 +6,8 @@ import { citext } from "@electric-sql/pglite/contrib/citext";
 import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// The hosted project has the earlier migrations through 0049 but not 0050_rls_initplan: it has
-// app.has_permission/current_user_id but no app.permitted_orgs. This isolated database mimics that state,
+// The current hosted record includes AQi migrations through 0052 but not local RLS migration 0053: it has
+// app.has_permission/current_user_id but no app.permitted_orgs. This isolated database applies the AQi migrations,
 // then re-runs the workforce migrations to prove their per-row compatibility branch without touching hosted data.
 const ROOT = process.cwd();
 const MIGRATIONS = path.join(ROOT, "supabase", "migrations");
@@ -21,7 +21,7 @@ beforeAll(async () => {
   const files = fs.readdirSync(MIGRATIONS).filter((name) => /^\d{4}_.+\.sql$/.test(name)).sort();
   for (const name of files) {
     const prefix = name.slice(0, 4);
-    if (prefix >= "0050") continue;
+    if (prefix >= "0053") continue;
     const sql = fs.readFileSync(path.join(MIGRATIONS, name), "utf8");
     await db.transaction(async (tx) => {
       await tx.exec(sql);

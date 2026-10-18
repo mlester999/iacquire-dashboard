@@ -7,9 +7,9 @@ import {
 } from "../scripts/rls-initplan";
 import { crmOrg } from "./support/crm";
 
-// Guard for migration 0050 (row-level security evaluated once per statement), on the fully migrated test database.
-// When it fails after you add or change a SELECT policy in a migration before 0050, run `node --import tsx scripts/rls-initplan.ts`
-// to regenerate 0050 and its rollback, then run tests/rls-initplan-equivalence.test.ts. A policy added by a migration after 0050
+// Guard for migration 0053 (row-level security evaluated once per statement), on the fully migrated test database.
+// When it fails after you add or change a SELECT policy in a migration before 0053, run `node --import tsx scripts/rls-initplan.ts`
+// to regenerate 0053 and its rollback, then run tests/rls-initplan-equivalence.test.ts. A policy added by a migration after 0053
 // must use the statement-level helpers directly: `org_id = ANY ((SELECT app.permitted_orgs('<permission>'))::uuid[])`.
 
 const REGENERATE = "regenerate with `node --import tsx scripts/rls-initplan.ts`, or write the policy with app.permitted_orgs / app.accessible_orgs";
@@ -56,7 +56,7 @@ async function deparsed(table: string, using: string): Promise<PolicyRow> {
   return row!;
 }
 
-describe("row-level security reads are evaluated once per statement (0050)", () => {
+describe("row-level security reads are evaluated once per statement (0053)", () => {
   it("no SELECT policy calls app.has_permission, app.can_view_conversation or app.can_access_org with a row's columns", async () => {
     const all = await policies();
     expect(all.filter((p) => p.cmd === "SELECT").length).toBeGreaterThan(150);
@@ -147,7 +147,7 @@ describe("row-level security reads are evaluated once per statement (0050)", () 
       expect(u.set, `${u.table}.${u.policy}`).toBe(rewriteExpression(u.expect));
       expect(down[i].set, `${u.table}.${u.policy}`).toBe(u.expect);
     }
-    // The rollback's precondition holds on this database: each policy still has the expression 0050 gave it.
+    // The rollback's precondition holds on this database: each policy still has the expression 0053 gave it.
     const live = await policies();
     const stale = down.filter((d) => normalize(live.find((p) => p.tablename === d.table && p.policyname === d.policy && p.cmd === "SELECT")?.qual ?? "") !== normalize(d.expect));
     expect(stale.map((d) => `${d.table}.${d.policy}`)).toEqual([]);

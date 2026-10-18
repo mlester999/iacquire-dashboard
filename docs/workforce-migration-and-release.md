@@ -1,11 +1,11 @@
 # Workforce migration and release plan
 
-Status (2026-10-19): **no migration was applied during the CRM branch integration**. The read-only hosted preflight found migration records `0001`–`0029` and `0034`–`0049` in `public.schema_migrations`, and 213 public tables. It also confirmed that `crm_blueprints`, `crm_provider_switches`, and `hermes_tool_inventory` are absent. The branch has 11 exact local migration filenames that are not recorded on the hosted database; see the pending list below. A verified current backup and restore, plus reconciliation of the divergent CRM/workforce migration history, are still required before applying them.
+Status (2026-10-19): **no CRM/workforce migration was applied during the CRM branch integration**. The read-only CRM preflight found migration records `0001`–`0029` and `0034`–`0049` in `public.schema_migrations`, 213 public tables, and no `crm_blueprints`, `crm_provider_switches`, or `hermes_tool_inventory`. A later repository record reports that AQi migrations `0050`–`0052` were applied on 2026-10-19; that newer ledger state was not re-read during the CRM pass. The 11 CRM/Hermes/RLS migration filenames in the pending list remain unverified on the hosted database. A verified current backup and restore, plus reconciliation of the divergent CRM/workforce migration history, are still required before applying them.
 
 This plan covers only the workforce-owned migrations. It does not authorize or attempt to reconcile
 the concurrent CRM migration branch.
 
-## What the hosted database actually has
+## What the latest hosted records show
 
 Read-only inspection on 2026-10-19 (no writes):
 
@@ -14,6 +14,9 @@ Read-only inspection on 2026-10-19 (no writes):
 - 213 public tables. The employee knowledge tables and migrations `0045`–`0046` are present.
 - AQi migrations `0047_aqi_assistant`, `0048_aqi_cost_controls`, and
   `0049_aqi_attachments` are recorded. The separate local `0047_hermes_tool_inventory.sql` is not.
+- The latest repository record reports AQi migrations `0050_aqi_conversation_content`,
+  `0051_aqi_conversation_titles`, and `0052_aqi_conversation_lifecycle` applied on 2026-10-19.
+  The CRM preflight above predates those writes; refresh the hosted ledger before any CRM migration.
 - `crm_blueprints`, `crm_provider_switches`, and `hermes_tool_inventory` are absent.
 - Hosted has `app.has_permission`, `app.can_access_org`, `app.current_user_id` and
   `app.touch_updated_at`.
@@ -31,7 +34,7 @@ migrations. The supported local sequence is:
 
 `0045` checks whether `app.permitted_orgs(text)` exists:
 
-- **Local branch:** it exists after `0050_rls_initplan`; policies use the statement-level
+- **Local branch:** it exists after `0053_rls_initplan`; policies use the statement-level
   `permitted_orgs` form. The local RLS-initplan guard continues to pass.
 - **Hosted:** it does not exist; policies use the existing `app.has_permission(org_id, …)` form. This
   is still permission-checked and RLS-enforced, and is fail-closed.
@@ -41,14 +44,14 @@ Both migrations are idempotent for the objects they own and can be re-run after 
 another tenant.
 
 The local CRM and workforce files share numeric prefixes `0035`–`0040`, while the local Hermes inventory
-file shares `0047` with the already-applied AQi migration. RLS migration `0050` runs after every earlier
-CRM, workforce and AQi migration so it can rewrite the final policy set. The application migration runner
+file shares `0047` with the already-applied AQi migration. RLS migration `0053` runs after the AQi
+migrations `0050`–`0052` and the earlier CRM/workforce files so it can rewrite the final policy set. The application migration runner
 stores the full filename as the version; do not use a blanket Supabase CLI push or unfiltered
 `npm run db:migrate` against the hosted URL. The exact 11 local files not recorded by the hosted preflight are:
 
 - `0030_crm_scheduling`, `0031_crm_messaging`, `0032_crm_automation`, `0033_crm_growth`
 - `0035_crm_blueprints`, `0036_crm_ghl_migration`, `0037_crm_setup_native`,
-  `0038_crm_performance`, `0039_crm_provider_switch`, `0050_rls_initplan`
+  `0038_crm_performance`, `0039_crm_provider_switch`, `0053_rls_initplan`
 - `0047_hermes_tool_inventory`
 
 The workforce files with matching numeric prefixes (`0035_hermes_setup_persistence` through
