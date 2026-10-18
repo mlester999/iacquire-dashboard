@@ -7,9 +7,10 @@ import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
-import { compileAgentConfig, compileKnowledgeContext, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
+import { compileAgentConfig, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
 import { getCapabilities, getToolsets, getProfileModels, HermesError, restrictedToolsIn, hasVerifiedCompleteToolInventory, type HermesConnection } from "@/server/integrations/hermes/client";
 import { notifyOrgRoles } from "@/server/notifications";
+import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
 
 export interface AgentInstanceRow {
   id: string;
@@ -27,6 +28,8 @@ export interface AgentInstanceRow {
   summary: string | null;
   config_version: number | null;
   config_applied_at: Date | null;
+  hermes_profile: string | null;
+  hermes_base_url: string | null;
 }
 
 const RESERVED_PROFILES = new Set([
@@ -60,7 +63,7 @@ export async function ensureAgentInstances(orgId: string, db: Queryable) {
 
 const AGENT_SELECT = `
   select a.id, a.org_id, a.role_key, a.display_name, a.enabled, a.status, a.mode, a.active_config_version_id,
-         a.last_health_check_at, a.last_health_ok, a.last_health_detail, r.default_tools,
+         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_base_url, r.default_tools,
          v.summary, v.version as config_version, v.applied_at as config_applied_at
   from agent_instances a
   join agent_roles r on r.key = a.role_key
@@ -109,7 +112,7 @@ export async function listConfigVersions(userId: string, agentId: string) {
 // Configuration versions
 // ---------------------------------------------------------------------------
 
-async function companyContext(db: Queryable, orgId: string): Promise<CompanyContext> {
+export async function loadCompanyContext(db: Queryable, orgId: string): Promise<CompanyContext> {
   const { rows } = await db.query<{
     name: string;
     industry: string | null;
@@ -189,7 +192,7 @@ export async function createConfigVersion(
   const compiled = compileAgentConfig({
     role: agent.role_key,
     settings,
-    company: await companyContext(db, input.orgId),
+    company: await loadCompanyContext(db, input.orgId),
     version,
     allowedTools: agent.default_tools,
   });
@@ -311,8 +314,39 @@ export async function rollbackToVersion(db: Queryable, input: { orgId: string; a
   });
 }
 
-/** Run-time instructions: the applied configuration plus the latest approved knowledge. */
-export async function buildRunInstructions(db: Queryable, orgId: string, agentId: string): Promise<{ instructions: string; versionId: string | null }> {
+export interface RunInstructions {
+  instructions: string;
+  versionId: string | null;
+  knowledgeEntryIds: string[];
+  knowledgeDocumentIds: string[];
+  knowledgeTruncated: boolean;
+}
+
+/**
+ * Layered run instructions: the employee configuration, then approved company and employee knowledge, then the
+ * immutable agency policy last so later context can never overshadow it.
+ */
+export async function composeRunInstructions(
+  db: Queryable,
+  orgId: string,
+  agentId: string,
+  compiledInstructions: string,
+  versionId: string | null,
+): Promise<RunInstructions> {
+  const knowledge = await employeeKnowledgeContext(db, orgId, agentId);
+  // The agency policy must stay last so it is never overshadowed by later context.
+  const [head, policy] = splitPolicy(compiledInstructions);
+  return {
+    instructions: [head, knowledge.block, policy].filter(Boolean).join("\n\n"),
+    versionId,
+    knowledgeEntryIds: knowledge.entryIds,
+    knowledgeDocumentIds: knowledge.documentIds,
+    knowledgeTruncated: knowledge.truncated,
+  };
+}
+
+/** Run-time instructions for the employee's currently applied configuration. */
+export async function buildRunInstructions(db: Queryable, orgId: string, agentId: string): Promise<RunInstructions> {
   const { rows } = await db.query<{ compiled_instructions: string | null; id: string | null }>(
     `select v.compiled_instructions, v.id from agent_instances a
      left join agent_config_versions v on v.id = a.active_config_version_id
@@ -321,24 +355,38 @@ export async function buildRunInstructions(db: Queryable, orgId: string, agentId
   );
   const base = rows[0];
   if (!base?.compiled_instructions) throw new AppError("agent_unavailable", "This employee hasn't been configured yet.");
-  const { rows: knowledge } = await db.query<{ section: string; content: string }>(
-    `select section, content from company_knowledge
-     where org_id = $1 and review_status = 'approved' and content <> '' order by section`,
-    [orgId],
+  return composeRunInstructions(db, orgId, agentId, base.compiled_instructions, base.id);
+}
+
+/**
+ * Compiles a candidate configuration without storing or applying it. Used by the draft test environment, so testing a
+ * change can never modify the live employee.
+ */
+export async function compileDraftConfig(
+  db: Queryable,
+  orgId: string,
+  agentId: string,
+  settings: AgentSettings,
+): Promise<{ compiled: ReturnType<typeof compileAgentConfig>; version: number }> {
+  const { rows } = await db.query<{ role_key: string; default_tools: string[] }>(
+    "select a.role_key, r.default_tools from agent_instances a join agent_roles r on r.key = a.role_key where a.id = $1 and a.org_id = $2",
+    [agentId, orgId],
   );
-  const { rows: docs } = await db.query<{ filename: string; excerpt: string }>(
-    `select filename, left(extracted_text, 1500) as excerpt from knowledge_documents
-     where org_id = $1 and status = 'ready' and extracted_text is not null and applied_at is not null
-     order by created_at desc limit 3`,
-    [orgId],
+  const agent = rows[0];
+  if (!agent || !isAgentRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found.");
+  const { rows: versionRows } = await db.query<{ next: number }>(
+    "select coalesce(max(version), 0) + 1 as next from agent_config_versions where agent_instance_id = $1",
+    [agentId],
   );
-  const knowledgeBlock = compileKnowledgeContext([
-    ...knowledge,
-    ...docs.map((d) => ({ section: `Reference document: ${d.filename}`, content: d.excerpt })),
-  ]);
-  // The agency policy must stay last so it is never overshadowed by later context.
-  const [head, policy] = splitPolicy(base.compiled_instructions);
-  return { instructions: [head, knowledgeBlock, policy].filter(Boolean).join("\n\n"), versionId: base.id };
+  const version = Number(versionRows[0]?.next ?? 1);
+  const compiled = compileAgentConfig({
+    role: agent.role_key,
+    settings,
+    company: await loadCompanyContext(db, orgId),
+    version,
+    allowedTools: agent.default_tools,
+  });
+  return { compiled, version };
 }
 
 function splitPolicy(compiled: string): [string, string] {
@@ -518,18 +566,31 @@ export async function runHealthCheck(
       }
       if (!conn.profile || !identity.includes(conn.profile) || caps.contract !== "hermes.api_server.capabilities" || !caps.authenticated) {
         result = { ok:false,status:"error",detail:"The gateway did not verify the intended profile identity and authenticated Hermes API contract." };
-      } else if (!caps.supportsRuns || !caps.supportsEvents) {
-        result = { ok: false, status: "error", detail: "This Hermes version doesn't advertise run submission and run events." };
+      } else if (!caps.supportsRuns) {
+        result = { ok: false, status: "error", detail: "This Hermes version doesn't advertise run submission." };
+      } else if (!caps.supportsEvents && !caps.supportsStatus) {
+        result = { ok: false, status: "error", detail: "This Hermes version doesn't advertise run events or a run-status endpoint." };
       } else if (restricted === null) {
         result = { ok: false, status: "error", detail: "Couldn't verify the profile's tool restrictions (GET /v1/toolsets)." };
       } else if (restricted.length) {
-        result = { ok: false, status: "error", detail: "Profile exposes restricted or unreviewed tools. Disable them before going live." };
+        const sample = restricted.slice(0, 8).join(", ");
+        result = {
+          ok: false,
+          status: "error",
+          detail: `Profile exposes ${restricted.length} restricted or unreviewed tool${restricted.length === 1 ? "" : "s"}: ${sample}${restricted.length > 8 ? ", …" : ""}. Disable them in the Hermes profile before going live.`,
+        };
       } else if (!hasVerifiedCompleteToolInventory(conn)) {
-        result = { ok:false,status:"setup_required",detail:"Profile API access verified, but the public toolset API cannot prove complete plugin/MCP permissions. Client use stays blocked pending a supported complete-inventory security check by the gateway administrator." };
+        result = { ok:false,status:"setup_required",detail:"Profile API access verified, but the public toolset API cannot prove complete plugin/MCP permissions. Live employee use stays blocked pending a supported complete-inventory security check by the gateway administrator." };
       } else if (!hasConfig) {
         result = { ok: false, status: "setup_required", detail: "Connected to Hermes, but the employee configuration hasn't been applied yet." };
       } else {
-        result = { ok: true, status: "online", detail: `Profile identity, API capabilities and tool restrictions verified${caps.supportsStop ? "" : " · stop not supported"}` };
+        result = {
+          ok: true,
+          status: "online",
+          detail: `Profile identity, API capabilities and tool restrictions verified${
+            caps.supportsEvents ? "" : " · streaming not supported; the full response arrives when complete"
+          }${caps.supportsStop ? "" : " · stop not supported"}`,
+        };
       }
     } catch (err) {
       const kind = err instanceof HermesError ? err.kind : "unreachable";

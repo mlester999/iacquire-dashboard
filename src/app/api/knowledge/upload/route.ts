@@ -19,8 +19,10 @@ export async function POST(req: Request) {
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a file to upload." }, { status: 400 });
     if (file.size > MAX) return NextResponse.json({ error: "Files can be up to 10 MB." }, { status: 413 });
+    const rawAgentId = form.get("agentId");
+    const agentId = typeof rawAgentId === "string" && /^[0-9a-f-]{36}$/i.test(rawAgentId) ? rawAgentId : null;
     const bytes = Buffer.from(await file.arrayBuffer());
-    const res = await uploadKnowledgeDocument(ctx, { name: file.name, bytes });
+    const res = await uploadKnowledgeDocument(ctx, { name: file.name, bytes }, { agentInstanceId: agentId });
     return NextResponse.json(res);
   } catch (err) {
     const e = toPublicError(err);

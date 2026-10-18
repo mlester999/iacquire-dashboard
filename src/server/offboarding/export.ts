@@ -2,6 +2,7 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { readAuthorizedPrivateFile } from "@/server/storage/private";
 import { createZip, type ZipEntry } from "@/server/offboarding/zip";
+import { maskCustomerLinks } from "@/server/messaging/redact";
 
 // What a client takes with them. Every query is filtered by the one organization id the caller was authorized for, and the list below is an
 // allowlist of tables: anything not named here (credentials, integration connections, other clients, agency-internal notes) is never read.
@@ -19,6 +20,8 @@ interface TableSpec {
   omit?: string[];
   /** If set, only these columns are exported. */
   pick?: string[];
+  /** Text columns that may hold a customer's booking link (a bearer secret): exported with the link replaced by a label. */
+  mask?: string[];
   limit?: number;
 }
 
@@ -28,7 +31,7 @@ const TABLES: TableSpec[] = [
   { file: "business/onboarding-answers.json", table: "onboarding_answers" },
   { file: "business/knowledge-documents.json", table: "knowledge_documents", order: "created_at" },
   { file: "business/messaging-settings.json", table: "messaging_settings" },
-  { file: "business/messaging-channels.json", table: "messaging_channels" },
+  { file: "business/messaging-channels.json", table: "messaging_channels", omit: ["credential_id"] },
   { file: "business/whatsapp-templates.json", table: "whatsapp_templates" },
   { file: "team/members.json", table: "organization_memberships", omit: ["invited_by"] },
   { file: "team/invitations.json", table: "invitations", omit: ["token_hash"] },
@@ -39,8 +42,8 @@ const TABLES: TableSpec[] = [
   { file: "customers/contact-memories.json", table: "contact_memories" },
   { file: "customers/consent-history.json", table: "contact_consent_events", order: "created_at" },
   { file: "customers/suppressions.json", table: "suppressions" },
-  { file: "conversations/conversations.json", table: "conversations", order: "created_at" },
-  { file: "conversations/messages.json", table: "conversation_messages", order: "created_at", omit: ["dedupe_key", "claimed_at", "reservation_id"] },
+  { file: "conversations/conversations.json", table: "conversations", order: "created_at", mask: ["last_message_preview"] },
+  { file: "conversations/messages.json", table: "conversation_messages", order: "created_at", omit: ["dedupe_key", "claimed_at", "reservation_id"], mask: ["body"] },
   { file: "conversations/delivery-events.json", table: "message_delivery_events", order: "occurred_at" },
   { file: "conversations/follow-up-plans.json", table: "follow_up_plans" },
   { file: "conversations/follow-up-steps.json", table: "follow_up_steps" },
@@ -65,8 +68,14 @@ const TABLES: TableSpec[] = [
   { file: "crm/folders.json", table: "crm_folders" },
   { file: "crm/timeline.json", table: "crm_activities", order: "occurred_at" },
   { file: "crm/external-ids.json", table: "crm_external_ids" },
-  { file: "crm/import-history.json", table: "crm_import_jobs", omit: ["claimed_at"], order: "created_at" },
+  // fetch_state is a GoHighLevel migration step's reading state; while it reads, it holds the location's users (their emails).
+  { file: "crm/import-history.json", table: "crm_import_jobs", omit: ["claimed_at", "fetch_state"], order: "created_at" },
   { file: "crm/support-access-log.json", table: "crm_support_sessions", pick: ["mode", "reason", "started_at", "expires_at", "ended_at"], order: "started_at" },
+  // What was applied to this workspace from the agency's CRM Blueprints, item by item, and which records each Blueprint asset became.
+  // The Blueprints themselves are the agency's library and are not part of the client's data.
+  { file: "crm/blueprint-applications.json", table: "crm_blueprint_applications", omit: ["idempotency_key", "plan_digest"], order: "created_at" },
+  { file: "crm/blueprint-application-items.json", table: "crm_blueprint_application_items", omit: ["after_hash"], order: "position" },
+  { file: "crm/blueprint-links.json", table: "crm_blueprint_links", omit: ["asset_hash", "native_hash"] },
   { file: "sales/pipeline-stages.json", table: "crm_pipeline_stages" },
   { file: "sales/opportunity-history.json", table: "crm_opportunity_history", order: "changed_at" },
   { file: "sales/opportunity-tags.json", table: "crm_opportunity_tags" },
@@ -96,6 +105,7 @@ const TABLES: TableSpec[] = [
   { file: "website/domains.json", table: "website_domains", omit: ["verification_token", "created_by", "purchase_approved_by"] },
   { file: "website/enquiries.json", table: "website_form_submissions", order: "created_at" },
   { file: "ai-team/employees.json", table: "agent_instances", omit: ["credential_id", "hermes_base_url", "hermes_profile"] },
+  { file: "ai-team/employee-knowledge.json", table: "employee_knowledge_entries", order: "updated_at" },
   { file: "ai-team/configuration-versions.json", table: "agent_config_versions", order: "created_at" },
   { file: "ai-team/approvals.json", table: "approval_requests", omit: ["idempotency_key"], order: "created_at" },
   { file: "ai-team/approval-events.json", table: "approval_events", order: "created_at" },
@@ -127,7 +137,7 @@ const strip = (row: Record<string, unknown>, spec: TableSpec) => {
   for (const [k, v] of Object.entries(row)) {
     if (spec.pick && !spec.pick.includes(k)) continue;
     if (spec.omit?.includes(k)) continue;
-    out[k] = v;
+    out[k] = spec.mask?.includes(k) && typeof v === "string" ? maskCustomerLinks(v) : v;
   }
   return out;
 };

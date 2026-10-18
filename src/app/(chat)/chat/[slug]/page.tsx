@@ -40,7 +40,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       replyLength={(applied?.settings.replyLength as ReplyLength) ?? "concise"}
       canConfigure={ctx.can("agents.configure")}
       initialConversations={conversations.map((r) => ({ id: r.id, title: r.title, lastMessageAt: new Date(r.last_message_at ?? r.created_at).toISOString() }))}
-      initialConversation={convo ? { id: convo.conversation.id, title: convo.conversation.title, messages } : null}
+      initialConversation={convo ? { id: convo.conversation.id, title: convo.conversation.title, messages, hasMore: convo.hasMore } : null}
       activeRunId={activeRunId}
       timeZone={ctx.org.timezone}
       initialInput={typeof q === "string" ? q.slice(0, 2000) : undefined}

@@ -56,6 +56,61 @@ export const agentSettingsSchema = z.object({
 });
 export type AgentSettings = z.infer<typeof agentSettingsSchema>;
 
+const SETTING_LABELS: Record<keyof Omit<AgentSettings, "roleAnswers" | "disabledTools">, string> = {
+  displayName: "Name",
+  tone: "Tone",
+  replyLength: "Reply length",
+  language: "Language",
+  responsibilities: "Main responsibilities",
+  goals: "Goals",
+  targetCustomers: "Target customers",
+  companyRules: "Company rules",
+  neverPromise: "Never promise",
+  escalateWhen: "Ask a human when",
+  escalationContact: "Escalation contact",
+  approvalPreference: "Approval preference",
+  customInstruction: "Additional instruction",
+};
+
+export interface AgentSettingsChange {
+  key: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
+/**
+ * Plain-language comparison of two configurations. Used by the Test & compare screen so a reviewer sees exactly what
+ * differs between the saved configuration and the draft being tested. It never includes hidden prompts or policy.
+ */
+export function diffAgentSettings(active: AgentSettings, draft: AgentSettings): AgentSettingsChange[] {
+  const out: AgentSettingsChange[] = [];
+  for (const key of Object.keys(SETTING_LABELS) as Array<keyof typeof SETTING_LABELS>) {
+    const before = active[key];
+    const after = draft[key];
+    if (before !== after) {
+      out.push({
+        key,
+        label: SETTING_LABELS[key],
+        before: key === "approvalPreference" ? (before === "always" ? "Ask before any action" : "Ask for high-impact actions") : String(before || "Not set"),
+        after: key === "approvalPreference" ? (after === "always" ? "Ask before any action" : "Ask for high-impact actions") : String(after || "Not set"),
+      });
+    }
+  }
+  const roleKeys = [...new Set([...Object.keys(active.roleAnswers), ...Object.keys(draft.roleAnswers)])].sort();
+  for (const roleKey of roleKeys) {
+    const before = active.roleAnswers[roleKey] ?? "";
+    const after = draft.roleAnswers[roleKey] ?? "";
+    if (before !== after) out.push({ key: `roleAnswers.${roleKey}`, label: `Role answer: ${roleKey.replaceAll("_", " ")}`, before: before || "Not set", after: after || "Not set" });
+  }
+  const beforeTools = [...active.disabledTools].sort().join(", ");
+  const afterTools = [...draft.disabledTools].sort().join(", ");
+  if (beforeTools !== afterTools) {
+    out.push({ key: "disabledTools", label: "Tools switched off", before: beforeTools || "None", after: afterTools || "None" });
+  }
+  return out;
+}
+
 export const onboardingSchema = z.object({
   business: z
     .object({

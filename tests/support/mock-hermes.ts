@@ -9,6 +9,8 @@ export interface MockProfile {
   key: string;
   /** Tools to report from /v1/toolsets. */
   tools?: string[];
+  /** Advertise no SSE stream; the run is completed through GET /v1/runs/{id} polling. */
+  polling?: boolean;
   /** Override behaviour for a given input. */
   respond?: (input: string) => MockScript;
 }
@@ -87,7 +89,7 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
         platform: "hermes-agent",
         model: profile,
         auth: { type: "bearer", required: true },
-        features: { chat_completions: true, responses_api: true, run_submission: true, run_status: true, run_events_sse: true, run_stop: true, run_approval_response: true, approval_events: true },
+        features: { chat_completions: true, responses_api: true, run_submission: true, run_status: true, run_events_sse: !p.polling, run_stop: true, run_approval_response: true, approval_events: true },
       });
     }
     if (req.method === "GET" && pathname === "/v1/toolsets") {
@@ -107,7 +109,35 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
       const run = runs.get(runMatch[1]);
       if (!run || run.profile !== profile) return send(404, { error: "not found" });
       const action = runMatch[2];
-      if (!action && req.method === "GET") return send(200, { object: "hermes.run", run_id: run.id, status: run.status });
+      if (!action && req.method === "GET") {
+        // A polling-only profile completes the script when its status is read. Used to prove the non-streaming
+        // fallback without inventing a second event contract.
+        if (p.polling) {
+          if (run.stopped) {
+            run.status = "cancelled";
+            return send(200, { object: "hermes.run", run_id: run.id, status: "cancelled" });
+          }
+          let text = "";
+          let failure: string | null = null;
+          for (const step of run.script.steps) {
+            if ("delta" in step) text += step.delta;
+            if ("fail" in step) failure = step.fail;
+          }
+          if (failure) {
+            run.status = "failed";
+            return send(200, { object: "hermes.run", run_id: run.id, status: "failed", error: failure });
+          }
+          run.status = "completed";
+          return send(200, {
+            object: "hermes.run",
+            run_id: run.id,
+            status: "completed",
+            output: run.script.output ?? text,
+            usage: { input_tokens: 42, output_tokens: 17, total_tokens: 59 },
+          });
+        }
+        return send(200, { object: "hermes.run", run_id: run.id, status: run.status });
+      }
       if (action === "/stop" && req.method === "POST") {
         run.stopped = true;
         return send(200, { status: "stopping" });

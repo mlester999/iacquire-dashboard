@@ -9,6 +9,8 @@ import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { notifyOrgRoles } from "@/server/notifications";
 import { canChat, AGENT_BY_KEY, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import {
+  getCapabilities,
+  getRunStatus,
   HermesError,
   startRun,
   startAgentRun,
@@ -18,6 +20,7 @@ import {
   type HermesConnection,
 } from "@/server/integrations/hermes/client";
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
+import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
 
@@ -261,7 +264,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         prepared.conversationId,
       ]);
     }
-    const { instructions, versionId } = await buildRunInstructions(db, ctx.org.orgId, agent.id);
+    const { instructions, versionId, knowledgeEntryIds, knowledgeDocumentIds } = await buildRunInstructions(db, ctx.org.orgId, agent.id);
     const conn = await loadConnection(db, agent.id);
     if (!conn) throw new AppError("agent_unavailable", "This employee isn't connected yet.");
     const { rows: msg } = await db.query<{ id: string }>(
@@ -278,7 +281,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     await db.query("update chat_messages set run_id = $2 where id = $1", [msg[0].id, run[0].id]);
     await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
     await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
-    return { assistantMessageId: msg[0].id, runId: run[0].id, instructions, conn, idempotencyKey };
+    return { assistantMessageId: msg[0].id, runId: run[0].id, instructions, conn, idempotencyKey, knowledgeEntryIds, knowledgeDocumentIds };
   });
 
   const abort = new AbortController();
@@ -302,6 +305,8 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     conversationId: prepared.conversationId,
     conn: setup.conn,
     abort,
+    knowledgeEntryIds: setup.knowledgeEntryIds,
+    knowledgeDocumentIds: setup.knowledgeDocumentIds,
     request: {
       input: prepared.userContent,
       instructions: setup.instructions,
@@ -330,6 +335,9 @@ interface ExecuteRunInput {
   conversationId: string;
   conn: HermesConnection;
   abort: AbortController;
+  /** Sources that were actually included in the instructions. Recorded only after the provider accepts the run. */
+  knowledgeEntryIds?: string[];
+  knowledgeDocumentIds?: string[];
   request: Parameters<typeof startRun>[1];
 }
 
@@ -408,6 +416,49 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
       });
   };
 
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        r.abort.signal.removeEventListener("abort", done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      r.abort.signal.addEventListener("abort", done, { once: true });
+    });
+
+  // Providers that do not advertise SSE still expose GET /v1/runs/{id}. In that case show an honest processing
+  // state and render the completed output once; the browser UI already handles a response with no deltas.
+  const pollUntilComplete = async (runId: string) => {
+    publish(r.runId, { type: "activity", label: "Waiting for the complete response…" });
+    for (;;) {
+      if (r.abort.signal.aborted) {
+        await stopRun(r.conn, runId).catch(() => undefined);
+        const reason = String((r.abort.signal.reason as Error | undefined)?.message ?? "");
+        await finish(reason === "timeout" ? "timeout" : "cancelled", reason === "timeout" ? { errorCode: "timeout" } : {});
+        return;
+      }
+      const status = await getRunStatus(r.conn, runId);
+      if (status.status === "completed") {
+        await finish("completed", { content: status.output ?? "", usage: status.usage });
+        return;
+      }
+      if (status.status === "failed") {
+        await finish("failed", { content: status.output ?? "", errorCode: "run_failed", usage: status.usage });
+        return;
+      }
+      if (status.status === "cancelled") {
+        await finish("cancelled", {});
+        return;
+      }
+      if (status.status === "interrupted") {
+        await finish("interrupted", { errorCode: "interrupted" });
+        return;
+      }
+      await wait(1000);
+    }
+  };
+
   try {
     try {
       const started = await startAgentRun(r.agentId, r.orgId, r.conn, r.request);
@@ -419,7 +470,23 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
       await finish("failed", { errorCode: "start_failed" });
       return;
     }
-    await safeDb((db) => db.query("update agent_runs set status = 'running', hermes_run_id = $2 where id = $1", [r.runId, hermesRunId]));
+    await safeDb(async (db) => {
+      await db.query("update agent_runs set status = 'running', hermes_run_id = $2 where id = $1", [r.runId, hermesRunId]);
+      if (r.knowledgeEntryIds?.length || r.knowledgeDocumentIds?.length) {
+        await markEmployeeKnowledgeUsed(db, r.orgId, r.agentId, r.knowledgeEntryIds ?? [], r.knowledgeDocumentIds ?? []);
+      }
+    });
+
+    let supportsEvents = true;
+    try {
+      supportsEvents = (await getCapabilities(r.conn)).supportsEvents;
+    } catch {
+      // If capability discovery fails now, try the event stream; it has its own error handling.
+    }
+    if (!supportsEvents) {
+      await pollUntilComplete(hermesRunId);
+      return;
+    }
 
     for await (const ev of streamRunEvents(r.conn, hermesRunId, r.abort.signal)) {
       switch (ev.type) {

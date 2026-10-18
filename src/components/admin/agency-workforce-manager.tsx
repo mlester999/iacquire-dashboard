@@ -78,7 +78,10 @@ export function AgencyWorkforceManager({
         <Link href="/admin/integrations" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-medium text-primary hover:bg-surface-2">
           <ArrowLeft className="size-4" /> Hermes integration wizard
         </Link>
-        <ButtonLink href="/admin/workforce/clients" variant="secondary">View client workforces</ButtonLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink href="/admin/workforce/open" variant="brand">Open internal chat</ButtonLink>
+          <ButtonLink href="/admin/workforce/clients" variant="secondary">View client workforces</ButtonLink>
+        </div>
       </div>
       <PageHero
         tone="dark"

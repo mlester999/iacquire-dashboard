@@ -348,8 +348,8 @@ export function Tabs({
           <TB.Trigger
             key={item.value}
             value={item.value}
-            // Keeps the count separate from the label for screen readers ("Review queue, 4").
-            aria-label={typeof item.label === "string" && item.count !== undefined ? `${item.label}, ${item.count}` : undefined}
+            // No aria-label here: the visible label and count badge already form the accessible name, and a
+            // hand-built name drifts from what is on screen (WCAG 2.5.3).
             className="relative inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13.5px] font-medium text-muted transition-colors hover:text-ink data-[state=active]:text-ink"
           >
             {value === item.value && (

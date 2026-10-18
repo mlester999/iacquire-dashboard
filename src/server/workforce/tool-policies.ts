@@ -38,8 +38,19 @@ export const HERMES_BLOCKABLE_TOOLSETS = [
   { key: "connections", label: "Connection management" },
   { key: "catalog", label: "Tool catalog installation" },
   { key: "kanban", label: "Kanban and project tools" },
+  { key: "image_gen", label: "Image generation" },
+  { key: "skills", label: "Skill installation and management" },
 ] as const;
 export type HermesBlockableToolset = (typeof HERMES_BLOCKABLE_TOOLSETS)[number]["key"];
+
+/** Toolsets the portal has reviewed as read-only enough for an AI employee. */
+export const PORTAL_SAFE_TOOLSETS = ["memory", "session_search", "todo", "vision", "web"] as const;
+
+/** Enabled toolset names outside the reviewed set. Unknown future names fail closed. */
+export function unauthorizedToolsets(enabled: readonly string[]): string[] {
+  const safe = new Set<string>(PORTAL_SAFE_TOOLSETS);
+  return [...new Set(enabled.filter((name) => !safe.has(name)))].sort();
+}
 
 export const CLIENT_ROLE_CAPABILITY_MATRIX: Record<AgentRoleKey, { label: string; capabilities: HermesPolicyCapability[] }> = {
   operations_manager: { label: AGENT_BY_KEY.operations_manager.shortName, capabilities: ["client_knowledge", "client_memory", "approved_tasks", "client_reporting", "approved_employee_collaboration"] },

@@ -33,6 +33,26 @@ export async function loadConversationAction(conversationId: string) {
         id: data.conversation.id,
         title: data.conversation.title,
         messages: data.messages.map((m) => ({ ...m, created_at: new Date(m.created_at).toISOString() })),
+        hasMore: data.hasMore,
+      },
+    };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Loads one older page of a conversation the signed-in user is allowed to read. */
+export async function loadOlderMessagesAction(conversationId: string, before: string) {
+  try {
+    const ctx = await requireOrgContextOrThrow("agents.use");
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(before) || Number.isNaN(Date.parse(before))) throw new AppError("invalid_input", "That message page is invalid.");
+    const data = await getConversation(ctx, conversationId, before);
+    if (!data) throw new AppError("not_found", "Conversation not found.");
+    return {
+      ok: true as const,
+      data: {
+        messages: data.messages.map((m) => ({ ...m, created_at: new Date(m.created_at).toISOString() })),
+        hasMore: data.hasMore,
       },
     };
   } catch (err) {

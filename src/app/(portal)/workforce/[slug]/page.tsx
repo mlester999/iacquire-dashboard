@@ -5,6 +5,9 @@ import { withSystem, withUser } from "@/server/db";
 import { EmployeeDetail } from "@/components/workforce/employee-detail";
 import { AGENT_BY_SLUG } from "@/lib/agents";
 import { autonomousBlocker } from "@/server/automation/controls";
+import { getEmployeeInstructionOverview } from "@/server/workforce/instructions";
+import { listEmployeeKnowledge } from "@/server/workforce/knowledge";
+import { ACCEPTED_UPLOADS } from "@/server/knowledge/service";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -20,8 +23,9 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
   const canConfigure = ctx.can("agents.configure");
+  const canViewKnowledge = ctx.can("knowledge.view");
 
-  const [controls, versions, settings, extra] = await Promise.all([
+  const [controls, versions, settings, knowledgeView, instructionOverview, extra] = await Promise.all([
     withSystem(async (db) => {
       const { rows } = await db.query<{ last_health_ok: boolean | null }>("select last_health_ok from agent_instances where id = $1 and org_id = $2", [agent.id, ctx.org.orgId]);
       const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name });
@@ -30,6 +34,10 @@ export default async function EmployeePage({ params, searchParams }: { params: P
     }),
     canConfigure ? listConfigVersions(ctx.user.id, agent.id) : Promise.resolve([]),
     canConfigure ? withSystem((db) => currentSettings(db, agent.id, ctx.org.orgId)) : Promise.resolve(null),
+    canViewKnowledge ? listEmployeeKnowledge(ctx, agent.id).catch(() => null) : Promise.resolve(null),
+    canConfigure
+      ? getEmployeeInstructionOverview({ orgId: ctx.org.orgId, agentId: agent.id, role: meta.key, companyName: ctx.org.name })
+      : Promise.resolve(null),
     withUser(ctx.user.id, async (db) => {
       const role = await db.query<{ capabilities: string[]; description: string }>("select capabilities, description from agent_roles where key = $1", [meta.key]);
       const knowledge = await db.query<{ applied: Date | null }>("select max(applied_at) as applied from company_knowledge where org_id = $1", [ctx.org.orgId]);
@@ -74,6 +82,11 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       autonomousBlockedReason={controls.autonomousBlockedReason}
       agencyPaused={controls.agencyPaused}
       settings={settings?.settings ?? null}
+      knowledgeView={knowledgeView}
+      instructionOverview={instructionOverview}
+      canViewKnowledge={canViewKnowledge}
+      canEditKnowledge={ctx.can("knowledge.edit")}
+      uploadAccept={ACCEPTED_UPLOADS}
       versions={versions.map((v) => ({ ...v, created_at: new Date(v.created_at).toISOString(), applied_at: v.applied_at ? new Date(v.applied_at).toISOString() : null }))}
       canConfigure={canConfigure}
       canChat={ctx.can("agents.use")}

@@ -27,10 +27,12 @@ const MAIN: NavItem[] = [
   { href: "/website", label: "Website", icon: Globe, permission: "website.view" },
   { href: "/activity", label: "Activity", icon: Activity },
 ];
-// Native CRM. "Sales Pipeline" (/sales) is the GoHighLevel read-only view and is shown only where GoHighLevel owns the pipeline.
+// Native CRM. "Sales Pipeline" (/sales) is the GoHighLevel read-only view and is shown only where GoHighLevel owns the pipeline; likewise
+// "Appointments" (/appointments) is the GoHighLevel calendar view, replaced by the native Calendar in a native workspace.
 const CRM: NavItem[] = [
   { href: "/crm/contacts", label: "Contacts", icon: Contact, permission: "contacts.view" },
   { href: "/crm/pipelines", label: "Pipelines", icon: KanbanSquare, permission: "sales.view" },
+  { href: "/crm/calendar", label: "Calendar", icon: CalendarDays, permission: "appointments.view" },
   { href: "/crm/tasks", label: "Tasks", icon: ListChecks, permission: "crm.view" },
   { href: "/crm", label: "All CRM tools", icon: Waypoints, permission: "crm.view" },
 ];
@@ -63,8 +65,8 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
   const [crmOpen, setCrmOpen] = React.useState(true);
   const crmMode = shell.crmMode;
   // Native CRM pipelines replace the GoHighLevel pipeline view; a hybrid workspace keeps both while it migrates.
-  const showMain = (i: NavItem) => can(i.permission) && !(i.href === "/sales" && crmMode === "native");
-  const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !(i.href === "/crm/pipelines" && crmMode === "ghl"));
+  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native");
+  const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar") && crmMode === "ghl"));
   // "All CRM tools" is highlighted only for CRM pages that have no entry of their own here.
   const crmActivePath = (item: NavItem) => (item.href === "/crm" && crmItems.some((i) => i.href !== "/crm" && (pathname === i.href || pathname.startsWith(`${i.href}/`))) ? "" : pathname);
   const visibleAgents = shell.agents.filter((a) => a.enabled);
@@ -85,6 +87,6 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
       {MAIN.slice(1).filter(showMain).map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "approvals" ? shell.pendingApprovals : item.badge === "inbox" ? shell.inboxAttention : undefined} />)}
       {GROW.some((i) => can(i.permission)) && <div className="space-y-1 pt-3">{!compact && <button type="button" onClick={() => setGrowOpen((s) => !s)} aria-expanded={growOpen} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">Grow with iAcquire<ChevronDown className={cn("size-3 transition-transform", !growOpen && "-rotate-90")} /></button>}{(growOpen || compact) && GROW.filter((i) => can(i.permission)).map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "projects" ? shell.projectsAttention : undefined} />)}</div>}
     </div>
-    <div className={cn("space-y-1 border-t border-white/10 p-3", compact && "px-2")}>{FOOTER.filter((i) => can(i.permission)).map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} />)}{!compact && <Link href="/settings/security" className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#263456] text-[11px] font-semibold">{initials(shell.user.name)}</span><div className="min-w-0"><p className="truncate text-[12px] font-semibold">{shell.user.name}</p><p className="text-[10px] text-[#a6b3cd]">Account & security</p></div></Link>}{onCompact && <button type="button" onClick={onCompact} className="hidden min-h-8 w-full items-center justify-center gap-2 rounded-lg text-[11px] text-[#a6b3cd] hover:bg-white/5 lg:flex" aria-label={compact ? "Expand sidebar" : "Compact sidebar"}>{compact ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-3.5" />Compact navigation</>}</button>}</div>
+    <div className={cn("space-y-1 border-t border-white/10 p-3", compact && "px-2")}>{FOOTER.filter((i) => can(i.permission)).map((item) => <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} />)}{!compact && <Link href="/settings/security" className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#263456] text-[11px] font-semibold">{initials(shell.user.name)}</span><div className="min-w-0"><p className="truncate text-[12px] font-semibold">{shell.user.name}</p><p className="text-[10px] text-[#a6b3cd]">Account & security</p></div></Link>}{onCompact && <button type="button" onClick={onCompact} className="hidden min-h-8 w-full items-center justify-center gap-2 rounded-lg text-[11px] text-[#a6b3cd] hover:bg-white/5 lg:flex" aria-label={compact ? "Expand navigation" : "Compact navigation"}>{compact ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-3.5" />Compact navigation</>}</button>}</div>
   </nav>;
 }

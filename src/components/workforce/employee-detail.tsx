@@ -35,6 +35,10 @@ import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { cn, formatDateTime, formatNumber, relativeTime, sentenceCase } from "@/lib/utils";
 import { PageHero,MetricCard } from "@/components/ui/workspace";
 import { OperatingModeCard,type AgentMode } from "@/components/workforce/operating-controls";
+import { EmployeeInstructions } from "@/components/workforce/employee-instructions";
+import { EmployeeKnowledge } from "@/components/workforce/employee-knowledge";
+import type { EmployeeInstructionOverview } from "@/server/workforce/instructions";
+import type { EmployeeKnowledgeView } from "@/server/workforce/knowledge";
 
 interface Version {
   id: string;
@@ -79,6 +83,11 @@ interface Props {
   knowledgeAppliedAt: string | null;
   runs: Array<{ id: string; purpose: string; status: string; started_at: string; finished_at: string | null; total_tokens: number | null; tools: number; error_message: string | null }>;
   pendingApprovals: number;
+  knowledgeView: EmployeeKnowledgeView | null;
+  instructionOverview: EmployeeInstructionOverview | null;
+  canViewKnowledge: boolean;
+  canEditKnowledge: boolean;
+  uploadAccept: string;
 }
 
 const TOOL_COPY: Record<string, string> = {
@@ -127,6 +136,8 @@ export function EmployeeDetail(props: Props) {
         ]
       : []),
     { value: "activity", label: "Activity" },
+    ...(props.instructionOverview ? [{ value: "instructions", label: "Instructions" }] : []),
+    ...(props.canViewKnowledge ? [{ value: "knowledge", label: "Knowledge" }] : []),
   ];
   return (
     <div className="space-y-6">
@@ -158,6 +169,25 @@ export function EmployeeDetail(props: Props) {
           {tab === "change" && <ChangeTab {...props} onApplied={() => setTab("history")} />}
           {tab === "history" && <HistoryTab {...props} />}
           {tab === "activity" && <ActivityTab {...props} />}
+          {tab === "instructions" && props.instructionOverview && (
+            <EmployeeInstructions
+              overview={props.instructionOverview}
+              agentName={agent.displayName}
+              role={meta.key}
+              timeZone={props.timeZone}
+              onOpenKnowledge={() => setTab("knowledge")}
+            />
+          )}
+          {tab === "knowledge" && props.canViewKnowledge && props.knowledgeView && (
+            <EmployeeKnowledge
+              agentId={agent.id}
+              agentName={agent.displayName}
+              data={props.knowledgeView}
+              canEdit={props.canEditKnowledge}
+              accept={props.uploadAccept}
+              timeZone={props.timeZone}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
       </Tabs>

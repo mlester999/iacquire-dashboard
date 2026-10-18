@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compileAgentConfig, defaultSettings, detectRiskFlags, interpretChangeRequest, summarizeSettings } from "@/server/workforce/compiler";
 import { buildConfigYaml, buildSoul } from "@/server/workforce/provisioning";
+import { PORTAL_SAFE_TOOLSETS, unauthorizedToolsets } from "@/server/workforce/tool-policies";
 import { AGENCY_SUPPORT_SESSION_ROLE_DEFAULTS, PERMISSION_MATRIX } from "@/lib/permissions";
 import { withSystem } from "@/server/db";
 import { createConfigVersion, decideHeldVersion, rollbackToVersion, isReservedProfile } from "@/server/workforce/service";
@@ -160,7 +161,14 @@ describe("provisioning safety", () => {
     const soul = buildSoul("lead_hunter", "Lakeside Dental");
     expect(soul).toContain("You work only for Lakeside Dental");
     expect(soul).toContain("Public research is not consent");
-    expect(buildConfigYaml()).toMatch(/disabled_toolsets:[\s\S]*- terminal[\s\S]*- file/);
+    const config = buildConfigYaml();
+    expect(config).toMatch(/disabled_toolsets:/);
+    // Live gateway audit finding: image_gen and skills were previously left enabled by the runbook.
+    expect(config).toMatch(/^\s+- image_gen$/m);
+    expect(config).toMatch(/^\s+- skills$/m);
+    const disabled = config.split("\n").map((line) => line.trim()).filter((line) => line.startsWith("- ")).map((line) => line.slice(2));
+    for (const toolset of PORTAL_SAFE_TOOLSETS) expect(disabled).not.toContain(toolset);
+    expect(unauthorizedToolsets(["memory", "web", "browser", "new_future_tool"])).toEqual(["browser", "new_future_tool"]);
   });
 
   it("detects restricted tools exposed by a profile", () => {

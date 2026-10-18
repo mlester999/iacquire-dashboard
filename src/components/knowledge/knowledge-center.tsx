@@ -12,6 +12,7 @@ import { InfoChip, StatusPill } from "@/components/ui/status";
 import { FilterTabs, IconTile, Notice, Panel, type PanelTone } from "@/components/settings/panel";
 import { Dialog } from "@/components/ui/overlays";
 import { saveKnowledgeAction } from "@/app/actions/knowledge";
+import { reprocessKnowledgeDocumentAction } from "@/app/actions/workforce-knowledge";
 import { cn, formatDate, formatDateTime, relativeTime } from "@/lib/utils";
 
 interface Section {
@@ -35,7 +36,20 @@ interface Doc {
   created_at: string;
   applied_at: string | null;
   has_text: boolean;
+  processing_detail: string | null;
+  extraction_method: string | null;
+  processed_at: string | null;
+  risk_flags: string[];
   uploaded_by_name: string | null;
+}
+
+function documentState(d: Doc) {
+  if (d.status === "processing") return { label: "Processing", tone: "primary" as const, detail: d.processing_detail ?? "Reading the document…", retry: false };
+  if (d.status === "failed") return { label: "Could not read", tone: "danger" as const, detail: d.processing_detail ?? "Text extraction failed.", retry: true };
+  if (d.status === "unsupported") return { label: "Not searchable", tone: "warning" as const, detail: d.processing_detail ?? "This document can't be read automatically. OCR isn't supported.", retry: true };
+  if (d.has_text && d.applied_at) return { label: "Readable by your AI team", tone: "success" as const, detail: "Included in the next conversation.", retry: false };
+  if (d.has_text) return { label: "Held for review", tone: "warning" as const, detail: "May conflict with AI safety policy; not used until reviewed.", retry: false };
+  return { label: "Stored for your team", tone: "neutral" as const, detail: "No readable text was extracted.", retry: false };
 }
 
 function size(n: number) {
@@ -238,6 +252,14 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
   const [drag, setDrag] = React.useState(false);
   const [uploading, setUploading] = React.useState<string | null>(null);
   const [confirm, setConfirm] = React.useState<Doc | null>(null);
+  const [retrying, setRetrying] = React.useState<string | null>(null);
+  const retry = async (id: string) => {
+    setRetrying(id);
+    const res = await reprocessKnowledgeDocumentAction(id);
+    setRetrying(null);
+    if (!res.ok) toast.error(res.error);
+    else toast.success("Document processed again", { description: res.data.status === "ready" ? "Its text is ready to use." : res.data.processingDetail ?? "It still can't be read automatically." });
+  };
 
   const upload = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) return toast.error("Files can be up to 10 MB.");
@@ -313,7 +335,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
           <ul className="-mx-2 divide-y divide-line">
             {documents.map((d) => {
               const kind = fileKind(d.filename, d.mime_type);
-              const readable = d.has_text && d.applied_at;
+              const state = documentState(d);
               return (
                 <li key={d.id} className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-2 py-3">
                   <span aria-hidden className={cn("grid size-10 place-items-center rounded-xl text-[10.5px] font-bold tracking-wide ring-1 ring-inset", kind.tone === "violet" ? "bg-violet-soft text-violet-ink ring-violet/15" : kind.tone === "primary" ? "bg-primary-soft text-primary-ink ring-primary/15" : kind.tone === "success" ? "bg-success-soft text-success-ink ring-success/15" : "bg-surface-2 text-ink-2 ring-line-strong")}>
@@ -333,7 +355,12 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
                     )}
                   </div>
                   <div className="col-start-2 col-end-4 flex flex-wrap items-center gap-1.5">
-                    {readable ? <StatusPill size="sm" tone="success">Readable by your AI team</StatusPill> : d.has_text ? <StatusPill size="sm" tone="violet">Held for review</StatusPill> : <StatusPill size="sm" tone="neutral">Stored for your team</StatusPill>}
+                    <StatusPill size="sm" tone={state.tone}>{state.label}</StatusPill>
+                    {canEdit && state.retry && (
+                      <Button type="button" variant="ghost" size="sm" loading={retrying === d.id} onClick={() => void retry(d.id)} aria-label={`Try reading ${d.filename} again`}>
+                        Try again
+                      </Button>
+                    )}
                     <InfoChip icon={<HardDrive aria-hidden />}>{size(d.size_bytes)}</InfoChip>
                     <InfoChip icon={<CalendarDays aria-hidden />}>
                       <span title={formatDateTime(d.created_at, timeZone)}>{formatDate(d.created_at, timeZone)}</span>
@@ -345,7 +372,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
           </ul>
         )}
         <Notice tone="neutral" icon={<FileText />}>
-          <span className="text-[12.5px]">Text-based files (TXT, MD, CSV) are read by your AI team. PDF and Word files are stored securely for reference; ask iAcquire if you need their contents used by AI employees.</span>
+          <span className="text-[12.5px]">TXT, Markdown, CSV, selectable-text PDF and Word (.docx) files are read after extraction. Encrypted, scanned/image-only PDFs and damaged files stay downloadable but are not used; OCR isn&apos;t supported.</span>
         </Notice>
       </Panel>
       <Dialog

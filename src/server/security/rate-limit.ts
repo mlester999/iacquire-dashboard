@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 
 export interface RateLimitRule {
   /** Logical bucket name, e.g. "login:ip". */
@@ -40,6 +40,36 @@ export async function consumeRateLimit(rule: RateLimitRule, key: string): Promis
   return { allowed: hits <= rule.limit, remaining: Math.max(0, rule.limit - hits), retryAfterSeconds };
 }
 
+const windowOf = (rule: RateLimitRule, now: number) => {
+  const windowMs = rule.windowSeconds * 1000;
+  const start = Math.floor(now / windowMs) * windowMs;
+  return { start: new Date(start), retryAfterSeconds: Math.max(1, Math.ceil((start + windowMs - now) / 1000)) };
+};
+
+/** consumeRateLimit inside the caller's transaction (transactions can't nest), for gates that run inside one. */
+export async function consumeRateLimitInTx(db: Queryable, rule: RateLimitRule, key: string): Promise<RateLimitResult> {
+  const w = windowOf(rule, Date.now());
+  const res = await db.query<{ hits: number }>(
+    `insert into rate_limit_buckets (bucket_key, window_start, hits) values ($1, $2, 1)
+     on conflict (bucket_key, window_start) do update set hits = rate_limit_buckets.hits + 1
+     returning hits`,
+    [`${rule.name}:${key}`, w.start.toISOString()],
+  );
+  const hits = res.rows[0]?.hits ?? 1;
+  return { allowed: hits <= rule.limit, remaining: Math.max(0, rule.limit - hits), retryAfterSeconds: w.retryAfterSeconds };
+}
+
+/**
+ * Whether `key` has already used up the rule's limit in the current window, without counting this request. For gates that count only
+ * failures: the gate is checked first (so a blocked caller costs nothing more), and a failure is then counted with consumeRateLimitInTx.
+ */
+export async function rateLimitReachedInTx(db: Queryable, rule: RateLimitRule, key: string): Promise<RateLimitResult> {
+  const w = windowOf(rule, Date.now());
+  const res = await db.query<{ hits: number }>("select hits from rate_limit_buckets where bucket_key = $1 and window_start = $2", [`${rule.name}:${key}`, w.start.toISOString()]);
+  const hits = res.rows[0]?.hits ?? 0;
+  return { allowed: hits < rule.limit, remaining: Math.max(0, rule.limit - hits), retryAfterSeconds: w.retryAfterSeconds };
+}
+
 export const RATE_LIMITS = {
   loginByIp: { name: "login:ip", limit: 30, windowSeconds: 900 },
   loginByAccount: { name: "login:acct", limit: 8, windowSeconds: 900 },
@@ -50,9 +80,14 @@ export const RATE_LIMITS = {
   invitationResend: { name: "invite:resend", limit: 6, windowSeconds: 3600 },
   accessRequestByIp: { name: "access:ip", limit: 5, windowSeconds: 3600 },
   agentMessageByUser: { name: "agent:user", limit: 30, windowSeconds: 60 },
+  // Real provider runs against an unsaved employee draft. Separate from production chat so a test cannot exhaust a
+  // person's chat allowance, and vice versa.
+  agentPreviewByUser: { name: "agent:preview:user", limit: 10, windowSeconds: 60 },
   helpMessageByUser: { name: "help:user", limit: 20, windowSeconds: 60 },
   supportTicketByUser: { name: "ticket:user", limit: 10, windowSeconds: 3600 },
   uploadByUser: { name: "upload:user", limit: 30, windowSeconds: 3600 },
+  // Re-running bounded extraction against an already stored document, per user.
+  knowledgeReprocessByUser: { name: "knowledge:reprocess:user", limit: 20, windowSeconds: 3600 },
   researchByOrg: { name: "research:org", limit: 20, windowSeconds: 3600 },
   projectRequestByUser: { name: "project:request", limit: 6, windowSeconds: 3600 },
   projectActivityByUser: { name: "project:activity", limit: 40, windowSeconds: 3600 },
@@ -64,4 +99,25 @@ export const RATE_LIMITS = {
   onboardingAssistByOrg: { name: "onboarding:assist", limit: 25, windowSeconds: 3600 },
   onboardingSiteReadByOrg: { name: "onboarding:site", limit: 8, windowSeconds: 3600 },
   websiteAssistByOrg: { name: "website:assist", limit: 40, windowSeconds: 3600 },
+  // Public booking pages (/book/*) and their API. Keys are hashed IPs, org ids, or the sha256 of a manage secret, never raw values.
+  bookingPageByIp: { name: "booking:page:ip", limit: 120, windowSeconds: 60 },
+  bookingSlotsByIp: { name: "booking:slots:ip", limit: 90, windowSeconds: 60 },
+  bookingSubmitByIp: { name: "booking:submit:ip", limit: 10, windowSeconds: 3600 },
+  bookingSubmitByOrg: { name: "booking:submit:org", limit: 120, windowSeconds: 3600 },
+  bookingManageByIp: { name: "booking:manage:ip", limit: 30, windowSeconds: 3600 },
+  bookingManageByToken: { name: "booking:manage:token", limit: 8, windowSeconds: 3600 },
+  bookingIcsByIp: { name: "booking:ics:ip", limit: 30, windowSeconds: 600 },
+  // The public CRM API (/api/v1/crm, docs/crm-api.md): per API key id, and failed authentication per hashed client address.
+  crmApiByKey: { name: "crm-api:key", limit: 120, windowSeconds: 60 },
+  crmApiAuthFailureByIp: { name: "crm-api:auth-fail:ip", limit: 30, windowSeconds: 600 },
+  // Test sends and manual redeliveries from Settings → API & Webhooks, per workspace.
+  crmWebhookManualByOrg: { name: "crm-webhook:manual:org", limit: 30, windowSeconds: 3600 },
+  // CRM tool calls from a client's own AI employee (/api/agent-tools), per employee (agent instance id), whatever token it holds.
+  agentToolCallsByEmployee: { name: "agent-tools:employee", limit: 60, windowSeconds: 60 },
+  // Requests to /api/agent-tools with a missing, unknown, expired or revoked credential, per hashed client address. Valid calls never count.
+  agentToolAuthFailureByIp: { name: "agent-tools:auth-fail:ip", limit: 30, windowSeconds: 600 },
+  // Voice provider webhooks (/api/webhooks/vapi and /retell) that name a connected assistant but fail authentication, per connection and
+  // hashed client address. Past the limit, that address's requests for that connection are refused before the vault is read. Requests that
+  // authenticate never count, so a provider's own traffic (from its own addresses) isn't held back by someone else's forged requests.
+  voiceWebhookAuthFailure: { name: "voice-webhook:auth-fail", limit: 20, windowSeconds: 600 },
 } satisfies Record<string, RateLimitRule>;

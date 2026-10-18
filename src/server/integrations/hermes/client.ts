@@ -42,13 +42,21 @@ export class HermesError extends Error {
   }
 }
 
+export interface HermesCapabilityEndpoint {
+  method: string;
+  path: string;
+}
+
 export interface HermesCapabilities {
   contract: string | null;
   authenticated: boolean;
   model: string | null;
   features: Record<string, unknown>;
+  /** Capability name -> documented method/path pairs. Unknown shapes are ignored. */
+  endpoints: Record<string, HermesCapabilityEndpoint>;
   supportsRuns: boolean;
   supportsEvents: boolean;
+  supportsStatus: boolean;
   supportsStop: boolean;
   supportsApproval: boolean;
 }
@@ -133,15 +141,25 @@ export async function getCapabilities(conn: HermesConnection, timeoutMs = 8000):
   } catch {
     throw new HermesError("bad_response", "Capabilities response was not JSON.");
   }
-  const obj = (body ?? {}) as { object?:unknown; auth?:{required?:unknown;type?:unknown}; model?: unknown; features?: Record<string, unknown> };
+  const obj = (body ?? {}) as { object?:unknown; auth?:{required?:unknown;type?:unknown}; model?: unknown; features?: Record<string, unknown>; endpoints?: unknown };
   const features = obj.features && typeof obj.features === "object" ? obj.features : {};
+  const endpoints: Record<string, HermesCapabilityEndpoint> = {};
+  if (obj.endpoints && typeof obj.endpoints === "object") {
+    for (const [name, raw] of Object.entries(obj.endpoints as Record<string, unknown>)) {
+      if (!Array.isArray(raw) || raw.length !== 2 || typeof raw[0] !== "string" || typeof raw[1] !== "string") continue;
+      if (!/^[A-Z]+$/.test(raw[0]) || !raw[1].startsWith("/")) continue;
+      endpoints[name] = { method: raw[0], path: raw[1] };
+    }
+  }
   return {
     contract: typeof obj.object === "string" ? obj.object : null,
     authenticated: obj.auth?.required === true && obj.auth?.type === "bearer",
     model: typeof obj.model === "string" ? obj.model : null,
     features,
+    endpoints,
     supportsRuns: features.run_submission === true,
     supportsEvents: features.run_events_sse === true,
+    supportsStatus: features.run_status === true,
     supportsStop: features.run_stop === true,
     supportsApproval: features.run_approval_response === true,
   };
@@ -312,6 +330,36 @@ export async function startAgentRun(agentId: string, orgId: string, conn: Hermes
 
 export async function stopRun(conn: HermesConnection, runId: string): Promise<void> {
   await request(conn, `/v1/runs/${encodeURIComponent(runId)}/stop`, { method: "POST", headers: headers(conn), timeoutMs: 8000 });
+}
+
+export interface HermesRunStatus {
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown";
+  output: string | null;
+  error: string | null;
+  usage: TokenUsage | null;
+}
+
+/**
+ * GET /v1/runs/{id} — the documented run status endpoint. Used only when the provider does not advertise the SSE
+ * event stream; the portal then shows an honest processing state and renders the completed output once.
+ */
+export async function getRunStatus(conn: HermesConnection, runId: string): Promise<HermesRunStatus> {
+  const res = await request(conn, `/v1/runs/${encodeURIComponent(runId)}`, { method: "GET", headers: headers(conn), timeoutMs: 8000 });
+  if (!res.ok) throw new HermesError("bad_response", `Unexpected run status ${res.status}.`, res.status);
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object") throw new HermesError("bad_response", "The run status response was not JSON.");
+  const raw = typeof body.status === "string" ? body.status.toLowerCase() : "";
+  const status: HermesRunStatus["status"] =
+    raw === "completed" || raw === "succeeded" || raw === "success" ? "completed"
+      : raw === "failed" || raw === "error" ? "failed"
+        : raw === "cancelled" || raw === "canceled" ? "cancelled"
+          : raw === "interrupted" ? "interrupted"
+            : raw === "queued" ? "queued"
+              : raw === "running" || raw === "started" || raw === "in_progress" ? "running"
+                : "unknown";
+  const output = str(body.output) ?? str(body.result) ?? str(body.content) ?? null;
+  const error = str(body.error) ?? (body.error && typeof body.error === "object" ? str((body.error as Record<string, unknown>).message) : undefined) ?? null;
+  return { status, output, error, usage: parseUsage(body.usage) };
 }
 
 /** Resolves one pending approval. Only "once" and "deny" are used: clients never grant standing approvals. */

@@ -7,6 +7,7 @@ import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { createConfigVersion, currentSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
 import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
+import { prepareConfigPreview } from "@/server/workforce/preview";
 import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 
@@ -74,6 +75,19 @@ export async function applyChangeAction(role: string, request: string, changes: 
     });
     revalidateAgent(role);
     return { ok: true as const, data: res };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Compiles an unsaved draft and reports exactly what would differ. No provider call and no write. */
+export async function previewConfigAction(role: string, draft: unknown) {
+  try {
+    const { ctx } = await resolve(role);
+    const parsed = agentSettingsSchema.safeParse(draft);
+    if (!parsed.success) throw new AppError("invalid_input", parsed.error.issues[0]?.message ?? "Check the draft configuration.");
+    const summary = await prepareConfigPreview(ctx, role, parsed.data);
+    return { ok: true as const, data: summary };
   } catch (err) {
     return actionError(err);
   }

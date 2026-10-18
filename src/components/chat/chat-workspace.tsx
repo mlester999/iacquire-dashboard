@@ -30,6 +30,7 @@ import { openHelp } from "@/components/help/help-widget";
 import {
   deleteConversationAction,
   loadConversationAction,
+  loadOlderMessagesAction,
   renameConversationAction,
   searchConversationsAction,
   setReplyLengthAction,
@@ -56,7 +57,7 @@ interface Props {
   replyLength: ReplyLength;
   canConfigure: boolean;
   initialConversations: ConversationItem[];
-  initialConversation: { id: string; title: string; messages: ChatMessage[] } | null;
+  initialConversation: { id: string; title: string; messages: ChatMessage[]; hasMore?: boolean } | null;
   activeRunId: string | null;
   timeZone: string;
   /** Pre-filled composer text (e.g. from "Ask Performance Analyst"). Never auto-sent. */
@@ -116,6 +117,8 @@ export function ChatWorkspace(props: Props) {
   const [conversations, setConversations] = React.useState(props.initialConversations);
   const [conversationId, setConversationId] = React.useState<string | null>(props.initialConversation?.id ?? null);
   const [messages, setMessages] = React.useState<ChatMessage[]>(props.initialConversation?.messages ?? []);
+  const [hasMore, setHasMore] = React.useState(Boolean(props.initialConversation?.hasMore));
+  const [loadingOlder, setLoadingOlder] = React.useState(false);
   // A response still streaming when the page loaded is re-attached below; start in that state.
   const [streaming, setStreaming] = React.useState<{ runId: string | null; assistantId: string | null } | null>(() =>
     props.activeRunId ? { runId: props.activeRunId, assistantId: null } : null,
@@ -176,6 +179,7 @@ export function ChatWorkspace(props: Props) {
     if (!res.ok) return toast.error(res.error);
     setConversationId(id);
     setMessages(res.data.messages as ChatMessage[]);
+    setHasMore(Boolean(res.data.hasMore));
     setActivity(null);
     stickRef.current = true;
     setUrl(id);
@@ -187,9 +191,33 @@ export function ChatWorkspace(props: Props) {
     if (streaming) return toast.info("Wait for the current answer to finish, or stop it first.");
     setConversationId(null);
     setMessages([]);
+    setHasMore(false);
     setActivity(null);
     setUrl(null);
     textareaRef.current?.focus();
+  };
+
+  const loadOlder = async () => {
+    const first = messages[0];
+    if (!conversationId || !first || loadingOlder || !hasMore) return;
+    const el = scrollRef.current;
+    const previousHeight = el?.scrollHeight ?? 0;
+    const previousTop = el?.scrollTop ?? 0;
+    setLoadingOlder(true);
+    // A reader who is looking at older messages must not be pulled to the newest one when the page is prepended.
+    stickRef.current = false;
+    const res = await loadOlderMessagesAction(conversationId, first.created_at);
+    setLoadingOlder(false);
+    if (!res.ok) {
+      stickRef.current = true;
+      return toast.error(res.error);
+    }
+    setMessages((prev) => [...(res.data.messages as ChatMessage[]), ...prev]);
+    setHasMore(res.data.hasMore);
+    requestAnimationFrame(() => {
+      const node = scrollRef.current;
+      if (node) node.scrollTop = node.scrollHeight - previousHeight + previousTop;
+    });
   };
 
   // --- streaming ------------------------------------------------------------
@@ -352,7 +380,7 @@ export function ChatWorkspace(props: Props) {
         {rail}
       </Sheet>
 
-      <section className="relative flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
         <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-3 sm:px-6">
           <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open conversations">
@@ -400,12 +428,19 @@ export function ChatWorkspace(props: Props) {
         </header>
 
         {/* Messages */}
-        <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto" aria-live="polite" aria-busy={Boolean(streaming)}>
+        <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text" aria-busy={Boolean(streaming)}>
           <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-8 sm:px-6">
             {messages.length === 0 ? (
               <EmptyState meta={meta} ready={ready} status={props.status} statusDetail={props.statusDetail} onPick={(p) => send(p)} />
             ) : (
               <ol className="space-y-6">
+                {hasMore && (
+                  <li className="flex justify-center">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => void loadOlder()} loading={loadingOlder} aria-label="Load earlier messages">
+                      {!loadingOlder && <ArrowDown className="size-3.5 rotate-180" aria-hidden />} Load earlier messages
+                    </Button>
+                  </li>
+                )}
                 <AnimatePresence initial={false}>
                   {messages.map((m) => (
                     <motion.li
@@ -480,7 +515,7 @@ export function ChatWorkspace(props: Props) {
           placeholder={`Message ${props.agentName}…`}
           awaitingFirstToken={awaitingFirstToken}
         />
-      </section>
+      </main>
 
       <Dialog
         open={Boolean(renaming)}
@@ -670,7 +705,7 @@ function AssistantBubble({
             {message.status === "failed" && (
               <div className={cn("flex items-start gap-2 text-[13px] text-danger-ink", message.content && "mt-3 border-t border-line pt-3")}>
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <span>{ERROR_TEXT[message.error_code ?? ""] ?? "Something went wrong."} Nothing was done on your behalf.</span>
+                <span>{ERROR_TEXT[message.error_code ?? ""] ?? "Something went wrong."} Review the recorded activity before retrying; a step that had already run may not have completed.</span>
               </div>
             )}
           </div>
