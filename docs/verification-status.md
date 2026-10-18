@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,319 tests in 103 files passed** with `--maxWorkers=2` |
+| `npm test` | **1,340 tests in 106 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -36,7 +36,7 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 | Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
 | Intent-aware greetings, response length, page-context restraint, clickable navigation, source preview | Locally verified plus real DeepSeek greeting/navigation probes |
 | Copy, like/dislike/undo, reason form and selected-state persistence | Locally/browser verified; feedback persisted through the existing message record |
-| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 21 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Floating launcher, streaming panel, source citations, feedback, support consent, close/reopen, history, reload persistence, expand, mobile, reduced motion, keyboard navigation, Super Admin real-provider test, retrieval preview and budgets | Browser QA passed with **4 pages, 25 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming/non-streaming provider only |
 | Private image/document attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document history rendering, emoji insertion, admin settings and **0 axe violations** |
 | Attachment storage/RLS and extraction | Locally verified: private bucket, RLS, image dimensions, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
 | GIF messaging | **Removed from AQi**; uploads are rejected as unsupported |

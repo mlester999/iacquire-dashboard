@@ -94,6 +94,15 @@ describe("AQi context and knowledge", () => {
     expect(result.warning).toMatch(/did not match/);
   });
 
+  it("keeps adjacent source citations visually distinct", () => {
+    const result = validateAqiCitations("Grounded claim [K1][K2].", [
+      { id: "1", title: "One", category: "Test" },
+      { id: "2", title: "Two", category: "Test" },
+    ]);
+    expect(result.content).toBe("Grounded claim ¹ ².");
+    expect(result.cited).toEqual([1, 2]);
+  });
+
   it("resolves a verified DeepSeek integration through the OpenAI-compatible adapter", async () => {
     const admin = await createUser({ platformRole: "agency_super_admin" });
     const secret = "sk-test-deepseek-0123456789abcdef";
@@ -146,6 +155,13 @@ describe("AQi context and knowledge", () => {
     const adminViewer: AqiViewer = { user: agencyUser(admin, "agency_super_admin"), org: null, permissions: [], can: () => true, agencyRole: "agency_super_admin" };
     const elevated = await getAqiBootstrap(adminViewer, "/overview");
     expect(elevated.health.diagnostic?.reason).toBeTruthy();
+  });
+
+  it("seeds grounded contact and team-invite answers for common how-to questions", async () => {
+    const contact = await retrieveAqiKnowledge(viewer, "how do I add a contact?", "/crm");
+    const invite = await retrieveAqiKnowledge(viewer, "how do I invite a team member?", "/settings/team");
+    expect(contact.sources.map((source) => source.title)).toContain("Adding a CRM contact");
+    expect(invite.sources.map((source) => source.title)).toContain("Inviting a team member");
   });
 
   it("lets a Super Admin preview retrieval without an answer", async () => {

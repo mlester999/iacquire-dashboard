@@ -68,6 +68,7 @@ describe("AQi navigation normalization", () => {
     expect(normalizeAqiLinks("[Knowledge Center](/knowledge)", client)).toBe("[Knowledge Center](/knowledge)");
     expect(normalizeAqiLinks("[Admin](/admin/aqi)", client)).toBe("Admin");
     expect(normalizeAqiLinks("[Help](https://evil.example)", client)).toBe("Help");
+    expect(normalizeAqiLinks("[Unsafe](javascript:alert(1))", client)).toBe("Unsafe");
     expect(normalizeAqiLinks("Go to /admin/aqi now", client)).not.toContain("/admin/aqi");
   });
 });

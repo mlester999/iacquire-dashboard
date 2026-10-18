@@ -129,7 +129,11 @@ text as data, not instructions. Unpublished knowledge and archived entries never
 ## Conversation behavior
 
 - The intent classifier and `conversation behavior` settings control verbosity, greeting, navigation,
-  follow-up and citation style.
+  follow-up and citation style. Complex requests have a separate admin-configurable token budget
+  because reasoning tokens count against the provider output budget; the same budget is reserved in
+  cost accounting.
+- Adjacent citations are spaced and standalone citation lines are removed so `[K1][K4]` cannot render
+  as the misleading number “14”.
 - Responses must answer the question first and use plain conversational text for simple answers.
 - Authorized internal paths are converted server-side to human-labelled Markdown links; unauthorized
   or external links are removed. The browser also validates links against the authorized route list.
@@ -155,9 +159,10 @@ health, Budgets & pricing and Messaging & attachments.
   policy.
 - Knowledge and suggested questions are editable, publishable, archivable, searchable and filterable;
   freshness review and source metadata remain visible.
-- “Run test” calls the real configured provider with the editor's current configuration (including
-  unsaved changes) and does not save a conversation. Quick conversation probes include greetings
-  and a navigation question.
+- “Run test” calls the real configured provider with the same intent prompt, page context, published
+  knowledge, link validation and citation rendering as a live turn. It shows the detected intent,
+  word count, formatted answer and source list, and does not save a conversation. Quick conversation
+  probes include greetings and a navigation question.
 - Usage shows message/failure/rate-limit counts, helpful/not-helpful feedback, tokens, estimated cost,
   reservations and latency. Costs are computed from configured model prices, not invented provider
   invoices.
@@ -222,8 +227,10 @@ text extraction, not a multimodal model call.
 - Failed resolutions are not cached. A successful resolution is cached briefly; integration tests
   and changes invalidate it.
 - Draft tests use the editor's current configuration, including unsaved changes.
-- Hosted migrations through 0049 are applied. The deployed application build still needs to be
-  promoted before the new budget and attachment code is live.
+- Hosted migrations through 0049 are applied. Prepared migrations 0050 (conversational knowledge)
+  and 0051 (conversation titles) are **local only** and have not been applied to the hosted project.
+  The deployed application build still needs to be promoted before the new budget and attachment
+  code is live.
 - The production LLM connection is now `connected`, and controlled provider probes succeeded.
   The deployed AQi build is older than the resolution/error fixes, and the deployment URL is Vercel
   SSO protected, so the full deployed AQi UI was not tested from this environment.
@@ -239,14 +246,17 @@ npm run build
 ```
 
 Browser QA was run against an isolated PGlite database and a local SSE provider on port 3230. It
-covered desktop and mobile launchers, streaming, feedback, support consent, close confirmation,
+covered desktop and mobile launchers, streaming, feedback, support consent, close/reopen,
 history, expansion, the Super Admin screen, retrieval preview, budgets and axe checks.
 
-Result: **4 authenticated pages, 21 interactions, 0 console errors, 0 page errors, 0 failed requests,
+Result: **4 authenticated pages, 25 interactions, 0 console errors, 0 page errors, 0 failed requests,
 0 axe violations**, including a 390 px mobile viewport with no horizontal overflow. The interactive
 flow includes a short greeting with no sources, emoji insertion, image + document upload, attachment
-history, clickable source preview, copy confirmation, persisted like and dislike-with-reason feedback,
-support consent, close confirmation, history and admin conversation/knowledge controls.
+history, clickable source preview, copy success and clipboard-failure handling, rapid feedback
+deduplication, persisted like and dislike-with-reason feedback, reload restoration of citations and
+feedback state, support consent, close/reopen, history, a real-provider admin greeting test,
+conversation/knowledge controls, reduced-motion mobile keyboard focus and a keyboard-activated
+authorized navigation link.
 
 A separate 390 px browser run with no provider configured verified the client-facing unavailable
 state: friendly copy, no `Super Admin`/API-key/configuration text, a functional **Try again**
