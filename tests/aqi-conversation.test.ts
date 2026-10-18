@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyAqiIntent } from "@/lib/aqi/intent";
-import { buildAqiSystemPrompt, DEFAULT_AQI_CONFIG, normalizeAqiLinks, type AqiKnowledgeResult } from "@/server/aqi/service";
+import { buildAqiSystemPrompt, DEFAULT_AQI_CONFIG, normalizeAqiLinks, pageForViewer, type AqiKnowledgeResult } from "@/server/aqi/service";
 import type { AqiViewer } from "@/server/aqi/access";
 
 const client = { can: (permission: string) => permission === "agents.use" || permission === "knowledge.view", agencyRole: null } as unknown as AqiViewer;
@@ -47,6 +47,11 @@ describe("AQi prompt behavior", () => {
     const pageQuestion = buildAqiSystemPrompt(client, DEFAULT_AQI_CONFIG, page, emptyKnowledge, classifyAqiIntent("What can I do on this page?"));
     expect(greeting).not.toContain("Knowledge Center");
     expect(pageQuestion).toContain("Knowledge Center");
+  });
+
+  it("never exposes page context for a page the viewer cannot open", () => {
+    expect(pageForViewer(client, "/admin/aqi")).toBeNull();
+    expect(pageForViewer(client, "/knowledge")?.label).toBe("Knowledge Center");
   });
 
   it("adds authorized routes and link rules only when navigation is relevant", () => {
