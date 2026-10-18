@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  AlertCircle,
   ArrowLeft,
   Check,
   ChevronLeft,
@@ -37,7 +36,28 @@ interface Bootstrap {
   suggestions: Array<{ id: string; question: string }>;
   page: { path: string; label: string; description: string } | null;
   allowedPaths: string[];
-  health: { available: boolean; provider: string | null; model: string | null; detail: string };
+  health: { available: boolean; provider: string | null; model: string | null; detail: string; diagnostic?: { reason: string; connectionStatus: string | null; provider: string | null; model: string | null; host: string | null; modelListed?: boolean | null } };
+}
+
+interface ErrorDiagnostic {
+  requestId?: string;
+  category?: string;
+  internalCode?: string;
+  provider?: string | null;
+  model?: string | null;
+  reason?: string | null;
+  retryable?: boolean;
+}
+
+class AqiUiError extends Error {
+  readonly code: string;
+  readonly diagnostic?: ErrorDiagnostic;
+  constructor(message: string, code = "unexpected", diagnostic?: ErrorDiagnostic) {
+    super(message);
+    this.name = "AqiUiError";
+    this.code = code;
+    this.diagnostic = diagnostic;
+  }
 }
 
 interface Conversation {
@@ -95,6 +115,8 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const [input, setInput] = React.useState("");
   const [streaming, setStreaming] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [errorCode, setErrorCode] = React.useState<string | null>(null);
+  const [errorDiagnostic, setErrorDiagnostic] = React.useState<ErrorDiagnostic | null>(null);
   const [historySearch, setHistorySearch] = React.useState("");
   const [renaming, setRenaming] = React.useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = React.useState<string | null>(null);
@@ -119,6 +141,18 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   const meaningful = newSession && messages.filter((message) => message.role === "user").length >= 2;
+
+  function showError(message: string, diagnostic?: ErrorDiagnostic | null, code = "unexpected") {
+    setError(message);
+    setErrorCode(code);
+    setErrorDiagnostic(diagnostic ?? null);
+  }
+
+  function clearError() {
+    setError(null);
+    setErrorCode(null);
+    setErrorDiagnostic(null);
+  }
 
   const loadBootstrap = React.useCallback(async () => {
     const res = await fetch(`/api/aqi/bootstrap?path=${encodeURIComponent(pathname ?? "")}`, { cache: "no-store" });
@@ -194,7 +228,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
     setStreaming(false);
     setConversationId(null);
     setMessages([]);
-    setError(null);
+    clearError();
     setHasMore(false);
     setNewSession(false);
     setView("chat");
@@ -216,8 +250,8 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       window.requestAnimationFrame(() => {
         if (element) element.scrollTop += element.scrollHeight - previousHeight;
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Earlier messages could not be loaded.");
+    } catch {
+      showError("Earlier messages could not be loaded. Please try again.");
     } finally {
       setOlderLoading(false);
     }
@@ -225,7 +259,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
 
   async function openConversation(id: string) {
     setLoadingConversation(true);
-    setError(null);
+    clearError();
     try {
       const res = await fetch(`/api/aqi/conversations/${id}`, { cache: "no-store" });
       const data = (await res.json()) as { conversation?: Conversation; messages?: Message[]; hasMore?: boolean; error?: string };
@@ -235,8 +269,8 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       setHasMore(Boolean(data.hasMore));
       setNewSession(false);
       setView("chat");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "That conversation could not be opened.");
+    } catch {
+      showError("That conversation could not be opened. Please try again.");
     } finally {
       setLoadingConversation(false);
     }
@@ -245,11 +279,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
   async function send(text: string) {
     const clean = text.trim();
     if (!clean || streaming) return;
-    if (bootstrap && !bootstrap.health.available) {
-      setError(bootstrap.health.detail);
-      return;
-    }
-    setError(null);
+    clearError();
     setInput("");
     let id = conversationId;
     setStreaming(true);
@@ -295,10 +325,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
         signal: controller.signal,
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? "AQi could not answer right now.");
+        const data = (await res.json().catch(() => null)) as { error?: string; code?: string; diagnostic?: ErrorDiagnostic } | null;
+        throw new AqiUiError(data?.error ?? "I couldn't finish that response. Please try again.", data?.code ?? "response_failed", data?.diagnostic);
       }
-      if (!res.body) throw new Error("AQi returned an empty response.");
+      if (!res.body) throw new AqiUiError("I couldn't finish that response. Please try again.", "response_failed");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -323,7 +353,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
             setStreaming(false);
             void loadConversations();
           } else if (event.type === "error") {
-            throw new Error(String(event.message));
+            throw new AqiUiError(String(event.message), String(event.code ?? "unexpected"), event.diagnostic as ErrorDiagnostic | undefined);
           }
         }
       }
@@ -332,7 +362,10 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       const aborted = controller.signal.aborted;
       setStreaming(false);
       setMessages((current) => current.map((message) => (message.status === "streaming" ? { ...message, status: aborted ? "cancelled" : "failed" } : message)));
-      if (!aborted) setError(err instanceof Error ? err.message : "AQi could not answer right now.");
+      if (!aborted) {
+        if (err instanceof AqiUiError) showError(err.message, err.diagnostic, err.code);
+        else showError("I couldn't finish that response. Please try again.");
+      }
     } finally {
       abortRef.current = null;
     }
@@ -363,7 +396,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId: message.id, rating, comment: comment?.trim() || undefined }),
     });
-    if (!res.ok) setError("Your feedback could not be saved. Please try again.");
+    if (!res.ok) showError("Your feedback could not be saved. Please try again.");
   }
 
   async function createSupportRequest() {
@@ -393,7 +426,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: renaming.title }),
     });
-    if (!res.ok) setError("That name could not be saved.");
+    if (!res.ok) showError("That name could not be saved.");
     else {
       setRenaming(null);
       void loadConversations();
@@ -402,7 +435,7 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
 
   async function remove(id: string) {
     const res = await fetch(`/api/aqi/conversations/${id}`, { method: "DELETE" });
-    if (!res.ok) setError("That conversation could not be deleted.");
+    if (!res.ok) showError("That conversation could not be deleted. Please try again.");
     else {
       setDeleting(null);
       if (conversationId === id) startNew();
@@ -514,7 +547,22 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                           <p className="mt-2 text-[12px] leading-relaxed text-muted">I explain iAcquireOS, help you find the right page and tell you honestly when something is unavailable. I can&apos;t change settings or act on your behalf.</p>
                         </div>
                         {bootstrap && !bootstrap.health.available && (
-                          <div className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft p-3 text-[12px] text-warning-ink"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span>{bootstrap.health.detail}</span></div>
+                          <div className="flex items-start gap-2.5 rounded-2xl border border-line bg-surface-2 p-3.5 text-[12px] text-ink-2">
+                            <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><LifeBuoy className="size-3.5" /></span>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium leading-relaxed text-ink">{bootstrap.health.detail}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-3">
+                                <button type="button" onClick={() => { clearError(); void loadBootstrap(); }} className="text-[11.5px] font-semibold text-primary hover:underline">Check again</button>
+                                <Link href="/support" className="text-[11.5px] font-medium text-muted hover:text-ink">Contact support</Link>
+                              </div>
+                              {bootstrap.health.diagnostic && (
+                                <details className="mt-2 border-t border-line pt-2 text-[10.5px] text-muted">
+                                  <summary className="cursor-pointer font-medium text-ink-2">Diagnostic details</summary>
+                                  <p className="mt-1">Status: {bootstrap.health.diagnostic.connectionStatus ?? "no connection"} · Reason: {bootstrap.health.diagnostic.reason} · Provider: {bootstrap.health.diagnostic.provider ?? "unknown"} · Model: {bootstrap.health.diagnostic.model ?? "unknown"}</p>
+                                </details>
+                              )}
+                            </div>
+                          </div>
                         )}
                         <div>
                           <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted">Try asking</p>
@@ -586,9 +634,29 @@ export function AqiWidget({ raised = false }: { raised?: boolean }) {
                           </div>
                         ))}
                         {error && (
-                          <div className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12px] text-danger-ink">
-                            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                            <div className="min-w-0 flex-1"><p>{error}</p>{canRetry && <button type="button" onClick={retry} className="mt-1 font-semibold underline">Retry</button>}</div>
+                          <div role="status" aria-live="polite" className="rounded-2xl border border-line bg-surface-2 p-3.5 text-[12px] text-ink-2">
+                            <div className="flex items-start gap-2.5">
+                              <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><LifeBuoy className="size-3.5" /></span>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium leading-relaxed text-ink">{error}</p>
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                  {canRetry && <button type="button" onClick={retry} className="inline-flex items-center gap-1 rounded-lg bg-surface px-2.5 py-1.5 text-[11.5px] font-semibold text-ink-2 shadow-sm ring-1 ring-line hover:bg-surface-2"><RotateCcw className="size-3" /> Try again</button>}
+                                  {bootstrap && !bootstrap.health.available && <button type="button" onClick={() => { clearError(); void loadBootstrap(); }} className="text-[11.5px] font-semibold text-primary hover:underline">Check again</button>}
+                                  {errorCode === "session_expired" ? <Link href="/login" className="text-[11.5px] font-semibold text-primary hover:underline">Sign in again</Link> : <Link href="/support" className="text-[11.5px] font-medium text-muted hover:text-ink">Contact support</Link>}
+                                </div>
+                                {errorDiagnostic && (
+                                  <details className="mt-2 border-t border-line pt-2 text-[10.5px] text-muted">
+                                    <summary className="cursor-pointer font-medium text-ink-2">Diagnostic details</summary>
+                                    <dl className="mt-1.5 grid gap-0.5">
+                                      {errorDiagnostic.requestId && <div><dt className="inline text-faint">Request </dt><dd className="inline font-mono">{errorDiagnostic.requestId}</dd></div>}
+                                      <div><dt className="inline text-faint">Category </dt><dd className="inline">{errorDiagnostic.category ?? errorDiagnostic.reason ?? "unknown"}</dd></div>
+                                      <div><dt className="inline text-faint">Provider </dt><dd className="inline">{errorDiagnostic.provider ?? "not reported"}</dd></div>
+                                      <div><dt className="inline text-faint">Model </dt><dd className="inline">{errorDiagnostic.model ?? "not reported"}</dd></div>
+                                    </dl>
+                                  </details>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>

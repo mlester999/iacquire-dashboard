@@ -207,12 +207,16 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
         <Card>
           <CardHeader><CardTitle>Provider & model</CardTitle><CardDescription>The provider key comes from the existing Integrations connection and is never displayed. This screen controls AQi&apos;s model and response limits.</CardDescription></CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field label="Model" htmlFor="aqi-model"><Input id="aqi-model" value={config.model} onChange={(event) => set("model", event.target.value)} /></Field>
+            <label className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 p-3 text-[12px] sm:col-span-2"><input type="checkbox" className="mt-0.5" checked={config.modelOverride} onChange={(event) => set("modelOverride", event.target.checked)} /><span><strong className="font-semibold text-ink">Use a different model for AQi</strong><br /><span className="text-muted">When off, AQi uses the verified model from Integrations ({data.health.model ?? "not available"}). Turn this on only when the provider supports the model you enter below.</span></span></label>
+            <Field label="AQi model override" htmlFor="aqi-model" hint={config.modelOverride ? "Used instead of the integration model." : "Disabled: the integration model is authoritative."}><Input id="aqi-model" value={config.model} disabled={!config.modelOverride} onChange={(event) => set("model", event.target.value)} /></Field>
             <Field label="Maximum output tokens" htmlFor="aqi-max"><Input id="aqi-max" type="number" min={128} max={2000} value={config.maxTokens} onChange={(event) => set("maxTokens", Number(event.target.value))} /></Field>
             <Field label="Maximum context tokens" htmlFor="aqi-context"><Input id="aqi-context" type="number" min={1000} max={64000} value={config.maxContextTokens} onChange={(event) => set("maxContextTokens", Number(event.target.value))} /></Field>
             <Field label="Knowledge review threshold (days)" htmlFor="aqi-freshness"><Input id="aqi-freshness" type="number" min={7} max={3650} value={config.knowledgeFreshnessDays} onChange={(event) => set("knowledgeFreshnessDays", Number(event.target.value))} /></Field>
             <Field label="Temperature" htmlFor="aqi-temp"><Input id="aqi-temp" type="number" min={0} max={1} step={0.05} value={config.temperature} onChange={(event) => set("temperature", Number(event.target.value))} /></Field>
-            <div className="rounded-xl border border-line bg-surface-2 p-3 text-[12.5px] text-muted">Configured provider: {data.health.provider ?? "none"}. Credentials stay in the existing secure integration store.</div>
+            <div className="rounded-xl border border-line bg-surface-2 p-3 text-[12.5px] text-muted sm:col-span-2">
+              <p>Integration: <strong className="text-ink-2">{data.health.connectionStatus ?? "not configured"}</strong> · AQi eligible: <strong className="text-ink-2">{data.health.eligible ? "yes" : "no"}</strong> · Model: <strong className="text-ink-2">{data.health.model ?? "not available"}</strong> · Model listed by provider: <strong className="text-ink-2">{data.health.modelListed === null ? "not checked" : data.health.modelListed ? "yes" : "no"}</strong></p>
+              <p className="mt-1">Resolution: {data.health.reason}{data.health.host ? ` · Host: ${data.health.host}` : ""}. Credentials stay in the existing secure integration store and are never displayed.</p>
+            </div>
           </CardContent>
         </Card>
       )}

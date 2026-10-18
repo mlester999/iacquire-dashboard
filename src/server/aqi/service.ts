@@ -5,7 +5,8 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { assertWithinLimits } from "@/server/usage";
-import { llmComplete, llmStream, resolveLlmConfig } from "@/server/llm/client";
+import { llmComplete, llmStream, resolveLlmConfigDetailed, type LlmResolution } from "@/server/llm/client";
+import { classifyAqiError, logAqiError, providerAqiError, type AqiDiagnostic } from "@/server/aqi/errors";
 import { AQI_ROUTES, canOpenAqiRoute, matchAqiRoute, pageFor, type AqiRoute } from "@/lib/aqi/routes";
 import type { AqiViewer } from "@/server/aqi/access";
 import type { SessionUser } from "@/server/auth/service";
@@ -31,6 +32,7 @@ export const aqiConfigSchema = z.object({
   knowledgeFreshnessDays: z.number().int().min(7).max(3650).default(90),
   temperature: z.number().min(0).max(1).default(0.3),
   model: z.string().trim().min(1).max(120).default("deepseek-chat"),
+  modelOverride: z.boolean().default(false),
 });
 
 export type AqiConfig = z.infer<typeof aqiConfigSchema>;
@@ -78,6 +80,11 @@ export interface AqiReservation {
 }
 
 /** Rough, client-independent token estimate used only for context budgeting. */
+/** The verified integration model is authoritative unless a Super Admin deliberately overrides it. */
+export function effectiveAqiModel(config: AqiConfig, integrationModel: string | null | undefined): string {
+  return (config.modelOverride && config.model.trim()) || integrationModel || config.model;
+}
+
 export function estimateAqiTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
@@ -456,30 +463,41 @@ export async function rateAqiMessage(viewer: AqiViewer, messageId: string, ratin
   ));
 }
 
+export interface AqiBootstrapDiagnostic {
+  reason: LlmResolution["reason"];
+  connectionStatus: string | null;
+  provider: string | null;
+  model: string | null;
+  host: string | null;
+  modelListed?: boolean | null;
+}
+
 export interface AqiBootstrap {
   config: { identity: string; description: string; greeting: string; tone: string };
   suggestions: AqiSuggestion[];
   page: AqiPage | null;
   allowedPaths: string[];
-  health: { available: boolean; provider: string | null; model: string | null; detail: string };
+  health: { available: boolean; provider: string | null; model: string | null; detail: string; diagnostic?: AqiBootstrapDiagnostic };
 }
 
 export async function getAqiBootstrap(viewer: AqiViewer, pathname: string | null): Promise<AqiBootstrap> {
   const [{ config }, suggestions, llm] = await Promise.all([
     getPublishedAqiConfig(),
     listAqiSuggestions(viewer, pathname),
-    resolveLlmConfig(),
+    resolveLlmConfigDetailed(),
   ]);
+  const superAdmin = viewer.user.platformRole === "agency_super_admin";
   return {
     config: { identity: config.identity, description: config.description, greeting: config.greeting, tone: config.tone },
     suggestions,
     page: pageFor(pathname),
     allowedPaths: aqiNavigationFor(viewer).map((route) => route.path),
     health: {
-      available: Boolean(llm?.apiKey),
-      provider: llm?.source === "portal" ? "Configured integration" : llm?.source === "environment" ? "Environment" : null,
-      model: config.model || llm?.model || null,
-      detail: llm?.apiKey ? "Connected to the configured AI provider." : "No AI provider is configured. AQi cannot answer until a Super Admin connects one.",
+      available: Boolean(llm.config?.apiKey),
+      provider: superAdmin ? (llm.config?.source === "portal" ? "Configured integration" : llm.config?.source === "environment" ? "Environment" : null) : null,
+      model: superAdmin ? (effectiveAqiModel(config, llm.config?.model ?? llm.model) || null) : null,
+      detail: llm.config?.apiKey ? "Connected to the configured AI provider." : "I'm temporarily unavailable. I'm having trouble responding right now. Please try again in a moment.",
+      ...(superAdmin ? { diagnostic: { reason: llm.reason, connectionStatus: llm.connectionStatus, provider: llm.provider, model: llm.model, host: llm.host, modelListed: llm.modelListed ?? null } } : {}),
     },
   };
 }
@@ -496,7 +514,7 @@ export type AqiStreamEvent =
   | { type: "meta"; conversationId: string; messageId: string }
   | { type: "delta"; text: string }
   | { type: "done"; message: AqiMessageView; sources: Array<{ id: string; title: string; category: string }>; usage: { inputTokens?: number; outputTokens?: number; latencyMs: number } }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string; diagnostic?: AqiDiagnostic };
 
 /** Runs one AQi turn. The caller streams these events; no fake success is emitted without a provider. */
 export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal: AbortSignal): AsyncGenerator<AqiStreamEvent> {
@@ -513,11 +531,15 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
   }
   if (viewer.org) await assertWithinLimits(viewer.org.orgId, "help_request");
 
+  const requestId = crypto.randomUUID();
+  const superAdmin = viewer.user.platformRole === "agency_super_admin";
   const configView = await getPublishedAqiConfig();
   const page = pageFor(input.pathname);
   const knowledge = await retrieveAqiKnowledge(viewer, text, input.pathname ?? null);
   const system = systemPrompt(viewer, configView.config, page, knowledge);
-  const llm = await resolveLlmConfig();
+  const resolution = await resolveLlmConfigDetailed();
+  const llm = resolution.config;
+  const model = effectiveAqiModel(configView.config, llm?.model ?? resolution.model);
 
   const prepared = await withUser(viewer.user.id, async (db) => {
     let conversationId = input.conversationId ?? null;
@@ -543,7 +565,7 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     const { rows: assistantRows } = await db.query<{ id: string }>(
       `insert into aqi_messages (conversation_id, org_id, user_id, role, content, status, model, context)
        values ($1, $2, $3, 'assistant', '', 'streaming', $4, $5) returning id`,
-      [conversationId, viewer.org?.orgId ?? null, viewer.user.id, configView.config.model, JSON.stringify({ page: page?.path ?? null, sources: knowledge.sources })],
+      [conversationId, viewer.org?.orgId ?? null, viewer.user.id, model, JSON.stringify({ page: page?.path ?? null, sources: knowledge.sources })],
     );
     await db.query("update aqi_conversations set last_message_at = now(), updated_at = now() where id = $1", [conversationId]);
     return { conversationId: conversationId!, userMessageId: userRows[0].id, assistantMessageId: assistantRows[0].id };
@@ -552,8 +574,22 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
   yield { type: "meta", conversationId: prepared.conversationId, messageId: prepared.assistantMessageId };
 
   if (!llm) {
-    await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", "provider_unavailable", null, null, null, null);
-    yield { type: "error", code: "provider_unavailable", message: "No AI provider is configured. A Super Admin needs to connect one in Integrations." };
+    const publicError = providerAqiError("unavailable", {
+      requestId,
+      superAdmin,
+      provider: resolution.provider,
+      model: resolution.model ?? model,
+      reason: resolution.reason,
+    });
+    await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", "provider_unavailable", model, null, null, null);
+    logAqiError(new AppError("integration_unavailable", "provider resolution failed"), {
+      requestId,
+      superAdmin,
+      provider: resolution.provider,
+      model: resolution.model ?? model,
+      reason: resolution.reason,
+    });
+    yield { type: "error", code: publicError.code, message: publicError.message, ...(publicError.diagnostic ? { diagnostic: publicError.diagnostic } : {}) };
     return;
   }
 
@@ -583,7 +619,7 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
   try {
     reservation = await reserveAqiSpend(
       viewer,
-      configView.config,
+      { ...configView.config, model },
       estimateAqiTokens(system) + estimateAqiTokens(history.map((row) => row.content).join("\n")),
       configView.config.maxTokens,
       prepared.conversationId,
@@ -591,14 +627,16 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
       page?.path ?? null,
     );
   } catch (err) {
-    const code = err instanceof AppError ? err.code : "budget_error";
-    await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", code, configView.config.model, null, null, null);
-    yield { type: "error", code, message: err instanceof Error ? err.message : "AQi could not check the workspace budget." };
+    const internalCode = err instanceof AppError ? err.code : "budget_error";
+    const publicError = classifyAqiError(err, { requestId, superAdmin, provider: resolution.provider, model, reason: "budget_check" });
+    await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", internalCode, model, null, null, null);
+    logAqiError(err, { requestId, superAdmin, provider: resolution.provider, model, reason: "budget_check" });
+    yield { type: "error", code: publicError.code, message: publicError.message, ...(publicError.diagnostic ? { diagnostic: publicError.diagnostic } : {}) };
     return;
   }
 
   try {
-    for await (const event of llmStream({ ...llm, model: configView.config.model || llm.model }, {
+    for await (const event of llmStream({ ...llm, model }, {
       system,
       messages: history,
       maxTokens: configView.config.maxTokens,
@@ -614,11 +652,11 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     }
     if (signal.aborted) throw new DOMException("aborted", "AbortError");
     if (!content.trim()) {
-      await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", "empty_response", configView.config.model, inputTokens, outputTokens, Date.now() - started);
+      await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", "empty_response", model, inputTokens, outputTokens, Date.now() - started);
       await recordAqiUsage(viewer, {
         reservationId: reservation.id,
         conversationId: prepared.conversationId,
-        model: configView.config.model,
+        model: model,
         inputTokens: inputTokens ?? null,
         outputTokens: outputTokens ?? null,
         latencyMs: Date.now() - started,
@@ -628,7 +666,8 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
         pageRoute: page?.path ?? null,
         configVersionId: configView.versionId,
       });
-      yield { type: "error", code: "empty_response", message: "The AI provider returned no answer. Please try again." };
+      const publicError = providerAqiError("empty", { requestId, superAdmin, provider: resolution.provider, model, reason: "empty_response" });
+      yield { type: "error", code: publicError.code, message: publicError.message, ...(publicError.diagnostic ? { diagnostic: publicError.diagnostic } : {}) };
       return;
     }
     const latencyMs = Date.now() - started;
@@ -638,7 +677,7 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     const actualOutput = outputTokens ?? estimateAqiTokens(content);
     const costEstimated = inputTokens === undefined || outputTokens === undefined;
     const costMicros = reservation.price ? aqiCostMicros(reservation.price, actualInput, actualOutput) : null;
-    const message = await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), "complete", null, configView.config.model, inputTokens, outputTokens, latencyMs);
+    const message = await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), "complete", null, model, inputTokens, outputTokens, latencyMs);
     if (citation.warning) {
       await withUser(viewer.user.id, (db) => db.query(
         "update aqi_messages set context = jsonb_set(coalesce(context, '{}'::jsonb), '{citationWarning}', to_jsonb($2::text), true) where id = $1 and user_id = $3",
@@ -649,7 +688,7 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     await recordAqiUsage(viewer, {
       reservationId: reservation.id,
       conversationId: prepared.conversationId,
-      model: configView.config.model,
+      model: model,
       inputTokens: actualInput,
       outputTokens: actualOutput,
       latencyMs,
@@ -663,15 +702,15 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
   } catch (err) {
     const aborted = signal.aborted || (err instanceof DOMException && err.name === "AbortError");
     const status = aborted ? "cancelled" : "failed";
-    const code = aborted ? "cancelled" : "provider_error";
+    const internalCode = aborted ? "cancelled" : "provider_error";
     const costMicros = inputTokens !== undefined && outputTokens !== undefined && reservation.price
       ? aqiCostMicros(reservation.price, inputTokens, outputTokens)
       : null;
-    await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), status, code, configView.config.model, inputTokens, outputTokens, Date.now() - started);
+    await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), status, internalCode, model, inputTokens, outputTokens, Date.now() - started);
     await recordAqiUsage(viewer, {
       reservationId: reservation.id,
       conversationId: prepared.conversationId,
-      model: configView.config.model,
+      model: model,
       inputTokens: inputTokens ?? null,
       outputTokens: outputTokens ?? null,
       latencyMs: Date.now() - started,
@@ -681,7 +720,11 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
       pageRoute: page?.path ?? null,
       configVersionId: configView.versionId,
     });
-    if (!aborted) yield { type: "error", code, message: "AQi could not complete that answer. The text you typed is still here, so you can retry." };
+    if (!aborted) {
+      const publicError = providerAqiError("failed", { requestId, superAdmin, provider: resolution.provider, model, reason: "provider_error" });
+      logAqiError(err, { requestId, superAdmin, provider: resolution.provider, model, reason: "provider_error" });
+      yield { type: "error", code: publicError.code, message: publicError.message, ...(publicError.diagnostic ? { diagnostic: publicError.diagnostic } : {}) };
+    }
   }
 }
 
@@ -723,7 +766,7 @@ export interface AqiAdminData {
   usage: { messages: number; failures: number; feedback: number; rateLimits: number; inputTokens: number; outputTokens: number; avgLatencyMs: number | null; costMicros: number; reservedMicros: number; estimatedCosts: number };
   budgets: AqiBudget[];
   prices: AqiModelPrice[];
-  health: { available: boolean; provider: string | null; model: string | null; detail: string };
+  health: { available: boolean; provider: string | null; model: string | null; detail: string; connectionStatus: string | null; eligible: boolean; reason: LlmResolution["reason"]; host: string | null; modelListed: boolean | null };
 }
 
 export async function getAqiAdminData(): Promise<AqiAdminData> {
@@ -760,7 +803,7 @@ export async function getAqiAdminData(): Promise<AqiAdminData> {
               count(*) filter (where cost_estimated)::int as estimated
        from aqi_usage_events where status in ('reserved','recorded','failed')`,
     );
-    const llm = await resolveLlmConfig();
+    const llm = await resolveLlmConfigDetailed();
     return {
       published,
       versions: versions.rows.map((row) => ({ id: row.id, version: row.version, status: row.status, notes: row.notes, createdAt: iso(row.created_at), publishedAt: row.published_at ? iso(row.published_at) : null, createdBy: row.created_by })),
@@ -769,7 +812,17 @@ export async function getAqiAdminData(): Promise<AqiAdminData> {
       usage: { messages: usage.rows[0].messages, failures: failures.rows[0].n, feedback: usage.rows[0].feedback, rateLimits: rateLimits.rows[0].n, inputTokens: usage.rows[0].input_tokens, outputTokens: usage.rows[0].output_tokens, avgLatencyMs: usage.rows[0].avg_latency ? Math.round(usage.rows[0].avg_latency) : null, costMicros: Number(cost.rows[0].charged), reservedMicros: Number(cost.rows[0].reserved), estimatedCosts: cost.rows[0].estimated },
       budgets: budgets.rows.map((row) => ({ id: row.id, orgId: row.org_id, enabled: row.enabled, monthlyOrgMicros: Number(row.monthly_org_micros), monthlyUserMicros: Number(row.monthly_user_micros) })),
       prices: prices.rows.map((row) => ({ model: row.model, inputMicrosPerMillion: Number(row.input_micros_per_million), outputMicrosPerMillion: Number(row.output_micros_per_million), enabled: row.enabled })),
-      health: { available: Boolean(llm?.apiKey), provider: llm?.source ?? null, model: published.config.model || llm?.model || null, detail: llm?.apiKey ? "Configured AI provider is available." : "No AI provider is configured." },
+      health: {
+        available: Boolean(llm.config?.apiKey),
+        provider: llm.provider ?? llm.config?.source ?? null,
+        model: effectiveAqiModel(published.config, llm.config?.model ?? llm.model),
+        detail: llm.config?.apiKey ? "Configured AI provider is available to AQi." : "No eligible AQi provider is currently available.",
+        connectionStatus: llm.connectionStatus,
+        eligible: Boolean(llm.config),
+        reason: llm.reason,
+        host: llm.host,
+        modelListed: llm.modelListed ?? null,
+      },
     };
   });
 }
@@ -911,10 +964,11 @@ export async function deleteAqiQuestion(admin: SessionUser, id: string): Promise
 
 export async function testAqiProvider(admin: SessionUser, prompt: string, draftConfig?: unknown): Promise<{ ok: true; text: string } | { ok: false; detail: string }> {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can test AQi.");
-  const [published, llm] = await Promise.all([getPublishedAqiConfig(), resolveLlmConfig()]);
+  const [published, resolution] = await Promise.all([getPublishedAqiConfig(), resolveLlmConfigDetailed()]);
   const config = draftConfig ? { ...published, config: aqiConfigSchema.parse(draftConfig) } : published;
-  if (!llm) return { ok: false, detail: "No AI provider is configured." };
-  const reply = await llmComplete({ ...llm, model: config.config.model || llm.model }, {
+  const llm = resolution.config;
+  if (!llm) return { ok: false, detail: `AQi provider is not eligible (${resolution.reason}${resolution.connectionStatus ? `, connection ${resolution.connectionStatus}` : ""}).` };
+  const reply = await llmComplete({ ...llm, model: effectiveAqiModel(config.config, llm.model) }, {
     system: `${AQI_IMMUTABLE_POLICY.join("\n")}\nYou are running a configuration test. Answer briefly.`,
     user: prompt.slice(0, 1000) || "Reply with one sentence confirming the connection.",
     maxTokens: 120,

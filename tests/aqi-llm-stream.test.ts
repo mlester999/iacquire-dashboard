@@ -30,6 +30,11 @@ beforeAll(async () => {
       res.end(JSON.stringify({ choices: [{ message: { content: "Plain answer" } }], usage: { prompt_tokens: 2, completion_tokens: 2 } }));
       return;
     }
+    if (req.url === "/v1/invalid-model/chat/completions") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "model not supported" } }));
+      return;
+    }
     if (req.url === "/v1/rate/chat/completions") {
       res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "12" });
       res.end(JSON.stringify({ error: "rate_limited" }));
@@ -91,6 +96,12 @@ describe("AQi provider streaming", () => {
     await expect(async () => {
       for await (const event of llmStream(config({ baseUrl: `${baseUrl}/bad` }), { system: "test", messages: [{ role: "user", content: "Hello" }], maxTokens: 50 })) void event;
     }).rejects.toBeInstanceOf(LlmStreamError);
+  });
+
+  it("fails honestly for an invalid or unsupported model", async () => {
+    await expect(async () => {
+      for await (const event of llmStream(config({ baseUrl: `${baseUrl}/v1/invalid-model`, model: "not-a-real-model" }), { system: "test", messages: [{ role: "user", content: "Hello" }], maxTokens: 50 })) void event;
+    }).rejects.toMatchObject({ status: 400 });
   });
 
   it("reports HTTP 429 as a retryable provider status", async () => {

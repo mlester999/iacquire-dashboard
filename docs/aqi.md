@@ -9,7 +9,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Capability | Status |
 | --- | --- |
 | AQi identity, floating launcher and chat panel | Locally verified |
-| Real provider request path + token streaming | Locally verified against an OpenAI-compatible SSE test server; **no live provider run** |
+| Real provider request path + token streaming | **Live controlled probe passed** against the existing production DeepSeek credential: `deepseek-flash`, OpenAI format, `OK` response and one real SSE delta; no customer data |
 | Streaming fallback for a non-SSE JSON answer | Locally verified |
 | Conversation persistence, rename, delete, history | Locally verified |
 | Context-aware suggestions and approved route registry | Locally verified |
@@ -20,11 +20,12 @@ knowledge, conversations, messages, feedback and usage records.
 | Support escalation through the existing Support system | Locally verified with explicit consent and duplicate suppression |
 | Citation validation and stale-knowledge warnings | Locally verified |
 | RLS and user/tenant isolation | Locally verified |
-| Live provider acceptance | **Blocked** — no AQi provider credential is configured in this environment |
+| Provider resolution and role-aware errors | Locally verified with connected DeepSeek, status/credential failures, recovery after negative cache, client-safe messages and Super Admin diagnostics |
+| Live provider acceptance | **PASS (controlled provider probe)**; full AQi UI acceptance remains blocked by Vercel SSO |
 | Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 | Hosted migration 0048 | **Not applied**; local-only cost controls |
 | Production deployment | `c3e1bdb` deployed successfully by Vercel; the AQi **base code** is live, but cost-control/support changes are committed only on the local branch and are not pushed/deployed |
-| Production AQi provider | **Unavailable** — the global LLM integration is `credentials_saved`, not connected; no live response has been verified |
+| Production AQi provider | **Connected** (`deepseek-flash`, OpenAI format); controlled `llmComplete` and `llmStream` probes succeeded. The deployed AQi build predates the resolution/error fixes |
 
 ## Reused infrastructure
 
@@ -132,19 +133,26 @@ pricing.
   text entries. The workforce PDF/DOCX pipeline is separate.
 - Feedback supports an optional comment after a thumbs-down; the comment is stored but not yet
   shown in an Insights dashboard (Phase 3).
-- Provider selection is through the existing global LLM integration; the AQi screen chooses the
-  model and limits. Draft tests use the editor's current configuration, including unsaved changes.
+- Provider selection is through the existing global LLM integration. The verified integration model
+  is authoritative unless a Super Admin enables the explicit AQi model override.
+- AQi accepts `connected` or `permission_limited` connections and routes DeepSeek through the
+  OpenAI-compatible adapter. Resolution failures are categorized (`status_not_eligible`,
+  `credential_unavailable`, `endpoint_not_allowed`, etc.) instead of collapsing to a generic
+  “no provider” response.
+- Failed resolutions are not cached. A successful resolution is cached briefly; integration tests
+  and changes invalidate it.
+- Draft tests use the editor's current configuration, including unsaved changes.
 - Hosted cost-control migration 0048 is not applied; production currently uses migrations through
   0047. Do not deploy the budget UI without applying 0048 first.
-- Production AQi is deployed but not operational: its global LLM connection is `credentials_saved`,
-  so the provider is unavailable until a Super Admin verifies it. The deployment URL is Vercel SSO
-  protected, so live chat was not tested from this environment.
+- The production LLM connection is now `connected`, and controlled provider probes succeeded.
+  The deployed AQi build is older than the resolution/error fixes, and the deployment URL is Vercel
+  SSO protected, so the full deployed AQi UI was not tested from this environment.
 - Phase 3 items (visual highlighting, guided tutorials, full Insights dashboard) are not built.
 
 ## Verification commands
 
 ```bash
-npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
+npx vitest run tests/aqi-migration-0047.test.ts tests/aqi.test.ts tests/aqi-errors.test.ts tests/aqi-security.test.ts tests/aqi-llm-stream.test.ts tests/aqi-cost-controls.test.ts tests/aqi-support.test.ts
 npm run typecheck
 npm run lint
 npm run build
@@ -155,8 +163,16 @@ covered desktop and mobile launchers, streaming, feedback, support consent, clos
 history, expansion, the Super Admin screen, retrieval preview, budgets and axe checks.
 
 Result: **4 authenticated pages, 13 interactions, 0 console errors, 0 page errors, 0 failed requests,
-0 axe violations**, including a 390 px mobile viewport with no horizontal overflow. The provider was
-a local OpenAI-compatible SSE server, so this is local verification, not live provider acceptance.
+0 axe violations**, including a 390 px mobile viewport with no horizontal overflow.
+
+A separate 390 px browser run with no provider configured verified the client-facing unavailable
+state: friendly copy, no `Super Admin`/API-key/configuration text, a functional **Try again**
+action, 0 console errors and 0 axe violations.
+
+The local browser provider is simulated. Live provider acceptance was a separate controlled probe
+against the existing production DeepSeek credential: `llmComplete` returned `OK`, and `llmStream`
+returned one real SSE delta with usage. The deployed AQi UI itself remains SSO-protected and was
+not exercised through the browser.
 
 Production audit, staging-first gate, backup/restore and real-provider acceptance steps:
 [aqi-phase2-release-gate.md](aqi-phase2-release-gate.md).

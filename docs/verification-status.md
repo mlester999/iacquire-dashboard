@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,300 tests in 100 files passed** with `--maxWorkers=2` |
+| `npm test` | **1,306 tests in 101 files passed** with `--maxWorkers=2` |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -18,23 +18,27 @@ A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044
 
 The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for `c3e1bdb` by `vercel[bot]`; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. The AQi base code is therefore deployed, but the later cost-control/support changes are committed only on the local branch and are not pushed or deployed. There is no `.github/workflows` or Vercel config in the repository; the integration is external.
 
-Read-only production database audit after deployment: the global `llm` integration exists with model `deepseek-flash` and format `openai`, but its status is **`credentials_saved`**, not `connected` or `permission_limited`. `resolveLlmConfig()` therefore returns no provider, so AQi is deployed but its provider is **not operationally available** in production. One AQi configuration is published, migration `0048` is absent, and the hosted `aqi_messages` count is 2. No live AQi response or cost evidence exists.
+Read-only production database audit after deployment: the global `llm` integration is now **`connected`**, with model `deepseek-flash`, format `openai`, a valid Vault-backed credential and a successful model-listing check at 11:44Z. A controlled live `llmComplete` probe returned `OK`, and a real SSE `llmStream` probe returned one delta plus usage. The AQi error recorded at 10:58Z predates that check and stored `provider_unavailable` with model `deepseek-chat`; it was a genuine pre-verification failure, not a DeepSeek incompatibility.
+
+The deployed AQi build also used its seeded `deepseek-chat` instead of the integration's `deepseek-flash` and could cache a failed resolution for 30 seconds. The local fix makes the integration model authoritative unless explicitly overridden, removes negative caching, adds categorized resolution diagnostics and role-aware public errors, and rechecks provider availability on send. The deployed build does not yet contain these fixes; the Vercel URL is SSO protected, so the deployed AQi UI was not exercised. Migration `0048` remains absent; the hosted `aqi_messages` count is 2.
 
 ### AQi platform assistant (2026-10-18, migration 0047)
 
 | Gate | Result |
 | --- | --- |
 | AQi schema, RLS, seed knowledge and conversation privacy | Locally verified (`tests/aqi-migration-0047.test.ts`) |
-| Provider streaming, SSE fallback, provider failure, 429, timeout, cancellation and interrupted stream | Locally verified against an OpenAI-compatible local SSE server (`tests/aqi-llm-stream.test.ts`, 8 tests); **no live provider run** |
-| Context, suggestions, knowledge retrieval, conversation CRUD, durable sources, citation validation and publish/rollback | Locally verified (`tests/aqi.test.ts`, 8 tests) |
+| Provider streaming, SSE fallback, provider failure, 429, timeout, cancellation, interrupted stream and invalid model | Locally verified (`tests/aqi-llm-stream.test.ts`, 9 tests); **live controlled DeepSeek `llmStream` probe passed** (one real delta, usage reported) |
+| Provider resolution, DeepSeek/OpenAI adapter, model selection, expired/status failures and recovery after negative cache | Locally verified (`tests/aqi.test.ts`, 10 tests; `tests/aqi-errors.test.ts`, 3 tests) |
+| Context, suggestions, knowledge retrieval, conversation CRUD, durable sources, citation validation and publish/rollback | Locally verified (`tests/aqi.test.ts`, 10 tests) |
 | Navigation safety, actual agency permissions and cross-role denial | Locally verified (`tests/aqi-security.test.ts`, 5 tests) |
 | Atomic AQi budgets, model pricing, per-user limits and concurrent reservation race | Locally verified (`tests/aqi-cost-controls.test.ts`, 4 tests; migration 0048 local only) |
 | Support escalation with consent, real Support service and duplicate suppression | Locally verified (`tests/aqi-support.test.ts`, 2 tests) |
 | Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
 | Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 13 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Client-facing unavailable state and retry | Mobile 390 px browser QA passed; friendly text, no administrator/technical detail, functional Try again, **0 axe violations** |
 | Migration 0047 | **Applied to hosted Supabase 2026-10-18**; six tables, RLS policies and seeded config/knowledge/questions verified |
 | Migration 0048 | **Not applied hosted**; local only until approved |
-| Live provider acceptance | **Blocked** — production integration is `credentials_saved`; no live provider response was verified |
+| Live provider acceptance | **Provider-level PASS** — controlled production DeepSeek `llmComplete` returned `OK` and real SSE returned one delta with usage; full deployed AQi UI remains blocked by Vercel SSO |
 
 AQi details: [aqi.md](aqi.md).
 

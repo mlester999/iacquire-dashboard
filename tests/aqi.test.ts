@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { saveCredential } from "@/server/security/credentials";
+import { invalidateLlmConfig, resolveLlmConfig, resolveLlmConfigDetailed } from "@/server/llm/client";
+import { effectiveAqiModel } from "@/server/aqi/service";
 import { agencyUser, addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import type { AqiViewer } from "@/server/aqi/access";
 import {
@@ -74,7 +77,7 @@ describe("AQi context and knowledge", () => {
     const events = [];
     for await (const event of runAqiTurn(viewer, { message: "How do approvals work?", pathname: "/approvals" }, new AbortController().signal)) events.push(event);
     expect(events[0]).toMatchObject({ type: "meta" });
-    expect(events.some((event) => event.type === "error" && event.code === "provider_unavailable")).toBe(true);
+    expect(events.some((event) => event.type === "error" && event.code === "temporarily_unavailable")).toBe(true);
     const messageId = events.find((event) => event.type === "meta")?.messageId;
     expect(messageId).toBeTruthy();
     const row = await withSystem((db) => db.query<{ status: string; error_code: string | null; content: string }>("select status, error_code, content from aqi_messages where id = $1", [messageId]));
@@ -89,6 +92,60 @@ describe("AQi context and knowledge", () => {
     expect(result.cited).toEqual([1]);
     expect(result.content).toBe("Use [K1] but not .");
     expect(result.warning).toMatch(/did not match/);
+  });
+
+  it("resolves a verified DeepSeek integration through the OpenAI-compatible adapter", async () => {
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    const secret = "sk-test-deepseek-0123456789abcdef";
+    let credentialId: string | null = null;
+    try {
+      credentialId = await withSystem(async (db) => {
+        const credential = await saveCredential(db, { orgId: null, provider: "llm", label: "DeepSeek acceptance", secret, actorId: admin.id });
+        await db.query(
+          `insert into integration_connections (org_id, provider, label, environment, config, credential_id, status, created_by)
+           values (null, 'llm', 'DeepSeek acceptance', 'production', $1, $2, 'connected', $3)`,
+          [JSON.stringify({ baseUrl: "https://api.deepseek.com", model: "deepseek-flash", apiFormat: "openai", llmPreset: "deepseek" }), credential.id, admin.id],
+        );
+        return credential.id;
+      });
+      invalidateLlmConfig();
+      const resolution = await resolveLlmConfigDetailed();
+      expect(resolution).toMatchObject({ reason: "ready", connectionStatus: "connected", provider: "deepseek", model: "deepseek-flash", host: "api.deepseek.com" });
+      expect(resolution.config).toMatchObject({ baseUrl: "https://api.deepseek.com", model: "deepseek-flash", format: "openai", source: "portal" });
+      const adminViewer: AqiViewer = { user: agencyUser(admin, "agency_super_admin"), org: null, permissions: [], can: () => true, agencyRole: "agency_super_admin" };
+      const publicBootstrap = await getAqiBootstrap(adminViewer, "/overview");
+      expect(JSON.stringify(publicBootstrap)).not.toContain(secret);
+      expect(effectiveAqiModel({ ...DEFAULT_AQI_CONFIG, model: "deepseek-chat", modelOverride: false }, "deepseek-flash")).toBe("deepseek-flash");
+      expect(effectiveAqiModel({ ...DEFAULT_AQI_CONFIG, model: "deepseek-chat", modelOverride: true }, "deepseek-flash")).toBe("deepseek-chat");
+      await withSystem((db) => db.query("update integration_connections set status = 'credentials_saved' where org_id is null and provider = 'llm'"));
+      const ineligible = await resolveLlmConfigDetailed();
+      expect(ineligible).toMatchObject({ config: null, reason: "status_not_eligible", connectionStatus: "credentials_saved" });
+      expect(await resolveLlmConfig()).toBeNull();
+      await withSystem((db) => db.query("update integration_connections set status = 'connected' where org_id is null and provider = 'llm'"));
+      expect((await resolveLlmConfig())?.model).toBe("deepseek-flash");
+      await withSystem(async (db) => {
+        if (credentialId) await db.query("update integration_credentials set revoked_at = now() where id = $1", [credentialId]);
+      });
+      const revoked = await resolveLlmConfigDetailed();
+      expect(revoked).toMatchObject({ config: null, reason: "credential_unavailable", connectionStatus: "connected" });
+    } finally {
+      await withSystem(async (db) => {
+        await db.query("delete from integration_connections where org_id is null and provider = 'llm'");
+        if (credentialId) await db.query("delete from integration_credentials where id = $1", [credentialId]);
+        await db.query("delete from credential_references where provider = 'llm' and org_id is null");
+      });
+      invalidateLlmConfig();
+    }
+  });
+
+  it("keeps provider diagnostics out of the client bootstrap and exposes them to a Super Admin", async () => {
+    const client = await getAqiBootstrap(viewer, "/overview");
+    expect(client.health.available).toBe(false);
+    expect(client.health.detail).not.toMatch(/provider|Super Admin|API key|credential/i);
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    const adminViewer: AqiViewer = { user: agencyUser(admin, "agency_super_admin"), org: null, permissions: [], can: () => true, agencyRole: "agency_super_admin" };
+    const elevated = await getAqiBootstrap(adminViewer, "/overview");
+    expect(elevated.health.diagnostic?.reason).toBeTruthy();
   });
 
   it("lets a Super Admin preview retrieval without an answer", async () => {

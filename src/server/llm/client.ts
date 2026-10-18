@@ -13,6 +13,28 @@ export interface LlmConfig {
   source: "portal" | "environment";
 }
 
+export type LlmResolutionReason =
+  | "ready"
+  | "not_configured"
+  | "status_not_eligible"
+  | "missing_credential"
+  | "credential_unavailable"
+  | "invalid_config"
+  | "endpoint_not_allowed"
+  | "environment"
+  | "database_unavailable";
+
+export interface LlmResolution {
+  config: LlmConfig | null;
+  reason: LlmResolutionReason;
+  connectionStatus: string | null;
+  provider: string | null;
+  model: string | null;
+  host: string | null;
+  /** Result of the integration's model-listing check, when one has run. */
+  modelListed?: boolean | null;
+}
+
 type Endpoint = Pick<LlmConfig, "baseUrl" | "format">;
 
 export function llmHeaders(format: LlmApiFormat, apiKey: string): Record<string, string> {
@@ -166,25 +188,61 @@ function usageFrom(event: Record<string, unknown>): { inputTokens?: number; outp
   return input !== undefined || output !== undefined ? { inputTokens: input, outputTokens: output } : null;
 }
 
-let cache: { at: number; value: LlmConfig | null } | null = null;
+let cache: { at: number; value: LlmConfig } | null = null;
 const CACHE_MS = 30_000;
 /** Call after the agency changes the connection so this instance stops using the old key. */
 export function invalidateLlmConfig() {
   cache = null;
 }
 
-async function fromPortal(): Promise<LlmConfig | null> {
-  return withSystem(async (db) => {
-    const { rows } = await db.query<{ config: Record<string, unknown>; credential_id: string | null }>(
-      "select config, credential_id from integration_connections where org_id is null and provider = 'llm' and status in ('connected','permission_limited')",
-    );
-    const row = rows[0];
-    if (!row?.credential_id) return null;
-    const apiKey = await resolveCredential(db, row.credential_id, null, "llm");
-    const { baseUrl, model, apiFormat } = row.config;
-    if (!apiKey || typeof baseUrl !== "string" || typeof model !== "string") return null;
-    return { baseUrl: validateLlmEndpoint(baseUrl), format: apiFormat === "anthropic" ? "anthropic" : "openai", model, apiKey, source: "portal" } satisfies LlmConfig;
-  });
+async function probePortal(): Promise<LlmResolution> {
+  try {
+    return await withSystem(async (db) => {
+      const { rows } = await db.query<{ status: string; config: Record<string, unknown>; credential_id: string | null; preset: string | null; capabilities: Record<string, unknown> }>(
+        "select status, config, credential_id, config->>'llmPreset' as preset, capabilities from integration_connections where org_id is null and provider = 'llm' order by updated_at desc limit 1",
+      );
+      const row = rows[0];
+      if (!row) return { config: null, reason: "not_configured", connectionStatus: null, provider: null, model: null, host: null };
+      const provider = row.preset ?? (row.config.apiFormat === "anthropic" ? "anthropic" : "openai-compatible");
+      const model = typeof row.config.model === "string" ? row.config.model : null;
+      if (!["connected", "permission_limited"].includes(row.status)) {
+        return { config: null, reason: "status_not_eligible", connectionStatus: row.status, provider, model, host: null };
+      }
+      if (!row.credential_id) return { config: null, reason: "missing_credential", connectionStatus: row.status, provider, model, host: null };
+      let apiKey: string | null;
+      try {
+        apiKey = await resolveCredential(db, row.credential_id, null, "llm");
+      } catch {
+        return { config: null, reason: "credential_unavailable", connectionStatus: row.status, provider, model, host: null };
+      }
+      const { baseUrl, apiFormat } = row.config;
+      if (!apiKey) return { config: null, reason: "credential_unavailable", connectionStatus: row.status, provider, model, host: typeof baseUrl === "string" ? safeHost(baseUrl) : null };
+      if (typeof baseUrl !== "string" || !model) {
+        return { config: null, reason: "invalid_config", connectionStatus: row.status, provider, model, host: typeof baseUrl === "string" ? safeHost(baseUrl) : null };
+      }
+      let approvedBaseUrl: string;
+      try {
+        approvedBaseUrl = validateLlmEndpoint(baseUrl);
+      } catch {
+        return { config: null, reason: "endpoint_not_allowed", connectionStatus: row.status, provider, model, host: safeHost(baseUrl) };
+      }
+      return {
+        config: { baseUrl: approvedBaseUrl, format: apiFormat === "anthropic" ? "anthropic" : "openai", model, apiKey, source: "portal" },
+        reason: "ready",
+        connectionStatus: row.status,
+        provider,
+        model,
+        host: safeHost(approvedBaseUrl),
+        modelListed: typeof row.capabilities.modelListed === "boolean" ? row.capabilities.modelListed : null,
+      };
+    });
+  } catch {
+    return { config: null, reason: "database_unavailable", connectionStatus: null, provider: null, model: null, host: null };
+  }
+}
+
+function safeHost(value: string): string | null {
+  try { return new URL(value).host; } catch { return null; }
 }
 
 function fromEnvironment(): LlmConfig | null {
@@ -193,10 +251,28 @@ function fromEnvironment(): LlmConfig | null {
   return { baseUrl: e.LLM_BASE_URL, format: "openai", model: e.LLM_MODEL, apiKey: e.LLM_API_KEY, source: "environment" };
 }
 
-/** The connection verified in Integrations wins; the legacy LLM_* environment variables are the fallback. */
+/**
+ * The connection verified in Integrations wins; the legacy LLM_* environment variables are the
+ * fallback. Failures are not cached: a provider that was unavailable while it was being verified
+ * must become usable on the next request rather than remaining negative for an arbitrary window.
+ */
+export async function resolveLlmConfigDetailed(): Promise<LlmResolution> {
+  const portal = await probePortal();
+  if (portal.config) return portal;
+  const environment = fromEnvironment();
+  if (environment) {
+    return { ...portal, config: environment, reason: "environment", provider: "environment", model: environment.model, host: safeHost(environment.baseUrl) };
+  }
+  return portal;
+}
+
 export async function resolveLlmConfig(): Promise<LlmConfig | null> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
-  const value = (await fromPortal().catch(() => null)) ?? fromEnvironment();
-  cache = { at: Date.now(), value };
-  return value;
+  const resolution = await resolveLlmConfigDetailed();
+  if (!resolution.config) {
+    cache = null;
+    return null;
+  }
+  cache = { at: Date.now(), value: resolution.config };
+  return resolution.config;
 }

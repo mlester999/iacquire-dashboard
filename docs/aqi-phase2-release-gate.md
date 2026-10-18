@@ -18,18 +18,22 @@ sequence required before the local cost-control/support changes can ship.
 - Hosted public tables: 210.
 - Hosted AQi: one published configuration, 12 published knowledge entries, 8 enabled questions,
   2 messages recorded.
-- Hosted global LLM integration: model `deepseek-flash`, format `openai`,
-  status **`credentials_saved`** — not `connected` or `permission_limited`.
-  `resolveLlmConfig()` therefore returns no provider, so production AQi shows its unavailable state
-  and no live model response is verified.
+- Hosted global LLM integration: model `deepseek-flash`, format `openai`, status **`connected`**.
+  The AQi failure recorded at 10:58Z predates the successful connection test at 11:44Z; at that
+  earlier point the connection was not eligible. A controlled live `llmComplete` probe and a real
+  SSE `llmStream` probe against the existing credential both returned `OK` on 2026-10-18.
+- The deployed AQi build (before the local resolution/error fixes) had also used its seeded
+  `deepseek-chat` model instead of the integration's `deepseek-flash`, and cached a failed
+  resolution for 30 seconds. The local fix uses the integration model by default, removes negative
+  caching, and rechecks on send.
 - Production app version and database version match for migrations through 0047. The local
   cost-control/support changes are not deployed; migration 0048 is not deployed.
 
 The earlier “local-only migrations” report was correct when written. The later user-authorized
 `--only` migration run applied 0045–0047, and the subsequent master push triggered the external
 Vercel production deployment. A GitHub deployment record alone is not proof of a healthy rollout;
-the Vercel status does show `success`, but the app URL is SSO-protected and the AQi provider is
-not operational.
+the Vercel status does show `success`, but the app URL is SSO-protected and the deployed AQi build
+has not been exercised through the browser against the now-connected provider.
 
 ## Required gate before any further production change
 
@@ -121,10 +125,12 @@ They are not live-provider acceptance.
 
 ## Current production readiness
 
-- AQi base code: deployed, provider unavailable.
+- AQi base code: deployed; provider now connected and live-probed successfully, but the deployed
+  build predates the resolution/error fixes.
 - AQi cost-control/support remediation: committed on the local branch, not pushed or deployed.
 - Migration 0048: local only.
 - Full backup/restore: **BLOCKED** by missing PostgreSQL backup/restore tooling and no isolated
   database host.
 - Staging-first gate: **FAIL** until automatic production deployment is frozen and staging exists.
-- Live provider: **BLOCKED** until the global LLM integration is verified and a real test is run.
+- Live provider: **provider-level PASS** (controlled completion and SSE probes); full deployed AQi
+  UI acceptance remains blocked by Vercel SSO and the undeployed local fix.
