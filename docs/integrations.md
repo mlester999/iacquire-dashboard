@@ -67,6 +67,20 @@ gateway host. So:
   `computer_use`, `cronjob_manage`, `delegate_task`, `manage_connections`, `manage_catalog`,
   `skill_manage`, `browser_*`, `kanban_*`.
 
+The portal cannot enforce those per-tool settings at execution time with the current API contract:
+Hermes dispatches tools inside the gateway, after the portal submits a run. Filtering run requests,
+SSE events, or results in the portal would happen too late to stop a tool. The authenticated
+`/v1/toolsets` response is not a complete effective inventory, and the API has no supported policy
+write endpoint. Therefore saved client policies are desired settings only, and client runs stay
+fail-closed. The installed production gateway's version and configuration have not been verified.
+
+To enable client runs safely, Hermes must expose an authenticated complete effective tool inventory
+with profile, gateway-version, and configuration-revision identity, and enforce the synchronized
+default-deny policy in its final tool dispatcher. Enforcement must cover aliases, alternate dispatch
+paths, plugins/MCP tools, and nested or delegated calls; an incomplete, stale, or unsynchronized
+policy must deny execution. A policy write endpoint without that execution-time enforcement is not
+sufficient. See the open [Hermes inventory contract request](https://github.com/NousResearch/hermes-agent/issues/92711).
+
 ### Provisioning a client employee (agency runbook)
 
 The portal never touches the VPS. When a client finishes onboarding, provisioning requests appear

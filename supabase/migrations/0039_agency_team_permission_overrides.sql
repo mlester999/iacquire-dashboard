@@ -142,5 +142,3 @@ $$;
 -- CRM write sessions are opt-in per person. Super Admin remains the only default grant.
 delete from role_permissions
   where role in ('agency_staff', 'agency_manager') and permission = 'agency.crm.manage';
-
-\n

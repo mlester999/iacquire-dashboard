@@ -131,7 +131,7 @@ export function AgencyWorkforceManager({
             review_needed: "Review needed",
             incomplete: "Inventory incomplete",
             unavailable: "Unavailable",
-            acknowledged: "Full capabilities authorized",
+            acknowledged: "Profile capabilities authorized",
           }[readiness.tools];
           const toolTone = readiness.tools === "verified" ? "success" : readiness.tools === "acknowledged" ? "violet" : readiness.tools === "review_needed" || readiness.tools === "incomplete" ? "warning" : readiness.tools === "unavailable" ? "danger" : "neutral";
           const currentCheckDetail = readiness.checkIsCurrent
@@ -158,7 +158,7 @@ export function AgencyWorkforceManager({
               </div>
               <div className="rounded-xl border border-line p-3 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2"><p className="flex items-center gap-1.5 font-medium text-ink"><Wrench className="size-3.5" />Tool readiness</p><StatusPill tone={toolTone} size="sm">{toolLabel}</StatusPill></div>
-                <p className="mt-2 leading-relaxed text-muted">{readiness.tools === "verified" ? "The complete tool inventory was checked and is ready for review." : readiness.tools === "acknowledged" ? "A Super Admin authorized Full Hermes Capabilities for this verified internal profile. Its restricted or incomplete tool inventory remains unverified." : readiness.tools === "review_needed" ? "Profile connectivity passed. Review exposed tools before enabling active use." : readiness.tools === "incomplete" ? "The installed API could not prove a complete tool inventory." : readiness.tools === "unavailable" ? "The tool inventory could not be read." : "Tool permissions are evaluated separately from profile connectivity."}</p>
+                <p className="mt-2 leading-relaxed text-muted">{readiness.tools === "verified" ? "The complete tool inventory was checked and is ready for review." : readiness.tools === "acknowledged" ? "A Super Admin authorized this verified internal profile's existing Hermes capabilities. Its restricted or incomplete tool inventory remains unverified." : readiness.tools === "review_needed" ? "Profile connectivity passed. Review exposed tools before enabling active use." : readiness.tools === "incomplete" ? "The installed API could not prove a complete tool inventory." : readiness.tools === "unavailable" ? "The tool inventory could not be read." : "Tool permissions are evaluated separately from profile connectivity."}</p>
                 {readiness.tools === "verified" && <CheckCircle2 className="mt-2 size-4 text-success" aria-label="Tool inventory verified" />}
                 {readiness.connection === "failed" && <CircleAlert className="mt-2 size-4 text-danger" aria-label="Profile connection check failed" />}
               </div>

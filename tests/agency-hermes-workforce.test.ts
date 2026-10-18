@@ -248,7 +248,7 @@ describe("agency Hermes workforce isolation", () => {
     })).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("lets only a Super Admin acknowledge all six verified internal profiles and unlocks that internal run path", async () => {
+  it("requires a current acknowledgement and active saved credentials for internal runs", async () => {
     await ensureAgencyWorkforceRegistry(admin);
     const { rows: agents } = await withSystem((db) => db.query<{ id: string; role_key: typeof AGENT_ROLE_KEYS[number] }>(
       "select id,role_key from agent_instances where org_id=$1 order by role_key",
@@ -295,14 +295,59 @@ describe("agency Hermes workforce isolation", () => {
     expect(workforceCards.every((agent) => agent.full_capabilities_acknowledged)).toBe(true);
 
     const selectedAgent = agents.find((agent) => agent.role_key === "sales_assistant")!;
-    const runStart = mock.requests.length;
-    const result = await startAgentRun(selectedAgent.id, agencyOrgId, {
+    const connection = {
       baseUrl: mock.url,
       profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant,
       apiKey: PROFILE_KEYS[AGENCY_HERMES_PROFILE_IDS.sales_assistant],
-    }, { input: "synthetic acknowledged internal run", idempotencyKey: `acknowledged-${crypto.randomUUID()}` });
+    };
+    const startRequest = () => startAgentRun(selectedAgent.id, agencyOrgId, connection, {
+      input: "synthetic acknowledged internal run",
+      idempotencyKey: `acknowledged-${crypto.randomUUID()}`,
+    });
+
+    const wrongKeyRequestStart = mock.requests.length;
+    await expect(startAgentRun(selectedAgent.id, agencyOrgId, { ...connection, apiKey: "rotated-but-unsaved-synthetic-key-012345" }, {
+      input: "synthetic stale credential run",
+      idempotencyKey: `stale-credential-${crypto.randomUUID()}`,
+    })).rejects.toMatchObject({ kind: "bad_response" });
+    expect(mock.requests).toHaveLength(wrongKeyRequestStart);
+
+    await testAgencyHermesProfile(admin, selectedAgent.id);
+    const staleAcknowledgementView = await getHermesToolPolicyView(admin);
+    expect(staleAcknowledgementView.agents.find((agent) => agent.id === selectedAgent.id)).toMatchObject({
+      identityMapped: true,
+      canAcknowledgeFullCapabilities: true,
+      fullCapabilitiesAcknowledged: false,
+    });
+    expect(staleAcknowledgementView.internalDefault.acknowledgedFullCapabilities).toBe(false);
+    const staleCheckRequestStart = mock.requests.length;
+    await expect(startRequest()).rejects.toMatchObject({ kind: "bad_response" });
+    expect(mock.requests).toHaveLength(staleCheckRequestStart);
+
+    await acknowledgeInternalFullCapabilities(admin, [selectedAgent.id]);
+    expect((await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === selectedAgent.id)?.fullCapabilitiesAcknowledged).toBe(true);
+
+    const runStart = mock.requests.length;
+    const result = await startRequest();
     expect(result.runId).toBeTruthy();
     expect(mock.requests.slice(runStart).map((request) => request.method)).toEqual(["GET", "GET", "POST"]);
+
+    const revokeRequestStart = mock.requests.length;
+    await withSystem(async (db) => {
+      await db.query("update integration_credentials set revoked_at=now() where id=(select credential_id from agent_instances where id=$1)", [selectedAgent.id]);
+      await db.query("update credential_references set revoked_at=now() where id=(select credential_reference_id from integration_credentials where id=(select credential_id from agent_instances where id=$1))", [selectedAgent.id]);
+    });
+    const revokedView = await getHermesToolPolicyView(admin);
+    expect(revokedView.agents.find((agent) => agent.id === selectedAgent.id)).toMatchObject({
+      canAcknowledgeFullCapabilities: false,
+      fullCapabilitiesAcknowledged: false,
+    });
+    await expect(startRequest()).rejects.toMatchObject({ kind: "bad_response" });
+    expect(mock.requests).toHaveLength(revokeRequestStart);
+    await withSystem(async (db) => {
+      await db.query("update credential_references set revoked_at=null where id=(select credential_reference_id from integration_credentials where id=(select credential_id from agent_instances where id=$1))", [selectedAgent.id]);
+      await db.query("update integration_credentials set revoked_at=null where id=(select credential_id from agent_instances where id=$1)", [selectedAgent.id]);
+    });
   });
 
   it("keeps client live runs blocked when the gateway cannot prove a complete tool inventory", async () => {

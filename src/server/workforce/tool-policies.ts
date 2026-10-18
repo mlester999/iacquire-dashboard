@@ -149,15 +149,19 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
       id: string; org_id: string; org_name: string; org_kind: string; role_key: AgentRoleKey; display_name: string; enabled: boolean;
       hermes_profile: string | null; hermes_gateway_id: string | null; check_status: string | null; check_profile: string | null; check_gateway_id: string | null;
       identity_verified: boolean | null; api_contract_verified: boolean | null; credential_ready: boolean; tool_permissions_status: string | null; checked_at: Date | null;
-      acknowledged_profile: string | null; acknowledged_by_name: string | null; acknowledged_at: Date | null;
+      acknowledged_profile: string | null; acknowledged_policy_id: string | null; acknowledged_by_name: string | null; acknowledged_at: Date | null;
+      acknowledgement_is_current: boolean;
     }>(
       `select a.id,a.org_id,o.name as org_name,o.kind as org_kind,a.role_key,a.display_name,a.enabled,a.hermes_profile,a.hermes_gateway_id,
          c.status as check_status,c.profile_id as check_profile,c.gateway_id as check_gateway_id,c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
-         (a.credential_id is not null and cred.revoked_at is null) as credential_ready,
-         ack.verified_profile as acknowledged_profile,coalesce(nullif(ack_user.full_name,''),ack_user.email::text) as acknowledged_by_name,ack.acknowledged_at
+         (a.credential_id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready,
+         ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
+         coalesce(nullif(ack_user.full_name,''),ack_user.email::text) as acknowledged_by_name,ack.acknowledged_at,
+         (ack.acknowledged_at >= c.checked_at) as acknowledgement_is_current
        from agent_instances a join organizations o on o.id=a.org_id
        left join agency_hermes_profile_checks c on c.agent_instance_id=a.id
        left join integration_credentials cred on cred.id=a.credential_id
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
        left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
        left join users ack_user on ack_user.id=ack.acknowledged_by
        where (o.kind='agency' and $2::boolean) or (o.kind='client' and a.org_id=any($1::uuid[]))
@@ -178,6 +182,7 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
     const agentOverrides = new Map(records.filter((policy) => policy.scopeKind === "agent").map((policy) => [policy.agentId!, policy]));
     const agentView = agents.map((agent) => {
       const expectedProfile = agent.org_kind === "agency" ? AGENCY_HERMES_PROFILE_IDS[agent.role_key] : null;
+      const agentPolicy = agentOverrides.get(agent.id) ?? null;
       const identityMapped = Boolean(expectedProfile
         && agent.hermes_profile === expectedProfile
         && agent.check_profile === expectedProfile
@@ -186,6 +191,14 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
         && agent.check_status === "verified"
         && agent.identity_verified === true
         && agent.api_contract_verified === true);
+      const acknowledgementIsCurrent = Boolean(expectedProfile
+        && agent.enabled
+        && agent.credential_ready
+        && identityMapped
+        && agent.acknowledged_profile === expectedProfile
+        && agent.acknowledged_policy_id === internalDefault.id
+        && agent.acknowledgement_is_current
+        && !agentPolicy);
       return {
         id: agent.id,
         orgId: agent.org_id,
@@ -197,16 +210,22 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
         profile: agent.hermes_profile,
         expectedProfile,
         identityMapped,
-        canAcknowledgeFullCapabilities: identityMapped && agent.enabled && agent.credential_ready,
+        canAcknowledgeFullCapabilities: identityMapped && agent.enabled && agent.credential_ready && !agentPolicy,
         lastProfileCheck: agent.check_status,
         lastProfileCheckAt: agent.checked_at ? new Date(agent.checked_at).toISOString() : null,
         toolPermissionsStatus: agent.tool_permissions_status,
-        fullCapabilitiesAcknowledged: Boolean(expectedProfile && agent.acknowledged_profile === expectedProfile),
+        fullCapabilitiesAcknowledged: acknowledgementIsCurrent,
         acknowledgedBy: agent.acknowledged_by_name,
         acknowledgedAt: agent.acknowledged_at ? new Date(agent.acknowledged_at).toISOString() : null,
-        policy: agentOverrides.get(agent.id) ?? null,
+        policy: agentPolicy,
       };
     });
+    const currentInternalAcknowledgements = agentView.filter((agent) => agent.orgKind === "agency");
+    const currentInternalDefault = {
+      ...internalDefault,
+      acknowledgedFullCapabilities: currentInternalAcknowledgements.length === AGENT_ROLE_KEYS.length
+        && currentInternalAcknowledgements.every((agent) => agent.fullCapabilitiesAcknowledged),
+    };
     const allowedAgentIds = agentView.map((agent) => agent.id);
     const { rows: history } = await db.query<{ scope_kind: HermesPolicyScope; action: string; actor_name: string; occurred_at: Date; policy_name: string }>(
       `select h.scope_kind,h.action,coalesce(nullif(u.full_name,''),u.email::text,'System') as actor_name,h.occurred_at,
@@ -227,14 +246,14 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
     return {
       editable: user.platformRole === "agency_super_admin",
       clientDefault,
-      internalDefault,
+      internalDefault: currentInternalDefault,
       clients: clientsView,
       agents: agentView,
       history: history.map((event) => ({ scopeKind: event.scope_kind, action: event.action, actorName: event.actor_name, occurredAt: new Date(event.occurred_at).toISOString(), policyName: event.policy_name })),
       capabilityOptions: HERMES_POLICY_CAPABILITIES,
       blockableToolsets: HERMES_BLOCKABLE_TOOLSETS,
       roleMatrix: CLIENT_ROLE_CAPABILITY_MATRIX,
-      // No completed inventory endpoint exists in the installed Hermes v0.21.5 API contract.
+      // The validated v0.21.5 contract is read-only and cannot prove a complete tool inventory.
       inventoryComplete: false,
       gatewayPolicyWriteSupported: false,
     };
@@ -343,9 +362,10 @@ export async function acknowledgeInternalFullCapabilities(admin: SessionUser, ag
     }>(
       `select a.id,a.org_id,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,c.profile_id as check_profile,c.gateway_id as check_gateway_id,
          c.status as check_status,c.identity_verified,c.api_contract_verified,
-         (a.credential_id is not null and cred.revoked_at is null) as credential_ready
+         (a.credential_id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready
        from agent_instances a join organizations o on o.id=a.org_id and o.kind='agency'
        left join integration_credentials cred on cred.id=a.credential_id
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
        left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
        where a.id=any($1::uuid[])`,
       [ids],

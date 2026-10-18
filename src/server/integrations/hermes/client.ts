@@ -1,7 +1,9 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
+import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
+import { secretFingerprint } from "@/server/security/crypto";
 
 /**
  * Typed adapter for the Hermes Agent API server (gateway `api_server` platform).
@@ -235,30 +237,56 @@ export async function startRun(conn: HermesConnection, input: StartRunInput): Pr
  * acknowledged. Client profiles can never use this path.
  */
 export async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
-  const { rows } = await withSystem((db) => db.query<{
-    org_kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; enabled: boolean;
-    hermes_profile: string | null; hermes_gateway_id: string | null; checked_profile: string | null;
-    check_status: string | null; identity_verified: boolean; api_contract_verified: boolean;
-    check_gateway_id: string | null; acknowledged_profile: string | null; agent_policy_override_id: string | null;
-  }>(
-    `select o.kind as org_kind,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,
-       c.profile_id as checked_profile,c.status as check_status,c.identity_verified,c.api_contract_verified,c.gateway_id as check_gateway_id,
-       ack.verified_profile as acknowledged_profile,agent_policy.id as agent_policy_override_id
-     from agent_instances a join organizations o on o.id=a.org_id
-     left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
-     left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
-     left join hermes_tool_policies p on p.id=ack.policy_id and p.scope_kind='internal_agency'
-     left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
-     where a.id=$1 and (ack.policy_id is null or p.id is not null)`,
-    [agentId],
-  ));
-  const profile = rows[0];
+  const { profile, currentAccess } = await withSystem(async (db) => {
+    const { rows } = await db.query<{
+      org_kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; enabled: boolean;
+      hermes_profile: string | null; hermes_base_url: string | null; hermes_gateway_id: string | null; gateway_base_url: string | null;
+      gateway_access_credential_id: string | null;
+      checked_profile: string | null; check_status: string | null; identity_verified: boolean | null; api_contract_verified: boolean | null;
+      check_gateway_id: string | null; acknowledged_profile: string | null; acknowledged_policy_id: string | null;
+      agent_policy_override_id: string | null; acknowledgement_is_current: boolean;
+      credential_fingerprint: string | null; credential_revoked_at: Date | null;
+      credential_reference_id: string | null; credential_reference_revoked_at: Date | null;
+    }>(
+      `select o.kind as org_kind,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,
+         a.hermes_base_url,g.base_url as gateway_base_url,g.access_credential_id as gateway_access_credential_id,
+         c.profile_id as checked_profile,c.status as check_status,c.identity_verified,c.api_contract_verified,c.gateway_id as check_gateway_id,
+         ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
+         (ack.acknowledged_at >= c.checked_at) as acknowledgement_is_current,
+         agent_policy.id as agent_policy_override_id,cred.fingerprint as credential_fingerprint,cred.revoked_at as credential_revoked_at,
+         cred.credential_reference_id,cred_ref.revoked_at as credential_reference_revoked_at
+       from agent_instances a join organizations o on o.id=a.org_id
+       left join hermes_gateways g on g.id=a.hermes_gateway_id
+       left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+       left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+       left join hermes_tool_policies p on p.id=ack.policy_id and p.scope_kind='internal_agency' and p.name='Full Hermes Capabilities'
+       left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+       left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
+       where a.id=$1 and (ack.policy_id is null or p.id is not null)`,
+      [agentId],
+    );
+    const profile = rows[0] ?? null;
+    const currentAccess = profile ? await loadHermesAccessCredentials(db, profile.hermes_gateway_id) : null;
+    return { profile, currentAccess };
+  });
   const expected = profile ? AGENCY_HERMES_PROFILE_IDS[profile.role_key] : null;
+  const credentialIsCurrent = Boolean(profile
+    && profile.credential_fingerprint
+    && profile.credential_revoked_at === null
+    && profile.credential_reference_id
+    && profile.credential_reference_revoked_at === null
+    && profile.credential_fingerprint === secretFingerprint(conn.apiKey));
+  const accessIsCurrent = profile?.gateway_access_credential_id
+    ? Boolean(currentAccess && conn.accessClientId === currentAccess.accessClientId && conn.accessClientSecret === currentAccess.accessClientSecret)
+    : !currentAccess && !conn.accessClientId && !conn.accessClientSecret;
   if (!profile || profile.org_kind !== "agency" || !profile.enabled || !expected
       || profile.hermes_profile !== expected || conn.profile !== expected
       || profile.checked_profile !== expected || profile.acknowledged_profile !== expected
       || profile.check_status !== "verified" || !profile.identity_verified || !profile.api_contract_verified
-      || profile.hermes_gateway_id !== profile.check_gateway_id || profile.agent_policy_override_id) {
+      || profile.hermes_gateway_id !== profile.check_gateway_id || !profile.acknowledgement_is_current
+      || profile.hermes_base_url !== profile.gateway_base_url || conn.baseUrl !== profile.gateway_base_url
+      || !credentialIsCurrent || !accessIsCurrent || profile.agent_policy_override_id) {
     throw new HermesError("bad_response", "This internal profile needs a current identity check and Super Admin full-capabilities acknowledgement before it can run.");
   }
 

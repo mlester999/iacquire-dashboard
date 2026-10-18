@@ -60,5 +60,3 @@ delete from role_permissions
 insert into role_permissions(role, permission) values
   ('agency_staff', 'agency.crm.manage'), ('agency_manager', 'agency.crm.manage')
 on conflict do nothing;
-
-\n

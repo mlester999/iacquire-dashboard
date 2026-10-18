@@ -79,7 +79,7 @@ export function HermesToolPolicies({ data, timeZone }: { data: HermesToolPolicyV
       <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><p className="text-[12px] text-white/70">Client default</p><p className="mt-1 text-lg font-semibold text-white">{data.clientDefault.name}</p><p className="mt-1 text-[11px] text-white/55">Applies as the desired default for new client policies</p></div><div className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><p className="text-[12px] text-white/70">Internal workforce</p><p className="mt-1 text-lg font-semibold text-white">Full Hermes Capabilities</p><p className="mt-1 text-[11px] text-white/55">Existing profiles require per-profile owner acknowledgement</p></div><div className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><p className="text-[12px] text-white/70">Gateway controls</p><p className="mt-1 text-lg font-semibold text-white">Read-only API</p><p className="mt-1 text-[11px] text-white/55">Remote policy writes and complete inventory are unavailable</p></div></div>
     </PageHero>
 
-    <div role="alert" className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-warning-soft p-4 text-[13px] leading-relaxed text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p><strong>Hermes v0.21.5 does not expose a supported remote tool-policy write or a complete effective-tool inventory.</strong> The API can show advertised toolsets but cannot prove the full permissions or apply these saved policies. Client AI runs remain fail-closed. These settings are labelled desired policy and are never reported as enforced.</p></div>
+    <div role="alert" className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-warning-soft p-4 text-[13px] leading-relaxed text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p><strong>The portal&apos;s validated Hermes v0.21.5 API contract has read-only, incomplete tool discovery and no supported policy-write endpoint.</strong> The installed gateway version and configuration have not been verified. Client AI runs remain fail-closed, and saved policies are desired settings only.</p></div>
 
     {data.editable && <InternalAcknowledgement profiles={internalProfiles} timeZone={timeZone} selected={selectedProfiles} setSelected={setSelectedProfiles} onConfirm={() => setConfirmAck(true)} />}
 
@@ -186,11 +186,11 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
             {acknowledged && <p className="mt-1 text-[10px] text-violet">Acknowledged by {profile.acknowledgedBy ?? "Super Admin"}{profile.acknowledgedAt ? ` · ${formatDate(profile.acknowledgedAt, timeZone)}` : ""}</p>}
           </div>
           <StatusPill tone={profile.identityMapped ? acknowledged ? "violet" : "success" : "warning"}>
-            {acknowledged ? "Acknowledged" : profile.identityMapped ? "Verified · Not acknowledged" : "Identity check needed"}
+            {acknowledged ? "Profile authorized" : profile.identityMapped ? "Verified · Not acknowledged" : "Identity check needed"}
           </StatusPill>
           <Switch
             id={`agency-ack-${profile.id}`}
-            aria-label={acknowledged ? `Full Hermes Capabilities acknowledged for ${profile.displayName}` : `Select ${profile.displayName} for Full Hermes Capabilities acknowledgement`}
+            aria-label={acknowledged ? `Profile capabilities authorized for ${profile.displayName}` : `Select ${profile.displayName} for Full Hermes Capabilities acknowledgement`}
             checked={checked}
             disabled={!canAcknowledge}
             className={acknowledged ? "disabled:opacity-100" : undefined}

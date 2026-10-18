@@ -5,10 +5,17 @@ import { withSystem } from "@/server/db";
 import { addMember, createOrg, createUser } from "./support/fixtures";
 
 const DOWN = readFileSync("supabase/rollbacks/0041_crm_action_permissions.down.sql", "utf8");
+const DOWN_0039 = readFileSync("supabase/rollbacks/0039_agency_team_permission_overrides.down.sql", "utf8");
+const DOWN_0040 = readFileSync("supabase/rollbacks/0040_agency_workforce_permissions.down.sql", "utf8");
 const DOWN_0042 = readFileSync("supabase/rollbacks/0042_company_delete_permission.down.sql", "utf8");
 const DOWN_0043 = readFileSync("supabase/rollbacks/0043_agency_manager_operational_defaults.down.sql", "utf8");
 const DOWN_0044 = readFileSync("supabase/rollbacks/0044_agency_module_view_overrides.down.sql", "utf8");
+const UP_0039 = readFileSync("supabase/migrations/0039_agency_team_permission_overrides.sql", "utf8");
+const UP_0040 = readFileSync("supabase/migrations/0040_agency_workforce_permissions.sql", "utf8");
+const UP_0041 = readFileSync("supabase/migrations/0041_crm_action_permissions.sql", "utf8");
 const UP_0042 = readFileSync("supabase/migrations/0042_company_delete_permission.sql", "utf8");
+const UP_0043 = readFileSync("supabase/migrations/0043_agency_manager_operational_defaults.sql", "utf8");
+const UP_0044 = readFileSync("supabase/migrations/0044_agency_module_view_overrides.sql", "utf8");
 class Done extends Error {}
 
 /** Split SQL into whole statements while keeping dollar-quoted function bodies intact. */
@@ -51,6 +58,20 @@ async function runDown0042(db: { query: (sql: string) => Promise<unknown> }) {
 async function runUp0042(db: { query: (sql: string) => Promise<unknown> }) {
   for (const statement of statements(UP_0042)) await db.query(statement);
 }
+
+describe("migrations 0039–0044 rollback and replay", () => {
+  it("runs the complete supported down/up chain in dependency order", async () => {
+    await expect(withSystem(async (db) => {
+      for (const script of [DOWN_0044, DOWN_0043, DOWN_0042, DOWN, DOWN_0040, DOWN_0039]) {
+        for (const statement of statements(script)) await db.query(statement);
+      }
+      for (const script of [UP_0039, UP_0040, UP_0041, UP_0042, UP_0043, UP_0044]) {
+        for (const statement of statements(script)) await db.query(statement);
+      }
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+  });
+});
 
 describe("migration 0043 rollback safety", () => {
   it("removes only the Manager operational defaults and preserves earlier agency permissions", async () => {
