@@ -1,6 +1,6 @@
 # Workforce migration and release plan
 
-Status: **prepared, not applied. Hosted deployment requires explicit approval.**
+Status: **applied to hosted Supabase on 2026-10-18** with `--only 0045_ai_workforce_experience 0046_knowledge_document_extraction`; each migration is transactional. AQi migration `0047_aqi_assistant` was applied immediately afterwards. Application deployment remains separate.
 
 This plan covers only the workforce-owned migrations. It does not authorize or attempt to reconcile
 the concurrent CRM migration branch.
@@ -135,7 +135,7 @@ back; they do not modify the shared test database. A separate private-schema tes
 | Item | Owner | Status |
 | --- | --- | --- |
 | Hosted backup/restore proven | Platform owner | Required |
-| Migration 0045/0046 review | iAcquire platform | Required |
+| Migration 0045/0046 review | iAcquire platform | Applied 2026-10-18 |
 | Divergent CRM migration reconciliation | CRM owner | Required separately |
 | Gateway tool restrictions | Hermes administrator | Required |
 | Complete-inventory contract | Hermes gateway/platform | Required |

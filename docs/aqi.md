@@ -18,7 +18,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Feedback and usage events | Locally verified |
 | RLS and user/tenant isolation | Locally verified |
 | Live provider acceptance | **Blocked** — no AQi provider credential is configured in this environment |
-| Hosted migration 0047 | **Not applied** |
+| Hosted migration 0047 | **Applied 2026-10-18**; six AQi tables, RLS and seed data verified on the hosted project |
 
 ## Reused infrastructure
 

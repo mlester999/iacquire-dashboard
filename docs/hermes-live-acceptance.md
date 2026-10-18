@@ -158,4 +158,4 @@ A successful mock-gateway run is **not** evidence for this checklist.
 | PDF/DOCX extraction | LOCALLY VERIFIED — synthetic real files, no paid OCR |
 | SOUL.md write | BLOCKED — `admin_config_rw: false`, no documented write endpoint |
 | Memory read/edit | BLOCKED — `memory_write_api: false` |
-| Migration 0045/0046 in hosted DB | NOT APPLIED — local only; renumbered after hosted 0044. See [workforce-migration-and-release.md](workforce-migration-and-release.md) |
+| Migration 0045/0046 in hosted DB | **APPLIED 2026-10-18** via the `--only` runner, after hosted 0044. See [workforce-migration-and-release.md](workforce-migration-and-release.md) |
