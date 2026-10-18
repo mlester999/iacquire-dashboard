@@ -47,6 +47,125 @@ export async function llmComplete(
   }
 }
 
+export type LlmStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "usage"; inputTokens?: number; outputTokens?: number };
+
+export interface LlmStreamInput {
+  system: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  maxTokens: number;
+  temperature?: number;
+  timeoutMs?: number;
+}
+
+export class LlmStreamError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super("The AI provider could not complete this request.");
+    this.name = "LlmStreamError";
+    this.status = status;
+  }
+}
+
+/**
+ * Streams one completion. Supports OpenAI Chat Completions SSE and Anthropic Messages SSE. If a
+ * compatible endpoint answers with plain JSON instead, the full text is yielded once so a provider
+ * that does not stream still works honestly.
+ */
+export async function* llmStream(c: LlmConfig, input: LlmStreamInput, signal?: AbortSignal): AsyncGenerator<LlmStreamEvent> {
+  const timeout = AbortSignal.timeout(input.timeoutMs ?? 60_000);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const temperature = input.temperature ?? 0.3;
+  const body =
+    c.format === "anthropic"
+      ? { model: c.model, max_tokens: input.maxTokens, temperature, system: input.system, messages: input.messages, stream: true }
+      : {
+          model: c.model,
+          max_tokens: input.maxTokens,
+          temperature,
+          messages: [{ role: "system", content: input.system }, ...input.messages],
+          stream: true,
+        };
+  const res = await fetch(llmChatUrl(c), {
+    method: "POST",
+    headers: llmHeaders(c.format, c.apiKey),
+    body: JSON.stringify(body),
+    redirect: "error",
+    cache: "no-store",
+    signal: combined,
+  });
+  if (!res.ok || !res.body) throw new LlmStreamError(res.status);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/event-stream")) {
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      content?: Array<{ type?: string; text?: string }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number };
+    };
+    const text = (c.format === "anthropic" ? json.content?.find((p) => p.type === "text")?.text : json.choices?.[0]?.message?.content)?.trim();
+    if (text) yield { type: "delta", text };
+    if (json.usage) yield { type: "usage", inputTokens: json.usage.prompt_tokens ?? json.usage.input_tokens, outputTokens: json.usage.completion_tokens ?? json.usage.output_tokens };
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let index: number;
+      while ((index = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, index);
+        buffer = buffer.slice(index + 2);
+        const data = block
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (!data || data === "[DONE]") continue;
+        let event: Record<string, unknown>;
+        try {
+          event = JSON.parse(data) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        const text = c.format === "anthropic" ? anthropicDelta(event) : openAiDelta(event);
+        if (text) yield { type: "delta", text };
+        const usage = usageFrom(event);
+        if (usage) yield { type: "usage", ...usage };
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function openAiDelta(event: Record<string, unknown>): string {
+  const choices = event.choices;
+  if (!Array.isArray(choices)) return "";
+  const delta = (choices[0] as { delta?: { content?: unknown } } | undefined)?.delta?.content;
+  return typeof delta === "string" ? delta : "";
+}
+
+function anthropicDelta(event: Record<string, unknown>): string {
+  if (event.type !== "content_block_delta") return "";
+  const delta = event.delta as { text?: unknown } | undefined;
+  return typeof delta?.text === "string" ? delta.text : "";
+}
+
+function usageFrom(event: Record<string, unknown>): { inputTokens?: number; outputTokens?: number } | null {
+  const usage = (event.usage ?? (event.message as { usage?: unknown } | undefined)?.usage) as
+    | { prompt_tokens?: unknown; completion_tokens?: unknown; input_tokens?: unknown; output_tokens?: unknown }
+    | undefined;
+  if (!usage) return null;
+  const input = typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : typeof usage.input_tokens === "number" ? usage.input_tokens : undefined;
+  const output = typeof usage.completion_tokens === "number" ? usage.completion_tokens : typeof usage.output_tokens === "number" ? usage.output_tokens : undefined;
+  return input !== undefined || output !== undefined ? { inputTokens: input, outputTokens: output } : null;
+}
+
 let cache: { at: number; value: LlmConfig | null } | null = null;
 const CACHE_MS = 30_000;
 /** Call after the agency changes the connection so this instance stops using the old key. */

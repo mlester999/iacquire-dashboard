@@ -4,7 +4,7 @@
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,018 tests in 67 files passed** (958 in 58 before the premium pass of 2026-10-15; 877 in 49 before the Website Studio rebuild) |
+| `npm test` | **1,287 tests in 98 files passed** with `--maxWorkers=2` (the default fully parallel run had two timing-sensitive existing tests time out under load; each passed alone and the constrained run is green) |
 | `npm run typecheck` | passes |
 | `npm run lint` | **0 errors, 0 warnings** |
 | `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
@@ -13,6 +13,22 @@
 Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the real migrations, RLS policies, services and route handlers, with mocked Supabase Auth and mocked provider HTTP.
 **Apart from migration `0026` and read-only checks on the hosted database (below), nothing has been run against a hosted Supabase project, Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email provider or domain registrar.**
 The hosted Supabase project has migrations `0001`–`0026`: `0001`–`0025` were already applied when it was inspected, and `0026` was applied on 2026-10-15 at your request (atomically, with the database empty: 0 organizations, websites, versions, publications and enquiries). Read-only checks afterwards: all five new tables have row level security, the three permissions exist, `app.submit_site_form` has 16 arguments and `iaq_site_runtime` can execute it, `iaq_site_runtime` holds no table privileges, `anon`/`authenticated` hold none on the new tables, and no client role can read template content. 154 public tables, 26 migrations recorded. No deployment was made. The repository has a remote; the commits to `master` were pushed at your request.
+
+A later read-only hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` are **not applied** and require separate approval. No hosted write or deployment was made by this work.
+
+### AQi platform assistant (2026-10-18, migration 0047)
+
+| Gate | Result |
+| --- | --- |
+| AQi schema, RLS, seed knowledge and conversation privacy | Locally verified (`tests/aqi-migration-0047.test.ts`) |
+| Provider streaming, SSE fallback and provider failure | Locally verified against an OpenAI-compatible local SSE server (`tests/aqi-llm-stream.test.ts`); **no live provider run** |
+| Context, suggestions, knowledge retrieval, conversation CRUD, durable sources and publish/rollback | Locally verified (`tests/aqi.test.ts`, 7 tests) |
+| Navigation safety and cross-role denial | Locally verified (`tests/aqi-security.test.ts`) |
+| Floating launcher, streaming panel, source citations, feedback comment, close confirmation, history, expand, mobile, Super Admin screen and retrieval preview | Browser QA passed with **4 pages, 11 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
+| Migration 0047 | Local only; **not applied to hosted Supabase** |
+| Live provider acceptance | **Blocked** — no AQi provider credential is configured here |
+
+AQi details: [aqi.md](aqi.md).
 
 ### Website Studio rebuild (2026-10-15, migration 0026)
 

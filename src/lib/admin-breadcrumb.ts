@@ -15,7 +15,7 @@ export const STUDIO_SECTIONS = [
 
 /** Top-level agency screens. The sidebar shows the same names. */
 export const ADMIN_SECTIONS: Record<string, string> = {
-  clients: "Clients", crm: "Client CRMs", workforce: "Internal Workforce", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
+  clients: "Clients", crm: "Client CRMs", workforce: "Internal Workforce", aqi: "AQi Management", support: "Support inbox", "website-studio": "Website Studio", projects: "Custom projects",
   maintenance: "Maintenance", services: "Service catalog", portfolio: "Portfolio", "setup-templates": "Setup templates", integrations: "Integrations",
   health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", team: "Team & Permissions", audit: "Audit log",
 };

@@ -139,7 +139,9 @@ describe("conversation persistence", () => {
     const res = await sendChatMessage(ctx, { agentRole: "sales_assistant", conversationId, content: "Write a long proposal", clientMessageId: "m-3" });
     await new Promise((r) => setTimeout(r, 150));
     await stopChatRun(ctx, res.runId);
-    const msg = await waitForMessage(res.assistantMessageId);
+    // Under the full parallel suite this can take longer than the default 6s while another worker
+    // holds the shared test database; the cancellation itself is immediate.
+    const msg = await waitForMessage(res.assistantMessageId, 15_000);
     expect(msg.status).toBe("cancelled");
     script = null;
   });

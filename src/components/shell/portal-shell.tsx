@@ -6,9 +6,8 @@ import { ShellProvider } from "@/components/shell/shell-context";
 import { Sidebar } from "@/components/shell/sidebar";
 import { DemoBanner, SetupBanner, Topbar } from "@/components/shell/topbar";
 import { Sheet } from "@/components/ui/overlays";
-import { HelpWidget } from "@/components/help/help-widget";
+import { AqiWidget } from "@/components/aqi/aqi-widget";
 import { GuidedTour } from "@/components/shell/guided-tour";
-import { firstName } from "@/lib/utils";
 import type { ShellData } from "@/server/queries/shell";
 
 export function PortalShell({ data, children }: { data: ShellData; children: React.ReactNode }) {
@@ -38,7 +37,7 @@ export function PortalShell({ data, children }: { data: ShellData; children: Rea
             {children}
           </main>
         </div>
-        <HelpWidget firstName={firstName(data.user.name)} canOpenTickets={data.permissions.includes("support.use")} />
+        <AqiWidget />
         <GuidedTour autoStart={data.org.onboardingComplete} />
       </div>
     </ShellProvider>
