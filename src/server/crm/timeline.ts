@@ -2,6 +2,7 @@ import "server-only";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { assertCan, crmRead, type CrmActor } from "@/server/crm/actor";
+import { maskCustomerLinks } from "@/server/messaging/redact";
 
 /**
  * A record's timeline, assembled from rows that were written when something happened: CRM activity, notes, messages, appointments,
@@ -69,7 +70,7 @@ export async function getTimeline(actor: CrmActor, target: { contactId?: string;
         for (const r of msgs.rows) {
           const ch = r.channel === "sms" ? "SMS" : r.channel === "whatsapp" ? "WhatsApp" : "Email";
           const title = r.direction === "inbound" ? `${ch} received` : r.direction === "internal" ? "Internal note in conversation" : `${ch} ${r.status === "blocked" ? "held back" : r.status === "failed" ? "failed" : "sent"}${r.author_kind === "ai" ? " by AI" : ""}`;
-          items.push({ id: `m${r.id}`, at: iso(r.created_at), kind: `message.${r.direction}`, source: "message", title, detail: r.body.slice(0, 280), actor: null, link: `/inbox?c=${r.conversation_id}` });
+          items.push({ id: `m${r.id}`, at: iso(r.created_at), kind: `message.${r.direction}`, source: "message", title, detail: maskCustomerLinks(r.body).slice(0, 280), actor: null, link: `/inbox?c=${r.conversation_id}` });
         }
       }
       if (actor.can("appointments.view")) {

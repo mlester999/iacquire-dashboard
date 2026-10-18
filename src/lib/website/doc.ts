@@ -293,8 +293,19 @@ function fieldSchema(f: FieldSpec): z.ZodTypeAny {
     case "icon": return z.enum(ICONS).default("sparkles");
     case "textlist": return z.array(textOr(f.itemMax)).max(f.max, `Add up to ${f.max}.`).default([]).transform((a) => a.filter(Boolean));
     case "list": return z.array(objectSchema(f.item)).max(f.max, `Add up to ${f.max}.`).default([]);
+    case "calendarRef": return slugRef("Choose a calendar from the list.");
+    case "bookingTypeRef": return slugRef("Choose an appointment type from the list.");
+    case "formRef": return formKeyRef;
   }
 }
+/** A calendar or appointment type named by its slug ("" for the default). Slugs, not ids, keep templates portable between workspaces. */
+const slugRef = (message: string) => z.string().max(60, message).default("").transform((v) => v.trim()).refine((v) => v === "" || SLUG.test(v), message);
+/**
+ * A native CRM form named by its key (crm_forms.key); empty or absent means the built-in enquiry form. A key, not an id, keeps templates
+ * portable. It has no default, so content without one (every template, every site saved before) parses to exactly what it was.
+ */
+const FORM_KEY = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
+const formKeyRef = z.string().max(60, "Choose a form from the list.").transform((v) => v.trim()).refine((v) => v === "" || FORM_KEY.test(v), "Choose a form from the list.").optional();
 const objectSchema = (fields: FieldSpec[]) => z.object(Object.fromEntries(fields.map((f) => [f.key, fieldSchema(f)])));
 const propSchemas = Object.fromEntries(ELEMENT_TYPES.map((t) => [t, objectSchema(ELEMENT_DEFS[t].fields)])) as Record<ElementType, z.ZodObject>;
 

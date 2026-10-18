@@ -8,6 +8,7 @@ import { SiteRenderer } from "@/components/website/render/site-renderer";
 import type { EditBridge, RenderCtx } from "@/components/website/render/ctx";
 import { ELEMENT_DEFS } from "@/lib/website/catalog";
 import { findPage, isRef, type Section, type SiteContent } from "@/lib/website/doc";
+import { liveFormDefs } from "@/lib/crm/forms/website";
 import { axisOf, pickSlot, slotLine, spanFromPixels, type Axis, type Point, type Rect } from "@/lib/website/editor/dnd";
 import type { Device } from "@/lib/website/editor/state";
 import { canvasGeometry } from "@/lib/website/editor/interaction";
@@ -15,6 +16,7 @@ import { canInsertElement, canPlace, describeNode, findNode, getColumn, getSecti
 import { cn } from "@/lib/utils";
 import { IconButton } from "./controls";
 import { DragHandle, useDrag, type DragSource, type DropTarget } from "./drag";
+import { useServices } from "./context";
 import "./editor.css";
 
 // ---------------------------------------------------------------------------
@@ -190,6 +192,12 @@ export function pageItemFor(doc: SiteContent, pageSlug: string, sectionId: strin
 
 export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, actions, readOnly, onScale, closeEditSignal, reveal }: CanvasProps) {
   const drag = useDrag();
+  // Booking elements draw the workspace's real public calendars here; while they load (or with no workspace) they show labelled examples.
+  const bookingState = useServices().booking;
+  const bookingData = bookingState?.state === "ready" ? bookingState.options.site : undefined;
+  // Form elements that name a live CRM form draw its real questions here; until the forms load (or with no workspace) the built-in form.
+  const formsState = useServices().forms;
+  const formsData = React.useMemo(() => (formsState?.state === "ready" ? liveFormDefs(formsState.options) ?? null : undefined), [formsState]);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
   const frameRef = React.useRef<HTMLDivElement>(null);
@@ -600,6 +608,7 @@ export function Canvas({ doc, pageSlug, device, zoom, selection, resolveAsset, a
               <EditContext.Provider value={editState}>
                 <MemoSite
                   content={doc} pageSlug={page.slug} resolveAsset={resolveAsset} mode="edit" formAction={null} hrefFor={noHref} embedded viewportHeight={vh} edit={BRIDGE} scope="canvas"
+                  booking={bookingData} forms={formsData}
                 />
               </EditContext.Provider>
             </div>

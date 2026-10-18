@@ -56,7 +56,9 @@ describe("passwords and secrets", () => {
     expect(ct).not.toContain("super-secret-token");
     expect(decryptSecret(ct)).toBe("super-secret-token");
     const parts = ct.split(".");
-    parts[3] = parts[3].slice(0, -2) + (parts[3].endsWith("A") ? "B" : "A") + parts[3].slice(-1);
+    const tag = Buffer.from(parts[2], "base64url");
+    tag[0] ^= 0x01;
+    parts[2] = tag.toString("base64url");
     expect(() => decryptSecret(parts.join("."))).toThrow();
   });
 });

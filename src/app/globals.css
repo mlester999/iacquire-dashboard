@@ -24,6 +24,7 @@
   --primary-hover: #1f47e6;
   --primary-soft: #ebf0ff;
   --primary-ink: #1d3fd0;
+  --primary-on: #ffffff;
   --violet: #7a5cff;
   --violet-soft: #f1edff;
   --violet-ink: #5a3ee0;
@@ -36,6 +37,7 @@
   --danger: #e5484d;
   --danger-soft: #fdecec;
   --danger-ink: #b42328;
+  --danger-on: #071226;
 
   --ring: rgb(44 91 255 / 0.45);
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.05);
@@ -89,6 +91,7 @@
   --primary-hover: #6b93ff;
   --primary-soft: rgb(85 130 255 / 0.14);
   --primary-ink: #9db6ff;
+  --primary-on: #071226;
   --violet: #9b85ff;
   --violet-soft: rgb(155 133 255 / 0.14);
   --violet-ink: #c3b6ff;
@@ -101,6 +104,7 @@
   --danger: #f2555a;
   --danger-soft: rgb(242 85 90 / 0.13);
   --danger-ink: #ff8f92;
+  --danger-on: #071226;
 
   --ring: rgb(85 130 255 / 0.55);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
@@ -140,6 +144,7 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-ink: var(--primary-ink);
+  --color-primary-on: var(--primary-on);
   --color-violet: var(--violet);
   --color-violet-soft: var(--violet-soft);
   --color-violet-ink: var(--violet-ink);
@@ -152,6 +157,7 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-ink: var(--danger-ink);
+  --color-danger-on: var(--danger-on);
 
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -306,11 +312,16 @@ a.metric-card:hover { transform: translateY(-3px); border-color: var(--line-stro
   --ink-2: #d3dcee;
   --muted: #b0bdd2;
   --faint: #a5b0c6;
+  --primary-ink: #1d3fd0;
+  --color-primary-ink: var(--primary-ink);
   --surface-3: #283146;
   background: var(--control-room);
   color: var(--ink);
   border: 1px solid rgb(255 255 255 / .12);
   border-radius: 18px;
+}
+[data-theme="dark"] .control-panel {
+  --primary-ink: #9db6ff;
 }
 /* Default vertical rhythm for module pages. Pages that set their own space-y-* keep it. */
 .module-stack:not([class*="space-y-"]) > :not(:last-child) { margin-block-end: 1.5rem; }

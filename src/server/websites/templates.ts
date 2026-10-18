@@ -387,8 +387,11 @@ export function checkTemplate(content: SiteContent): TemplateCheck {
   if (!content.pages.some((p) => p.slug === "home")) blockers.push({ code: "no_home", message: "A template needs a home page.", where: "Pages" });
   const unknown = new Set<string>();
   let hasForm = false;
-  eachElement(content, (e) => {
+  // CRM forms belong to one client's CRM, so a shared template's form should be the built-in enquiry form (an empty formKey).
+  const crmForms = new Set<string>();
+  eachElement(content, (e, where) => {
     if (e.type === "form") hasForm = true;
+    if (e.type === "form" && typeof e.props.formKey === "string" && e.props.formKey.trim()) crmForms.add(where);
     for (const f of ELEMENT_DEFS[e.type].fields) {
       const v = e.props[f.key];
       if (typeof v === "string") for (const m of v.matchAll(/\{\{\s*([a-z0-9_.]+)\s*\}\}/gi)) if (!KNOWN_TOKENS.has(m[1].toLowerCase())) unknown.add(m[1]);
@@ -396,6 +399,9 @@ export function checkTemplate(content: SiteContent): TemplateCheck {
   });
   for (const t of unknown) blockers.push({ code: "unknown_token", message: `{{${t}}} isn't something a template can fill in. Known: business.name, business.tagline, business.phone, business.email, business.address, business.hours, service.1…8, area.1…6.`, where: "Text" });
   if (!hasForm) warnings.push({ code: "no_form", message: "No page has an enquiry form, so a website made from this template can't take enquiries until its owner adds one.", where: "Forms" });
+  for (const where of crmForms) {
+    warnings.push({ code: "crm_form", message: "A form here is set to a CRM form. CRM forms belong to one client's workspace, so a website made from this template shows the built-in enquiry form instead (or whichever of that client's own forms happens to share the key). Choose the built-in form for a shared template; each owner can pick one of their own forms later.", where });
+  }
   if (!content.header) warnings.push({ code: "no_header", message: "There is no header, so visitors have no navigation.", where: "Header" });
   if (!content.footer) warnings.push({ code: "no_footer", message: "There is no footer.", where: "Footer" });
   return { blockers, warnings };

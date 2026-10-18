@@ -28,7 +28,18 @@ const PUBLIC = [
   /^\/api\/webhooks\//,
   /^\/api\/internal\//,
   /^\/dev\//,
+  // Public booking pages and the customer's manage link. They read only public-safe data; the manage pages authorize by their secret.
+  /^\/book\//,
+  // Unsubscribe confirmation pages for marketing messages. The signed link token in the URL is the only authorization.
+  /^\/unsubscribe\//,
+  // Hosted form pages (native CRM forms). They show only a published form's public questions and post to /api/public/forms/submit.
+  /^\/f\//,
+  // A customer's review request page. The random token in the URL is the only authorization; it can only add feedback to its own request.
+  /^\/r\//,
 ];
+
+/** Pages whose URL carries a customer's manage secret: never cached, indexed, or sent on as a referrer. */
+const SECRET_URL = /^\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)/;
 
 function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null, framable = false) {
   const dev = process.env.NODE_ENV !== "production";
@@ -149,6 +160,11 @@ export async function proxy(req: NextRequest) {
       if (value) redirect.headers.set(header, value);
     }
     return redirect;
+  }
+  if (SECRET_URL.test(pathname)) {
+    res.headers.set("Cache-Control", "no-store");
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    res.headers.set("Referrer-Policy", "no-referrer");
   }
   return res;
 }

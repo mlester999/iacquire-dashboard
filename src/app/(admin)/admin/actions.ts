@@ -58,6 +58,8 @@ export async function createClientAction(input: z.input<typeof createTenantSchem
     const admin = await requireAgencyPermissionOrThrow("agency.clients.create");
     const res = await createClientTenant(admin, input);
     revalidatePath("/admin/clients");
+    // A starter chosen here is added to the library, and the application shows in its history.
+    if (res.blueprint) revalidatePath("/admin/crm-blueprints");
     return { ok: true as const, data: res };
   } catch (err) {
     if (err instanceof z.ZodError) return { ok: false as const, error: err.issues[0]?.message ?? "Check the form.", code: "invalid_input" as const };

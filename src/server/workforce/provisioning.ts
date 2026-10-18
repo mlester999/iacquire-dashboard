@@ -1,4 +1,11 @@
 import "server-only";
+import {
+  PORTAL_DISABLED_TOOLSETS,
+  PORTAL_SAFE_TOOLSETS,
+  unauthorizedToolsets,
+} from "@/server/integrations/hermes/tool-policy";
+
+export { PORTAL_DISABLED_TOOLSETS, PORTAL_SAFE_TOOLSETS, unauthorizedToolsets };
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -54,9 +61,13 @@ export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLO
     throw new AppError("invalid_input", "This Hermes policy contains an unsupported toolset.");
   }
   const disabled = [...new Set(blockedToolsets)];
+  const apiToolsets = [...PORTAL_SAFE_TOOLSETS, "no_mcp"];
   return [
-    "# Merge into this profile's config.yaml. Keys verified against Hermes Agent docs",
-    "# (agent.disabled_toolsets; terminal backend security). Re-check after Hermes upgrades.",
+    "# Merge into this profile's config.yaml. Keep the server-side allowlist in sync with the reviewed portal inventory.",
+    "platform_toolsets:",
+    "  api_server:",
+    ...apiToolsets.map((toolset) => `    - ${toolset}`),
+    "# Defense in depth; re-check these Hermes Agent keys after upgrades.",
     "agent:",
     ...(disabled.length ? ["  disabled_toolsets:", ...disabled.map((toolset) => `    - ${toolset}`)] : ["  disabled_toolsets: []"]),
     "terminal:",

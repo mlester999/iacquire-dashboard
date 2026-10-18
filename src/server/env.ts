@@ -46,6 +46,8 @@ const schema = z.object({
   SLACK_SUPPORT_WEBHOOK_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
   N8N_BASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
   N8N_API_KEY: z.string().optional(),
+  // Workflow steps that start an agency-approved n8n workflow through its production webhook. Off unless set to true (docs/crm-api.md).
+  N8N_ACTIONS_ENABLED: bool,
 
   GHL_API_BASE: z.string().url().default("https://services.leadconnectorhq.com"),
   GHL_WRITES_ENABLED: bool,
@@ -74,6 +76,31 @@ const schema = z.object({
   // Where the post-publish health check should connect (for example a private load-balancer address); defaults to https://<host>.
   SITES_PROBE_ORIGIN: z.preprocess(blankToUndefined, z.string().url().optional()),
   HERMES_RUN_TIMEOUT_MS: z.coerce.number().int().min(5000).max(900000).default(180000),
+
+  // Connected calendars (Native CRM). Each OAuth provider is offered only when both its client ID and secret are set; see docs/calendar-integrations.md.
+  GOOGLE_CALENDAR_CLIENT_ID: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  GOOGLE_CALENDAR_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  MICROSOFT_CALENDAR_CLIENT_ID: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  MICROSOFT_CALENDAR_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  // "common" (work, school and personal accounts), "organizations", "consumers", or one Entra tenant ID or domain.
+  MICROSOFT_CALENDAR_TENANT: z.preprocess(blankToUndefined, z.string().regex(/^[A-Za-z0-9.-]{1,100}$/).default("common")),
+  // Stops all background calendar sync and write-back (and "Sync now") without disconnecting anyone.
+  CALENDAR_SYNC_DISABLED: bool,
+  CALENDAR_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(2).max(1440).default(10),
+  CALENDAR_ICS_POLL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+
+  // Native messaging transports (see docs/messaging-providers.md). Each has its own kill switch, off unless set to true, exactly like
+  // GHL_WRITES_ENABLED: while it is off nothing is sent through that provider and the message is held with the reason.
+  RESEND_WRITES_ENABLED: bool,
+  TWILIO_WRITES_ENABLED: bool,
+  META_WHATSAPP_WRITES_ENABLED: bool,
+  // Resend signs webhooks through Svix; this is the endpoint's signing secret from the Resend dashboard (whsec_…).
+  RESEND_WEBHOOK_SECRET: z.preprocess(blankToUndefined, z.string().regex(/^whsec_[A-Za-z0-9+/=]{16,}$/, "must be the Resend webhook signing secret (whsec_…)").optional()),
+  // Twilio signs the exact public URL it called. Set this when the public origin differs from APP_URL (for example behind a proxy).
+  TWILIO_WEBHOOK_BASE_URL: z.preprocess(blankToUndefined, z.string().url().optional()),
+  // The Meta app's secret signs WhatsApp webhooks (X-Hub-Signature-256); the verify token answers Meta's subscription handshake.
+  META_APP_SECRET: z.preprocess(blankToUndefined, z.string().min(16).max(200).optional()),
+  META_WEBHOOK_VERIFY_TOKEN: z.preprocess(blankToUndefined, z.string().min(16).max(200).optional()),
 });
 
 export type Env = z.infer<typeof schema> & {

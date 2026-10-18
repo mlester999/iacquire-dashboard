@@ -18,7 +18,7 @@ export interface ElOpts {
 const PREFIX: Record<ElementType, string> = {
   heading: "hd", text: "tx", image: "im", button: "bt", group: "gr", card: "cd", icon: "ic", divider: "dv", spacer: "sp", badge: "bd", list: "ls", services: "sv", steps: "st",
   faq: "fq", testimonials: "tm", stats: "sa", logos: "lg", team: "tn", pricing: "pr", gallery: "gl", collage: "cl", video: "vd", contactInfo: "ci", social: "so", nav: "nv", logo: "lo",
-  form: "fm", map: "mp", marquee: "mq",
+  form: "fm", map: "mp", marquee: "mq", booking: "bk",
 };
 
 const anim = (a: ElOpts["anim"]): Anim | undefined => {

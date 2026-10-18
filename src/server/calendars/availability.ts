@@ -2,7 +2,7 @@ import "server-only";
 import { type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { slotStarts, workingIntervals, zonedDate, type DayOverride, type Interval, type WeeklyRule } from "@/lib/calendars/slots";
-import { TYPE_COLUMNS, toTypeView, type AppointmentTypeView, type Assignment } from "@/server/calendars/setup";
+import { TYPE_COLUMNS, toTypeView, type AppointmentTypeView, type Assignment, type CalendarStatus } from "@/server/calendars/setup";
 
 export interface BookableSlot {
   start: string;
@@ -30,22 +30,32 @@ export interface BookingContext {
   orgSlug: string;
   orgTimezone: string;
   type: AppointmentTypeView;
-  calendar: { id: string; name: string; slug: string; assignment: Assignment; roundRobinMode: "balanced" | "priority"; public: boolean };
+  calendar: { id: string; name: string; slug: string; assignment: Assignment; roundRobinMode: "balanced" | "priority"; public: boolean; status: CalendarStatus };
   hosts: Host[];
 }
 
 const LIVE = "('new', 'confirmed')";
 
-/** Everything availability depends on for one appointment type. Only active, accepting members who are still in the workspace host. */
-export async function loadBookingContext(db: Queryable, orgId: string, typeId: string): Promise<BookingContext> {
-  const t = await db.query<Parameters<typeof toTypeView>[0] & { cal_name: string; cal_slug: string; assignment: Assignment; round_robin_mode: "balanced" | "priority"; cal_public: boolean }>(
-    `select ${TYPE_COLUMNS}, c.name as cal_name, c.slug as cal_slug, c.assignment, c.round_robin_mode, c.public as cal_public
+/** Why a draft calendar refuses a booking, in the words staff see. Public pages never get this far: they only ever find active calendars. */
+export const DRAFT_CALENDAR_MESSAGE = "This calendar is still a draft, so it takes no bookings. Verify and activate it in Calendars & Types first.";
+
+/**
+ * Everything availability depends on for one appointment type. Only active, accepting members who are still in the workspace host.
+ * A draft calendar (one a Blueprint created that nobody has verified and activated yet) takes no bookings, so its types are refused here,
+ * which every booking path goes through: staff, the AI's request flow, booking pages, website booking and the API. Only the activation
+ * check reads a draft's context (`includeDraft`), to prove a real time would be offered before it goes live.
+ */
+export async function loadBookingContext(db: Queryable, orgId: string, typeId: string, opts: { includeDraft?: boolean } = {}): Promise<BookingContext> {
+  const t = await db.query<Parameters<typeof toTypeView>[0] & { cal_name: string; cal_slug: string; assignment: Assignment; round_robin_mode: "balanced" | "priority"; cal_public: boolean; cal_status: CalendarStatus }>(
+    `select ${TYPE_COLUMNS}, c.name as cal_name, c.slug as cal_slug, c.assignment, c.round_robin_mode, c.public as cal_public, c.status as cal_status
      from crm_appointment_types t join crm_calendars c on c.id = t.calendar_id and c.org_id = t.org_id
      where t.id = $1 and t.org_id = $2 and t.archived_at is null and c.archived_at is null`,
     [typeId, orgId],
   );
   const row = t.rows[0];
   if (!row) throw new AppError("not_found", "That appointment type isn't available.");
+  // "Not found" like any type that can't be booked, so public pages answer exactly as for a page that doesn't exist; staff see why.
+  if (row.cal_status !== "active" && !opts.includeDraft) throw new AppError("not_found", DRAFT_CALENDAR_MESSAGE);
   const org = await db.query<{ name: string; slug: string; timezone: string }>("select name, slug, timezone from organizations where id = $1", [orgId]);
   const orgTimezone = org.rows[0]?.timezone ?? "UTC";
   const members = await db.query<{ user_id: string; name: string; priority: number; last_assigned_at: Date | null; timezone: string | null; accepting: boolean | null }>(
@@ -65,7 +75,7 @@ export async function loadBookingContext(db: Queryable, orgId: string, typeId: s
   return {
     orgId, orgName: org.rows[0]?.name ?? "", orgSlug: org.rows[0]?.slug ?? "", orgTimezone,
     type: toTypeView(row),
-    calendar: { id: row.calendar_id, name: row.cal_name, slug: row.cal_slug, assignment: row.assignment, roundRobinMode: row.round_robin_mode, public: row.cal_public },
+    calendar: { id: row.calendar_id, name: row.cal_name, slug: row.cal_slug, assignment: row.assignment, roundRobinMode: row.round_robin_mode, public: row.cal_public, status: row.cal_status },
     hosts: members.rows.map((m) => {
       const own = overrides.rows.filter((o) => o.user_id === m.user_id);
       const ownDates = new Set(own.map((o) => o.on_date));
@@ -110,7 +120,9 @@ export async function computeSlots(db: Queryable, ctx: BookingContext, q: SlotQu
   const pad = (t.bufferBeforeMinutes + t.bufferAfterMinutes + t.durationMinutes) * 60_000 + 86_400_000;
   const blocks = await db.query<{ id: string; user_id: string; appointment_type_id: string | null; appointment_id: string | null; starts_at: Date; ends_at: Date; capacity: number; booked: number; mine: boolean }>(
     `select b.id, b.user_id, b.appointment_type_id, b.appointment_id, b.starts_at, b.ends_at, b.capacity, b.booked,
-            ($5::uuid is not null and (b.appointment_id = $5::uuid or b.id = (select busy_block_id from appointment_refs where id = $5::uuid))) as mine
+            ($5::uuid is not null and (b.appointment_id = $5::uuid
+              or b.id in (select busy_block_id from appointment_refs where id = $5::uuid and org_id = $1 and busy_block_id is not null)
+              or b.id in (select busy_block_id from crm_appointment_hosts where appointment_id = $5::uuid and org_id = $1 and busy_block_id is not null))) as mine
      from crm_busy_blocks b where b.org_id = $1 and b.user_id = any($2::uuid[]) and b.released_at is null and b.ends_at > $3 and b.starts_at < $4`,
     [ctx.orgId, ids, new Date(from - pad), new Date(to + pad), q.excludeAppointmentId ?? null],
   );
@@ -177,7 +189,9 @@ export async function computeSlots(db: Queryable, ctx: BookingContext, q: SlotQu
     if (ctx.calendar.assignment === "single" && !free.includes(hosts[0].userId)) continue;
     const ok = ctx.calendar.assignment === "single" ? [hosts[0].userId] : free;
     if (!ok.length) continue;
-    const remaining = t.capacity > 1 ? Math.max(...ok.map((id) => perHost.get(id)?.get(s) ?? 0)) : null;
+    // Group places: round robin can use whichever host has room; a collective session needs a place with every host.
+    const left = ok.map((id) => perHost.get(id)?.get(s) ?? 0);
+    const remaining = t.capacity > 1 ? (ctx.calendar.assignment === "collective" ? Math.min(...left) : Math.max(...left)) : null;
     out.push({ start: new Date(s).toISOString(), end: new Date(s + dur).toISOString(), hostIds: ok, remaining });
   }
   return out;

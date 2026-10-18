@@ -9,7 +9,7 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
   const actor = await clientCrmActor();
   const ws = await getWorkspace(actor);
   return (
-    <CrmShell base="/crm" sections={navFor((p) => actor.can(p), "client")} mode={ws.mode} orgName={actor.orgName}>
+    <CrmShell base="/crm" sections={navFor((p) => actor.can(p), "client")} mode={ws.mode} capabilityOwners={ws.capabilities} orgName={actor.orgName}>
       {children}
     </CrmShell>
   );

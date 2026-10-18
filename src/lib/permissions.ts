@@ -70,15 +70,15 @@ export const PERMISSION_MATRIX = {
   "automation.pause": row(...OWNER_ADMIN),
   "automation.go_autonomous": row("owner"),
   // Customer conversations belong to the client. Agency staff reach them only through audited support tooling.
-  "inbox.view": row(...CLIENT),
-  "inbox.view_all": row(...OWNER_ADMIN),
+  "inbox.view": row(...CLIENT, "agency_staff", "agency_manager"),
+  "inbox.view_all": row(...OWNER_ADMIN, "agency_staff", "agency_manager"),
   "inbox.reply": row(...WORKING),
   "inbox.assign": row(...OWNER_ADMIN),
   "inbox.notes": row(...WORKING),
   "inbox.resume_ai": row("owner", "admin", "sales_rep", "support", "appointment_setter"),
   "escalations.respond": row("owner", "admin", "sales_rep", "support", "appointment_setter"),
   "escalations.configure": row(...OWNER_ADMIN),
-  "contacts.view": row(...CLIENT),
+  "contacts.view": row(...CLIENT, "agency_staff", "agency_manager"),
   "contacts.create": row(...WORKING, "agency_manager"),
   "contacts.edit": row(...WORKING, "agency_manager"),
   "contacts.merge": row(...OWNER_ADMIN),
@@ -114,13 +114,13 @@ export const PERMISSION_MATRIX = {
   // Native CRM. Agency staff never appear here: they reach a client's CRM only through an audited, time-limited support session
   // (src/server/crm/actor.ts), so row-level security never widens for them. Delegable permissions can also be granted or withdrawn
   // per person (member_permission_overrides, see DELEGABLE_PERMISSIONS).
-  "crm.view": row(...CLIENT),
+  "crm.view": row(...CLIENT, "agency_staff", "agency_manager"),
   "contacts.assign": row(...OWNER_ADMIN),
   "contacts.delete": row(...OWNER_ADMIN),
   "contacts.import": row(...OWNER_ADMIN),
   "contacts.export": row(...OWNER_ADMIN),
   "contacts.bulk": row(...OWNER_ADMIN),
-  "companies.view": row(...CLIENT),
+  "companies.view": row(...CLIENT, "agency_staff", "agency_manager"),
   "companies.create": row(...WORKING, "agency_manager"),
   "companies.edit": row(...WORKING, "agency_manager"),
   "companies.delete": row(...OWNER_ADMIN),
@@ -134,7 +134,7 @@ export const PERMISSION_MATRIX = {
   "opportunities.delete": row(...OWNER_ADMIN),
   "calendars.manage": row(...OWNER_ADMIN, "agency_manager"),
   "calendars.connect": row(...WORKING),
-  "workflows.view": row(...OWNER_ADMIN),
+  "workflows.view": row(...OWNER_ADMIN, "agency_staff", "agency_manager"),
   "workflows.manage": row(...OWNER_ADMIN),
   "templates.manage": row(...OWNER_ADMIN),
   "campaigns.manage": row(...OWNER_ADMIN),
@@ -143,11 +143,15 @@ export const PERMISSION_MATRIX = {
   "forms.manage": row(...OWNER_ADMIN),
   "reviews.manage": row(...OWNER_ADMIN),
   // Call records can include recordings and transcripts, so read-only viewers do not see them.
-  "calls.view": row(...WORKING),
+  "calls.view": row(...WORKING, "agency_staff", "agency_manager"),
   // Switching between iAcquire Native CRM and GoHighLevel moves the record of truth, so only the owner can start it.
   "crm.provider.manage": row("owner"),
   "crm.api.manage": row(...OWNER_ADMIN),
   "crm.permissions.manage": row(...OWNER_ADMIN),
+  "crm.blueprints.view": row(...STAFF),
+  "crm.blueprints.design": row(...STAFF),
+  "crm.blueprints.publish": row("agency_super_admin"),
+  "crm.blueprints.apply": row("agency_super_admin"),
   // Agency permissions are enforced independently from client membership permissions.
   // A manager's client scope is checked separately by app.staff_assigned/app.can_access_org.
   "agency.clients.create": row("agency_manager", "agency_super_admin"),
@@ -437,6 +441,10 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "crm.provider.manage": { label: "Switch client CRM provider", group: "Native CRM", note: "Reserved for the client owner." },
   "crm.api.manage": { label: "Manage client CRM API connection", group: "Native CRM", note: "Client owner or agency role control." },
   "crm.permissions.manage": { label: "Manage client CRM roles", group: "Native CRM", note: "Client owner or agency role control." },
+  "crm.blueprints.view": { label: "View CRM Blueprints", group: "Native CRM", note: "Agency role control." },
+  "crm.blueprints.design": { label: "Design CRM Blueprints", group: "Native CRM", note: "Agency role control." },
+  "crm.blueprints.publish": { label: "Publish CRM Blueprints", group: "Native CRM", note: "Super Admin only." },
+  "crm.blueprints.apply": { label: "Apply CRM Blueprints to clients", group: "Native CRM", note: "Super Admin only." },
   "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", note: "Super Admin only." },
   "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", note: "Agency role control." },
   "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", note: "Super Admin only." },
@@ -476,6 +484,11 @@ export function effectiveAgencyTeamPermission(
 }
 
 export const isDelegablePermission = (p: unknown): p is DelegablePermission => typeof p === "string" && (DELEGABLE_PERMISSIONS as readonly string[]).includes(p);
+
+/** Plain-language explanation for a disabled control protected by a delegable permission. */
+export function permissionNeeded(action: string, permission: DelegablePermission): string {
+  return `${action} needs the “${DELEGABLE_PERMISSION_INFO[permission].label}” permission, which the ${ROLE_LABELS.owner.toLowerCase()} or a ${ROLE_LABELS.admin.toLowerCase()} can give you.`;
+}
 
 export type PermissionOverrides = Partial<Record<Permission, "grant" | "revoke">>;
 

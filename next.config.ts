@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
   experimental: {
     serverActions: { bodySizeLimit: "2mb" },
+    // The CRM browser matrix compiles many routes in one isolated dev process. Let Next restart
+    // the dev worker at its memory threshold before the long sweep can exhaust the heap.
+    ...(process.env.IAQ_DIST_DIR === ".next-crm-qa" && process.env.NODE_ENV === "development"
+      ? { devMemoryThresholdRestart: true, webpackMemoryOptimizations: true }
+      : {}),
   },
   async redirects() {
     // The brief suggested /dashboard/setup; the portal's routes live at the top level.

@@ -4,12 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Archive, ArchiveRestore, ArrowLeft, Building2, CalendarClock, GitMerge, Handshake, Mail, MessageSquare, MoreHorizontal, Pencil, Phone, Plus, ShieldAlert, X,
+  Archive, ArchiveRestore, ArrowLeft, Building2, CalendarClock, GitMerge, Handshake, Mail, MessageSquare, MoreHorizontal, Pencil, Phone, Plus, ShieldAlert, Star, X,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Sheet, Tabs } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   addIdentityAction, archiveContactsAction, assignContactsAction, eraseContactAction, linkCompanyAction, mergeContactsAction, removeIdentityAction, searchCompaniesAction,
   searchContactsAction, setConsentAction, tagContactsAction, unlinkCompanyAction, updateContactAction,
@@ -25,13 +25,16 @@ import type { TimelineItem } from "@/server/crm/timeline";
 import type { NoteView } from "@/server/crm/notes";
 import type { TaskView } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
+import type { CallRecordView } from "@/server/crm/calls";
+import { ContactCalls } from "@/components/crm/calls/contact-calls";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 type Opp = { id: string; name: string; status: string; value: number | null; currency: string; stageName: string; pipelineName: string };
 
 const CHANNEL_LABEL: Record<string, string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
 
 export function ContactProfile({
-  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines,
+  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls,
 }: {
   scope: CrmScope;
   detail: ContactDetail;
@@ -44,6 +47,8 @@ export function ContactProfile({
   tags: Array<{ id: string; name: string; color: string }>;
   members: Array<{ id: string; name: string }>;
   pipelines: Array<{ id: string; name: string; isDefault: boolean; stages: Array<{ id: string; name: string }> }>;
+  /** Recent calls with this contact; absent when the viewer can't see call records. */
+  calls?: CallRecordView[];
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
@@ -57,6 +62,7 @@ export function ContactProfile({
   const [identityValue, setIdentityValue] = React.useState("");
   const [tagPicker, setTagPicker] = React.useState(false);
   const canEdit = Boolean(scope.can["contacts.edit"]) && !scope.readOnly;
+  const canRequestReview = Boolean(scope.can["reviews.manage"] && scope.can["contacts.view"]) && !scope.agency && !detail.archivedAt;
   const name = detail.displayName || detail.email || (detail.phone ? formatPhone(detail.phone) : "") || "Unnamed contact";
   const openTasks = tasks.filter((t) => t.status === "open" || t.status === "in_progress");
   const addr = [detail.addressLine1, detail.addressLine2, [detail.city, detail.region, detail.postalCode].filter(Boolean).join(", "), detail.country].filter(Boolean);
@@ -67,6 +73,7 @@ export function ContactProfile({
     ...(scope.can["appointments.view"] ? [{ value: "appointments", label: "Appointments", count: appointments.length }] : []),
     { value: "notes", label: "Notes", count: notes.length },
     { value: "tasks", label: "Tasks", count: openTasks.length },
+    ...(calls ? [{ value: "calls", label: "Calls", count: calls.length }] : []),
   ];
 
   return (
@@ -107,6 +114,8 @@ export function ContactProfile({
           <div className="flex flex-wrap items-center gap-2">
             {canEdit && <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}><Pencil className="size-4" />Edit</Button>}
             {scope.can["opportunities.edit"] && !scope.readOnly && pipelines.length > 0 && <Button size="sm" onClick={() => setDealOpen(true)}><Handshake className="size-4" />New deal</Button>}
+            {/* Review requests message the client's own customers, so only its own owners and managers send them (as on the Reviews screen). */}
+            {canRequestReview && <ButtonLink href={`${scope.base}/reviews?contact=${detail.id}`} variant="secondary" size="sm"><Star className="size-4" aria-hidden />Request a review</ButtonLink>}
             {(scope.can["contacts.merge"] || scope.can["contacts.delete"]) && !scope.readOnly && (
               <Menu>
                 <MenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="More actions"><MoreHorizontal className="size-4" /></Button></MenuTrigger>
@@ -143,8 +152,8 @@ export function ContactProfile({
             </dd>
           </div>
           <div><dt className="text-muted">Lead source</dt><dd className="mt-0.5 font-medium text-ink">{detail.source}</dd></div>
-          <div><dt className="text-muted">Created</dt><dd className="mt-0.5 font-medium text-ink">{CREATED_VIA_LABELS[detail.createdVia]} · {relativeTime(detail.createdAt)}</dd></div>
-          <div><dt className="text-muted">Last activity</dt><dd className="mt-0.5 font-medium text-ink">{detail.lastActivityAt ? relativeTime(detail.lastActivityAt) : "None recorded"}</dd></div>
+          <div><dt className="text-muted">Created</dt><dd className="mt-0.5 font-medium text-ink">{CREATED_VIA_LABELS[detail.createdVia]} · <RelativeTime iso={detail.createdAt} timezone={scope.timezone} /></dd></div>
+          <div><dt className="text-muted">Last activity</dt><dd className="mt-0.5 font-medium text-ink">{detail.lastActivityAt ? <RelativeTime iso={detail.lastActivityAt} timezone={scope.timezone} /> : "None recorded"}</dd></div>
         </dl>
       </section>
 
@@ -164,7 +173,7 @@ export function ContactProfile({
                           {c.preview && <p className="truncate text-[12.5px] text-muted">{c.preview}</p>}
                         </div>
                         {c.unread > 0 && <Badge tone="primary">{c.unread} new</Badge>}
-                        <span className="shrink-0 text-[12px] text-muted">{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
+                        <span className="shrink-0 text-[12px] text-muted">{c.lastMessageAt ? <RelativeTime iso={c.lastMessageAt} timezone={scope.timezone} /> : ""}</span>
                       </Link>
                     </li>
                   ))}
@@ -203,6 +212,7 @@ export function ContactProfile({
               ) : <EmptyState compact icon={<CalendarClock className="size-5" />} title="No appointments" description="Appointments booked for this person appear here." />
             )}
             {tab === "notes" && <NotesPanel scope={scope} type="contact" recordId={detail.id} notes={notes} />}
+            {tab === "calls" && calls && <ContactCalls scope={scope} contact={{ id: detail.id, name }} calls={calls} members={members} />}
             {tab === "tasks" && (
               <div className="space-y-3">
                 <QuickTask scope={scope} members={members} link={{ contactId: detail.id }} />

@@ -7,12 +7,14 @@ import { CheckCircle2, LayoutList, ListChecks, Plus, Search, SquareKanban } from
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Sheet } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { addTaskCommentAction, createTaskAction, searchContactsAction, setTaskStatusAction, taskCommentsAction, updateTaskAction } from "@/app/actions/crm";
 import { RecordPicker, useCrmAction } from "@/components/crm/ui";
 import { PRIORITY_TONE, TaskList } from "@/components/crm/record-panels";
+import { useUrlSearch } from "@/components/crm/url-search";
 import type { TaskPriority, TaskStatus, TaskView, TaskView_ } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 const VIEWS: Array<{ value: TaskView_; label: string }> = [
   { value: "mine", label: "My tasks" },
@@ -46,7 +48,6 @@ export function TasksWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const { run } = useCrmAction();
-  const [q, setQ] = React.useState(state.q);
   const [newOpen, setNewOpen] = React.useState(false);
   const [open, setOpen] = React.useState<TaskView | null>(openTask);
   const canManage = !!scope.can["tasks.manage"] && !scope.readOnly;
@@ -62,11 +63,8 @@ export function TasksWorkspace({
     [pathname, state],
   );
 
-  React.useEffect(() => {
-    if (q === state.q) return;
-    const t = setTimeout(() => router.replace(hrefWith({ q: q.trim() || null })), 300);
-    return () => clearTimeout(t);
-  }, [q, state.q, router, hrefWith]);
+  // Typing replaces the address after a pause; a search changed elsewhere (Back, a link, a filter that clears it) replaces the box's text.
+  const search = useUrlSearch(state.q, state, (q) => router.replace(hrefWith({ q: q || null })));
 
   // Keep the open task's details current after a refresh.
   const current = open ? tasks.find((t) => t.id === open.id) ?? open : null;
@@ -98,7 +96,7 @@ export function TasksWorkspace({
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-          <Input aria-label="Search tasks" placeholder="Search tasks" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input aria-label="Search tasks" placeholder="Search tasks" className="pl-9" value={search.text} onChange={(e) => search.setText(e.target.value)} />
         </div>
         {state.view !== "mine" && (
           <>
@@ -219,7 +217,7 @@ function TaskSheet({ scope, task, members, onClose }: { scope: CrmScope; task: T
   }, [scope.orgId, task.id, commentsVersion]);
   const dirty = form.title !== task.title || form.description !== (task.description ?? "") || form.due !== toLocalInput(task.dueAt) || form.remind !== toLocalInput(task.remindAt) || form.priority !== task.priority || form.assigneeId !== (task.assignee?.id ?? "");
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()} title="Task" description={task.source !== "user" ? `Created by ${task.source === "agent" ? "an AI employee" : task.source === "workflow" ? "an automation" : "iAcquire"} · ${relativeTime(task.createdAt)}` : `Created ${relativeTime(task.createdAt)}`}>
+    <Sheet open onOpenChange={(o) => !o && onClose()} title="Task" description={task.source !== "user" ? <>Created by {task.source === "agent" ? "an AI employee" : task.source === "workflow" ? "an automation" : "iAcquire"} · <RelativeTime iso={task.createdAt} timezone={scope.timezone} /></> : <>Created <RelativeTime iso={task.createdAt} timezone={scope.timezone} /></>}>
       <div className="space-y-5 p-5">
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="ts-status" className="sr-only">Status</label>
@@ -263,7 +261,7 @@ function TaskSheet({ scope, task, members, onClose }: { scope: CrmScope; task: T
             {comments?.map((c) => (
               <li key={c.id} className={cn("rounded-xl px-3 py-2 text-[13px]", c.mine ? "bg-primary-soft/50" : "bg-surface-2")}>
                 <p className="whitespace-pre-wrap text-ink">{c.body}</p>
-                <p className="mt-1 text-[11.5px] text-muted">{c.author ?? "Teammate"} · {relativeTime(c.createdAt)}</p>
+                <p className="mt-1 text-[11.5px] text-muted">{c.author ?? "Teammate"} · <RelativeTime iso={c.createdAt} timezone={scope.timezone} /></p>
               </li>
             ))}
             {comments?.length === 0 && <li className="text-[13px] text-muted">No comments yet.</li>}

@@ -27,12 +27,11 @@ import { toast } from "sonner";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
-import { AvatarTile, StatusPill } from "@/components/ui/status";
 import { CLIENT_NAV } from "@/components/shell/sidebar";
 import { useTheme } from "@/components/providers";
 import { useShell } from "@/components/shell/shell-context";
 import { fetchNotificationsAction, markNotificationsReadAction, switchOrgAction } from "@/app/actions/shell";
-import { LogoutTrigger } from "@/components/auth/logout-confirmation";
+import { logoutAction } from "@/app/(auth)/actions";
 import { cn, initials, relativeTime } from "@/lib/utils";
 
 const TITLES: Array<[RegExp, string]> = [
@@ -128,7 +127,7 @@ function NotificationsButton() {
         <button
           type="button"
           className="relative flex size-10 items-center justify-center rounded-xl text-ink-2 transition hover:bg-surface-2 hover:text-ink"
-          aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+          aria-label={unread ? `Notifications, ${unread > 9 ? "9+" : unread} unread` : "Notifications"}
         >
           <Bell className="size-[19px]" />
           <AnimatePresence>
@@ -137,7 +136,7 @@ function NotificationsButton() {
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
-                className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white ring-2 ring-bg"
+                className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-ink px-1 text-[10px] font-bold text-white dark:text-danger-on ring-2 ring-bg"
               >
                 {unread > 9 ? "9+" : unread}
               </motion.span>
@@ -267,21 +266,17 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
         <Menu>
           <MenuTrigger asChild>
-            <button type="button" className="ml-0.5 flex items-center gap-2 rounded-xl p-1 pr-1.5 transition hover:bg-surface-2" aria-label="Account menu">
+            <button type="button" className="ml-0.5 flex items-center gap-2 rounded-xl p-1 pr-1.5 transition hover:bg-surface-2" aria-label={`Account menu ${initials(shell.user.name)}`}>
               <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet text-[12px] font-semibold text-white">
                 {initials(shell.user.name)}
               </span>
             </button>
           </MenuTrigger>
           <MenuContent className="w-64">
-            <div className="flex items-center gap-2.5 px-2.5 py-2">
-              <AvatarTile name={shell.user.name} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-semibold text-ink" title={shell.user.name}>{shell.user.name}</p>
-                <p className="truncate text-[12px] text-muted" title={shell.user.email}>{shell.user.email}</p>
-              </div>
+            <div className="px-2.5 py-2">
+              <p className="truncate text-[13.5px] font-semibold text-ink">{shell.user.name}</p>
+              <p className="truncate text-[12px] text-muted">{shell.user.email}</p>
             </div>
-            <div className="px-2.5 pb-2"><StatusPill tone="primary" size="sm" className="capitalize">{shell.org.role.replaceAll("_", " ")}</StatusPill></div>
             <MenuSeparator />
             <MenuItem onSelect={() => router.push("/settings/security")}>
               <UserRound className="size-4" /> Account &amp; security
@@ -308,9 +303,11 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
             <MenuLabel>Appearance</MenuLabel>
             <ThemeMenuItems />
             <MenuSeparator />
-            <LogoutTrigger className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-ink-2 hover:bg-surface-2 hover:text-ink">
-              <LogOut className="size-4" /> Sign out
-            </LogoutTrigger>
+            <form action={async () => { await logoutAction(); }}>
+              <button type="submit" className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 hover:text-ink">
+                <LogOut className="size-4" /> Sign out
+              </button>
+            </form>
           </MenuContent>
         </Menu>
       </div>

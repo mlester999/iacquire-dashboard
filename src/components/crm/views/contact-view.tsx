@@ -8,6 +8,7 @@ import { listTasks } from "@/server/crm/tasks";
 import { listOpportunities } from "@/server/crm/opportunities";
 import { listTags } from "@/server/crm/tags";
 import { listPipelines } from "@/server/crm/pipelines";
+import { listContactCalls } from "@/server/crm/calls";
 import type { CrmScope } from "@/server/crm/page";
 import { ContactProfile } from "@/components/crm/contact-profile";
 
@@ -31,8 +32,10 @@ export async function ContactView({ actor, scope, id }: { actor: CrmActor; scope
     listAssignableMembers(actor),
     actor.can("sales.view") ? listPipelines(actor) : Promise.resolve([]),
   ]);
+  // Calls can carry recording links, so they're only loaded for people who may see call records.
+  const calls = actor.can("calls.view") ? await listContactCalls(actor, id, 20) : null;
   await auditSupportView(actor, "contact", id);
-  const data = JSON.parse(JSON.stringify({ detail, timeline, notes, tasks, opportunities: opportunities?.rows ?? [], conversations, appointments }));
+  const data = JSON.parse(JSON.stringify({ detail, timeline, notes, tasks, opportunities: opportunities?.rows ?? [], conversations, appointments, calls: calls ?? undefined }));
   return (
     <ContactProfile
       scope={scope}

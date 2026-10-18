@@ -1,5 +1,8 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
+
+// tests/perf seeds tens of thousands of rows and takes minutes; it runs only when asked for (CRM_PERF=1 npx vitest run tests/perf).
+const perf = process.env.CRM_PERF === "1";
 
 export default defineConfig({
   resolve: {
@@ -12,6 +15,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    exclude: perf ? configDefaults.exclude : [...configDefaults.exclude, "tests/perf/**"],
     testTimeout: 30000,
     hookTimeout: 60000,
     pool: "forks",

@@ -1,51 +1,67 @@
 # Verification status
 
-## Current checkpoint (2026-10-15)
+## Current checkpoint (2026-10-19)
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | **1,310 tests in 102 files passed** with `--maxWorkers=2` |
-| `npm run typecheck` | passes |
-| `npm run lint` | **0 errors, 0 warnings** |
-| `npm run build` | passes (Turbopack; TypeScript clean), re-run on the premium pass. Run with local database settings, not the hosted ones |
-| Schema | 26 migrations, 154 public tables (`0026` adds five); every table with an `org_id` is checked automatically by `tests/tenant-isolation-generic.test.ts` |
+| `npm test -- --maxWorkers=2` | **2,873 tests in 157 files passed** (full suite, 2026-10-19) |
+| `npm run typecheck` | passes (2026-10-19) |
+| `npm run lint` | passes (2026-10-19; 0 errors, 0 warnings) |
+| Production build | passes (Next.js 16.4.2, Webpack; isolated CRM QA environment, 8 GiB Node heap) |
+| RLS migration check | `0050_rls_initplan.sql` and rollback are up to date; 166 SELECT policies rewritten and 27 non-SELECT policies unchanged |
+| Website thumbnails | 50 regenerated; browser comparison passed 50/50 with 0 flagged templates |
+| CRM browser QA | 114 all-route desktop/light visits across six personas, 62 focused phone/dark visits, 9 focused replays; 14/14 interactions passed. 0 axe violations, 0 non-local requests and 0 5xx responses; the phone/dark matrix had 0 overflow |
+| Schema | Local sequence through `0050`; latest read-only hosted preflight found 213 public tables and recorded migrations `0001`–`0029`, `0034`–`0049`. Eleven local migration filenames remain unrecorded; **no migration was applied during this release pass**. See [workforce-migration-and-release.md](workforce-migration-and-release.md). Every table with an `org_id` is checked automatically by `tests/tenant-isolation-generic.test.ts` |
 
-Everything below is **local only**: an in-memory PostgreSQL (PGlite) running the real migrations, RLS policies, services and route handlers, with mocked Supabase Auth and mocked provider HTTP.
-**Apart from migration `0026` and read-only checks on the hosted database (below), nothing has been run against a hosted Supabase project, Hermes gateway, GoHighLevel location, n8n instance, PayMongo account, email provider or domain registrar.**
-The hosted Supabase project has migrations `0001`–`0026`: `0001`–`0025` were already applied when it was inspected, and `0026` was applied on 2026-10-15 at your request (atomically, with the database empty: 0 organizations, websites, versions, publications and enquiries). Read-only checks afterwards: all five new tables have row level security, the three permissions exist, `app.submit_site_form` has 16 arguments and `iaq_site_runtime` can execute it, `iaq_site_runtime` holds no table privileges, `anon`/`authenticated` hold none on the new tables, and no client role can read template content. 154 public tables, 26 migrations recorded. No deployment was made. The repository has a remote; the commits to `master` were pushed at your request.
+The CRM browser and Website Studio thumbnail runs in this checkpoint are **local only**. They use fictional records, an embedded PGlite database and local sign-in; the browser is restricted to the exact QA loopback origin. No CRM or workforce migration was applied to hosted Supabase, and no provider, customer message, website publication or deployment was used for this verification.
 
-A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044`, with `0044_agency_module_view_overrides` as the highest applied migration. Workforce migrations `0045`/`0046` and AQi migration `0047` were then applied on 2026-10-18 with the repository's `--only` runner, one transaction per migration. Cost-control `0048` and attachment `0049` were applied the same way and are now recorded alongside `0047_aqi_assistant`. The hosted project has **213 public tables**, the private `aqi-attachments` bucket (non-public, 50 MB), `aqi_attachments` with RLS and four policies, one global budget row, one published AQi configuration, 12 knowledge entries and 4 recorded AQi messages.
+The hosted project’s earlier migration `0026` remains recorded. A read-only preflight on 2026-10-19 found 213 public tables and `public.schema_migrations` entries `0001`–`0029` and `0034`–`0049`; the CRM blueprint, provider-switch and Hermes tool-inventory tables are absent. Eleven local migration filenames are not recorded, including a `0047` filename collision with the hosted AQi migration. A current backup/restore has not been verified and the CRM/workforce migration histories still need reconciliation, so hosted migration writes remain gated. Details and the exact pending filenames are in [workforce-migration-and-release.md](workforce-migration-and-release.md).
 
-The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for **`48de90c`** by `vercel[bot]`; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. The `48de90c` build includes the provider-resolution, role-aware error, budget, support, attachment and composer changes. There is no `.github/workflows` or Vercel config in the repository; the integration is external. A docs-only status commit may deploy after `48de90c` without changing runtime behavior.
+### Native CRM Phase 6 acceptance (2026-10-19; local only)
 
-Read-only production database audit after deployment: the global `llm` integration is now **`connected`**, with model `deepseek-flash`, format `openai`, a valid Vault-backed credential and a successful model-listing check at 11:44Z. A controlled live `llmComplete` probe returned `OK`, and a real SSE `llmStream` probe returned one delta plus usage. The AQi error recorded at 10:58Z predates that check and stored `provider_unavailable` with model `deepseek-chat`; it was a genuine pre-verification failure, not a DeepSeek incompatibility.
+The feature matrix and scope notes are in [native-crm-parity.md](native-crm-parity.md); the isolated browser setup and reports are in [crm-local-qa.md](crm-local-qa.md).
 
-The previously deployed build used its seeded `deepseek-chat` instead of the integration's `deepseek-flash` and could cache a failed resolution for 30 seconds. The `48de90c` build makes the integration model authoritative unless explicitly overridden, removes negative caching, adds categorized resolution diagnostics and role-aware public errors, and rechecks provider availability on send. The Vercel URL is SSO protected, so the deployed AQi UI itself was not exercised. The hosted database has migrations through `0049` and 4 recorded AQi messages.
+| Area | Evidence | Result |
+| --- | --- | --- |
+| Provider switching | Seven-step Settings → CRM Provider wizard; `tests/crm-provider-switch.test.ts` (15 tests). Browser acceptance previews the wizard but does not confirm a cutover. During a switch, automations, follow-ups, messages and calendar write-backs pause, and iAcquire cannot send for a GoHighLevel-owned capability | Implemented locally; no real provider used |
+| Lead items | `tests/crm-lead-items.test.ts`; role-aware lead controls and guarded actions | Implemented locally |
+| RLS policy rewrite | Migration `0050`; `tests/rls-initplan-equivalence.test.ts` and `tests/rls-initplan-guard.test.ts` cover policy equivalence and the init-plan form | Implemented locally; not applied to hosted Supabase |
+| Browser acceptance | Post-merge: 114 all-route desktop/light visits across six personas and 62 focused phone/dark visits; all selected routes rendered, with 0 axe violations and 0 overflow. The 14 scripted interactions passed. Development-worker chunk resets and one denied-route parse error were cleared by 9 focused replays, all clean | Verified in a real browser against fictional data |
+| QA isolation | Local PGlite database, synthetic sign-in, provider send switches off, browser restricted to the QA server's exact loopback port; reports and screenshots remain under git-ignored `.data/crm-qa/` | Verified locally; no hosted database or provider contacted |
 
-### AQi platform assistant (2026-10-18, migration 0047)
+The earlier 2026-10-18 full matrix covered 456 page visits across six personas, desktop/phone widths and light/dark themes. The post-merge reports and focused replays are preserved under `.data/crm-qa/reports/`; [crm-local-qa.md](crm-local-qa.md) records both sets of evidence. The browser runs do not establish production identity, hosted migration state, or a live provider cutover.
 
-| Gate | Result |
-| --- | --- |
-| AQi schema, RLS, seed knowledge and conversation privacy | Locally verified (`tests/aqi-migration-0047.test.ts`) |
-| Provider streaming, SSE fallback, provider failure, 429, timeout, cancellation, interrupted stream and invalid model | Locally verified (`tests/aqi-llm-stream.test.ts`, 9 tests); **live controlled DeepSeek `llmStream` probe passed** (one real delta, usage reported) |
-| Provider resolution, DeepSeek/OpenAI adapter, model selection, expired/status failures and recovery after negative cache | Locally verified (`tests/aqi.test.ts`, 10 tests; `tests/aqi-errors.test.ts`, 3 tests) |
-| Context, suggestions, knowledge retrieval, conversation CRUD, durable sources, citation validation and publish/rollback | Locally verified (`tests/aqi.test.ts`, 10 tests) |
-| Navigation safety, actual agency permissions and cross-role denial | Locally verified (`tests/aqi-security.test.ts`, 5 tests) |
-| Atomic AQi budgets, model pricing, per-user limits and concurrent reservation race | Locally verified (`tests/aqi-cost-controls.test.ts`, 4 tests); hosted migration 0048 applied |
-| Support escalation with consent, real Support service and duplicate suppression | Locally verified (`tests/aqi-support.test.ts`, 2 tests) |
-| Citation validation and stale-knowledge warnings | Locally verified (`tests/aqi.test.ts`) |
-| Floating launcher, streaming panel, source citations, feedback, support consent, close confirmation, history, expand, mobile, Super Admin screen, retrieval preview and budgets | Browser QA passed with **4 pages, 16 interactions, 0 console errors, 0 page errors, 0 failed requests, 0 axe violations**; local streaming provider only |
-| Private image/document attachments, emoji picker, upload previews and admin attachment settings | Browser QA passed at 1440 px and 390 px; image/document history rendering, emoji insertion, admin settings and **0 axe violations** |
-| Attachment storage/RLS and extraction | Locally verified: private bucket, RLS, image dimensions, PDF/DOCX/TXT text, MP4 duration, ownership denial, cross-user read denial, storage cleanup |
-| GIF messaging | **Removed from AQi**; uploads are rejected as unsupported |
-| AI image/video understanding | **Not implemented / not claimed**; media is stored, previewed and marked as not inspectable by the selected model |
-| Client-facing unavailable state and retry | Mobile 390 px browser QA passed; friendly text, no administrator/technical detail, functional Try again, **0 axe violations** |
-| Migration 0047 | **Applied to hosted Supabase 2026-10-18**; six tables, RLS policies and seeded config/knowledge/questions verified |
-| Migration 0048 | **Applied hosted 2026-10-18** |
-| Migration 0049 | **Applied hosted 2026-10-18**; private bucket, metadata table, RLS and four policies verified |
-| Live provider acceptance | **Provider-level PASS** — controlled production DeepSeek `llmComplete` returned `OK` and real SSE returned one delta with usage; full deployed AQi UI remains blocked by Vercel SSO |
+### AI employee chat and workforce management (2026-10-18, migrations 0045–0046)
 
-AQi details: [aqi.md](aqi.md).
+Details and the honest scope are in [ai-workforce.md](ai-workforce.md); live gateway evidence and the
+controlled-run procedure are in [hermes-live-acceptance.md](hermes-live-acceptance.md).
+
+| Area | Evidence | Label |
+| --- | --- | --- |
+| Internal and client workforces on one registry | Agency workspace preparation is idempotent and preserves existing identities; super admin internal chat uses the normal chat backend; client employees stay in their own tenant. `tests/ai-workforce-experience.test.ts` | Implemented locally |
+| Employee knowledge | Notes and documents are scoped by `org_id` + `agent_instance_id`; the retrieval check uses the same compiler as run instructions; injection-looking content is held; last-used evidence is written only after the provider accepts the run. `tests/ai-workforce-experience.test.ts` | Implemented locally |
+| PDF/DOCX extraction | Bounded dependency-free extraction for selectable-text PDF (plain and Flate) and Word `.docx`; explicit `processing`/`ready`/`failed`/`unsupported` states and reasons; encrypted, scanned, malformed and ZIP64 files are rejected honestly; no OCR. Extracted text reaches the real chat instructions. `tests/knowledge-extraction.test.ts` (8), migrations 0045/0046 rollback tests (6) | Implemented locally; **no paid OCR** |
+| Live gateway evidence | `scripts/hermes-live-audit.ts --live`: one multiplexed gateway authenticated; all six internal profile identities verified; capabilities advertise runs, SSE, status, stop and approval; `memory_write_api` and `admin_config_rw` false | **Read-only live verification passed**; no run started |
+| Tool-inventory gate | The six internal profiles now enable only the five reviewed toolsets and six built-in tools; `GET /v1/toolsets` shows no restricted/unreviewed tools. The new verifier requires `GET /v1/tools?platform=api_server`, an explicit `platform_toolsets.api_server` allowlist, two matching reads and a persisted digest. The deployed Hermes 0.21.5 gateway returns 404 for `/v1/tools`, so `completeInventoryVerified` is false. Health refuses `online`; `startRun` re-verifies and refuses before contacting `/v1/runs`. A tested 0.21.5 backport (patch `f6a6230`, digest-pinned custom image) is ready in the isolated dev workspace but **not deployed**. `tests/hermes-tool-inventory.test.ts` (20), `tests/workforce-inventory-health.test.ts` (4) | **Implemented and fail-closed; blocked by the deployed gateway contract and live profile allowlist** |
+| Draft configuration testing | The draft is compiled without writing a version; a real provider run uses a unique preview session and memory scope; no conversation, message, run or usage row is written. Tested with the local mock Hermes | Tested with mocks; **no live Hermes draft test** |
+| SOUL.md and instruction hierarchy | Read-only SOUL.md, exact applied instructions, version history/rollback and honest “no SOUL.md write endpoint” copy. `tests/ai-workforce-experience.test.ts` covers the compiler and versions | Implemented locally |
+| Memory | Conversation history persists; long-term memory remains Hermes-managed with the tenant/role session key. The UI states that inspection/editing is unavailable and does not offer a fake editor | Implemented locally; **memory read/edit not supported by the verified API** |
+| Chat UX | Streaming, stop, retry/regenerate, persisted history, new/resume/rename/delete/search, older-message loading, safe Markdown, copy, keyboard and mobile layout | Implemented locally; browser-checked |
+| Streaming fallback | When the provider advertises runs but not SSE, chat and draft tests poll the documented `GET /v1/runs/{id}` and show an honest “waiting for the complete response” state. Tested against a polling-only mock profile | Tested with mocks |
+| Authorization and isolation | Permission checks plus RLS and composite foreign keys; cross-tenant employee/document/note denial tested; agent preview requires `agents.configure` | Implemented locally |
+| Browser QA | `scripts/workforce-browser-qa.mjs` against the isolated embedded database: **10 signed-in pages** at 1440 px and 390 px, **6/6 interactions passed**, **0 axe-core violations**, **0 console/page errors**, **0 failed requests**, **0 horizontal overflow**. The QA seed now uploads a real extracted PDF and DOCX; the browser verifies the `PDF text` and `Word text` provenance badges. Synthetic online states; no provider was contacted | Browser-checked on synthetic data |
+| Quality gates | Full `npm test`: **2,727 passed / 2,727 (136 files)** on 2026-10-18; `npx tsc --noEmit` passes; `npm run lint` **0 errors, 0 warnings**. The 20 complete-inventory tests and 4 health/attestation tests are included. Browser QA evidence is from the earlier workforce pass; no new browser run was performed for this inventory change | Local only |
+| Schema | `0045_ai_workforce_experience` (employee knowledge, document scope/risk/use evidence), `0046_knowledge_document_extraction` (processing states and extraction evidence), and `0047_hermes_tool_inventory` (complete runtime inventory contract, digest, expiry, compact snapshot and diagnostic). 0045 was renumbered after hosted 0044. The hosted schema was inspected read-only: it has `has_permission`/`current_user_id` but not `permitted_orgs`, so 0045 creates statement-level policies locally and per-row permission policies on hosted. `tests/knowledge-migration-hosted-compat.test.ts` proves the hosted branch on a private schema. Rollbacks are tested; none is applied to the hosted project | Local only; **not applied to hosted Supabase** |
+
+**Verified live, read-only:** gateway authentication, capabilities, profile identity for the six
+internal employees, run/SSE/status/stop/approval support, and the reviewed built-in tool exposure
+(five toolsets, six tools, no restricted tools). **Not verified:** a real model response, a live
+client profile, provider costs, hosted migrations, a deployment, a screen reader, touch hardware,
+or a production identity provider. The complete-tool-inventory gate still blocks live runs because
+the deployed Hermes 0.21.5 gateway does not expose `GET /v1/tools`; each live profile must also
+publish the explicit reviewed allowlist. Migration 0047 is local only. No migration was applied,
+nothing was committed or pushed, and nothing was deployed. See
+[hermes-tool-inventory.md](hermes-tool-inventory.md).
 
 ### Website Studio rebuild (2026-10-15, migration 0026)
 
@@ -76,6 +92,7 @@ No migration was added or applied; Featured uses the existing `0026` column. Not
 | Preview scrolling, 50 designs, four widths, real flow | `npm run studio:qa:preview-scroll`: 50 of 50, including device switching that keeps the reader's place (an intermittent loss of place under load was reproduced, root-caused to a stale restore overriding the reader, fixed, and then passed 18 of 18 under load) | Verified locally in a real browser |
 | Text fit and colour contrast, 1,200 views | `npm run studio:qa:text-fit` with axe: 0 failing | Verified locally in a real browser |
 | Text over photographs, anchors under pinned headers, screenshot against preview, axe (104 views), published runtime (54 checks), agency Template Library (11), editor (17) | the `studio:qa:*` suites listed in the QA doc, each with a negative control where one is possible | Verified locally in a real browser, isolated database |
+| Canonical thumbnails and gallery preview | 50/50 comparisons, 0 flagged; calibrated 1.019% worst real-pair difference against a 2.486% limit; `tests/website-thumbnail-contract.test.ts` passed 5/5 | Verified locally in a real browser; `.data/studio-qa/thumbnail-compare.json` |
 | Gallery and image loading | 50 of 50 cards use a current screenshot (was 0); gallery payload 48.7 MB to 7.9 MB (development servers, comparison only); image weight per design page 652 KB to 228 KB at 390 px | Measured locally |
 
 **Not verified in this pass:** anything against hosted Supabase or a real host; publishing a site that still has starter photographs in a gallery (refused by design); production-build timings of the gallery; touch on hardware; a screen reader.

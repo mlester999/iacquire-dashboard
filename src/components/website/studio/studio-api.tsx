@@ -6,6 +6,10 @@ import {
   deleteAssetAction, getDraftAction, listAssetsAction, listVersionsAction, preflightAction, previewVersionAction, publishAction, regenerateDraftAction, restoreVersionAction, saveDraftAction, saveVersionAction,
   setAssetAltAction, submitForApprovalAction, suggestEditAction, templateUpdateAction, listComponentsAction, saveComponentAction, deleteComponentAction,
 } from "@/app/actions/website";
+import { listBookingOptionsAction } from "@/app/actions/website-booking";
+import { listWebsiteFormsAction } from "@/app/actions/crm-forms";
+import type { BookingOptions } from "@/lib/website/booking";
+import type { SiteFormOptions } from "@/lib/crm/forms/website";
 import type { SaveOutcome } from "@/lib/website/draft-saver";
 import type { Section, SiteContent } from "@/lib/website/doc";
 import type { Issue } from "@/lib/website/lint";
@@ -62,6 +66,10 @@ export interface StudioApi {
   listComments?(): Promise<Res<CommentView[]>>;
   addComment?(body: string, nodeId: string | null, pageSlug: string | null): Promise<Res<{ id: string }>>;
   resolveComment?(id: string, resolved: boolean): Promise<Res<Record<string, never>>>;
+  /** The workspace's calendars, for the booking element. Optional: without it the element shows labelled examples. */
+  listBookingOptions?(): Promise<Res<BookingOptions>>;
+  /** The workspace's native CRM forms, for the form element. Optional: without it the element always uses the built-in enquiry form. */
+  listForms?(): Promise<Res<SiteFormOptions>>;
 }
 
 export function createServerStudioApi(orgId?: string): StudioApi {
@@ -86,6 +94,8 @@ export function createServerStudioApi(orgId?: string): StudioApi {
     publish: (ack, note) => publishAction(ack, note, orgId),
     submitForApproval: () => submitForApprovalAction(orgId),
     listAssets: () => listAssetsAction(orgId),
+    listBookingOptions: () => listBookingOptionsAction(orgId),
+    listForms: () => listWebsiteFormsAction(orgId),
     async uploadAsset(file, kind, alt) {
       const form = new FormData();
       form.set("file", file);

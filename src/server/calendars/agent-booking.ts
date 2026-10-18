@@ -7,8 +7,8 @@ import { automationGate } from "@/server/automation/gate";
 import { createApproval } from "@/server/approvals/service";
 import { queueOutbound } from "@/server/messaging/send";
 import { systemActor, type CrmActor } from "@/server/crm/actor";
-import { loadWorkspace } from "@/server/crm/workspace";
-import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
+import { isSwitching, loadWorkspace } from "@/server/crm/workspace";
+import { computeSlots, DRAFT_CALENDAR_MESSAGE, loadBookingContext } from "@/server/calendars/availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
 import { formatSlot } from "@/lib/appointments";
 import type { BookingRequest, BookingResult } from "@/server/appointments/booking";
@@ -18,7 +18,10 @@ import type { AvailabilityOptions, AvailabilityResult } from "@/server/appointme
 // appointments are native, that flow books native appointment types instead of GoHighLevel calendars. In this flow `calendarId` names
 // the native appointment type (a calendar's default type when a calendar id is given).
 
-/** Whether this workspace's booking requests go to native calendars: appointments are native and at least one calendar is set up. */
+/**
+ * Whether this workspace's booking requests go to native calendars: appointments are native and at least one calendar is set up. A draft
+ * calendar counts here (the workspace's appointments are native either way); it is resolveType that refuses to book it.
+ */
 export async function bookingIsNative(db: Queryable, orgId: string): Promise<boolean> {
   const ws = await loadWorkspace(db, orgId).catch(() => null);
   if (!ws || ws.capabilities.appointments !== "native") return false;
@@ -26,31 +29,48 @@ export async function bookingIsNative(db: Queryable, orgId: string): Promise<boo
   return cal.rows.length > 0;
 }
 
-/** The appointment type a request is for: the type itself, a calendar's first type, or the default calendar's first type. */
-async function resolveType(db: Queryable, orgId: string, ref: string | null | undefined): Promise<string | null> {
+type Resolved = { typeId: string } | { refused: string };
+
+const NO_TYPE = "No appointment type is set up yet.";
+const DRAFT_ONLY = "This workspace's calendars are still drafts, so they take no bookings yet. Verify and activate a calendar first.";
+
+/**
+ * The appointment type a request is for: the type itself, a calendar's first type, or the default calendar's first type. Only active
+ * calendars are ever chosen: a request that names a type or calendar in a draft is refused (never quietly moved to another calendar), and
+ * the fallback skips drafts.
+ */
+async function resolveType(db: Queryable, orgId: string, ref: string | null | undefined): Promise<Resolved> {
   if (ref && /^[0-9a-f-]{36}$/i.test(ref)) {
-    const t = await db.query<{ id: string }>("select id from crm_appointment_types where id = $1 and org_id = $2 and archived_at is null", [ref, orgId]);
-    if (t.rows[0]) return t.rows[0].id;
-    const c = await db.query<{ id: string }>(
-      "select t.id from crm_appointment_types t join crm_calendars c on c.id = t.calendar_id where c.id = $1 and c.org_id = $2 and c.archived_at is null and t.archived_at is null order by t.position limit 1",
+    const t = await db.query<{ id: string; status: string }>(
+      "select t.id, c.status from crm_appointment_types t join crm_calendars c on c.id = t.calendar_id and c.org_id = t.org_id where t.id = $1 and t.org_id = $2 and t.archived_at is null",
       [ref, orgId],
     );
-    if (c.rows[0]) return c.rows[0].id;
+    if (t.rows[0]) return t.rows[0].status === "draft" ? { refused: DRAFT_CALENDAR_MESSAGE } : { typeId: t.rows[0].id };
+    const c = await db.query<{ id: string | null; status: string }>(
+      `select c.status, (select t.id from crm_appointment_types t where t.calendar_id = c.id and t.org_id = c.org_id and t.archived_at is null order by t.position limit 1) as id
+       from crm_calendars c where c.id = $1 and c.org_id = $2 and c.archived_at is null`,
+      [ref, orgId],
+    );
+    if (c.rows[0]?.status === "draft") return { refused: DRAFT_CALENDAR_MESSAGE };
+    if (c.rows[0]?.id) return { typeId: c.rows[0].id };
   }
   const d = await db.query<{ id: string }>(
-    `select t.id from crm_appointment_types t join crm_calendars c on c.id = t.calendar_id
-     where c.org_id = $1 and c.archived_at is null and t.archived_at is null order by c.is_default desc, c.created_at, t.position limit 1`,
+    `select t.id from crm_appointment_types t join crm_calendars c on c.id = t.calendar_id and c.org_id = t.org_id
+     where c.org_id = $1 and c.archived_at is null and c.status = 'active' and t.archived_at is null order by c.is_default desc, c.created_at, t.position limit 1`,
     [orgId],
   );
-  return d.rows[0]?.id ?? null;
+  if (d.rows[0]) return { typeId: d.rows[0].id };
+  const drafts = await db.query("select 1 from crm_calendars where org_id = $1 and archived_at is null and status = 'draft' limit 1", [orgId]);
+  return { refused: drafts.rows.length ? DRAFT_ONLY : NO_TYPE };
 }
 
 /** Native availability in the shape the Appointment Setter and the Appointments page already use. */
 export async function nativeAvailability(orgId: string, opts: AvailabilityOptions = {}): Promise<AvailabilityResult> {
   const now = opts.now ?? new Date();
   return withSystem(async (db) => {
-    const typeId = await resolveType(db, orgId, opts.calendarId);
-    if (!typeId) return { ok: false, reason: "no_calendar", detail: "No appointment type is set up yet." };
+    const resolved = await resolveType(db, orgId, opts.calendarId);
+    if ("refused" in resolved) return { ok: false, reason: "no_calendar", detail: resolved.refused };
+    const typeId = resolved.typeId;
     const ctx = await loadBookingContext(db, orgId, typeId);
     const from = opts.from ?? now;
     const to = opts.to ?? new Date(from.getTime() + 7 * 86_400_000);
@@ -78,8 +98,9 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
   const held = await withSystem(async (db) => {
     const c = await db.query<{ display_name: string; timezone: string | null; deleted_at: Date | null }>("select display_name, timezone, deleted_at from contacts where id = $1 and org_id = $2", [req.contactId, req.orgId]);
     if (!c.rows[0] || c.rows[0].deleted_at) return { kind: "refused" as const, reason: "contact_unusable" as const, detail: "That contact can't be booked." };
-    const typeId = await resolveType(db, req.orgId, req.calendarId);
-    if (!typeId) return { kind: "refused" as const, reason: "no_calendar" as const, detail: "No appointment type is set up yet." };
+    const resolved = await resolveType(db, req.orgId, req.calendarId);
+    if ("refused" in resolved) return { kind: "refused" as const, reason: "no_calendar" as const, detail: resolved.refused };
+    const typeId = resolved.typeId;
     const ctx = await loadBookingContext(db, req.orgId, typeId);
     const policy = await db.query<{ ai_booking_enabled: boolean }>("select ai_booking_enabled from appointment_settings where org_id = $1", [req.orgId]);
     await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`crm-cal:${ctx.calendar.id}`]);
@@ -88,9 +109,12 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
     if (same.rows[0] && HOLDING.includes(same.rows[0].status)) return { kind: "existing" as const, booking: same.rows[0] };
     // People may book inside the notice period; the AI follows the type's notice rule.
     const slots = await computeSlots(db, ctx, { from: new Date(req.startAt.getTime() - 60_000), to: new Date(req.startAt.getTime() + 60_000), now, ignoreNotice: req.actor.kind === "staff" });
-    if (!slots.some((s) => new Date(s.start).getTime() === req.startAt.getTime())) return { kind: "refused" as const, reason: "slot_taken" as const, detail: "That time is no longer free." };
-    const pending = await db.query("select 1 from appointment_bookings where org_id = $1 and provider = 'native' and calendar_id = $2 and start_at = $3 and status in ('awaiting_approval', 'requested', 'needs_manual')", [req.orgId, typeId, req.startAt]);
-    if (pending.rows.length && ctx.type.capacity === 1) return { kind: "refused" as const, reason: "slot_taken" as const, detail: "That time is already being booked." };
+    const slot = slots.find((s) => new Date(s.start).getTime() === req.startAt.getTime());
+    if (!slot) return { kind: "refused" as const, reason: "slot_taken" as const, detail: "That time is no longer free." };
+    // Requests still waiting for approval hold their place: one per free host (round robin), one in all for a collective, one per seat for a group.
+    const pending = await db.query<{ n: string }>("select count(*)::text as n from appointment_bookings where org_id = $1 and provider = 'native' and calendar_id = $2 and start_at = $3 and status in ('awaiting_approval', 'requested', 'needs_manual')", [req.orgId, typeId, req.startAt]);
+    const room = ctx.type.capacity > 1 ? slot.remaining ?? 1 : ctx.calendar.assignment === "collective" ? 1 : slot.hostIds.length;
+    if (Number(pending.rows[0].n) >= room) return { kind: "refused" as const, reason: "slot_taken" as const, detail: "That time is already being booked." };
     if (same.rows[0]) await db.query("update appointment_bookings set idempotency_key = left(idempotency_key, 100) || ':' || id::text where id = $1", [same.rows[0].id]);
     const end = new Date(req.startAt.getTime() + ctx.type.durationMinutes * 60_000);
     const ins = await db.query<{ id: string }>(
@@ -116,7 +140,8 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
       await db.query("update appointment_bookings set status = 'cancelled', failure_reason = $2 where id = $1", [held.bookingId, gate.detail.slice(0, 300)]);
       return { kind: "blocked" as const, detail: gate.detail };
     }
-    if (gate.decision === "allow" && held.aiBooking) return { kind: "proceed" as const };
+    // While a CRM provider switch cuts over, an AI booking waits for a person's yes instead of going straight in.
+    if (gate.decision === "allow" && held.aiBooking && !(await isSwitching(db, req.orgId))) return { kind: "proceed" as const };
     const label = formatSlot(req.startAt.toISOString(), held.timezone);
     const approvalId = await createApproval(db, {
       orgId: req.orgId, agentId: req.actor.agentId, kind: "appointment_booking", title: `Book ${held.contactName || "a customer"} for ${label}`,

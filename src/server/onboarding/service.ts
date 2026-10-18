@@ -298,7 +298,19 @@ async function connectionFacts(db: Queryable, orgId: string): Promise<Connection
     email: { enabled: false, registration: "not_started" },
   };
   for (const c of channels) channelMap[c.channel] = { enabled: c.enabled, registration: c.registration_status };
-  return { crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, websiteDomainVerified: false, invitedStaff: staff };
+  // On iAcquire CRM nothing is "linked": the CRM is set up once an industry Blueprint is applied, and a calendar counts once someone has a
+  // connected calendar or there is an active iAcquire calendar with a host. GoHighLevel (and hybrid) workspaces keep the location facts.
+  const mode = ((await db.query<{ mode: "native" | "ghl" | "hybrid" }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0]?.mode ?? "native");
+  if (mode === "native") {
+    const blueprint = Number(await one("select count(*) as n from crm_blueprint_applications where org_id = $1 and status in ('applied', 'partially_applied')"));
+    const calendar = Number(await one(
+      `select (select count(*) from crm_calendar_connections where org_id = $1 and status = 'connected')
+            + (select count(*) from crm_calendars c where c.org_id = $1 and c.status = 'active' and c.archived_at is null
+                 and exists (select 1 from crm_calendar_members m where m.calendar_id = c.id and m.org_id = c.org_id and m.active)) as n`,
+    ));
+    return { crmMode: mode, crmLinked: blueprint > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendar > 0, websiteDomainVerified: false, invitedStaff: staff };
+  }
+  return { crmMode: mode, crmLinked: crm > 0, aiEmployeesVerified: online, aiEmployeesTotal: total, automationMapped: mapped > 0, channels: channelMap, calendarConnected: calendars > 0, websiteDomainVerified: false, invitedStaff: staff };
 }
 
 /** Brand images and knowledge documents already in the workspace, so file questions can show what is uploaded. */

@@ -5,21 +5,24 @@ import { CheckCircle2, Eye, Lock, PencilLine, Plug, ShieldCheck } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { setPermissionOverrideAction, updateWorkspaceSettingsAction } from "@/app/actions/crm";
 import { Avatar, PageTitle, ReadOnlyNotice, useCrmAction } from "@/components/crm/ui";
 import { CAPABILITY_LABELS, CRM_CAPABILITIES, CRM_MODE_LABELS, CRM_MODES, type CrmMode } from "@/lib/crm/types";
 import { DELEGABLE_PERMISSION_INFO, DELEGABLE_PERMISSIONS, type DelegablePermission } from "@/lib/permissions";
 import type { CrmWorkspace } from "@/server/crm/workspace";
+import type { ProviderSwitchState } from "@/server/crm/provider-switch";
+import { ProviderSwitchWizard } from "@/components/crm/provider-switch/wizard";
 import type { MemberAccess } from "@/server/crm/permissions";
 import type { SupportSessionLogEntry } from "@/server/crm/actor";
 import type { CrmScope } from "@/server/crm/page";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 // ---------------------------------------------------------------------------
 // CRM provider
 // ---------------------------------------------------------------------------
 
-export function ProviderSettings({ scope, workspace, canEditDefaults }: { scope: CrmScope; workspace: CrmWorkspace; canEditDefaults: boolean }) {
+export function ProviderSettings({ scope, workspace, canEditDefaults, switchState }: { scope: CrmScope; workspace: CrmWorkspace; canEditDefaults: boolean; switchState: ProviderSwitchState }) {
   const { run, busy } = useCrmAction();
   const [currency, setCurrency] = React.useState(workspace.defaultCurrency);
   const [callingCode, setCallingCode] = React.useState(workspace.defaultCallingCode ?? "");
@@ -62,16 +65,17 @@ export function ProviderSettings({ scope, workspace, canEditDefaults }: { scope:
         <div className="flex items-start gap-3">
           <Plug className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <div className="text-[13px] leading-relaxed text-ink-2">
-            <p className="font-medium text-ink">GoHighLevel connection: {workspace.ghlConnected ? "connected" : "not connected"}</p>
+            <p className="font-medium text-ink">GoHighLevel connection: {workspace.ghlConnected ? "connected (read-only)" : "not connected"}</p>
             <p className="mt-1 text-muted">
               {workspace.ghlConnected
-                ? "Your GoHighLevel location stays connected and untouched. Moving a capability to iAcquire is a guided migration with a preview, a backup, and a way back, run together with the iAcquire team. It isn't a switch you flip here."
-                : "This workspace doesn't need GoHighLevel. Everything runs in iAcquire."}
+                ? "Your GoHighLevel location stays connected and untouched: iAcquire only reads it. Moving a capability is a guided switch below, with a preview, a backup, a dry run and a way back."
+                : "This workspace doesn't need GoHighLevel. Everything runs in iAcquire. Moving records in from GoHighLevel needs the location connected read-only first (iAcquire support connects it)."}
             </p>
-            {workspace.switching && <p className="mt-2 font-medium text-warning-ink">A provider change is in progress. Some records are read-only until it finishes.</p>}
           </div>
         </div>
       </Card>
+
+      <ProviderSwitchWizard scope={scope} initial={switchState} />
 
       <Card className="p-4">
         <h3 className="text-[14px] font-semibold text-ink">Defaults</h3>
@@ -198,7 +202,7 @@ export function SupportAccessLog({ sessions }: { sessions: SupportSessionLogEntr
         <Card><EmptyState icon={<Eye className="size-5" />} title="No support access yet" description="Nobody from the iAcquire team has opened your CRM." /></Card>
       ) : (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
+          <div role="region" aria-label="Support access history table" tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <table className="w-full min-w-[720px] text-[13px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
@@ -219,7 +223,7 @@ export function SupportAccessLog({ sessions }: { sessions: SupportSessionLogEntr
                       {s.active && <Badge tone="primary" className="ml-1.5">Active now</Badge>}
                     </td>
                     <td className="max-w-[280px] px-3 py-2.5 text-ink-2"><span className="line-clamp-2">{s.reason}</span></td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{relativeTime(s.startedAt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted"><RelativeTime iso={s.startedAt} /></td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{s.views}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{s.changes}</td>
                   </tr>

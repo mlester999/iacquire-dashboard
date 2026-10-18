@@ -13,6 +13,14 @@ The asset filename includes the template key and the leading characters of both 
 
 The generator hashes sorted `.ts`, `.tsx`, and `.css` files immediately inside `src/components/website/render`, including each filename and its file bytes, then the file bytes of `src/lib/website/css.ts`, `fonts.ts`, and `font-keys.ts`, in that order. Regression tests recompute this hash so visual renderer changes require regeneration even if the revision constant was accidentally left unchanged.
 
+## 2026-10-18 thumbnail refresh
+
+With `STUDIO_QA_URL=http://127.0.0.1:3230`, `npm run thumbnails:generate` regenerated all 50 canonical thumbnails and their 2× derivatives against the isolated loopback QA server. It pruned 100 superseded image files and wrote the complete manifest after every capture succeeded. `npm test -- tests/website-thumbnail-contract.test.ts --reporter=dot` passed all 5 checks, including the renderer hash and the decoded dimensions of every thumbnail. The representative `luxe.maison` comparison image was inspected locally. The all-50 gallery-to-preview comparison (`npm run studio:qa:thumbnails`) was not part of this refresh.
+
+### Full comparison follow-up
+
+The follow-up used `STUDIO_QA_URL=http://127.0.0.1:3210` against the isolated local Studio app. `npm run thumbnails:generate` captured all 50 templates and their 2× derivatives and wrote the manifest after every capture succeeded; no superseded files were removed in this run. The thumbnail contract test passed **5/5**. `npm run studio:qa:thumbnails` then compared all **50/50** gallery cards with their live previews: **0 flagged**. Calibration measured 454 wrong-template pairs; the worst real-pair mean difference was 1.019%, the closest wrong pair was 6.888% (15.4% of pixels changed), and the threshold was 2.486%, so real and wrong pairs remained separated. The `luxe.maison` comparison was inspected. The report and 50 comparison images are in `.data/studio-qa/thumbnail-compare.json` and `.data/studio-qa/thumbnail-comparisons/`.
+
 Built-in starter content currently declares revision 3 in `starter-content-catalog.ts` (the history is in the comment above it). Changing starter content requires a new built-in revision. Changing the renderer requires updating `TEMPLATE_RENDER_REVISION` in `thumbnail-contract.ts` (currently `studio-2026-10-15-v3`) and regenerating captures. Existing customer documents and published custom-template snapshots keep their own saved content and versions; a built-in revision only reaches new websites.
 
 The renderer hash is taken over file bytes, so it is sensitive to line endings. Several files in this repository are committed with CRLF line endings; keep them that way (a scripted edit that rewrites a CRLF file as LF changes the hash and bloats the diff), and do not enable `core.autocrlf` conversion on a machine that regenerates or verifies thumbnails.

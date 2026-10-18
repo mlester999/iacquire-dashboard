@@ -43,7 +43,11 @@
     ".next-sites-qa/types/**/*.ts",
     ".next-sites-qa/dev/types/**/*.ts",
     ".next-studio-premium-qa/types/**/*.ts",
-    ".next-studio-premium-qa/dev/types/**/*.ts"
+    ".next-studio-premium-qa/dev/types/**/*.ts",
+    ".next-pdf-demo/types/**/*.ts",
+    ".next-pdf-demo/dev/types/**/*.ts",
+    ".next-crm-qa/types/**/*.ts",
+    ".next-crm-qa/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -2,6 +2,8 @@ import "server-only";
 import { withUser, type Queryable } from "@/server/db";
 import type { OrgContext } from "@/server/tenancy/context";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { resolveCapabilities } from "@/server/crm/workspace";
+import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 
 export type Metric = { value: number; available: true } | { value: null; available: false; reason: string };
 
@@ -12,6 +14,31 @@ export interface SourceAvailability {
   crm: boolean;
   calendar: boolean;
   crmDetail: string;
+  /**
+   * Which of the dashboard's deal and appointment numbers come from iAcquire's own CRM. When true the counts use native records only
+   * (provider 'native', won by the date a deal closed); when false they come from the GoHighLevel copies exactly as before.
+   */
+  native: NativeCrmOwners;
+}
+
+export interface NativeCrmOwners {
+  opportunities: boolean;
+  appointments: boolean;
+}
+
+/**
+ * Whether iAcquire's own CRM owns deals and appointments for a workspace (its mode, or in hybrid mode the explicit owner). Under row-level
+ * security this needs crm.view; without it, or for a workspace that has no CRM settings yet, the answer is the GoHighLevel-era one (false).
+ */
+export async function nativeCrmOwners(db: Queryable, orgId: string): Promise<NativeCrmOwners> {
+  const { rows } = await db.query<{ mode: CrmMode; capability: string | null; provider: CapabilityProvider | null }>(
+    `select w.mode, p.capability, p.provider from crm_workspaces w
+     left join crm_capability_providers p on p.org_id = w.org_id and p.capability in ('opportunities', 'appointments') where w.org_id = $1`,
+    [orgId],
+  );
+  if (!rows[0]) return { opportunities: false, appointments: false };
+  const owners = resolveCapabilities(rows[0].mode, rows.flatMap((r) => (r.capability && r.provider ? [{ capability: r.capability, provider: r.provider }] : [])));
+  return { opportunities: owners.opportunities === "native", appointments: owners.appointments === "native" };
 }
 
 export async function sourceAvailability(db: Queryable, orgId: string, isDemo: boolean): Promise<SourceAvailability> {
@@ -24,10 +51,12 @@ export async function sourceAvailability(db: Queryable, orgId: string, isDemo: b
     "select (select count(*)::int from crm_opportunities where org_id = $1) as opp, (select count(*)::int from appointment_refs where org_id = $1) as appt",
     [orgId],
   );
-  // Demo workspaces show their seeded sample records; real tenants need a verified connection.
-  const crm = status("ghl") === "connected" || (isDemo && cached[0].opp > 0);
-  const calendar = status("ghl_calendar") === "connected" || (isDemo && cached[0].appt > 0);
-  return { crm, calendar, crmDetail: rows.find((r) => r.provider === "ghl")?.detail ?? "Not connected" };
+  const native = await nativeCrmOwners(db, orgId);
+  // Demo workspaces show their seeded sample records; real tenants need a verified connection, or iAcquire's own CRM owning the records
+  // (there is nothing to connect: deals and appointments are kept here).
+  const crm = status("ghl") === "connected" || (isDemo && cached[0].opp > 0) || native.opportunities;
+  const calendar = status("ghl_calendar") === "connected" || (isDemo && cached[0].appt > 0) || native.appointments;
+  return { crm, calendar, crmDetail: native.opportunities ? "iAcquire CRM" : (rows.find((r) => r.provider === "ghl")?.detail ?? "Not connected"), native };
 }
 
 export interface DashboardData {
@@ -69,13 +98,21 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
 
     let appointmentsBooked: Metric = unavailable("Calendar not connected");
     let upcoming: Metric = unavailable("Calendar not connected");
-    if (sources.calendar) {
+    if (sources.calendar && sources.native.appointments) {
+      // iAcquire's own calendar: native appointments only (GoHighLevel copies kept from before a switch are not counted twice).
+      appointmentsBooked = avail(await one("select count(*)::int as n from appointment_refs where org_id = $1 and provider = 'native' and status in ('new', 'confirmed', 'showed') and start_at > now() - interval '30 days'"));
+      upcoming = avail(await one("select count(*)::int as n from appointment_refs where org_id = $1 and provider = 'native' and status in ('new', 'confirmed') and start_at > now()"));
+    } else if (sources.calendar) {
       appointmentsBooked = avail(await one("select count(*)::int as n from appointment_refs where org_id = $1 and status in ('new', 'confirmed', 'showed') and start_at > now() - interval '30 days'"));
       upcoming = avail(await one("select count(*)::int as n from appointment_refs where org_id = $1 and status in ('new', 'confirmed') and start_at > now()"));
     }
     let activeOpps: Metric = unavailable("CRM not connected");
     let won: Metric = unavailable("CRM not connected");
-    if (sources.crm) {
+    if (sources.crm && sources.native.opportunities) {
+      // Native deals: open ones now, and won ones by the date they closed (a native deal has no GoHighLevel sync time).
+      activeOpps = avail(await one("select count(*)::int as n from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'open'"));
+      won = avail(await one("select count(*)::int as n from crm_opportunities where org_id = $1 and provider = 'native' and archived_at is null and status = 'won' and closed_at > now() - interval '30 days'"));
+    } else if (sources.crm) {
       activeOpps = avail(await one("select count(*)::int as n from crm_opportunities where org_id = $1 and status = 'open'"));
       won = avail(await one("select count(*)::int as n from crm_opportunities where org_id = $1 and status = 'won' and coalesce(remote_updated_at, synced_at) > now() - interval '30 days'"));
     }
@@ -146,7 +183,9 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
       { key: "profile", label: "Company setup completed", done: Boolean(ctx.org.onboardingCompletedAt), href: "/onboarding" },
       { key: "knowledge", label: "Knowledge Center has 3+ sections", done: knowledgeSections >= 3, href: "/knowledge" },
       { key: "team", label: "Invite a teammate", done: members >= 2, href: "/settings/team" },
-      { key: "crm", label: "CRM connected by iAcquire", done: sources.crm, href: "/settings/integrations" },
+      sources.native.opportunities
+        ? { key: "crm", label: "iAcquire CRM ready", done: true, href: "/crm" }
+        : { key: "crm", label: "CRM connected by iAcquire", done: sources.crm, href: "/settings/integrations" },
       { key: "agent", label: "First AI employee online", done: online > 0, href: "/workforce" },
       { key: "chat", label: "First conversation with your AI team", done: conversations > 0, href: "/workforce" },
     ];

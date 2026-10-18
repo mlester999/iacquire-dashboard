@@ -4,11 +4,18 @@ import { withSystem } from "@/server/db";
 import { env } from "@/server/env";
 import { loadGhlMapping } from "@/server/integrations/ghl";
 import type { Channel } from "@/lib/messaging";
+import type { TransportResult, TransportSendRequest, TransportSender } from "@/server/messaging/transports/types";
 
 // Contract sources: GoHighLevel OpenAPI (conversations: POST /conversations/messages, Version 2021-04-15) and the
-// GoHighLevel webhook authentication guide (x-wh-signature, RSA-SHA256), read 2026-10-14.
+// GoHighLevel webhook authentication guide (x-wh-signature, RSA-SHA256), read 2026-10-14; the send body and response were re-checked
+// against GoHighLevel/api-v2-docs specs/conversations.json on 2026-10-16 (docs/messaging-providers.md).
 // Nothing here has been exercised against a live GoHighLevel location. Sending is off unless GHL_WRITES_ENABLED=true.
 
+/**
+ * The original GoHighLevel request shape. It is still what ghlProvider (and any provider written against it, such as test
+ * recorders) receives: send.ts now speaks the provider-neutral TransportSendRequest and the GoHighLevel transport
+ * (transports/ghl.ts) converts. The optional fields carry the same information a native transport gets.
+ */
 export interface ProviderSendRequest {
   orgId: string;
   channel: Channel;
@@ -21,12 +28,19 @@ export interface ProviderSendRequest {
   fromIdentity: string | null;
   /** Our message id, for logs only. GoHighLevel has no idempotency key, so sends are at-most-once. */
   messageId: string;
+  /** The normalized destination address (GoHighLevel itself addresses the contact). */
+  to?: string;
+  sender?: TransportSender;
+  inReplyTo?: TransportSendRequest["inReplyTo"];
+  references?: TransportSendRequest["references"];
+  unsubscribeUrl?: TransportSendRequest["unsubscribeUrl"];
+  template?: TransportSendRequest["template"];
 }
 
-export type ProviderResult =
-  | { ok: true; providerMessageId: string; providerConversationId?: string }
-  | { ok: false; retryable: boolean; error: string; /** Not attempted at all: disabled or not connected. */ blocked?: boolean; reconnectRequired?: boolean };
+/** Same as TransportResult; the name is kept for code written against the original contract. */
+export type ProviderResult = TransportResult;
 
+/** The original provider contract (name + send). New transports implement ChannelTransport from transports/types.ts. */
 export interface ChannelProvider {
   name: string;
   send(req: ProviderSendRequest): Promise<ProviderResult>;

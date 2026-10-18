@@ -23,7 +23,15 @@ describe("resumable preparation (local database; external services unavailable)"
     const { org, admin } = await fixture();
     await withSystem((db) => queueOnboardingPreparations(db, org.id, admin.id));
     await withSystem((db) => queueOnboardingPreparations(db, org.id, admin.id));
-    expect((await getPreparationJobs(admin, org.id)).jobs).toHaveLength(4);
+    // A new client's CRM is iAcquire's own (native), so there is no GoHighLevel sub-account to map: three onboarding jobs, not four.
+    const nativeJobs = (await getPreparationJobs(admin, org.id)).jobs;
+    expect(nativeJobs.map((j) => j.operation).sort()).toEqual(["manual_hermes_profiles", "prepare_ai_configuration", "prepare_automation_configuration"]);
+    // A GoHighLevel client still gets the manual mapping job, once.
+    const ghl = await fixture();
+    await withSystem((db) => db.query("update crm_workspaces set mode = 'ghl' where org_id = $1", [ghl.org.id]));
+    await withSystem((db) => queueOnboardingPreparations(db, ghl.org.id, ghl.admin.id));
+    await withSystem((db) => queueOnboardingPreparations(db, ghl.org.id, ghl.admin.id));
+    expect((await getPreparationJobs(ghl.admin, ghl.org.id)).jobs.map((j) => j.operation).sort()).toEqual(["manual_ghl_mapping", "manual_hermes_profiles", "prepare_ai_configuration", "prepare_automation_configuration"]);
     const input = { operation: "prepare_ai_configuration" as const, idempotencyKey: "test:same:configuration" };
     const id = await queuePreparation(admin, org.id, input);
     expect(await queuePreparation(admin, org.id, input)).toBe(id);

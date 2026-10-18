@@ -52,6 +52,12 @@ export interface TenantDetail {
     has_credential: boolean;
     last_health_check_at: Date | null;
     last_health_detail: string | null;
+    tool_inventory_contract: string | null;
+    tool_inventory_digest: string | null;
+    tool_inventory_verified_at: Date | null;
+    tool_inventory_expires_at: Date | null;
+    tool_inventory_tool_count: number | null;
+    tool_inventory_detail: string | null;
     config_version: number | null;
     config_summary: string | null;
     held_versions: number;
@@ -108,6 +114,8 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       `select a.id, a.role_key, a.display_name, a.enabled, a.status, a.hermes_profile,
               substring(a.hermes_base_url from '^https?://([^/]+)') as hermes_host,
               (a.credential_id is not null) as has_credential, a.last_health_check_at, a.last_health_detail,
+              a.tool_inventory_contract, a.tool_inventory_digest, a.tool_inventory_verified_at,
+              a.tool_inventory_expires_at, a.tool_inventory_tool_count, a.tool_inventory_detail,
               v.version as config_version, v.summary as config_summary,
               (select count(*)::int from agent_config_versions h where h.agent_instance_id = a.id and h.status = 'pending_agency_review') as held_versions,
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as runs_30d,
@@ -277,6 +285,9 @@ export async function listAgencyAgents(user: SessionUser) {
       profile_check_detail: string | null; profile_check_at: Date | null;
       profile_verified_at: Date | null; profile_identity_verified: boolean | null; tool_permissions_status: string | null;
       full_capabilities_acknowledged: boolean;
+      tool_inventory_contract: string | null; tool_inventory_digest: string | null;
+      tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null;
+      tool_inventory_tool_count: number | null; tool_inventory_detail: string | null;
     }>(
       `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
               a.last_health_check_at,a.last_health_detail,a.last_health_ok,a.hermes_gateway_id,g.status as gateway_status,
@@ -289,7 +300,9 @@ export async function listAgencyAgents(user: SessionUser) {
               pc.detail as profile_check_detail,pc.checked_at as profile_check_at,
               pc.verified_at as profile_verified_at,pc.identity_verified as profile_identity_verified,
               pc.tool_permissions_status,
-              coalesce(ack_policy.id is not null and ack.verified_profile=a.hermes_profile and agent_policy.id is null,false) as full_capabilities_acknowledged
+              coalesce(ack_policy.id is not null and ack.verified_profile=a.hermes_profile and agent_policy.id is null,false) as full_capabilities_acknowledged,
+              a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,
+              a.tool_inventory_tool_count,a.tool_inventory_detail
        from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
        left join hermes_gateways g on g.id=a.hermes_gateway_id
        left join agency_hermes_profile_checks pc on pc.agent_instance_id=a.id and pc.org_id=a.org_id

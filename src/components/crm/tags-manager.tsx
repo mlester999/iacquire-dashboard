@@ -40,15 +40,17 @@ export function TagsManager({ scope, tags }: { scope: CrmScope; tags: TagView[] 
       {!tags.length ? (
         <Card><EmptyState icon={<Tags className="size-5" />} title="No tags yet" description="Create tags here, or add them straight from a contact. Imports and forms can create tags too." action={canManage ? <Button variant="secondary" onClick={() => setEditing("new")}><Plus className="size-4" />Create a tag</Button> : undefined} /></Card>
       ) : (
-        <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
+        <Card className="max-w-full min-w-0 overflow-hidden p-0">
+          <div className="w-full min-w-0 max-w-full overflow-x-auto">
             <table className="w-full min-w-[560px] text-[13px]">
               <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5 text-left font-medium">Tag</th>
                   <th scope="col" className="px-3 py-2.5 text-right font-medium">Contacts</th>
                   <th scope="col" className="px-3 py-2.5 text-right font-medium">Companies</th>
-                  <th scope="col" className="w-12 px-3 py-2.5"><span className="sr-only">Actions</span></th>
+                  <th scope="col" className="relative w-12 px-3 py-2.5">
+                    <span className="sr-only absolute left-0 top-0">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">

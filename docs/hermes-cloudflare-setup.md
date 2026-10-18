@@ -46,7 +46,9 @@ Hermes profile's `API_SERVER_KEY` is a second, independent credential sent as
 2. On the VPS, verify the installed Hermes version and the API listener locally. Confirm the API
    responds on loopback at port `8642`; the previously reported `127.0.0.1:8642` address is not
    proof that the listener is currently present. Confirm a real profile's authenticated
-   `/p/<profile>/v1/capabilities` and `/p/<profile>/v1/toolsets` routes work before publishing it.
+   `/p/<profile>/v1/capabilities`, `/p/<profile>/v1/toolsets` and
+   `/p/<profile>/v1/tools?platform=api_server` routes work before publishing it. The last route is
+   required for the portal's complete-inventory gate and is absent from Hermes 0.21.5.
 3. In the existing Tunnel's published application routes, map hostname
    `hermes-api.iacquire.online` to `http://127.0.0.1:8642` only after the listener is confirmed.
    Keep the origin listener bound to loopback/private access; do not open port `8642` directly to

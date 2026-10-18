@@ -1,5 +1,7 @@
 import type * as React from "react";
 import type { ElementNode, SiteContent, SitePage } from "@/lib/website/doc";
+import type { SiteBookingData } from "@/lib/website/booking";
+import type { PublicFormDef } from "@/lib/crm/forms/spec";
 
 export interface ResolvedAsset {
   src: string;
@@ -47,6 +49,13 @@ export interface RenderCtx {
   h1Id: string | null;
   edit?: EditBridge;
   nonce?: string;
+  /** The workspace's public calendars, for booking elements. Filled on live pages and in the editor; absent in template previews. */
+  booking?: SiteBookingData | null;
+  /**
+   * The workspace's live native CRM forms by key, for form elements that name one. Filled on live pages and in the editor; absent in
+   * template previews. A form element whose key isn't here draws the built-in enquiry form.
+   */
+  forms?: Record<string, PublicFormDef> | null;
 }
 
 export const isEditing = (ctx: RenderCtx) => ctx.mode === "edit";

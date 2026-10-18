@@ -74,6 +74,7 @@ const STYLE_GROUPS: Record<ElementType, StyleGroup[]> = {
   image: ["spacing", "width", "media", "hover"], gallery: ["spacing", "width", "media"], collage: ["spacing", "width", "media"], video: ["spacing", "width", "media"], logo: ["spacing"], map: ["spacing", "width", "box"],
   group: ["spacing", "width", "box"], card: ["spacing", "width", "box", "hover"],
   services: BLOCK, steps: BLOCK, faq: BLOCK, testimonials: BLOCK, stats: BLOCK, logos: BLOCK, team: BLOCK, pricing: BLOCK, nav: ["spacing", "color"], form: BLOCK,
+  booking: ["spacing", "width", "color", "box"],
 };
 
 function StyleControls({ doc, id, type, device, actions }: { doc: SiteContent; id: string; type: ElementType; device: Device; actions: CanvasActions }) {
@@ -225,7 +226,12 @@ type Tab = "content" | "style" | "motion" | "responsive";
 function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: SiteContent; device: Device; actions: CanvasActions }) {
   const def = ELEMENT_DEFS[el.type];
   const [tab, setTab] = React.useState<Tab>("content");
-  const set = (key: string, value: unknown) => actions.commit(setProp(doc, el.id, key, value), { coalesce: `prop:${el.id}:${key}` });
+  const set = (key: string, value: unknown) => {
+    // A field another depends on (a booking element's calendar) clears that one, so an appointment type never points into the wrong calendar.
+    const dependents = def.fields.filter((f) => f.type === "bookingTypeRef" && f.calendarKey === key && el.props[f.key] !== "");
+    if (dependents.length && value !== el.props[key]) return actions.commit(patchProps(doc, el.id, { [key]: value, ...Object.fromEntries(dependents.map((f) => [f.key, ""])) }), { coalesce: `prop:${el.id}:${key}` });
+    actions.commit(setProp(doc, el.id, key, value), { coalesce: `prop:${el.id}:${key}` });
+  };
   const { assetUrl } = useServices();
   const imageSrc = el.type === "image" ? (el.props.src as ImageSrc) : null;
   const focalUrl = imageSrc?.kind === "asset" ? assetUrl(imageSrc.id) : imageSrc?.kind === "template" ? templateImageUrl(imageSrc.id) : null;
@@ -251,7 +257,7 @@ function ElementInspector({ el, doc, device, actions }: { el: ElementNode; doc: 
         <Group title="Content">
           {def.fields.filter((f) => showField(f, el.props)).map((f) => (
             <React.Fragment key={f.key}>
-              <FieldEditor spec={f} scope={`el-${el.id}`} value={el.props[f.key]} onChange={(v) => set(f.key, v)} />
+              <FieldEditor spec={f} scope={`el-${el.id}`} value={el.props[f.key]} onChange={(v) => set(f.key, v)} siblings={el.props} />
               {el.type === "image" && f.key === "fit" && focalUrl && (
                 <Row label="Focal point">
                   <FocalPoint label="Image focal point" url={focalUrl} x={typeof el.props.posX === "number" ? el.props.posX : 50} y={typeof el.props.posY === "number" ? el.props.posY : 50}

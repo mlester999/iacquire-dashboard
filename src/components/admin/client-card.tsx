@@ -171,7 +171,7 @@ export function ClientCard({ r, timeZone, index }: { r: ClientSetupRow; timeZone
           </div>
 
           <div className="min-w-0">
-            <h3 className="truncate text-[18px] font-semibold leading-snug tracking-[-0.025em] text-ink">{r.name}</h3>
+            <h2 className="truncate text-[18px] font-semibold leading-snug tracking-[-0.025em] text-ink">{r.name}</h2>
             <p className="mt-0.5 text-[12.5px] text-muted">{r.onboardingCompletedAt ? `Onboarded ${formatDate(r.onboardingCompletedAt, timeZone)}` : "Onboarding not submitted"}</p>
             <div className="mt-3 min-h-6">
               {r.contact ? (

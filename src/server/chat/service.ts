@@ -460,9 +460,11 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
   };
 
   try {
+    let startedRunId = "";
     try {
       const started = await startAgentRun(r.agentId, r.orgId, r.conn, r.request);
-      hermesRunId = started.runId;
+      startedRunId = started.runId;
+      hermesRunId = startedRunId;
     } catch (err) {
       if (err instanceof HermesError && ["unreachable", "auth_failed", "not_found", "timeout"].includes(err.kind)) {
         await markAgentDegraded(r.agentId, err.message);
@@ -484,11 +486,11 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
       // If capability discovery fails now, try the event stream; it has its own error handling.
     }
     if (!supportsEvents) {
-      await pollUntilComplete(hermesRunId);
+      await pollUntilComplete(startedRunId);
       return;
     }
 
-    for await (const ev of streamRunEvents(r.conn, hermesRunId, r.abort.signal)) {
+    for await (const ev of streamRunEvents(r.conn, startedRunId, r.abort.signal)) {
       switch (ev.type) {
         case "delta": {
           content += ev.text;

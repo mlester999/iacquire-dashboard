@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   addNoteAction, createOpportunityAction, createTaskAction, deleteNoteAction, editNoteAction, pinNoteAction, searchContactsAction, setTaskStatusAction, timelineAction,
 } from "@/app/actions/crm";
@@ -18,6 +18,7 @@ import type { CrmScope } from "@/server/crm/page";
 import type { TimelineItem } from "@/server/crm/timeline";
 import type { NoteView } from "@/server/crm/notes";
 import type { TaskView } from "@/server/crm/tasks";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 const SOURCE_ICON: Record<TimelineItem["source"], React.ComponentType<{ className?: string }>> = {
   activity: Activity, note: StickyNote, message: MessageSquare, appointment: CalendarClock, task: CheckCircle2, deal: Handshake,
@@ -52,7 +53,7 @@ export function Timeline({ scope, target, initial }: { scope: CrmScope; target: 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                   <p className="text-[13.5px] font-medium text-ink">{item.link ? <Link href={item.link.startsWith("/crm") ? item.link.replace(/^\/crm/, scope.base) : item.link} className="hover:underline">{item.title}</Link> : item.title}</p>
-                  <time className="shrink-0 text-[12px] text-muted" dateTime={item.at} title={new Date(item.at).toLocaleString()}>{relativeTime(item.at)}</time>
+                  <RelativeTime iso={item.at} timezone={scope.timezone} className="shrink-0 text-[12px] text-muted" />
                 </div>
                 {item.detail && <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{item.detail}</p>}
                 {item.actor && <p className="mt-0.5 text-[12px] text-faint">{item.actor}</p>}
@@ -122,7 +123,7 @@ export function NotesPanel({ scope, type, recordId, notes }: { scope: CrmScope; 
                       </Menu>
                     ) : null}
                   </div>
-                  <p className="mt-2 text-[12px] text-muted">{n.authorName ?? "Someone"} · {relativeTime(n.createdAt)}{n.updatedAt ? " · edited" : ""}{n.pinned ? " · pinned" : ""}</p>
+                  <p className="mt-2 text-[12px] text-muted">{n.authorName ?? "Someone"} · <RelativeTime iso={n.createdAt} timezone={scope.timezone} />{n.updatedAt ? " · edited" : ""}{n.pinned ? " · pinned" : ""}</p>
                 </>
               )}
             </li>

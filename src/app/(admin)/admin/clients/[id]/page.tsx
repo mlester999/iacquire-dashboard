@@ -7,6 +7,7 @@ import { AgencyPauseCard } from "@/components/admin/agency-pause-card";
 import { withSystem } from "@/server/db";
 import Link from "next/link";
 import { Contact } from "lucide-react";
+import { ClientBlueprintCard } from "@/components/crm/blueprints/client-blueprint-card";
 
 export const metadata = { title: "Client" };
 
@@ -32,6 +33,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
         <span className="flex items-center gap-2.5"><Contact className="size-4 text-primary" aria-hidden /><span><span className="font-medium text-ink">CRM workspace</span><span className="ml-2 text-muted">Opens with a recorded, time-limited support session</span></span></span>
         <span className="font-medium text-primary">Open CRM</span>
       </Link>
+      <ClientBlueprintCard user={user} orgId={id} timeZone={user.timezone} />
       <ClientDetail data={data} superAdmin={superAdmin} initialTab={tab ?? "overview"} timeZone={user.timezone} />
     </div>
   );

@@ -21,15 +21,34 @@ export async function credentialStoreReady(db: Queryable): Promise<boolean> {
   return rows[0]?.ready === true;
 }
 
-export type CredentialProvider = "hermes" | "ghl" | "n8n" | "llm";
+/** Providers whose secrets the vault holds. resend, twilio and meta_whatsapp are per-workspace messaging senders (migration 0031). */
+export type CredentialProvider = "hermes" | "ghl" | "n8n" | "llm" | "resend" | "twilio" | "meta_whatsapp" | "vapi" | "retell";
 
-/** Stores a multi-part provider credential as one secret for Supabase Vault. */
+/**
+ * A secret made of several parts (Twilio account SID and auth token, a Meta access token with its app secret) is stored as one vault
+ * secret: a single-line JSON object of strings. The transport that uses it parses it back with parseCredentialSecret.
+ */
 export function encodeCredentialSecret(parts: Record<string, string>): string {
-  const entries = Object.entries(parts).map(([key, value]) => [key, value.trim()] as const);
-  if (!entries.length || entries.some(([key, value]) => !/^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(key) || !value || /[\r\n]/.test(value))) {
+  const entries = Object.entries(parts).map(([k, v]) => [k, typeof v === "string" ? v.trim() : ""] as const);
+  if (!entries.length || entries.some(([k, v]) => !/^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(k) || !v || /[\r\n]/.test(v))) {
     throw new AppError("invalid_input", "Enter every part of the service credential.");
   }
   return JSON.stringify(Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b))));
+}
+
+/** Reads a multi-part secret back. Returns null (never the raw secret) when it is not the expected shape. */
+export function parseCredentialSecret<K extends string>(secret: string | null | undefined, keys: readonly K[]): Record<K, string> | null {
+  if (!secret) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(secret); } catch { return null; }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const out = {} as Record<K, string>;
+  for (const k of keys) {
+    const v = (parsed as Record<string, unknown>)[k];
+    if (typeof v !== "string" || !v.trim()) return null;
+    out[k] = v.trim();
+  }
+  return out;
 }
 
 /** Uses Supabase's managed encryption, not application-defined cryptography. */

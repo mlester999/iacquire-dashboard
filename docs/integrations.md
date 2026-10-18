@@ -26,12 +26,24 @@ Checked against the Hermes Agent source (`gateway/platforms/api_server.py`, `api
 
 | Call | Used for |
 | --- | --- |
-| `GET /v1/capabilities` | Health check: requires `features.run_submission` and `run_events_sse`; reads `run_stop`, `run_approval_response` |
-| `GET /v1/toolsets` → `{ object: "list", data: [{ name, enabled, tools[] }] }` | Health check refuses `online` if any restricted tool is enabled |
-| `POST /v1/runs` `{ input, instructions, session_id, conversation_history }` + `Idempotency-Key`, `X-Hermes-Session-Key` | Start a chat or research run |
+| `GET /v1/capabilities` | Health check: requires `features.run_submission` and either `run_events_sse` or `run_status`; reads `run_stop`, `run_approval_response`, and the informational `memory_write_api` / `admin_config_rw` flags |
+| `GET /v1/models` | Verifies the intended profile identity (never treats an alias as the primary identity) |
+| `GET /v1/toolsets` → `{ object: "list", data: [{ name, enabled, tools[] }] }` | Advertised configurable inventory only. The health check refuses `online` if any restricted or unreviewed tool is enabled, but this endpoint cannot prove plugin/default-MCP/Tool Search completeness |
+| `GET /v1/tools?platform=api_server` → complete runtime catalog with per-tool provenance | Required proof for live use. The verifier requires an explicit `platform_toolsets.api_server` allowlist, exactly the reviewed toolsets, only reviewed tools, no MCP/plugin/connector/Tool Search bridge entries, two matching reads and a digest matching the last health check. Absence (HTTP 404 on Hermes 0.21.5) is reported as `contract_unavailable` |
+| `POST /v1/runs` `{ input, instructions, session_id, conversation_history }` + `Idempotency-Key`, `X-Hermes-Session-Key` | Start a chat or research run; the adapter re-verifies the complete inventory immediately before submission and refuses before HTTP if it fails |
 | `GET /v1/runs/{id}/events` (SSE) | `message.delta`, `message.interim`, `tool.started`, `tool.completed`, `tool.failed`, `approval.request`, `run.completed`, `run.failed`, `run.cancelled`, `run.interrupted` |
+| `GET /v1/runs/{id}` | Non-streaming fallback: poll run status and render the real completed output once |
 | `POST /v1/runs/{id}/stop` | Stop generation |
 | `POST /v1/runs/{id}/approval` `{ choice: "once" \| "deny", request_id }` | Resolve a paused tool approval from the Approval Center |
+
+The live gateway was audited read-only on 2026-10-18. Authentication, all six internal profile
+identities, run capabilities and the known built-in exposure passed: each profile now enables only
+the five reviewed toolsets with six built-in tools and no restricted tools. The deployed Hermes
+`0.21.5` gateway does **not** expose `GET /v1/tools`, so plugin/default-MCP/Tool Search completeness
+still cannot be proven. All six employees remain `provisioning`; no run was started. See
+[hermes-live-acceptance.md](hermes-live-acceptance.md) and
+[hermes-tool-inventory.md](hermes-tool-inventory.md) for the exact blocker, contract and
+remediation.
 
 With a multiplexed gateway, each profile is served under `/p/<profile>/` and authenticated with
 that profile's own `API_SERVER_KEY`. For `hermes-api.iacquire.online`, Cloudflare Access also
@@ -98,9 +110,10 @@ the exact profile name, `SOUL.md`, `config.yaml` snippet and steps:
    employee role, exact profile ID, and that profile's own key. The key is stored in managed Vault
    and is not shown again.
 5. Run the profile's read-only health check. The profile is `online` only after identity, capabilities,
-   safe tool exposure, and employee configuration are verified. The current public toolset API cannot
-   prove a complete plugin/MCP permission inventory, so live client runs remain blocked until a
-   complete inventory check is implemented and verified.
+   the explicit reviewed toolset allowlist and the complete runtime tool catalog are verified. The
+   catalog endpoint (`GET /v1/tools`) is not in Hermes 0.21.5, so live client runs remain blocked
+   until the gateway deployment supplies it and migration 0047 is applied. See
+   [hermes-tool-inventory.md](hermes-tool-inventory.md).
 
 Profiles made this way are operator-managed. Six-profile automatic client provisioning is not ready;
 production profile creation and activation must wait for an independently authenticated, narrowly

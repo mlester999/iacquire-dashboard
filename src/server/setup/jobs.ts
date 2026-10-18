@@ -9,6 +9,7 @@ import { assertAgencyAccess, lockAgencySetupAccess, mutateSetup } from "@/server
 import { runChecks } from "@/server/setup/automation";
 import { createConfigVersion, currentSettings, suggestedProfileName } from "@/server/workforce/service";
 import type { AgentRoleKey } from "@/lib/agents";
+import { CHECK_LABEL, type CheckKey, type CheckStatus } from "@/lib/setup";
 
 export const PREPARATION_OPERATIONS = ["prepare_ai_configuration", "prepare_automation_configuration", "manual_ghl_mapping", "manual_hermes_profiles", "verify_integrations"] as const;
 export type PreparationOperation = (typeof PREPARATION_OPERATIONS)[number];
@@ -68,7 +69,10 @@ async function insertJob(db: Queryable, orgId: string, operation: PreparationOpe
 }
 
 export async function queueOnboardingPreparations(db: Queryable, orgId: string, userId: string) {
-  for (const op of PREPARATION_OPERATIONS.filter((o) => o !== "verify_integrations")) {
+  // A workspace whose CRM doesn't use GoHighLevel at all (iAcquire's own CRM, or a hybrid with no GoHighLevel capability) has no sub-account
+  // to create and map, so it gets no such job. The same rule scopes the Setup Center's GoHighLevel steps (app.setup_crm_uses, 0037).
+  const usesGhl = (await db.query<{ uses: boolean }>("select app.setup_crm_uses($1, 'ghl') as uses", [orgId])).rows[0]?.uses === true;
+  for (const op of PREPARATION_OPERATIONS.filter((o) => o !== "verify_integrations" && (usesGhl || o !== "manual_ghl_mapping"))) {
     await insertJob(db, orgId, op, `onboarding:${orgId}:v1`, userId);
   }
 }
@@ -136,17 +140,28 @@ async function prepare(job: PreparationJob, admin: SessionUser, leaseToken: stri
   const actorId = admin.id;
   if (job.operation === "verify_integrations") {
     const result = await runChecks(job.org_id, { actorUserId: actorId, agency: admin, live: true, force: true });
-    if (!result || result.ran.some((check) => check.status !== "verified") || !result.ran.length) {
-      throw new AppError("integration_unavailable", "Required integration verification is incomplete. Review the setup checks.");
+    if (!result || !result.ran.length) {
+      throw new AppError("integration_unavailable", "The setup checks could not run. Review the setup checks and try again.");
     }
-    // Unsupported applicable checks may be omitted by the engine; explicitly inspect every one.
-    const unresolved = await withSystem((db) => db.query(
-      `select 1 from client_setup_tasks t left join client_setup_checks c on c.org_id = t.org_id and c.check_key = t.check_key
-       where t.org_id = $1 and t.required and not t.hidden and not t.service_excluded and t.completion_mode = 'verified'
-         and (c.status is null or c.status <> 'verified') limit 1`, [job.org_id],
-    ));
-    if (unresolved.rows.length) throw new AppError("integration_unavailable", "A required provider check is still unavailable or unverified.");
-    return { status: "succeeded", configuration: { checked: result.ran.map((r) => r.key), externalActivation: false } };
+    // Only the checks behind required steps decide this job, the same rule as final_health. Optional steps' checks (for example the SMS
+    // and WhatsApp senders) run too; a failing one is reported in the job's result but never fails the job, so it can't block activation.
+    // Every required check is read back from the stored results, including any the engine omitted because it could not run it.
+    const required = (await withSystem((db) => db.query<{ check_key: CheckKey; status: CheckStatus | null }>(
+      `select distinct t.check_key, c.status from client_setup_tasks t left join client_setup_checks c on c.org_id = t.org_id and c.check_key = t.check_key
+       where t.org_id = $1 and t.required and not t.hidden and not t.service_excluded and t.completion_mode = 'verified'`, [job.org_id],
+    ))).rows;
+    const failedRequired = required.filter((r) => r.status === "failed");
+    if (failedRequired.length) {
+      throw new AppError("integration_unavailable", `A required integration check failed: ${failedRequired.map((r) => CHECK_LABEL[r.check_key] ?? r.check_key).join(", ")}. Review the setup checks.`);
+    }
+    if (required.some((r) => r.status !== "verified")) throw new AppError("integration_unavailable", "A required provider check is still unavailable or unverified.");
+    const requiredKeys = new Set(required.map((r) => r.check_key));
+    const optionalFailures = result.ran.filter((r) => r.status === "failed" && !requiredKeys.has(r.key)).map((r) => r.key);
+    return {
+      status: "succeeded",
+      detail: optionalFailures.length ? `Every required check is verified. Optional checks that need attention: ${optionalFailures.map((k) => CHECK_LABEL[k] ?? k).join(", ")}.` : undefined,
+      configuration: { checked: result.ran.map((r) => r.key), optionalFailures, externalActivation: false },
+    };
   }
   return withSystem(async (db) => {
     await lockAgencySetupAccess(db, admin, job.org_id);

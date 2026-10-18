@@ -101,6 +101,43 @@ async function approvalCoversAction(db: Queryable, orgId: string, agentId: strin
   return rows.length > 0;
 }
 
+/**
+ * The organization half of the gate, for deterministic automation that has no AI employee behind it (workflow steps). It reads the
+ * workspace's status and pauses on every call:
+ *  - workflows: stopped by a workspace's "workflows" pause and by the agency pause.
+ *  - outbound:  stopped by the "outbound" pause and the agency pause (a workflow step that calls an outside system checks this too).
+ *  - messaging: stopped by the "messaging" pause and the agency pause.
+ * Customer messages still go through evaluateSend, which applies the AI employee's mode and every messaging rule on top.
+ */
+export type OrgAutomationScope = "workflows" | "outbound" | "messaging";
+export type OrgBlockReason = "org_inactive" | "agency_paused" | "workflows_paused" | "outbound_paused" | "messaging_paused";
+export type OrgAutomationDecision = { allowed: true } | { allowed: false; reason: OrgBlockReason; detail: string };
+
+const ORG_STOPPED_BY: Record<OrgAutomationScope, Array<"workflows" | "outbound" | "messaging" | "agency">> = {
+  workflows: ["agency", "workflows"],
+  outbound: ["agency", "outbound"],
+  messaging: ["agency", "messaging"],
+};
+
+export async function checkOrgAutomation(db: Queryable, orgId: string, scope: OrgAutomationScope): Promise<OrgAutomationDecision> {
+  const { rows } = await db.query<{ org_status: string; pauses: string[] | null }>(
+    `select o.status as org_status,
+       (select array_agg(p.scope) from automation_pauses p join organizations po on po.id = p.org_id
+         where p.active and (p.org_id = o.id or (po.kind = 'agency' and p.scope = 'agency'))) as pauses
+     from organizations o where o.id = $1`,
+    [orgId],
+  );
+  const row = rows[0];
+  if (!row || ["suspended", "archived"].includes(row.org_status)) return { allowed: false, reason: "org_inactive", detail: "This workspace is not active." };
+  const pauses = new Set(row.pauses ?? []);
+  const stopped = ORG_STOPPED_BY[scope].find((s) => pauses.has(s));
+  if (stopped === "agency") return { allowed: false, reason: "agency_paused", detail: "iAcquire has paused automation for this workspace while it is reviewed." };
+  if (stopped === "workflows") return { allowed: false, reason: "workflows_paused", detail: "Workflows are paused for this workspace." };
+  if (stopped === "outbound") return { allowed: false, reason: "outbound_paused", detail: "Outbound automation is paused for this workspace." };
+  if (stopped === "messaging") return { allowed: false, reason: "messaging_paused", detail: "Customer messaging is paused for this workspace." };
+  return { allowed: true };
+}
+
 /** For callers that cannot continue unless the action is allowed. */
 export async function assertAutomationAllowed(db: Queryable, input: Parameters<typeof automationGate>[1]) {
   const decision = await automationGate(db, input);

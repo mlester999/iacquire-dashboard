@@ -24,6 +24,8 @@ export const CLIENT_STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 export type CompletionMode = "manual" | "verified" | "activation";
+/** A step that applies only when the workspace uses this CRM provider (null: whichever it uses). See 0037_crm_setup_native.sql. */
+export type SetupCrmProvider = "native" | "ghl";
 export type Section = "agency" | "client";
 export type InstanceState = "in_setup" | "ready_for_review" | "activated";
 
@@ -33,13 +35,13 @@ export const SECTION_TITLE: Record<Section, string> = {
 };
 
 export const SETUP_SERVICES = [
-  { key: "crm", label: "CRM & pipelines", description: "GoHighLevel workspace, snapshot, pipelines, tags, fields and forms." },
+  { key: "crm", label: "CRM & pipelines", description: "iAcquire CRM from an industry Blueprint: pipelines, tags, fields and forms (or a connected GoHighLevel location for clients who keep GoHighLevel)." },
   { key: "ai_workforce", label: "AI workforce", description: "Dedicated Hermes AI employees." },
   { key: "automations", label: "Automation workflows", description: "Follow-up and reminder workflows." },
   { key: "website", label: "Custom website", description: "A custom website, client review, publishing and domain checks." },
   { key: "funnel", label: "Lead-generation funnel", description: "A standard lead-generation funnel with its own review and publication checks." },
   { key: "email", label: "Business email", description: "Business email and domain verification." },
-  { key: "calendar", label: "Calendar & scheduling", description: "Google Calendar and appointment availability." },
+  { key: "calendar", label: "Calendar & scheduling", description: "A connected calendar (or the iAcquire calendar) and appointment availability." },
 ] as const;
 export type SetupService = (typeof SETUP_SERVICES)[number]["key"];
 export const SETUP_SERVICE_KEYS = SETUP_SERVICES.map((s) => s.key) as SetupService[];
@@ -53,6 +55,8 @@ export const CHECK_KEYS = [
   "workflows",
   "website_live",
   "email_domain",
+  "sms_sender",
+  "whatsapp_sender",
   "calendar",
   "final_health",
 ] as const;
@@ -62,13 +66,15 @@ export type CheckStatus = "unverified" | "verified" | "failed" | "attested";
 export const CHECK_LABEL: Record<CheckKey, string> = {
   onboarding: "Company onboarding",
   ghl_location: "CRM workspace connection",
-  crm_snapshot: "CRM snapshot",
+  crm_snapshot: "CRM Blueprint applied",
   crm_assets: "CRM pipelines, tags, fields and forms",
   hermes_employees: "AI employees (live health)",
   workflows: "Automation workflows",
   website_live: "Website and domain",
-  email_domain: "Business email domain",
-  calendar: "Google Calendar",
+  email_domain: "Business email sender and domain",
+  sms_sender: "SMS sender",
+  whatsapp_sender: "WhatsApp sender",
+  calendar: "Calendar and availability",
   final_health: "Final system check",
 };
 
@@ -269,6 +275,8 @@ export interface AgencyTaskView {
   completionMode: CompletionMode;
   checkKey: CheckKey | null;
   service: SetupService | null;
+  /** Applies only when the client's CRM uses this provider. A step for a provider it doesn't use is excluded like an unpurchased service. */
+  crmProvider?: SetupCrmProvider | null;
   status: TaskStatus;
   required: boolean;
   hidden: boolean;

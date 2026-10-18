@@ -12,6 +12,7 @@ import { moveOpportunityAction } from "@/app/actions/crm";
 import { Avatar, money, ReadOnlyNotice, shortDate, TagChip, totalsText, useCrmAction } from "@/components/crm/ui";
 import { NewDealDialog } from "@/components/crm/record-panels";
 import { PipelineSettingsSheet, NewPipelineDialog } from "@/components/crm/pipeline-settings";
+import { useUrlSearch } from "@/components/crm/url-search";
 import type { BoardColumn, OpportunityCard, PipelineMetrics } from "@/server/crm/opportunities";
 import type { PipelineView } from "@/server/crm/pipelines";
 import type { CrmScope } from "@/server/crm/page";
@@ -45,7 +46,6 @@ export function PipelineBoard({
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [newPipeOpen, setNewPipeOpen] = React.useState(false);
   const [announce, setAnnounce] = React.useState("");
-  const [q, setQ] = React.useState(state.q);
   const pipeline = pipelines.find((p) => p.id === pipelineId)!;
   const canMove = !!scope.can["opportunities.edit"] && !scope.readOnly;
   const canReopen = !!scope.can["opportunities.reopen"];
@@ -61,11 +61,8 @@ export function PipelineBoard({
     [pathname, pipelineId, state],
   );
 
-  React.useEffect(() => {
-    if (q === state.q) return;
-    const t = setTimeout(() => router.replace(hrefWith({ q: q.trim() || null })), 300);
-    return () => clearTimeout(t);
-  }, [q, state.q, router, hrefWith]);
+  // Typing replaces the address after a pause; a search changed elsewhere (Back, a link, a filter that clears it) replaces the box's text.
+  const search = useUrlSearch(state.q, state, (q) => router.replace(hrefWith({ q: q || null })));
 
   const stageOf = (id: string) => cols.find((c) => c.stage.id === id)?.stage;
 
@@ -149,7 +146,7 @@ export function PipelineBoard({
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-          <Input aria-label="Search deals" placeholder="Search deals, contacts, companies" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input aria-label="Search deals" placeholder="Search deals, contacts, companies" className="pl-9" value={search.text} onChange={(e) => search.setText(e.target.value)} />
         </div>
         {scope.userId && !scope.agency && (
           <Segmented id="board-owner" ariaLabel="Whose deals" size="sm" value={state.mine ? "mine" : "all"} onChange={(v) => router.push(hrefWith({ mine: v === "mine" ? "1" : null }))}

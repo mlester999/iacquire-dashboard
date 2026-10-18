@@ -20,7 +20,16 @@ import { runFairUseChecks } from "@/server/fairuse/service";
 import { runInactivityReview } from "@/server/inactivity/service";
 import { sendDeletionReminders } from "@/server/offboarding/service";
 import { processImports } from "@/server/crm/imports";
-import { sendTaskReminders } from "@/server/crm/tasks";
+import { processProviderSwitches } from "@/server/crm/provider-switch";
+import { emitTaskDueEvents, sendTaskReminders } from "@/server/crm/tasks";
+import { crmEventDispatch } from "@/server/crm/dispatch";
+import { processWorkflowRuns, recoverAbandonedRuns } from "@/server/crm/workflows/runner";
+import { deliverDueWebhooks } from "@/server/crm/webhooks";
+import { syncDueConnections, writeBackDue } from "@/server/calendars/sync";
+import { syncAllWhatsappTemplates } from "@/server/messaging/whatsapp-templates";
+import { processCampaigns } from "@/server/crm/campaigns/job";
+import { processFormSubmissions } from "@/server/crm/forms/process";
+import { reconcileAllSetupInstances } from "@/server/setup/automation";
 
 export interface ScheduledJob {
   name: string;
@@ -39,6 +48,10 @@ export const JOBS: ScheduledJob[] = [
   { name: "repliesChecked", run: async () => (await respondToPending()).checked },
   { name: "approvalExpiry", run: () => expireAllStaleApprovals() },
   { name: "bookingHolds", run: () => expireBookingHolds() },
+  // Connected calendars: busy times are read before anything is offered or written, and bookings are written before reminders go out,
+  // so a reminder can carry the meeting link the calendar provider just created. Both stop when CALENDAR_SYNC_DISABLED is set.
+  { name: "calendarBusySync", run: async () => (await syncDueConnections()).synced },
+  { name: "calendarWriteBack", run: async () => { const r = await writeBackDue(); return r.written + r.deleted; } },
   // Reminders are queued here and sent by the dispatcher straight after, in the same run.
   { name: "appointmentReminders", run: async () => { const r = await sendDueReminders(); return r.queued + r.blocked; } },
   {
@@ -49,11 +62,24 @@ export const JOBS: ScheduledJob[] = [
       return e.enrolled + r.queued + r.blocked;
     },
   },
+  // Native CRM automation: the event outbox is handed to workflows, lead assignment, follow-ups and webhooks; then due workflow runs
+  // advance (a message step queues its message, which the dispatcher right after sends in the same run).
+  { name: "crmEventDispatch", run: async () => (await crmEventDispatch()).claimed },
+  { name: "crmWorkflowRuns", run: async () => { const r = await processWorkflowRuns(); return r.claimed + r.scheduled; } },
+  // Native form submissions become contacts, consent, tags, deals and form.submitted events (dispatched to workflows on the next run).
+  { name: "crmFormSubmissions", run: async () => (await processFormSubmissions()).claimed },
+  // Owner-approved campaigns: due ones start, and each queues at its approved pace through the same send rules (the dispatcher right after sends them).
+  { name: "crmCampaigns", run: async () => { const r = await processCampaigns(); return r.queued + r.excluded + r.started + r.completed + r.stopped; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
+  // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).
+  { name: "crmWebhookDeliveries", run: () => deliverDueWebhooks() },
   { name: "websiteEnquiries", run: async () => (await processSubmissions()).processed },
   // Native CRM: imports move forward a chunk at a time (never in one long request), and task reminders go out once each.
   { name: "crmImports", run: async () => (await processImports()).advanced },
-  { name: "crmTaskReminders", run: async () => (await sendTaskReminders()).sent },
+  // CRM provider switches: a cutover starts each migration step in order once the one before it is imported, verifies and completes; a
+  // rollback undoes the steps newest first and restores the owners. Runs whether or not anyone has the wizard open.
+  { name: "crmProviderSwitches", run: () => processProviderSwitches() },
+  { name: "crmTaskReminders", run: async () => (await sendTaskReminders()).sent + (await emitTaskDueEvents()).emitted },
   { name: "domainRenewals", run: () => sendRenewalReminders() },
   { name: "websiteHealth", run: async () => (await checkLivePublications()).checked },
   { name: "notificationEmails", run: async () => (await deliverNotificationEmails()).queued },
@@ -71,6 +97,13 @@ export const JOBS: ScheduledJob[] = [
   { name: "fairUseChecks", run: async () => ((await withinInterval("fairUseChecks", 60)) ? 0 : (await runFairUseChecks()).checked) },
   { name: "inactivityReview", run: async () => ((await withinInterval("inactivityReview", 360)) ? 0 : (await runInactivityReview()).notified) },
   { name: "offboardingReminders", run: async () => ((await withinInterval("offboardingReminders", 360)) ? 0 : await sendDeletionReminders()) },
+  // Workflow runs a stopped worker left behind go back to the queue, and runs whose step approval lapsed are cancelled.
+  { name: "crmWorkflowRecovery", run: async () => { if (await withinInterval("crmWorkflowRecovery", 5)) return 0; const r = await recoverAbandonedRuns(); return r.recovered + r.lapsed; } },
+  // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
+  { name: "whatsappTemplateSync", run: async () => ((await withinInterval("whatsappTemplateSync", 180)) ? 0 : (await syncAllWhatsappTemplates()).synced) },
+  // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
+  // matching setup steps within fifteen minutes. Recorded evidence only: no provider is contacted.
+  { name: "setupEvidence", run: async () => ((await withinInterval("setupEvidence", 15)) ? 0 : await reconcileAllSetupInstances()) },
 ];
 
 export async function runScheduledJobs(): Promise<Record<string, number | string>> {

@@ -102,6 +102,9 @@ tests/                  security, tenancy, workflow, setup, provisioning and int
 - [docs/verification-status.md](docs/verification-status.md) — real versus mocked verification and the live acceptance checklist
 - [docs/migration-plan.md](docs/migration-plan.md) — the reviewed migration and rollback plan
 - [docs/architecture.md](docs/architecture.md) — tenancy and security model, data model, chat and approval pipelines
+- [docs/ai-workforce.md](docs/ai-workforce.md) — internal and client AI workforces, chat, SOUL.md/instructions, employee knowledge, draft testing, memory limits and verification
+- [docs/hermes-live-acceptance.md](docs/hermes-live-acceptance.md) — read-only live gateway evidence, the restricted-tool blocker and the controlled-run acceptance procedure
+- [docs/workforce-migration-and-release.md](docs/workforce-migration-and-release.md) — hosted migration audit, 0045/0046 renumbering, deployment order, backup/rollback and smoke tests
 - [docs/setup-center.md](docs/setup-center.md) — Setup Center and Setup Manager rules, live sync, data model, connector status
 - [docs/integrations.md](docs/integrations.md) — Hermes (verified API contract and client-profile provisioning), GoHighLevel, n8n, email, help assistant
 - [docs/aqi.md](docs/aqi.md) — AQi platform assistant, its provider/knowledge boundary, conversations, RLS and Super Admin controls

@@ -8,7 +8,7 @@ import type { CrmScope } from "@/server/crm/page";
 import { TaskList } from "@/components/crm/record-panels";
 import { money } from "@/lib/crm/format";
 import { CAPABILITY_LABELS, CRM_CAPABILITIES } from "@/lib/crm/types";
-import { relativeTime } from "@/lib/utils";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 function totals(t: Array<{ currency: string; value: number }>) {
   return t.length ? t.map((x) => money(x.value, x.currency)).join(" · ") : null;
@@ -39,6 +39,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
 
   return (
     <div className="space-y-5">
+      <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">Overview</h2>
       {ghlCaps.length > 0 && (
         <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13px] text-warning-ink">
           GoHighLevel still owns {ghlCaps.map((c) => CAPABILITY_LABELS[c].toLowerCase()).join(", ")} for this workspace, so those stay read-only here. <Link href={`${b}/settings/provider`} className="font-medium underline">CRM provider settings</Link>
@@ -106,7 +107,7 @@ export async function OverviewView({ actor, scope }: { actor: CrmActor; scope: C
                       <span className="text-ink">{a.summary}</span>
                       {a.contact && <> · <Link href={`${b}/contacts/${a.contact.id}`} className="font-medium text-primary hover:underline">{a.contact.name}</Link></>}
                     </span>
-                    <span className="shrink-0 text-[12px] text-muted">{a.actor ? `${a.actor} · ` : ""}{relativeTime(a.at)}</span>
+                    <span className="shrink-0 text-[12px] text-muted">{a.actor ? `${a.actor} · ` : ""}<RelativeTime iso={a.at} timezone={scope.timezone} /></span>
                   </li>
                 ))}
               </ul>

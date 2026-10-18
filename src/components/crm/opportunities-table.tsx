@@ -7,10 +7,12 @@ import { Archive, ArrowDown, ArrowUp, Handshake, KanbanSquare, MoveRight, Plus, 
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input, Select } from "@/components/ui/primitives";
 import { Dialog, Segmented } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { archiveOpportunitiesAction, bulkMoveOpportunitiesAction } from "@/app/actions/crm";
 import { Avatar, ConfirmDialog, money, Pagination, shortDate, useCrmAction } from "@/components/crm/ui";
 import { NewDealDialog } from "@/components/crm/record-panels";
+import { RelativeTime } from "@/components/crm/relative-time";
+import { useUrlSearch } from "@/components/crm/url-search";
 import type { OpportunityCard } from "@/server/crm/opportunities";
 import type { PipelineView } from "@/server/crm/pipelines";
 import type { CrmScope } from "@/server/crm/page";
@@ -37,7 +39,6 @@ export function OpportunitiesTable({
   const router = useRouter();
   const pathname = usePathname();
   const { run, busy } = useCrmAction();
-  const [q, setQ] = React.useState(state.q);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const key = `${page}|${state.pipeline}|${state.stage}|${state.status}|${state.owner}|${state.q}`;
   const [selectionFor, setSelectionFor] = React.useState(key);
@@ -67,11 +68,8 @@ export function OpportunitiesTable({
     [pathname, page, state],
   );
 
-  React.useEffect(() => {
-    if (q === state.q) return;
-    const t = setTimeout(() => router.replace(hrefWith({ q: q.trim() || null })), 300);
-    return () => clearTimeout(t);
-  }, [q, state.q, router, hrefWith]);
+  // Typing replaces the address after a pause; a search changed elsewhere (Back, a link, a filter that clears it) replaces the box's text.
+  const search = useUrlSearch(state.q, state, (q) => router.replace(hrefWith({ q: q || null })));
 
   const sortHeader = (label: string, by: SortKey, className?: string) => {
     const active = state.sort === by;
@@ -109,7 +107,7 @@ export function OpportunitiesTable({
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-          <Input aria-label="Search deals" placeholder="Search deals, contacts, companies" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input aria-label="Search deals" placeholder="Search deals, contacts, companies" className="pl-9" value={search.text} onChange={(e) => search.setText(e.target.value)} />
         </div>
         <Segmented id="opp-status" ariaLabel="Status" size="sm" value={state.status} onChange={(v) => router.push(hrefWith({ status: v === "open" ? null : v }))}
           options={[{ value: "open", label: "Open" }, { value: "won", label: "Won" }, { value: "lost", label: "Lost" }, { value: "all", label: "All" }]} />
@@ -187,7 +185,7 @@ export function OpportunitiesTable({
                     <td className="max-w-[180px] px-3 py-2.5">{r.owner ? <span className="flex items-center gap-2"><Avatar name={r.owner.name} size="sm" /><span className="truncate">{r.owner.name}</span></span> : <span className="text-faint">Unassigned</span>}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-ink-2">{r.expectedCloseDate ? shortDate(r.expectedCloseDate) : <span className="text-faint">—</span>}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-ink-2">{r.status === "open" ? `${r.daysInStage}d` : <span className="text-faint">Closed</span>}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{relativeTime(r.updatedAt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted"><RelativeTime iso={r.updatedAt} /></td>
                   </tr>
                 ))}
               </tbody>

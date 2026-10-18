@@ -61,7 +61,10 @@ export type NotificationKind =
   | "crm_support_access"
   | "crm_task_due"
   | "crm_booking_new"
-  | "crm_calendar_sync";
+  | "crm_calendar_sync"
+  | "crm_workflow_failed"
+  | "crm_webhook_failing"
+  | "crm_blueprint_applied";
 
 export interface NotificationInput {
   kind: NotificationKind;

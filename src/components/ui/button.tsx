@@ -20,7 +20,7 @@ const variants: Record<Variant, string> = {
   outline: "border border-line-strong bg-transparent text-ink hover:bg-surface-2",
   ghost: "bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink",
   soft: "bg-primary-soft text-primary-ink hover:bg-primary/15",
-  danger: "bg-danger text-white shadow-soft hover:bg-danger/90",
+  danger: "bg-danger text-danger-on shadow-soft hover:bg-danger/90",
 };
 
 const sizes: Record<Size, string> = {

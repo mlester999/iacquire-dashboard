@@ -4,7 +4,8 @@ import { env } from "@/server/env";
 import { assertAssignableLocation } from "@/server/admin/tenants";
 import { readOnlyJson, validateIntegrationEndpoint, validateLlmEndpoint } from "@/server/integrations/safety";
 import { llmComplete, llmHeaders, llmModelsUrl, type LlmConfig } from "@/server/llm/client";
-import { getCapabilities,getProfileModels,getToolsets,restrictedToolsIn,hasVerifiedCompleteToolInventory,type HermesConnection } from "@/server/integrations/hermes/client";
+import { getCapabilities,getProfileModels,getToolsets,restrictedToolsIn,type HermesConnection } from "@/server/integrations/hermes/client";
+import { ToolInventoryError, toolInventoryErrorMessage, verifyToolInventory, type ToolInventorySnapshot } from "@/server/integrations/hermes/inventory";
 
 export interface Inspection {
   status:"connected"|"permission_limited"|"needs_attention"|"error";
@@ -14,23 +15,62 @@ export interface Inspection {
 const id=(v:unknown)=>typeof v === "string" ? v : "";
 const list=(v:unknown):Record<string,unknown>[] => Array.isArray(v) ? v.filter((x):x is Record<string,unknown>=>!!x && typeof x === "object") : [];
 
-export async function inspectHermes(conn:HermesConnection,clientProfile:boolean):Promise<Inspection> {
+export async function inspectHermes(conn:HermesConnection,_clientProfile:boolean):Promise<Inspection> {
   conn={...conn,baseUrl:validateIntegrationEndpoint(conn.baseUrl,["hermes-api.iacquire.online"])};
   const caps=await getCapabilities(conn);
   const models=await getProfileModels(conn);
   const sets=await getToolsets(conn);
   const restricted=restrictedToolsIn(sets);
   const identity=!!conn.profile && models.includes(conn.profile);
-  const contract=caps.contract === "hermes.api_server.capabilities" && caps.authenticated && caps.supportsRuns && caps.supportsEvents;
-  const completeToolInventory=hasVerifiedCompleteToolInventory(conn);
-  const capabilities={identityVerified:identity,profile:conn.profile,installedContractVerified:contract,packageVersion:"not_reported",supportsRuns:caps.supportsRuns,supportsEvents:caps.supportsEvents,supportsStop:caps.supportsStop,supportsApproval:caps.supportsApproval,restrictedTools:restricted,completeToolInventoryVerified:completeToolInventory,toolInventoryScope:completeToolInventory?"synthetic_complete":"advertised_configurable_toolsets_only",profileCreation:"agency_controlled_task",safeReadOnlyTest:true};
+  // A polling-only provider is usable through GET /v1/runs/{id}; it no longer has to advertise SSE.
+  const contract=caps.contract === "hermes.api_server.capabilities" && caps.authenticated && caps.supportsRuns && (caps.supportsEvents || caps.supportsStatus);
+  let inventory: ToolInventorySnapshot | null = null;
+  let inventoryError: string | null = null;
+  try {
+    inventory = await verifyToolInventory(conn, { stabilityReads: 2, purpose: "inspection" });
+  } catch (err) {
+    inventoryError = err instanceof ToolInventoryError ? `${err.detail.code}: ${err.message}` : toolInventoryErrorMessage(err);
+  }
+  const capabilities={
+    identityVerified:identity,
+    profile:conn.profile,
+    installedContractVerified:contract,
+    packageVersion:"not_reported",
+    supportsRuns:caps.supportsRuns,
+    supportsEvents:caps.supportsEvents,
+    supportsStatus:caps.supportsStatus,
+    supportsStop:caps.supportsStop,
+    supportsApproval:caps.supportsApproval,
+    capabilitiesEndpoints:Object.keys(caps.endpoints),
+    restrictedTools:restricted,
+    completeToolInventoryVerified:Boolean(inventory),
+    toolInventoryContract:inventory?.contract ?? null,
+    toolInventoryDigest:inventory?.digest ?? null,
+    toolInventoryToolCount:inventory?.toolCount ?? null,
+    toolInventoryTools:inventory?.tools.map((tool)=>tool.name) ?? [],
+    toolInventoryEnabledToolsets:inventory?.enabledToolsets ?? [],
+    toolInventoryAttestation:inventory?.attestation ?? null,
+    toolInventoryCheckedAt:inventory?.fetchedAt ?? null,
+    toolInventoryExpiresAt:inventory?.expiresAt ?? null,
+    toolInventoryScope:inventory ? "complete_runtime_catalog" : "not_verified",
+    toolInventoryError:inventoryError,
+    profileCreation:"agency_controlled_task",
+    safeReadOnlyTest:true,
+  };
   if(!identity || !contract) return {status:"needs_attention",detail:"The gateway did not verify the intended profile identity and required installed API capabilities.",capabilities};
-  if(clientProfile && restricted.length) return {status:"needs_attention",detail:"This client profile exposes restricted tools. Remove those permissions before use.",capabilities};
-  if(clientProfile && !completeToolInventory)return {status:"permission_limited",detail:"Profile identity and API access verified. The public toolset API cannot prove complete plugin/MCP permissions. Client use stays blocked until a supported complete-inventory check is available; ask the gateway administrator to review the installed contract and disable hidden/default tools.",capabilities};
-  return {status:"connected",detail:"Authenticated profile identity, installed API compatibility and advertised tool inventory verified. No AI run was started.",capabilities};
+  if(restricted.length) {
+    const sample=restricted.slice(0,8).join(", ");
+    return {status:"needs_attention",detail:`This profile exposes ${restricted.length} restricted or unreviewed tool${restricted.length===1?"":"s"}: ${sample}${restricted.length>8?", …":""}. Disable them in the Hermes profile before use.`,capabilities};
+  }
+  if(!inventory) {
+    return {status:"permission_limited",detail:`Profile identity and API access verified. ${inventoryError ?? "The complete runtime tool inventory could not be verified."} Live employee use stays blocked.`,capabilities};
+  }
+  return {status:"connected",detail:`Authenticated profile identity, installed API compatibility and the complete runtime tool inventory verified (${inventory.toolCount} reviewed tool${inventory.toolCount===1?"":"s"}, digest ${inventory.digest.slice(0,12)}…). No AI run was started.`,capabilities};
 }
 
-export const GHL_READ_SCOPES=["locations.readonly","opportunities.readonly","calendars.readonly","calendars/events.readonly","locations/tags.readonly","locations/customFields.readonly","locations/customValues.readonly","forms.readonly","workflows.readonly","funnels.readonly"] as const;
+// The last three are the record scopes the GoHighLevel live-record migration reads with (docs/ghl-migration.md), so the agency can record
+// them with the token and see them proven below.
+export const GHL_READ_SCOPES=["locations.readonly","opportunities.readonly","calendars.readonly","calendars/events.readonly","locations/tags.readonly","locations/customFields.readonly","locations/customValues.readonly","forms.readonly","workflows.readonly","funnels.readonly","contacts.readonly","businesses.readonly","users.readonly"] as const;
 export type GhlAssetKind="pipelines"|"tags"|"customFields"|"customValues"|"forms"|"calendars"|"workflows";
 export interface GhlAssetReference { id:string; name:string; status?:string; stages?:Array<{id:string;name:string}>; }
 export interface GhlReadConnection {locationId:string;token:string;orgKind:"agency"|"client";version?:"v3"|"2021-07-28";}
@@ -47,10 +87,15 @@ async function ghlRead(c:GhlReadConnection,path:string,params:Record<string,stri
   const u=new URL(path,base); for(const [k,v] of Object.entries(params)) u.searchParams.set(k,v);
   return readOnlyJson(u.toString(),{Authorization:`Bearer ${c.token}`,Version:c.version ?? "2021-07-28",Accept:"application/json"},"GoHighLevel");
 }
-export async function verifyGhlIdentity(c:GhlReadConnection):Promise<void> {
+/** The mapped location as GoHighLevel reports it, after checking it is exactly that location. */
+async function readGhlLocation(c:GhlReadConnection):Promise<Record<string,unknown>> {
   const body=await ghlRead(c,`/locations/${encodeURIComponent(c.locationId)}`);
   const location=body.location as Record<string,unknown>|undefined;
   if(!location || location.id!==c.locationId) throw new AppError("forbidden","GoHighLevel location mismatch. This credential must belong to the intended client location.");
+  return location;
+}
+export async function verifyGhlIdentity(c:GhlReadConnection):Promise<void> {
+  await readGhlLocation(c);
 }
 export async function readGhlAssets(c:GhlReadConnection,kind:GhlAssetKind):Promise<GhlAssetReference[]> {
   // Verify identity first for every metadata operation; do not trust saved mappings alone.
@@ -65,14 +110,39 @@ export async function readGhlAssets(c:GhlReadConnection,kind:GhlAssetKind):Promi
     return {id:id(row.id),name:id(row.name).slice(0,120),...(typeof row.status==="string" ? {status:row.status.slice(0,40)} : {}),...(kind==="pipelines" ? {stages:list(row.stages).map(s=>({id:id(s.id),name:id(s.name).slice(0,120)}))} : {})};
   });
 }
+/**
+ * The migration's record scopes, each proven by one GET of at most one row on the endpoint the migration pages (scoped to the verified
+ * location; users through the location's company, as the migration reads them). Nothing a response carries is kept or returned: a scope is
+ * proven when the documented list comes back, and a row naming another location stops the inspection.
+ */
+const GHL_RECORD_PROBES:Array<{scope:string;path:string;key:string;params:(c:GhlReadConnection,companyId:string)=>Record<string,string>|null}>=[
+  {scope:"contacts.readonly",path:"/contacts/",key:"contacts",params:c=>({locationId:c.locationId,limit:"1"})},
+  {scope:"businesses.readonly",path:"/businesses/",key:"businesses",params:c=>({locationId:c.locationId,limit:"1",skip:"0"})},
+  {scope:"users.readonly",path:"/users/search",key:"users",params:(c,companyId)=>companyId ? {companyId,locationId:c.locationId,limit:"1",skip:"0"} : null},
+];
+/** True when the scope is proven, false when GoHighLevel refused or answered unexpectedly, null when it couldn't be asked (no company id). */
+async function probeGhlRecords(c:GhlReadConnection,probe:(typeof GHL_RECORD_PROBES)[number],companyId:string):Promise<boolean|null> {
+  const params=probe.params(c,companyId);
+  if(!params) return null;
+  const body=await ghlRead(c,probe.path,params);
+  if(!Array.isArray(body[probe.key])) return false;
+  if(list(body[probe.key]).some(row=>typeof row.locationId==="string" && row.locationId!==c.locationId)) throw new AppError("forbidden","GoHighLevel records belong to another location.");
+  return true;
+}
 export async function inspectGhl(c:GhlReadConnection,scopes:string[]):Promise<Inspection> {
-  await verifyGhlIdentity(c);
+  const location=await readGhlLocation(c);
   const permitted:string[]=[]; const unavailable:string[]=[]; const inventory:Record<string,GhlAssetReference[]>={};
   const probes:Array<[string,GhlAssetKind]>=[["opportunities.readonly","pipelines"],["calendars.readonly","calendars"],["locations/tags.readonly","tags"],["locations/customFields.readonly","customFields"],["locations/customValues.readonly","customValues"],["forms.readonly","forms"],["workflows.readonly","workflows"]];
   for(const [scope,kind] of probes) {
     if(!scopes.includes(scope)) continue;
     try { inventory[kind]=await readGhlAssets(c,kind); permitted.push(scope); }
     catch(error) {if(error instanceof AppError && error.code==="forbidden" && /another location|mismatch/.test(error.message)) throw error; unavailable.push(scope);}
+  }
+  const companyId=id(location.companyId);
+  for(const probe of GHL_RECORD_PROBES) {
+    if(!scopes.includes(probe.scope)) continue;
+    try { const proven=await probeGhlRecords(c,probe,companyId); if(proven) permitted.push(probe.scope); else if(proven===false) unavailable.push(probe.scope); }
+    catch(error) {if(error instanceof AppError && error.code==="forbidden" && /another location|mismatch/.test(error.message)) throw error; unavailable.push(probe.scope);}
   }
   const unverified=scopes.filter(scope=>scope!=="locations.readonly" && !permitted.includes(scope) && !unavailable.includes(scope));
   const capabilities={locationIdentityVerified:true,locationId:c.locationId,apiContract:c.version ?? "2021-07-28",provenReadPermissions:["locations.readonly",...permitted],requestedPermissions:scopes,unavailablePermissions:unavailable,unverifiedPermissions:unverified,inventory,snapshotInstallation:"unverified",bookingUrls:"admin_mapping_required",websiteReferences:"admin_mapping_required",marketplaceWebhooks:"separate_unconfigured_connection",remoteWritesEnabled:false};

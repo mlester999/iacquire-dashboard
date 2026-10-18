@@ -62,10 +62,14 @@ describe("client roles", () => {
     for (const [role, permission, expected] of cases) expect(roleHasPermission(role, permission), `${role} ${permission}`).toBe(expected);
   });
 
-  it("agency roles never receive customer conversation permissions", () => {
-    for (const permission of ["inbox.view", "inbox.reply", "inbox.view_all", "contacts.view", "escalations.respond"] as const) {
-      expect(roleHasPermission("agency_staff", permission)).toBe(false);
-      expect(roleHasPermission("agency_super_admin", permission)).toBe(false);
+  it("agency staff and managers receive CRM reads but no conversation actions", () => {
+    for (const role of ["agency_staff", "agency_manager"] as const) {
+      for (const permission of ["inbox.view", "inbox.view_all", "contacts.view"] as const) {
+        expect(roleHasPermission(role, permission)).toBe(true);
+      }
+      for (const permission of ["inbox.reply", "escalations.respond"] as const) {
+        expect(roleHasPermission(role, permission)).toBe(false);
+      }
     }
   });
 

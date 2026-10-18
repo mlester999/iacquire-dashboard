@@ -2,7 +2,7 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyUser } from "@/server/notifications";
-import { assertCan, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
+import { assertCan, crmRead, crmWrite, systemActor, type CrmActor } from "@/server/crm/actor";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { assertAssignable } from "@/server/crm/contacts";
 
@@ -257,5 +257,42 @@ export async function sendTaskReminders(limit = 200): Promise<{ sent: number }> 
       await notifyUser(db, t.assigned_user_id, t.org_id, { kind: "crm_task_due", severity: "info", title: `Reminder: ${t.title.slice(0, 140)}`, body: t.due_at ? `Due ${new Date(t.due_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : undefined, link: `/crm/tasks?task=${t.id}`, dedupeKey: `crm-task-reminder:${t.id}` });
     }
     return { sent: rows.length };
+  });
+}
+
+/**
+ * Records "task.due" when an open task reaches its due time, for workflows that start from it. Only workspaces with a workflow switched on
+ * for "Task due" are looked at, and only tasks that came due after that workflow was published (and within the last day), so switching a
+ * workflow on never fires for a backlog of old tasks. The event's key is the task and its due time, so each due time fires once, and a
+ * task whose due date is moved fires again at the new time.
+ */
+export async function emitTaskDueEvents(limit = 200, now = new Date()): Promise<{ emitted: number }> {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; org_id: string; org_name: string; timezone: string; title: string; contact_id: string | null; opportunity_id: string | null; assigned_user_id: string | null; due_at: Date; due_epoch: string }>(
+      `with watching as (
+         select w.org_id, min(v.published_at) as since from crm_workflows w
+         join crm_workflow_versions v on v.id = w.published_version_id and v.org_id = w.org_id
+         where w.status = 'active' and v.trigger_config->>'type' = 'task.due' group by w.org_id)
+       select t.id, t.org_id, o.name as org_name, o.timezone, t.title, t.contact_id, t.opportunity_id, t.assigned_user_id, t.due_at,
+              extract(epoch from date_trunc('second', t.due_at))::bigint::text as due_epoch
+       from tasks t join watching x on x.org_id = t.org_id join organizations o on o.id = t.org_id
+       where t.status in ('open', 'in_progress') and t.due_at is not null and t.due_at <= $1
+         and t.due_at > greatest(x.since, $1::timestamptz - interval '1 day')
+         and not exists (select 1 from crm_events e where e.org_id = t.org_id
+           and e.dedupe_key = 'task.due:' || t.id::text || ':' || extract(epoch from date_trunc('second', t.due_at))::bigint::text)
+       order by t.due_at limit $2`,
+      [now.toISOString(), limit],
+    );
+    let emitted = 0;
+    for (const t of rows) {
+      const actor = systemActor({ id: t.org_id, name: t.org_name, timezone: t.timezone });
+      const r = await emitEvent(db, actor, {
+        type: "task.due", entityType: "task", entityId: t.id, contactId: t.contact_id,
+        payload: { opportunityId: t.opportunity_id, assigneeId: t.assigned_user_id, dueAt: new Date(t.due_at).toISOString(), title: t.title.slice(0, 200) },
+        dedupeKey: `task.due:${t.id}:${t.due_epoch}`,
+      });
+      if (r.id) emitted += 1;
+    }
+    return { emitted };
   });
 }

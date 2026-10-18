@@ -76,6 +76,9 @@ export default async function EmployeePage({ params, searchParams }: { params: P
         configAppliedAt: agent.config_applied_at ? new Date(agent.config_applied_at).toISOString() : null,
         defaultTools: agent.default_tools,
         mode: agent.mode,
+        providerRuntime: agent.hermes_profile ? "Hermes Agent" : "Not connected",
+        assignedOrganization: ctx.org.name,
+        lastActivityAt: extra.runs[0]?.started_at ?? null,
       }}
       canPause={ctx.can("automation.pause")}
       canGoAutonomous={ctx.can("automation.go_autonomous")}

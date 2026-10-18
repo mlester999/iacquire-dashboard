@@ -4,12 +4,13 @@ import { revalidatePath } from "next/cache";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { addInternalNote, approveDraft, discardDraft, markConversationRead, sendHumanReply, setChannelEnabled, setConversationState, updateMessagingSettings, type MessagingSettingsInput } from "@/server/messaging/inbox";
+import { addInternalNote, approveDraft, discardDraft, getMessagesByIds, getOlderMessages, markConversationRead, sendHumanReply, setChannelEnabled, setConversationState, updateMessagingSettings, withDeliveryDetail, type MessagingSettingsInput } from "@/server/messaging/inbox";
 import { assignConversation, claimEscalation, declineEscalation, resolveEscalation, resumeAi, takeOverConversation } from "@/server/messaging/handoff";
 import { addMemory, deleteMemory, recordConsent } from "@/server/messaging/contacts";
 import { dispatchMessage } from "@/server/messaging/send";
 import { setAvailability, setEscalationAuthorization, setNotificationPreferences, setOwnerPriorityMode, type NotificationPreferenceInput } from "@/server/staff/service";
 import { isChannel } from "@/lib/messaging";
+import { extractTokens } from "@/lib/messaging/tokens";
 import { withSystem } from "@/server/db";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,6 +37,10 @@ export async function sendReplyAction(conversationId: string, body: string, temp
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     const limit = await consumeRateLimit(RATE_LIMITS.inboxSendByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "You are sending quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
+    // A token such as {{contact.first_name}} is only ever filled when a canned reply is inserted; one left in the text would reach the
+    // customer exactly as typed, so the reply is refused until it is replaced.
+    const leftover = extractTokens(body ?? "").find((t) => t.known);
+    if (leftover) throw new AppError("invalid_input", `Replace ${leftover.raw} with the real details before sending.`);
     const queued = await sendHumanReply(ctx, id(conversationId, "conversation"), body, { templateId: templateId ?? null });
     const status = await sendNow(queued.messageId);
     refresh();
@@ -165,6 +170,36 @@ export async function markReadAction(conversationId: string) {
     const ctx = await requireOrgContextOrThrow("inbox.view");
     await markConversationRead(ctx, id(conversationId, "conversation"));
     return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/**
+ * "Load older messages": the page of the conversation just before the oldest message shown, oldest first, each with its provider and
+ * delivery events, under the same visibility as opening the conversation. Read only.
+ */
+export async function loadOlderMessagesAction(conversationId: string, beforeId: string) {
+  try {
+    const ctx = await requireOrgContextOrThrow("inbox.view");
+    const page = await getOlderMessages(ctx, id(conversationId, "conversation"), id(beforeId, "message"));
+    return { ok: true as const, data: { messages: await withDeliveryDetail(ctx.user.id, page.messages), olderMessages: page.olderMessages ?? null } };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/**
+ * The current version of messages the thread loaded earlier with an older page, each with its provider and delivery events: re-read when a
+ * draft among them stopped being one (approved or discarded), so it keeps its place with its real status. The same visibility as opening
+ * the conversation. Read only.
+ */
+export async function loadMessagesByIdAction(conversationId: string, messageIds: string[]) {
+  try {
+    const ctx = await requireOrgContextOrThrow("inbox.view");
+    if (!Array.isArray(messageIds)) throw new AppError("invalid_input", "Choose valid messages.");
+    const messages = await getMessagesByIds(ctx, id(conversationId, "conversation"), messageIds.map((m) => id(String(m), "message")));
+    return { ok: true as const, data: { messages: await withDeliveryDetail(ctx.user.id, messages) } };
   } catch (err) {
     return actionError(err);
   }

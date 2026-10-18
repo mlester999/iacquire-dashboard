@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { withServiceRole, withSystem } from "@/server/db";
 import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
@@ -20,6 +20,8 @@ import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const PROFILE_KEYS = Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [AGENCY_HERMES_PROFILE_IDS[role], `synthetic-${role}-profile-key-0123456789`])) as Record<string, string>;
+const CLIENT_TEST_PROFILE = "client-test-profile";
+const CLIENT_TEST_KEY = "synthetic-client-profile-key-012345";
 let mock: MockHermes;
 let admin: ReturnType<typeof agencyUser>;
 let staff: ReturnType<typeof agencyUser>;
@@ -30,7 +32,9 @@ let salesAgentId: string;
 let gatewayId: string;
 
 beforeAll(async () => {
-  mock = await startMockHermes(Object.fromEntries(Object.entries(PROFILE_KEYS).map(([key, apiKey]) => [key, { key: apiKey }])));
+  const profiles = Object.fromEntries(Object.entries(PROFILE_KEYS).map(([key, apiKey]) => [key, { key: apiKey }])) as Record<string, { key: string }>;
+  profiles[CLIENT_TEST_PROFILE] = { key: CLIENT_TEST_KEY };
+  mock = await startMockHermes(profiles);
   const adminUser = await createUser({ platformRole: "agency_super_admin" });
   admin = agencyUser(adminUser, "agency_super_admin");
   staff = agencyUser(await createUser({ platformRole: "agency_staff" }), "agency_staff");
@@ -144,9 +148,11 @@ describe("agency Hermes workforce isolation", () => {
       profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant,
       inventoryComplete: true,
       restrictedTools: [],
-      toolsets: [{ name: "core", enabled: true, tools: ["web_search", "memory", "clarify"] }],
     });
-    expect(mock.requests.slice(reviewStart)).toEqual([{ method: "GET", path: "/v1/toolsets", profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant }]);
+    expect(toolReview.toolsets.map(({ name }) => name)).toEqual(["web", "memory", "session_search", "todo", "vision"]);
+    expect(mock.requests.slice(reviewStart).map(({ method, path }) => [method, path])).toEqual([
+      ["GET", "/v1/toolsets"], ["GET", "/v1/capabilities"], ["GET", "/v1/tools"], ["GET", "/v1/tools"],
+    ]);
     expect(JSON.stringify(toolReview)).not.toContain(PROFILE_KEYS[AGENCY_HERMES_PROFILE_IDS.sales_assistant]);
     await expect(reviewAgencyHermesToolPermissions(staff, salesAgentId)).rejects.toMatchObject({ code: "forbidden" });
     await expect(listAgencyAgents(staff)).rejects.toMatchObject({ code: "forbidden" });
@@ -330,7 +336,10 @@ describe("agency Hermes workforce isolation", () => {
     const runStart = mock.requests.length;
     const result = await startRequest();
     expect(result.runId).toBeTruthy();
-    expect(mock.requests.slice(runStart).map((request) => request.method)).toEqual(["GET", "GET", "POST"]);
+    expect(mock.requests.slice(runStart).map(({ method, path }) => [method, path])).toEqual([
+      ["GET", "/v1/capabilities"], ["GET", "/v1/models"], ["GET", "/v1/capabilities"],
+      ["GET", "/v1/tools"], ["GET", "/v1/tools"], ["POST", "/v1/runs"],
+    ]);
 
     const revokeRequestStart = mock.requests.length;
     await withSystem(async (db) => {
@@ -355,17 +364,20 @@ describe("agency Hermes workforce isolation", () => {
       "select id,role_key from agent_instances where org_id=$1 order by role_key limit 1",
       [clientOrg.id],
     ));
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ run_id: "must-not-start" }));
+    const requestsStart = mock.requests.length;
+    mock.setInventory(CLIENT_TEST_PROFILE, { advertised: false });
     try {
       await expect(startAgentRun(rows[0].id, clientOrg.id, {
-        baseUrl: "https://gateway.example.test",
-        profile: "client-test-profile",
-        apiKey: "synthetic-client-profile-key",
+        baseUrl: mock.url,
+        profile: CLIENT_TEST_PROFILE,
+        apiKey: CLIENT_TEST_KEY,
       }, { input: "synthetic client request", idempotencyKey: `blocked-client-${crypto.randomUUID()}` }))
         .rejects.toMatchObject({ kind: "bad_response" });
-      expect(fetchSpy).not.toHaveBeenCalled();
+      const requests = mock.requests.slice(requestsStart);
+      expect(requests.map(({ method, path }) => [method, path])).toEqual([["GET", "/v1/capabilities"], ["GET", "/v1/tools"]]);
+      expect(requests.some(({ path }) => path === "/v1/runs")).toBe(false);
     } finally {
-      fetchSpy.mockRestore();
+      mock.setInventory(CLIENT_TEST_PROFILE, null);
     }
   });
 

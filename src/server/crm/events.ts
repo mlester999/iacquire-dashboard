@@ -4,7 +4,8 @@ import { eventActor, type CrmActor } from "@/server/crm/actor";
 
 /**
  * Transactional outbox. Call these with the same `db` as the change itself, so the change and its event commit (or roll back)
- * together. The scheduler dispatches events to workflows and webhooks later; nothing here calls out.
+ * together. The scheduler dispatches events later (src/server/crm/dispatch.ts: workflows, lead assignment, follow-ups and outbound
+ * webhooks); nothing here calls out.
  */
 
 export interface CrmEventInput {
@@ -17,9 +18,55 @@ export interface CrmEventInput {
   dedupeKey: string;
   /** The event that caused this one, when an automation acted. Its depth + 1 is recorded so loops stop. */
   causedBy?: { eventId: number; depth: number } | null;
+  /** The customer themselves acted (an inbound message): recorded as actor kind "contact" instead of the actor's own kind. */
+  byContact?: boolean;
 }
 
+/** An event automations caused at this depth or deeper is not recorded (emitEvent returns a null id), which ends a loop. */
 export const MAX_EVENT_DEPTH = 8;
+
+/** An event as the dispatcher hands it to every subscriber (workflows, assignment, follow-ups, webhooks). */
+export interface CrmEventRow {
+  id: number;
+  orgId: string;
+  type: string;
+  entityType: string;
+  entityId: string | null;
+  contactId: string | null;
+  payload: Record<string, unknown>;
+  depth: number;
+  actorKind: string;
+  occurredAt: string;
+}
+
+/** Columns to select for toCrmEventRow. */
+export const CRM_EVENT_COLUMNS = "id, org_id, type, entity_type, entity_id, contact_id, payload, depth, actor_kind, occurred_at";
+
+export interface CrmEventDbRow {
+  id: string | number;
+  org_id: string;
+  type: string;
+  entity_type: string;
+  entity_id: string | null;
+  contact_id: string | null;
+  payload: Record<string, unknown> | null;
+  depth: number;
+  actor_kind: string;
+  occurred_at: Date | string;
+}
+
+export function toCrmEventRow(r: CrmEventDbRow): CrmEventRow {
+  return {
+    id: Number(r.id), orgId: r.org_id, type: r.type, entityType: r.entity_type, entityId: r.entity_id, contactId: r.contact_id, payload: r.payload ?? {},
+    depth: Number(r.depth), actorKind: r.actor_kind, occurredAt: new Date(r.occurred_at).toISOString(),
+  };
+}
+
+/** One event of one workspace, or null. */
+export async function loadEvent(db: Queryable, orgId: string, id: number): Promise<CrmEventRow | null> {
+  const { rows } = await db.query<CrmEventDbRow>(`select ${CRM_EVENT_COLUMNS} from crm_events where id = $1 and org_id = $2`, [id, orgId]);
+  return rows[0] ? toCrmEventRow(rows[0]) : null;
+}
 
 export async function emitEvent(db: Queryable, actor: CrmActor, e: CrmEventInput): Promise<{ id: number | null; duplicate: boolean }> {
   const a = eventActor(actor);
@@ -31,7 +78,7 @@ export async function emitEvent(db: Queryable, actor: CrmActor, e: CrmEventInput
      on conflict (org_id, dedupe_key) do nothing returning id`,
     [
       actor.orgId, e.type, e.entityType, e.entityId ?? null, e.contactId ?? null, JSON.stringify(e.payload ?? {}), e.dedupeKey.slice(0, 300),
-      actor.kind === "system" && e.causedBy ? "workflow" : a.kind, a.id, e.causedBy?.eventId ?? null, depth,
+      e.byContact ? "contact" : actor.kind === "system" && e.causedBy ? "workflow" : a.kind, e.byContact ? null : a.id, e.causedBy?.eventId ?? null, depth,
     ],
   );
   return rows[0] ? { id: Number(rows[0].id), duplicate: false } : { id: null, duplicate: true };

@@ -11,24 +11,35 @@ import { getAgencySetupSnapshot, getClientSetupSnapshot, listClientSetupOverview
 import { setupEventStream } from "@/server/setup/hub";
 import { computeProgress, estimateCompletion, evaluateReadiness, type RuleTask } from "@/lib/setup";
 import { PROVISIONERS } from "@/server/setup/provisioning-contract";
-import { CONNECTORS } from "@/server/setup/connectors";
+import { CONNECTORS, GHL_CONNECTORS } from "@/server/setup/connectors";
 import { CHECK_KEYS } from "@/lib/setup";
 import { addMember, agencyUser, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const KEY = "s".repeat(40);
 
+// 0037 added two optional native-only steps (sms_sender, whatsapp_sender). They exist on every checklist but don't apply to a GoHighLevel
+// workspace, so the GoHighLevel flow below is unchanged.
 const TEMPLATE_KEYS = [
   "company_info", "organization_created", "ghl_subaccount", "crm_snapshot", "crm_tags", "lead_forms", "crm_assets", "ai_configuration", "ai_profiles", "ai_employees", "automation_preparation", "business_hours", "workflows",
-  "website_built", "website_review", "website_published", "funnel_built", "funnel_review", "funnel_published", "email_domain", "calendar", "booking_test", "knowledge_review", "integration_tests", "final_review",
+  "website_built", "website_review", "website_published", "funnel_built", "funnel_review", "funnel_published", "email_domain", "sms_sender", "whatsapp_sender", "calendar", "booking_test", "knowledge_review", "integration_tests", "final_review",
 ];
+/** Steps that never apply to a GoHighLevel workspace. */
+const NATIVE_ONLY = 2;
 
+/**
+ * These tests describe the Setup Center for a client that keeps GoHighLevel (the flow every client had before iAcquire CRM). Since 0037 a
+ * new client is on iAcquire CRM by default, where the GoHighLevel location step doesn't apply and the CRM, calendar and sender checks read
+ * the native workspace: tests/crm-setup-native.test.ts covers that flow. Running this whole file in GoHighLevel mode is what proves the
+ * GoHighLevel flow is unchanged.
+ */
 async function fresh(name: string) {
   const org = await createOrg({ name });
   const owner = await createUser();
   const member = await createUser();
   await addMember(org.id, owner.id, "owner");
   await addMember(org.id, member.id, "member");
+  await withSystem((db) => db.query("update crm_workspaces set mode = 'ghl' where org_id = $1", [org.id]));
   await ensureInstanceStandalone(org.id);
   await setServices(await admin(), org.id, ["crm", "ai_workforce", "automations", "website", "funnel", "email", "calendar"]);
   return { org, owner, member, ownerCtx: ctxFor(owner, org, "owner"), memberCtx: ctxFor(member, org, "member") };
@@ -372,7 +383,8 @@ describe("progress rules", () => {
     const { org, ownerCtx } = await fresh("Package Co");
     const a = await admin();
     const full = await getClientSetupSnapshot(ownerCtx);
-    expect(full!.progress.total).toBe(TEMPLATE_KEYS.length - 1);
+    // Every step but the activation step, and the native-only sender steps (optional, and not applicable to GoHighLevel anyway).
+    expect(full!.progress.total).toBe(TEMPLATE_KEYS.length - 1 - NATIVE_ONLY);
     await setServices(a, org.id, ["crm"]);
     const crm = await getClientSetupSnapshot(ownerCtx);
     expect(crm!.progress.total).toBe(8); // company info, organization, 5 CRM steps, final system checks
@@ -753,14 +765,17 @@ describe("provisioning and verification contracts", () => {
   });
 
   it("has a connector for every check, and unimplemented ones always explain themselves and never pass", async () => {
-    for (const key of CHECK_KEYS) {
-      const c = CONNECTORS[key];
-      expect(c.key).toBe(key);
-      if (!c.implemented) {
-        expect(c.unavailableReason).toBeTruthy();
-        await expect(c.evaluate({ orgId: "00000000-0000-4000-8000-000000000001", actorUserId: null, live: true, applicable: [], stored: {} })).resolves.toMatchObject({ status: "unverified" });
+    // The GoHighLevel versions of the CRM, calendar and sender checks are what a GoHighLevel workspace still gets: none can verify.
+    for (const [key, c] of [...CHECK_KEYS.map((k) => [k, CONNECTORS[k]] as const), ...Object.entries(GHL_CONNECTORS)]) {
+      expect(c!.key).toBe(key);
+      if (!c!.implemented) {
+        expect(c!.unavailableReason).toBeTruthy();
+        await expect(c!.evaluate({ orgId: "00000000-0000-4000-8000-000000000001", actorUserId: null, live: true, applicable: [], stored: {} })).resolves.toMatchObject({ status: "unverified" });
       }
     }
+    expect(Object.values(GHL_CONNECTORS).every((c) => !c!.implemented)).toBe(true);
+    // Native CRM checks are implemented from the workspace's own rows (tests/crm-setup-native.test.ts proves what each accepts).
+    for (const key of ["crm_snapshot", "crm_assets", "calendar", "email_domain", "sms_sender", "whatsapp_sender"] as const) expect(CONNECTORS[key].implemented).toBe(true);
   });
 });
 

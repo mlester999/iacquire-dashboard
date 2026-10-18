@@ -42,6 +42,7 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   no_consent: "No consent on record for this kind of message",
   channel_not_ready: "This channel is not verified or enabled",
   whatsapp_window_closed: "WhatsApp's reply window has closed; an approved template is required",
+  template_mismatch: "The message doesn't match its WhatsApp template's approved wording",
   quiet_hours: "Quiet hours",
   outside_business_hours: "Outside business hours",
   followup_limit: "The follow-up limit has been reached",

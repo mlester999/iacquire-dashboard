@@ -27,18 +27,57 @@ export function isPublicAddress(address: string): boolean {
     if (a >= 224) return false; // multicast, reserved, broadcast
     return true;
   }
-  if (net.isIPv6(address)) {
-    const lower = address.toLowerCase();
-    if (lower === "::" || lower === "::1") return false;
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-    if (mapped) return isPublicAddress(mapped[1]);
-    if (/^f[cd]/.test(lower)) return false; // unique local
-    if (/^fe[89ab]/.test(lower)) return false; // link-local
-    if (lower.startsWith("ff")) return false; // multicast
-    if (lower.startsWith("2001:db8")) return false; // documentation
-    return true;
-  }
+  const groups = ipv6Groups(address);
+  if (groups) return isPublicIPv6(groups);
   return false;
+}
+
+/**
+ * An IPv6 address as its eight 16-bit groups, or null. Handles "::" compression, a dotted IPv4 tail (::ffff:127.0.0.1) and a zone id
+ * (dropped). Parsing to numbers matters: the URL parser rewrites [::ffff:127.0.0.1] as ::ffff:7f00:1, which no text pattern on the
+ * dotted form would recognise.
+ */
+export function ipv6Groups(address: string): number[] | null {
+  let a = address.trim().toLowerCase();
+  const zone = a.indexOf("%");
+  if (zone >= 0) a = a.slice(0, zone);
+  if (!net.isIPv6(a)) return null;
+  const tail4 = /^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(a);
+  if (tail4) {
+    const [o1, o2, o3, o4] = tail4.slice(2).map(Number);
+    if ([o1, o2, o3, o4].some((o) => o > 255)) return null;
+    a = `${tail4[1]}${((o1 << 8) | o2).toString(16)}:${((o3 << 8) | o4).toString(16)}`;
+  }
+  const halves = a.split("::");
+  if (halves.length > 2) return null;
+  const parse = (part: string) => (part ? part.split(":").map((g) => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : NaN)) : []);
+  const head = parse(halves[0]);
+  const rest = halves.length === 2 ? parse(halves[1]) : [];
+  const missing = 8 - head.length - rest.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
+  const groups = [...head, ...new Array<number>(halves.length === 2 ? missing : 0).fill(0), ...rest];
+  return groups.length === 8 && groups.every((g) => Number.isInteger(g) && g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+/**
+ * Only global unicast (2000::/3) is public, minus the parts of it that aren't ordinary hosts. Addresses that carry an IPv4 address the
+ * network will actually reach (IPv4-mapped ::ffff:0:0/96, IPv4-translated ::ffff:0:0:0/96, NAT64 64:ff9b::/96) are judged by that IPv4
+ * address. Everything else is refused: unspecified, loopback, IPv4-compatible (::a.b.c.d, deprecated), local-use NAT64 (64:ff9b:1::/48),
+ * discard (100::/64), unique-local, link-local, site-local and multicast, plus Teredo and the other 2001::/23 protocol ranges, 6to4
+ * (2002::/16, which reaches an IPv4 address through a relay) and the documentation ranges.
+ */
+function isPublicIPv6(g: number[]): boolean {
+  const embedded = () => `${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`;
+  const zero = (from: number, to: number) => g.slice(from, to).every((x) => x === 0);
+  if (zero(0, 5) && g[5] === 0xffff) return isPublicAddress(embedded());
+  if (zero(0, 4) && g[4] === 0xffff && g[5] === 0) return isPublicAddress(embedded());
+  if (g[0] === 0x64 && g[1] === 0xff9b && zero(2, 6)) return isPublicAddress(embedded());
+  if ((g[0] & 0xe000) !== 0x2000) return false;
+  if (g[0] === 0x2001 && g[1] < 0x0200) return false; // 2001::/23: Teredo, ORCHID, benchmarking and other protocol assignments
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return false; // documentation
+  if (g[0] === 0x2002) return false; // 6to4
+  if (g[0] === 0x3fff && g[1] < 0x1000) return false; // documentation (3fff::/20)
+  return true;
 }
 
 export function parsePublicUrl(raw: string): URL {

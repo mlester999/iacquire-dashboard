@@ -117,10 +117,14 @@ export async function listPipelines(actor: CrmActor, opts: { ensureDefault?: boo
       [actor.orgId],
     );
     if (!pipes.rows.length) return [];
+    // Open deals per stage in one grouped pass over the workspace's open deals (a deal's stage always belongs to the deal's workspace: the
+    // (stage_ref, org_id) foreign key), instead of a count per stage. Many screens list pipelines, so this runs on most CRM pages.
     const stages = await db.query<{ id: string; pipeline_id: string; name: string; position: number; kind: StageKind; probability: number | null; color: string | null; open_count: string }>(
-      `select s.id, s.pipeline_id, s.name, s.position, s.kind, s.probability, s.color,
-              (select count(*) from crm_opportunities o where o.stage_ref = s.id and o.archived_at is null and o.status = 'open')::text as open_count
-       from crm_pipeline_stages s where s.org_id = $1 and s.archived_at is null and s.pipeline_id = any($2::uuid[]) order by s.position`,
+      `select s.id, s.pipeline_id, s.name, s.position, s.kind, s.probability, s.color, coalesce(n.open_count, 0)::text as open_count
+       from crm_pipeline_stages s
+       left join (select o.stage_ref, count(*) as open_count from crm_opportunities o
+                  where o.org_id = $1 and o.stage_ref is not null and o.archived_at is null and o.status = 'open' group by o.stage_ref) n on n.stage_ref = s.id
+       where s.org_id = $1 and s.archived_at is null and s.pipeline_id = any($2::uuid[]) order by s.position`,
       [actor.orgId, pipes.rows.map((p) => p.id)],
     );
     return pipes.rows.map((p) => {

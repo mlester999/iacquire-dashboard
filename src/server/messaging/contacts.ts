@@ -95,8 +95,18 @@ export async function suppressAddress(db: Queryable, e: { orgId: string; channel
   );
 }
 
-export async function liftSuppression(db: Queryable, e: { orgId: string; channel: Channel; address: string; liftedBy?: string | null }) {
-  await db.query("update suppressions set lifted_at = now(), lifted_by = $4 where org_id = $1 and channel = $2 and address = $3 and lifted_at is null", [e.orgId, e.channel, e.address, e.liftedBy ?? null]);
+/**
+ * The suppressions a customer's own opt-in keyword (START, UNSTOP …) may lift: their earlier opt-out, and a number the provider called invalid
+ * that has now written to us. A bounce, a spam complaint or a person's do-not-contact entry ("manual") is never lifted by a keyword.
+ */
+export const KEYWORD_LIFTABLE_SUPPRESSIONS = ["opt_out", "invalid"] as const;
+
+/** Lifts an address's suppression. With `reasons`, only a suppression recorded for one of those reasons is lifted. */
+export async function liftSuppression(db: Queryable, e: { orgId: string; channel: Channel; address: string; liftedBy?: string | null; reasons?: readonly string[] }) {
+  await db.query(
+    "update suppressions set lifted_at = now(), lifted_by = $4 where org_id = $1 and channel = $2 and address = $3 and lifted_at is null and ($5::text[] is null or reason = any($5::text[]))",
+    [e.orgId, e.channel, e.address, e.liftedBy ?? null, e.reasons ? [...e.reasons] : null],
+  );
 }
 
 export async function isSuppressed(db: Queryable, orgId: string, channel: Channel, address: string): Promise<boolean> {

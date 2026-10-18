@@ -11,6 +11,29 @@ import { cn } from "@/lib/utils";
 import { endSupportSessionAction, startSupportSessionAction } from "@/app/actions/crm";
 import { useCrmAction } from "@/components/crm/ui";
 
+let clockSnapshot = Date.now();
+const clockSubscribers = new Set<() => void>();
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+function publishClock() {
+  clockSnapshot = Date.now();
+  for (const onChange of clockSubscribers) onChange();
+}
+
+function subscribeToClock(onChange: () => void) {
+  clockSubscribers.add(onChange);
+  if (clockTimer === null) clockTimer = setInterval(publishClock, 30_000);
+  return () => {
+    clockSubscribers.delete(onChange);
+    if (clockSubscribers.size === 0 && clockTimer !== null) {
+      clearInterval(clockTimer);
+      clockTimer = null;
+    }
+  };
+}
+
+const currentTime = () => clockSnapshot;
+
 /** Shown instead of a client's CRM until the agency person opens a support session with a reason the client can see. */
 export function SupportGate({ orgId, orgName, canWrite }: { orgId: string; orgName: string; canWrite: boolean }) {
   const { run, busy } = useCrmAction();
@@ -22,7 +45,7 @@ export function SupportGate({ orgId, orgName, canWrite }: { orgId: string; orgNa
         <div className="flex items-start gap-3">
           <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary"><ShieldAlert className="size-5" aria-hidden /></span>
           <div>
-            <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">Open {orgName}&rsquo;s CRM</h2>
+          <h1 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">Open {orgName}&rsquo;s CRM</h1>
             <p className="mt-1 text-[13px] leading-relaxed text-muted">
               Client records belong to the client. Access is time-limited, every page you open is recorded, and the client can see who opened their CRM and why under Support Access.
             </p>
@@ -49,14 +72,10 @@ export function SupportGate({ orgId, orgName, canWrite }: { orgId: string; orgNa
 }
 
 /** The bar across an agency person's view of a client's CRM: what access they hold, why, and how long it lasts. */
-export function SupportBanner({ orgId, mode, reason, expiresAt }: { orgId: string; mode: "read" | "write"; reason: string; expiresAt: string }) {
+export function SupportBanner({ orgId, mode, reason, expiresAt, initialNow }: { orgId: string; mode: "read" | "write"; reason: string; expiresAt: string; initialNow: number }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
+  const now = React.useSyncExternalStore(subscribeToClock, currentTime, () => initialNow);
   const minutes = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - now) / 60_000));
   React.useEffect(() => {
     if (minutes === 0) router.refresh();

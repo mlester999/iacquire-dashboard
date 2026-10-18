@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import * as hermesAdapter from "@/server/integrations/hermes/client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
@@ -63,14 +62,14 @@ describe("agent readiness", () => {
     expect(health).toMatchObject({ ok: true, status: "online" });
   });
 
-  it("blocks an employee when complete tool permissions are unavailable",async()=>{
-    const proof=vi.spyOn(hermesAdapter,"hasVerifiedCompleteToolInventory").mockReturnValue(false);
+  it("blocks an employee when the complete tool inventory is unavailable",async()=>{
+    mock.setInventory("c-chat-sales-assistant", { advertised: false });
     try {
       const result=await runHealthCheck(sales,{userId:admin.id,kind:"agency"});
       expect(result).toMatchObject({ok:false,status:"setup_required"});
-      expect(result.detail).toMatch(/cannot prove complete plugin\/MCP permissions/);
+      expect(result.detail).toMatch(/GET \/v1\/tools/);
       await expect(sendChatMessage(ctxFor(owner,org,"owner"),{agentRole:"sales_assistant",content:"blocked",clientMessageId:crypto.randomUUID()})).rejects.toMatchObject({code:"agent_unavailable"});
-    }finally{proof.mockRestore();await runHealthCheck(sales,{userId:admin.id,kind:"agency"});}
+    }finally{mock.setInventory("c-chat-sales-assistant", null);await runHealthCheck(sales,{userId:admin.id,kind:"agency"});}
   });
 
   it("rejects a wrong key and a profile exposing shell or file tools", async () => {

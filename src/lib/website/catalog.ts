@@ -18,14 +18,20 @@ export type FieldSpec =
   | { key: string; label: string; type: "color"; hint?: string; when?: Cond }
   | { key: string; label: string; type: "icon"; hint?: string; when?: Cond }
   | { key: string; label: string; type: "textlist"; max: number; itemMax: number; itemLabel: string; hint?: string; when?: Cond }
-  | { key: string; label: string; type: "list"; max: number; itemLabel: string; item: FieldSpec[]; summary?: string; hint?: string; when?: Cond };
+  | { key: string; label: string; type: "list"; max: number; itemLabel: string; item: FieldSpec[]; summary?: string; hint?: string; when?: Cond }
+  /** One of the workspace's calendars, by slug. Empty means the default public calendar, so the element works in any workspace. */
+  | { key: string; label: string; type: "calendarRef"; hint?: string; when?: Cond }
+  /** One appointment type of the calendar named by `calendarKey`, by slug. Empty means every public type in that calendar. */
+  | { key: string; label: string; type: "bookingTypeRef"; calendarKey: string; hint?: string; when?: Cond }
+  /** One of the workspace's native CRM forms, by key. Empty means the built-in enquiry form, so the element works in any workspace. */
+  | { key: string; label: string; type: "formRef"; hint?: string; when?: Cond };
 
 /** Show a field only while another field has one of these values. */
 export type Cond = { key: string; in: string[] };
 
 export const ELEMENT_TYPES = [
   "heading", "text", "image", "button", "group", "card", "icon", "divider", "spacer", "badge", "list", "services", "steps", "faq", "testimonials",
-  "stats", "logos", "team", "pricing", "gallery", "collage", "video", "contactInfo", "social", "nav", "logo", "form", "map", "marquee",
+  "stats", "logos", "team", "pricing", "gallery", "collage", "video", "contactInfo", "social", "nav", "logo", "form", "map", "marquee", "booking",
 ] as const;
 export type ElementType = (typeof ELEMENT_TYPES)[number];
 export const isElementType = (v: unknown): v is ElementType => typeof v === "string" && (ELEMENT_TYPES as readonly string[]).includes(v);
@@ -62,6 +68,11 @@ const toggle = (key: string, label: string, hint?: string, when?: Cond): FieldSp
 const select = (key: string, label: string, options: Option[], ui: "segmented" | "dropdown" = "dropdown", extra: Partial<{ hint: string; when: Cond }> = {}): FieldSpec => ({ key, label, type: "select", options, ui, ...extra });
 const number = (key: string, label: string, min: number, max: number, step = 1, unit?: string): FieldSpec => ({ key, label, type: "number", min, max, step, unit });
 const opts = (...pairs: Array<[string, string]>): Option[] => pairs.map(([value, label]) => ({ value, label }));
+/**
+ * The form element's built-in settings apply only while it uses the built-in enquiry form: no CRM form chosen, which is an empty key or
+ * (in every template and older site) no key at all.
+ */
+const BUILT_IN_FORM: Cond = { key: "formKey", in: ["", "undefined"] };
 
 export interface ElementDef {
   type: ElementType;
@@ -260,11 +271,14 @@ export const ELEMENT_DEFS: Record<ElementType, ElementDef> = {
   form: {
     type: "form", label: "Enquiry form", group: "Business", addable: true, description: "A form whose answers arrive in your contacts.",
     fields: [
-      select("purpose", "What is it for?", opts(["contact", "General enquiry"], ["consultation", "Consultation request"], ["lead", "Quote or lead"], ["appointment", "Appointment request"])),
-      text("submitLabel", "Button label", 40), select("layout", "Look", opts(["card", "Card"], ["plain", "Plain"], ["inline", "Compact"])),
-      select("phone", "Phone number", opts(["hidden", "Hidden"], ["optional", "Optional"], ["required", "Required"]), "segmented"), select("message", "Message", opts(["hidden", "Hidden"], ["optional", "Optional"], ["required", "Required"]), "segmented"),
-      select("service", "Service choice", opts(["hidden", "Hidden"], ["optional", "Optional"], ["required", "Required"]), "segmented"),
-      { key: "services", label: "Services to choose from", type: "textlist", max: 12, itemMax: 60, itemLabel: "service" },
+      // A native CRM form (its own questions, mapping and actions), or "" for the built-in enquiry form below.
+      { key: "formKey", label: "Form", type: "formRef", hint: "Use one of your CRM forms, or the built-in enquiry form." },
+      select("purpose", "What is it for?", opts(["contact", "General enquiry"], ["consultation", "Consultation request"], ["lead", "Quote or lead"], ["appointment", "Appointment request"]), "dropdown", { when: BUILT_IN_FORM }),
+      text("submitLabel", "Button label", 40, { when: BUILT_IN_FORM }), select("layout", "Look", opts(["card", "Card"], ["plain", "Plain"], ["inline", "Compact"])),
+      select("phone", "Phone number", opts(["hidden", "Hidden"], ["optional", "Optional"], ["required", "Required"]), "segmented", { when: BUILT_IN_FORM }),
+      select("message", "Message", opts(["hidden", "Hidden"], ["optional", "Optional"], ["required", "Required"]), "segmented", { when: BUILT_IN_FORM }),
+      select("service", "Service choice", opts(["hidden", "Hidden"], ["optional", "Optional"], ["required", "Required"]), "segmented", { when: BUILT_IN_FORM }),
+      { key: "services", label: "Services to choose from", type: "textlist", max: 12, itemMax: 60, itemLabel: "service", when: BUILT_IN_FORM },
       text("helper", "Small note under the button", 160),
     ],
   },
@@ -276,12 +290,25 @@ export const ELEMENT_DEFS: Record<ElementType, ElementDef> = {
     type: "marquee", label: "Scrolling words", group: "Content", addable: true, description: "A slow-moving line of words.",
     fields: [{ key: "items", label: "Words", type: "textlist", max: 12, itemMax: 40, itemLabel: "word" }, select("speed", "Speed", opts(["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]), "segmented"), select("style", "Style", opts(["text", "Large text"], ["outline", "Outlined text"], ["badge", "Pills"]))],
   },
+  booking: {
+    type: "booking", label: "Book appointment", group: "Business", addable: true, description: "Lets visitors choose a time and book it. Bookings go straight into your calendar.",
+    fields: [
+      { key: "calendar", label: "Calendar", type: "calendarRef", hint: "The default uses your main public calendar." },
+      { key: "type", label: "Appointment type", type: "bookingTypeRef", calendarKey: "calendar", hint: "Offer one type, or every public type in the calendar." },
+      select("display", "Show as", opts(["button", "A button"], ["types", "A list of appointment types"], ["card", "A card with the types and a button"])),
+      text("label", "Button label", 40, { placeholder: "Book an appointment", when: { key: "display", in: ["button", "card"] } }),
+      select("variant", "Button style", opts(["primary", "Primary"], ["accent", "Accent"], ["secondary", "Soft"], ["outline", "Outline"], ["light", "White"], ["dark", "Dark"]), "dropdown", { when: { key: "display", in: ["button", "card"] } }),
+      select("size", "Button size", opts(["s", "Small"], ["m", "Medium"], ["l", "Large"]), "segmented", { when: { key: "display", in: ["button", "card"] } }),
+      text("helper", "Small note", 160, { hint: "Optional. A short line shown under the booking options." }),
+    ],
+  },
 };
 
 /** The value a new element starts with, so a freshly added element always has the shape the renderer expects. */
 export function defaultsFor(fields: FieldSpec[]): Record<string, unknown> {
   return Object.fromEntries(
-    fields.map((f) => {
+    // A form element's CRM form is opt-in: without one the key is simply absent, so templates and saved sites stay exactly as they were.
+    fields.filter((f) => f.type !== "formRef").map((f) => {
       switch (f.type) {
         case "text":
         case "longtext":
@@ -296,6 +323,8 @@ export function defaultsFor(fields: FieldSpec[]): Record<string, unknown> {
         case "icon": return [f.key, "sparkles"];
         case "textlist":
         case "list": return [f.key, []];
+        case "calendarRef":
+        case "bookingTypeRef": return [f.key, ""];
       }
     }),
   );
@@ -332,6 +361,7 @@ const START: Partial<Record<ElementType, Record<string, unknown>>> = {
   form: { purpose: "contact", submitLabel: "Send message", layout: "card", phone: "optional", message: "required", service: "hidden", services: [], helper: "" },
   map: { address: "", style: "card", label: "Open in maps" },
   marquee: { items: [], speed: "normal", style: "text" },
+  booking: { calendar: "", type: "", display: "button", label: "Book an appointment", variant: "primary", size: "m", helper: "" },
 };
 
 export function elementDefaults(type: ElementType): Record<string, unknown> {

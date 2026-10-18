@@ -5,16 +5,17 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  AlertCircle, ArrowLeft, BookmarkPlus, Check, CheckCircle2, Cloud, FileText, History, Image as ImageIcon, Keyboard, Layers, Loader2, Monitor, Palette, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Redo2, Save, Settings2, Smartphone, Tablet, Undo2, Eye, Send, Globe,
+  AlertCircle, ArrowLeft, Check, CheckCircle2, Cloud, FileText, History, Image as ImageIcon, Keyboard, Layers, Loader2, Monitor, Palette, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, Redo2, Save, Settings2, Smartphone, Tablet, Undo2, Eye, Send, Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, Tooltip } from "@/components/ui/overlays";
-import { StatusPill, type StatusTone } from "@/components/ui/status";
 import { PublishDialog } from "@/components/website/studio/publish-dialog";
 import { StudioApiProvider, createServerStudioApi, serverStudioApi, type SavedComponent, type StudioApi } from "@/components/website/studio/studio-api";
 import { createDraftSaver, type DraftSaver, type SaverState } from "@/lib/website/draft-saver";
 import { collectIds, findPage, isRef, referencedAssetIds, type ImageSrc, type Section, type SiteContent } from "@/lib/website/doc";
+import { contentUsesBooking } from "@/lib/website/booking";
+import { contentHasFormElement } from "@/lib/crm/forms/website";
 import { buildLayout, buildPreset, LAYOUT_PRESETS, newElement, SECTION_PRESETS } from "@/lib/website/editor/library";
 import { canRedo, canUndo, DEVICES, initialState, reducer, type Device } from "@/lib/website/editor/state";
 import {
@@ -433,11 +434,43 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   }, [assetMap, api]);
   const usedIds = React.useMemo(() => new Set(referencedAssetIds(ed.doc)), [ed.doc]);
 
+  // The workspace's calendars, for booking elements. Loaded once a page has one; a template has no workspace, so it never loads there.
+  const usesBooking = React.useMemo(() => contentUsesBooking(ed.doc), [ed.doc]);
+  const canBook = mode === "site" && Boolean(api.listBookingOptions);
+  const [booking, setBooking] = React.useState<EditorServices["booking"]>(canBook ? { state: "loading" } : undefined);
+  const [bookingRev, setBookingRev] = React.useState(0);
+  React.useEffect(() => {
+    if (!canBook || !api.listBookingOptions || (!usesBooking && bookingRev === 0)) return;
+    let live = true;
+    api.listBookingOptions()
+      .then((r) => { if (live) setBooking(r.ok ? { state: "ready", options: r.data } : { state: "error", message: r.error }); })
+      .catch(() => { if (live) setBooking({ state: "error", message: "Your calendars couldn't be loaded." }); });
+    return () => { live = false; };
+  }, [api, canBook, usesBooking, bookingRev]);
+  const refreshBooking = React.useCallback(() => { setBooking((b) => (b?.state === "ready" ? b : { state: "loading" })); setBookingRev((n) => n + 1); }, []);
+
+  // The workspace's native CRM forms, for form elements: loaded once the site has a form element (the picker lists them, the canvas draws
+  // a chosen form's questions). A template has no workspace, so it never loads there and form elements use the built-in form.
+  const usesForms = React.useMemo(() => contentHasFormElement(ed.doc), [ed.doc]);
+  const canForms = mode === "site" && Boolean(api.listForms);
+  const [forms, setForms] = React.useState<EditorServices["forms"]>(canForms ? { state: "loading" } : undefined);
+  const [formsRev, setFormsRev] = React.useState(0);
+  React.useEffect(() => {
+    if (!canForms || !api.listForms || (!usesForms && formsRev === 0)) return;
+    let live = true;
+    api.listForms()
+      .then((r) => { if (live) setForms(r.ok ? { state: "ready", options: r.data } : { state: "error", message: r.error }); })
+      .catch(() => { if (live) setForms({ state: "error", message: "Your forms couldn't be loaded." }); });
+    return () => { live = false; };
+  }, [api, canForms, usesForms, formsRev]);
+  const refreshForms = React.useCallback(() => { setForms((f) => (f?.state === "ready" ? f : { state: "loading" })); setFormsRev((n) => n + 1); }, []);
+
   const services: EditorServices = React.useMemo(() => ({
     design: ed.doc.design, business: { phone: ed.doc.business.phone, email: ed.doc.business.email },
     pages: ed.doc.pages.map((p) => ({ id: p.id, slug: p.slug, title: p.title })), assets, assetUrl: api.assetUrl, device: ed.device, canUpload,
-    openMedia: (o) => setPicker(o),
-  }), [ed.doc.design, ed.doc.business.phone, ed.doc.business.email, ed.doc.pages, assets, api, ed.device, canUpload]);
+    openMedia: (o) => setPicker(o), booking: canBook ? booking : undefined, refreshBooking: canBook ? refreshBooking : undefined,
+    forms: canForms ? forms : undefined, refreshForms: canForms ? refreshForms : undefined,
+  }), [ed.doc.design, ed.doc.business.phone, ed.doc.business.email, ed.doc.pages, assets, api, ed.device, canUpload, canBook, booking, refreshBooking, canForms, forms, refreshForms]);
 
   // --- Saving, versions, publishing ---------------------------------------
   const flush = React.useCallback(() => saver.flush(), [saver]);
@@ -526,8 +559,8 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
   }, [saveNow, doUndo, doRedo]);
 
   // --- Derived -------------------------------------------------------------
-  const lifecycle: { label: string; tone: StatusTone } = approval === "submitted" ? { label: "Waiting for approval", tone: "warning" } : approval === "changes_requested" ? { label: "Changes requested", tone: "warning" } : approval === "approved" ? { label: "Approved", tone: "success" } : { label: "Draft", tone: "neutral" };
-  const liveLabel = isLive ? "Live" : "Not live";
+  const lifecycle = approval === "submitted" ? { label: "Waiting for approval", tone: "warn" } : approval === "changes_requested" ? { label: "Changes requested", tone: "warn" } : approval === "approved" ? { label: "Approved", tone: "ok" } : { label: "Draft", tone: "idle" };
+  const liveLabel = isLive ? (unpublished ? "Live · unpublished changes" : "Live") : "Not live";
   const hostLabel = site.liveHost ?? site.platformHost;
   const conflict = saverState.status === "conflict";
   const leftLabel = LEFT_TABS.find((t) => t.id === leftTab)!.label;
@@ -563,15 +596,11 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
       <div ref={rootRef} tabIndex={-1} role="region" aria-label="Website editor" className="studio-editor fixed inset-0 z-40 flex flex-col bg-bg text-ink outline-none" data-studio="">
         {notice && <p className="border-b border-warning/20 bg-warning-soft px-4 py-1.5 text-center text-[11.5px] font-medium text-warning-ink">{notice}</p>}
         {/* Toolbar */}
-        <header className="studio-editor-toolbar flex min-h-14 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-surface px-3 py-1.5 xl:gap-x-3">
+        <header className="studio-editor-toolbar flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface px-3 py-1.5">
           <Link href={backHref} aria-label="Save and exit editor" onClick={async (e) => { e.preventDefault(); if (await flush()) router.push(backHref); else toast.error("Your changes have not been saved. Retry saving before leaving the editor."); }} className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-muted hover:bg-surface-2 hover:text-ink"><ArrowLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Exit</span></Link>
           <div className="min-w-0">
-            <p className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight" title={site.name}>{site.name}</p>
-            <div className="mt-0.5 flex items-center gap-1">
-              <StatusPill size="sm" tone={lifecycle.tone}>{lifecycle.label}</StatusPill>
-              <StatusPill size="sm" tone={isLive ? "success" : "neutral"}>{liveLabel}</StatusPill>
-              {isLive && unpublished && <StatusPill size="sm" tone="primary" className="hidden lg:inline-flex">Unpublished changes</StatusPill>}
-            </div>
+            <p className="max-w-[14rem] truncate text-[13px] font-semibold leading-tight">{site.name}</p>
+            <p className="max-w-[14rem] truncate text-[10.5px] leading-tight text-muted">{site.clientName ? `${site.clientName} · ` : ""}{lifecycle.label} · {liveLabel}</p>
           </div>
           <div className="studio-editor-page w-44 shrink-0"><SelectControl<string> label="Page" value={page.id} onChange={setPage} options={ed.doc.pages.map((p) => ({ value: p.id, label: p.title }))} /></div>
           <span className="flex-1" />
@@ -593,10 +622,10 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
           <IconButton label="Redo (Ctrl+Shift+Z)" onClick={doRedo} disabled={readOnly || !canRedo(ed)}><Redo2 className="size-4" /></IconButton>
           <IconButton label="Save draft (Ctrl+S)" onClick={() => void saveNow()} disabled={readOnly || saverState.status === "saving"}><Save className="size-4" /></IconButton>
           <SaveStatus state={saverState} onRetry={() => void saver.flush()} />
-          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" aria-label="Save version" onClick={() => setCheckpoint(true)} disabled={readOnly}><BookmarkPlus className="size-3.5" /> <span className="hidden 2xl:inline">Save version</span></Button>}
+          {mode === "site" && <Button size="sm" variant="secondary" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setCheckpoint(true)} disabled={readOnly}><Save className="size-3.5" /> <span className="hidden lg:inline">Save version</span></Button>}
           <IconButton label="Version history" onClick={() => setVersions(true)}><History className="size-4" /></IconButton>
           <IconButton label="Keyboard shortcuts" className="studio-editor-extra" onClick={() => setShortcuts(true)}><Keyboard className="size-4" /></IconButton>
-          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden 2xl:inline">Preview</span></Button>
+          <Button size="sm" variant="secondary" aria-label="Preview website" className="!h-8 !px-2.5 !text-[12.5px]" onClick={() => setPreview(true)}><Eye className="size-3.5" /> <span className="hidden sm:inline">Preview</span></Button>
           {canPublish ? (
             <Button size="sm" variant="brand" className="!h-8 !px-3 !text-[12.5px]" onClick={() => setPublishMode("publish")} disabled={readOnly}><Globe className="size-3.5" /> {mode === "template" ? "Publish template" : "Publish"}</Button>
           ) : (
@@ -607,7 +636,7 @@ function EditorInner({ site, initialAssets, canPublish, canUpload, agency, backH
         {readOnly && (
           <div role="status" className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning-soft px-4 py-2 text-[12.5px] text-warning-ink">
             <span><strong className="font-semibold">{lock.by}</strong> is editing this website right now. You can look around, but changes are switched off so nothing is overwritten.</span>
-            <Button size="sm" variant="secondary" className="!h-8 !text-[12.5px]" onClick={() => void takeLock(true)}>Take over editing</Button>
+            <button type="button" onClick={() => void takeLock(true)} className="font-semibold underline">Take over editing</button>
           </div>
         )}
         <div className="flex min-h-0 flex-1">
@@ -690,12 +719,12 @@ function RightTabs({ tabs, selection }: { tabs: Array<{ id: string; label: strin
 }
 
 function SaveStatus({ state, onRetry }: { state: SaverState; onRetry: () => void }) {
-  const base = "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium ring-1 ring-inset";
-  if (state.status === "saving") return <span className={cn(base, "bg-surface-2 text-muted ring-line")} role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Saving…</span>;
-  if (state.status === "dirty") return <span className={cn(base, "bg-surface-2 text-muted ring-line")} role="status"><Cloud className="size-3.5" aria-hidden /> Unsaved changes</span>;
-  if (state.status === "error") return <button type="button" onClick={onRetry} className={cn(base, "bg-danger-soft text-danger-ink ring-danger/25")} role="alert" title={state.error ?? undefined}><AlertCircle className="size-3.5" aria-hidden /> Not saved · Retry</button>;
-  if (state.status === "conflict") return <span className={cn(base, "bg-warning-soft text-warning-ink ring-warning/25")} role="alert"><AlertCircle className="size-3.5" aria-hidden /> Changed elsewhere</span>;
-  return <span className={cn(base, "bg-success-soft text-success-ink ring-success/25")} role="status"><CheckCircle2 className="size-3.5" aria-hidden /> {state.status === "saved" ? "Saved" : "All changes saved"}</span>;
+  const base = "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium";
+  if (state.status === "saving") return <span className={cn(base, "text-muted")} role="status"><Loader2 className="size-3.5 animate-spin" aria-hidden /> Saving…</span>;
+  if (state.status === "dirty") return <span className={cn(base, "text-muted")} role="status"><Cloud className="size-3.5" aria-hidden /> Unsaved changes</span>;
+  if (state.status === "error") return <button type="button" onClick={onRetry} className={cn(base, "bg-danger-soft text-danger-ink")} role="alert" title={state.error ?? undefined}><AlertCircle className="size-3.5" aria-hidden /> Not saved · Retry</button>;
+  if (state.status === "conflict") return <span className={cn(base, "bg-warning-soft text-warning-ink")} role="alert"><AlertCircle className="size-3.5" aria-hidden /> Changed elsewhere</span>;
+  return <span className={cn(base, "text-success-ink")} role="status"><CheckCircle2 className="size-3.5" aria-hidden /> {state.status === "saved" ? "Saved" : "All changes saved"}</span>;
 }
 
 export { DragProvider };

@@ -14,6 +14,7 @@ import {
   lockAgencySetupAccess,
   mutateSetup,
   recordSetupEvent,
+  syncSetupApplicability,
   TASK_COLUMNS,
   type InstanceRow,
   type TaskRow,
@@ -410,7 +411,8 @@ export async function setServices(admin: SessionUser, orgId: string, services: s
   const clean = [...new Set(services)].filter((s): s is (typeof SETUP_SERVICE_KEYS)[number] => (SETUP_SERVICE_KEYS as string[]).includes(s));
   return agencyMutation(admin, orgId, async (db, inst) => {
     await db.query("update client_setup_instances set services = $2 where id = $1", [inst.id, clean]);
-    await db.query("update client_setup_tasks set service_excluded = not (service = any($2::text[])) where org_id = $1 and service is not null", [orgId, clean]);
+    // Purchased services and the CRM provider together decide what applies (a native client never gets the GoHighLevel location step back).
+    await syncSetupApplicability(db, orgId);
     await recordSetupEvent(db, { orgId, instanceId: inst.id, actorUserId: admin.id, actorKind: "agency", event: "services_changed", visibility: "internal", metadata: { services: clean } });
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: "setup.services_changed", targetType: "setup", targetId: inst.id, result: "success", metadata: { services: clean } }, db);
     return { services: clean };

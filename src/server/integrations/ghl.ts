@@ -281,3 +281,146 @@ export async function syncGhl(orgId: string, actorUserId: string | null): Promis
 
 /** The verified location and credential for a tenant, for the messaging provider. Returns null when none is usable. */
 export { loadMapping as loadGhlMapping };
+
+// ---------------------------------------------------------------------------
+// Live-record migration reads (used by src/server/crm/ghl-migration.ts)
+//
+// GET only, to the official host, for the tenant's own mapped location, with the documented Version header. These functions never retry
+// on their own: a 429 (or a used-up burst budget, or a nearly used daily allowance) comes back as GhlRateLimitError with how long to wait,
+// and the caller records it and resumes from its cursor later. GoHighLevel documents 100 requests per 10 seconds and 200,000 per day for
+// each location; iAcquire keeps to 90 per 10 seconds per location in this process.
+// ---------------------------------------------------------------------------
+
+export const GHL_API_ORIGIN = "https://services.leadconnectorhq.com";
+export const GHL_VERSIONS = { default: VERSION_DEFAULT, calendars: VERSION_CALENDARS } as const;
+const PROTECTED_LOCATIONS = ["u69CVh0ZlAofUmRoj1zF", "SQvVnld5MBHdMQ1qnSfw"];
+const BURST_WINDOW_MS = 10_000;
+const BURST_BUDGET = 90;
+/** Below this many requests left for the day (as GoHighLevel reports it), a migration stops reading and waits. */
+export const GHL_DAILY_RESERVE = 2_000;
+
+/** GoHighLevel said "not now" (429), or iAcquire's own budget says so. Wait `retryAfterMs`, then resume. Nothing was read. */
+export class GhlRateLimitError extends Error {
+  constructor(readonly retryAfterMs: number, readonly reason: "retry_after" | "burst" | "daily") {
+    super(reason === "daily" ? "GoHighLevel's daily request allowance for this location is nearly used up." : "GoHighLevel asked iAcquire to slow down.");
+    this.name = "GhlRateLimitError";
+  }
+}
+
+/**
+ * A GET that failed for a reason that is safe to show (never the token, never the raw response). `transient`: GoHighLevel couldn't be
+ * reached, timed out, or answered 5xx/408, so the same request may well work a little later (a migration backs off and resumes).
+ */
+export class GhlReadError extends Error {
+  constructor(message: string, readonly kind: "forbidden" | "not_found" | "invalid" | "error", readonly status: number | null = null, readonly transient = false) {
+    super(message);
+    this.name = "GhlReadError";
+  }
+}
+
+export interface GhlRateInfo {
+  /** X-RateLimit-Remaining: requests left in the current burst interval. */
+  burstRemaining: number | null;
+  /** X-RateLimit-Daily-Remaining. */
+  dailyRemaining: number | null;
+  /** X-RateLimit-Interval-Milliseconds. */
+  intervalMs: number | null;
+}
+
+const burstWindows = new Map<string, number[]>();
+
+/** Takes a request slot for the location in this process: 0 when one was free, otherwise how long until one is. */
+export function takeGhlBurstSlot(locationId: string, now = Date.now()): number {
+  const window = (burstWindows.get(locationId) ?? []).filter((t) => t > now - BURST_WINDOW_MS);
+  if (window.length >= BURST_BUDGET) {
+    burstWindows.set(locationId, window);
+    return Math.max(1, window[0] + BURST_WINDOW_MS - now);
+  }
+  window.push(now);
+  burstWindows.set(locationId, window);
+  return 0;
+}
+
+/** Retry-After as seconds or an HTTP date, in milliseconds (null when absent or unreadable). */
+export function parseRetryAfter(header: string | null, now = Date.now()): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, at - now);
+}
+
+const headerNumber = (res: Response, name: string) => {
+  const v = res.headers.get(name);
+  const n = v === null || v.trim() === "" ? NaN : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** The tenant's mapped location and credential for a migration: client workspaces only, never a protected location. */
+export async function loadGhlMigrationMapping(db: Queryable, orgId: string): Promise<GhlMapping | null> {
+  const m = await loadMapping(db, orgId);
+  if (!m) return null;
+  if (m.orgKind !== "client" || PROTECTED_LOCATIONS.includes(m.locationId)) throw new AppError("forbidden", "This GoHighLevel location is protected and is never read for a migration.");
+  return m;
+}
+
+/**
+ * One read-only GET for a migration. The location must be the mapping's own; rows that name another location are refused by the caller
+ * (scopeGhlRows). The token only ever goes into the Authorization header.
+ */
+export async function ghlMigrationGet(
+  m: GhlMapping,
+  path: string,
+  params: Record<string, string>,
+  version: (typeof GHL_VERSIONS)[keyof typeof GHL_VERSIONS] = VERSION_DEFAULT,
+): Promise<{ body: Record<string, unknown>; rate: GhlRateInfo }> {
+  if (PROTECTED_LOCATIONS.includes(m.locationId) || m.orgKind !== "client") throw new AppError("forbidden", "This GoHighLevel location is protected and is never read for a migration.");
+  if (new URL(env().GHL_API_BASE).origin !== GHL_API_ORIGIN) throw new GhlReadError("GoHighLevel must use the official API host.", "error");
+  if (!path.startsWith("/")) throw new GhlReadError("Refused a request outside GoHighLevel's official API host.", "error");
+  const url = new URL(path, GHL_API_ORIGIN);
+  if (url.origin !== GHL_API_ORIGIN) throw new GhlReadError("Refused a request outside GoHighLevel's official API host.", "error");
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const wait = takeGhlBurstSlot(m.locationId);
+  if (wait > 0) throw new GhlRateLimitError(wait, "burst");
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${m.token}`, Version: version, Accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+      cache: "no-store",
+    });
+  } catch {
+    // A network failure or the 15 s timeout: worth trying again later.
+    throw new GhlReadError("GoHighLevel could not be reached.", "error", null, true);
+  }
+  const rate: GhlRateInfo = {
+    burstRemaining: headerNumber(res, "x-ratelimit-remaining"),
+    dailyRemaining: headerNumber(res, "x-ratelimit-daily-remaining"),
+    intervalMs: headerNumber(res, "x-ratelimit-interval-milliseconds"),
+  };
+  if (res.status === 429) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new GhlRateLimitError(Math.min(3_600_000, parseRetryAfter(res.headers.get("retry-after")) ?? rate.intervalMs ?? BURST_WINDOW_MS), "retry_after");
+  }
+  if (res.status === 401 || res.status === 403) throw new GhlReadError("GoHighLevel refused the credential for this request (a missing read scope, or a revoked token).", "forbidden", res.status);
+  if (res.status === 404) throw new GhlReadError("GoHighLevel doesn't offer this for the location.", "not_found", 404);
+  if (res.status === 400 || res.status === 422) throw new GhlReadError(`GoHighLevel didn't accept the request (HTTP ${res.status}).`, "invalid", res.status);
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new GhlReadError(`GoHighLevel returned ${res.status}.`, "error", res.status, res.status >= 500 || res.status === 408);
+  }
+  const body: unknown = await res.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new GhlReadError("GoHighLevel returned an unsupported response.", "error");
+  return { body: body as Record<string, unknown>, rate };
+}
+
+/** The rows of a list response, refused as a whole when the list is missing or any row names another location. */
+export function scopeGhlRows<T extends { id: string }>(rows: unknown, m: GhlMapping): T[] {
+  try {
+    return scopedRows(rows as T[] | undefined, m);
+  } catch (err) {
+    throw new GhlReadError(err instanceof Error ? err.message : "GoHighLevel returned an unsupported response.", "error");
+  }
+}

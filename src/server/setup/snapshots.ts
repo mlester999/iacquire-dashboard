@@ -3,7 +3,7 @@ import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
-import { CONNECTORS, connectorSummary } from "@/server/setup/connectors";
+import { connectorsFor, connectorSummary } from "@/server/setup/connectors";
 import {
   assertAgencyAccess,
   clientTitle,
@@ -16,7 +16,6 @@ import {
 } from "@/server/setup/core";
 import {
   CHECK_KEYS,
-  CHECK_LABEL,
   computeProgress,
   estimateCompletion,
   evaluateReadiness,
@@ -272,7 +271,8 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
     const names = ids.length
       ? await db.query<{ id: string; name: string }>("select id, coalesce(nullif(full_name, ''), email::text) as name from users where id = any($1::uuid[])", [ids])
       : { rows: [] as Array<{ id: string; name: string }> };
-    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])) };
+    const connectors = await connectorsFor(db, orgId);
+    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors };
   });
   if (!d.org || !d.inst) throw new AppError("not_found", "Client not found.");
 
@@ -308,6 +308,7 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
     completionMode: t.completion_mode,
     checkKey: t.check_key,
     service: t.service,
+    crmProvider: t.crm_provider,
     status: t.status,
     required: t.required,
     hidden: t.hidden,
@@ -337,12 +338,12 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
   const applicableChecks = [...new Set(d.tasks.filter((t) => t.check_key && isApplicable({ hidden: t.hidden, serviceExcluded: t.service_excluded })).map((t) => t.check_key as CheckKey))];
   const checks: AgencyCheckView[] = CHECK_KEYS.filter((k) => applicableChecks.includes(k)).map((key) => {
     const row = d.checks.find((c) => c.check_key === key);
-    const sum = connectorSummary(key);
+    const sum = connectorSummary(key, d.connectors);
     return {
       key,
-      label: CHECK_LABEL[key],
+      label: sum.label,
       status: row?.status ?? "unverified",
-      detail: row?.detail ?? (sum.implemented ? null : CONNECTORS[key].unavailableReason ?? null),
+      detail: row?.detail ?? (sum.implemented ? null : sum.note),
       source: row?.source ?? null,
       checkedAt: iso(row?.checked_at),
       attestedBy: row?.attested_by ? d.names.get(row.attested_by) ?? "Former team member" : null,

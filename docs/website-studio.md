@@ -124,7 +124,7 @@ preview of the page) before anything happens. Apply saves a restore point (versi
 
 The public runtime connects as `iaq_site_runtime`, which has **no table privileges**; it can only call a few `SECURITY DEFINER` functions (resolve a verified
 host to its live publication, read that publication's images, accept an enquiry, rate-limit, record usage). It cannot read a draft, another tenant or a
-credential. Notes specific to this stage:
+credential. The one exception is booking, which uses trusted access in a single, fenced-off module (last item below). Notes specific to this stage:
 
 - **Tenant scoping is decided by the server.** `studioContext` gives a client user their own workspace (a different `orgId` is refused); an agency user must
   be assigned to the client or be a super admin. Staff permissions follow the permission matrix (`website.edit` and `website.review` yes, `website.publish`
@@ -135,12 +135,46 @@ credential. Notes specific to this stage:
 - The assistant's output is data, not instructions: it is parsed, reduced to the closed list, validated and re-checked, and page text never reaches a
   privileged action. Forged host headers cannot route across tenants (the sites proxy only trusts the verified host).
 - No credentials are stored or logged by the Studio. The LLM key is the agency's existing, vaulted connection.
+- **Booking is the one runtime path with trusted database access.** A site with a "Book appointment" element serves `/_book/…` (calendars,
+  types, days and times, the details form), takes the form at `/__iaq/book`, shows `/_booked/…` afterwards, and draws its public calendars
+  on every published page that has the element. None of that can run as `iaq_site_runtime`: free times come from the native scheduling
+  engine (working hours, overrides, busy blocks, connected-calendar busy times, daily limits), and a booking writes the contact, the
+  appointment, its busy blocks (with the database's no-overlap constraint), reminders and audit in one transaction. Rebuilding that engine
+  as `SECURITY DEFINER` functions would mean keeping two copies of it, so instead the trusted access is held in one place:
+  - Every trusted read and the one write are in `src/server/sites/booking-trusted.ts`. Its functions accept only the `LiveSite` that
+    `resolveSite` returned for the request's verified host: the type is branded (the brand isn't exported) and each such object is frozen
+    and registered when it is resolved, so a hand-made or copied site object is refused at run time before any query. The workspace is
+    always that site's `orgId`; nothing the browser sends can name another, and every query is scoped by it.
+  - What it may read is narrow: the workspace's calendars and types (only public calendars with public types are ever shown or booked;
+    any other slug, private, archived or unknown alike, gets the same 404, so a visitor can't discover internal calendar or type names),
+    free times for a type that is public in a public calendar, and an appointment only by its manage secret (compared by hash) or by an id
+    the runtime first checked against its own per-host signature. Reads that never write run in a `READ ONLY` transaction (the workspace
+    read may create the CRM settings row on first use, as every CRM read does).
+  - The one write is `bookNativeAppointment` via `"website"`, as the workspace's booking page: it refuses a type or calendar that isn't
+    public and re-checks the time inside its transaction. In front of it the runtime checks the request came from the same site, a
+    signed form token (too fast or too old is refused), a honeypot field, and rate limits (6 bookings per visitor per 10 minutes, 120 per
+    site per hour; 300 time-page views per visitor per 10 minutes).
+  - `tests/website-booking-boundary.test.ts` fails if any other file under `src/app/site-runtime` or `src/server/sites` imports
+    `withSystem`, `withUser` or `crmWrite`, anything from `@/server/db` but `withSiteRuntime`, or the scheduling and website services that
+    open trusted transactions themselves; it also proves the trusted module refuses a site object `resolveSite` didn't return.
+  - What this is not: database-enforced isolation. A bug inside `booking-trusted.ts` (or the scheduling code it calls) runs with owner
+    rights, where the rest of the runtime runs as a role with no table privileges. Moving these calls behind narrow `SECURITY DEFINER`
+    functions keyed by the verified host, or behind an internal service boundary, would restore that guarantee for booking too.
 
 ## Forms and CRM
 
 A website enquiry becomes a lead through the provider-independent service layer; the GoHighLevel adapter is unchanged and writes stay behind the existing
 flag. Each form element has its own fields, services and **purpose** (contact, consultation, lead, appointment), stored with the enquiry and shown in the
 CRM note.
+
+A form element can instead name one of the workspace's native CRM forms (`formKey`). The live page draws that form's published questions, or the built-in
+enquiry form when the key isn't a live form of the site's own workspace, so a site never breaks. Two checks say so before it matters:
+- **Publishing a client website** (`siteReadiness`) warns (`form_not_live`) when a form element's CRM form is unpublished, archived or gone, or when the
+  workspace's contacts are managed in GoHighLevel, while the built-in form still takes enquiries. When enquiries are switched off in Site settings
+  that fallback couldn't be sent, so it blocks (`form_disabled`, naming the CRM form). A live CRM form doesn't use the built-in form or its switch:
+  `checkReadiness` counts only built-in form elements for `form_disabled`, and treats a CRM form element as a way in for `no_contact`.
+- **The agency's template checks** (`checkTemplate`) warn (`crm_form`) when a shared template's form element carries a non-empty `formKey`: CRM forms
+  belong to one client's workspace, so templates should use the built-in form.
 
 ## Domains
 

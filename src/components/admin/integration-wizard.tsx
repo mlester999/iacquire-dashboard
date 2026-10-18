@@ -99,6 +99,10 @@ export const GHL_SCOPE_CHOICES = [
   "locations/customValues.readonly",
   "forms.readonly",
   "workflows.readonly",
+  // Read by the GoHighLevel live-record migration (Settings → Imports & Exports).
+  "contacts.readonly",
+  "businesses.readonly",
+  "users.readonly",
 ];
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");

@@ -8,6 +8,7 @@ export function GhlOwnedNotice({ what, agency, href = "/sales" }: { what: string
     <EmptyState
       icon={<Plug className="size-5" />}
       title={`${what} are managed in GoHighLevel`}
+      headingLevel={2}
       description={
         <>
           This workspace keeps {what.toLowerCase()} in its connected GoHighLevel location, so iAcquire shows them read-only and never writes them from here.

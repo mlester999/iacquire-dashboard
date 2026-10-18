@@ -21,6 +21,16 @@ async function canAccess(userId: string, orgId: string) {
 }
 
 describe("agency team migration compatibility", () => {
+  const agencyMigrations = [
+    "0037_service_role_integration_credential_access.sql",
+    "0038_agency_team_and_hermes_policies.sql",
+    "0039_agency_team_permission_overrides.sql",
+    "0040_agency_workforce_permissions.sql",
+    "0041_crm_action_permissions.sql",
+    "0042_company_delete_permission.sql",
+    "0043_agency_manager_operational_defaults.sql",
+    "0044_agency_module_view_overrides.sql",
+  ];
   it("lists every permission as editable or protected on member details", () => {
     const agencyTeamPermissions = [...AGENCY_TEAM_MANAGED_PERMISSIONS, ...AGENCY_TEAM_PROTECTED_PERMISSIONS];
     expect(new Set(agencyTeamPermissions).size).toBe(agencyTeamPermissions.length);
@@ -28,12 +38,12 @@ describe("agency team migration compatibility", () => {
     expect([...AGENCY_DELEGABLE_PERMISSIONS]).toEqual(Object.entries(AGENCY_PERMISSION_INFO).filter(([, info]) => info.delegable).map(([permission]) => permission));
   });
 
-  it("applies unique migrations 0037 through 0044 in order and keeps the permission constraints in sync", async () => {
-    const chain = listMigrationFiles().filter((file) => /^003[789]_|^004[0-4]_/.test(file));
-    expect(chain.map((file) => file.slice(0, 4))).toEqual(["0037", "0038", "0039", "0040", "0041", "0042", "0043", "0044"]);
-    expect(new Set(chain.map((file) => file.slice(0, 4))).size).toBe(chain.length);
+  it("applies the exact agency permission migrations in order despite shared numeric prefixes", async () => {
+    const chain = listMigrationFiles().filter((file) => agencyMigrations.includes(file));
+    expect(chain).toEqual(agencyMigrations);
     const applied = await withSystem((db) => db.query<{ version: string }>(
-      "select version from schema_migrations where version like '0037_%' or version like '0038_%' or version like '0039_%' or version like '0040_%' or version like '0041_%' or version like '0042_%' or version like '0043_%' or version like '0044_%' order by version",
+      "select version from schema_migrations where version = any($1::text[]) order by version",
+      [agencyMigrations.map((file) => file.replace(/\.sql$/, ""))],
     ));
     expect(applied.rows.map((row) => row.version)).toEqual(chain.map((file) => file.replace(/\.sql$/, "")));
 

@@ -18,7 +18,9 @@ export type ApprovalKind =
   | "tool_action"
   | "config_change"
   | "appointment_booking"
-  | "standing_authorization";
+  | "standing_authorization"
+  | "workflow_activation"
+  | "workflow_action";
 export type Risk = "low" | "medium" | "high" | "critical";
 
 export interface ApprovalRow {
@@ -210,6 +212,14 @@ export async function decideApproval(ctx: OrgContext, approvalId: string, decisi
     // A rejected proposal releases the held time so someone else can have it.
     const { releaseRejectedBooking } = await import("@/server/appointments/booking");
     await releaseRejectedBooking(ctx.org.orgId, decided.action.bookingId);
+  } else if (decided.kind === "workflow_activation" || decided.kind === "workflow_action") {
+    // A rejected workflow version keeps running nothing; a rejected step cancels its run, so it never acts later.
+    const { releaseRejectedWorkflowApproval } = await import("@/server/crm/workflows/approvals");
+    await releaseRejectedWorkflowApproval(ctx.org.orgId, decided.id, decided.kind, decided.action, ctx.user.id);
+  } else if (decided.kind === "campaign_activation") {
+    // A campaign that isn't approved goes back to draft with the owner's note; nothing about it is sent.
+    const { releaseRejectedCampaignApproval } = await import("@/server/crm/campaigns");
+    await releaseRejectedCampaignApproval(ctx.org.orgId, decided.id, decided.action, ctx.user.id, cleanNote);
   } else if (decided.kind === "follow_up_message" && typeof decided.action.messageId === "string") {
     // Rejecting a draft discards it, so it can never be sent later.
     await withSystem((db) => db.query("update conversation_messages set status = 'blocked', blocked_reason = 'discarded', status_detail = 'Rejected in the Approval Center.' where org_id = $1 and id = $2 and status = 'draft'", [ctx.org.orgId, decided.action.messageId]));
@@ -328,8 +338,13 @@ async function runExecutor(
       if (!writesEnabled) return { status: "blocked", detail: "Leads approved in iAcquire. CRM sync hasn't been enabled by the iAcquire team yet, so nothing was written to your CRM." };
       return { status: "blocked", detail: "Leads approved. CRM import runs through a reviewed sync job that is not active yet." };
     }
-    case "crm_update":
+    case "crm_update": {
+      // A change a client's own AI employee asked to make through the CRM tools: re-validated and carried out now, as that employee.
+      // Any other CRM update (for example one meant for an external CRM) still has no executor.
+      const { executeApprovedAgentToolCall, isAgentToolApproval } = await import("@/server/crm/agent-tools/service");
+      if (isAgentToolApproval(a.action)) return executeApprovedAgentToolCall({ orgId, approvalId, agentInstanceId: a.agent_instance_id, action: a.action });
       return { status: "blocked", detail: "Approved, but CRM writes aren't enabled for this workspace yet. Nothing was changed in your CRM." };
+    }
     case "follow_up_message": {
       // An AI draft from the inbox: queue it through the full send rule chain. Any other follow-up stays held.
       const messageId = typeof a.action.messageId === "string" ? a.action.messageId : null;
@@ -343,11 +358,25 @@ async function runExecutor(
       const { executeApprovedBooking } = await import("@/server/appointments/booking");
       return executeApprovedBooking(orgId, approvalId, bookingId);
     }
+    case "workflow_activation": {
+      // Binds the approval to the exact version content an owner looked at, and switches the workflow on when that was asked for.
+      const { executeWorkflowActivation } = await import("@/server/crm/workflows/approvals");
+      return executeWorkflowActivation(orgId, approvalId, a.action, actorUserId);
+    }
+    case "workflow_action": {
+      // Only marks the waiting step approved and makes its run due: the scheduler runs the step, never this request.
+      const { executeWorkflowAction } = await import("@/server/crm/workflows/approvals");
+      return executeWorkflowAction(orgId, approvalId, a.action);
+    }
     case "standing_authorization":
       // The decision is the whole effect: the approval itself is what later automated messages are checked against.
       return { status: "succeeded", detail: "Recorded. Routine automated messages covered by this authorization can now be sent." };
+    case "campaign_activation": {
+      // The owner approved one campaign's exact channel, audience, message version, schedule and pace; re-checked, then scheduled.
+      const { executeCampaignActivation } = await import("@/server/crm/campaigns");
+      return executeCampaignActivation(orgId, approvalId, a.action, actorUserId);
+    }
     case "outreach":
-    case "campaign_activation":
       return { status: "blocked", detail: BLOCKED_MESSAGING };
     default:
       return { status: "failed", detail: `No executor for ${approvalId}.` };

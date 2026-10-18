@@ -1,5 +1,5 @@
 import "server-only";
-import { withUser } from "@/server/db";
+import { withUser, type Queryable } from "@/server/db";
 import { sourceAvailability } from "@/server/queries/dashboard";
 import type { OrgContext } from "@/server/tenancy/context";
 
@@ -7,6 +7,47 @@ export interface Range {
   from: Date;
   to: Date;
   days: number;
+}
+
+export interface AnalyticsSales {
+  stages: Array<{ stage: string; n: number; value: string | null }>;
+  won: number;
+  lost: number;
+  /** One number. For native deals it is only filled when every won deal shares one currency (see wonValues); currencies are never added. */
+  wonValue: number;
+  /** Native deals: won value per currency. Absent for GoHighLevel. */
+  wonValues?: Array<{ currency: string; value: number }>;
+}
+
+/**
+ * Sales on iAcquire's own CRM: open native deals by pipeline stage (named "Pipeline · Stage" when there is more than one pipeline), and
+ * deals won and lost by the date they closed. Archived deals and GoHighLevel copies are left out. Values stay per currency.
+ */
+export async function nativeSales(db: Queryable, orgId: string, range: Range): Promise<AnalyticsSales> {
+  const p = [orgId, range.from.toISOString(), range.to.toISOString()];
+  const stages = await db.query<{ stage: string; n: number; value: string | null }>(
+    `select case when (select count(*) from crm_pipelines x where x.org_id = $1 and x.provider = 'native' and x.archived_at is null) > 1
+                 then pl.name || ' · ' || st.name else st.name end as stage,
+            count(*)::int as n, case when count(distinct o.currency) = 1 then sum(o.monetary_value)::text end as value
+     from crm_opportunities o join crm_pipeline_stages st on st.id = o.stage_ref and st.org_id = o.org_id join crm_pipelines pl on pl.id = o.pipeline_ref and pl.org_id = o.org_id
+     where o.org_id = $1 and o.provider = 'native' and o.archived_at is null and o.status = 'open'
+     group by pl.name, pl.position, st.name, st.position order by pl.position, st.position`,
+    [orgId],
+  );
+  const closed = await db.query<{ status: "won" | "lost"; currency: string; n: number; total: string | null }>(
+    `select status, currency, count(*)::int as n, sum(monetary_value)::text as total from crm_opportunities
+     where org_id = $1 and provider = 'native' and archived_at is null and status in ('won', 'lost') and closed_at between $2 and $3 group by 1, 2`,
+    p,
+  );
+  const won = closed.rows.filter((r) => r.status === "won");
+  const wonValues = won.filter((r) => r.total !== null).map((r) => ({ currency: r.currency, value: Math.round(Number(r.total) * 100) / 100 })).sort((a, b) => a.currency.localeCompare(b.currency));
+  return {
+    stages: stages.rows,
+    won: won.reduce((n, r) => n + r.n, 0),
+    lost: closed.rows.filter((r) => r.status === "lost").reduce((n, r) => n + r.n, 0),
+    wonValue: wonValues.length === 1 ? wonValues[0].value : 0,
+    wonValues,
+  };
 }
 
 export function parseRange(params: { range?: string; from?: string; to?: string }): Range {
@@ -52,7 +93,7 @@ export async function getAnalytics(ctx: OrgContext, range: Range) {
       p,
     );
 
-    // Appointments
+    // Appointments. On iAcquire's own calendar only native appointments count; otherwise the GoHighLevel copies, as before.
     const appts = sources.calendar
       ? (
           await db.query<{ booked: number; showed: number; noshow: number; cancelled: number }>(
@@ -60,14 +101,16 @@ export async function getAnalytics(ctx: OrgContext, range: Range) {
                     count(*) filter (where status = 'showed')::int as showed,
                     count(*) filter (where status = 'noshow')::int as noshow,
                     count(*) filter (where status = 'cancelled')::int as cancelled
-             from appointment_refs where org_id = $1 and start_at between $2 and $3`,
+             from appointment_refs where org_id = $1 and start_at between $2 and $3${sources.native.appointments ? " and provider = 'native'" : ""}`,
             p,
           )
         ).rows[0]
       : null;
 
     // Sales
-    const sales = sources.crm
+    const sales = sources.crm && sources.native.opportunities
+      ? await nativeSales(db, org, range)
+      : sources.crm
       ? {
           stages: (
             await db.query<{ stage: string; n: number; value: string | null }>(

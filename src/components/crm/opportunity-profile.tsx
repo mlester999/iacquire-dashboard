@@ -7,7 +7,7 @@ import { Archive, ArrowLeft, Building2, CheckCircle2, CircleSlash, MoreHorizonta
 import { Button } from "@/components/ui/button";
 import { Badge, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuTrigger, Sheet, Tabs } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   archiveOpportunitiesAction, closeOpportunityAction, moveOpportunityAction, reopenOpportunityAction, searchCompaniesAction, searchContactsAction, setOpportunityTagsAction, updateOpportunityAction,
 } from "@/app/actions/crm";
@@ -22,6 +22,7 @@ import type { TimelineItem } from "@/server/crm/timeline";
 import type { NoteView } from "@/server/crm/notes";
 import type { TaskView } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 function duration(seconds: number | null) {
   if (seconds === null) return null;
@@ -111,7 +112,7 @@ export function OpportunityProfile({
                     title={canEdit && !current ? `Move to ${s.name}` : s.name}
                     className={cn(
                       "w-full truncate rounded-lg px-2 py-2 text-left text-[12px] font-medium transition-colors disabled:cursor-default",
-                      current ? "bg-primary text-white" : done ? "bg-primary-soft text-primary-ink hover:bg-primary-soft/70" : "bg-surface-2 text-muted hover:bg-line/60 hover:text-ink",
+                      current ? "bg-primary text-primary-on" : done ? "bg-primary-soft text-primary-ink hover:bg-primary-soft/70" : "bg-surface-2 text-muted hover:bg-line/60 hover:text-ink",
                     )}
                   >
                     {s.name}
@@ -154,7 +155,7 @@ export function OpportunityProfile({
                       {h.toStatus !== "open" && <Badge tone={STATUS_TONE[h.toStatus]} className="ml-2">{STATUS_LABEL[h.toStatus]}</Badge>}
                     </span>
                     <span className="text-[12px] text-muted">
-                      {h.actor ?? "System"} · {relativeTime(h.at)}{duration(h.secondsInPrevious) ? ` · after ${duration(h.secondsInPrevious)}` : ""}
+                      {h.actor ?? "System"} · <RelativeTime iso={h.at} timezone={scope.timezone} />{duration(h.secondsInPrevious) ? ` · after ${duration(h.secondsInPrevious)}` : ""}
                     </span>
                   </li>
                 ))}
@@ -181,8 +182,8 @@ export function OpportunityProfile({
               { label: "Expected close", value: detail.expectedCloseDate ? shortDate(detail.expectedCloseDate) : null },
               { label: "Source", value: detail.source },
               { label: "Probability", value: detail.probability !== null ? `${detail.probability}%` : detail.stageProbability !== null && isOpen ? `${detail.stageProbability}% (from stage)` : null },
-              { label: "Created", value: `${detail.createdVia && detail.createdVia in CREATED_VIA_LABELS ? `${CREATED_VIA_LABELS[detail.createdVia as CreatedVia]} · ` : ""}${relativeTime(detail.createdAt)}` },
-              ...(detail.closedAt ? [{ label: detail.status === "won" ? "Won" : "Closed", value: relativeTime(detail.closedAt) }] : []),
+              { label: "Created", value: <>{detail.createdVia && detail.createdVia in CREATED_VIA_LABELS ? `${CREATED_VIA_LABELS[detail.createdVia as CreatedVia]} · ` : ""}<RelativeTime iso={detail.createdAt} timezone={scope.timezone} /></> },
+              ...(detail.closedAt ? [{ label: detail.status === "won" ? "Won" : "Closed", value: <RelativeTime iso={detail.closedAt} timezone={scope.timezone} /> }] : []),
             ]} />
             {detail.description && <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3 text-[13px] leading-relaxed text-ink-2">{detail.description}</p>}
           </SectionCard>

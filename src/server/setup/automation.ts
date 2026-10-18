@@ -5,7 +5,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency } from "@/server/notifications";
 import type { SessionUser } from "@/server/auth/service";
-import { CONNECTORS, CHECK_RUN_ORDER, type ConnectorResult } from "@/server/setup/connectors";
+import { CHECK_RUN_ORDER, connectorLabels, connectorsFor, type ConnectorResult } from "@/server/setup/connectors";
 import {
   assertAgencyAccess,
   ensureInstanceStandalone,
@@ -18,7 +18,7 @@ import {
   type TaskRow,
 } from "@/server/setup/core";
 import { applyTransition } from "@/server/setup/transition";
-import { CHECK_LABEL, type CheckKey, type CheckStatus } from "@/lib/setup";
+import type { CheckKey, CheckStatus } from "@/lib/setup";
 import { setupHttpsUrl } from "@/server/setup/validation";
 
 export interface CheckRunSummary {
@@ -48,11 +48,11 @@ export async function runChecks(orgId: string, opts: RunOptions): Promise<CheckR
   if ((await getSetupRevision(orgId)) === null) {
     if (!(await ensureInstanceStandalone(orgId, opts.actorUserId))) return null;
   }
-  const { applicable, stored, prior, candidates, revisionAtStart } = await withSystem(async (db) => {
+  const { applicable, required, stored, prior, candidates, revisionAtStart, connectors } = await withSystem(async (db) => {
     if (opts.agency) await lockAgencySetupAccess(db, opts.agency, orgId);
     const instance = await db.query<{ revision: number }>("select revision::int as revision from client_setup_instances where org_id = $1", [orgId]);
-    const { rows: keyRows } = await db.query<{ check_key: CheckKey }>(
-      "select distinct check_key from client_setup_tasks where org_id = $1 and completion_mode = 'verified' and not hidden and not service_excluded",
+    const { rows: keyRows } = await db.query<{ check_key: CheckKey; required: boolean }>(
+      "select check_key, bool_or(required) as required from client_setup_tasks where org_id = $1 and completion_mode = 'verified' and not hidden and not service_excluded group by check_key",
       [orgId],
     );
     const { rows: checks } = await db.query<{ check_key: CheckKey; status: CheckStatus; detail: string | null }>(
@@ -66,30 +66,37 @@ export async function runChecks(orgId: string, opts: RunOptions): Promise<CheckR
     );
     return {
       applicable: keyRows.map((r) => r.check_key),
+      required: keyRows.filter((r) => r.required).map((r) => r.check_key),
       stored: Object.fromEntries(checks.map((c) => [c.check_key, c.status])) as Partial<Record<CheckKey, CheckStatus>>,
       prior: Object.fromEntries(checks.map((c) => [c.check_key, c.detail])) as Partial<Record<CheckKey, string | null>>,
       candidates: new Set(cand.map((r) => r.check_key)),
       revisionAtStart: instance.rows[0].revision,
+      // Native or GoHighLevel versions of the CRM checks, by who owns each capability in this workspace.
+      connectors: await connectorsFor(db, orgId),
     };
   });
 
   const wanted = opts.keys?.includes("final_health") ? undefined : opts.keys;
   const results = new Map<CheckKey, ConnectorResult>();
   const working = { ...stored };
+  const labels = connectorLabels(connectors);
   for (const key of CHECK_RUN_ORDER) {
     if (!applicable.includes(key)) continue;
     if (wanted && !wanted.includes(key)) continue;
-    const connector = CONNECTORS[key];
+    const connector = connectors[key];
     if (!connector.implemented) {
-      if (opts.live && working[key] === "verified") {
-        const detail = `The saved success cannot be revalidated: ${connector.unavailableReason ?? "this provider check is unavailable."}`;
+      // An unimplemented connector can never produce "verified", so a stored success under it came from elsewhere: most often the
+      // iAcquire CRM version of the check before the capability moved to GoHighLevel, or an older rule. It is withdrawn on every run,
+      // recorded-evidence passes included, so no screen shows a success nobody can stand behind (final_health below sees it in this run).
+      if (working[key] === "verified") {
+        const detail = `The saved success cannot be revalidated: the provider for this check changed, or no automatic check exists for it. ${connector.unavailableReason ?? "This provider check is unavailable."}`;
         results.set(key, { status: "unverified", detail });
         working[key] = "unverified";
       }
       continue;
     }
     try {
-      const r = await connector.evaluate({ orgId, actorUserId: opts.actorUserId, live: opts.live, applicable, stored: working });
+      const r = await connector.evaluate({ orgId, actorUserId: opts.actorUserId, live: opts.live, applicable, required, stored: working, labels });
       results.set(key, r);
       working[key] = r.status;
     } catch {
@@ -126,7 +133,7 @@ export async function runChecks(orgId: string, opts: RunOptions): Promise<CheckR
           body: "One of the checks on your system did not pass. Review the Setup Center for the affected step or contact support.",
           link: "/setup",
         });
-        await notifyAgency(db, orgId, { kind: "integration_disconnected", severity: "warning", title: `${CHECK_LABEL[key]} check is failing`, body: r.detail, link: `/admin/clients/${orgId}/setup` });
+        await notifyAgency(db, orgId, { kind: "integration_disconnected", severity: "warning", title: `${labels[key]} check is failing`, body: r.detail, link: `/admin/clients/${orgId}/setup` });
       }
     }
 
@@ -139,7 +146,7 @@ export async function runChecks(orgId: string, opts: RunOptions): Promise<CheckR
     );
     for (const t of tasks) {
       const r = t.check_key ? results.get(t.check_key) : undefined;
-      if (!r || r.status !== "verified" || !CONNECTORS[t.check_key!].implemented) continue;
+      if (!r || r.status !== "verified" || !connectors[t.check_key!].implemented) continue;
       try {
         await applyTransition(db, h, inst, { task: t, to: "completed", actor: { userId: null, kind: "system" }, source: "connector", verifiedDetail: r.detail, notify: true });
         completedSteps.push(t.title);
@@ -223,7 +230,7 @@ export async function verifyTask(admin: SessionUser, orgId: string, taskId: stri
   await assertAgencyAccess(admin, orgId);
   const task = await loadTask(orgId, taskId);
   if (task.completion_mode !== "verified" || !task.check_key) throw new AppError("invalid_input", "This step isn't verified by a system check.");
-  const connector = CONNECTORS[task.check_key];
+  const connector = (await withSystem((db) => connectorsFor(db, orgId)))[task.check_key];
   if (!connector.implemented) {
     throw new AppError("integration_unavailable", `${connector.unavailableReason ?? "No automatic check exists for this step yet."} Record an agency attestation with evidence instead.`);
   }
@@ -262,12 +269,13 @@ export async function attestTask(admin: SessionUser, orgId: string, taskId: stri
     const task = rows[0];
     if (!task) throw new AppError("not_found", "That setup step wasn't found.");
     if (task.completion_mode !== "verified" || !task.check_key) throw new AppError("invalid_input", "Only steps that need an integration check can be attested.");
-    if (CONNECTORS[task.check_key].implemented) throw new AppError("invalid_input", "This step is checked automatically and can't be attested. Use Verify now.");
-    if (task.status === "completed") throw new AppError("invalid_input", "This step is already completed.");
-    if (task.status === "blocked") throw new AppError("invalid_input", "Unblock this step first.");
     const key = task.check_key;
+    // A failing provider check is never covered by evidence, whichever connector applies to this workspace.
     const check = await db.query<{ status: string }>("select status from client_setup_checks where org_id = $1 and check_key = $2 for update", [orgId, key]);
     if (check.rows[0]?.status === "failed") throw new AppError("invalid_input", "A failed provider check must be resolved through verification before evidence can be reviewed.");
+    if ((await connectorsFor(db, orgId))[key].implemented) throw new AppError("invalid_input", "This step is checked automatically and can't be attested. Use Verify now.");
+    if (task.status === "completed") throw new AppError("invalid_input", "This step is already completed.");
+    if (task.status === "blocked") throw new AppError("invalid_input", "Unblock this step first.");
     // Evidence is useful, but must not complete a domain/calendar/profile connection task.
     const tasks = await loadRuleTasks(db, orgId);
     const dependencies = tasks.find((t) => t.id === taskId)?.dependsOn ?? [];

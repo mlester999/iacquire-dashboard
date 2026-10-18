@@ -9,6 +9,15 @@ import type { CreatedVia, FieldType, LeadStatus } from "@/lib/crm/types";
 
 export const MAX_PAGE_SIZE = 100;
 
+/**
+ * The total for a page of results. A page that came back short already says how many match (page 1 with 7 rows: 7), so the full count, a
+ * scan of every matching record, runs only when the page is full or empty past the first page.
+ */
+export async function pageTotal(page: number, pageSize: number, rowsOnPage: number, count: () => Promise<number>): Promise<number> {
+  if (rowsOnPage < pageSize && (rowsOnPage > 0 || page === 1)) return (page - 1) * pageSize + rowsOnPage;
+  return count();
+}
+
 /** Validates a filter from a request, turning a malformed one into a message the person can act on. */
 export function parseFilterOrThrow(input: unknown): FilterGroup {
   try {
@@ -121,17 +130,23 @@ export async function listContacts(actor: CrmActor, q: ContactListQuery = {}): P
     const params: unknown[] = [actor.orgId];
     const { where, smartList } = await contactWhere(db, actor, q, params);
     const sort = q.sort ?? smartList?.sort;
-    const total = Number((await db.query<{ n: string }>(`select count(*)::text as n from contacts c where ${where}`, params)).rows[0].n);
+    // A text search can match one contact or thousands, and PostgreSQL can't tell which from a %term% pattern: walking the directory's order
+    // index until a page fills is quick for a common term but reads the whole workspace one row at a time for a rare one. So a search is
+    // matched first (OFFSET 0 keeps the order and limit out of that sub-select), only the matches are sorted, and the same pass counts them,
+    // so a search reads the workspace once instead of once for the page and again for the total.
+    const searching = Boolean(q.search?.trim());
     const { rows } = await db.query<{
       id: string; display_name: string; email: string | null; phone: string | null; lead_status: LeadStatus; lead_score: number | null; source: string; created_via: CreatedVia;
-      city: string | null; country: string | null; created_at: Date; last_activity_at: Date | null; archived_at: Date | null; assigned_user_id: string | null; owner_name: string | null;
+      city: string | null; country: string | null; created_at: Date; last_activity_at: Date | null; archived_at: Date | null; assigned_user_id: string | null; owner_name: string | null; full_count?: string;
     }>(
       `select c.id, c.display_name, c.email::text as email, c.phone, c.lead_status, c.lead_score, c.source, c.created_via, c.city, c.country, c.created_at, c.last_activity_at,
-              c.archived_at, c.assigned_user_id, nullif(u.full_name, '') as owner_name
-       from contacts c left join users u on u.id = c.assigned_user_id
-       where ${where} order by ${contactOrderBy(sort)} limit ${pageSize} offset ${(page - 1) * pageSize}`,
+              c.archived_at, c.assigned_user_id, nullif(u.full_name, '') as owner_name${searching ? ", (count(*) over ())::text as full_count" : ""}
+       from ${searching ? `(select * from contacts c where ${where} offset 0) c` : "contacts c"} left join users u on u.id = c.assigned_user_id
+       where ${searching ? "true" : where} order by ${contactOrderBy(sort)} limit ${pageSize} offset ${(page - 1) * pageSize}`,
       params,
     );
+    const count = async () => Number((await db.query<{ n: string }>(`select count(*)::text as n from contacts c where ${where}`, params)).rows[0].n);
+    const total = searching && rows[0]?.full_count !== undefined ? Number(rows[0].full_count) : await pageTotal(page, pageSize, rows.length, count);
     const ids = rows.map((r) => r.id);
     const [tags, companies, fieldValues] = ids.length
       ? await Promise.all([
@@ -286,7 +301,6 @@ export async function listCompanies(actor: CrmActor, q: CompanyListQuery = {}): 
       parts.push(`co.search_text like $${params.length} escape '\\'`);
     }
     const where = parts.join(" and ");
-    const total = Number((await db.query<{ n: string }>(`select count(*)::text as n from crm_companies co where ${where}`, params)).rows[0].n);
     const { rows } = await db.query<{ id: string; name: string; domain: string | null; industry: string | null; city: string | null; country: string | null; phone: string | null; owner_user_id: string | null; owner_name: string | null; contacts: string; opps: string; archived_at: Date | null; created_at: Date }>(
       `select co.id, co.name, co.domain::text as domain, co.industry, co.city, co.country, co.phone, co.owner_user_id, nullif(u.full_name, '') as owner_name, co.archived_at, co.created_at,
               (select count(*) from crm_contact_companies cc join contacts c on c.id = cc.contact_id and c.deleted_at is null where cc.company_id = co.id)::text as contacts,
@@ -294,6 +308,7 @@ export async function listCompanies(actor: CrmActor, q: CompanyListQuery = {}): 
        from crm_companies co left join users u on u.id = co.owner_user_id where ${where} order by ${companyOrderBy(sort)} limit ${pageSize} offset ${(page - 1) * pageSize}`,
       params,
     );
+    const total = await pageTotal(page, pageSize, rows.length, async () => Number((await db.query<{ n: string }>(`select count(*)::text as n from crm_companies co where ${where}`, params)).rows[0].n));
     const ids = rows.map((r) => r.id);
     const tags = ids.length
       ? await db.query<{ company_id: string; id: string; name: string; color: string }>("select ct.company_id, t.id, t.name::text as name, t.color from crm_company_tags ct join crm_tags t on t.id = ct.tag_id where ct.org_id = $1 and ct.company_id = any($2::uuid[])", [actor.orgId, ids])

@@ -1,9 +1,9 @@
 import "server-only";
 import { z } from "zod";
 import { withSystem, withUser, type Queryable } from "@/server/db";
-import { AppError } from "@/server/errors";
+import { AppError, toPublicError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { createInvitation, deliverInvitation, normalizeEmail, recordInvitationDelivery } from "@/server/auth/service";
+import { createInvitation, deliverInvitation, normalizeEmail } from "@/server/auth/service";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { sha256 } from "@/server/security/crypto";
 import { ensureAgentInstances } from "@/server/workforce/service";
@@ -11,6 +11,11 @@ import { ensureSetupInstance } from "@/server/setup/core";
 import { saveCredential,assertCredentialAdmin } from "@/server/security/credentials";
 import type { SessionUser } from "@/server/auth/service";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { canBlueprint, canDoBlueprint, needBlueprint, needBlueprintAction } from "@/server/crm/blueprints/access";
+import { installStarter, listBlueprints, listStarters } from "@/server/crm/blueprints/library";
+import { applyBlueprint, planApplication } from "@/server/crm/blueprints/apply";
+import type { ApplicationPlan, ApplyOptions, PlanAction, RequirementKey } from "@/lib/crm/blueprints/types";
+import type { BlueprintSummary, StarterView } from "@/lib/crm/blueprints/views";
 
 /** GHL locations that must never be mapped to a client tenant. */
 export const PROTECTED_GHL_LOCATIONS = {
@@ -31,22 +36,101 @@ export function slugify(name: string) {
   );
 }
 
-export const createTenantSchema = z.object({
-  name: z.string().trim().min(2, "Enter the company name.").max(120),
-  ownerEmail: z.string().trim().email("Enter a valid email."),
-  industry: z.string().trim().max(120).optional().default(""),
-  website: z.string().trim().max(300).optional().default(""),
-  timezone: z.string().trim().max(64).default("America/New_York"),
-  enabledRoles: z.array(z.enum(AGENT_ROLE_KEYS)).min(1, "Enable at least one AI employee.").default([...AGENT_ROLE_KEYS]),
-});
+/** The CRM a new client starts on. Hybrid (some capabilities in each system) is set up later, deliberately, in the client's CRM settings. */
+export const ONBOARDING_CRM_MODES = ["native", "ghl"] as const;
+export type OnboardingCrmMode = (typeof ONBOARDING_CRM_MODES)[number];
+
+/** Why a GoHighLevel client can't start from a Blueprint: shown in the dialog and returned by the server. */
+export const GHL_BLUEPRINT_REASON =
+  "GoHighLevel clients keep their pipelines, tags, fields, calendars and workflows in GoHighLevel, so a Blueprint can only be applied to iAcquire Native CRM.";
+
+/** The CRM setup chosen when a client is created: a published library Blueprint, an iAcquire starter not yet in the library, or none. */
+export const onboardingBlueprintSchema = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("blueprint"), blueprintId: z.string().uuid("Choose a Blueprint from the list.") }),
+    z.object({ kind: z.literal("starter"), starterKey: z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/, "Choose a starter from the list.") }),
+  ])
+  .nullable();
+export type OnboardingBlueprintChoice = z.infer<typeof onboardingBlueprintSchema>;
+
+export const createTenantSchema = z
+  .object({
+    name: z.string().trim().min(2, "Enter the company name.").max(120),
+    ownerEmail: z.string().trim().email("Enter a valid email."),
+    // The industry's label ("Real Estate"), as organizations.industry has always stored it.
+    industry: z.string().trim().max(120).optional().default(""),
+    website: z.string().trim().max(300).optional().default(""),
+    timezone: z.string().trim().max(64).default("America/New_York"),
+    enabledRoles: z.array(z.enum(AGENT_ROLE_KEYS)).min(1, "Enable at least one AI employee.").default([...AGENT_ROLE_KEYS]),
+    crmMode: z.enum(ONBOARDING_CRM_MODES).default("native"),
+    blueprint: onboardingBlueprintSchema.optional().default(null),
+  })
+  .superRefine((d, ctx) => {
+    if (d.crmMode === "ghl" && d.blueprint) ctx.addIssue({ code: "custom", path: ["blueprint"], message: GHL_BLUEPRINT_REASON });
+  });
+
+/** What happened to the Blueprint chosen at creation. The client and its invitation exist whatever this says. */
+export interface OnboardingBlueprintResult {
+  status: "applied" | "partially_applied" | "failed";
+  blueprintId: string | null;
+  blueprintName: string | null;
+  version: number | null;
+  applicationId?: string;
+  /** Safe to show: why nothing (or not everything) was applied. */
+  error?: string;
+  /** What the client's workspace still has to connect, map, fill in or approve (the setup checklist). */
+  requirements?: RequirementKey[];
+  counts?: Partial<Record<PlanAction, number>>;
+  /** Where the agency reviews and applies it again (the library's apply flow for this client). */
+  retryPath: string;
+}
+
+/**
+ * One confirmation per client and Blueprint version ("onboarding-<org>-<version>", the ids without dashes so the key stays within the
+ * 16 to 80 URL-safe characters a confirmation key may have), so a repeated onboarding apply returns the first application instead of
+ * applying twice.
+ */
+export function onboardingIdempotencyKey(orgId: string, versionId: string): string {
+  return `onboarding-${orgId.replace(/-/g, "")}-${versionId.replace(/-/g, "")}`;
+}
+
+export function blueprintRetryPath(orgId: string, blueprintId: string | null): string {
+  return blueprintId ? `/admin/crm-blueprints/${blueprintId}/apply?client=${orgId}` : `/admin/crm-blueprints?client=${orgId}`;
+}
+
+/**
+ * Checks the chosen Blueprint before anything is created, so an impossible choice (archived, never published, an unknown starter, a role that
+ * can't apply) refuses the whole request instead of leaving a client behind with a Blueprint that was never going to apply.
+ */
+async function assertBlueprintChoice(admin: SessionUser, choice: NonNullable<OnboardingBlueprintChoice>): Promise<void> {
+  needBlueprintAction(admin, "apply");
+  if (choice.kind === "blueprint") return assertPublishedBlueprint(choice.blueprintId);
+  needBlueprint(admin, "crm.blueprints.publish");
+  const starter = (await listStarters(admin)).find((s) => s.key === choice.starterKey);
+  if (!starter) throw new AppError("not_found", "That starter isn't available. Choose another one or start with a blank CRM.");
+  // Already in the library: installing returns that Blueprint, so it must still be published.
+  if (starter.installedId) await assertPublishedBlueprint(starter.installedId);
+}
+
+async function assertPublishedBlueprint(blueprintId: string): Promise<void> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ status: string; current_version: number | null }>("select status, current_version from crm_blueprints where id = $1", [blueprintId]),
+  );
+  const bp = rows[0];
+  if (!bp) throw new AppError("not_found", "That Blueprint no longer exists. Choose another one or start with a blank CRM.");
+  if (bp.status !== "published" || bp.current_version === null) {
+    throw new AppError("conflict", bp.status === "archived" ? "That Blueprint was archived. Choose another one or start with a blank CRM." : "That Blueprint has no published version yet. Publish it first, or choose another one.");
+  }
+}
 
 export async function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>) {
-  const access = await withSystem((db) => db.query<{ allowed: boolean }>(
+  const { rows: permissionRows } = await withSystem((db) => db.query<{ allowed: boolean }>(
     "select coalesce(app.user_has_agency_permission($1, 'agency.clients.create'), false) as allowed",
     [admin.id],
   ));
-  if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow creating client workspaces.");
+  if (!permissionRows[0]?.allowed) throw new AppError("forbidden", "Your role does not allow creating client workspaces.");
   const data = createTenantSchema.parse(input);
+  if (data.blueprint) await assertBlueprintChoice(admin, data.blueprint);
   const created = await withSystem(async (db) => {
     let slug = slugify(data.name);
     for (let i = 2; ; i++) {
@@ -60,15 +144,10 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
       [data.name, slug, data.industry, data.website, data.timezone, admin.id],
     );
     const orgId = rows[0].id;
-    if (admin.platformRole === "agency_manager" || admin.platformRole === "agency_staff") {
-      const { rows: scope } = await db.query<{ scope_mode: string }>(
-        `select coalesce((select scope_mode from agency_user_client_scopes where user_id=$1),
-          case when $2='agency_manager' then 'all_clients' else 'assigned_clients' end) as scope_mode`,
-        [admin.id, admin.platformRole],
-      );
-      if (scope[0]?.scope_mode === "assigned_clients") {
-        await db.query("insert into staff_assignments(org_id,user_id,assigned_by) values($1,$2,$2) on conflict do nothing", [orgId, admin.id]);
-      }
+    // A staff member who creates a client gets access through an explicit assignment,
+    // keeping their default client scope assigned-only.
+    if (admin.platformRole === "agency_staff") {
+      await db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [orgId, admin.id]);
     }
     await db.query("insert into company_profiles (org_id) values ($1)", [orgId]);
     await db.query("insert into usage_limits (org_id, updated_by) values ($1, $2)", [orgId, admin.id]);
@@ -82,20 +161,105 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
        where org_id = $1`,
       [orgId, data.enabledRoles],
     );
-    for (const provider of ["hermes", "ghl", "ghl_calendar"]) {
+    // A native client has no GoHighLevel connection to track: only GoHighLevel clients start with its two "not connected" rows.
+    for (const provider of data.crmMode === "native" ? ["hermes"] : ["hermes", "ghl", "ghl_calendar"]) {
       await db.query("insert into integration_status (org_id, provider, status) values ($1, $2, 'not_configured')", [orgId, provider]);
     }
+    // A new client's CRM workspace is created native by the organizations trigger; a GoHighLevel client records that choice here. Its
+    // location is mapped afterwards (Integrations), so nothing about GoHighLevel is assumed to be connected.
+    await db.query(
+      `insert into crm_workspaces (org_id, mode, updated_by) values ($1, $2, $3)
+       on conflict (org_id) do update set mode = excluded.mode, updated_by = excluded.updated_by`,
+      [orgId, data.crmMode, admin.id],
+    );
     const invite = await createInvitation({ orgId, email: data.ownerEmail, role: "owner", invitedBy: admin.id }, db);
     await recordAudit(
-      { orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.created", targetType: "organization", targetId: orgId, result: "success", metadata: { slug, enabledRoles: data.enabledRoles } },
+      {
+        orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.created", targetType: "organization", targetId: orgId, result: "success",
+        metadata: { slug, enabledRoles: data.enabledRoles, crmMode: data.crmMode, blueprint: data.blueprint ? (data.blueprint.kind === "blueprint" ? { blueprintId: data.blueprint.blueprintId } : { starterKey: data.blueprint.starterKey }) : null },
+      },
       db,
     );
     return { orgId, slug, invite };
   });
   // The owner email goes out only after the workspace and invitation are committed, and the real outcome is returned.
   const emailDelivery = await deliverInvitation(created.invite.message);
-  await recordInvitationDelivery(created.invite.id, emailDelivery);
-  return { orgId: created.orgId, slug: created.slug, inviteLink: created.invite.link, emailDelivery };
+  // The Blueprint is applied after the client is committed, in its own transaction: whatever happens to it, the client and the invitation stay.
+  const blueprint = data.blueprint ? await applyOnboardingBlueprint(admin, created.orgId, data.blueprint) : null;
+  return { orgId: created.orgId, slug: created.slug, inviteLink: created.invite.link, emailDelivery, crmMode: data.crmMode, blueprint };
+}
+
+/**
+ * Applies the Blueprint chosen while creating a client, after the client was committed: installs a starter into the library when one was
+ * picked, plans the latest published version against the new workspace (add missing only), and applies exactly that plan, recorded as an
+ * onboarding application. Calendars and workflows arrive as drafts; nothing is connected, published or sent. Never throws: a failure is
+ * returned (and audited) so the caller can show it with a way to retry, and it never undoes the client or its invitation.
+ */
+export async function applyOnboardingBlueprint(admin: SessionUser, orgId: string, choice: NonNullable<OnboardingBlueprintChoice>): Promise<OnboardingBlueprintResult> {
+  let blueprintId: string | null = choice.kind === "blueprint" ? choice.blueprintId : null;
+  let plan: ApplicationPlan | null = null;
+  try {
+    if (choice.kind === "starter") blueprintId = (await installStarter(admin, choice.starterKey)).id;
+    const options: ApplyOptions = { strategy: "add_missing" };
+    const planned: ApplicationPlan = await planApplication(admin, orgId, { blueprintId: blueprintId!, options });
+    plan = planned;
+    const res = await applyBlueprint(
+      admin,
+      orgId,
+      { blueprintId: blueprintId!, version: planned.version, options, planDigest: planned.digest, idempotencyKey: onboardingIdempotencyKey(orgId, planned.versionId) },
+      { via: "onboarding" },
+    );
+    const app = res.application;
+    const status = app.status === "applied" || app.status === "partially_applied" ? app.status : "failed";
+    return {
+      status,
+      blueprintId,
+      blueprintName: app.blueprintName,
+      version: app.version,
+      applicationId: app.id,
+      requirements: planned.requirements,
+      counts: app.counts,
+      retryPath: blueprintRetryPath(orgId, blueprintId),
+      ...(status === "failed" ? { error: "The Blueprint couldn't be applied. Review it and apply it again." } : {}),
+    };
+  } catch (err) {
+    const e = toPublicError(err);
+    await recordAudit({
+      orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.blueprint_apply_failed", targetType: "organization", targetId: orgId, result: "failure",
+      metadata: { blueprintId, starterKey: choice.kind === "starter" ? choice.starterKey : null, code: e.code },
+    }).catch(() => undefined);
+    return {
+      status: "failed",
+      blueprintId,
+      blueprintName: null,
+      version: plan?.version ?? null,
+      error: e.message,
+      requirements: plan?.requirements,
+      retryPath: blueprintRetryPath(orgId, blueprintId),
+    };
+  }
+}
+
+/** What the create-client dialog offers: published Blueprints, and iAcquire starters not yet in the library (installing one needs publish). */
+export interface OnboardingBlueprintChoices {
+  blueprints: BlueprintSummary[];
+  starters: StarterView[];
+  canApply: boolean;
+  canInstallStarters: boolean;
+}
+
+export async function listOnboardingBlueprintChoices(admin: SessionUser): Promise<OnboardingBlueprintChoices> {
+  if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can create client workspaces.");
+  const canApply = canDoBlueprint(admin, "apply");
+  if (!canApply) return { blueprints: [], starters: [], canApply, canInstallStarters: false };
+  const canInstallStarters = canBlueprint(admin, "crm.blueprints.publish");
+  const [all, starters] = await Promise.all([listBlueprints(admin, { collection: "published", sort: "name" }), canInstallStarters ? listStarters(admin) : Promise.resolve([] as StarterView[])]);
+  return {
+    blueprints: all.filter((b) => b.status === "published" && b.currentVersion !== null),
+    starters: starters.filter((s) => !s.installedId),
+    canApply,
+    canInstallStarters,
+  };
 }
 
 export interface TenantListRow {
@@ -229,11 +393,7 @@ export async function assignStaff(admin: SessionUser, orgId: string, staffUserId
     await db.query("insert into agency_team_member_versions(user_id) values($1) on conflict(user_id) do nothing", [staffUserId]);
     const version = await db.query<{ revision: string }>("select revision::text as revision from agency_team_member_versions where user_id=$1 for update", [staffUserId]);
     if (expectedRevision !== undefined && expectedRevision !== (version.rows[0]?.revision ?? "0")) throw new AppError("conflict", "This team member changed in another session. Reload the page and review the latest settings.");
-    if (assign) {
-      const { rows: clients } = await db.query<{ kind: string; status: string }>("select kind,status from organizations where id=$1", [orgId]);
-      if (clients[0]?.kind !== "client" || ["suspended", "archived"].includes(clients[0].status)) throw new AppError("invalid_input", "Only active client workspaces can be assigned.");
-      await db.query("insert into staff_assignments (org_id, user_id, assigned_by) values ($1, $2, $3) on conflict do nothing", [orgId, staffUserId, admin.id]);
-    }
+    if (assign) await db.query("insert into staff_assignments (org_id, user_id, assigned_by) values ($1, $2, $3) on conflict do nothing", [orgId, staffUserId, admin.id]);
     else await db.query("delete from staff_assignments where org_id = $1 and user_id = $2", [orgId, staffUserId]);
     await db.query("update agency_team_member_versions set revision=revision+1,updated_by=$2,updated_at=now() where user_id=$1", [staffUserId, admin.id]);
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", action: assign ? "tenant.staff_assigned" : "tenant.staff_unassigned", targetType: "user", targetId: staffUserId, result: "success" }, db);

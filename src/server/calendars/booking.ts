@@ -96,18 +96,102 @@ async function holdTime(db: Queryable, ctx: BookingContext, hostId: string, star
   }
 }
 
-/** Gives back a host's time for one appointment: its own blocks are released; a group block loses one place and is released when empty. */
+/**
+ * Gives back the hosts' time for one appointment: its own blocks are released; each group block it joined loses one place and is released
+ * when empty. A collective group booking holds one shared block per host, recorded on that host's crm_appointment_hosts row
+ * (appointment_refs.busy_block_id names only one of them, and is the only record for bookings made before 0030). Each block is counted
+ * once, and the references are cleared so a second release can never give back someone else's place.
+ */
 async function releaseTime(db: Queryable, orgId: string, appointmentId: string) {
   await db.query("update crm_busy_blocks set released_at = now() where org_id = $1 and appointment_id = $2 and released_at is null", [orgId, appointmentId]);
-  const shared = await db.query<{ busy_block_id: string | null }>("select busy_block_id from appointment_refs where id = $1 and org_id = $2", [appointmentId, orgId]);
-  const blockId = shared.rows[0]?.busy_block_id;
-  if (blockId) {
+  const shared = await db.query<{ id: string }>(
+    `select busy_block_id as id from crm_appointment_hosts where appointment_id = $1 and org_id = $2 and busy_block_id is not null
+     union select busy_block_id from appointment_refs where id = $1 and org_id = $2 and busy_block_id is not null`,
+    [appointmentId, orgId],
+  );
+  const ids = shared.rows.map((r) => r.id);
+  if (ids.length) {
     await db.query(
       `update crm_busy_blocks set booked = greatest(booked - 1, 0), released_at = case when booked - 1 <= 0 then now() else released_at end
-       where id = $1 and org_id = $2 and appointment_id is null and released_at is null`,
-      [blockId, orgId],
+       where id = any($1::uuid[]) and org_id = $2 and appointment_id is null and released_at is null`,
+      [ids, orgId],
     );
   }
+  await db.query("update crm_appointment_hosts set busy_block_id = null where appointment_id = $1 and org_id = $2 and busy_block_id is not null", [appointmentId, orgId]);
+  await db.query("update appointment_refs set busy_block_id = null where id = $1 and org_id = $2 and busy_block_id is not null", [appointmentId, orgId]);
+}
+
+/**
+ * Decides bookings in one calendar one at a time. Taken before the booking context (and so every host's last assignment) is read, so
+ * round robin ranks hosts with the choice the previous booking just committed. A type that doesn't exist takes no lock; reading its
+ * context then reports it.
+ */
+async function lockCalendarOf(db: Queryable, orgId: string, typeId: string) {
+  const { rows } = await db.query<{ calendar_id: string }>("select calendar_id from crm_appointment_types where id = $1 and org_id = $2", [typeId, orgId]);
+  if (rows[0]) await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`crm-cal:${rows[0].calendar_id}`]);
+}
+
+/** Records who hosts an appointment and, for a group type, which shared block each host's place is in. */
+async function saveHosts(db: Queryable, orgId: string, appointmentId: string, held: string[], blocks: Map<string, string>) {
+  for (const h of held) {
+    await db.query(
+      `insert into crm_appointment_hosts (org_id, appointment_id, user_id, busy_block_id) values ($1, $2, $3, $4)
+       on conflict (appointment_id, user_id) do update set busy_block_id = excluded.busy_block_id`,
+      [orgId, appointmentId, h, blocks.get(h) ?? null],
+    );
+  }
+}
+
+/** What an appointment type lets the people booking it do themselves (0030 booking page options). */
+export interface CustomerRules {
+  allowCustomerChanges: boolean;
+  changeCutoffMinutes: number;
+  requireEmail: boolean;
+  requirePhone: boolean;
+}
+
+export async function loadCustomerRules(db: Queryable, orgId: string, typeId: string): Promise<CustomerRules> {
+  const { rows } = await db.query<{ allow_customer_changes: boolean; change_cutoff_minutes: number; require_email: boolean; require_phone: boolean }>(
+    "select allow_customer_changes, change_cutoff_minutes, require_email, require_phone from crm_appointment_types where id = $1 and org_id = $2",
+    [typeId, orgId],
+  );
+  const r = rows[0];
+  // A type that no longer exists keeps the safest rules: no self-service changes.
+  if (!r) return { allowCustomerChanges: false, changeCutoffMinutes: 0, requireEmail: true, requirePhone: false };
+  return { allowCustomerChanges: r.allow_customer_changes, changeCutoffMinutes: r.change_cutoff_minutes, requireEmail: r.require_email, requirePhone: r.require_phone };
+}
+
+export type CustomerChangeBlock = "not_upcoming" | "started" | "not_allowed" | "past_cutoff";
+
+/** Whether the customer may still move or cancel this appointment themselves, and if not, why. */
+export function customerChangeBlock(a: { status: string; startAt: Date }, rules: Pick<CustomerRules, "allowCustomerChanges" | "changeCutoffMinutes">, now: Date): CustomerChangeBlock | null {
+  if (!["new", "confirmed"].includes(a.status)) return "not_upcoming";
+  const start = a.startAt.getTime();
+  if (start <= now.getTime()) return "started";
+  if (!rules.allowCustomerChanges) return "not_allowed";
+  if (now.getTime() >= start - rules.changeCutoffMinutes * 60_000) return "past_cutoff";
+  return null;
+}
+
+async function assertCustomerMayChange(db: Queryable, orgId: string, a: ApptRow, now: Date) {
+  const rules = await loadCustomerRules(db, orgId, a.appointment_type_id as string);
+  const block = customerChangeBlock({ status: a.status, startAt: new Date(a.start_at) }, rules, now);
+  if (block === "not_allowed") throw new AppError("forbidden", "This booking can't be changed online. Contact the business to change it.");
+  if (block === "past_cutoff") throw new AppError("conflict", "It's too close to the appointment to change it online. Contact the business to change it.");
+  if (block === "started") throw new AppError("conflict", "This appointment has already started.");
+}
+
+/** The appointment an earlier submit with the same idempotency key made, if any. Its manage link was returned to that submit only. */
+async function priorBooking(db: Queryable, orgId: string, key: string | null | undefined): Promise<NativeBookingResult | null> {
+  if (!key) return null;
+  const prior = await db.query<{ id: string; status: "new" | "confirmed"; start_at: Date; end_at: Date }>(
+    "select id, status, start_at, end_at from appointment_refs where org_id = $1 and idempotency_key = $2",
+    [orgId, key],
+  );
+  const p = prior.rows[0];
+  if (!p) return null;
+  const hosts = await db.query<{ user_id: string }>("select user_id from crm_appointment_hosts where appointment_id = $1", [p.id]);
+  return { appointmentId: p.id, status: p.status, hostIds: hosts.rows.map((h) => h.user_id), manageToken: null, created: false, startAt: new Date(p.start_at).toISOString(), endAt: new Date(p.end_at).toISOString() };
 }
 
 /**
@@ -121,20 +205,20 @@ export async function bookNativeAppointment(actor: CrmActor, input: NativeBookin
   if (input.inviteeTimezone && !isValidTimeZone(input.inviteeTimezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
   return crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "appointments");
-    if (input.idempotencyKey) {
-      const prior = await db.query<{ id: string; status: "new" | "confirmed"; start_at: Date; end_at: Date }>(
-        "select id, status, start_at, end_at from appointment_refs where org_id = $1 and idempotency_key = $2",
-        [actor.orgId, input.idempotencyKey],
-      );
-      if (prior.rows[0]) {
-        const hosts = await db.query<{ user_id: string }>("select user_id from crm_appointment_hosts where appointment_id = $1", [prior.rows[0].id]);
-        return { appointmentId: prior.rows[0].id, status: prior.rows[0].status, hostIds: hosts.rows.map((h) => h.user_id), manageToken: null, created: false, startAt: new Date(prior.rows[0].start_at).toISOString(), endAt: new Date(prior.rows[0].end_at).toISOString() };
-      }
-    }
+    const earlier = await priorBooking(db, actor.orgId, input.idempotencyKey);
+    if (earlier) return earlier;
+    await lockCalendarOf(db, actor.orgId, input.typeId);
     const ctx = await loadBookingContext(db, actor.orgId, input.typeId);
     if ((input.via === "booking_page" || input.via === "website") && (!ctx.type.public || !ctx.calendar.public)) throw new AppError("not_found", "That booking page isn't available.");
-    // Bookings in one calendar are decided one at a time, so round robin sees the previous booking's choice.
-    await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`crm-cal:${ctx.calendar.id}`]);
+    // A public form asks for the contact details the type requires; staff, agents and the API book existing or partial contacts as before.
+    if ((input.via === "booking_page" || input.via === "website") && !("id" in input.contact)) {
+      const rules = await loadCustomerRules(db, actor.orgId, ctx.type.id);
+      if (rules.requireEmail && !input.contact.email?.trim()) throw new AppError("invalid_input", "Please enter your email address.");
+      if (rules.requirePhone && !input.contact.phone?.trim()) throw new AppError("invalid_input", "Please enter your phone number.");
+    }
+    // A double submit that waited on the calendar's lock finds the booking the first one made, instead of "that time was just taken".
+    const raced = await priorBooking(db, actor.orgId, input.idempotencyKey);
+    if (raced) return raced;
     const start = input.startAt.getTime();
     if (Number.isNaN(start)) throw new AppError("invalid_input", "Choose a time.");
     const slots = await computeSlots(db, ctx, { from: new Date(start - 60_000), to: new Date(start + 60_000), now, ignoreNotice: input.via === "staff" });
@@ -155,7 +239,7 @@ export async function bookNativeAppointment(actor: CrmActor, input: NativeBookin
     } else {
       const c = input.contact;
       if (!c.firstName?.trim() && !c.displayName?.trim()) throw new AppError("invalid_input", "Please enter your name.");
-      if (!c.email?.trim() && !c.phone?.trim()) throw new AppError("invalid_input", "Please enter an email address or a phone number so we can confirm.");
+      if (!c.email?.trim() && !c.phone?.trim()) throw new AppError("invalid_input", "Please enter an email address or a phone number so the business can reach you.");
       contactId = (await createContactInTx(db, actor, { ...c, source: c.source ?? "Booking page" }, { via: "booking", onDuplicate: "return_existing", tagSource: "booking" })).id;
     }
     const contact = await db.query<{ display_name: string; timezone: string | null }>("select display_name, timezone from contacts where id = $1", [contactId]);
@@ -178,28 +262,28 @@ export async function bookNativeAppointment(actor: CrmActor, input: NativeBookin
     );
     const appointmentId = appt.rows[0].id;
 
-    // Hold the time. Round robin tries each free host in turn; collective needs every host.
+    // Hold the time. Round robin tries each free host in turn; collective needs every host. A group type's place is in each host's shared block.
     const held: string[] = [];
-    let sharedBlock: string | null = null;
+    const blocks = new Map<string, string>();
     if (ctx.calendar.assignment === "collective") {
       for (const hostId of candidates) {
         const r = await holdTime(db, ctx, hostId, start, appointmentId);
         if (!r.ok) throw new AppError("conflict", TAKEN);
         held.push(hostId);
-        if (r.shared) sharedBlock ??= r.blockId;
+        if (r.shared) blocks.set(hostId, r.blockId);
       }
     } else {
       for (const hostId of candidates) {
         const r = await holdTime(db, ctx, hostId, start, appointmentId);
         if (!r.ok) continue;
         held.push(hostId);
-        if (r.shared) sharedBlock = r.blockId;
+        if (r.shared) blocks.set(hostId, r.blockId);
         break;
       }
       if (!held.length) throw new AppError("conflict", TAKEN);
     }
-    await db.query("update appointment_refs set assigned_user_id = $3, busy_block_id = $4 where id = $1 and org_id = $2", [appointmentId, actor.orgId, held[0], sharedBlock]);
-    for (const h of held) await db.query("insert into crm_appointment_hosts (org_id, appointment_id, user_id) values ($1, $2, $3)", [actor.orgId, appointmentId, h]);
+    await db.query("update appointment_refs set assigned_user_id = $3, busy_block_id = $4 where id = $1 and org_id = $2", [appointmentId, actor.orgId, held[0], blocks.get(held[0]) ?? null]);
+    await saveHosts(db, actor.orgId, appointmentId, held, blocks);
     await db.query("update crm_calendar_members set last_assigned_at = now() where calendar_id = $1 and user_id = any($2::uuid[])", [ctx.calendar.id, held]);
 
     const when = formatSlot(new Date(start).toISOString(), ctx.orgTimezone);
@@ -257,8 +341,9 @@ export async function rescheduleNativeAppointment(actor: CrmActor, id: string, i
     if (!["new", "confirmed"].includes(a.status)) throw new AppError("conflict", "Only an upcoming appointment can be moved.");
     if (input.expectedVersion !== undefined && a.version !== input.expectedVersion) throw new AppError("conflict", "Someone else changed this appointment. Reload and try again.");
     if (input.by === "customer" && new Date(a.start_at).getTime() <= now.getTime()) throw new AppError("conflict", "This appointment has already started.");
+    if (input.by === "customer") await assertCustomerMayChange(db, actor.orgId, a, now);
+    await lockCalendarOf(db, actor.orgId, a.appointment_type_id as string);
     const ctx = await loadBookingContext(db, actor.orgId, a.appointment_type_id as string);
-    await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`crm-cal:${ctx.calendar.id}`]);
     const start = input.startAt.getTime();
     const hosts = (await db.query<{ user_id: string }>("select user_id from crm_appointment_hosts where appointment_id = $1", [id])).rows.map((r) => r.user_id);
     const slots = await computeSlots(db, ctx, { from: new Date(start - 60_000), to: new Date(start + 60_000), now, ignoreNotice: input.by === "staff", excludeAppointmentId: id });
@@ -272,9 +357,8 @@ export async function rescheduleNativeAppointment(actor: CrmActor, id: string, i
       next = orderHosts(ctx, slot.hostIds).slice(0, 1);
     }
     await releaseTime(db, actor.orgId, id);
-    await db.query("update appointment_refs set busy_block_id = null where id = $1", [id]);
     const held: string[] = [];
-    let shared: string | null = null;
+    const blocks = new Map<string, string>();
     for (const h of next) {
       const r = await holdTime(db, ctx, h, start, id);
       if (!r.ok) {
@@ -282,7 +366,7 @@ export async function rescheduleNativeAppointment(actor: CrmActor, id: string, i
         continue;
       }
       held.push(h);
-      if (r.shared) shared = r.blockId;
+      if (r.shared) blocks.set(h, r.blockId);
       if (ctx.calendar.assignment !== "collective") break;
     }
     if (!held.length) throw new AppError("conflict", TAKEN);
@@ -290,10 +374,10 @@ export async function rescheduleNativeAppointment(actor: CrmActor, id: string, i
     const upd = await db.query<{ version: number }>(
       `update appointment_refs set start_at = $3, end_at = $4, previous_start_at = start_at, reschedule_count = reschedule_count + 1, assigned_user_id = $5, busy_block_id = $6,
          version = version + 1, last_event_at = now() where id = $1 and org_id = $2 returning version`,
-      [id, actor.orgId, new Date(start), new Date(end), held[0], shared],
+      [id, actor.orgId, new Date(start), new Date(end), held[0], blocks.get(held[0]) ?? null],
     );
     await db.query("delete from crm_appointment_hosts where appointment_id = $1 and not (user_id = any($2::uuid[]))", [id, held]);
-    for (const h of held) await db.query("insert into crm_appointment_hosts (org_id, appointment_id, user_id) values ($1, $2, $3) on conflict do nothing", [actor.orgId, id, h]);
+    await saveHosts(db, actor.orgId, id, held, blocks);
     const when = formatSlot(new Date(start).toISOString(), ctx.orgTimezone);
     await emitEvent(db, actor, { type: "appointment.rescheduled", entityType: "appointment", entityId: id, contactId: a.contact_id, payload: { from: new Date(a.start_at).toISOString(), to: new Date(start).toISOString(), by: input.by }, dedupeKey: `appointment.rescheduled:${id}:v${upd.rows[0].version}` });
     await recordActivity(db, actor, { kind: "appointment.rescheduled", summary: `Appointment moved to ${when}`, contactId: a.contact_id, refType: "appointment", refId: id });
@@ -311,9 +395,11 @@ export async function cancelNativeAppointment(actor: CrmActor, id: string, input
   if (input.by === "staff") assertCan(actor, "appointments.manage");
   const now = input.now ?? new Date();
   return crmWrite(actor, async (db) => {
+    await assertNativeOwner(db, actor.orgId, "appointments");
     const a = await lockNative(db, actor.orgId, id);
     if (a.status === "cancelled") return { changed: false, late: false };
     if (!["new", "confirmed"].includes(a.status)) throw new AppError("conflict", "Only an upcoming appointment can be cancelled.");
+    if (input.by === "customer") await assertCustomerMayChange(db, actor.orgId, a, now);
     const policy = await db.query<{ late_cancel_hours: number | null }>("select late_cancel_hours from appointment_settings where org_id = $1", [actor.orgId]);
     const late = isLateCancellation(new Date(a.start_at), now, policy.rows[0]?.late_cancel_hours ?? null);
     await releaseTime(db, actor.orgId, id);
@@ -327,7 +413,7 @@ export async function cancelNativeAppointment(actor: CrmActor, id: string, input
     const hosts = await db.query<{ user_id: string }>("select user_id from crm_appointment_hosts where appointment_id = $1", [id]);
     for (const h of hosts.rows) {
       if (h.user_id === actor.userId) continue;
-      await notifyUser(db, h.user_id, actor.orgId, { kind: "booking_cancelled", severity: "info", title: `Appointment cancelled: ${a.title}`, body: formatSlot(new Date(a.start_at).toISOString(), "UTC"), link: `/crm/calendar?appointment=${id}`, dedupeKey: `crm-cancel:${id}:${h.user_id}` });
+      await notifyUser(db, h.user_id, actor.orgId, { kind: "booking_cancelled", severity: "info", title: `Appointment cancelled: ${a.title}`, body: formatSlot(new Date(a.start_at).toISOString(), actor.timezone || "UTC"), link: `/crm/calendar?appointment=${id}`, dedupeKey: `crm-cancel:${id}:${h.user_id}` });
     }
     return { changed: true, late };
   });
@@ -337,6 +423,7 @@ export async function cancelNativeAppointment(actor: CrmActor, id: string, input
 export async function setNativeAppointmentStatus(actor: CrmActor, id: string, status: "confirmed" | "showed" | "noshow"): Promise<void> {
   assertCan(actor, "appointments.manage");
   await crmWrite(actor, async (db) => {
+    await assertNativeOwner(db, actor.orgId, "appointments");
     const a = await lockNative(db, actor.orgId, id);
     if (status === "confirmed" && a.status !== "new") throw new AppError("conflict", "Only a booking waiting for confirmation can be confirmed.");
     if ((status === "showed" || status === "noshow") && !["new", "confirmed", "showed", "noshow"].includes(a.status)) throw new AppError("conflict", "A cancelled appointment has no outcome.");
@@ -353,10 +440,13 @@ export async function setNativeAppointmentStatus(actor: CrmActor, id: string, st
 // The customer's own link (reschedule or cancel without signing in)
 // ---------------------------------------------------------------------------
 
+export type ManageLinkPurpose = "confirmation" | "reminder" | "staff" | "reschedule";
+
 export interface ManagedAppointment {
   id: string;
   orgId: string;
   orgName: string;
+  /** The internal title names the contact as the CRM knows them. Public pages show `typeName` instead. */
   title: string;
   typeId: string;
   typeName: string;
@@ -366,27 +456,99 @@ export interface ManagedAppointment {
   timezone: string;
   location: string | null;
   meetingLink: string | null;
+  /** Whether the customer may reschedule or cancel from their link right now (status, start, and the type's rules). */
   canChange: boolean;
+  /** Why `canChange` is false, or null when it is true. */
+  cannotChangeReason: CustomerChangeBlock | null;
+  /** The last moment the customer can change it online, or null when the type doesn't allow changes. */
+  changeDeadline: string | null;
+  allowCustomerChanges: boolean;
+  changeCutoffMinutes: number;
+  orgSlug: string;
+  calendarSlug: string;
+  typeSlug: string;
+  durationMinutes: number;
+  version: number;
+  /** Which link opened it: the one returned at booking, or one issued later. */
+  linkIssuedFor: "booking" | ManageLinkPurpose;
 }
 
-/** Finds the appointment for a customer's manage link. The token is compared by hash; an unknown token reveals nothing. */
-export async function findByManageToken(token: string): Promise<ManagedAppointment | null> {
-  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,64}$/;
+
+/**
+ * Finds the appointment for a customer's manage link: the link returned at booking, or a live link issued later (not revoked, not
+ * expired). The token is compared by hash; an unknown, expired or revoked token reveals nothing.
+ */
+export async function findByManageToken(token: string, opts: { now?: Date } = {}): Promise<ManagedAppointment | null> {
+  if (!TOKEN_SHAPE.test(token)) return null;
+  const now = opts.now ?? new Date();
   return withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string; org_id: string; org_name: string; title: string; type_id: string; type_name: string; status: string; start_at: Date; end_at: Date; invitee_timezone: string | null; timezone: string | null; location: string | null; meeting_link: string | null }>(
-      `select a.id, a.org_id, o.name as org_name, a.title, t.id as type_id, t.name as type_name, a.status, a.start_at, a.end_at, a.invitee_timezone, a.timezone, a.location, a.meeting_link
-       from appointment_refs a join organizations o on o.id = a.org_id join crm_appointment_types t on t.id = a.appointment_type_id
-       where a.manage_token_hash = $1 and a.provider = 'native'`,
-      [sha256(token)],
+    const hash = sha256(token);
+    const { rows } = await db.query<{
+      id: string; org_id: string; org_name: string; org_slug: string; title: string; type_id: string; type_name: string; type_slug: string; calendar_slug: string; status: string; start_at: Date; end_at: Date;
+      invitee_timezone: string | null; timezone: string | null; location: string | null; meeting_link: string | null; duration_minutes: number; version: number;
+      allow_customer_changes: boolean; change_cutoff_minutes: number; primary_match: boolean; issued_for: ManageLinkPurpose | null;
+    }>(
+      `with link as (
+         select l.appointment_id, l.org_id, l.issued_for from crm_appointment_links l where l.token_hash = $1 and l.revoked_at is null and l.expires_at > $2
+       )
+       select a.id, a.org_id, o.name as org_name, o.slug as org_slug, a.title, t.id as type_id, t.name as type_name, t.slug as type_slug, c.slug as calendar_slug, a.status, a.start_at, a.end_at,
+              a.invitee_timezone, a.timezone, a.location, a.meeting_link, t.duration_minutes, a.version, t.allow_customer_changes, t.change_cutoff_minutes,
+              coalesce(a.manage_token_hash = $1, false) as primary_match, (select issued_for from link where link.appointment_id = a.id and link.org_id = a.org_id limit 1) as issued_for
+       from appointment_refs a join organizations o on o.id = a.org_id
+       join crm_appointment_types t on t.id = a.appointment_type_id and t.org_id = a.org_id
+       join crm_calendars c on c.id = t.calendar_id and c.org_id = t.org_id
+       where a.provider = 'native' and (a.manage_token_hash = $1 or exists (select 1 from link where link.appointment_id = a.id and link.org_id = a.org_id))
+       limit 1`,
+      [hash, now],
     );
     const r = rows[0];
     if (!r) return null;
+    const rules = { allowCustomerChanges: r.allow_customer_changes, changeCutoffMinutes: r.change_cutoff_minutes };
+    const block = customerChangeBlock({ status: r.status, startAt: new Date(r.start_at) }, rules, now);
     return {
       id: r.id, orgId: r.org_id, orgName: r.org_name, title: r.title, typeId: r.type_id, typeName: r.type_name, status: r.status, startAt: new Date(r.start_at).toISOString(), endAt: new Date(r.end_at).toISOString(),
       timezone: r.invitee_timezone ?? r.timezone ?? "UTC", location: r.location, meetingLink: r.meeting_link,
-      canChange: ["new", "confirmed"].includes(r.status) && new Date(r.start_at).getTime() > Date.now(),
+      canChange: block === null,
+      cannotChangeReason: block,
+      changeDeadline: r.allow_customer_changes ? new Date(new Date(r.start_at).getTime() - r.change_cutoff_minutes * 60_000).toISOString() : null,
+      allowCustomerChanges: r.allow_customer_changes,
+      changeCutoffMinutes: r.change_cutoff_minutes,
+      orgSlug: r.org_slug, calendarSlug: r.calendar_slug, typeSlug: r.type_slug, durationMinutes: r.duration_minutes, version: r.version,
+      linkIssuedFor: r.primary_match ? "booking" : (r.issued_for ?? "booking"),
     };
   });
+}
+
+const MAX_LINK_MINUTES = 400 * 24 * 60;
+
+/**
+ * Issues another manage link for a native appointment (for a reminder, a confirmation page, a staff "send link", or after a reschedule)
+ * without invalidating the others. Returns the raw secret once; only its sha256 is stored, with an expiry. Runs in the caller's transaction.
+ */
+export async function issueManageLink(db: Queryable, orgId: string, appointmentId: string, issuedFor: ManageLinkPurpose, ttlMinutes: number, now: Date = new Date()): Promise<string> {
+  if (!["confirmation", "reminder", "staff", "reschedule"].includes(issuedFor)) throw new AppError("invalid_input", "Choose what the link is for.");
+  if (!Number.isFinite(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > MAX_LINK_MINUTES) throw new AppError("invalid_input", "A link lasts from one minute to 400 days.");
+  const appt = await db.query("select 1 from appointment_refs where id = $1 and org_id = $2 and provider = 'native'", [appointmentId, orgId]);
+  if (!appt.rows[0]) throw new AppError("not_found", "Appointment not found.");
+  const token = randomToken(24);
+  await db.query(
+    "insert into crm_appointment_links (org_id, appointment_id, token_hash, issued_for, created_at, expires_at) values ($1, $2, $3, $4, $5, $6)",
+    [orgId, appointmentId, sha256(token), issuedFor, now, new Date(now.getTime() + Math.ceil(ttlMinutes) * 60_000)],
+  );
+  return token;
+}
+
+/**
+ * Revokes issued manage links for an appointment: one link (by its raw secret) or all of them. The link returned at booking is not in
+ * this table and is unaffected. Returns how many were revoked.
+ */
+export async function revokeManageLinks(db: Queryable, orgId: string, appointmentId: string, opts: { token?: string } = {}): Promise<number> {
+  const res = await db.query(
+    "update crm_appointment_links set revoked_at = now() where org_id = $1 and appointment_id = $2 and revoked_at is null and ($3::text is null or token_hash = $3)",
+    [orgId, appointmentId, opts.token ? sha256(opts.token) : null],
+  );
+  return res.rowCount ?? 0;
 }
 
 /** The booking page's actor: acts for the workspace, recorded as the booking page. */

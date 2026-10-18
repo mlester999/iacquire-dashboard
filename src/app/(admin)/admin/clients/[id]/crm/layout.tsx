@@ -18,8 +18,9 @@ export default async function AgencyClientCrmLayout({ children, params }: { chil
       base={`/admin/clients/${org.id}/crm`}
       sections={navFor((p) => actor.can(p), "agency")}
       mode={ws.mode}
+      capabilityOwners={ws.capabilities}
       orgName={org.name}
-      banner={<SupportBanner orgId={org.id} mode={actor.supportMode === "write" ? "write" : "read"} reason={session.reason} expiresAt={session.expiresAt} />}
+      banner={<SupportBanner orgId={org.id} mode={actor.supportMode === "write" ? "write" : "read"} reason={session.reason} expiresAt={session.expiresAt} initialNow={Date.parse(session.startedAt)} />}
     >
       {children}
     </CrmShell>

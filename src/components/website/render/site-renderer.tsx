@@ -3,6 +3,7 @@ import { siteCss } from "@/lib/website/css";
 import { findPage, isRef, resolveItem, type ElementNode, type SiteContent } from "@/lib/website/doc";
 import { FONT_CLASSES } from "@/lib/website/fonts";
 import "./site.css";
+import type { SiteBookingData } from "@/lib/website/booking";
 import type { EditBridge, RenderCtx, ResolvedAsset } from "./ctx";
 import { MenuCloser, MotionRoot, NavFit } from "./islands";
 import { SectionView } from "./section";
@@ -29,6 +30,12 @@ export interface SiteRendererProps {
   limitSections?: number;
   /** Keeps this site's styles from touching another site drawn on the same page (gallery thumbnails). */
   scope?: string;
+  /** The workspace's public calendars, for booking elements (live pages and the editor). */
+  booking?: SiteBookingData | null;
+  /** The workspace's live native CRM forms by key, for form elements that name one (live pages and the editor). */
+  forms?: RenderCtx["forms"];
+  /** Drawn inside the site's own header and footer instead of the page's sections: the site's booking pages. It brings its own h1. */
+  main?: React.ReactNode;
 }
 
 /** The first level-1 heading among these elements, in the order they are drawn. */
@@ -54,16 +61,17 @@ export function SiteRenderer(props: SiteRendererProps) {
     .map((item) => resolveItem(content, item))
     .filter((sec): sec is NonNullable<typeof sec> => sec !== null && (editingNow || !sec.hidden));
   const drawnInOrder = [...(content.header ? [content.header] : []), ...visibleSections, ...(content.footer ? [content.footer] : [])];
-  const h1Id = firstH1(drawnInOrder.flatMap((sec) => sec.columns.flatMap((c) => c.elements)));
+  // A booking page brings its own h1, so a level-1 heading in the header or footer is drawn as an h2 there.
+  const h1Id = props.main !== undefined ? null : firstH1(drawnInOrder.flatMap((sec) => sec.columns.flatMap((c) => c.elements)));
   const ctx: RenderCtx = {
     content, page, resolveAsset: props.resolveAsset, mode: props.mode, formAction: props.formAction, formToken: props.formToken ?? "", hrefFor: props.hrefFor,
-    embedded: props.embedded === true, h1Id, edit: props.edit, nonce: props.nonce,
+    embedded: props.embedded === true, h1Id, edit: props.edit, nonce: props.nonce, booking: props.booking, forms: props.forms,
   };
   const visible = page.items
     .map((item) => ({ item, sec: resolveItem(content, item) }))
     .filter((x): x is { item: typeof x.item; sec: NonNullable<typeof x.sec> } => x.sec !== null && (editing || !x.sec.hidden));
   const shown = props.limitSections ? visible.slice(0, props.limitSections) : visible;
-  const pageHasH1 = h1Id !== null;
+  const pageHasH1 = h1Id !== null || props.main !== undefined;
   const css = siteCss(content, page, { scope: props.scope, edit: editing }).replace(/</g, "\\3c ");
   const d = content.design;
   const year = props.year ?? new Date().getUTCFullYear();
@@ -93,7 +101,7 @@ export function SiteRenderer(props: SiteRendererProps) {
       {content.header && <SectionView sec={content.header} ctx={ctx} role="header" />}
       <MainTag id={props.embedded ? undefined : "main"} data-site-main="">
         {!pageHasH1 && <h1 className="iq-sr">{page.title}</h1>}
-        {shown.map(({ item, sec }) => (
+        {props.main ?? shown.map(({ item, sec }) => (
           <SectionView key={item.id} sec={sec} ctx={ctx} shared={isRef(item) ? item.ref : undefined} />
         ))}
       </MainTag>

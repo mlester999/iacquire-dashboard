@@ -396,6 +396,12 @@ export interface BoardColumn {
   truncated: boolean;
 }
 
+/**
+ * Cards a board column shows; the column says how many more there are and links to the table. 50 keeps a nine-stage board under about
+ * 250 KB for the browser (200 per column sent about 870 KB, roughly 1,600 cards, for a 3,500-deal pipeline in tests/perf).
+ */
+export const BOARD_CARDS_PER_STAGE = 50;
+
 /** The Kanban board for one pipeline. Closed columns only show deals closed in the last 30 days by default, so the board stays quick. */
 export async function getBoard(actor: CrmActor, pipelineId: string, opts: { search?: string; ownerId?: string | null; mine?: boolean; closedDays?: number } = {}): Promise<BoardColumn[]> {
   assertCan(actor, "sales.view");
@@ -421,14 +427,23 @@ export async function getBoard(actor: CrmActor, pipelineId: string, opts: { sear
       params.push(`%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
       where.push(`(lower(o.name) like $${params.length} escape '\\' or lower(coalesce(c.display_name, '')) like $${params.length} escape '\\' or lower(coalesce(co.name, '')) like $${params.length} escape '\\')`);
     }
+    // Contact and company names only matter to a search; without one, the counts and the ranking read the deals alone (both joins are
+    // left joins on a key, so they never change which deals are counted).
+    const countJoins = term ? " left join contacts c on c.id = o.contact_id left join crm_companies co on co.id = o.company_id" : "";
+    const cardJoins = term ? " left join contacts c on c.id = o.contact_id and c.deleted_at is null left join crm_companies co on co.id = o.company_id and co.deleted_at is null" : "";
     const counts = await db.query<{ stage_ref: string; currency: string; n: string; total: string | null }>(
-      `select o.stage_ref, o.currency, count(*)::text as n, sum(o.monetary_value)::text as total from crm_opportunities o
-       left join contacts c on c.id = o.contact_id left join crm_companies co on co.id = o.company_id where ${where.join(" and ")} group by 1, 2`,
+      `select o.stage_ref, o.currency, count(*)::text as n, sum(o.monetary_value)::text as total from crm_opportunities o${countJoins} where ${where.join(" and ")} group by 1, 2`,
       params,
     );
-    const { rows } = await db.query<CardRow & { rn: string }>(
-      `select * from (${CARD_SELECT} where ${where.join(" and ")}) x order by x.stage_entered_at desc limit 2000`,
-      params,
+    // The newest BOARD_CARDS_PER_STAGE deals of each stage, ranked over the deals alone, so card details (contact, company, owner, open
+    // tasks) are read only for the cards shown. One limit across the whole board used to leave busy pipelines with empty columns.
+    const { rows } = await db.query<CardRow>(
+      `select * from (${CARD_SELECT} where o.id in (
+         select r.id from (select o.id, row_number() over (partition by o.stage_ref order by o.stage_entered_at desc, o.id desc) as rn
+                           from crm_opportunities o${cardJoins} where ${where.join(" and ")}) r
+         where r.rn <= $${params.length + 1})) x
+       order by x.stage_entered_at desc, x.id desc`,
+      [...params, BOARD_CARDS_PER_STAGE],
     );
     const cards = await toCards(db, actor.orgId, rows);
     return stages.rows.map((s) => {
@@ -437,10 +452,10 @@ export async function getBoard(actor: CrmActor, pipelineId: string, opts: { sear
       const count = stageCounts.reduce((acc, c) => acc + Number(c.n), 0);
       return {
         stage: s,
-        cards: stageCards.slice(0, 200),
+        cards: stageCards.slice(0, BOARD_CARDS_PER_STAGE),
         count,
         totals: stageCounts.filter((c) => c.total !== null).map((c) => ({ currency: c.currency, value: Number(c.total) })),
-        truncated: count > Math.min(200, stageCards.length),
+        truncated: count > Math.min(BOARD_CARDS_PER_STAGE, stageCards.length),
       };
     });
   });

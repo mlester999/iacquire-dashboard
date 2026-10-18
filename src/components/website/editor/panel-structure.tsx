@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import {
-  ArrowDown, ArrowUp, ChevronRight, Columns2, Copy, CornerLeftUp, CornerRightDown, EyeOff, FileText, Globe, Home, Image as ImageIcon, LayoutPanelTop, Link2, ListTree, MoreHorizontal, MousePointerClick, PanelBottom, PanelTop,
+  ArrowDown, ArrowUp, CalendarCheck, ChevronRight, Columns2, Copy, CornerLeftUp, CornerRightDown, EyeOff, FileText, Globe, Home, Image as ImageIcon, LayoutPanelTop, Link2, ListTree, MoreHorizontal, MousePointerClick, PanelBottom, PanelTop,
   Plus, Rows3, Square, Trash2, Type,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -135,6 +135,7 @@ function AddPageDialog({ open, onOpenChange, doc, onCreate }: { open: boolean; o
 
 const ELEMENT_ICON: Partial<Record<ElementType, React.ComponentType<{ className?: string }>>> = {
   heading: Type, text: Type, button: MousePointerClick, image: ImageIcon, gallery: ImageIcon, collage: ImageIcon, card: Square, group: Rows3, form: FileText, nav: ListTree, logo: Globe,
+  booking: CalendarCheck,
 };
 
 interface Row {

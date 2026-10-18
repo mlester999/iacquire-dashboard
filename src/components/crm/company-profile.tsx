@@ -7,7 +7,6 @@ import { Archive, ArchiveRestore, ArrowLeft, Building2, ExternalLink, Globe, Mai
 import { Button } from "@/components/ui/button";
 import { Badge, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Sheet, Tabs } from "@/components/ui/overlays";
-import { relativeTime } from "@/lib/utils";
 import { archiveCompaniesAction, deleteCompanyAction, tagCompanyAction, updateCompanyAction } from "@/app/actions/crm";
 import { ConfirmDialog, money, TagChip, useCrmAction } from "@/components/crm/ui";
 import { FieldInput, displayFieldValue } from "@/components/crm/field-input";
@@ -20,6 +19,7 @@ import type { TimelineItem } from "@/server/crm/timeline";
 import type { NoteView } from "@/server/crm/notes";
 import type { TaskView } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 export function CompanyProfile({
   scope, detail, timeline, notes, tasks, tags, members, pipelines,
@@ -159,8 +159,8 @@ export function CompanyProfile({
             <DefinitionList items={[
               { label: "Owner", value: detail.owner?.name ?? "Unassigned" },
               { label: "Address", value: [detail.addressLine1, detail.addressLine2, [detail.city, detail.region, detail.postalCode].filter(Boolean).join(", "), detail.country].filter(Boolean).join("\n") || null },
-              { label: "Added", value: `${CREATED_VIA_LABELS[detail.createdVia as CreatedVia] ?? "Added"} · ${relativeTime(detail.createdAt)}` },
-              { label: "Updated", value: relativeTime(detail.updatedAt) },
+              { label: "Added", value: <>{CREATED_VIA_LABELS[detail.createdVia as CreatedVia] ?? "Added"} · <RelativeTime iso={detail.createdAt} timezone={scope.timezone} /></> },
+              { label: "Updated", value: <RelativeTime iso={detail.updatedAt} timezone={scope.timezone} /> },
             ]} />
             {detail.description && <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3 text-[13px] leading-relaxed text-ink-2">{detail.description}</p>}
           </SectionCard>

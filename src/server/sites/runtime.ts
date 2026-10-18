@@ -5,8 +5,10 @@ import { parseStoredContent } from "@/lib/website/legacy";
 
 // Everything the public website runtime may do, and nothing else. All reads go through restricted SQL functions that
 // run as iaq_site_runtime (see the websites migration), so this module cannot reach drafts, other tenants or customers.
+// The one exception is booking, which needs the native scheduling engine: its trusted reads and writes are all in
+// src/server/sites/booking-trusted.ts, which only accepts a LiveSite this module returned (see docs/website-studio.md).
 
-export interface LiveSite {
+interface LiveSiteFields {
   websiteId: string;
   orgId: string;
   publicationId: string;
@@ -16,6 +18,22 @@ export interface LiveSite {
   hostKind: "platform" | "custom";
   publishedAt: string;
   canonicalHost: string;
+}
+
+declare const verifiedSite: unique symbol;
+
+/**
+ * A live site exactly as resolveSite returned it for a verified host. The brand is never exported and each object resolveSite makes is
+ * frozen and registered, so code that trusts a site's orgId (src/server/sites/booking-trusted.ts) can insist on one: an object built
+ * anywhere else, or a copy, fails to type-check and is refused at run time by `isVerifiedSite`.
+ */
+export type LiveSite = Readonly<LiveSiteFields> & { readonly [verifiedSite]: true };
+
+const verified = new WeakSet<object>();
+
+/** True only for an object resolveSite itself returned (and nobody has been able to change since). */
+export function isVerifiedSite(site: unknown): site is LiveSite {
+  return typeof site === "object" && site !== null && verified.has(site) && Object.isFrozen(site);
 }
 
 const HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
@@ -52,10 +70,12 @@ export async function resolveSite(rawHost: string): Promise<LiveSite | null> {
     const parsed = parseStoredContent(row.content, row.template_key);
     // Content is validated when it is published; if it no longer parses (the schema moved on), serve nothing rather than guess.
     if (parsed.ok) {
-      value = {
+      const fields: LiveSiteFields = {
         websiteId: row.website_id, orgId: row.org_id, publicationId: row.publication_id, templateKey: row.template_key, content: parsed.content,
         contentHash: row.content_hash, hostKind: row.host_kind, publishedAt: new Date(row.published_at).toISOString(), canonicalHost: row.canonical_host,
       };
+      value = Object.freeze(fields) as LiveSite;
+      verified.add(value);
     }
   }
   if (cache.size > 2000) cache.clear();

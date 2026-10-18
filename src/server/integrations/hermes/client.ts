@@ -1,8 +1,8 @@
 import "server-only";
+import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { withSystem } from "@/server/db";
 import { AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
-import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { secretFingerprint } from "@/server/security/crypto";
 
 /**
@@ -28,6 +28,12 @@ export interface HermesConnection {
   /** Optional Cloudflare Access service token. Profile API keys remain separate. */
   accessClientId?: string;
   accessClientSecret?: string;
+  /**
+   * Digest of the last inventory attestation persisted for this employee. When present, a run is
+   * refused if the gateway's effective inventory no longer matches it, so an unexpected profile,
+   * plugin or MCP change can never be used silently.
+   */
+  expectedToolInventoryDigest?: string | null;
 }
 
 export type HermesErrorKind = "unreachable" | "auth_failed" | "not_found" | "rate_limited" | "bad_response" | "timeout" | "upstream";
@@ -207,16 +213,7 @@ export async function getToolsets(conn: HermesConnection, timeoutMs = 8000): Pro
  * browser automation, scheduling, delegation, self-installation and skill rewriting.
  */
 const RESTRICTED_TOOL = /^(terminal|process|process_manage|execute_code|write_file|patch|read_file|search_files|computer_use|cronjob_manage|cronjob|manage_connections|manage_catalog|delegate_task|skill_manage|start_chat|setup_choose)$|^(browser_|kanban_|discord|feishu_)/;
-const REVIEWED_CLIENT_TOOLS=new Set(["web_search","web_extract","memory","session_search","todo_list","clarify","vision_analyze","video_analyze","x_search","text_to_speech"]);
-
-/** The public toolsets contract may omit default plugin/MCP tools; it cannot prove a complete
- * client permission boundary. Only our explicit loopback test environment supplies the complete
- * synthetic inventory implemented by tests/support/mock-hermes.ts. No remote claim or checkbox
- * bypasses this gate. A supported complete-inventory contract is still required for live use. */
-export function hasVerifiedCompleteToolInventory(conn:HermesConnection):boolean {
-  const url=new URL(conn.baseUrl);
-  return process.env.NODE_ENV==="test" && process.env.SECRET_STORE==="test-memory" && url.protocol==="http:" && ["127.0.0.1","localhost","[::1]"].includes(url.hostname);
-}
+export const REVIEWED_CLIENT_TOOLS = new Set(["web_search","web_extract","memory","session_search","todo_list","clarify","vision_analyze","video_analyze","x_search","text_to_speech"]);
 
 export function restrictedToolsIn(toolsets: HermesToolset[]): string[] {
   const found = new Set<string>();
@@ -227,10 +224,124 @@ export function restrictedToolsIn(toolsets: HermesToolset[]): string[] {
   return [...found].sort();
 }
 
-async function submitRun(conn: HermesConnection, input: StartRunInput, allowAcknowledgedInternalProfile = false): Promise<{ runId: string }> {
-  if (!allowAcknowledgedInternalProfile && !hasVerifiedCompleteToolInventory(conn)) {
-    throw new HermesError("bad_response", "Live employee runs are blocked until complete profile tool permissions can be verified.");
+/**
+ * A complete runtime tool catalog entry from `GET /v1/tools?platform=api_server`
+ * (Hermes upstream PR #92729 / issue #92711). Provenance is what lets the portal distinguish
+ * an explicitly allowlisted tool from one injected by a plugin, a release backfill, a default
+ * MCP server or a runtime provider.
+ */
+export interface HermesToolCatalogEntry {
+  name: string;
+  provenance: {
+    source: "configurable" | "recently_shipped" | "default_injected" | "mcp" | "unresolved";
+    toolset: string | null;
+    requestedToolsets: string[];
+    sourceServer: string | null;
+    addedBelowExplicitConfig: boolean;
+  };
+  available: boolean | null;
+}
+
+export interface HermesToolCatalog {
+  platform: string;
+  /** The gateway certified that every enabled runtime tool was enumerated. */
+  complete: boolean;
+  incompleteReason: string | null;
+  explicitConfigPresent: boolean;
+  enabledToolsets: string[];
+  tools: HermesToolCatalogEntry[];
+  /** Echoed only by an attestation-aware gateway extension. */
+  challenge: string | null;
+  generatedAt: string | null;
+  expiresAt: string | null;
+  attestation: { algorithm: string; signature: string; keyId: string | null } | null;
+}
+
+const TOOL_CATALOG_SOURCES = new Set(["configurable", "recently_shipped", "default_injected", "mcp", "unresolved"]);
+const TOOL_NAME = /^[a-z][a-z0-9_]{0,79}$/;
+
+/**
+ * GET /v1/tools?platform=api_server — the complete model-callable catalog, including MCP and
+ * plugin tools, before Tool Search replaces them with its bridge. The endpoint is not present in
+ * older gateways (0.21.5 returns 404), so its absence is reported as a concrete contract problem
+ * rather than being mistaken for an empty inventory. No run is started by this call.
+ */
+export async function getToolCatalog(conn: HermesConnection, challenge?: string, timeoutMs = 12000): Promise<HermesToolCatalog> {
+  const res = await request(conn, "/v1/tools?platform=api_server", {
+    method: "GET",
+    headers: headers(conn, challenge ? { "X-Hermes-Inventory-Challenge": challenge } : undefined),
+    timeoutMs,
+  });
+  if (res.status === 404 || res.status === 405) {
+    throw new HermesError("not_found", "The gateway does not expose GET /v1/tools, so its complete runtime tool catalog cannot be read.", res.status);
   }
+  if (!res.ok) throw new HermesError("bad_response", `Unexpected tool catalog status ${res.status}.`, res.status);
+  const body = (await res.json().catch(() => null)) as unknown;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new HermesError("bad_response", "The tool catalog response was not an object.");
+  }
+  const raw = body as Record<string, unknown>;
+  if (raw.object !== "list" || raw.platform !== "api_server" || typeof raw.explicit_config_present !== "boolean" || !Array.isArray(raw.enabled_toolsets) || !Array.isArray(raw.data)) {
+    throw new HermesError("bad_response", "The tool catalog response did not match the supported contract.");
+  }
+  const enabledToolsets = raw.enabled_toolsets.map((name) => {
+    if (typeof name !== "string" || !name.trim() || name.length > 80) throw new HermesError("bad_response", "The tool catalog contained an invalid enabled toolset.");
+    return name;
+  });
+  if (new Set(enabledToolsets).size !== enabledToolsets.length) throw new HermesError("bad_response", "The tool catalog repeated an enabled toolset.");
+  const seen = new Set<string>();
+  const tools = raw.data.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new HermesError("bad_response", "The tool catalog contained an invalid entry.");
+    const row = entry as Record<string, unknown>;
+    const fn = row.function && typeof row.function === "object" && !Array.isArray(row.function) ? (row.function as Record<string, unknown>) : row;
+    const name = typeof fn.name === "string" ? fn.name : null;
+    if (!name || !TOOL_NAME.test(name) || seen.has(name)) throw new HermesError("bad_response", "The tool catalog contained an invalid or duplicate tool name.");
+    seen.add(name);
+    const p = row.provenance && typeof row.provenance === "object" && !Array.isArray(row.provenance) ? (row.provenance as Record<string, unknown>) : null;
+    if (!p || typeof p.source !== "string" || !TOOL_CATALOG_SOURCES.has(p.source) || !(p.toolset === null || typeof p.toolset === "string") || !Array.isArray(p.requested_toolsets) || p.requested_toolsets.some((t) => typeof t !== "string") || !(p.source_server === null || typeof p.source_server === "string") || typeof p.added_below_explicit_config !== "boolean") {
+      throw new HermesError("bad_response", "A tool catalog entry did not include complete provenance.");
+    }
+    return {
+      name,
+      provenance: {
+        source: p.source as HermesToolCatalogEntry["provenance"]["source"],
+        toolset: p.toolset as string | null,
+        requestedToolsets: p.requested_toolsets as string[],
+        sourceServer: p.source_server as string | null,
+        addedBelowExplicitConfig: p.added_below_explicit_config,
+      },
+      available: typeof row.available === "boolean" ? row.available : null,
+    };
+  });
+  const attestation = raw.attestation && typeof raw.attestation === "object" && !Array.isArray(raw.attestation) ? (raw.attestation as Record<string, unknown>) : null;
+  if (attestation && (typeof attestation.algorithm !== "string" || typeof attestation.signature !== "string")) {
+    throw new HermesError("bad_response", "The tool catalog attestation was malformed.");
+  }
+  return {
+    platform: raw.platform,
+    // Fail closed if the gateway does not explicitly certify completeness. An older
+    // endpoint that never sends this field is treated as incomplete, not as complete.
+    complete: raw.complete === true,
+    incompleteReason: typeof raw.incomplete_reason === "string" ? raw.incomplete_reason : null,
+    explicitConfigPresent: raw.explicit_config_present,
+    enabledToolsets,
+    tools,
+    challenge: typeof raw.challenge === "string" ? raw.challenge : null,
+    generatedAt: typeof raw.generated_at === "string" ? raw.generated_at : null,
+    expiresAt: typeof raw.expires_at === "string" ? raw.expires_at : null,
+    attestation: attestation
+      ? { algorithm: String(attestation.algorithm), signature: String(attestation.signature), keyId: typeof attestation.key_id === "string" ? attestation.key_id : null }
+      : null,
+  };
+}
+
+export async function startRun(conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+  // This gate is intentionally inside the adapter, not only in the caller: no code path can create
+  // a live run without a fresh, complete and stable runtime inventory that matches the reviewed
+  // allowlist and the digest recorded by the last health check. The import is lazy so this module
+  // and the inventory verifier do not form an evaluation cycle.
+  const { verifyToolInventory } = await import("./inventory");
+  await verifyToolInventory(conn, { stabilityReads: 2, expectedDigest: conn.expectedToolInventoryDigest, purpose: "run" });
   const body: Record<string, unknown> = { input: input.input };
   if (input.instructions) body.instructions = input.instructions;
   if (input.sessionId) body.session_id = input.sessionId;
@@ -245,12 +356,8 @@ async function submitRun(conn: HermesConnection, input: StartRunInput, allowAckn
   return { runId: json.run_id };
 }
 
-export async function startRun(conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
-  return submitRun(conn, input);
-}
-
 /**
- * The one exception to the complete-inventory gate: an existing internal profile whose exact
+ * The internal profile identity and acknowledgement gate, followed by the complete-inventory gate: an existing internal profile whose exact
  * identity and authenticated API contract were verified, and which its Super Admin explicitly
  * acknowledged. Client profiles can never use this path.
  */
@@ -314,7 +421,7 @@ export async function startAcknowledgedInternalAgencyRun(agentId: string, conn: 
       || !capabilities.supportsRuns || !capabilities.supportsEvents || !identities.includes(expected)) {
     throw new HermesError("bad_response", "The authenticated Hermes API no longer verifies this internal profile.");
   }
-  return submitRun(conn, input, true);
+  return startRun(conn, input);
 }
 
 /** Selects the internal-profile exception only after matching the requested agent to its org. */
@@ -327,6 +434,7 @@ export async function startAgentRun(agentId: string, orgId: string, conn: Hermes
   if (rows[0].kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, conn, input);
   return startRun(conn, input);
 }
+
 
 export async function stopRun(conn: HermesConnection, runId: string): Promise<void> {
   await request(conn, `/v1/runs/${encodeURIComponent(runId)}/stop`, { method: "POST", headers: headers(conn), timeoutMs: 8000 });

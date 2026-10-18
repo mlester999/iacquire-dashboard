@@ -5,14 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { Activity, ArrowLeft, Ban, Banknote, BookOpen, Briefcase, Building2, CalendarDays, CheckCircle2, ChevronDown, CircleDashed, ClipboardCheck, Clock, Cpu, Database, DoorClosed, ExternalLink, FileCode2, Gauge, Globe, KeyRound, LifeBuoy, Link2, Lock, Mail, MessageSquareQuote, Plug, PlayCircle, Receipt, RefreshCw, Search, ShieldAlert, ShieldCheck, Sparkles, Stethoscope, TriangleAlert, UserCheck, UserPlus, Users, Workflow, Copy } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
+import { ArrowLeft, Ban, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, KeyRound, Link2, MessagesSquare, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
+import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Card, CardContent, EmptyState, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Switch, Tabs } from "@/components/ui/overlays";
-import { AvatarTile, InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
 import { PageHero } from "@/components/ui/workspace";
-import { Callout, DetailList, DetailRow, HeroIdentity, IconTile, SectionHead, StatTile, roleTone } from "@/components/admin/setup/ui";
 import { ResendInvitationButton, deliverySummary } from "@/components/admin/resend-invitation";
 import {
   assignStaffAction,
@@ -34,8 +32,8 @@ import {
 } from "@/app/(admin)/admin/actions";
 import type { TenantDetail } from "@/server/admin/queries";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
-import { AGENT_BY_KEY, AGENT_STATUS_LABEL, type AgentStatus } from "@/lib/agents";
-import { cn, formatCurrency, formatDate, formatDateTime, formatNumber, relativeTime, sentenceCase } from "@/lib/utils";
+import { AGENT_BY_KEY } from "@/lib/agents";
+import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
 
 type Detail = TenantDetail;
 
@@ -61,147 +59,90 @@ function useAction() {
 }
 
 export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data: Detail; superAdmin: boolean; initialTab: string; timeZone: string }) {
-  const visibleTabs = ["overview", ...(data.access.workforce ? ["workforce", "reviews"] : []), ...(data.access.integrations ? ["integrations"] : []), "usage", ...(data.access.setup ? ["billing"] : []), ...(data.access.team ? ["team"] : [])];
-  const [tab, setTab] = React.useState(visibleTabs.includes(initialTab) ? initialTab : "overview");
-  const activeTab = visibleTabs.includes(tab) ? tab : "overview";
+  const [tab, setTab] = React.useState(["overview","workforce","reviews","integrations","usage","billing","team"].includes(initialTab)?initialTab:"overview");
   const held = data.heldVersions.length + data.heldKnowledge.length;
   // The owner's pending invitation (expired ones included) can be re-sent straight from the header.
   const ownerInvite = data.invitations.find((i) => i.role === "owner") ?? null;
-  const enabledAgents = data.agents.filter((a) => a.enabled).length;
-  const activeMembers = data.members.filter((m) => m.status === "active").length;
-  const assignedStaff = data.staff.filter((s) => s.assigned).length;
   return (
     <div className="module-stack">
-        <Link href="/admin/clients" className="inline-flex min-h-10 items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
+        <Link href="/admin/clients" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
           <ArrowLeft className="size-3.5" /> Clients
         </Link>
-        <PageHero
-          eyebrow="Client workspace"
-          icon={<Building2 className="size-5" />}
-          title={data.org.name}
-          description={
-            <div className="flex flex-wrap items-center gap-2">
-              <InfoChip icon={<Briefcase />}>{data.org.industry ?? "Industry not set"}</InfoChip>
-              <InfoChip icon={<Globe />}>{data.org.timezone.replaceAll("_", " ")}</InfoChip>
-              <InfoChip icon={<CalendarDays />}>Registered {formatDate(data.org.created_at, timeZone)}</InfoChip>
-              <InfoChip icon={<Lock />}>Private, tenant-scoped workspace</InfoChip>
-            </div>
-          }
-          aside={
-            <HeroIdentity name={data.org.name} label="Workspace status">
-              <StatusPill status={data.org.status} />
-              {data.org.is_demo && <StatusPill tone="violet" dot={false} icon={<Sparkles className="size-3" />}>Demo data</StatusPill>}
-            </HeroIdentity>
-          }
-          action={
-            <>
-              {data.access.setup && <ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
-                <ClipboardCheck className="size-4" /> Setup manager
-              </ButtonLink>}
-              {superAdmin && ownerInvite && <ResendInvitationButton orgId={data.org.id} invitation={ownerInvite} label="Resend invite" />}
-              {data.access.integrations && <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink>}
-              <ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink>
-              <ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="secondary" size="sm"><ShieldCheck className="size-4" /> Readiness review</ButtonLink>
-              {superAdmin && <ButtonLink href={`/admin/clients/${data.org.id}/offboarding`} variant="secondary" size="sm"><DoorClosed className="size-4" /> Offboarding</ButtonLink>}
-            </>
-          }
-        >
-          <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {([
-              ...(data.access.team ? [{ label: "Client team", value: activeMembers, icon: <Users />, tone: "primary" as const }] : []),
-              ...(data.access.workforce ? [
-                { label: "Included AI employees", value: enabledAgents, icon: <Sparkles />, tone: "violet" as const },
-                { label: "Awaiting review", value: held, icon: <ClipboardCheck />, tone: held > 0 ? "warning" as const : "success" as const },
-                { label: "Assigned agency staff", value: assignedStaff, icon: <UserCheck />, tone: "primary" as const },
-              ] : []),
-            ] as Array<{ label: string; value: number; icon: React.ReactNode; tone: StatusTone }>).map((s) => (
-              <StatTile key={s.label} label={s.label} value={s.value} icon={s.icon} tone={s.tone} />
-            ))}
-          </dl>
-        </PageHero>
+        <PageHero eyebrow="Client workspace" icon={<Building2 className="size-5"/>} title={data.org.name} description={<span>{data.org.industry??"Industry not set"} · {data.org.timezone.replaceAll("_"," ")}<span className="mt-1 block text-xs">Registered {formatDate(data.org.created_at,timeZone)} · Private, tenant-scoped workspace</span></span>} aside={<div className="flex items-center gap-4"><span className="grid size-16 place-items-center rounded-2xl border border-primary/15 bg-surface/70 text-xl font-semibold text-primary-ink">{initials(data.org.name)}</span><div className="space-y-2"><Badge tone={data.org.status === "active" ? "success" : data.org.status === "suspended" ? "danger" : "primary"}>{sentenceCase(data.org.status)}</Badge>{data.org.is_demo&&<div><Badge tone="violet">Demo data</Badge></div>}</div></div>} action={<><ButtonLink href={`/admin/clients/${data.org.id}/setup`} variant="brand" size="sm">
+            <ClipboardCheck className="size-4" /> Setup manager
+          </ButtonLink>
+          {superAdmin&&ownerInvite&&<ResendInvitationButton orgId={data.org.id} invitation={ownerInvite} label="Resend invite" />}
+          <ButtonLink href={`/admin/clients/${data.org.id}/integrations`} variant="secondary" size="sm"><KeyRound className="size-4" /> Secure integrations</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/communications`} variant="secondary" size="sm"><MessagesSquare className="size-4" /> Messaging channels</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/website`} variant="secondary" size="sm"><Globe className="size-4" /> Website</ButtonLink><ButtonLink href={`/admin/clients/${data.org.id}/activation`} variant="ghost" size="sm">Readiness review</ButtonLink>{superAdmin&&<ButtonLink href={`/admin/clients/${data.org.id}/offboarding`} variant="ghost" size="sm"><DoorClosed className="size-4" /> Offboarding</ButtonLink>}</>}><dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[{label:"Client team",value:data.members.filter(m=>m.status==="active").length},{label:"Included AI employees",value:data.agents.filter(a=>a.enabled).length},{label:"Awaiting review",value:held},{label:"Assigned agency staff",value:data.staff.filter(s=>s.assigned).length}].map(s=><div key={s.label}><dt className="text-xs text-muted">{s.label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums text-ink">{s.value}</dd></div>)}</dl></PageHero>
       <Tabs
         id="client-tabs"
-        value={activeTab}
+        value={tab}
         onValueChange={setTab}
         items={[
           { value: "overview", label: "Overview" },
-          ...(data.access.workforce ? [
-            { value: "workforce", label: "AI workforce", count: enabledAgents || undefined },
-            { value: "reviews", label: "Reviews", count: held || undefined },
-          ] : []),
-          ...(data.access.integrations ? [{ value: "integrations", label: "Integrations" }] : []),
+          { value: "workforce", label: "AI workforce" },
+          { value: "reviews", label: "Reviews", count: held || undefined },
+          { value: "integrations", label: "Integrations" },
           { value: "usage", label: "Usage & limits" },
-          ...(data.access.setup ? [{ value: "billing", label: "Billing" }] : []),
-          ...(data.access.team ? [{ value: "team", label: "Team & staff", count: activeMembers + data.invitations.length || undefined }] : []),
+          { value: "billing", label: "Billing" },
+          { value: "team", label: "Team & staff" },
         ]}
       >
-      <motion.div key={activeTab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
-      {activeTab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
-      {activeTab === "workforce" && data.access.workforce && <WorkforceTab data={data} superAdmin={superAdmin} />}
-      {activeTab === "reviews" && data.access.workforce && <ReviewsTab data={data} />}
-      {activeTab === "integrations" && data.access.integrations && <IntegrationsTab data={data} superAdmin={superAdmin} />}
-      {activeTab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}
-      {activeTab === "billing" && data.access.setup && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
-      {activeTab === "team" && data.access.team && <TeamTab data={data} superAdmin={superAdmin} />}
+      <motion.div key={tab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
+      {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} />}
+      {tab === "workforce" && <WorkforceTab data={data} superAdmin={superAdmin} />}
+      {tab === "reviews" && <ReviewsTab data={data} />}
+      {tab === "integrations" && <IntegrationsTab data={data} superAdmin={superAdmin} />}
+      {tab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}
+      {tab === "billing" && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
+      {tab === "team" && <TeamTab data={data} superAdmin={superAdmin} />}
       </motion.div>
       </Tabs>
     </div>
   );
 }
 
-/** Link text for a website value: strips the scheme and trailing slash so it reads as a hostname. */
-function hostLabel(url: string) {
-  return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-}
-
-function OverviewTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: boolean; timeZone: string }) {
+function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   const { run, pending } = useAction();
   const [reason, setReason] = React.useState("");
   const [confirm, setConfirm] = React.useState(false);
   const online = data.agents.filter((a) => a.enabled && a.status === "online").length;
   const enabled = data.agents.filter((a) => a.enabled).length;
-  const owner = data.members.find((m) => m.role === "owner") ?? null;
-  const suspended = data.org.status === "suspended";
-  const milestones: Array<{ label: string; hint: string; done: boolean }> = [
-    ...(data.access.team ? [{ label: "Owner accepted invitation", done: Boolean(owner), hint: owner ? owner.full_name || owner.email : "Waiting for the owner to accept" }] : []),
-    { label: "Onboarding completed", done: Boolean(data.org.onboarding_completed_at), hint: data.org.onboarding_completed_at ? `Submitted ${formatDate(data.org.onboarding_completed_at, timeZone)}` : "The company questionnaire has not been submitted" },
-    ...(data.access.workforce ? [{ label: `Employees online (${online}/${enabled})`, done: enabled > 0 && online === enabled, hint: enabled === 0 ? "No AI employees are enabled" : online === enabled ? "Every enabled employee passed its health check" : `${enabled - online} enabled ${enabled - online === 1 ? "employee is" : "employees are"} not online` }] : []),
-    ...(data.access.integrations ? [{ label: "CRM location verified", done: data.ghl?.status === "connected", hint: data.ghl ? data.ghl.location_name || `Location ${data.ghl.location_id}` : "No CRM location is mapped yet" }] : []),
-    ...(data.access.setup ? [{ label: "Setup fee paid or waived", done: ["paid", "waived"].includes(data.billing?.setup_payment_status ?? ""), hint: sentenceCase(data.billing?.setup_payment_status ?? "not_invoiced") }] : []),
-  ];
-  const doneCount = milestones.filter((m) => m.done).length;
   return (
-    <div className="grid gap-6 lg:grid-cols-3 [&>*]:min-w-0">
-      <Card className="overflow-hidden lg:col-span-2">
-        <SectionHead icon={<ClipboardCheck />} title="Workspace essentials" description="The key account milestones recorded for this client." aside={<StatusPill tone={doneCount === milestones.length ? "success" : "primary"}>{doneCount} of {milestones.length} recorded</StatusPill>} />
+    <div className="grid gap-6 lg:grid-cols-3">
+      <Card className="lg:col-span-2 overflow-hidden">
+        <CardHeader>
+          <div>
+            <CardTitle>Workspace essentials</CardTitle>
+            <CardDescription>The key account milestones recorded for this client.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent className="space-y-3">
-          <ProgressBar value={(doneCount / milestones.length) * 100} tone={doneCount === milestones.length ? "success" : "primary"} label="Milestones recorded" className="h-1.5" />
-          <ul className="space-y-2.5">
-            {milestones.map((m) => (
-              <li key={m.label} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors", m.done ? "border-success/15 bg-success-soft/35" : "border-line bg-surface-2/50")}>
-                {m.done ? <CheckCircle2 aria-hidden className="size-5 shrink-0 text-success" /> : <CircleDashed aria-hidden className="size-5 shrink-0 text-faint" />}
-                <div className="min-w-0 flex-1">
-                  <p className={cn("text-[13.5px] font-medium", m.done ? "text-ink" : "text-ink-2")}>{m.label}</p>
-                  <p className="mt-0.5 truncate text-[12px] text-muted" title={m.hint}>{m.hint}</p>
-                </div>
-                {m.done ? <StatusPill tone="success" size="sm">Recorded</StatusPill> : <StatusPill status="pending" size="sm" />}
-              </li>
-            ))}
-          </ul>
+          {[
+            ["Owner accepted invitation", data.members.some((m) => m.role === "owner")],
+            ["Onboarding completed", Boolean(data.org.onboarding_completed_at)],
+            [`Employees online (${online}/${enabled})`, enabled > 0 && online === enabled],
+            ["CRM location verified", data.ghl?.status === "connected"],
+            ["Setup fee paid or waived", ["paid", "waived"].includes(data.billing?.setup_payment_status ?? "")],
+          ].map(([label, done]) => (
+            <div key={String(label)} className={cn("flex items-center gap-3 rounded-xl border px-4 py-3 text-[13.5px]",done?"border-success/15 bg-success-soft/35":"border-line bg-surface-2/50")}>
+              {done ? <CheckCircle2 className="size-5 text-success" /> : <span className="size-5 shrink-0 rounded-full border-2 border-line-strong" />}
+              <span className={done ? "text-ink" : "text-muted"}>{label}</span>
+              <span className="ml-auto text-[11.5px] text-muted">{done?"Recorded":"Pending"}</span>
+            </div>
+          ))}
         </CardContent>
       </Card>
-      <Card className={cn("self-start", suspended ? "border-danger/25 bg-danger-soft/15" : "border-primary/15 bg-primary-soft/20")}>
-        <SectionHead icon={suspended ? <Ban /> : <ShieldCheck />} tone={suspended ? "danger" : "success"} title="Workspace access" description="Suspending blocks every client user immediately." />
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3 rounded-xl bg-surface/80 px-3.5 py-2.5 ring-1 ring-inset ring-line">
-            <span className="text-[12.5px] font-medium text-muted">Access</span>
-            <StatusPill tone={suspended ? "danger" : "success"}>{suspended ? "Suspended" : "Active"}</StatusPill>
+      <Card className="border-primary/15 bg-primary-soft/20">
+        <CardHeader>
+          <div>
+            <CardTitle>Workspace access</CardTitle>
+            <CardDescription>Suspending blocks every client user immediately.</CardDescription>
           </div>
-          {suspended ? (
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {data.org.status === "suspended" ? (
             <>
-              <Callout tone="danger" icon={<Ban />} title="Suspended">
-                {data.org.suspended_reason?.trim() || "No reason was recorded."}
-              </Callout>
+              <p className="rounded-xl bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">Suspended: {data.org.suspended_reason}</p>
               {superAdmin && (
                 <Button className="w-full" loading={pending === "reactivate"} onClick={() => run("reactivate", () => setTenantStatusAction(data.org.id, "active"), "Workspace reactivated")}>
                   Reactivate workspace
@@ -213,56 +154,29 @@ function OverviewTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin:
               <Ban className="size-4" /> Suspend access
             </Button>
           ) : (
-            <Callout tone="neutral" icon={<Lock />}>Only super admins can suspend workspaces.</Callout>
+            <p className="text-[13px] text-muted">Only super admins can suspend workspaces.</p>
           )}
-          <DetailList>
-            <DetailRow label="Owner">
-              {owner ? (
-                <>
-                  <AvatarTile name={owner.full_name || owner.email} size="sm" className="size-6 rounded-md text-[9px]" />
-                  <span className="truncate" title={owner.email}>{owner.full_name || owner.email}</span>
-                </>
-              ) : (
-                <StatusPill status="pending" size="sm">Invite pending</StatusPill>
-              )}
-            </DetailRow>
-            <DetailRow label="Website">
-              {data.org.website ? (
-                <span className="truncate text-ink-2" title={data.org.website}>{hostLabel(data.org.website)}</span>
-              ) : (
-                <StatusPill tone="neutral" size="sm" dot={false}>Not set</StatusPill>
-              )}
-            </DetailRow>
-            <DetailRow label="Workspace ID" mono>
-              <span className="truncate" title={data.org.slug}>{data.org.slug}</span>
-            </DetailRow>
-          </DetailList>
         </CardContent>
       </Card>
       <Card className="lg:col-span-3">
-        <SectionHead icon={<TriangleAlert />} tone={data.failedRuns.length ? "danger" : "success"} title="Recent failed AI runs" description="Sanitized execution status only — message content is private to the client." aside={data.failedRuns.length > 0 && <StatusPill tone="danger">{data.failedRuns.length} failed</StatusPill>} />
+        <CardHeader>
+          <div>
+            <CardTitle>Recent failed AI runs</CardTitle>
+            <CardDescription>Sanitized execution status only — message content is private to the client.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent>
           {data.failedRuns.length === 0 ? (
-            <EmptyState compact icon={<CheckCircle2 className="size-5 text-success" />} title="No failed runs recorded." description="Execution issues will appear here with sanitized diagnostics when they occur." />
+            <div className="flex items-center gap-3 rounded-xl border border-success/15 bg-success-soft/30 p-4"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success-soft text-success-ink"><CheckCircle2 className="size-5"/></span><div><p className="text-sm font-medium text-ink">No failed runs recorded.</p><p className="mt-1 text-xs text-muted">Execution issues will appear here with sanitized diagnostics when they occur.</p></div></div>
           ) : (
             <ul className="divide-y divide-line">
-              {data.failedRuns.map((r) => {
-                const message = r.error_message ?? (r.error_code ? sentenceCase(r.error_code) : "No details were recorded.");
-                return (
-                  <li key={r.id} className="management-row -mx-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg px-2 py-3">
-                    <AgentAvatar role={AGENT_BY_KEY[r.agent_role]} size="sm" />
-                    <div className="min-w-0 flex-1 basis-56">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13.5px] font-semibold text-ink">{AGENT_BY_KEY[r.agent_role].shortName}</span>
-                        <StatusPill tone="danger" size="sm">Failed</StatusPill>
-                        {r.error_code && <InfoChip className="font-mono text-[11px]">{r.error_code}</InfoChip>}
-                      </div>
-                      <p className="mt-1 truncate text-[12.5px] text-muted" title={message}>{message}</p>
-                    </div>
-                    {r.finished_at && <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(r.finished_at)}</span></InfoChip>}
-                  </li>
-                );
-              })}
+              {data.failedRuns.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+                  <span className="font-medium">{AGENT_BY_KEY[r.agent_role].shortName}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{r.error_message ?? r.error_code}</span>
+                  <span className="text-[12px] text-faint">{r.finished_at ? relativeTime(r.finished_at) : ""}</span>
+                </li>
+              ))}
             </ul>
           )}
         </CardContent>
@@ -299,48 +213,32 @@ function OverviewTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin:
   );
 }
 
-/** Employee states on the shared tones: green when live, red when broken, violet while being set up, neutral otherwise. */
-const AGENT_TONE: Record<AgentStatus, StatusTone> = {
-  online: "success",
-  busy: "warning",
-  provisioning: "violet",
-  setup_required: "neutral",
-  offline: "danger",
-  error: "danger",
-  disabled: "neutral",
-};
-
 function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   const { run, pending } = useAction();
   const [connectFor, setConnectFor] = React.useState<Detail["agents"][number] | null>(null);
   const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
   return (
     <div className="space-y-6">
-      <details className="group card-surface rounded-2xl border-primary/20 bg-primary-soft/30">
-        <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-2xl px-4 py-3 text-[13.5px] font-medium text-primary-ink transition-colors hover:bg-primary-soft/40 [&::-webkit-details-marker]:hidden">
-          <IconTile icon={<ShieldAlert />} tone="primary" size="sm" />
-          <span className="min-w-0 flex-1">Dedicated identities and restricted tool access</span>
-          <ChevronDown className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
-        </summary>
-        <p className="border-t border-primary/15 px-4 py-3.5 text-[13px] leading-relaxed text-ink-2">
-          Each employee needs its own <strong>blank</strong> Hermes profile (never a clone of an internal <code>iacquire-*</code> profile) and its own API key. Hermes profiles don&apos;t sandbox the agent on the
-          local terminal backend, so the portal only marks an employee online after an authenticated capabilities check <em>and</em> a toolsets check showing no shell, file or code tools.
-        </p>
-      </details>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 [&>*]:min-w-0">
+      <Card className="border-primary/20 bg-primary-soft/30">
+        <CardContent className="pt-5 text-[13px] leading-relaxed text-primary-ink">
+          <details><summary className="flex cursor-pointer items-center gap-2 font-medium"><ShieldAlert className="size-4 shrink-0" />Dedicated identities and restricted tool access<ChevronDown className="ml-auto size-3.5"/></summary><p className="mt-3">
+            Each employee needs its own <strong>blank</strong> Hermes profile (never a clone of an internal <code>iacquire-*</code> profile) and its own API key. Hermes profiles don&apos;t sandbox the agent on the
+            local terminal backend, so the portal only marks an employee online after an authenticated capabilities check <em>and</em> a toolsets check showing no shell, file or code tools.
+          </p></details>
+        </CardContent>
+      </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data.agents.map((a) => {
           const meta = AGENT_BY_KEY[a.role_key];
-          const status: AgentStatus = a.enabled ? a.status : "disabled";
-          const healthTone: StatusTone = status === "online" ? "success" : status === "offline" || status === "error" ? "danger" : "neutral";
           return (
-            <Card key={a.id} className={cn("relative flex flex-col overflow-hidden transition hover:border-primary/25", !a.enabled && "opacity-70")}>
+            <Card key={a.id} className={cn("relative overflow-hidden transition hover:border-primary/25",!a.enabled && "opacity-70")}>
               <div aria-hidden className="absolute inset-x-0 top-0 h-0.5" style={{background:meta.accent}}/>
-              <CardContent className="flex flex-1 flex-col gap-3.5 pt-5">
+              <CardContent className="space-y-3 pt-5">
                 <div className="flex items-center gap-3">
                   <AgentAvatar role={meta} size="lg" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14.5px] font-semibold tracking-tight text-ink" title={a.display_name}>{a.display_name}</p>
-                    <div className="mt-1.5"><StatusPill tone={AGENT_TONE[status]} size="sm">{AGENT_STATUS_LABEL[status]}</StatusPill></div>
+                    <p className="truncate text-[14px] font-semibold">{a.display_name}</p>
+                    <AgentStatusBadge status={a.enabled ? a.status : "disabled"} />
                   </div>
                   {superAdmin && (
                     <Switch
@@ -350,31 +248,34 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                     />
                   )}
                 </div>
-                <p className="text-[12.5px] leading-relaxed text-muted md:min-h-10">{meta.tagline}</p>
-                <DetailList>
-                  <DetailRow label="Hermes profile" mono>
-                    <span className="truncate" title={a.hermes_profile ?? undefined}>{a.hermes_profile ?? "—"}</span>
-                  </DetailRow>
-                  <DetailRow label="Host" mono>
-                    <span className="truncate" title={a.hermes_host ?? undefined}>{a.hermes_host ?? "—"}</span>
-                  </DetailRow>
-                  <DetailRow label="Config">
-                    {a.config_version ? <InfoChip>v{a.config_version}</InfoChip> : <StatusPill tone="neutral" size="sm">Not configured</StatusPill>}
-                  </DetailRow>
-                  <DetailRow label="Runs (30d)">
-                    <span className="tabular-nums">{formatNumber(a.runs_30d)}</span>
-                    {a.failed_30d > 0 && <StatusPill tone="danger" size="sm">{formatNumber(a.failed_30d)} failed</StatusPill>}
-                  </DetailRow>
-                  <DetailRow label="Last check">
-                    {a.last_health_check_at ? <span title={formatDateTime(a.last_health_check_at)} suppressHydrationWarning>{relativeTime(a.last_health_check_at)}</span> : <StatusPill tone="neutral" size="sm">Never</StatusPill>}
-                  </DetailRow>
-                </DetailList>
-                {a.last_health_detail && (
-                  <Callout tone={healthTone} icon={<Stethoscope />} className="py-2.5 text-[12.5px]">
-                    {a.last_health_detail}
-                  </Callout>
-                )}
-                <div className="mt-auto grid grid-cols-1 gap-2 pt-1 min-[420px]:grid-cols-2 xl:grid-cols-3 [&>button]:w-full [&>button]:px-2">
+                <p className="text-[12.5px] leading-relaxed text-muted">{meta.tagline}</p>
+                <dl className="space-y-1.5 text-[12.5px]">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Hermes profile</dt>
+                    <dd className="truncate font-mono text-[12px]">{a.hermes_profile ?? "—"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Host</dt>
+                    <dd className="truncate font-mono text-[12px]">{a.hermes_host ?? "—"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Config</dt>
+                    <dd>{a.config_version ? `v${a.config_version}` : "Not configured"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Runs (30d)</dt>
+                    <dd className="tabular-nums">
+                      {a.runs_30d}
+                      {a.failed_30d > 0 && <span className="text-danger-ink"> · {a.failed_30d} failed</span>}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted">Last check</dt>
+                    <dd>{a.last_health_check_at ? relativeTime(a.last_health_check_at) : "Never"}</dd>
+                  </div>
+                </dl>
+                {a.last_health_detail && <p className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] text-ink-2">{a.last_health_detail}</p>}
+                <div className="flex flex-wrap gap-2 pt-1">
                   <Button
                     size="sm"
                     variant="secondary"
@@ -409,25 +310,25 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
       </div>
 
       <Card>
-        <SectionHead icon={<Workflow />} tone="violet" title="Provisioning requests" description="Opened automatically when onboarding completes. Close the loop with a successful health check." aside={data.provisioning.length > 0 && <InfoChip>{data.provisioning.length} {data.provisioning.length === 1 ? "request" : "requests"}</InfoChip>} />
+        <CardHeader>
+          <div>
+            <CardTitle>Provisioning requests</CardTitle>
+            <CardDescription>Opened automatically when onboarding completes. Close the loop with a successful health check.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent>
           {data.provisioning.length === 0 ? (
-            <EmptyState compact icon={<Workflow className="size-5" />} title="No provisioning requests" description="Requests are opened automatically when a client completes onboarding." />
+            <p className="py-4 text-[13px] text-muted">No provisioning requests.</p>
           ) : (
             <ul className="divide-y divide-line">
               {data.provisioning.map((j) => (
-                <li key={j.id} className="management-row -mx-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg px-2 py-3">
-                  <AgentAvatar role={AGENT_BY_KEY[j.agent_role]} size="sm" />
-                  <div className="min-w-0 flex-1 basis-56">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13.5px] font-semibold text-ink">{AGENT_BY_KEY[j.agent_role].shortName}</span>
-                      <StatusPill status={j.status} size="sm" />
-                    </div>
-                    {j.detail && <p className="mt-1 line-clamp-2 text-[12.5px] text-muted" title={j.detail}>{j.detail}</p>}
-                  </div>
-                  <InfoChip icon={<Clock />}><span suppressHydrationWarning>{relativeTime(j.created_at)}</span></InfoChip>
+                <li key={j.id} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
+                  <span className="font-medium">{AGENT_BY_KEY[j.agent_role].shortName}</span>
+                  <Badge tone={j.status === "succeeded" ? "success" : j.status === "failed" ? "danger" : j.status === "requested" ? "warning" : "primary"}>{sentenceCase(j.status)}</Badge>
+                  <span className="min-w-0 flex-1 truncate text-muted">{j.detail ?? ""}</span>
+                  <span className="text-[12px] text-faint">{relativeTime(j.created_at)}</span>
                   {j.status === "requested" && (
-                    <Button size="sm" variant="secondary" onClick={() => run(`job-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "in_progress"), "Marked in progress")}>
+                    <Button size="sm" variant="ghost" onClick={() => run(`job-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "in_progress"), "Marked in progress")}>
                       <PlayCircle className="size-3.5" /> Start
                     </Button>
                   )}
@@ -504,20 +405,18 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
     <div>
       <div className="mb-1.5 flex items-center justify-between">
         <p className="text-[12.5px] font-medium text-ink-2">{label}</p>
-        <Button
+        <button
           type="button"
-          size="sm"
-          variant="secondary"
-          aria-label={`Copy ${label}`}
+          className="flex items-center gap-1 text-[12px] text-primary hover:underline"
           onClick={async () => {
             await navigator.clipboard.writeText(value);
             toast.success(`${label} copied`);
           }}
         >
-          <Copy className="size-3.5" /> Copy
-        </Button>
+          <Copy className="size-3" /> Copy
+        </button>
       </div>
-      <pre className="scrollbar-thin max-h-64 overflow-auto rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink">{value}</pre>
+      <pre className="scrollbar-thin max-h-64 overflow-auto rounded-xl border border-line bg-surface-2 p-3 font-mono text-[12px] leading-relaxed">{value}</pre>
     </div>
   );
 }
@@ -530,7 +429,7 @@ function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; 
           <ol className="space-y-3">
             {bundle.steps.map((s, i) => (
               <li key={i} className="flex gap-3">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold tabular-nums text-primary-ink ring-1 ring-inset ring-primary/15">{i + 1}</span>
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[12px] font-semibold text-primary-ink">{i + 1}</span>
                 <div className="min-w-0 space-y-1.5">
                   <p className="text-[13.5px] font-medium">{s.title}</p>
                   {s.note && <p className="text-[12.5px] text-muted">{s.note}</p>}
@@ -542,29 +441,17 @@ function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; 
           <CodeBlock label="SOUL.md" value={bundle.soul} />
           <CodeBlock label="config.yaml (merge)" value={bundle.configYaml} />
           <CodeBlock label=".env lines" value={bundle.envTemplate} />
-          <Callout tone="primary" icon={<ShieldCheck />} title="Online only when:" className="text-[12.5px]">
-            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-ink-2">
+          <div className="rounded-xl bg-surface-2 p-3 text-[12.5px]">
+            <p className="font-medium">Online only when:</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
               {bundle.verification.map((v) => (
                 <li key={v}>{v}</li>
               ))}
             </ul>
-          </Callout>
+          </div>
         </div>
       )}
     </Dialog>
-  );
-}
-
-function RiskFlags({ flags }: { flags: string[] }) {
-  if (!flags.length) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {flags.map((f) => (
-        <StatusPill key={f} tone="warning" size="sm" dot={false} icon={<TriangleAlert className="size-3" />}>
-          {sentenceCase(f)}
-        </StatusPill>
-      ))}
-    </div>
   );
 }
 
@@ -573,35 +460,28 @@ function ReviewsTab({ data }: { data: Detail }) {
   if (!data.heldVersions.length && !data.heldKnowledge.length) {
     return (
       <Card>
-        <EmptyState icon={<CheckCircle2 className="size-5 text-success" />} title="The review queue is clear." description="Held employee configurations and knowledge changes will appear here when agency review is needed." />
+        <CardContent className="flex items-center gap-4 py-6"><span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-success-soft text-success-ink"><CheckCircle2 className="size-6"/></span><div><p className="text-[15px] font-semibold text-ink">The review queue is clear.</p><p className="mt-1 text-[13px] text-muted">Held employee configurations and knowledge changes will appear here when agency review is needed.</p></div></CardContent>
       </Card>
     );
   }
   return (
     <div className="space-y-4">
       {data.heldVersions.map((v) => (
-        <Card key={v.id} className="overflow-hidden">
-          <div aria-hidden className="h-0.5 bg-warning" />
-          <CardContent className="space-y-4 pt-5">
-            <div className="flex items-start gap-3">
-              <AgentAvatar role={AGENT_BY_KEY[v.agent_role]} size="md" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[14.5px] font-semibold tracking-tight">{AGENT_BY_KEY[v.agent_role].shortName} configuration</p>
-                  <InfoChip>v{v.version}</InfoChip>
-                  <StatusPill status="pending_review" size="sm">Held for review</StatusPill>
-                </div>
-                <RiskFlags flags={v.risk_flags} />
-              </div>
-              <InfoChip icon={<Clock />} className="hidden sm:inline-flex"><span suppressHydrationWarning>{relativeTime(v.created_at)}</span></InfoChip>
+        <Card key={v.id}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">
+                {AGENT_BY_KEY[v.agent_role].shortName} · configuration v{v.version}
+              </p>
+              {v.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
             </div>
-            {v.change_request && (
-              <Callout tone="neutral" icon={<MessageSquareQuote />} title="Requested change">
-                “{v.change_request}”
-              </Callout>
-            )}
-            <p className="text-[13px] leading-relaxed text-ink-2">{v.summary}</p>
-            <div className="flex flex-wrap gap-2">
+            {v.change_request && <p className="text-[13px] text-ink-2">Request: “{v.change_request}”</p>}
+            <p className="text-[13px] text-muted">{v.summary}</p>
+            <div className="flex gap-2">
               <Button size="sm" loading={pending === `a-${v.id}`} onClick={() => run(`a-${v.id}`, () => decideHeldVersionAction(data.org.id, v.id, true), "Approved and applied")}>
                 Approve &amp; apply
               </Button>
@@ -613,26 +493,22 @@ function ReviewsTab({ data }: { data: Detail }) {
         </Card>
       ))}
       {data.heldKnowledge.map((k) => (
-        <Card key={k.section} className="overflow-hidden">
-          <div aria-hidden className="h-0.5 bg-warning" />
-          <CardContent className="space-y-4 pt-5">
-            <div className="flex items-start gap-3">
-              <IconTile icon={<BookOpen />} tone="violet" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[14.5px] font-semibold tracking-tight">Knowledge · {sentenceCase(k.section)}</p>
-                  <StatusPill status="pending_review" size="sm">Held for review</StatusPill>
-                </div>
-                <RiskFlags flags={k.risk_flags} />
-              </div>
-              <InfoChip icon={<Clock />} className="hidden sm:inline-flex"><span suppressHydrationWarning>{relativeTime(k.updated_at)}</span></InfoChip>
+        <Card key={k.section}>
+          <CardContent className="space-y-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[14px] font-semibold">Knowledge · {sentenceCase(k.section)}</p>
+              {k.risk_flags.map((f) => (
+                <Badge key={f} tone="warning">
+                  {f.replace(/_/g, " ")}
+                </Badge>
+              ))}
             </div>
-            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[12.5px] ring-1 ring-inset ring-line">{k.content}</pre>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" loading={pending === `k-${k.section}`} onClick={() => run(`k-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, true), "Approved")}>
+            <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[12.5px]">{k.content}</pre>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => run(`k-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, true), "Approved")}>
                 Approve
               </Button>
-              <Button size="sm" variant="secondary" loading={pending === `kr-${k.section}`} onClick={() => run(`kr-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, false), "Rejected")}>
+              <Button size="sm" variant="secondary" onClick={() => run(`kr-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, false), "Rejected")}>
                 Reject
               </Button>
             </div>
@@ -643,13 +519,6 @@ function ReviewsTab({ data }: { data: Detail }) {
   );
 }
 
-const PROVIDER: Record<string, { label: string; icon: React.ReactNode }> = {
-  ghl: { label: "GoHighLevel CRM", icon: <Database /> },
-  ghl_calendar: { label: "GHL calendar", icon: <CalendarDays /> },
-  hermes: { label: "Hermes", icon: <Cpu /> },
-  n8n: { label: "n8n", icon: <Workflow /> },
-};
-
 function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   const { run, pending } = useAction();
   const [locationId, setLocationId] = React.useState(data.ghl?.location_id ?? "");
@@ -658,9 +527,15 @@ function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boole
   const [calendarIds, setCalendarIds] = React.useState((data.ghl?.calendar_ids ?? []).join(", "));
   const [token, setToken] = React.useState("");
   return (
-    <div className="grid gap-6 lg:grid-cols-5 [&>*]:min-w-0">
+    <div className="grid gap-6 lg:grid-cols-5">
       <Card className="lg:col-span-3">
-        <SectionHead icon={<Database />} tone="primary" title="GoHighLevel location" description="Stored server-side only. The Aster Homes location and iAcquire&apos;s internal location are refused." aside={data.ghl ? <StatusPill status={data.ghl.status} /> : <StatusPill status="not_connected" />} />
+        <CardHeader>
+          <div>
+            <CardTitle>GoHighLevel location</CardTitle>
+            <CardDescription>Stored server-side only. The Aster Homes location and iAcquire&apos;s internal location are refused.</CardDescription>
+          </div>
+          {data.ghl && <Badge tone={data.ghl.status === "connected" ? "success" : data.ghl.status === "error" ? "danger" : "neutral"}>{sentenceCase(data.ghl.status)}</Badge>}
+        </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Location ID" htmlFor="g-loc">
@@ -686,7 +561,7 @@ function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boole
               <Input id="g-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={data.ghl?.has_credential ? "Stored — leave blank to keep" : ""} autoComplete="new-password" />
             </Field>
           )}
-          <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+          <div className="flex flex-wrap gap-2">
             {superAdmin && (
               <Button
                 loading={pending === "map"}
@@ -712,31 +587,25 @@ function IntegrationsTab({ data, superAdmin }: { data: Detail; superAdmin: boole
         </CardContent>
       </Card>
       <Card className="lg:col-span-2">
-        <SectionHead icon={<Plug />} tone="violet" title="Integration status" description="Last recorded checks for this client." />
+        <CardHeader>
+          <div>
+            <CardTitle>Integration status</CardTitle>
+            <CardDescription>Last recorded checks for this client.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent>
-          {data.integrations.length === 0 ? (
-            <EmptyState compact icon={<Plug className="size-5" />} title="No checks recorded" description="Connection checks appear here once an integration has been verified." />
-          ) : (
-            <ul className="divide-y divide-line">
-              {data.integrations.map((i) => {
-                const meta = PROVIDER[i.provider] ?? { label: sentenceCase(i.provider), icon: <Plug /> };
-                const tone: StatusTone = i.status === "error" ? "danger" : i.status === "connected" ? "success" : i.status === "pending" || i.status === "degraded" ? "warning" : "neutral";
-                return (
-                  <li key={i.provider} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                    <IconTile icon={meta.icon} tone={tone} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                        <span className="text-[13.5px] font-semibold text-ink">{meta.label}</span>
-                        <StatusPill status={i.status} size="sm" />
-                      </div>
-                      {i.detail && <p className="mt-1 text-[12px] leading-relaxed text-muted">{i.detail}</p>}
-                      {i.last_checked_at && <InfoChip icon={<Clock />} className="mt-2 h-5 text-[11px]"><span suppressHydrationWarning>Checked {relativeTime(i.last_checked_at)}</span></InfoChip>}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <ul className="divide-y divide-line">
+            {data.integrations.map((i) => (
+              <li key={i.provider} className="py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13.5px] font-medium">{i.provider === "ghl" ? "GoHighLevel CRM" : i.provider === "ghl_calendar" ? "GHL calendar" : i.provider === "hermes" ? "Hermes" : i.provider}</span>
+                  <Badge tone={i.status === "connected" ? "success" : i.status === "error" ? "danger" : i.status === "pending" ? "warning" : "neutral"}>{sentenceCase(i.status)}</Badge>
+                </div>
+                {i.detail && <p className="mt-0.5 text-[12px] text-muted">{i.detail}</p>}
+                {i.last_checked_at && <p className="text-[11.5px] text-faint">Checked {relativeTime(i.last_checked_at)}</p>}
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </div>
@@ -756,42 +625,52 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
     fairUseNote: u.limits.fair_use_note ?? "",
   });
   const pct = u.limits.monthly_agent_messages ? (u.agentMessages / u.limits.monthly_agent_messages) * 100 : 0;
-  const meterTone = pct >= 100 ? "danger" : pct >= u.limits.warn_at_percent ? "warning" : "primary";
-  const remaining = Math.max(0, u.limits.monthly_agent_messages - u.agentMessages);
   return (
-    <div className="grid gap-6 lg:grid-cols-5 [&>*]:min-w-0">
+    <div className="grid gap-6 lg:grid-cols-5">
       <Card className="lg:col-span-2">
-        <SectionHead icon={<Gauge />} tone="primary" title="This month" description="Measured usage. Vendor invoices are not estimated here." />
+        <CardHeader>
+          <div>
+            <CardTitle>This month</CardTitle>
+            <CardDescription>Measured usage. Vendor invoices are not estimated here.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-xl bg-surface-2/60 p-4 ring-1 ring-inset ring-line">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-[12px] font-medium text-muted">AI messages</p>
-                <p className="mt-0.5 text-[26px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-ink">
-                  {formatNumber(u.agentMessages)}
-                  <span className="ml-1.5 text-[14px] font-medium tracking-normal text-muted">/ {formatNumber(u.limits.monthly_agent_messages)}</span>
-                </p>
-              </div>
-              <StatusPill tone={meterTone}>{pct >= 100 ? "Limit reached" : `${Math.round(pct)}% used`}</StatusPill>
+          <div>
+            <div className="mb-1 flex justify-between text-[13px]">
+              <span>AI messages</span>
+              <span className="tabular-nums">
+                {formatNumber(u.agentMessages)} / {formatNumber(u.limits.monthly_agent_messages)}
+              </span>
             </div>
-            <ProgressBar value={pct} tone={meterTone} label="AI message usage" className="mt-3.5" />
-            <p className="mt-2 text-[12px] text-muted">{formatNumber(remaining)} {remaining === 1 ? "message" : "messages"} left this month</p>
+            <ProgressBar value={pct} tone={pct >= 100 ? "danger" : pct >= u.limits.warn_at_percent ? "warning" : "primary"} label="AI message usage" />
           </div>
-          <dl className="grid grid-cols-2 gap-3">
-            <StatTile icon={<Cpu />} tone="primary" label="Tokens" value={formatNumber(u.tokens)} />
-            <StatTile icon={<TriangleAlert />} tone={u.failedRuns > 0 ? "danger" : "success"} label="Failed runs" value={formatNumber(u.failedRuns)} />
-            <StatTile icon={<Search />} tone="violet" label="Research today" value={formatNumber(u.leadResearchToday)} />
-            <StatTile icon={<LifeBuoy />} tone="primary" label="Help requests" value={formatNumber(u.helpRequests)} />
+          <dl className="grid grid-cols-2 gap-3 text-[13px]">
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Tokens</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.tokens)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Failed runs</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.failedRuns)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Research today</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.leadResearchToday)}</dd>
+            </div>
+            <div className="rounded-xl bg-surface-2 p-3">
+              <dt className="text-muted">Help requests</dt>
+              <dd className="text-[17px] font-semibold tabular-nums">{formatNumber(u.helpRequests)}</dd>
+            </div>
           </dl>
-          <div className="flex flex-wrap gap-2">
-            <InfoChip icon={<Activity />}>Warns at {u.limits.warn_at_percent}%</InfoChip>
-            <StatusPill tone={u.limits.hard_stop ? "danger" : "neutral"} size="sm" dot={false} icon={<Lock className="size-3" />}>{u.limits.hard_stop ? "Hard stop on" : "Hard stop off"}</StatusPill>
-            <InfoChip>{u.limits.monthly_tokens === null ? "No token cap" : `${formatNumber(u.limits.monthly_tokens)} token cap`}</InfoChip>
-          </div>
         </CardContent>
       </Card>
       <Card className="lg:col-span-3">
-        <SectionHead icon={<ShieldCheck />} tone="violet" title="Limits" description="Hard stops block costly operations before they start." />
+        <CardHeader>
+          <div>
+            <CardTitle>Limits</CardTitle>
+            <CardDescription>Hard stops block costly operations before they start.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             {(
@@ -807,8 +686,8 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
                 <Input id={`l-${k}`} inputMode="numeric" value={form[k]} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
               </Field>
             ))}
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2/40 px-3.5 py-2.5 sm:mt-[26px]">
-              <span className="text-[13px] font-medium text-ink">Hard stop at limit</span>
+            <div className="flex items-center justify-between rounded-xl border border-line px-3.5 py-2.5">
+              <span className="text-[13px] font-medium">Hard stop at limit</span>
               <Switch checked={form.hardStop} disabled={!superAdmin} onCheckedChange={(v) => setForm((f) => ({ ...f, hardStop: v }))} aria-label="Hard stop at limit" />
             </div>
           </div>
@@ -816,11 +695,9 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
             <Textarea id="l-note" value={form.fairUseNote} disabled={!superAdmin} rows={2} maxLength={1000} onChange={(e) => setForm((f) => ({ ...f, fairUseNote: e.target.value }))} />
           </Field>
           {superAdmin && (
-            <div className="border-t border-line pt-4">
-              <Button loading={pending === "limits"} onClick={() => run("limits", () => updateUsageLimitsAction(data.org.id, { ...form, monthlyTokens: form.monthlyTokens }), "Limits saved")}>
-                Save limits
-              </Button>
-            </div>
+            <Button loading={pending === "limits"} onClick={() => run("limits", () => updateUsageLimitsAction(data.org.id, { ...form, monthlyTokens: form.monthlyTokens }), "Limits saved")}>
+              Save limits
+            </Button>
           )}
         </CardContent>
       </Card>
@@ -838,90 +715,58 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
     receiptUrl: b?.receipt_url ?? "",
     serviceTerms: b?.service_terms ?? "",
   });
-  const currency = b?.currency ?? "USD";
-  const savedPayment = b?.setup_payment_status ?? "not_invoiced";
-  const savedActivation = b?.activation_status ?? "pending";
   return (
-    <div className="grid gap-6 lg:grid-cols-5 [&>*]:min-w-0">
-      <Card className="lg:col-span-3">
-        <SectionHead icon={<Receipt />} tone="primary" title="Setup &amp; activation" description="Maintenance and custom projects are managed separately. No live payment collection in this view." />
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Setup payment" htmlFor="b-pay">
-              <Select id="b-pay" value={form.setupPaymentStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, setupPaymentStatus: e.target.value }))}>
-                {["not_invoiced", "invoiced", "paid", "waived", "refunded"].map((s) => (
-                  <option key={s} value={s}>
-                    {sentenceCase(s)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Activation" htmlFor="b-act">
-              <Select id="b-act" value={form.activationStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, activationStatus: e.target.value }))}>
-                {["pending", "active", "suspended"].map((s) => (
-                  <option key={s} value={s}>
-                    {sentenceCase(s)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Invoice link (HTTPS)" htmlFor="b-inv" optional>
-              <Input id="b-inv" value={form.invoiceUrl} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, invoiceUrl: e.target.value }))} />
-            </Field>
-            <Field label="Receipt link (HTTPS)" htmlFor="b-rec" optional>
-              <Input id="b-rec" value={form.receiptUrl} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, receiptUrl: e.target.value }))} />
-            </Field>
-          </div>
-          <Field label="Service terms & operating limits shown to the client" htmlFor="b-terms" optional>
-            <Textarea id="b-terms" rows={4} maxLength={4000} value={form.serviceTerms} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, serviceTerms: e.target.value }))} />
+    <Card className="max-w-3xl">
+      <CardHeader>
+        <div>
+          <CardTitle>Setup &amp; activation</CardTitle>
+          <CardDescription>One-time setup fee of ${((b?.setup_fee_cents ?? 149900) / 100).toLocaleString()} {b?.currency ?? "USD"}. Maintenance and custom projects are managed separately. No live payment collection in this view.</CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Setup payment" htmlFor="b-pay">
+            <Select id="b-pay" value={form.setupPaymentStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, setupPaymentStatus: e.target.value }))}>
+              {["not_invoiced", "invoiced", "paid", "waived", "refunded"].map((s) => (
+                <option key={s} value={s}>
+                  {sentenceCase(s)}
+                </option>
+              ))}
+            </Select>
           </Field>
-          {superAdmin && (
-            <div className="border-t border-line pt-4">
-              <Button loading={pending === "billing"} onClick={() => run("billing", () => updateBillingAction(data.org.id, form as never), "Billing updated")}>
-                Save billing
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card className="self-start lg:col-span-2">
-        <SectionHead icon={<Banknote />} tone="success" title="Billing summary" description="What is recorded today. Save to update." />
-        <CardContent className="space-y-4">
-          <StatTile icon={<Receipt />} tone="primary" label="One-time setup fee" value={formatCurrency((b?.setup_fee_cents ?? 149900) / 100, currency)} detail={currency} className="p-3.5" />
-          <DetailList>
-            <DetailRow label="Setup payment"><StatusPill status={savedPayment} size="sm" /></DetailRow>
-            <DetailRow label="Activation"><StatusPill status={savedActivation} size="sm" /></DetailRow>
-            <DetailRow label="Invoice">
-              {b?.invoice_url ? <ExternalPill href={b.invoice_url}>View invoice</ExternalPill> : <StatusPill tone="neutral" size="sm" dot={false}>Not added</StatusPill>}
-            </DetailRow>
-            <DetailRow label="Receipt">
-              {b?.receipt_url ? <ExternalPill href={b.receipt_url}>View receipt</ExternalPill> : <StatusPill tone="neutral" size="sm" dot={false}>Not added</StatusPill>}
-            </DetailRow>
-          </DetailList>
-          {b?.paid_at && (
-            <Callout tone="success" icon={<CheckCircle2 />} title="Marked paid">
-              {formatDateTime(b.paid_at, timeZone)}
-            </Callout>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-/** An external document link, only ever rendered for an HTTPS address. */
-function ExternalPill({ href, children }: { href: string; children: React.ReactNode }) {
-  if (!/^https:\/\//i.test(href)) return <StatusPill tone="warning" size="sm">Link needs HTTPS</StatusPill>;
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex min-h-6 items-center gap-1 rounded-md text-[12.5px] font-medium text-primary-ink underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary">
-      {children} <ExternalLink className="size-3" aria-hidden />
-    </a>
+          <Field label="Activation" htmlFor="b-act">
+            <Select id="b-act" value={form.activationStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, activationStatus: e.target.value }))}>
+              {["pending", "active", "suspended"].map((s) => (
+                <option key={s} value={s}>
+                  {sentenceCase(s)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Invoice link (HTTPS)" htmlFor="b-inv" optional>
+            <Input id="b-inv" value={form.invoiceUrl} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, invoiceUrl: e.target.value }))} />
+          </Field>
+          <Field label="Receipt link (HTTPS)" htmlFor="b-rec" optional>
+            <Input id="b-rec" value={form.receiptUrl} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, receiptUrl: e.target.value }))} />
+          </Field>
+        </div>
+        <Field label="Service terms & operating limits shown to the client" htmlFor="b-terms" optional>
+          <Textarea id="b-terms" rows={4} maxLength={4000} value={form.serviceTerms} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, serviceTerms: e.target.value }))} />
+        </Field>
+        {superAdmin && (
+          <Button loading={pending === "billing"} onClick={() => run("billing", () => updateBillingAction(data.org.id, form as never), "Billing updated")}>
+            Save billing
+          </Button>
+        )}
+        {b?.paid_at && <p className="text-[12.5px] text-muted">Marked paid {formatDateTime(b.paid_at, timeZone)}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
 /** What actually happened to the invitation email, taken from the outbox rather than assumed. */
 function InvitationEmailStatus({ invitation: i }: { invitation: Detail["invitations"][number] }) {
-  if (!i.email_status) return <Callout tone="neutral" icon={<Mail />} className="px-3 py-2 text-[12px]">No invitation email on record. Use Resend.</Callout>;
+  if (!i.email_status) return <p className="text-[12px] text-faint">No invitation email on record. Use Resend.</p>;
   const s = deliverySummary(i.email_status, i.email_error, i.email);
   const when = i.email_at ? ` ${relativeTime(i.email_at)}` : "";
   const text =
@@ -929,7 +774,7 @@ function InvitationEmailStatus({ invitation: i }: { invitation: Detail["invitati
     : i.email_status === "captured" ? "Email was not delivered: email delivery is switched off for this environment"
     : i.email_status === "failed" ? `Email failed${i.email_error ? `: ${i.email_error}` : ""}`
     : "Email queued, delivery not confirmed";
-  return <Callout tone={s.tone} icon={<Mail />} className="px-3 py-2 text-[12px]"><span suppressHydrationWarning>{text}</span></Callout>;
+  return <p className={cn("text-[12px]", s.tone === "success" ? "text-success-ink" : s.tone === "danger" ? "text-danger-ink" : "text-warning-ink")} suppressHydrationWarning>{text}</p>;
 }
 
 function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
@@ -937,45 +782,39 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<"owner" | "admin" | "member">("owner");
   const [link, setLink] = React.useState<string | null>(null);
-  const assigned = data.staff.filter((s) => s.assigned).length;
   return (
-    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 [&>*]:min-w-0">
       <Card>
-        <SectionHead icon={<Users />} title="Client users" description="Members of this workspace." aside={<InfoChip>{data.members.length} {data.members.length === 1 ? "member" : "members"}{data.invitations.length > 0 ? ` · ${data.invitations.length} invited` : ""}</InfoChip>} />
+        <CardHeader>
+          <div>
+            <CardTitle>Client users</CardTitle>
+            <CardDescription>Members of this workspace.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent className="space-y-4">
-          {data.members.length === 0 && data.invitations.length === 0 && (
-            <EmptyState compact icon={<Users className="size-5" />} title="No client users yet" description="Invite the owner below and they will appear here once they accept." />
-          )}
           <ul className="divide-y divide-line">
             {data.members.map((m) => (
-              <li key={m.user_id} className="management-row -mx-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg px-2 py-3 text-[13px]">
-                <AvatarTile name={m.full_name || m.email} size="md" />
-                <div className="min-w-0 flex-1 basis-44">
-                  <p className="truncate font-semibold text-ink" title={m.full_name || m.email}>{m.full_name || m.email}</p>
-                  <p className="truncate text-[12px] text-muted" title={m.email}>{m.email}</p>
+              <li key={m.user_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 text-[13px]">
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="truncate font-medium">{m.full_name || m.email}</p>
+                  <p className="truncate text-[12px] text-muted">{m.email}</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <StatusPill tone={roleTone(m.role)} size="sm">{sentenceCase(m.role)}</StatusPill>
-                  {m.status !== "active" && <StatusPill status={m.status} size="sm" />}
-                  <InfoChip icon={<Clock />} className="h-5 text-[11px]"><span suppressHydrationWarning>{m.last_login_at ? `Seen ${relativeTime(m.last_login_at)}` : "Never signed in"}</span></InfoChip>
-                </div>
+                <Badge tone={m.status === "active" ? "primary" : "neutral"}>{sentenceCase(m.role)}</Badge>
+                <span className="hidden text-[11.5px] text-faint sm:block">{m.last_login_at ? `Seen ${relativeTime(m.last_login_at)}` : "Never signed in"}</span>
               </li>
             ))}
             {data.invitations.map((i) => (
-              <li key={i.id} className="-mx-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg px-2 py-3 text-[13px]">
-                <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-[10px] border border-dashed border-line-strong bg-surface-2/60 text-muted"><Mail className="size-4" /></span>
-                <div className="min-w-0 flex-1 basis-52 space-y-1.5">
-                  <p className="truncate font-semibold text-ink" title={i.email}>{i.email}</p>
-                  <div className="flex flex-wrap items-center gap-1.5" suppressHydrationWarning>
-                    <StatusPill tone={i.expired ? "danger" : "warning"} size="sm"><span suppressHydrationWarning>{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending · expires ${relativeTime(i.expires_at)}`}</span></StatusPill>
-                  </div>
+              <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-[13px]">
+                <div className="min-w-0 flex-1 basis-52">
+                  <p className="truncate text-muted">{i.email}</p>
+                  <p className="text-[12px] text-faint" suppressHydrationWarning>{i.expired ? `Invitation expired ${relativeTime(i.expires_at)}` : `Invitation pending · expires ${relativeTime(i.expires_at)}`}</p>
                   <InvitationEmailStatus invitation={i} />
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto">
-                  <StatusPill tone={roleTone(i.role ?? "member")} size="sm">{sentenceCase(i.role ?? "member")}</StatusPill>
+                  <Badge tone={i.expired ? "neutral" : "warning"}>{sentenceCase(i.role ?? "member")}</Badge>
                   {superAdmin && <ResendInvitationButton orgId={data.org.id} invitation={i} variant="secondary" label="Resend" />}
                   {superAdmin && (
-                    <Button size="sm" variant="outline" className="text-danger-ink" loading={pending === `rv-${i.id}`} onClick={() => run(`rv-${i.id}`, () => revokeInvitationAction(i.id, data.org.id), "Invitation revoked")}>
+                    <Button size="sm" variant="ghost" onClick={() => run(`rv-${i.id}`, () => revokeInvitationAction(i.id, data.org.id), "Invitation revoked")}>
                       Revoke
                     </Button>
                   )}
@@ -984,8 +823,8 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
             ))}
           </ul>
           {superAdmin && (
-            <div className="space-y-3 rounded-xl border border-line bg-surface-2/40 p-3.5">
-              <p className="flex items-center gap-2 text-[13px] font-semibold text-ink"><UserPlus className="size-4 text-primary" aria-hidden /> Invite someone</p>
+            <div className="space-y-3 rounded-xl border border-line p-3">
+              <p className="text-[13px] font-medium">Invite someone</p>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <label htmlFor="inv-email" className="sr-only">
                   Email
@@ -1011,10 +850,10 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
                 </Button>
               </div>
               {link && (
-                <div className="flex items-center gap-2 rounded-lg bg-surface p-2 ring-1 ring-inset ring-line">
-                  <code className="min-w-0 flex-1 truncate px-1 text-[12px]" title={link}>{link}</code>
-                  <Button size="sm" variant="secondary" aria-label="Copy invitation link" onClick={() => navigator.clipboard.writeText(link).then(() => toast.success("Copied"))}>
-                    <Copy className="size-3.5" /> Copy
+                <div className="flex items-center gap-2 rounded-lg bg-surface-2 p-2">
+                  <code className="min-w-0 flex-1 truncate text-[12px]">{link}</code>
+                  <Button size="sm" variant="ghost" onClick={() => navigator.clipboard.writeText(link).then(() => toast.success("Copied"))}>
+                    <Copy className="size-3.5" />
                   </Button>
                 </div>
               )}
@@ -1023,20 +862,23 @@ function TeamTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
         </CardContent>
       </Card>
       <Card>
-        <SectionHead icon={<UserCheck />} tone="violet" title="Assigned agency staff" description="Staff only see clients they&apos;re assigned to." aside={data.staff.length > 0 && <InfoChip>{assigned} of {data.staff.length} assigned</InfoChip>} />
+        <CardHeader>
+          <div>
+            <CardTitle>Assigned agency staff</CardTitle>
+            <CardDescription>Staff only see clients they&apos;re assigned to.</CardDescription>
+          </div>
+        </CardHeader>
         <CardContent>
           {data.staff.length === 0 ? (
-            <EmptyState compact icon={<UserCheck className="size-5" />} title="No agency staff accounts yet" description="Invite agency staff from the Team page, then assign them to this client here." />
+            <p className="py-4 text-[13px] text-muted">No agency staff accounts yet.</p>
           ) : (
             <ul className="divide-y divide-line">
               {data.staff.map((s) => (
-                <li key={s.user_id} className="management-row -mx-2 flex items-center gap-3 rounded-lg px-2 py-3 text-[13px]">
-                  <AvatarTile name={s.full_name || s.email} size="md" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-ink" title={s.full_name || s.email}>{s.full_name || s.email}</p>
-                    <p className="truncate text-[12px] text-muted" title={s.email}>{s.email}</p>
+                <li key={s.user_id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{s.full_name || s.email}</p>
+                    <p className="truncate text-[12px] text-muted">{s.email}</p>
                   </div>
-                  {s.assigned ? <StatusPill tone="success" size="sm">Assigned</StatusPill> : <StatusPill tone="neutral" size="sm">Not assigned</StatusPill>}
                   <Switch
                     checked={s.assigned}
                     disabled={!superAdmin}

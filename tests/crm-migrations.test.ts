@@ -9,9 +9,13 @@ import { crmOrg } from "./support/crm";
 // execute and remove what the migrations added; with native data present they must refuse. Each run happens in a transaction that is always
 // rolled back, so the shared test database is untouched.
 
-const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) =>
-  /^(0027_native_crm|0028_crm_sales|0029_crm_calendars|0030_crm_scheduling|0031_crm_messaging|0032_crm_automation|0033_crm_growth|0035_crm_blueprints)\.sql$/.test(f),
-).sort();
+const CRM_MIGRATION_NAMES = [
+  "0027_native_crm.sql", "0028_crm_sales.sql", "0029_crm_calendars.sql", "0030_crm_scheduling.sql",
+  "0031_crm_messaging.sql", "0032_crm_automation.sql", "0033_crm_growth.sql", "0035_crm_blueprints.sql",
+  "0036_crm_ghl_migration.sql", "0037_crm_setup_native.sql", "0038_crm_performance.sql", "0039_crm_provider_switch.sql",
+  "0041_crm_action_permissions.sql", "0042_company_delete_permission.sql", "0050_rls_initplan.sql",
+];
+const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");
 class Done extends Error {}
 

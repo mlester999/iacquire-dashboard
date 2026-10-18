@@ -5,10 +5,16 @@ import { recordAudit } from "@/server/audit";
 import { resolveCredential, saveCredential } from "@/server/security/credentials";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
-import { getCapabilities, getToolsets, getProfileModels, HermesError, restrictedToolsIn, hasVerifiedCompleteToolInventory, type HermesConnection } from "@/server/integrations/hermes/client";
+import { getCapabilities, getToolsets, getProfileModels, HermesError, restrictedToolsIn, type HermesConnection } from "@/server/integrations/hermes/client";
+import {
+  inventoryColumns,
+  ToolInventoryError,
+  verifyToolInventory,
+  type ToolInventorySnapshot,
+} from "@/server/integrations/hermes/inventory";
 import { notifyOrgRoles } from "@/server/notifications";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
 
@@ -403,6 +409,39 @@ export function validateHermesBaseUrl(raw: string): string {
   return validateIntegrationEndpoint(raw, ["hermes-api.iacquire.online"]);
 }
 
+async function loadPersistedInventoryDigest(db: Queryable, agentId: string): Promise<string | null> {
+  try {
+    await db.query("savepoint tool_inventory_digest_lookup");
+    const { rows } = await db.query<{ tool_inventory_digest: string | null }>(
+      "select tool_inventory_digest from agent_instances where id = $1",
+      [agentId],
+    );
+    await db.query("release savepoint tool_inventory_digest_lookup");
+    return rows[0]?.tool_inventory_digest ?? null;
+  } catch {
+    // Migration 0047 may not be applied yet. Roll back only this lookup so the caller's
+    // transaction stays usable; no persisted digest is fail-closed.
+    try {
+      await db.query("rollback to savepoint tool_inventory_digest_lookup");
+    } catch {
+      /* the savepoint itself may be unavailable; the caller will still fail closed */
+    }
+    return null;
+  }
+}
+
+/** Whether the additive inventory-attestation columns from migration 0047 are present. */
+export async function toolInventorySchemaReady(db: Queryable): Promise<boolean> {
+  try {
+    const { rows } = await db.query(
+      "select 1 from information_schema.columns where table_schema = 'public' and table_name = 'agent_instances' and column_name = 'tool_inventory_digest' limit 1",
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function loadConnection(db: Queryable, agentId: string): Promise<HermesConnection | null> {
   const { rows } = await db.query<{ org_id:string; credential_id:string|null; hermes_gateway_id:string|null; hermes_base_url: string | null; hermes_profile: string | null; ciphertext: string | null; revoked_at: Date | null }>(
     `select a.org_id,a.credential_id,a.hermes_gateway_id,a.hermes_base_url,a.hermes_profile,c.ciphertext,c.revoked_at
@@ -416,7 +455,8 @@ export async function loadConnection(db: Queryable, agentId: string): Promise<He
   const apiKey = await resolveCredential(db,r.credential_id,r.org_id,"hermes");
   if (!apiKey) return null;
   const access = await loadHermesAccessCredentials(db, r.hermes_gateway_id);
-  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, ...(access ?? {}) };
+  const expectedToolInventoryDigest = await loadPersistedInventoryDigest(db, agentId);
+  return { baseUrl: r.hermes_base_url, profile: r.hermes_profile, apiKey, expectedToolInventoryDigest, ...(access ?? {}) };
 }
 
 /** Server-only profile connection for a trusted service check. Credentials are never serialized to a client. */
@@ -438,16 +478,13 @@ export async function connectHermesProfile(input: {
   if (!/^[a-z0-9][a-z0-9_-]{1,62}$/.test(profile)) throw new AppError("invalid_input", "Profile names use lowercase letters, numbers, dashes and underscores.");
   const apiKey = input.apiKey.trim();
   if (apiKey.length < 24) throw new AppError("invalid_input", "The profile API key looks too short. Use the profile's own API_SERVER_KEY.");
-  return withServiceRole(async (db) => {
+  return withSystem(async (db) => {
     const { rows } = await db.query<{ org_id: string; kind: string; role_key: string }>(
       "select a.org_id, o.kind, a.role_key from agent_instances a join organizations o on o.id = a.org_id where a.id = $1",
       [input.agentId],
     );
     const agent = rows[0];
     if (!agent) throw new AppError("not_found", "AI employee not found.");
-    if (agent.kind === "agency" && AGENCY_HERMES_PROFILE_IDS[agent.role_key as AgentRoleKey] !== profile) {
-      throw new AppError("invalid_input", "Internal iAcquire employees must use their existing role-specific Hermes profile.");
-    }
     let gatewayId: string | null = null;
     if (input.gatewayId) {
       const { rows: gatewayRows } = await db.query<{ id: string; base_url: string; gateway_type: string }>(
@@ -487,12 +524,25 @@ export async function connectHermesProfile(input: {
     if (dupe.length) throw new AppError("conflict", "That Hermes profile already backs another employee. Each employee needs its own profile.");
     const {rows:old}=await db.query<{credential_id:string|null}>("select credential_id from agent_instances where id=$1",[input.agentId]);
     const cred = await saveCredential(db,{orgId:agent.org_id,provider:"hermes",label:`Hermes profile ${profile}`,secret:apiKey,actorId:input.agencyUserId,replaces:old[0]?.credential_id});
-    await db.query(
-      `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4, hermes_gateway_id = $5,
-         status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check'
-       where id = $1`,
-      [input.agentId, baseUrl, profile, cred.id, gatewayId],
-    );
+    const inventorySchema = await toolInventorySchemaReady(db);
+    if (inventorySchema) {
+      await db.query(
+        `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4, hermes_gateway_id = $5,
+           status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check',
+           tool_inventory_contract = null, tool_inventory_digest = null, tool_inventory_verified_at = null,
+           tool_inventory_expires_at = null, tool_inventory_tool_count = null,
+           tool_inventory_snapshot = '{}'::jsonb, tool_inventory_detail = null
+         where id = $1`,
+        [input.agentId, baseUrl, profile, cred.id, gatewayId],
+      );
+    } else {
+      await db.query(
+        `update agent_instances set hermes_base_url = $2, hermes_profile = $3, credential_id = $4, hermes_gateway_id = $5,
+           status = 'provisioning', last_health_ok = null, last_health_detail = 'Awaiting first health check'
+         where id = $1`,
+        [input.agentId, baseUrl, profile, cred.id, gatewayId],
+      );
+    }
     await db.query(
       `update agent_provisioning_jobs set status = 'awaiting_health_check', handled_by = $2
        where agent_instance_id = $1 and status in ('requested', 'in_progress')`,
@@ -537,22 +587,25 @@ export async function runHealthCheck(
   actor: { userId: string | null; kind: "agency" | "system" | "user" },
   opts: { skipSetupSync?: boolean } = {},
 ): Promise<HealthResult> {
-  const { orgId, orgKind, roleKey, enabled, hasConfig } = await withSystem(async (db) => {
-    const { rows } = await db.query<{ org_id: string; org_kind: "agency" | "client"; role_key: AgentRoleKey; enabled: boolean; active_config_version_id: string | null }>(
-      "select a.org_id, o.kind as org_kind, a.role_key, a.enabled, a.active_config_version_id from agent_instances a join organizations o on o.id=a.org_id where a.id = $1",
+  const { conn, orgId, enabled, hasConfig, previousInventoryDigest } = await withSystem(async (db) => {
+    const { rows } = await db.query<{ org_id: string; enabled: boolean; active_config_version_id: string | null }>(
+      "select org_id, enabled, active_config_version_id from agent_instances where id = $1",
       [agentId],
     );
     if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
-    return { orgId: rows[0].org_id, orgKind: rows[0].org_kind, roleKey: rows[0].role_key, enabled: rows[0].enabled, hasConfig: Boolean(rows[0].active_config_version_id) };
+    return {
+      conn: await loadConnection(db, agentId),
+      orgId: rows[0].org_id,
+      enabled: rows[0].enabled,
+      hasConfig: Boolean(rows[0].active_config_version_id),
+      previousInventoryDigest: await loadPersistedInventoryDigest(db, agentId),
+    };
   });
-  const conn = await loadHermesConnectionForAgent(agentId);
 
   let result: HealthResult;
+  let inventory: { snapshot: ToolInventorySnapshot | null; detail: string | null } = { snapshot: null, detail: null };
   if (!enabled) result = { ok: false, status: "disabled", detail: "This employee isn't enabled for the workspace." };
   else if (!conn) result = { ok: false, status: "setup_required", detail: "No dedicated Hermes profile is connected yet." };
-  else if (orgKind === "agency" && conn.profile !== AGENCY_HERMES_PROFILE_IDS[roleKey]) {
-    result = { ok: false, status: "error", detail: "The saved Hermes profile does not match this employee's verified iAcquire identity." };
-  }
   else {
     try {
       const caps = await getCapabilities(conn);
@@ -579,18 +632,52 @@ export async function runHealthCheck(
           status: "error",
           detail: `Profile exposes ${restricted.length} restricted or unreviewed tool${restricted.length === 1 ? "" : "s"}: ${sample}${restricted.length > 8 ? ", …" : ""}. Disable them in the Hermes profile before going live.`,
         };
-      } else if (!hasVerifiedCompleteToolInventory(conn)) {
-        result = { ok:false,status:"setup_required",detail:"Profile API access verified, but the public toolset API cannot prove complete plugin/MCP permissions. Live employee use stays blocked pending a supported complete-inventory security check by the gateway administrator." };
-      } else if (!hasConfig) {
-        result = { ok: false, status: "setup_required", detail: "Connected to Hermes, but the employee configuration hasn't been applied yet." };
       } else {
-        result = {
-          ok: true,
-          status: "online",
-          detail: `Profile identity, API capabilities and tool restrictions verified${
-            caps.supportsEvents ? "" : " · streaming not supported; the full response arrives when complete"
-          }${caps.supportsStop ? "" : " · stop not supported"}`,
-        };
+        try {
+          // A health check reads the catalog twice so an inventory that is changing under us
+          // cannot be recorded as a stable attestation.
+          const snapshot = await verifyToolInventory(conn, {
+            expectedDigest: previousInventoryDigest,
+            stabilityReads: 2,
+            purpose: "health",
+          });
+          inventory = {
+            snapshot,
+            detail: `Complete runtime inventory verified: ${snapshot.toolCount} tool${snapshot.toolCount === 1 ? "" : "s"} across ${snapshot.enabledToolsets.length} reviewed toolsets (digest ${snapshot.digest.slice(0, 12)}…).`,
+          };
+          if (!hasConfig) {
+            result = { ok: false, status: "setup_required", detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online.` };
+          } else {
+            result = {
+              ok: true,
+              status: "online",
+              detail: `Profile identity, API capabilities and the complete runtime tool inventory verified (${snapshot.toolCount} reviewed tools; no plugin, MCP, connector or Tool Search bridge access)${
+                caps.supportsEvents ? "" : " · streaming not supported; the full response arrives when complete"
+              }${caps.supportsStop ? "" : " · stop not supported"}`,
+            };
+          }
+        } catch (err) {
+          if (!(err instanceof ToolInventoryError)) throw err;
+          inventory = { snapshot: err.detail.snapshot ?? null, detail: err.message };
+          if (err.detail.code === "inventory_changed" && err.detail.snapshot) {
+            // Record the newly observed safe snapshot, but stay provisioning for one explicit
+            // confirmation check. This is the review gate for an unexpected inventory change.
+            result = {
+              ok: false,
+              status: "provisioning",
+              detail: `${err.message} The newly observed inventory has been recorded; review it and run the health check again to confirm.`,
+            };
+          } else if (err.detail.code === "inventory_changed") {
+            result = { ok: false, status: "provisioning", detail: `${err.message} No inventory change was recorded.` };
+          } else {
+            const code = err.detail.code;
+            result = {
+              ok: false,
+              status: code === "contract_unavailable" ? "setup_required" : code === "inventory_unavailable" ? "offline" : "error",
+              detail: `${err.message} Live runs stay blocked.`,
+            };
+          }
+        }
       }
     } catch (err) {
       const kind = err instanceof HermesError ? err.kind : "unreachable";
@@ -598,13 +685,45 @@ export async function runHealthCheck(
     }
   }
 
+  const columns = inventoryColumns(inventory.snapshot, inventory.detail);
+  const schemaReady = await withSystem((db) => toolInventorySchemaReady(db));
+  if (!schemaReady && inventory.snapshot) {
+    result = {
+      ok: false,
+      status: "setup_required",
+      detail: `${result.detail} Migration 0047 (tool-inventory attestation) is not applied, so the verified inventory cannot be persisted; live runs stay blocked.`,
+    };
+  }
   await withSystem(async (db) => {
     const { rows } = await db.query<{ status: AgentStatus }>("select status from agent_instances where id = $1", [agentId]);
     const previous = rows[0]?.status;
-    await db.query(
-      "update agent_instances set status = $2, last_health_check_at = now(), last_health_ok = $3, last_health_detail = $4 where id = $1",
-      [agentId, result.status, result.ok, result.detail],
-    );
+    if (schemaReady) {
+      await db.query(
+        `update agent_instances set status = $2, last_health_check_at = now(), last_health_ok = $3, last_health_detail = $4,
+           tool_inventory_contract = $5, tool_inventory_digest = $6, tool_inventory_verified_at = $7,
+           tool_inventory_expires_at = $8, tool_inventory_tool_count = $9, tool_inventory_snapshot = $10::jsonb,
+           tool_inventory_detail = $11
+         where id = $1`,
+        [
+          agentId,
+          result.status,
+          result.ok,
+          result.detail,
+          columns.toolInventoryContract,
+          columns.toolInventoryDigest,
+          columns.toolInventoryVerifiedAt,
+          columns.toolInventoryExpiresAt,
+          columns.toolInventoryToolCount,
+          JSON.stringify(columns.toolInventorySnapshot),
+          columns.toolInventoryDetail,
+        ],
+      );
+    } else {
+      await db.query(
+        "update agent_instances set status = $2, last_health_check_at = now(), last_health_ok = $3, last_health_detail = $4 where id = $1",
+        [agentId, result.status, result.ok, result.detail],
+      );
+    }
     if (result.ok) {
       await db.query(
         "update agent_provisioning_jobs set status = 'succeeded' where agent_instance_id = $1 and status = 'awaiting_health_check'",
@@ -641,7 +760,14 @@ export async function runHealthCheck(
         targetType: "agent_instance",
         targetId: agentId,
         result: result.ok ? "success" : "failure",
-        metadata: { status: result.status },
+        metadata: {
+          status: result.status,
+          inventoryContract: inventory.snapshot?.contract ?? null,
+          inventoryDigest: inventory.snapshot?.digest ?? null,
+          inventoryToolCount: inventory.snapshot?.toolCount ?? null,
+          inventoryVerified: Boolean(inventory.snapshot),
+          inventoryDetail: inventory.detail?.slice(0, 300) ?? null,
+        },
       },
       db,
     );

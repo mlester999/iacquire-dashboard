@@ -4,9 +4,9 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { SessionUser } from "@/server/auth/service";
-import type { ClientAction, CompletionMode, Section, SetupService } from "@/lib/setup";
+import type { ClientAction, CompletionMode, Section, SetupCrmProvider, SetupService } from "@/lib/setup";
 
-export interface TemplateTaskView { id: string; key: string; title: string; clientTitle: string | null; description: string; section: Section; completionMode: CompletionMode; service: SetupService | null; required: boolean; requiresEvidence: boolean; requiresClientResponse: boolean; clientAction: ClientAction | null; dependsOn: string[]; sortOrder: number }
+export interface TemplateTaskView { id: string; key: string; title: string; clientTitle: string | null; description: string; section: Section; completionMode: CompletionMode; service: SetupService | null; crmProvider: SetupCrmProvider | null; required: boolean; requiresEvidence: boolean; requiresClientResponse: boolean; clientAction: ClientAction | null; dependsOn: string[]; sortOrder: number }
 export interface TemplateView { id: string; name: string; description: string; isDefault: boolean; tasks: TemplateTaskView[] }
 
 async function requireAdmin(db: Queryable, user: SessionUser) {
@@ -18,8 +18,8 @@ export async function listSetupTemplates(admin: SessionUser): Promise<TemplateVi
   return withSystem(async (db) => {
     await requireAdmin(db, admin);
     const templates = await db.query<{ id: string; name: string; description: string; is_default: boolean }>("select id,name,description,is_default from client_setup_templates order by is_default desc,name");
-    const tasks = await db.query<{ id: string; template_id: string; key: string; title: string; client_title: string | null; description: string; section: Section; completion_mode: CompletionMode; service: SetupService | null; required: boolean; requires_evidence: boolean; requires_client_response: boolean; client_action: ClientAction | null; depends_on: string[]; sort_order: number }>("select id,template_id,key,title,client_title,description,section,completion_mode,service,required,requires_evidence,requires_client_response,client_action,depends_on,sort_order from client_setup_template_tasks order by sort_order");
-    return templates.rows.map((t) => ({ id: t.id, name: t.name, description: t.description, isDefault: t.is_default, tasks: tasks.rows.filter((x) => x.template_id === t.id).map((x) => ({ id: x.id,key: x.key,title: x.title,clientTitle: x.client_title,description: x.description,section: x.section,completionMode: x.completion_mode,service: x.service,required: x.required,requiresEvidence: x.requires_evidence,requiresClientResponse: x.requires_client_response,clientAction: x.client_action,dependsOn: x.depends_on,sortOrder: x.sort_order })) }));
+    const tasks = await db.query<{ id: string; template_id: string; key: string; title: string; client_title: string | null; description: string; section: Section; completion_mode: CompletionMode; service: SetupService | null; crm_provider: SetupCrmProvider | null; required: boolean; requires_evidence: boolean; requires_client_response: boolean; client_action: ClientAction | null; depends_on: string[]; sort_order: number }>("select id,template_id,key,title,client_title,description,section,completion_mode,service,crm_provider,required,requires_evidence,requires_client_response,client_action,depends_on,sort_order from client_setup_template_tasks order by sort_order");
+    return templates.rows.map((t) => ({ id: t.id, name: t.name, description: t.description, isDefault: t.is_default, tasks: tasks.rows.filter((x) => x.template_id === t.id).map((x) => ({ id: x.id,key: x.key,title: x.title,clientTitle: x.client_title,description: x.description,section: x.section,completionMode: x.completion_mode,service: x.service,crmProvider: x.crm_provider,required: x.required,requiresEvidence: x.requires_evidence,requiresClientResponse: x.requires_client_response,clientAction: x.client_action,dependsOn: x.depends_on,sortOrder: x.sort_order })) }));
   });
 }
 

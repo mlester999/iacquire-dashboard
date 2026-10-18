@@ -58,3 +58,20 @@ export function logSafeServerDiagnostic(event: string, error: unknown, fallbackO
   const safeEvent = safeString(event, /^[a-z][a-z0-9 ._-]{0,63}$/i) ?? "server operation failed";
   console.error(`[iacquire] ${safeEvent}`, safeDiagnosticFields(error, fallbackOperation));
 }
+
+/**
+ * Whether a database error, or any error in its cause chain, carries this SQLSTATE code. The hosted Postgres driver wraps every failed
+ * query in an OperationFailure (no `code` of its own, the driver's error in `cause`), while PGlite throws the driver's error as is, so a
+ * check on the outer error alone only works in tests. Bounded and safe against cause cycles, and it compares each level with the code
+ * asked for, so an unrelated code on an outer wrapper can't hide the real one.
+ */
+export function hasDbErrorCode(error: unknown, code: string): boolean {
+  const seen = new Set<unknown>();
+  let current = error;
+  for (let depth = 0; depth < 8 && isRecord(current) && !seen.has(current); depth++) {
+    seen.add(current);
+    if (current.code === code) return true;
+    current = current.cause;
+  }
+  return false;
+}

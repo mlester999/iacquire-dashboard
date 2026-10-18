@@ -22,7 +22,7 @@ export function PortalShell({ data, children }: { data: ShellData; children: Rea
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2 focus:shadow-float">
           Skip to content
         </a>
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-w)] transition-[width] duration-200 lg:block">
+        <aside aria-label="Primary navigation" className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-w)] transition-[width] duration-200 lg:block">
           <Sidebar compact={compact} onCompact={() => setCompact((s) => !s)} />
         </aside>
         <Sheet open={menuOpen} onOpenChange={setMenuOpen} side="left" title="Navigation" hideHeader>

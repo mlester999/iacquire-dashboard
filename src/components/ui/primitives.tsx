@@ -167,6 +167,7 @@ export function EmptyState({
   action,
   className,
   compact,
+  headingLevel = 3,
 }: {
   icon?: React.ReactNode;
   title: string;
@@ -174,7 +175,9 @@ export function EmptyState({
   action?: React.ReactNode;
   className?: string;
   compact?: boolean;
+  headingLevel?: 2 | 3 | 4;
 }) {
+  const titleClass = "text-[17px] font-semibold tracking-[-0.025em] text-ink";
   return (
     <div className={cn("empty-state flex flex-col items-center justify-center text-center", compact ? "px-4 py-7" : "px-6 py-10", className)}>
       {icon && (
@@ -185,7 +188,7 @@ export function EmptyState({
           </div>
         </div>
       )}
-      <h3 className="text-[17px] font-semibold tracking-[-0.025em] text-ink">{title}</h3>
+      {headingLevel === 2 ? <h2 className={titleClass}>{title}</h2> : headingLevel === 4 ? <h4 className={titleClass}>{title}</h4> : <h3 className={titleClass}>{title}</h3>}
       {description && <div className="mt-2 max-w-md text-[13px] leading-[1.7] text-muted">{description}</div>}
       {action && <div className="mt-5 flex flex-wrap items-center justify-center gap-2">{action}</div>}
     </div>

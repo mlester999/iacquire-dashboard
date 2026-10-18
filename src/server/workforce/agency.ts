@@ -7,6 +7,7 @@ import { recordAudit } from "@/server/audit";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import {
   connectHermesProfile,
+  ensureAgentInstances,
   loadHermesConnectionForAgent,
   validateHermesBaseUrl,
 } from "@/server/workforce/service";
@@ -15,10 +16,54 @@ import {
   getCapabilities,
   getProfileModels,
   getToolsets,
-  hasVerifiedCompleteToolInventory,
   HermesError,
   restrictedToolsIn,
 } from "@/server/integrations/hermes/client";
+import { verifyToolInventory } from "@/server/integrations/hermes/inventory";
+
+export interface AgencyWorkspace {
+  orgId: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  membershipCreated: boolean;
+  employeesCreated: number;
+}
+
+/** Prepare the internal iAcquire workforce for the agency Super Admin. */
+export async function ensureAgencyWorkspace(user: SessionUser): Promise<AgencyWorkspace | null> {
+  if (user.platformRole !== "agency_super_admin") return null;
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string; name: string; slug: string; timezone: string }>(
+      "select id, name, slug, timezone from organizations where kind = 'agency' and status = 'active' order by created_at asc limit 1",
+    );
+    const org = rows[0];
+    if (!org) return null;
+    const { rows: before } = await db.query<{ n: number }>("select count(*)::int as n from agent_instances where org_id = $1", [org.id]);
+    const membership = await db.query(
+      `insert into organization_memberships (org_id, user_id, role) values ($1, $2, 'owner')
+       on conflict (org_id, user_id) do update set role = 'owner' where organization_memberships.role <> 'owner'`,
+      [org.id, user.id],
+    );
+    await ensureAgentInstances(org.id, db);
+    const { rows: after } = await db.query<{ n: number }>("select count(*)::int as n from agent_instances where org_id = $1", [org.id]);
+    const membershipCreated = Boolean(membership.rowCount);
+    const employeesCreated = Math.max(0, (after[0]?.n ?? 0) - (before[0]?.n ?? 0));
+    if (membershipCreated || employeesCreated) {
+      await recordAudit({
+        orgId: org.id,
+        actorUserId: user.id,
+        actorKind: "agency",
+        action: "agency.workspace_prepared",
+        targetType: "organization",
+        targetId: org.id,
+        result: "success",
+        metadata: { membershipCreated, employeesCreated },
+      }, db);
+    }
+    return { orgId: org.id, name: org.name, slug: org.slug, timezone: org.timezone, membershipCreated, employeesCreated };
+  });
+}
 
 export type AgencyProfileCheckStatus =
   | "not_configured"
@@ -240,20 +285,22 @@ async function verifyAgencyProfile(admin: SessionUser, agentId: string): Promise
           if (!identities.includes(expectedProfile)) {
             result = failResult(agent, "identity_mismatch", "Hermes did not confirm the expected iAcquire profile identity.", true);
           } else {
-            let toolPermissionsStatus: ToolPermissionsStatus = "unavailable";
+            let toolPermissionsStatus: ToolPermissionsStatus = "incomplete";
             try {
               const restricted = restrictedToolsIn(await getToolsets(connection));
-              toolPermissionsStatus = restricted.length ? "restricted" : hasVerifiedCompleteToolInventory(connection) ? "verified" : "incomplete";
+              if (restricted.length) toolPermissionsStatus = "restricted";
+              else {
+                await verifyToolInventory(connection, { stabilityReads: 2, purpose: "health" });
+                toolPermissionsStatus = "verified";
+              }
             } catch {
-              toolPermissionsStatus = "unavailable";
+              toolPermissionsStatus = "incomplete";
             }
             const toolDetail = toolPermissionsStatus === "restricted"
               ? " The profile exposes tools that need agency review before active use."
               : toolPermissionsStatus === "incomplete"
                 ? " The installed API does not prove a complete tool inventory, so active use remains blocked pending review."
-                : toolPermissionsStatus === "unavailable"
-                  ? " Tool permissions could not be verified through the installed API."
-                  : " Tool permissions were checked through the complete read-only inventory.";
+                : " Tool permissions were checked through the complete read-only inventory.";
             result = {
               roleKey: agent.role_key,
               profile: expectedProfile,
@@ -335,11 +382,18 @@ export async function reviewAgencyHermesToolPermissions(admin: SessionUser, agen
   const maxToolsets = 24;
   const maxToolsPerSet = 80;
   const truncated = toolsets.length > maxToolsets || toolsets.some((toolset) => toolset.tools.length > maxToolsPerSet);
+  let inventoryComplete = false;
+  try {
+    await verifyToolInventory(connection, { stabilityReads: 2, purpose: "health" });
+    inventoryComplete = true;
+  } catch {
+    // The review remains useful as a diagnostic, but an incomplete inventory is never marked verified.
+  }
   return {
     roleKey: agent.role_key,
     profile: expectedProfile,
     checkedAt: new Date().toISOString(),
-    inventoryComplete: hasVerifiedCompleteToolInventory(connection),
+    inventoryComplete,
     restrictedTools: restrictedToolsIn(toolsets).slice(0, 100),
     toolsets: toolsets.slice(0, maxToolsets).map((toolset) => ({
       name: toolset.name.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 120),

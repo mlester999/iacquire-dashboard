@@ -1,7 +1,8 @@
 // Pins the portal's Hermes adapter to the wire contract in the Hermes Agent source
 // (gateway/platforms/api_server.py, api_server_runs.py, tools/approval.py, toolsets.py).
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { getCapabilities, getProfileModels, getToolsets, normalizeEvent, resolveRunApproval, restrictedToolsIn, startRun, hasVerifiedCompleteToolInventory } from "@/server/integrations/hermes/client";
+import { getCapabilities, getProfileModels, getToolsets, normalizeEvent, resolveRunApproval, restrictedToolsIn, startRun } from "@/server/integrations/hermes/client";
+import { ToolInventoryError, verifyToolInventory } from "@/server/integrations/hermes/inventory";
 import { inspectHermes } from "@/server/integrations/inspection";
 import { validateHermesBaseUrl } from "@/server/workforce/service";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
@@ -57,22 +58,34 @@ describe("Hermes verification fails closed",()=>{
     expect(result.status).toBe("needs_attention");expect(result.capabilities.identityVerified).toBe(false);
   });
 
-  it("never treats the advertised public inventory as complete live permissions",async()=>{
-    expect(hasVerifiedCompleteToolInventory({...conn,baseUrl:"https://gateway.example.test"})).toBe(false);
+  it("does not report an internal profile as connected while restricted tools are exposed",async()=>{
     vi.spyOn(globalThis,"fetch").mockImplementation(async url=>{
       if(String(url).endsWith("/v1/capabilities"))return Response.json({object:"hermes.api_server.capabilities",auth:{required:true,type:"bearer"},features:{run_submission:true,run_events_sse:true}});
       if(String(url).endsWith("/v1/models"))return Response.json({object:"list",data:[{id:conn.profile,owned_by:"hermes",root:conn.profile,parent:null}]});
+      return Response.json({object:"list",data:[{name:"terminal",enabled:true,tools:["terminal","read_file"]}]});
+    });
+    const result=await inspectHermes(conn,false);
+    expect(result.status).toBe("needs_attention");
+    expect(result.detail).toMatch(/2 restricted or unreviewed tools/);
+    expect(result.detail).toMatch(/terminal/);
+  });
+
+  it("never treats the advertised public toolset inventory as a complete live inventory",async()=>{
+    vi.spyOn(globalThis,"fetch").mockImplementation(async url=>{
+      const path=String(url);
+      if(new URL(path).pathname.endsWith("/v1/tools"))return new Response(JSON.stringify({error:"not found"}),{status:404,headers:{"Content-Type":"application/json"}});
+      if(path.endsWith("/v1/capabilities"))return Response.json({object:"hermes.api_server.capabilities",auth:{required:true,type:"bearer"},features:{run_submission:true,run_events_sse:true}});
+      if(path.endsWith("/v1/models"))return Response.json({object:"list",data:[{id:conn.profile,owned_by:"hermes",root:conn.profile,parent:null}]});
       return Response.json({object:"list",data:[{name:"web",enabled:true,tools:["web_search"]}]});
     });
-    vi.stubEnv("SECRET_STORE","vault");
-    try {
-      const result=await inspectHermes(conn,true);
-      expect(result.status).toBe("permission_limited");expect(result.capabilities.completeToolInventoryVerified).toBe(false);
-      expect(result.detail).toMatch(/Client use stays blocked/);
-      const spy=vi.mocked(globalThis.fetch);spy.mockClear();
-      await expect(startRun(conn,{input:"blocked",idempotencyKey:"blocked-live-run"})).rejects.toMatchObject({kind:"bad_response"});
-      expect(spy).not.toHaveBeenCalled();
-    }finally{vi.unstubAllEnvs();}
+    const result=await inspectHermes(conn,true);
+    expect(result.status).toBe("permission_limited");
+    expect(result.capabilities.completeToolInventoryVerified).toBe(false);
+    expect(result.capabilities.toolInventoryScope).toBe("not_verified");
+    expect(result.detail).toMatch(/GET \/v1\/tools/);
+    const spy=vi.mocked(globalThis.fetch);spy.mockClear();
+    await expect(startRun(conn,{input:"blocked",idempotencyKey:"blocked-live-run"})).rejects.toBeInstanceOf(ToolInventoryError);
+    expect(spy.mock.calls.some(([url])=>String(url).includes("/v1/runs"))).toBe(false);
   });
 
   it("applies deployment host approval to legacy configuration and credential-bearing adapter calls",async()=>{
@@ -135,6 +148,15 @@ describe("Hermes HTTP contract", () => {
   it("reads toolsets from the { object: 'list', data } envelope", async () => {
     const sets = await getToolsets(conn());
     expect(sets[0]?.tools).toContain("web_search");
+  });
+
+  it("verifies the complete runtime catalog and records a stable digest", async () => {
+    const snapshot = await verifyToolInventory(conn(), { stabilityReads: 2 });
+    expect(snapshot).toMatchObject({ contract: "hermes.api_server.tool_catalog.v1", toolCount: 6, explicitConfigPresent: true });
+    expect(snapshot.enabledToolsets).toEqual(["memory", "session_search", "todo", "vision", "web"]);
+    expect(snapshot.tools.map((tool) => tool.name)).toContain("web_search");
+    expect(snapshot.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(snapshot.attestation).toBe("challenge_bound_authenticated_catalog");
   });
 
   it("routes through the profile prefix and resolves approvals with { choice, request_id }", async () => {

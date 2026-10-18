@@ -458,6 +458,11 @@ export function toMessagingPreferences(a: Answers): { businessHours: BusinessHou
 
 /** Real, verified facts about the workspace's connections, supplied by the server. */
 export interface ConnectionFacts {
+  /**
+   * The workspace's CRM provider. On iAcquire CRM ("native") `crmLinked` means an industry Blueprint is applied and `calendarConnected`
+   * means a connected calendar or an active iAcquire calendar; otherwise both are about the GoHighLevel location. Absent: GoHighLevel wording.
+   */
+  crmMode?: "native" | "ghl" | "hybrid";
   crmLinked: boolean;
   aiEmployeesVerified: number;
   aiEmployeesTotal: number;
@@ -530,8 +535,11 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
     { label: "Automatic replies", value: "Off until you switch them on and each channel's sender is verified." },
   ];
 
+  const native = facts.crmMode === "native";
   const permissions = [
-    "Read and update contacts, pipelines and opportunities in your CRM location, once iAcquire has linked and verified it.",
+    native
+      ? "Read and update contacts, pipelines and opportunities in your iAcquire CRM, within the permissions you give each AI employee."
+      : "Read and update contacts, pipelines and opportunities in your CRM location, once iAcquire has linked and verified it.",
     "Read your appointment calendar to offer real availability. Nothing is booked from a guessed time.",
     "Reply to customers as an AI assistant only on channels you enable, and only after you turn automatic replies on.",
     "Create staff hand-offs. Your owner is notified first; other eligible staff are informed.",
@@ -540,7 +548,11 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   ];
 
   const missingConnections: ReviewModel["missingConnections"] = [];
-  if (!facts.crmLinked) missingConnections.push({ key: "crm", label: "CRM location not linked", why: "iAcquire links your CRM location after you submit. Contacts and pipelines sync only after it is verified." });
+  if (!facts.crmLinked) {
+    missingConnections.push(native
+      ? { key: "crm", label: "CRM not set up yet", why: "Your iAcquire CRM is ready to use. iAcquire applies your industry Blueprint (pipelines, tags and fields); the CRM setup guide shows what's left." }
+      : { key: "crm", label: "CRM location not linked", why: "iAcquire links your CRM location after you submit. Contacts and pipelines sync only after it is verified." });
+  }
   if (facts.aiEmployeesVerified < facts.aiEmployeesTotal) missingConnections.push({ key: "ai", label: `AI employees not yet online (${facts.aiEmployeesVerified}/${facts.aiEmployeesTotal})`, why: "Each employee goes online only after a live connection check passes." });
   if (!facts.automationMapped) missingConnections.push({ key: "automation", label: "Automation not set up", why: "iAcquire connects approved workflows to your workspace. They stay inactive until tested." });
   for (const ch of wanted as Array<"sms" | "whatsapp" | "email">) {
@@ -548,7 +560,13 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
       missingConnections.push({ key: `channel:${ch}`, label: `${{ sms: "SMS", whatsapp: "WhatsApp", email: "Email" }[ch]} sender not verified`, why: ch === "email" ? "Verify your sending address or domain before email can be sent." : "A registered, verified sender is required before messages can be sent." });
     }
   }
-  if (wantsAppointments(a) && !facts.calendarConnected) missingConnections.push({ key: "calendar", label: "Calendar not connected", why: "Connect a calendar so appointment times come from real availability." });
+  if (wantsAppointments(a) && !facts.calendarConnected) {
+    missingConnections.push({
+      key: "calendar",
+      label: "Calendar not connected",
+      why: native ? "Connect your calendar, or set up the iAcquire calendar, in the CRM setup guide so appointment times come from real availability." : "Connect a calendar so appointment times come from real availability.",
+    });
+  }
 
   const humanTasks: ReviewModel["humanTasks"] = [];
   const team = rows(a, "d.team");
@@ -556,7 +574,9 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   if (!a["e.logo"] || isEmptyValue(a["e.logo"])) humanTasks.push({ key: "logo", label: "Upload your logo (optional, helps your website and pages)", owner: "you" });
   if (wanted.length) humanTasks.push({ key: "senders", label: "Approve any sender registration or number fees we disclose", owner: "you" });
   if (wantsWebsite(a)) humanTasks.push({ key: "website", label: "Review and approve your website draft before it is published", owner: "you" });
-  humanTasks.push({ key: "crm", label: "Link your CRM location and apply the iAcquire master snapshot", owner: "iacquire" });
+  humanTasks.push(native
+    ? { key: "crm", label: "Apply your industry CRM Blueprint and check pipelines, tags and fields", owner: "iacquire" }
+    : { key: "crm", label: "Link your CRM location and apply the iAcquire master snapshot", owner: "iacquire" });
   humanTasks.push({ key: "profiles", label: "Create and verify your six AI employees", owner: "iacquire" });
   humanTasks.push({ key: "test", label: "Run safe tests before anything customer-facing is activated", owner: "iacquire" });
 

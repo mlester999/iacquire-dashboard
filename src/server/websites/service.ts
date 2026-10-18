@@ -7,9 +7,12 @@ import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
 import { consumeRateLimit, type RateLimitRule } from "@/server/security/rate-limit";
 import { readAuthorizedPrivateFile } from "@/server/storage/private";
-import { parseContent, referencedAssetIds, type SiteContent } from "@/lib/website/doc";
+import { eachElement, parseContent, referencedAssetIds, type SiteContent } from "@/lib/website/doc";
+import { formKeysIn } from "@/lib/crm/forms/website";
 import { parseStoredContent } from "@/lib/website/legacy";
-import { checkReadiness, warningNeedsAcknowledgement, type Issue } from "@/lib/website/lint";
+import { checkReadiness, warningNeedsAcknowledgement, type Issue, type Readiness } from "@/lib/website/lint";
+import { bookingReadiness } from "@/server/websites/booking-setup";
+import { websiteFormOptionsFor } from "@/server/crm/forms/definitions";
 import { buildFromTemplate } from "@/server/websites/templates";
 import { buildSiteDetails } from "@/server/websites/details";
 import { contentHash, sha256Hex } from "@/server/websites/hash";
@@ -333,11 +336,61 @@ export interface Preflight {
   canPublishNow: boolean;
 }
 
+/**
+ * The content checks plus the ones that need the workspace: a booking element must book into a live, public native calendar. Both feed
+ * the preflight, approval and publishing, so what the owner is told and what is enforced can't differ.
+ */
+export async function siteReadiness(orgId: string, content: SiteContent): Promise<Readiness> {
+  const r = checkReadiness(content);
+  const booking = await bookingReadiness(orgId, content);
+  const forms = await formReadiness(orgId, content);
+  return { blockers: [...r.blockers, ...booking.blockers, ...forms.blockers], warnings: [...r.warnings, ...booking.warnings, ...forms.warnings] };
+}
+
+/**
+ * A form element set to one of the workspace's CRM forms that isn't live shows the built-in enquiry form instead (the site never breaks),
+ * so the owner is told before publishing rather than finding out from the live page: a warning while the built-in form takes enquiries,
+ * a blocker when it is switched off in Site settings (visitors would see a form they can't send). A live CRM form needs neither.
+ */
+async function formReadiness(orgId: string, content: SiteContent): Promise<{ blockers: Issue[]; warnings: Issue[] }> {
+  if (!formKeysIn(content).length) return { blockers: [], warnings: [] };
+  const options = await websiteFormOptionsFor(orgId);
+  const live = new Set(options.forms.filter((f) => f.def).map((f) => f.key));
+  const blockers: Issue[] = [];
+  const warnings: Issue[] = [];
+  eachElement(content, (e, where) => {
+    const key = e.type === "form" && typeof e.props.formKey === "string" ? e.props.formKey.trim() : "";
+    if (!key || (options.available && live.has(key))) return;
+    const f = options.forms.find((x) => x.key === key);
+    const why = !options.available
+      ? options.reason ?? "This workspace's CRM forms can't be used on the website."
+      : f
+        ? `The CRM form “${f.name}” isn't published.`
+        : `The CRM form this element uses (“${key}”) no longer exists.`;
+    const fix = !options.available ? "" : f ? " Publish it in CRM → Forms" : " Choose another form";
+    if (!content.form.enabled) {
+      blockers.push({
+        code: "form_disabled",
+        message: `${why} Visitors would see the built-in enquiry form here, which is switched off in Site settings, so they couldn't send it.${fix ? `${fix}, or turn enquiries on.` : " Turn enquiries on, or remove this form."}`,
+        where: `${where} › Enquiry form`, nodeId: e.id,
+      });
+      return;
+    }
+    const message = !options.available
+      ? `${why} Visitors see the built-in enquiry form here.`
+      : f
+        ? `The CRM form “${f.name}” isn't published, so visitors see the built-in enquiry form here until it is. Publish it in CRM → Forms.`
+        : `The CRM form this element uses (“${key}”) no longer exists, so visitors see the built-in enquiry form here. Choose another form.`;
+    warnings.push({ code: "form_not_live", message, where: `${where} › Enquiry form`, nodeId: e.id });
+  });
+  return { blockers, warnings };
+}
+
 export async function preflight(ctx: OrgContext): Promise<Preflight> {
   if (!ctx.can("website.view")) throw new AppError("forbidden", "You don't have access to the website.");
   const draft = await getDraft(ctx);
   if (!draft) throw new AppError("not_found", "Create your website first.");
-  const r = checkReadiness(draft.content);
+  const r = await siteReadiness(ctx.org.orgId, draft.content);
   const needsAck = r.warnings.filter(warningNeedsAcknowledgement);
   return { blockers: r.blockers, warnings: r.warnings.filter((w) => !warningNeedsAcknowledgement(w)), needsAcknowledgement: needsAck, canPublishNow: r.blockers.length === 0 };
 }
@@ -346,7 +399,7 @@ export async function submitForApproval(ctx: OrgContext): Promise<{ versionId: s
   requireEdit(ctx);
   const draft = await getDraft(ctx);
   if (!draft) throw new AppError("not_found", "Create your website first.");
-  const ready = checkReadiness(draft.content);
+  const ready = await siteReadiness(ctx.org.orgId, draft.content);
   if (ready.blockers.length) throw new PublishBlockedError("Fix the highlighted issues before sending your website for approval.", ready.blockers, []);
   return withSystem(async (db) => {
     const snap = await snapshot(db, { orgId: ctx.org.orgId, websiteId: draft.websiteId, templateKey: draft.templateKey, content: draft.content, source: "submit", note: "Sent for approval", userId: ctx.user.id });
@@ -428,7 +481,7 @@ export async function publishWebsite(ctx: OrgContext, input: { acknowledgeClaims
   if (!ctx.can("website.publish")) throw new AppError("forbidden", "Only the business owner can publish the website.");
   const draft = await getDraft(ctx);
   if (!draft) throw new AppError("not_found", "Create your website first.");
-  const ready = checkReadiness(draft.content);
+  const ready = await siteReadiness(ctx.org.orgId, draft.content);
   const claims = ready.warnings.filter(warningNeedsAcknowledgement);
   if (ready.blockers.length) throw new PublishBlockedError("Fix the highlighted issues before publishing.", ready.blockers, claims);
   if (claims.length && !input.acknowledgeClaims) throw new PublishBlockedError("Read the claims on your site and confirm you can back each one up.", [], claims);

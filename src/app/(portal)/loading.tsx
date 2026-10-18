@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/primitives";
 
 export default function PortalLoading() {
   return (
-    <div className="space-y-6" aria-busy="true" aria-label="Loading">
+    <div className="space-y-6" role="status" aria-busy="true" aria-label="Loading page">
       <div className="space-y-2">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-8 w-72" />

@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { ElementNode } from "@/lib/website/doc";
 import { Badge, ButtonEl, Divider, Heading, IconEl, ImageNode, ListEl, Spacer, TextEl } from "./basic";
+import { BookingEl } from "./booking";
 import { Collage, ContactInfo, Faq, FormEl, Gallery, Logo, Logos, MapEl, Marquee, Nav, Pricing, Services, Social, Stats, Steps, Team, Testimonials, Video } from "./content";
 import type { RenderCtx } from "./ctx";
 import { rootProps } from "./parts";
@@ -61,5 +62,6 @@ export function renderElement(el: ElementNode, ctx: RenderCtx, index?: number): 
     case "form": return <FormEl key={el.id} {...common} />;
     case "map": return <MapEl key={el.id} {...common} />;
     case "marquee": return <Marquee key={el.id} {...common} />;
+    case "booking": return <BookingEl key={el.id} {...common} />;
   }
 }

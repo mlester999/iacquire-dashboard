@@ -18,10 +18,10 @@ export function Dialog({
   children,
   footer,
   size = "md",
-  fullScreen = false,
   trigger,
   icon,
   ariaLabel,
+  fullScreen = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,12 +30,10 @@ export function Dialog({
   children?: React.ReactNode;
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
-  fullScreen?: boolean;
   trigger?: React.ReactNode;
-  /** Optional icon rendered in a tinted tile beside the title. */
   icon?: React.ReactNode;
-  /** Accessible name for the scrolling content region; defaults from a string title. */
   ariaLabel?: string;
+  fullScreen?: boolean;
 }) {
   const width = { sm: "sm:max-w-md", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
   const returnFocus = React.useRef<HTMLElement | null>(null);
@@ -70,10 +68,10 @@ export function Dialog({
             >
               <motion.div
                 className={cn(
-                  fullScreen
-                    ? "fixed inset-0 z-50 flex h-dvh max-h-dvh w-full flex-col rounded-none border-0 bg-surface shadow-float outline-none sm:inset-3 sm:h-[calc(100dvh-24px)] sm:max-h-[calc(100dvh-24px)] sm:w-[calc(100vw-24px)] sm:rounded-2xl sm:border"
-                    : "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-line bg-surface shadow-float outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100vw-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl",
-                  !fullScreen && width,
+                  "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border border-line bg-surface shadow-float outline-none",
+                  "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100vw-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl",
+                  width,
+                  fullScreen && "max-h-[100dvh] rounded-none sm:inset-4 sm:left-4 sm:top-4 sm:h-[calc(100dvh-32px)] sm:w-[calc(100vw-32px)] sm:max-w-none sm:translate-x-0 sm:translate-y-0 sm:rounded-2xl",
                 )}
                 initial={{ opacity: 0, y: 24, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -81,8 +79,8 @@ export function Dialog({
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               >
                 <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
-                  <div className={cn("min-w-0", icon && "flex items-start gap-3")}>
-                    {icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-inset ring-primary/20 [&>svg]:size-[18px]" aria-hidden>{icon}</span>}
+                  <div className="flex min-w-0 items-start gap-3">
+                    {icon && <span aria-hidden className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2">{icon}</span>}
                     <div className="min-w-0">
                       <D.Title className="text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
                       {description ? (
@@ -307,43 +305,9 @@ export function Tabs({
   id: string;
   children?: React.ReactNode;
 }) {
-  const listRef = React.useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = React.useState({ left: false, right: false });
-  const measure = React.useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const left = el.scrollLeft > 4;
-    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
-    setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
-  }, []);
-  // Bring the active tab into view (on mount and whenever it changes) without moving the page vertically.
-  React.useEffect(() => {
-    const list = listRef.current;
-    const active = list?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
-    if (list && active) {
-      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const target = active.offsetLeft - (list.clientWidth - active.offsetWidth) / 2;
-      list.scrollTo({ left: Math.max(0, target), behavior: reduce ? "auto" : "smooth" });
-    }
-    measure();
-  }, [value, measure]);
-  React.useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [measure]);
-  const fade = `linear-gradient(to right, ${edges.left ? "transparent, #000 28px" : "#000, #000 0"}, ${edges.right ? "#000 calc(100% - 28px), transparent" : "#000 100%, #000"})`;
   return (
     <TB.Root value={value} onValueChange={onValueChange}>
-      <TB.List
-        ref={listRef}
-        onScroll={measure}
-        style={edges.left || edges.right ? { maskImage: fade, WebkitMaskImage: fade } : undefined}
-        className={cn("scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1", className)}
-        aria-label="Sections"
-      >
+      <TB.List className={cn("scrollbar-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1", className)} aria-label="Sections">
         {items.map((item) => (
           <TB.Trigger
             key={item.value}

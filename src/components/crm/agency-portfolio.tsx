@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Contact } from "lucide-react";
 import { Badge, Card, EmptyState } from "@/components/ui/primitives";
 import { CRM_MODE_LABELS } from "@/lib/crm/types";
-import { relativeTime } from "@/lib/utils";
 import type { AgencyCrmRow } from "@/server/crm/agency";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 /** Counts across client CRMs, with no client records on the page. Opening one goes through its support-session gate. */
 export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
@@ -15,6 +15,7 @@ export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
         <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
           Counts only. Client records belong to the client: opening one asks for a reason, is time-limited, and shows up in the client&rsquo;s Support Access log.
         </p>
+        <Link href="/admin/crm/reports" className="mt-2 inline-flex min-h-11 items-center text-[13px] font-medium text-primary hover:underline sm:min-h-8">CRM operations report: failures, setup, billing and support across clients</Link>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -60,7 +61,7 @@ export function AgencyCrmPortfolio({ rows }: { rows: AgencyCrmRow[] }) {
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.newContacts7d.toLocaleString("en-US")}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.openDeals.toLocaleString("en-US")}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.overdueTasks ? <span className="font-medium text-danger-ink">{r.overdueTasks}</span> : 0}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{r.lastActivityAt ? relativeTime(r.lastActivityAt) : "—"}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{r.lastActivityAt ? <RelativeTime iso={r.lastActivityAt} /> : "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right">
                       <Link href={`/admin/clients/${r.orgId}/crm`} className="inline-flex min-h-9 items-center rounded-lg px-2.5 text-[12.5px] font-medium text-primary hover:bg-primary-soft">
                         {r.mySession ? `Continue (${r.mySession.mode === "write" ? "changes" : "view only"})` : "Open CRM"}

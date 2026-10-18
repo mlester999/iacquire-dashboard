@@ -2,6 +2,9 @@ import { ClipboardCheck } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getClientSetupSnapshot } from "@/server/setup/snapshots";
 import { SetupCenter } from "@/components/setup/setup-center";
+import { OnboardedBanner } from "@/components/setup/onboarded-banner";
+import { withSystem } from "@/server/db";
+import { crmOwners } from "@/server/setup/native-evidence";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { firstName } from "@/lib/utils";
@@ -42,13 +45,12 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       </Card>
     );
   }
+  // Who runs the CRM decides what the team does next: a Blueprint for iAcquire's own CRM (native or hybrid), the sub-account for GoHighLevel.
+  // A trusted read of this workspace's own provider mode, only when the banner shows.
+  const nativeCrm = onboarded === "1" ? (await withSystem((db) => crmOwners(db, ctx.org.orgId))).mode !== "ghl" : false;
   return (
     <>
-      {onboarded === "1" && (
-        <div role="status" className="mx-auto mb-4 max-w-6xl rounded-2xl border border-success/30 bg-success-soft/60 p-4 text-[14px] leading-relaxed text-success-ink">
-          <strong className="font-semibold">Your company setup is approved.</strong> Your six AI employees have configurations ready. The iAcquire team now links your CRM and verifies each connection. Nothing contacts your customers until you switch it on.
-        </div>
-      )}
+      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} />}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );

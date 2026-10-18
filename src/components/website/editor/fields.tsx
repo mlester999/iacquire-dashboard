@@ -11,6 +11,7 @@ import { templateImageDefault, withTemplateImageDefault } from "@/lib/website/te
 import { templateImageUrl } from "@/lib/website/template-image-assets";
 import { SafeImage } from "@/components/website/render/safe-image";
 import { pagePath } from "@/lib/website/doc";
+import { defaultCalendar, durationLabel } from "@/lib/website/booking";
 import { cn } from "@/lib/utils";
 import { AreaControl, ColorControl, IconButton, NumberControl, Row, Seg, SelectControl, TextControl, Toggle } from "./controls";
 import { useServices } from "./context";
@@ -158,12 +159,141 @@ function IconField({ value, onChange, label }: { value: string; onChange: (v: st
 }
 
 // ---------------------------------------------------------------------------
+// Booking: the calendar and appointment type a booking element offers
+// ---------------------------------------------------------------------------
+
+const linkBtn = "text-[11.5px] font-medium text-primary-ink underline-offset-2 hover:underline";
+
+function BookingWarning({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-[11.5px] leading-relaxed text-warning-ink">{children}</p>;
+}
+
+/**
+ * The native CRM form a form element uses, by key (a key stays the same when a form is renamed), or the built-in enquiry form. A draft can
+ * be chosen ahead of time but is flagged: until it is published, visitors see the built-in form.
+ */
+function FormPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const { forms, refreshForms } = useServices();
+  if (!forms) {
+    return value
+      ? <div className="flex items-center gap-2 text-[11.5px] text-muted"><span className="min-w-0 flex-1 truncate">Uses the CRM form &ldquo;{value}&rdquo; where a workspace has one.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Use the built-in form</button></div>
+      : <p className="text-[11.5px] leading-relaxed text-muted">Uses the built-in enquiry form. A client&apos;s own CRM forms can be chosen on their website.</p>;
+  }
+  if (forms.state === "loading") return <p role="status" className="text-[11.5px] text-muted">Loading your forms…</p>;
+  if (forms.state === "error") {
+    return <div className="space-y-1"><p role="alert" className="text-[11.5px] text-danger-ink">{forms.message}</p><button type="button" className={linkBtn} onClick={refreshForms}>Try again</button></div>;
+  }
+  const o = forms.options;
+  const chosen = value ? o.forms.find((f) => f.key === value) ?? null : null;
+  const options = [
+    { value: "", label: "Built-in enquiry form" },
+    ...o.forms.map((f) => ({ value: f.key, label: `${f.name}${f.def ? "" : " (draft)"}` })),
+    ...(value && !chosen ? [{ value, label: `${value} (not found)` }] : []),
+  ];
+  const warn = !o.available
+    ? o.reason ?? "CRM forms can't be used on this website."
+    : value && !chosen
+      ? "This form doesn't exist in this workspace (or was archived), so visitors see the built-in enquiry form. Choose another one."
+      : chosen && !chosen.def
+        ? `“${chosen.name}” isn't published yet, so visitors see the built-in enquiry form until it is.`
+        : null;
+  return (
+    <div className="space-y-1.5">
+      <SelectControl<string> label={label} value={value} options={options} onChange={onChange} />
+      {warn && <BookingWarning>{warn}</BookingWarning>}
+      {chosen?.def && <p className="text-[11.5px] leading-relaxed text-muted">{chosen.def.questions.length} {chosen.def.questions.length === 1 ? "question" : "questions"}, version {chosen.def.version}. Questions, consent wording and what happens after sending are edited in the CRM. After sending, visitors see your website&apos;s thank-you page.</p>}
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <a href={o.manageHref} target="_blank" rel="noreferrer" className={linkBtn}>Manage forms</a>
+        <button type="button" onClick={refreshForms} className={linkBtn}>Refresh the list</button>
+      </div>
+    </div>
+  );
+}
+
+/** Calendars come from the workspace, by slug (a slug stays the same when a calendar is renamed). Private ones can be chosen but are flagged, and publishing refuses them. */
+function CalendarPicker({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const { booking, refreshBooking } = useServices();
+  if (!booking) {
+    return value
+      ? <div className="flex items-center gap-2 text-[11.5px] text-muted"><span className="min-w-0 flex-1 truncate">Uses the calendar &ldquo;{value}&rdquo;.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Use the default</button></div>
+      : <p className="text-[11.5px] leading-relaxed text-muted">Uses each client&apos;s default public calendar, so this works on any client&apos;s website.</p>;
+  }
+  if (booking.state === "loading") return <p role="status" className="text-[11.5px] text-muted">Loading your calendars…</p>;
+  if (booking.state === "error") {
+    return <div className="space-y-1"><p role="alert" className="text-[11.5px] text-danger-ink">{booking.message}</p><button type="button" className={linkBtn} onClick={refreshBooking}>Try again</button></div>;
+  }
+  const o = booking.options;
+  const def = defaultCalendar(o.site);
+  const chosen = value ? o.calendars.find((c) => c.slug === value) ?? null : null;
+  const options = [
+    { value: "", label: def ? `Default calendar (${def.name})` : "Default calendar" },
+    ...o.calendars.map((c) => ({ value: c.slug, label: `${c.name}${c.public ? "" : " (private)"}` })),
+    ...(value && !chosen ? [{ value, label: `${value} (no longer exists)` }] : []),
+  ];
+  const warn = !o.site.available
+    ? o.unavailable
+    : value && !chosen
+      ? "This calendar no longer exists. Choose another one."
+      : chosen && !chosen.public
+        ? `"${chosen.name}" is private, so visitors can't book it. Make it public in the CRM, or choose another calendar.`
+        : chosen && !o.site.calendars.some((c) => c.slug === chosen.slug)
+          ? `"${chosen.name}" has no public appointment types yet.`
+          : !value && !def
+            ? "There's no public calendar with a public appointment type yet. Set one up in the CRM."
+            : null;
+  return (
+    <div className="space-y-1.5">
+      <SelectControl<string> label={label} value={value} options={options} onChange={onChange} />
+      {warn && <BookingWarning>{warn} Your website can&apos;t be published until this is fixed.</BookingWarning>}
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <a href={o.manageHref} target="_blank" rel="noreferrer" className={linkBtn}>Manage calendars</a>
+        <button type="button" onClick={refreshBooking} className={linkBtn}>Refresh the list</button>
+      </div>
+    </div>
+  );
+}
+
+function TypePicker({ label, value, calendar, onChange }: { label: string; value: string; calendar: string; onChange: (v: string) => void }) {
+  const { booking } = useServices();
+  if (!booking) {
+    return value
+      ? <div className="flex items-center gap-2 text-[11.5px] text-muted"><span className="min-w-0 flex-1 truncate">Offers only &ldquo;{value}&rdquo;.</span><button type="button" className={linkBtn} onClick={() => onChange("")}>Offer every type</button></div>
+      : <p className="text-[11.5px] leading-relaxed text-muted">Offers every public appointment type in that calendar.</p>;
+  }
+  if (booking.state !== "ready") return null;
+  const o = booking.options;
+  const slug = calendar || defaultCalendar(o.site)?.slug || "";
+  const cal = o.calendars.find((c) => c.slug === slug);
+  if (!cal) return <p className="text-[11.5px] text-muted">Choose a calendar first.</p>;
+  const chosen = value ? cal.types.find((t) => t.slug === value) ?? null : null;
+  const options = [
+    { value: "", label: "Every public type" },
+    ...cal.types.map((t) => ({ value: t.slug, label: `${t.name} · ${durationLabel(t.durationMinutes)}${t.public ? "" : " (private)"}` })),
+    ...(value && !chosen ? [{ value, label: `${value} (not in this calendar)` }] : []),
+  ];
+  const offered = chosen ? (chosen.public ? [chosen] : []) : cal.types.filter((t) => t.public);
+  const warn = value && !chosen
+    ? "This type isn't in the chosen calendar. Choose another one."
+    : chosen && !chosen.public
+      ? `"${chosen.name}" is private, so visitors can't book it.`
+      : null;
+  return (
+    <div className="space-y-1.5">
+      <SelectControl<string> label={label} value={value} options={options} onChange={onChange} />
+      {warn && <BookingWarning>{warn}</BookingWarning>}
+      {offered.length > 0 && <p className="text-[11px] leading-relaxed text-muted">Visitors can book: {offered.map((t) => `${t.name} (${durationLabel(t.durationMinutes)})`).join(", ")}.</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // One field
 // ---------------------------------------------------------------------------
 
 const counter = (v: string, max: number) => (v.length > max * 0.8 ? <span className={cn("text-[10.5px] tabular-nums", v.length >= max ? "text-danger-ink" : "text-muted")}>{v.length}/{max}</span> : null);
 
-export function FieldEditor({ spec, value, onChange, scope }: { spec: FieldSpec; value: unknown; onChange: (v: unknown) => void; scope: string }) {
+/** One field of an element. `siblings` are the element's other values, for fields that depend on another (an appointment type on its calendar). */
+export function FieldEditor({ spec, value, onChange, scope, siblings }: { spec: FieldSpec; value: unknown; onChange: (v: unknown) => void; scope: string; siblings?: Rec }) {
   const id = `${scope}-${spec.key}`;
   const { design } = useServices();
   switch (spec.type) {
@@ -226,6 +356,12 @@ export function FieldEditor({ spec, value, onChange, scope }: { spec: FieldSpec;
       const rows = (Array.isArray(value) ? value : []) as Rec[];
       return <ListEditor spec={spec} rows={rows} onChange={onChange} scope={id} />;
     }
+    case "calendarRef":
+      return <Row label={spec.label} hint={spec.hint}><CalendarPicker label={spec.label} value={str(value)} onChange={onChange} /></Row>;
+    case "formRef":
+      return <Row label={spec.label} hint={spec.hint}><FormPicker label={spec.label} value={str(value)} onChange={onChange} /></Row>;
+    case "bookingTypeRef":
+      return <Row label={spec.label} hint={spec.hint}><TypePicker label={spec.label} value={str(value)} calendar={str(siblings?.[spec.calendarKey])} onChange={onChange} /></Row>;
   }
 }
 

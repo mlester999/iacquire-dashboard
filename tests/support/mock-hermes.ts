@@ -5,10 +5,43 @@ import http from "node:http";
 import crypto from "node:crypto";
 import type { AddressInfo } from "node:net";
 
+export interface MockInventoryTool {
+  name: string;
+  toolset?: string;
+  source?: "configurable" | "recently_shipped" | "default_injected" | "mcp" | "unresolved";
+  sourceServer?: string | null;
+  addedBelowExplicitConfig?: boolean;
+  available?: boolean;
+}
+
+export interface MockInventory {
+  /** Defaults to the six reviewed tools. Use [] to prove an empty catalog is refused. */
+  tools?: MockInventoryTool[];
+  enabledToolsets?: string[];
+  explicitConfigPresent?: boolean;
+  /** False makes GET /v1/tools return 404, like Hermes 0.21.5. */
+  advertised?: boolean;
+  /** Return this status instead of a catalog (e.g. 503 for an unavailable inventory service). */
+  status?: number;
+  /** Whether the gateway certifies the catalog as complete. Defaults to true. */
+  complete?: boolean;
+  incompleteReason?: string;
+  /** Echo X-Hermes-Inventory-Challenge as `challenge` (default true). */
+  echoChallenge?: boolean;
+  /** Return this challenge instead of the request's, to prove replay binding fails closed. */
+  challengeOverride?: string;
+  generatedAt?: string;
+  expiresAt?: string;
+  /** Return these tools from the second read onward, proving a changing inventory is detected. */
+  changeAfterFirstRead?: MockInventoryTool[];
+}
+
 export interface MockProfile {
   key: string;
   /** Tools to report from /v1/toolsets. */
   tools?: string[];
+  /** Complete runtime tool catalog controls for GET /v1/tools. */
+  inventory?: MockInventory;
   /** Advertise no SSE stream; the run is completed through GET /v1/runs/{id} polling. */
   polling?: boolean;
   /** Override behaviour for a given input. */
@@ -43,8 +76,20 @@ export interface MockHermes {
   url: string;
   runs: Map<string, Run>;
   requests: Array<{ method: string; path: string; profile: string | null }>;
+  /** Replace a profile's complete-inventory behaviour between assertions. */
+  setInventory(profile: string, inventory: MockInventory | null): void;
   close(): Promise<void>;
 }
+
+const SAFE_TOOLSETS = ["memory", "session_search", "todo", "vision", "web"];
+const SAFE_INVENTORY_TOOLS: MockInventoryTool[] = [
+  { name: "memory", toolset: "memory" },
+  { name: "session_search", toolset: "session_search" },
+  { name: "todo_list", toolset: "todo" },
+  { name: "vision_analyze", toolset: "vision" },
+  { name: "web_search", toolset: "web" },
+  { name: "web_extract", toolset: "web" },
+];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -61,6 +106,8 @@ function defaultScript(input: string): MockScript {
 export async function startMockHermes(profiles: Record<string, MockProfile>): Promise<MockHermes> {
   const runs = new Map<string, Run>();
   const requests: MockHermes["requests"] = [];
+  const state = new Map<string, MockProfile>(Object.entries(profiles).map(([name, profile]) => [name, { ...profile }]));
+  const inventoryReads = new Map<string, number>();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -77,23 +124,69 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
       res.end(JSON.stringify(body));
     };
     if (pathname === "/health") return send(200, { status: "ok" });
-    const p = profile ? profiles[profile] : undefined;
+    const p = profile ? state.get(profile) : undefined;
     const auth = req.headers.authorization ?? "";
     if (!p) return send(404, { error: "unknown profile" });
     if (auth !== `Bearer ${p.key}`) return send(401, { error: "unauthorized" });
     if (req.method === "GET" && pathname === "/v1/models") return send(200,{object:"list",data:[{id:profile,object:"model",owned_by:"hermes",root:profile,parent:null}]});
 
     if (req.method === "GET" && pathname === "/v1/capabilities") {
+      const inventoryAdvertised = p.inventory?.advertised !== false;
       return send(200, {
         object: "hermes.api_server.capabilities",
         platform: "hermes-agent",
         model: profile,
         auth: { type: "bearer", required: true },
         features: { chat_completions: true, responses_api: true, run_submission: true, run_status: true, run_events_sse: !p.polling, run_stop: true, run_approval_response: true, approval_events: true },
+        endpoints: {
+          toolsets: { method: "GET", path: "/v1/toolsets" },
+          ...(inventoryAdvertised ? { tools: { method: "GET", path: "/v1/tools" } } : {}),
+        },
       });
     }
     if (req.method === "GET" && pathname === "/v1/toolsets") {
-      return send(200, { object: "list", platform: "api_server", data: [{ name: "core", label: "Core", enabled: true, configured: true, tools: p.tools ?? ["web_search", "memory", "clarify"] }] });
+      const sets = [
+        { name: "web", label: "Web", enabled: true, configured: true, tools: ["web_search", "web_extract"] },
+        { name: "memory", label: "Memory", enabled: true, configured: true, tools: ["memory"] },
+        { name: "session_search", label: "Session search", enabled: true, configured: true, tools: ["session_search"] },
+        { name: "todo", label: "Planning", enabled: true, configured: true, tools: ["todo_list"] },
+        { name: "vision", label: "Vision", enabled: true, configured: true, tools: ["vision_analyze"] },
+        ...(p.tools?.length ? [{ name: "core", label: "Core", enabled: true, configured: true, tools: p.tools }] : []),
+      ];
+      return send(200, { object: "list", platform: "api_server", data: sets });
+    }
+    if (req.method === "GET" && pathname === "/v1/tools") {
+      const inventory = p.inventory ?? {};
+      if (inventory.advertised === false) return send(404, { error: { message: "Unknown or unconfigured profile", type: "not_found" } });
+      if (inventory.status) return send(inventory.status, { error: { message: "The complete tool inventory is unavailable.", type: "server_error" } });
+      const read = (inventoryReads.get(profile!) ?? 0) + 1;
+      inventoryReads.set(profile!, read);
+      const tools: MockInventoryTool[] = read > 1 && inventory.changeAfterFirstRead ? inventory.changeAfterFirstRead : inventory.tools ?? SAFE_INVENTORY_TOOLS;
+      const challengeHeader = req.headers["x-hermes-inventory-challenge"];
+      const challenge = Array.isArray(challengeHeader) ? challengeHeader[0] : challengeHeader;
+      return send(200, {
+        object: "list",
+        platform: "api_server",
+        complete: inventory.complete ?? true,
+        incomplete_reason: inventory.incompleteReason ?? null,
+        explicit_config_present: inventory.explicitConfigPresent ?? true,
+        enabled_toolsets: inventory.enabledToolsets ?? SAFE_TOOLSETS,
+        data: tools.map((tool) => ({
+          type: "function",
+          function: { name: tool.name, description: "", parameters: { type: "object", properties: {} } },
+          provenance: {
+            source: tool.source ?? "configurable",
+            toolset: tool.toolset ?? null,
+            requested_toolsets: tool.toolset ? [tool.toolset] : [],
+            source_server: tool.sourceServer ?? null,
+            added_below_explicit_config: tool.addedBelowExplicitConfig ?? false,
+          },
+          ...(tool.available !== undefined ? { available: tool.available } : {}),
+        })),
+        ...(inventory.echoChallenge !== false && challenge ? { challenge: inventory.challengeOverride ?? challenge } : {}),
+        ...(inventory.generatedAt ? { generated_at: inventory.generatedAt } : {}),
+        ...(inventory.expiresAt ? { expires_at: inventory.expiresAt } : {}),
+      });
     }
     if (req.method === "POST" && pathname === "/v1/runs") {
       const chunks: Buffer[] = [];
@@ -199,6 +292,12 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
     url: `http://127.0.0.1:${port}`,
     runs,
     requests,
+    setInventory(profile: string, inventory: MockInventory | null) {
+      const existing = state.get(profile);
+      if (!existing) throw new Error(`unknown mock profile: ${profile}`);
+      state.set(profile, { ...existing, inventory: inventory ?? undefined });
+      inventoryReads.delete(profile);
+    },
     close: () => new Promise<void>((resolve) => {
       server.closeAllConnections?.();
       server.close(() => resolve());

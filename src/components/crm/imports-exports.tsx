@@ -7,30 +7,40 @@ import { AlertTriangle, Download, FileSpreadsheet, Loader2, RotateCcw, Upload } 
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input, ProgressBar, Select } from "@/components/ui/primitives";
 import { Segmented } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { advanceImportAction, cancelImportAction, createImportAction, getImportAction, rollbackImportAction, startImportAction, startValidationAction } from "@/app/actions/crm";
 import { ConfirmDialog, PageTitle, useCrmAction } from "@/components/crm/ui";
-import type { ImportEntity, ImportJobView, ImportOptions } from "@/server/crm/imports";
+import type { CsvImportEntity, ImportJobView, ImportOptions } from "@/server/crm/imports";
 import type { ExportJobView } from "@/server/crm/exports";
 import type { CrmScope } from "@/server/crm/page";
+import type { GhlMigrationState } from "@/server/crm/ghl-migration";
+import { GhlMigrationPanel } from "@/components/crm/ghl-migration-panel";
+import { GHL_ENTITY_LABELS, isGhlMigrationEntity } from "@/lib/crm/ghl-migration";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 type Job = ImportJobView & { problems?: Array<{ row: number; status: string; errors: string[]; data: Record<string, string> }> };
-type Targets = Record<ImportEntity, Array<{ value: string; label: string }>>;
+type Targets = Record<CsvImportEntity, Array<{ value: string; label: string }>>;
+
+/** How a job is named in the history: a CSV file's records, or a GoHighLevel migration step. */
+function jobKind(j: ImportJobView): string {
+  if (j.source === "ghl_api") return `GoHighLevel migration · ${isGhlMigrationEntity(j.entity) ? GHL_ENTITY_LABELS[j.entity].many : j.entity}`;
+  return j.entity === "company" ? "Companies" : "Contacts";
+}
 
 const RUNNING = ["validating", "importing", "rolling_back"];
 const STATUS_LABEL: Record<string, string> = {
-  uploaded: "Waiting for mapping", validating: "Checking", validated: "Checked, ready to import", importing: "Importing", completed: "Imported", failed: "Stopped",
+  uploaded: "Waiting for mapping", fetching: "Reading GoHighLevel", validating: "Checking", validated: "Checked, ready to import", importing: "Importing", completed: "Imported", failed: "Stopped",
   cancelled: "Cancelled", rolling_back: "Undoing", rolled_back: "Undone",
 };
 const STATUS_TONE: Record<string, "neutral" | "primary" | "success" | "warning" | "danger"> = {
-  uploaded: "neutral", validating: "primary", validated: "primary", importing: "primary", completed: "success", failed: "danger", cancelled: "neutral", rolling_back: "warning", rolled_back: "neutral",
+  uploaded: "neutral", fetching: "primary", validating: "primary", validated: "primary", importing: "primary", completed: "success", failed: "danger", cancelled: "neutral", rolling_back: "warning", rolled_back: "neutral",
 };
 const MAX_BYTES = 5 * 1024 * 1024;
 
-export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmScope; jobs: ImportJobView[]; exports: ExportJobView[] | null; targets: Targets }) {
+export function ImportsExports({ scope, jobs, exports, targets, ghlMigration }: { scope: CrmScope; jobs: ImportJobView[]; exports: ExportJobView[] | null; targets: Targets; ghlMigration?: GhlMigrationState }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
-  const [entity, setEntity] = React.useState<ImportEntity>("contact");
+  const [entity, setEntity] = React.useState<CsvImportEntity>("contact");
   const [job, setJob] = React.useState<Job | null>(null);
   const [preview, setPreview] = React.useState<string[][]>([]);
   const [mapping, setMapping] = React.useState<Record<string, string>>({});
@@ -41,6 +51,12 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
   const [rollbackOpen, setRollbackOpen] = React.useState(false);
   const [dragOver, setDragOver] = React.useState(false);
   const canImport = !!scope.can["contacts.import"] && !scope.readOnly;
+  // Everyone with crm.view reaches this page (for the GoHighLevel migration preview). When none of the sections below would show (the
+  // same conditions they use: the migration panel, the CSV import, the import history, the exports), the page says so instead of
+  // promising imports and exports this person can't run.
+  const showsGhl = !!ghlMigration && (ghlMigration.connected || ghlMigration.can.dryRun);
+  const showsHistory = !!scope.can["contacts.import"];
+  const nothingVisible = !showsGhl && !canImport && !showsHistory && !exports;
 
   // Polls a running job forward. Each call processes a chunk on the server, so progress keeps moving even before the scheduler runs.
   const status = job?.status;
@@ -86,7 +102,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
     const r = await getImportAction(scope.orgId, id);
     if (!r.ok) return setUploadError(r.error);
     setJob(r.data);
-    setEntity(r.data.entity);
+    setEntity(r.data.entity === "company" ? "company" : "contact");
     setMapping(r.data.mapping && Object.keys(r.data.mapping).length ? r.data.mapping : Object.fromEntries(r.data.headers.map((h) => [h, "ignore"])));
     setPreview([]);
     setDuplicates(r.data.options.duplicates ?? "skip");
@@ -102,13 +118,23 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
 
   const step = !job ? "upload" : job.status === "uploaded" ? "map" : job.status === "validated" ? "review" : RUNNING.includes(job.status) ? "running" : "done";
   const s = job?.summary ?? {};
-  const progressOf = (n: number | undefined) => (job && job.totalRows ? Math.min(100, Math.round(((n ?? 0) / job.totalRows) * 100)) : 0);
+  // Live progress from the server's row counts (the summary is only written when a phase ends); 0 until the first poll brings them.
+  const progress = job?.progress && job.progress.total > 0 ? Math.min(100, Math.round((job.progress.done / job.progress.total) * 100)) : 0;
   const mappedTargets = Object.values(mapping).filter((t) => t !== "ignore");
   const duplicateTarget = mappedTargets.find((t, i) => mappedTargets.indexOf(t) !== i);
 
   return (
     <div className="space-y-6">
-      <PageTitle title="Imports & Exports" description="Bring contacts and companies in from a spreadsheet or another CRM, and take your data out whenever you want. Every import is checked first, can be undone, and is recorded." />
+      <PageTitle title="Imports & Exports" description={nothingVisible ? "Spreadsheet imports, exports and the GoHighLevel migration preview for this workspace." : "Bring contacts and companies in from a spreadsheet or another CRM, and take your data out whenever you want. Every import is checked first, can be undone, and is recorded."} />
+
+      {nothingVisible && (
+        <Card>
+          <EmptyState compact icon={<FileSpreadsheet className="size-5" />} title="Imports and exports are run by your workspace's owners and admins"
+            description="Ask an owner or admin to import a spreadsheet or export your contacts. If your business is moving from GoHighLevel, the migration preview appears here once iAcquire support connects that account." />
+        </Card>
+      )}
+
+      {ghlMigration && (ghlMigration.connected || ghlMigration.can.dryRun) && <GhlMigrationPanel scope={scope} initial={ghlMigration} />}
 
       {canImport && (
         <Card className="p-5">
@@ -132,7 +158,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
                 <span className="text-[12.5px] text-muted">Up to 5 MB and 20,000 rows. The first row must be column names.</span>
                 <input id="imp-file" type="file" accept=".csv,text/csv" className="sr-only" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
               </label>
-              <p className="text-[12.5px] text-muted">Nothing is imported until you check the file and confirm. Coming from GoHighLevel? Export your contacts there as CSV; the GoHighLevel ID column keeps re-imports from creating duplicates.</p>
+              <p className="text-[12.5px] text-muted">Nothing is imported until you check the file and confirm. Coming from GoHighLevel? Use Migrate from GoHighLevel above once your location is connected, or export your contacts there as CSV; the GoHighLevel ID column keeps re-imports from creating duplicates.</p>
             </div>
           )}
 
@@ -153,7 +179,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
                           <label htmlFor={`map-${i}`} className="sr-only">Import {h} into</label>
                           <Select id={`map-${i}`} value={mapping[h] ?? "ignore"} onChange={(e) => setMapping((m) => ({ ...m, [h]: e.target.value }))} className={cn("min-h-9 py-1", (mapping[h] ?? "ignore") === "ignore" && "text-muted")}>
                             <option value="ignore">Don’t import</option>
-                            {targets[job.entity].map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            {targets[job.entity === "company" ? "company" : "contact"].map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                           </Select>
                         </td>
                       </tr>
@@ -176,7 +202,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
                 <Button variant="ghost" onClick={() => run("cancel", () => cancelImportAction(scope.orgId, job.id), "Import cancelled.").then((ok) => ok && reset())}>Cancel</Button>
                 <Button loading={busy("validate")} disabled={!mappedTargets.length || Boolean(duplicateTarget)} onClick={async () => {
                   const ok = await run("validate", () => startValidationAction(scope.orgId, job.id, mapping, { duplicates, tagAll: tagAll.split(",").map((t) => t.trim()).filter(Boolean) }));
-                  if (ok) setJob({ ...job, status: "validating", summary: {} });
+                  if (ok) setJob({ ...job, status: "validating", summary: {}, progress: null });
                 }}>Check the file</Button>
               </div>
             </div>
@@ -187,7 +213,8 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
               <p className="text-[13px] text-ink-2">
                 {job.status === "validating" ? "Checking every row. Nothing is changed yet." : job.status === "importing" ? "Importing. You can leave this page; it carries on in the background." : "Undoing the import."}
               </p>
-              <ProgressBar value={job.status === "validating" ? progressOf(s.validated) : job.status === "importing" ? progressOf((s.created ?? 0) + (s.updated ?? 0) + (s.skipped ?? 0) + (s.needsReview ?? 0) + (s.failed ?? 0)) : progressOf(s.rolledBack)} label="Progress" />
+              <ProgressBar value={progress} label="Progress" />
+              {job.progress && job.progress.total > 0 && <p className="text-[12px] tabular-nums text-muted">{job.progress.done.toLocaleString("en-US")} of {job.progress.total.toLocaleString("en-US")}</p>}
               {job.status === "importing" && <Button variant="ghost" size="sm" onClick={() => run("cancel", () => cancelImportAction(scope.orgId, job.id), "Import stopped. Rows already imported stay; you can undo them.").then(() => open(job.id))}>Stop</Button>}
             </div>
           )}
@@ -206,7 +233,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
                   <Button variant="ghost" onClick={() => setJob({ ...job, status: "uploaded" })}>Change the mapping</Button>
                   <Button variant="ghost" onClick={() => run("cancel", () => cancelImportAction(scope.orgId, job.id), "Import cancelled.").then((ok) => ok && reset())}>Cancel</Button>
                 </div>
-                <Button loading={busy("import")} disabled={!((s.create ?? 0) + (s.update ?? 0) + (s.review ?? 0))} onClick={async () => { if (await run("import", () => startImportAction(scope.orgId, job.id))) setJob({ ...job, status: "importing", summary: { ...s } }); }}>
+                <Button loading={busy("import")} disabled={!((s.create ?? 0) + (s.update ?? 0) + (s.review ?? 0))} onClick={async () => { if (await run("import", () => startImportAction(scope.orgId, job.id))) setJob({ ...job, status: "importing", summary: { ...s }, progress: null }); }}>
                   Import {((s.create ?? 0) + (s.update ?? 0)).toLocaleString("en-US")} {job.entity === "company" ? "companies" : "contacts"}
                 </Button>
               </div>
@@ -241,7 +268,8 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
         </Card>
       )}
 
-      <section>
+      {/* Import history is for people who import; anyone in the workspace may still preview the GoHighLevel migration above. */}
+      {scope.can["contacts.import"] && <section>
         <h3 className="mb-2 text-[14px] font-semibold text-ink">Past imports</h3>
         {jobs.length ? (
           <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
@@ -250,15 +278,15 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
                 <FileSpreadsheet className="size-4 shrink-0 text-muted" aria-hidden />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-ink">{j.fileName ?? "Import"}</span>
-                  <span className="block text-[12px] text-muted">{j.entity === "company" ? "Companies" : "Contacts"} · {j.totalRows.toLocaleString("en-US")} rows · {relativeTime(j.createdAt)}{j.status === "completed" ? ` · ${j.summary.created ?? 0} created, ${j.summary.updated ?? 0} updated` : ""}</span>
+                  <span className="block text-[12px] text-muted">{jobKind(j)} · {j.totalRows.toLocaleString("en-US")} rows · <RelativeTime iso={j.createdAt} timezone={scope.timezone} />{j.status === "completed" ? ` · ${j.summary.created ?? 0} created, ${j.summary.updated ?? 0} ${j.source === "ghl_api" ? "linked" : "updated"}` : ""}</span>
                 </span>
                 <Badge tone={STATUS_TONE[j.status] ?? "neutral"}>{STATUS_LABEL[j.status] ?? j.status}</Badge>
-                {canImport && j.id !== job?.id && <Button size="sm" variant="ghost" onClick={() => open(j.id)}>Open</Button>}
+                {canImport && j.id !== job?.id && j.source !== "ghl_api" && <Button size="sm" variant="ghost" onClick={() => open(j.id)}>Open</Button>}
               </li>
             ))}
           </ul>
         ) : <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted">No imports yet.</p>}
-      </section>
+      </section>}
 
       {exports && (
         <section>
@@ -272,7 +300,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
               {exports.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-[13px]">
                   <span>{e.rowCount.toLocaleString("en-US")} {e.entity === "contact" ? "contacts" : e.entity} · by {e.requestedBy ?? (e.requestedByKind === "api" ? "API" : "someone")}</span>
-                  <span className="flex items-center gap-2 text-[12px] text-muted">{relativeTime(e.createdAt)}{e.status !== "completed" && <Badge tone={e.status === "failed" ? "danger" : "primary"}>{e.status === "failed" ? "Failed" : "Running"}</Badge>}</span>
+                  <span className="flex items-center gap-2 text-[12px] text-muted"><RelativeTime iso={e.createdAt} timezone={scope.timezone} />{e.status !== "completed" && <Badge tone={e.status === "failed" ? "danger" : "primary"}>{e.status === "failed" ? "Failed" : "Running"}</Badge>}</span>
                 </li>
               ))}
             </ul>
@@ -282,7 +310,7 @@ export function ImportsExports({ scope, jobs, exports, targets }: { scope: CrmSc
 
       <ConfirmDialog open={rollbackOpen} onOpenChange={setRollbackOpen} title="Undo this import?" confirmLabel="Undo import" danger loading={busy("rollback")}
         description="Records it created are removed and details it filled in are put back. Anything someone changed after the import is kept as it is."
-        onConfirm={async () => { if (job && (await run("rollback", () => rollbackImportAction(scope.orgId, job.id)))) { setRollbackOpen(false); setJob({ ...job, status: "rolling_back" }); } }} />
+        onConfirm={async () => { if (job && (await run("rollback", () => rollbackImportAction(scope.orgId, job.id)))) { setRollbackOpen(false); setJob({ ...job, status: "rolling_back", progress: null }); } }} />
     </div>
   );
 }

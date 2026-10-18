@@ -11,6 +11,7 @@ import { applyContactTags } from "@/server/crm/tags";
 import { getConsent, mergeContactsInTx, recordConsent, redactContact } from "@/server/messaging/contacts";
 import { normalizeEmail, normalizePhone, CHANNELS, type Channel } from "@/lib/messaging";
 import { composeDisplayName, LEAD_STATUSES, PREFERRED_CHANNELS, type CreatedVia, type LeadStatus, type PreferredChannel } from "@/lib/crm/types";
+import { maskCustomerLinks } from "@/server/messaging/redact";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -365,7 +366,7 @@ export async function assignContacts(actor: CrmActor, contactIds: string[], owne
     for (const r of rows) {
       if (r.assigned_user_id === ownerId) continue;
       await db.query("update contacts set assigned_user_id = $3, version = version + 1 where id = $1 and org_id = $2", [r.id, actor.orgId, ownerId]);
-      await emitEvent(db, actor, { type: "contact.assigned", entityType: "contact", entityId: r.id, contactId: r.id, payload: { from: r.assigned_user_id, to: ownerId }, dedupeKey: `contact.assigned:${r.id}:${ownerId ?? "none"}:${Date.now()}` });
+      await emitEvent(db, actor, { type: "contact.assigned", entityType: "contact", entityId: r.id, contactId: r.id, payload: { from: r.assigned_user_id, to: ownerId }, dedupeKey: `contact.assigned:${r.id}:v${(await db.query<{ version: number }>("select version from contacts where id = $1", [r.id])).rows[0].version}` });
       await recordActivity(db, actor, { kind: "contact.assigned", summary: owner ? `Assigned to ${owner.name}` : "Unassigned", contactId: r.id, metadata: { from: r.assigned_user_id, to: ownerId } });
       changed++;
     }
@@ -679,7 +680,7 @@ export async function listContactConversations(actor: CrmActor, contactId: strin
        where org_id = $1 and contact_id = $2 order by last_message_at desc nulls last limit 50`,
       [actor.orgId, contactId],
     );
-    return rows.map((r) => ({ id: r.id, channel: r.channel, status: r.status, ownerKind: r.owner_kind, lastMessageAt: r.last_message_at ? new Date(r.last_message_at).toISOString() : null, preview: r.last_message_preview, unread: r.unread_count }));
+    return rows.map((r) => ({ id: r.id, channel: r.channel, status: r.status, ownerKind: r.owner_kind, lastMessageAt: r.last_message_at ? new Date(r.last_message_at).toISOString() : null, preview: maskCustomerLinks(r.last_message_preview), unread: r.unread_count }));
   });
 }
 

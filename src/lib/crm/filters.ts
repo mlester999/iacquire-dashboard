@@ -142,6 +142,11 @@ export function kindForFieldType(type: FieldType): FieldKind {
 
 export const MAX_FILTER_DEPTH = 3;
 export const MAX_FILTER_CONDITIONS = 40;
+/**
+ * The most list values (tags, owners, stages, options …) one whole filter may carry across all its conditions. Each condition already takes
+ * at most 200; this bounds the total, so 40 conditions of 200 values each can't become one enormous statement.
+ */
+export const MAX_FILTER_LIST_VALUES = 1000;
 
 export interface FilterCondition {
   field: string;
@@ -191,7 +196,20 @@ export function parseFilter(input: unknown): FilterGroup {
   if (!parsed.success) throw new FilterError("This filter isn't valid. Rebuild it and try again.");
   const shape = checkFilterShape(parsed.data);
   if (shape) throw new FilterError(shape);
+  if (countListValues(parsed.data) > MAX_FILTER_LIST_VALUES) {
+    throw new FilterError(`A filter can list at most ${MAX_FILTER_LIST_VALUES.toLocaleString("en-US")} values in total across its conditions. Use fewer values, or group them with a tag or a Smart List.`);
+  }
   return parsed.data;
+}
+
+/** Every list value across a filter's conditions, however deeply a value nests its lists (a stage list inside an object counts too). */
+export function countListValues(group: FilterGroup): number {
+  const inValue = (v: unknown, depth: number): number => {
+    if (depth > 4 || v === null || typeof v !== "object") return 0;
+    if (Array.isArray(v)) return v.length + v.reduce<number>((n, x) => n + inValue(x, depth + 1), 0);
+    return Object.values(v).reduce<number>((n, x) => n + inValue(x, depth + 1), 0);
+  };
+  return group.conditions.reduce<number>((n, c) => n + (isGroup(c) ? countListValues(c) : inValue(c.value, 0)), 0);
 }
 
 export class FilterError extends Error {}

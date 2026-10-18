@@ -1,6 +1,6 @@
 // Native calendars and booking. Synthetic workspaces only; nothing here contacts a calendar provider or sends a message.
-import { beforeAll, describe, expect, it } from "vitest";
-import { withSystem, withUser } from "@/server/db";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import {
   addAvailabilityOverride, createAppointmentType, createCalendar, listCalendars, listHostAvailability, setHostAvailability, updateAppointmentType, updateCalendar,
 } from "@/server/calendars/setup";
@@ -291,5 +291,92 @@ describe("Appointment Setter and staff requests on native calendars", () => {
     const someoneElse = await createContact(b.actor("owner"), { firstName: "Noor", email: "noor@example.test" });
     const taken = await requestBooking({ orgId: b.org.id, contactId: someoneElse.id, startAt: at("10:00"), actor: { kind: "staff", userId: b.people.owner.id }, now: NOW });
     expect(taken).toMatchObject({ status: "unavailable", reason: "slot_taken" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes (Phase 2 scheduling review): each test failed before its fix
+// ---------------------------------------------------------------------------
+
+/** Every SQL statement the database runs while `fn` runs, in order (the embedded test database runs one transaction at a time). */
+async function statementsDuring(fn: () => Promise<unknown>): Promise<string[]> {
+  await withSystem(async () => undefined);
+  const driver = await (globalThis as unknown as { __iaqDb: { promise: Promise<{ transaction: (fn: (tx: Queryable) => Promise<unknown>) => Promise<unknown> }> } }).__iaqDb.promise;
+  const seen: string[] = [];
+  const original = driver.transaction.bind(driver);
+  const spy = vi.spyOn(driver, "transaction").mockImplementation((inner) =>
+    original((tx) => inner({ query: (sql: string, params?: unknown[]) => (seen.push(sql), tx.query(sql, params)) } as Queryable)),
+  );
+  try {
+    await fn();
+  } finally {
+    spy.mockRestore();
+  }
+  return seen;
+}
+
+describe("review fixes: hosts and group places", () => {
+  it("round robin reads the hosts' last assignments only after taking the calendar's lock, when booking and when moving", async () => {
+    const b = await crmOrg({ timezone: "Asia/Manila" });
+    const { typeId } = await setupWorkspace(b, { hosts: ["owner", "sales"], assignment: "round_robin" });
+    const page = await bookingPageActor(b.org.id);
+    // A booking that waited on the lock must rank hosts with what the booking before it committed, so the read comes after the lock.
+    const order = (sql: string[]) => ({
+      lock: sql.findIndex((q) => q.includes("pg_advisory_xact_lock")),
+      hosts: sql.findIndex((q) => q.includes("last_assigned_at") && /from crm_calendar_members/.test(q)),
+    });
+    let booked: Awaited<ReturnType<typeof bookNativeAppointment>> | null = null;
+    const bookSql = await statementsDuring(async () => {
+      booked = await bookNativeAppointment(page, { typeId, startAt: at("09:00"), contact: { firstName: "Ann", email: "ann@example.test" }, via: "booking_page", now: NOW });
+    });
+    const o1 = order(bookSql);
+    expect(o1.lock).toBeGreaterThanOrEqual(0);
+    expect(o1.hosts).toBeGreaterThan(o1.lock);
+    const moveSql = await statementsDuring(() => rescheduleNativeAppointment(b.actor("owner"), booked!.appointmentId, { startAt: at("11:00"), by: "staff", now: NOW }));
+    const o2 = order(moveSql);
+    expect(o2.lock).toBeGreaterThanOrEqual(0);
+    expect(o2.hosts).toBeGreaterThan(o2.lock);
+    // Rotation still works as before.
+    const next = await bookNativeAppointment(page, { typeId, startAt: at("14:00"), contact: { firstName: "Ben", email: "ben@example.test" }, via: "booking_page", now: NOW });
+    expect(next.hostIds[0]).not.toBe(booked!.hostIds[0]);
+  });
+
+  it("a group session on a collective calendar gives every host's place back when a booking is cancelled or moved", async () => {
+    const b = await crmOrg({ timezone: "Asia/Manila" });
+    const { typeId } = await setupWorkspace(b, { hosts: ["owner", "manager"], assignment: "collective", capacity: 3 });
+    const page = await bookingPageActor(b.org.id);
+    const live = async () =>
+      (await withSystem((db) => db.query<{ user_id: string; starts_at: Date; booked: number }>(
+        "select user_id, starts_at, booked from crm_busy_blocks where org_id = $1 and released_at is null order by starts_at, user_id", [b.org.id],
+      ))).rows.map((r) => [new Date(r.starts_at).toISOString(), r.booked]);
+    const placesAt = async (hhmm: string) => (await slotsFor(b, typeId)).find((s) => s.start === at(hhmm).toISOString())?.remaining;
+    const ten = at("10:00").toISOString();
+    const one = await bookNativeAppointment(page, { typeId, startAt: at("10:00"), contact: { firstName: "A", email: "a@example.test" }, via: "booking_page", now: NOW });
+    const two = await bookNativeAppointment(page, { typeId, startAt: at("10:00"), contact: { firstName: "B", email: "b@example.test" }, via: "booking_page", now: NOW });
+    expect(new Set(one.hostIds)).toEqual(new Set([b.people.owner.id, b.people.manager.id]));
+    // One shared block per host, each with both bookings in it; each host's block is recorded for each booking.
+    expect(await live()).toEqual([[ten, 2], [ten, 2]]);
+    const recorded = await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from crm_appointment_hosts where appointment_id = any($1::uuid[]) and busy_block_id is not null", [[one.appointmentId, two.appointmentId]]));
+    expect(recorded.rows[0].n).toBe(4);
+    expect(await placesAt("10:00")).toBe(1);
+
+    // Cancelling one gives a place back with BOTH hosts.
+    await cancelNativeAppointment(b.actor("owner"), one.appointmentId, { by: "staff", now: NOW });
+    expect(await live()).toEqual([[ten, 1], [ten, 1]]);
+    expect(await placesAt("10:00")).toBe(2);
+    // Cancelling it again changes nothing.
+    await cancelNativeAppointment(b.actor("owner"), one.appointmentId, { by: "staff", now: NOW });
+    expect(await live()).toEqual([[ten, 1], [ten, 1]]);
+
+    // Moving the other: both hosts' 10:00 blocks are released and 13:00 is held with both.
+    await rescheduleNativeAppointment(b.actor("owner"), two.appointmentId, { startAt: at("13:00"), by: "staff", now: NOW });
+    const one3 = at("13:00").toISOString();
+    expect(await live()).toEqual([[one3, 1], [one3, 1]]);
+    expect(await placesAt("10:00")).toBe(3);
+    expect(await placesAt("13:00")).toBe(2);
+    // And cancelling it leaves nobody's time held.
+    await cancelNativeAppointment(b.actor("owner"), two.appointmentId, { by: "staff", now: NOW });
+    expect(await live()).toEqual([]);
+    expect(await placesAt("13:00")).toBe(3);
   });
 });

@@ -5,6 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { emitEvent } from "@/server/crm/events";
+import { activeWorkflowsUsingField, workflowNames } from "@/server/crm/workflows/references";
 import { coerceFieldValue, normalizeOptions, readStoredValue, slugifyKey, type FieldDefinition, type FieldOption, type FieldValue } from "@/lib/crm/fields";
 import { FIELD_TYPES, type FieldEntity, type FieldType } from "@/lib/crm/types";
 
@@ -121,6 +122,8 @@ export async function updateCustomField(actor: CrmActor, id: string, input: { la
         const used = await db.query("select 1 from crm_field_values where field_id = $1 and (value_text = any($2::text[]) or value_list && $2::text[]) limit 1", [id, removed]);
         if (used.rows.length) throw new AppError("conflict", "A choice you removed is still used by some records. Change those records first, or keep the choice.");
       }
+      const workflows = removed.length ? await activeWorkflowsUsingField(db, actor.orgId, id, removed) : [];
+      if (workflows.length) throw new AppError("conflict", `A choice you removed is checked or set by ${workflowNames(workflows)}. Edit or pause the workflow first, or keep the choice.`);
       options = next;
     }
     if ((type === "select" || type === "multiselect") && !options.length) throw new AppError("invalid_input", "Add at least one choice.");
@@ -143,6 +146,8 @@ export async function updateCustomField(actor: CrmActor, id: string, input: { la
 export async function setCustomFieldArchived(actor: CrmActor, id: string, archived: boolean): Promise<void> {
   assertCan(actor, "fields.manage");
   await crmWrite(actor, async (db) => {
+    const workflows = archived ? await activeWorkflowsUsingField(db, actor.orgId, id) : [];
+    if (workflows.length) throw new AppError("conflict", `This field is used by ${workflowNames(workflows)}. Edit or pause the workflow first, so it doesn't stop working.`);
     const res = await db.query(`update crm_custom_fields set archived_at = ${archived ? "now()" : "null"} where id = $1 and org_id = $2`, [id, actor.orgId]);
     if (!res.rowCount) throw new AppError("not_found", "Field not found.");
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: archived ? "crm.field_archived" : "crm.field_restored", targetType: "crm_custom_field", targetId: id, result: "success" }, db);

@@ -7,14 +7,16 @@ import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Building2, Filter, Plus, S
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Sheet } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { archiveCompaniesAction, createCompanyAction, tagCompanyAction } from "@/app/actions/crm";
 import { FilterBuilder, completeFilter, describeFilter, useFilterFields, type FilterOptions } from "@/components/crm/filter-builder";
 import { Avatar, ConfirmDialog, Pagination, TagChip, useCrmAction } from "@/components/crm/ui";
+import { useUrlSearch } from "@/components/crm/url-search";
 import { encodeFilter } from "@/lib/crm/filter-codec";
 import type { FilterGroup } from "@/lib/crm/filters";
 import type { CompanyRow } from "@/server/crm/directory";
 import type { CrmScope } from "@/server/crm/page";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 const EMPTY: FilterGroup = { op: "and", conditions: [] };
 type SortKey = "name" | "created_at" | "updated_at";
@@ -36,7 +38,6 @@ export function CompaniesWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const { run, busy } = useCrmAction();
-  const [q, setQ] = React.useState(state.q);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const key = `${page}|${state.q}|${state.archived}|${JSON.stringify(state.filter)}`;
   const [selectionFor, setSelectionFor] = React.useState(key);
@@ -69,11 +70,8 @@ export function CompaniesWorkspace({
     [pathname, page, state],
   );
 
-  React.useEffect(() => {
-    if (q === state.q) return;
-    const t = setTimeout(() => router.replace(hrefWith({ q: q.trim() || null })), 300);
-    return () => clearTimeout(t);
-  }, [q, state.q, router, hrefWith]);
+  // Typing replaces the address after a pause; a search changed elsewhere (Back, a link, a filter that clears it) replaces the box's text.
+  const search = useUrlSearch(state.q, state, (q) => router.replace(hrefWith({ q: q || null })));
 
   const sortHeader = (label: string, by: SortKey) => {
     const active = (state.sort ?? "name") === by;
@@ -104,7 +102,7 @@ export function CompaniesWorkspace({
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-          <Input aria-label="Search companies" placeholder="Search by name, domain or city" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input aria-label="Search companies" placeholder="Search by name, domain or city" className="pl-9" value={search.text} onChange={(e) => search.setText(e.target.value)} />
         </div>
         <Button variant="secondary" onClick={() => { setDraft(state.filter ?? EMPTY); setFilterOpen(true); }}>
           <Filter className="size-4" />Filter{conditions ? <Badge tone="primary" className="ml-0.5 h-5 px-1.5">{conditions}</Badge> : null}
@@ -172,7 +170,7 @@ export function CompaniesWorkspace({
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.openOpportunities}</td>
                     <td className="max-w-[160px] px-3 py-2.5">{r.owner ? <span className="flex items-center gap-2"><Avatar name={r.owner.name} size="sm" /><span className="truncate">{r.owner.name}</span></span> : <span className="text-faint">Unassigned</span>}</td>
                     <td className="max-w-[200px] px-3 py-2.5"><span className="flex gap-1 overflow-hidden">{r.tags.slice(0, 2).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}{r.tags.length > 2 && <span className="self-center text-[12px] text-muted">+{r.tags.length - 2}</span>}</span></td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{relativeTime(r.createdAt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted"><RelativeTime iso={r.createdAt} timezone={scope.timezone} /></td>
                   </tr>
                 ))}
               </tbody>

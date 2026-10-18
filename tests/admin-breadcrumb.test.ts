@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ADMIN_SECTIONS, STUDIO_SECTIONS, adminCrumbs } from "@/lib/admin-breadcrumb";
+import { ADMIN_SECTIONS, BLUEPRINT_SECTIONS, STUDIO_SECTIONS, adminCrumbs, blueprintSectionFor, isNavActive } from "@/lib/admin-breadcrumb";
 
 const labels = (p: string) => adminCrumbs(p).map((c) => c.label);
 
@@ -33,8 +33,9 @@ describe("agency breadcrumbs follow the route", () => {
     expect(labels("/admin")).toEqual(["Dashboard"]);
     expect(labels("/admin/health")).toEqual(["System health"]);
     expect(labels("/admin/setup-templates")).toEqual(["Setup templates"]);
-    expect(labels("/admin/workforce")).toEqual(["Internal Workforce"]);
-    expect(labels("/admin/workforce/clients")).toEqual(["Client Workforces"]);
+    expect(labels("/admin/crm")).toEqual(["Client CRMs"]);
+    expect(labels("/admin/crm/reports")).toEqual(["Client CRMs", "CRM operations"]);
+    expect(adminCrumbs("/admin/crm/reports")[0].href).toBe("/admin/crm");
   });
 
   it("links every ancestor to its own screen and leaves the current page unlinked", () => {
@@ -49,5 +50,56 @@ describe("agency breadcrumbs follow the route", () => {
     const nav = [...shell.matchAll(/\{ href: "\/admin\/([a-z-]+)", label: "([^"]+)"/g)].map((m) => [m[1], m[2]] as const);
     expect(nav.length).toBeGreaterThan(10);
     for (const [area, label] of nav) expect(ADMIN_SECTIONS[area], area).toBe(label);
+    // Deeper entries (CRM operations under Client CRMs) carry the label their page's breadcrumb ends with.
+    const nested = [...shell.matchAll(/\{ href: "(\/admin\/[a-z-]+\/[a-z-/]+)", label: "([^"]+)"/g)].map((m) => [m[1], m[2]] as const);
+    expect(nested).toContainEqual(["/admin/crm/reports", "CRM operations"]);
+    for (const [href, label] of nested) expect(adminCrumbs(href).at(-1)?.label, href).toBe(label);
+    // A section's own entry isn't also highlighted on a deeper entry's page.
+    expect(shell).toMatch(/\{ href: "\/admin\/crm", label: "Client CRMs", icon: Contact, exact: true/);
+  });
+});
+
+describe("CRM Blueprints navigation", () => {
+  const id = "9b2f6a1e-3c4d-4e5f-8a9b-0c1d2e3f4a5b";
+  const org = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+
+  it("names every Blueprint screen by what it is", () => {
+    expect(labels("/admin/crm-blueprints")).toEqual(["CRM Blueprints"]);
+    expect(labels("/admin/crm-blueprints/import")).toEqual(["CRM Blueprints", "Import"]);
+    expect(labels("/admin/crm-blueprints/imports")).toEqual(["CRM Blueprints", "Import history"]);
+    expect(labels(`/admin/crm-blueprints/imports/${id}`)).toEqual(["CRM Blueprints", "Import history", "Conversion preview"]);
+    expect(labels("/admin/crm-blueprints/applications")).toEqual(["CRM Blueprints", "Applications"]);
+    expect(labels(`/admin/crm-blueprints/applications/${org}/${id}`)).toEqual(["CRM Blueprints", "Applications", "Application"]);
+    expect(labels(`/admin/crm-blueprints/${id}`)).toEqual(["CRM Blueprints", "Blueprint"]);
+    expect(labels(`/admin/crm-blueprints/${id}/edit`)).toEqual(["CRM Blueprints", "Blueprint", "Blueprint Editor"]);
+    expect(labels(`/admin/crm-blueprints/${id}/apply`)).toEqual(["CRM Blueprints", "Blueprint", "Apply to client"]);
+    // Never mistaken for the Client CRMs area it shares a prefix with.
+    for (const p of ["/admin/crm-blueprints", `/admin/crm-blueprints/${id}`]) expect(labels(p)).not.toContain("Client CRMs");
+  });
+
+  it("links each ancestor back to its own screen", () => {
+    expect(adminCrumbs(`/admin/crm-blueprints/${id}/apply`).map((c) => c.href)).toEqual(["/admin/crm-blueprints", `/admin/crm-blueprints/${id}`, undefined]);
+    expect(adminCrumbs(`/admin/crm-blueprints/imports/${id}`).map((c) => c.href)).toEqual(["/admin/crm-blueprints", "/admin/crm-blueprints/imports", undefined]);
+    expect(adminCrumbs(`/admin/crm-blueprints/applications/${org}/${id}`).map((c) => c.href)).toEqual(["/admin/crm-blueprints", "/admin/crm-blueprints/applications", undefined]);
+  });
+
+  it("highlights one sidebar entry and one tab, never a sibling with the same prefix", () => {
+    expect(isNavActive("/admin/crm-blueprints", "/admin/crm", true)).toBe(false);
+    expect(isNavActive("/admin/crm-blueprints", "/admin/crm-blueprints")).toBe(true);
+    expect(isNavActive(`/admin/crm-blueprints/${id}`, "/admin/crm-blueprints")).toBe(true);
+    expect(isNavActive("/admin/crm-blueprints-old", "/admin/crm-blueprints")).toBe(false);
+    expect(isNavActive("/admin/crm/reports", "/admin/crm/reports")).toBe(true);
+    expect(isNavActive("/admin/clients/c1", "/admin/clients")).toBe(true);
+    expect(BLUEPRINT_SECTIONS.map((s) => s.label)).toEqual(["Library", "Import", "Import history", "Applications"]);
+    expect(blueprintSectionFor("/admin/crm-blueprints")).toBe("/admin/crm-blueprints");
+    expect(blueprintSectionFor(`/admin/crm-blueprints/${id}/edit`)).toBe("/admin/crm-blueprints");
+    expect(blueprintSectionFor("/admin/crm-blueprints/import")).toBe("/admin/crm-blueprints/import");
+    expect(blueprintSectionFor("/admin/crm-blueprints/imports")).toBe("/admin/crm-blueprints/imports");
+    expect(blueprintSectionFor(`/admin/crm-blueprints/imports/${id}`)).toBe("/admin/crm-blueprints/imports");
+    expect(blueprintSectionFor(`/admin/crm-blueprints/applications/${org}/${id}`)).toBe("/admin/crm-blueprints/applications");
+    expect(blueprintSectionFor("/admin/crm")).toBeNull();
+    const shell = fs.readFileSync(path.resolve("src/components/admin/admin-shell.tsx"), "utf8");
+    expect(shell).toMatch(/\{ href: "\/admin\/crm-blueprints", label: "CRM Blueprints", icon: Layers, group: "Operations" \}/);
+    expect(shell).toContain("isNavActive(pathname, n.href, n.exact)");
   });
 });

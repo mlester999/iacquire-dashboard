@@ -6,6 +6,7 @@ import { Art } from "./art";
 import { displayPhone, ImageEl, imageShows, isIllustration, isTemplateStarter, pad2, Paras, rootProps, telHref, Txt } from "./parts";
 import { Inline_ } from "./parts";
 import type { ElementProps, RenderCtx } from "./ctx";
+import { SiteNativeForm } from "@/components/crm/forms/site-form";
 
 /** An address with a place to break after the "@", so a narrow column splits it there and never in the middle of a word. */
 function emailText(email: string): React.ReactNode {
@@ -442,8 +443,14 @@ export function Nav({ el, ctx, p, index }: P) {
 }
 
 export function FormEl({ el, ctx, p, index }: P) {
+  // A native CRM form chosen by key draws its published questions. A key that isn't a live form of this workspace (a draft, an archived
+  // form, a template from another workspace) falls back to the built-in enquiry form below, exactly as before.
+  const formKey = s(p.formKey);
+  const native = formKey ? ctx.forms?.[formKey] : undefined;
+  if (native) return <SiteNativeForm el={el} ctx={ctx} p={p} index={index} def={native} />;
+  const missingNative = Boolean(formKey) && ctx.mode === "edit" && Boolean(ctx.forms);
   const f = ctx.content.form;
-  if (!f.enabled) return <Empty el={el} ctx={ctx} index={index} label="Enquiry form: turn the form on in Site settings" />;
+  if (!f.enabled) return <Empty el={el} ctx={ctx} index={index} label={missingNative ? "This CRM form isn't live, and the built-in enquiry form is off in Site settings" : "Enquiry form: turn the form on in Site settings"} />;
   const preview = ctx.formAction === null;
   const mode = (k: "phone" | "message" | "service") => (s(p[k]) || f.fields[k]) as "required" | "optional" | "hidden";
   const req = (m: string) => m === "required";
@@ -477,6 +484,7 @@ export function FormEl({ el, ctx, p, index }: P) {
         {s(p.helper) && <p className="iq-note">{s(p.helper)}</p>}
       </fieldset>
       {preview && <p className="iq-note">Preview only: the form is switched off here and works on your live site.</p>}
+      {missingNative && <p className="iq-note">The CRM form chosen here isn&apos;t live, so visitors see this built-in enquiry form. Publish it in CRM → Forms, or choose another.</p>}
     </form>
   );
 }

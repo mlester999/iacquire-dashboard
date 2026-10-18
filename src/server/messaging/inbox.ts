@@ -6,6 +6,8 @@ import { reserveCredits, releaseReservation, BillingBlockedError } from "@/serve
 import { createApproval } from "@/server/approvals/service";
 import { ensureHumanOwner } from "@/server/messaging/handoff";
 import { evaluateSend, queueOutbound } from "@/server/messaging/send";
+import { maskCustomerLinks } from "@/server/messaging/redact";
+import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
 import { validateBusinessHours, type BusinessHours, type Channel, type CustomFollowUp, type FollowUpPreset, type MessageStatus } from "@/lib/messaging";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
@@ -39,15 +41,23 @@ export interface ConversationFilters {
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Conversations the signed-in person is allowed to see. Row-level security decides visibility, not this query. */
 export async function listConversations(ctx: OrgContext, f: ConversationFilters = {}): Promise<ConversationListItem[]> {
   if (!ctx.can("inbox.view")) throw new AppError("forbidden", "You can't view the inbox.");
+  return conversationItems(ctx, f, null);
+}
+
+/** The list query, or (with `onlyId`) the same row for one conversation, so opening a conversation doesn't depend on it being listed. */
+async function conversationItems(ctx: OrgContext, f: ConversationFilters, onlyId: string | null): Promise<ConversationListItem[]> {
   const params: unknown[] = [ctx.org.orgId];
   const where: string[] = ["c.org_id = $1"];
   const add = (sql: string, value: unknown) => {
     params.push(value);
     where.push(sql.replace("?", `$${params.length}`));
   };
+  if (onlyId) add("c.id = ?", onlyId);
   if (f.channel) add("c.channel = ?", f.channel);
   if (f.status) add("c.status = ?", f.status);
   if (f.priority) add("c.priority = ?", f.priority);
@@ -88,7 +98,7 @@ export async function listConversations(ctx: OrgContext, f: ConversationFilters 
       priority: r.priority,
       unread: r.unread_count,
       lastMessageAt: r.last_message_at ? new Date(r.last_message_at).toISOString() : null,
-      preview: r.last_message_preview,
+      preview: maskCustomerLinks(r.last_message_preview),
       escalation: r.esc_id ? { id: r.esc_id, status: r.esc_status as string, urgency: r.esc_urgency as string } : null,
     }));
   });
@@ -109,10 +119,28 @@ export interface MessageView {
   deliveredAt: string | null;
 }
 
+/** A conversation opens with at most its newest this-many messages (oldest first), so a years-long SMS thread is not sent whole. */
+export const CONVERSATION_MESSAGE_PAGE = 200;
+/** Drafts still waiting for approval that are older than the newest page are added to it (so they can still be approved), up to this many. */
+const HELD_DRAFTS_LIMIT = 50;
+
+type MessageRow = { id: string; direction: MessageView["direction"]; author_kind: MessageView["authorKind"]; author_name: string | null; body: string; status: MessageStatus; status_detail: string | null; blocked_reason: string | null; scope: string | null; created_at: Date; sent_at: Date | null; delivered_at: Date | null };
+const MESSAGE_COLUMNS = "m.id, m.direction, m.author_kind, u.full_name as author_name, m.body, m.status, m.status_detail, m.blocked_reason, m.scope, m.created_at, m.sent_at, m.delivered_at";
+const toMessageView = (m: MessageRow): MessageView => ({
+  id: m.id, direction: m.direction, authorKind: m.author_kind, authorName: m.author_name, body: maskCustomerLinks(m.body), status: m.status, statusDetail: m.status_detail, blockedReason: m.blocked_reason,
+  scope: m.scope, createdAt: new Date(m.created_at).toISOString(), sentAt: m.sent_at ? new Date(m.sent_at).toISOString() : null, deliveredAt: m.delivered_at ? new Date(m.delivered_at).toISOString() : null,
+});
+
 export interface ConversationDetail {
   conversation: ConversationListItem & { subject: string | null; lastInboundAt: string | null; whatsappWindowOpen: boolean | null };
   contact: { id: string; name: string; lifecycleStage: string; temperature: string | null; source: string; identities: Array<{ kind: string; value: string; verified: boolean }>; consent: Array<{ channel: string; purpose: string; status: string }> };
+  /** Oldest first: the newest CONVERSATION_MESSAGE_PAGE messages, plus any older drafts still waiting for approval. */
   messages: MessageView[];
+  /**
+   * Present only when the thread has older messages than those in `messages`: the oldest message of the newest page, where a read of older
+   * messages would continue (before it, by created_at then id).
+   */
+  olderMessages?: { beforeId: string };
   timeline: Array<{ at: string; text: string }>;
   memories: Array<{ id: string; kind: "confirmed_fact" | "ai_summary"; content: string; createdAt: string }>;
   followUp: { status: string; nextDueAt: string | null; remaining: number } | null;
@@ -121,8 +149,8 @@ export interface ConversationDetail {
 
 export async function getConversationDetail(ctx: OrgContext, conversationId: string): Promise<ConversationDetail> {
   if (!ctx.can("inbox.view")) throw new AppError("forbidden", "You can't view the inbox.");
-  const list = await listConversations(ctx, { limit: 200 });
-  const base = list.find((c) => c.id === conversationId);
+  // The conversation's own list row, under the same row-level security as the list (not the first 200 listed, so older ones open too).
+  const [base] = UUID.test(conversationId) ? await conversationItems(ctx, {}, conversationId) : [];
   if (!base) throw new AppError("not_found", "Conversation not found.");
   return withUser(ctx.user.id, async (db) => {
     const conv = await db.query<{ subject: string | null; last_inbound_at: Date | null }>("select subject, last_inbound_at from conversations where id = $1", [conversationId]);
@@ -132,11 +160,24 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
       "select distinct on (channel, purpose) channel, purpose, status from contact_consent_events where contact_id = $1 order by channel, purpose, id desc",
       [base.contactId],
     );
-    const msgs = await db.query<{ id: string; direction: MessageView["direction"]; author_kind: MessageView["authorKind"]; author_name: string | null; body: string; status: MessageStatus; status_detail: string | null; blocked_reason: string | null; scope: string | null; created_at: Date; sent_at: Date | null; delivered_at: Date | null }>(
-      `select m.id, m.direction, m.author_kind, u.full_name as author_name, m.body, m.status, m.status_detail, m.blocked_reason, m.scope, m.created_at, m.sent_at, m.delivered_at
-       from conversation_messages m left join users u on u.id = m.author_user_id where m.conversation_id = $1 order by m.created_at, m.id`,
-      [conversationId],
+    // The newest page (one extra row tells whether older messages exist), read newest first on the thread index and returned oldest first.
+    const newest = await db.query<MessageRow>(
+      `select * from (select ${MESSAGE_COLUMNS} from conversation_messages m left join users u on u.id = m.author_user_id
+                      where m.conversation_id = $1 order by m.created_at desc, m.id desc limit $2) t
+       order by t.created_at, t.id`,
+      [conversationId, CONVERSATION_MESSAGE_PAGE + 1],
     );
+    const hasOlder = newest.rows.length > CONVERSATION_MESSAGE_PAGE;
+    const page = hasOlder ? newest.rows.slice(1) : newest.rows;
+    const held = hasOlder
+      ? await db.query<MessageRow>(
+          `select * from (select ${MESSAGE_COLUMNS} from conversation_messages m left join users u on u.id = m.author_user_id
+                          where m.conversation_id = $1 and m.status = 'draft' and m.id <> all($2::uuid[]) order by m.created_at desc, m.id desc limit $3) t
+           order by t.created_at, t.id`,
+          [conversationId, page.map((m) => m.id), HELD_DRAFTS_LIMIT],
+        )
+      : { rows: [] as MessageRow[] };
+    const msgs = { rows: [...held.rows, ...page] };
     const events = await db.query<{ created_at: Date; from_kind: string; to_kind: string; actor_kind: string; reason: string | null; to_name: string | null }>(
       `select e.created_at, e.from_kind, e.to_kind, e.actor_kind, e.reason, u.full_name as to_name from conversation_ownership_events e left join users u on u.id = e.to_user_id where e.conversation_id = $1 order by e.id`,
       [conversationId],
@@ -162,13 +203,118 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
     return {
       conversation: { ...base, subject: conv.rows[0]?.subject ?? null, lastInboundAt: lastIn ? lastIn.toISOString() : null, whatsappWindowOpen: base.channel === "whatsapp" ? Boolean(lastIn && Date.now() - lastIn.getTime() <= policy.rows[0].whatsapp_window_hours * 3600_000) : null },
       contact: { id: k.rows[0].id, name: k.rows[0].display_name || "Unknown contact", lifecycleStage: k.rows[0].lifecycle_stage, temperature: k.rows[0].temperature, source: k.rows[0].source, identities: ids.rows, consent: consent.rows },
-      messages: msgs.rows.map((m) => ({ id: m.id, direction: m.direction, authorKind: m.author_kind, authorName: m.author_name, body: m.body, status: m.status, statusDetail: m.status_detail, blockedReason: m.blocked_reason, scope: m.scope, createdAt: new Date(m.created_at).toISOString(), sentAt: m.sent_at ? new Date(m.sent_at).toISOString() : null, deliveredAt: m.delivered_at ? new Date(m.delivered_at).toISOString() : null })),
+      messages: msgs.rows.map(toMessageView),
+      ...(hasOlder ? { olderMessages: { beforeId: page[0].id } } : {}),
       timeline,
       memories: mem.rows.map((m) => ({ id: m.id, kind: m.kind, content: m.content, createdAt: new Date(m.created_at).toISOString() })),
       followUp: plan.rows[0] && steps ? { status: "active", nextDueAt: steps.rows[0].next ? new Date(steps.rows[0].next).toISOString() : null, remaining: Number(steps.rows[0].remaining) } : null,
       escalation: esc.rows[0] ? { id: esc.rows[0].id, category: esc.rows[0].category, urgency: esc.rows[0].urgency, status: esc.rows[0].status, summary: esc.rows[0].summary, ownerResponse: esc.rows[0].owner_response, ownerDeadlineAt: esc.rows[0].owner_deadline_at ? new Date(esc.rows[0].owner_deadline_at).toISOString() : null, claimedByName: esc.rows[0].claimed_name } : null,
     };
   });
+}
+
+/** A page of a conversation's older messages, oldest first, for the inbox's "Load older messages". */
+export interface OlderMessagesPage {
+  messages: MessageView[];
+  /** Present only when still older messages exist: where the next read continues (the oldest message of this page). */
+  olderMessages?: { beforeId: string };
+}
+
+/**
+ * The CONVERSATION_MESSAGE_PAGE messages just before `beforeId` (by created_at, then id), oldest first: what "Load older messages" adds
+ * above the thread. The same visibility as getConversationDetail: the conversation must be one the person can open (its own list row, under
+ * row-level security), every message is read as the person, and `beforeId` must be a message of this conversation in this workspace that
+ * the person can see. One extra row tells whether there is more.
+ */
+export async function getOlderMessages(ctx: OrgContext, conversationId: string, beforeId: string): Promise<OlderMessagesPage> {
+  if (!ctx.can("inbox.view")) throw new AppError("forbidden", "You can't view the inbox.");
+  const [base] = UUID.test(conversationId) ? await conversationItems(ctx, {}, conversationId) : [];
+  if (!base) throw new AppError("not_found", "Conversation not found.");
+  if (!UUID.test(beforeId)) throw new AppError("not_found", "That message isn't part of this conversation.");
+  return withUser(ctx.user.id, async (db) => {
+    const anchor = await db.query("select 1 from conversation_messages where id = $1 and org_id = $2 and conversation_id = $3", [beforeId, ctx.org.orgId, conversationId]);
+    if (!anchor.rows.length) throw new AppError("not_found", "That message isn't part of this conversation.");
+    const { rows } = await db.query<MessageRow>(
+      `select * from (select ${MESSAGE_COLUMNS} from conversation_messages m left join users u on u.id = m.author_user_id
+                      where m.conversation_id = $1 and m.org_id = $3
+                        and (m.created_at, m.id) < (select b.created_at, b.id from conversation_messages b where b.id = $2 and b.org_id = $3 and b.conversation_id = $1)
+                      order by m.created_at desc, m.id desc limit $4) t
+       order by t.created_at, t.id`,
+      [conversationId, beforeId, ctx.org.orgId, CONVERSATION_MESSAGE_PAGE + 1],
+    );
+    const hasOlder = rows.length > CONVERSATION_MESSAGE_PAGE;
+    const page = hasOlder ? rows.slice(1) : rows;
+    return { messages: page.map(toMessageView), ...(hasOlder ? { olderMessages: { beforeId: page[0].id } } : {}) };
+  });
+}
+
+/** At most this many messages are re-read by id at once: as many as the older drafts a conversation opens with. */
+export const MESSAGES_BY_ID_LIMIT = HELD_DRAFTS_LIMIT;
+
+/**
+ * The current version of the given messages of one conversation, oldest first. The inbox re-reads a draft it loaded with an older page once
+ * the conversation stops listing it (approved or discarded, in the inbox, the Approval Center or by a teammate), so the message keeps its
+ * place in the history with its real status instead of dropping out. The same visibility as getOlderMessages: the conversation must be one
+ * the person can open, and every message is read as the person. Ids of other conversations or workspaces, and rows that no longer exist,
+ * are simply not returned. Read only.
+ */
+export async function getMessagesByIds(ctx: OrgContext, conversationId: string, ids: string[]): Promise<MessageView[]> {
+  if (!ctx.can("inbox.view")) throw new AppError("forbidden", "You can't view the inbox.");
+  const [base] = UUID.test(conversationId) ? await conversationItems(ctx, {}, conversationId) : [];
+  if (!base) throw new AppError("not_found", "Conversation not found.");
+  const unique = [...new Set(ids)];
+  if (unique.some((m) => typeof m !== "string" || !UUID.test(m))) throw new AppError("invalid_input", "Choose valid messages.");
+  if (unique.length > MESSAGES_BY_ID_LIMIT) throw new AppError("invalid_input", `At most ${MESSAGES_BY_ID_LIMIT} messages can be read at once.`);
+  if (!unique.length) return [];
+  return withUser(ctx.user.id, async (db) => {
+    const { rows } = await db.query<MessageRow>(
+      `select ${MESSAGE_COLUMNS} from conversation_messages m left join users u on u.id = m.author_user_id
+       where m.conversation_id = $1 and m.org_id = $2 and m.id = any($3::uuid[]) order by m.created_at, m.id`,
+      [conversationId, ctx.org.orgId, unique],
+    );
+    return rows.map(toMessageView);
+  });
+}
+
+/** A message as the inbox thread shows it: with the provider that carried it and its delivery events, oldest first. */
+export interface DeliveredMessageView extends MessageView {
+  /** The messaging provider's name (ghl, resend, twilio, meta_whatsapp); null before the message was handed to one. */
+  provider: string | null;
+  providerLabel: string | null;
+  deliveryEvents: Array<{ status: string; rawStatus: string | null; detail: string | null; at: string }>;
+}
+
+/** At most this many delivery events are read for one page of messages. */
+const DELIVERY_EVENTS_LIMIT = 1000;
+
+/**
+ * Adds to each message the provider that actually carried it and its delivery events (the provider's own status word and any failure
+ * detail), so the thread can say exactly what happened. Read as the person: row-level security limits it to messages they can already see.
+ * When a page has more events than the cap, the newest are kept (they belong to the newest messages, the ones people look at); each
+ * message's events are then listed oldest first.
+ */
+export async function withDeliveryDetail(userId: string, messages: MessageView[]): Promise<DeliveredMessageView[]> {
+  const ids = messages.filter((m) => m.direction !== "internal").map((m) => m.id);
+  const { providers, events } = await withUser(userId, async (db) => ({
+    providers: ids.length ? (await db.query<{ id: string; provider: string | null }>("select id, provider from conversation_messages where id = any($1::uuid[])", [ids])).rows : [],
+    events: ids.length
+      ? (await db.query<{ message_id: string; status: string; raw_status: string | null; detail: string | null; occurred_at: Date }>(
+          "select message_id, status, raw_status, detail, occurred_at from message_delivery_events where message_id = any($1::uuid[]) order by occurred_at desc, id desc limit $2",
+          [ids, DELIVERY_EVENTS_LIMIT],
+        )).rows
+      : [],
+  }));
+  const providerOf = new Map(providers.map((p) => [p.id, p.provider]));
+  const eventsOf = new Map<string, DeliveredMessageView["deliveryEvents"]>();
+  // Newest first from the database; walking it backwards lists each message's events oldest first (by occurred_at, then id).
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    const list = eventsOf.get(e.message_id) ?? [];
+    list.push({ status: e.status, rawStatus: e.raw_status, detail: e.detail, at: new Date(e.occurred_at).toISOString() });
+    eventsOf.set(e.message_id, list);
+  }
+  const label = (p: string | null) => (p ? (TRANSPORT_LABELS[p as TransportName] ?? p) : null);
+  return messages.map((m) => ({ ...m, provider: providerOf.get(m.id) ?? null, providerLabel: label(providerOf.get(m.id) ?? null), deliveryEvents: eventsOf.get(m.id) ?? [] }));
 }
 
 /** Opening a conversation marks it read for everyone. Only people who can see it can do this. */
@@ -301,7 +447,19 @@ export interface MessagingSettingsView {
   followUpCustom: CustomFollowUp | null;
   ownerTimeoutUrgentSeconds: number;
   ownerTimeoutNormalSeconds: number;
-  channels: Array<{ channel: Channel; enabled: boolean; senderIdentity: string | null; verified: boolean; registrationStatus: string; detail: string | null }>;
+  channels: Array<{
+    channel: Channel;
+    enabled: boolean;
+    senderIdentity: string | null;
+    verified: boolean;
+    registrationStatus: string;
+    detail: string | null;
+    /** Who carries the channel: GoHighLevel, or iAcquire's own Resend, Twilio or WhatsApp Business connection. */
+    provider: TransportName;
+    providerLabel: string;
+    /** A native channel's last authenticated test passed at this time. */
+    testedAt: string | null;
+  }>;
   agencyLimits: { maxFollowupAttempts: number; maxFollowupsPer30Days: number; quietHoursStart: string; quietHoursEnd: string; whatsappWindowHours: number; minHoursBetweenFollowups: number };
 }
 
@@ -312,8 +470,8 @@ export async function getMessagingSettings(ctx: OrgContext): Promise<MessagingSe
       "select auto_reply_enabled, reply_business_hours_only, business_hours, followup_preset, followup_custom, owner_timeout_urgent_seconds, owner_timeout_normal_seconds from messaging_settings where org_id = $1",
       [ctx.org.orgId],
     );
-    const ch = await db.query<{ channel: Channel; enabled: boolean; sender_identity: string | null; sender_verified_at: Date | null; registration_status: string; detail: string | null }>(
-      "select channel, enabled, sender_identity, sender_verified_at, registration_status, detail from messaging_channels where org_id = $1",
+    const ch = await db.query<{ channel: Channel; enabled: boolean; sender_identity: string | null; sender_verified_at: Date | null; registration_status: string; detail: string | null; provider: string; capability_tested_at: Date | null }>(
+      "select channel, enabled, sender_identity, sender_verified_at, registration_status, detail, provider, capability_tested_at from messaging_channels where org_id = $1",
       [ctx.org.orgId],
     );
     const p = await db.query<{ max_followup_attempts: number; max_followups_per_contact_30d: number; quiet_hours_start: string; quiet_hours_end: string; whatsapp_window_hours: number; min_hours_between_followups: number }>("select * from messaging_policy");
@@ -328,7 +486,18 @@ export async function getMessagingSettings(ctx: OrgContext): Promise<MessagingSe
       ownerTimeoutNormalSeconds: row?.owner_timeout_normal_seconds ?? 300,
       channels: (["sms", "whatsapp", "email"] as const).map((channel) => {
         const c = ch.rows.find((r) => r.channel === channel);
-        return { channel, enabled: c?.enabled ?? false, senderIdentity: c?.sender_identity ?? null, verified: Boolean(c?.sender_verified_at), registrationStatus: c?.registration_status ?? "not_started", detail: c?.detail ?? null };
+        const provider: TransportName = c && c.provider in TRANSPORT_LABELS ? (c.provider as TransportName) : "ghl";
+        return {
+          channel,
+          enabled: c?.enabled ?? false,
+          senderIdentity: c?.sender_identity ?? null,
+          verified: Boolean(c?.sender_verified_at),
+          registrationStatus: c?.registration_status ?? "not_started",
+          detail: c?.detail ?? null,
+          provider,
+          providerLabel: TRANSPORT_LABELS[provider],
+          testedAt: c?.capability_tested_at ? new Date(c.capability_tested_at).toISOString() : null,
+        };
       }),
       agencyLimits: { maxFollowupAttempts: p.rows[0].max_followup_attempts, maxFollowupsPer30Days: p.rows[0].max_followups_per_contact_30d, quietHoursStart: String(p.rows[0].quiet_hours_start).slice(0, 5), quietHoursEnd: String(p.rows[0].quiet_hours_end).slice(0, 5), whatsappWindowHours: p.rows[0].whatsapp_window_hours, minHoursBetweenFollowups: p.rows[0].min_hours_between_followups },
     };
@@ -378,28 +547,44 @@ export async function updateMessagingSettings(ctx: OrgContext, input: MessagingS
   });
 }
 
-/** The owner or a manager switches a verified channel on or off. An unverified channel cannot be enabled (the database refuses it too). */
+/**
+ * The owner or a manager switches a verified channel on or off. An unverified channel cannot be enabled (the database refuses it too).
+ * A channel carried by iAcquire's own provider connection (Resend, Twilio, WhatsApp Business) can always be switched off here, but only
+ * iAcquire switches it on, after its authenticated test passes (src/server/messaging/channels.ts).
+ */
 export async function setChannelEnabled(ctx: OrgContext, channel: Channel, enabled: boolean) {
   if (!ctx.can("messaging.configure")) throw new AppError("forbidden", "Only owners and managers can change channels.");
   await withSystem(async (db) => {
-    const { rows } = await db.query<{ sender_verified_at: Date | null; registration_status: string }>("select sender_verified_at, registration_status from messaging_channels where org_id = $1 and channel = $2", [ctx.org.orgId, channel]);
+    const { rows } = await db.query<{ sender_verified_at: Date | null; registration_status: string; provider: string }>("select sender_verified_at, registration_status, provider from messaging_channels where org_id = $1 and channel = $2", [ctx.org.orgId, channel]);
+    const provider = rows[0]?.provider;
+    if (enabled && provider && provider !== "ghl") {
+      throw new AppError("forbidden", `${provider in TRANSPORT_LABELS ? TRANSPORT_LABELS[provider as TransportName] : "This provider"} is switched on by your iAcquire team after they test the connection. Ask them to switch it on.`);
+    }
     if (enabled && !rows[0]?.sender_verified_at) throw new AppError("conflict", "iAcquire has not verified this channel's sender yet.");
     if (enabled && channel !== "email" && !["not_required", "approved"].includes(rows[0].registration_status)) throw new AppError("conflict", "Sender registration for this channel is not approved yet.");
     await db.query("update messaging_channels set enabled = $3 where org_id = $1 and channel = $2", [ctx.org.orgId, channel, enabled]);
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: enabled ? "messaging.channel_enabled" : "messaging.channel_disabled", targetType: "messaging_channel", targetId: channel, result: "success" }, db);
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: enabled ? "messaging.channel_enabled" : "messaging.channel_disabled", targetType: "messaging_channel", targetId: channel, result: "success", metadata: { provider: provider ?? "ghl" } }, db);
   });
 }
 
 /**
- * Agency step: records that a sender (number, WhatsApp number or email domain) has been checked. Until a provider check exists
- * this is an attestation by named agency staff, and it says so; it never claims the provider confirmed anything.
+ * Agency step for a GoHighLevel channel: records that a sender (number, WhatsApp number or email domain) has been checked in
+ * GoHighLevel. It is an attestation by named agency staff, and it says so; it never claims the provider confirmed anything. A channel
+ * carried by a native provider is verified only by that provider's authenticated test (runChannelCapabilityTest), so it is refused here.
  */
 export async function attestChannelSender(user: Pick<SessionUser, "id" | "platformRole">, input: { orgId: string; channel: Channel; senderIdentity: string; registrationStatus: "not_required" | "pending" | "approved" | "rejected"; verified: boolean; evidence: string }) {
   if (user.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
   if (input.evidence.trim().length < 5) throw new AppError("invalid_input", "Record what you checked, for example where you confirmed the sender.");
   await withSystem(async (db) => {
-    const access = await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, input.orgId]);
-    if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "You are not assigned to this client.");
+    if (user.platformRole !== "agency_super_admin") {
+      const a = await db.query("select 1 from staff_assignments where org_id = $1 and user_id = $2", [input.orgId, user.id]);
+      if (!a.rows[0]) throw new AppError("forbidden", "You are not assigned to this client.");
+    }
+    const existing = await db.query<{ provider: string }>("select provider from messaging_channels where org_id = $1 and channel = $2 for update", [input.orgId, input.channel]);
+    const provider = existing.rows[0]?.provider;
+    if (provider && provider !== "ghl") {
+      throw new AppError("conflict", `This channel sends through ${provider in TRANSPORT_LABELS ? TRANSPORT_LABELS[provider as TransportName] : "a native provider"}. Run its channel test instead; attestation is for GoHighLevel senders.`);
+    }
     await db.query("insert into messaging_settings (org_id) values ($1) on conflict do nothing", [input.orgId]);
     await db.query(
       `insert into messaging_channels (org_id, channel, sender_identity, sender_verified_at, registration_status, last_checked_at, detail)

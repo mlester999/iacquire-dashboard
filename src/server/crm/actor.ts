@@ -1,6 +1,7 @@
 import "server-only";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { hasDbErrorCode } from "@/server/diagnostics";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -47,7 +48,7 @@ export const AGENCY_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permiss
   "contacts.create", "contacts.edit", "contacts.assign", "contacts.merge", "contacts.import",
   "companies.create", "companies.edit", "companies.delete", "tags.manage", "fields.manage", "smartlists.share",
   "pipelines.manage", "opportunities.create", "opportunities.edit", "opportunities.reopen", "calendars.manage", "appointments.book", "appointments.manage",
-  "notes.write", "inbox.reply", "inbox.notes", "inbox.assign", "tasks.manage", "workflows.manage", "templates.manage", "campaigns.manage", "forms.manage", "reviews.manage", "analytics.export", "crm.provider.manage",
+  "notes.write", "inbox.reply", "inbox.notes", "inbox.assign", "tasks.manage", "workflows.manage", "templates.manage", "forms.manage", "reviews.manage", "analytics.export", "crm.provider.manage",
 ]);
 
 const AGENCY_MEMBER_WRITE_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
@@ -87,6 +88,28 @@ export function systemActor(org: { id: string; name?: string; timezone?: string 
   return { kind: "system", orgId: org.id, orgName: org.name ?? "", timezone: org.timezone ?? "UTC", userId: null, agentId: null, apiKeyId: null, supportSessionId: null, supportMode: null, label, can: () => true };
 }
 
+/**
+ * A client's own AI employee calling a CRM tool. The organization and the employee come from the server's token lookup, never from the
+ * request; `allowed` is what the server worked out for this call (the employee role's allowlist intersected with the token's scopes,
+ * see src/server/crm/agent-tools/catalog.ts). Nothing outside that set is permitted, whatever the employee's mode.
+ */
+export function agentActor(org: { id: string; name: string; timezone: string }, agent: { id: string; displayName: string }, allowed: Iterable<Permission>): CrmActor {
+  const permitted: ReadonlySet<Permission> = new Set(allowed);
+  return {
+    kind: "agent",
+    orgId: org.id,
+    orgName: org.name,
+    timezone: org.timezone || "UTC",
+    userId: null,
+    agentId: agent.id,
+    apiKeyId: null,
+    supportSessionId: null,
+    supportMode: null,
+    label: agent.displayName,
+    can: (p) => permitted.has(p),
+  };
+}
+
 export function assertCan(actor: CrmActor, permission: Permission, message?: string) {
   if (!actor.can(permission)) {
     if (actor.kind === "agency" && actor.supportMode === "read") throw new AppError("forbidden", "This support session is read-only. A super admin can open a write session with a reason.");
@@ -120,11 +143,35 @@ export function eventActor(actor: CrmActor): { kind: "user" | "agency" | "agent"
 }
 
 /**
- * Reads. A client member reads under row-level security, so a missing org filter in a query still cannot reach another tenant.
- * Other actors were authorized in code for exactly one organization and every query names it.
+ * How long one statement of a member's CRM read may run before the database stops it. A runaway read (a pathological filter or search)
+ * can't hold one of the few pooled connections for minutes. The slowest member statements measured at 50k contacts take well under this in
+ * PGlite, which is much slower than hosted Postgres (docs/crm-performance.md). Imports, Blueprint applies, provider switches and other
+ * writes run as trusted code (crmWrite / withSystem) with no such limit. Reports and CSV exports read as the member, but in short pieces:
+ * one transaction per report section, and exports in 500-row batches. PGlite accepts the setting but doesn't enforce it.
+ */
+export const MEMBER_READ_STATEMENT_TIMEOUT = "30s";
+
+/** Postgres's code for a statement it cancelled, here because of statement_timeout. */
+const QUERY_CANCELED = "57014";
+
+/**
+ * Reads. A client member reads under row-level security, so a missing org filter in a query still cannot reach another tenant, and each
+ * statement is bounded by MEMBER_READ_STATEMENT_TIMEOUT (set for this transaction only). Other actors were authorized in code for exactly
+ * one organization and every query names it.
  */
 export function crmRead<T>(actor: CrmActor, fn: (db: Queryable) => Promise<T>): Promise<T> {
-  if (actor.kind === "member" && actor.userId) return withUser(actor.userId, fn);
+  if (actor.kind === "member" && actor.userId) {
+    return withUser(actor.userId, async (db) => {
+      await db.query("select set_config('statement_timeout', $1, true)", [MEMBER_READ_STATEMENT_TIMEOUT]);
+      return fn(db);
+    }).catch((err: unknown) => {
+      // The hosted driver wraps the cancel in an OperationFailure (the code sits in its cause); PGlite throws it bare.
+      if (hasDbErrorCode(err, QUERY_CANCELED)) {
+        throw new AppError("internal", "This took too long to load, so it was stopped. Narrow the search or filter and try again.");
+      }
+      throw err;
+    });
+  }
   return withSystem(fn);
 }
 

@@ -4,6 +4,9 @@ import { normalizeEmail } from "@/lib/messaging";
 import { eachElement } from "@/lib/website/doc";
 import { checkFormToken, hashClient } from "@/server/sites/form-token";
 import { resolveSite, siteRateLimit, submitSiteForm } from "@/server/sites/runtime";
+import { collectFields } from "@/lib/crm/forms/logic";
+import { NATIVE_FORM_MARKER } from "@/lib/crm/forms/website";
+import { handleSiteCrmForm } from "@/server/crm/forms/site";
 
 // The public enquiry endpoint's decisions, separated from the HTTP wiring so they can be tested directly.
 
@@ -14,7 +17,18 @@ export interface EnquiryRequest {
   forwardedFor: string | null;
   referer: string | null;
   fields: Record<string, string>;
+  /** Every posted value in order, repeated names kept (a native form's multiple-choice answers). The built-in form reads `fields`. */
+  entries?: Array<[string, string]>;
   now?: number;
+}
+
+/** The form key a published form element names, or "" for the built-in enquiry form. Read from the published site only. */
+function nativeFormKey(content: Parameters<typeof eachElement>[0], elementId: string): string {
+  let key = "";
+  eachElement(content, (e) => {
+    if (e.type === "form" && e.id === elementId && typeof e.props.formKey === "string") key = e.props.formKey.trim();
+  });
+  return key;
 }
 export type EnquiryResult = { kind: "redirect"; to: string } | { kind: "error"; status: number; message: string };
 
@@ -61,6 +75,14 @@ export async function handleEnquiry(req: EnquiryRequest): Promise<EnquiryResult>
   const client = hashClient(ip);
   if (!(await siteRateLimit(`form:ip:${client}`, 8, 600)) || !(await siteRateLimit(`form:host:${req.host}`, 150, 3600))) {
     return fail(429, "We've received a lot of messages from here. Please try again later.");
+  }
+
+  // A native CRM form: the published element names it by key, and the page drew it (its marker carries that same key). Its answers are
+  // checked against the form's published version (src/server/crm/forms/site.ts); the built-in form's rules below don't apply to it.
+  const nativeKey = nativeFormKey(site.content, clip(f.e, 40));
+  if (nativeKey && clip(f[NATIVE_FORM_MARKER], 60) === nativeKey) {
+    const raw = req.entries ? collectFields(req.entries) : new Map(Object.entries(f).map(([k, v]) => [k, [v]]));
+    return handleSiteCrmForm({ site, host: req.host, formKey: nativeKey, pageSlug: clip(f.p, 200) || "home", raw, referer: req.referer, clientHash: client, now: req.now });
   }
 
   const cfg = site.content.form;

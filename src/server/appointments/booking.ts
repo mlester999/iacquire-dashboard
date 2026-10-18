@@ -12,6 +12,8 @@ import { ghlAppointmentProvider, type AppointmentProvider } from "@/server/appoi
 import { formatSlot, overlaps } from "@/lib/appointments";
 import type { OrgContext } from "@/server/tenancy/context";
 import { bookingIsNative, executeNativeBooking, requestNativeBooking } from "@/server/calendars/agent-booking";
+import { ghlPathRefusal } from "@/server/crm/provider-guard";
+import { isSwitching } from "@/server/crm/workspace";
 
 export type BookingActor = { kind: "ai"; agentId: string | null } | { kind: "staff"; userId: string };
 
@@ -69,6 +71,10 @@ async function release(db: Queryable, id: string, status: "failed" | "cancelled"
 export async function requestBooking(req: BookingRequest, d: { provider?: AppointmentProvider } = {}): Promise<BookingResult> {
   // Native calendars: the same hold, check and approval steps, booking a native appointment type instead of a GoHighLevel calendar.
   if (!d.provider && (await withSystem((db) => bookingIsNative(db, req.orgId)))) return requestNativeBooking(req);
+  // A provider switch gave iAcquire this workspace's appointments: GoHighLevel's calendar takes no new bookings from iAcquire, so the two
+  // systems never both hold the same booking. (Workspaces that never switched keep booking their connected GoHighLevel calendar.)
+  const elsewhere = await withSystem((db) => ghlPathRefusal(db, req.orgId, "appointments"));
+  if (elsewhere) return { status: "unavailable", reason: "blocked", detail: `${elsewhere} Set up a calendar in CRM → Calendars & Types.` };
   const now = req.now ?? new Date();
   const provider = deps(d);
 
@@ -143,7 +149,8 @@ export async function requestBooking(req: BookingRequest, d: { provider?: Appoin
       return { kind: "blocked" as const, detail: gate.detail };
     }
     // Even an autonomous employee only books on its own if the owner switched that on.
-    if (gate.decision === "allow" && held.aiBooking) return { kind: "proceed" as const };
+    // While a CRM provider switch cuts over, an AI booking waits for a person's yes instead of going straight in.
+    if (gate.decision === "allow" && held.aiBooking && !(await isSwitching(db, req.orgId))) return { kind: "proceed" as const };
     const approvalId = await createApproval(db, {
       orgId: req.orgId, agentId: req.actor.agentId, kind: "appointment_booking", title: `Book ${held.contactName || "a customer"} for ${formatSlot(b.start_at.toISOString(), b.timezone)}`,
       action: { bookingId: b.id }, targetType: "appointment_booking", targetId: b.id, targetLabel: held.contactName || undefined,
@@ -174,6 +181,12 @@ function resultFor(b: BookingRow): BookingResult {
 export async function executeBooking(orgId: string, bookingId: string, opts: { provider?: AppointmentProvider; now?: Date; ghlContactId?: string | null; approvalId?: string | null } = {}): Promise<BookingResult> {
   const kind = await withSystem((db) => db.query<{ provider: string }>("select provider from appointment_bookings where id = $1 and org_id = $2", [bookingId, orgId]));
   if (kind.rows[0]?.provider === "native") return executeNativeBooking(orgId, bookingId, { now: opts.now, approvalId: opts.approvalId });
+  // Approved before a provider switch gave iAcquire the appointments: it is not written to GoHighLevel now (the time is released, with why).
+  const elsewhere = await withSystem((db) => ghlPathRefusal(db, orgId, "appointments"));
+  if (elsewhere) {
+    await withSystem((db) => release(db, bookingId, "failed", elsewhere));
+    return { status: "unavailable", reason: "blocked", detail: elsewhere, bookingId };
+  }
   const provider = deps(opts);
   const now = opts.now ?? new Date();
   const loaded = await withSystem(async (db) => {

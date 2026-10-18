@@ -156,14 +156,24 @@ export function checkReadiness(content: SiteContent): Readiness {
     }
   }
 
-  // Forms must work.
+  // Forms must work. A form element set to one of the workspace's CRM forms (props.formKey) doesn't use the built-in enquiry form or its
+  // switch in Site settings; whether that CRM form is live is checked against the workspace when publishing (siteReadiness).
   let formEls = 0;
+  let builtInFormEls = 0;
+  let crmFormEls = 0;
+  let bookingEls = 0;
   eachElement(content, (e) => {
-    if (e.type === "form") formEls += 1;
+    if (e.type === "form") {
+      formEls += 1;
+      if (typeof e.props.formKey === "string" && e.props.formKey.trim()) crmFormEls += 1;
+      else builtInFormEls += 1;
+    }
+    if (e.type === "booking") bookingEls += 1;
   });
-  if (formEls > 0 && !content.form.enabled) blockers.push({ code: "form_disabled", message: "A page shows an enquiry form, but enquiries are switched off in Site settings. Visitors would be unable to send it.", where: "Form" });
-  if (!content.business.phone && !content.business.email && !(content.form.enabled && formEls > 0)) {
-    blockers.push({ code: "no_contact", message: "Visitors need a way to reach you: add a phone number, an email address, or put an enquiry form on a page.", where: "Business" });
+  if (builtInFormEls > 0 && !content.form.enabled) blockers.push({ code: "form_disabled", message: "A page shows an enquiry form, but enquiries are switched off in Site settings. Visitors would be unable to send it.", where: "Form" });
+  // A booking element or a CRM form is a way in too: whether it really works is checked against the workspace when publishing.
+  if (!content.business.phone && !content.business.email && !(content.form.enabled && builtInFormEls > 0) && crmFormEls === 0 && bookingEls === 0) {
+    blockers.push({ code: "no_contact", message: "Visitors need a way to reach you: add a phone number, an email address, or put an enquiry form or a booking button on a page.", where: "Business" });
   }
   if (content.form.enabled && formEls === 0) warnings.push({ code: "form_not_shown", message: "Enquiries are on, but no page shows the form. Add an enquiry form to a page.", where: "Form" });
 

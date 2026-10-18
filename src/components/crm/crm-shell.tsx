@@ -4,37 +4,57 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Building2, CalendarDays, Database, Eye, Handshake, Inbox, KanbanSquare, LayoutDashboard, ListChecks, ListFilter, Plug, ShieldCheck, Sparkles, Tags, TextCursorInput, Users,
-  type LucideIcon,
+  Building2, CalendarCheck, CalendarCog, CalendarDays, CalendarSync, Clock, Database, Eye, FileText, Handshake, Inbox, KanbanSquare, LayoutDashboard, Link2, ListChecks, ListFilter, Plug,
+  ShieldCheck, SlidersHorizontal, Sparkles, Tags, TextCursorInput, Users, Workflow, Activity, Repeat, Route, Webhook, type LucideIcon,
 } from "lucide-react";
+import { Braces } from "lucide-react";
+import { BarChart3 } from "lucide-react";
+import { Megaphone } from "lucide-react";
+import { ClipboardList } from "lucide-react";
+import { Phone, Star } from "lucide-react";
+import { Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CrmNavSection } from "@/lib/crm/nav";
-import { CRM_MODE_LABELS, type CrmMode } from "@/lib/crm/types";
+import { CRM_MODE_LABELS, type CapabilityProvider, type CrmCapability, type CrmMode } from "@/lib/crm/types";
 
 const ICONS: Record<string, LucideIcon> = {
   "layout-dashboard": LayoutDashboard, users: Users, "building-2": Building2, "list-filter": ListFilter, tags: Tags, "text-cursor-input": TextCursorInput,
   "kanban-square": KanbanSquare, handshake: Handshake, "list-checks": ListChecks, inbox: Inbox, sparkles: Sparkles, plug: Plug, "shield-check": ShieldCheck,
-  database: Database, eye: Eye, "calendar-days": CalendarDays,
+  database: Database, eye: Eye, "calendar-days": CalendarDays, "calendar-check": CalendarCheck, "link-2": Link2, clock: Clock, "calendar-cog": CalendarCog,
+  "calendar-sync": CalendarSync, "file-text": FileText, "sliders-horizontal": SlidersHorizontal, workflow: Workflow, activity: Activity,
+  repeat: Repeat, route: Route, webhook: Webhook,
+  braces: Braces,
+  "bar-chart-3": BarChart3,
+  megaphone: Megaphone,
+  "clipboard-list": ClipboardList,
+  star: Star,
+  phone: Phone,
+  rocket: Rocket,
 };
 
 export interface CrmShellProps {
   base: string;
   sections: CrmNavSection[];
   mode: CrmMode;
+  capabilityOwners: Record<CrmCapability, CapabilityProvider>;
   orgName: string;
   /** Shown above everything when an agency person is inside a client's CRM. */
   banner?: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function CrmShell({ base, sections, mode, orgName, banner, children }: CrmShellProps) {
+export function CrmShell({ base, sections, mode, capabilityOwners, orgName, banner, children }: CrmShellProps) {
   const pathname = usePathname();
   const href = (item: { path: string; external?: boolean }) => (item.external ? item.path : `${base}${item.path}`);
-  const isActive = (item: { path: string; external?: boolean; exact?: boolean }) => {
+  const matches = (item: { path: string; external?: boolean; exact?: boolean }) => {
     const h = href(item);
     return item.exact ? pathname === h : pathname === h || pathname.startsWith(`${h}/`);
   };
   const flat = sections.flatMap((s) => s.items);
+  const ownedByGhl = (item: { capability?: CrmCapability }) => item.capability && capabilityOwners[item.capability] === "ghl";
+  // The most specific item wins, so /workflows/activity highlights "Workflow Activity" and not also "Workflows".
+  const activeHref = flat.filter(matches).map(href).sort((x, y) => y.length - x.length)[0];
+  const isActive = (item: { path: string; external?: boolean }) => href(item) === activeHref;
   return (
     <div className="space-y-5">
       {banner}
@@ -72,6 +92,7 @@ export function CrmShell({ base, sections, mode, orgName, banner, children }: Cr
             >
               <Icon className="size-4" aria-hidden />
               {item.label}
+              {ownedByGhl(item) && <span className="rounded-md bg-warning-soft px-1.5 py-0.5 text-[10px] font-semibold text-warning-ink" title="Managed in GoHighLevel">GHL</span>}
             </Link>
           );
         })}
@@ -99,7 +120,8 @@ export function CrmShell({ base, sections, mode, orgName, banner, children }: Cr
                         >
                           <Icon className={cn("size-4 shrink-0", active ? "text-primary" : "text-muted")} aria-hidden />
                           <span className="truncate">{item.label}</span>
-                          {item.external && <span className="ml-auto text-[10px] text-faint" aria-hidden>↗</span>}
+                          {ownedByGhl(item) && <span className="ml-auto rounded-md bg-warning-soft px-1.5 py-0.5 text-[10px] font-semibold text-warning-ink" title="Managed in GoHighLevel">GHL</span>}
+                          {item.external && <span className={cn(!ownedByGhl(item) && "ml-auto", "text-[10px] text-faint")} aria-hidden>↗</span>}
                         </Link>
                       </li>
                     );

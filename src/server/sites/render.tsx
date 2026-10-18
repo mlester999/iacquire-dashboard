@@ -6,8 +6,11 @@ import type { ResolvedAsset } from "@/components/website/render/ctx";
 import { createBuilder } from "@/lib/website/build";
 import { findPage, pagePath, type SiteContent, type SitePage } from "@/lib/website/doc";
 import { srcSetFor } from "@/lib/website/responsive-image";
+import { contentUsesBooking } from "@/lib/website/booking";
+import { siteBookingData } from "@/server/sites/booking";
 import { issueFormToken } from "@/server/sites/form-token";
 import { normalizeHost, resolveSite, siteAssets, type LiveSite, type SiteAsset } from "@/server/sites/runtime";
+import { siteFormDefinitions } from "@/server/crm/forms/site";
 
 /** The site this request is for, but only if the proxy really routed here for that host. Direct calls to internal routes get nothing. */
 export async function siteForRequest(hostParam: string): Promise<LiveSite | null> {
@@ -57,9 +60,31 @@ export async function renderSitePage(site: LiveSite, host: string, slug: string)
   }
   if (!page) return null;
   const assets = await siteAssets(host, site.publicationId);
+  // Booking elements draw the workspace's public calendars; the lookup happens only for a site that has one.
+  const booking = contentUsesBooking(content) ? await siteBookingData(site) : null;
+  // Form elements that name a native CRM form draw its published questions; the lookup happens only for a site that names one.
+  const forms = await siteFormDefinitions(site, content);
   return React.createElement(SiteRenderer, {
     content, pageSlug: page.slug, resolveAsset: assetResolver(assets), mode: "published", formAction: "/__iaq/form",
-    formToken: issueFormToken(host), hrefFor: hrefForPage, publicationId: site.publicationId,
+    formToken: issueFormToken(host), hrefFor: hrefForPage, publicationId: site.publicationId, booking, forms,
+  });
+}
+
+/**
+ * A page of the site's own making (the booking pages) inside the site's real header and footer, with its theme. The synthetic page's
+ * address contains "_", which no page of the site can have, so it never shadows one of the owner's pages.
+ */
+export async function renderSiteShell(site: LiveSite, host: string, title: string, main: React.ReactNode): Promise<React.ReactElement> {
+  const page: SitePage = { id: "pg-booking", slug: "_book", title, kind: "page", navLabel: "", showInNav: false, seoTitle: "", seoDescription: "", ogImage: null, noindex: true, items: [] };
+  // A header that floats over a hero picture would sit, unreadable, on top of these plain pages: here it takes its own place at the top.
+  const header = site.content.header?.layout.float ? { ...site.content.header, layout: { ...site.content.header.layout, float: false } } : site.content.header;
+  const content: SiteContent = { ...site.content, header, pages: [...site.content.pages, page] };
+  const assets = await siteAssets(host, site.publicationId);
+  const booking = await siteBookingData(site);
+  const forms = await siteFormDefinitions(site, content);
+  return React.createElement(SiteRenderer, {
+    content, pageSlug: page.slug, resolveAsset: assetResolver(assets), mode: "published", formAction: "/__iaq/form",
+    formToken: issueFormToken(host), hrefFor: hrefForPage, publicationId: site.publicationId, booking, forms, main,
   });
 }
 

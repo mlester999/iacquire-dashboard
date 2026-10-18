@@ -34,7 +34,27 @@ const bind = (ctx: CompileContext, value: unknown) => {
   ctx.params.push(value);
   return `$${ctx.params.length}`;
 };
+
+/**
+ * The organization's placeholder, for sub-selects that must not be correlated (so PostgreSQL runs them once per query instead of once per
+ * row). Relies on the CompileContext convention that the caller pushed the organization id first.
+ */
+function orgParam(ctx: CompileContext): "$1" {
+  if (typeof ctx.params[0] !== "string" || !UUID.test(ctx.params[0])) throw new Error("compile context: $1 must be the organization id");
+  return "$1";
+}
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
+
+/**
+ * A regular expression for "the text's digits, ignoring everything else, contain / equal / start with these digits": the digits in order
+ * with only non-digits between them. Same answer as regexp_replace(text, '\D', '', 'g') like '%digits%' (or = / like 'digits%'), without
+ * building a digits-only copy of every value, which was most of the cost of a phone search (about 12 times slower on 105,000 identities).
+ */
+export function digitsPattern(digits: string, mode: "contains" | "equals" | "starts_with"): string {
+  if (!/^\d+$/.test(digits)) throw new Error("digitsPattern takes digits only");
+  const body = digits.split("").join("\\D*");
+  return mode === "equals" ? `^\\D*${body}\\D*$` : mode === "starts_with" ? `^\\D*${body}` : body;
+}
 
 function fail(message: string): never {
   throw new FilterError(message);
@@ -238,10 +258,8 @@ function contactCondition(c: FilterCondition, ctx: CompileContext): string {
       const digits = str(c.value, label).replace(/\D/g, "");
       if (digits.length < 3) fail("Enter at least three digits of the phone number.");
       const positive = c.op === "not_contains" ? "contains" : c.op === "not_equals" ? "equals" : c.op;
-      const pattern = positive === "equals" ? digits : positive === "starts_with" ? `${digits}%` : `%${digits}%`;
-      const p = bind(ctx, pattern);
-      const cmp = positive === "equals" ? "=" : "like";
-      const any = `(regexp_replace(coalesce(c.phone, ''), '\\D', '', 'g') ${cmp} ${p} or ${identity("phone", `regexp_replace(i.value, '\\D', '', 'g') ${cmp} ${p}`)})`;
+      const p = bind(ctx, digitsPattern(digits, positive === "equals" ? "equals" : positive === "starts_with" ? "starts_with" : "contains"));
+      const any = `(coalesce(c.phone, '') ~ ${p} or ${identity("phone", `i.value ~ ${p}`)})`;
       return positive === c.op ? any : `not ${any}`;
     }
     case "city":
@@ -337,15 +355,18 @@ function ownerCondition(column: string, c: FilterCondition, ctx: CompileContext)
 
 function tagCondition(table: "crm_contact_tags" | "crm_company_tags", column: string, alias: string, c: FilterCondition, ctx: CompileContext): string {
   const ids = uuidList(c.value, "tags");
-  const p = bind(ctx, ids);
   const scope = `t.org_id = ${alias}.org_id and t.${column} = ${alias}.id`;
   switch (c.op) {
     case "has_any":
-      return `exists (select 1 from ${table} t where ${scope} and t.tag_id = any(${p}::uuid[]))`;
+      return `exists (select 1 from ${table} t where ${scope} and t.tag_id = any(${bind(ctx, ids)}::uuid[]))`;
     case "has_none":
-      return `not exists (select 1 from ${table} t where ${scope} and t.tag_id = any(${p}::uuid[]))`;
+      return `not exists (select 1 from ${table} t where ${scope} and t.tag_id = any(${bind(ctx, ids)}::uuid[]))`;
     case "has_all":
-      return `(select count(distinct t.tag_id) from ${table} t where ${scope} and t.tag_id = any(${p}::uuid[])) = ${ids.length}`;
+      // The records holding every one of the (distinct) tags, found once for the whole query: an uncorrelated grouped sub-select over this
+      // workspace's links to those tags. Counting each record's matching tags in a correlated sub-select ran once per record in the
+      // workspace; one existence check per tag made planning time grow faster than the square of the tag count (seconds at 100 tags, and
+      // a filter may carry 40 conditions of 200 tags each). This form plans in the same time whatever the number of tags.
+      return `${alias}.id in (select t.${column} from ${table} t where t.org_id = ${orgParam(ctx)} and t.tag_id = any(${bind(ctx, ids)}::uuid[]) group by t.${column} having count(distinct t.tag_id) = ${ids.length})`;
   }
   return fail(`"${c.op}" can't be used with tags.`);
 }
@@ -446,6 +467,8 @@ export function contactSearchCondition(q: string, ctx: CompileContext): string |
   if (!term) return null;
   const p = bind(ctx, `%${likeEscape(term)}%`);
   const digits = term.replace(/\D/g, "");
-  const phone = digits.length >= 4 ? ` or regexp_replace(i.value, '\\D', '', 'g') like ${bind(ctx, `%${digits}%`)}` : "";
-  return `(c.search_text like ${p} escape '\\' or exists (select 1 from contact_identities i where i.org_id = c.org_id and i.contact_id = c.id and (i.value like ${p} escape '\\'${phone})))`;
+  const phone = digits.length >= 4 ? ` or i.value ~ ${bind(ctx, digitsPattern(digits, "contains"))}` : "";
+  // The identity match is an uncorrelated sub-select over this workspace's identities only: PostgreSQL hashes it once per query. (Correlated,
+  // it was turned into a hash over every workspace's identities.)
+  return `(c.search_text like ${p} escape '\\' or c.id in (select i.contact_id from contact_identities i where i.org_id = ${orgParam(ctx)} and (i.value like ${p} escape '\\'${phone})))`;
 }

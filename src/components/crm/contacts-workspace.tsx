@@ -9,18 +9,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState, Field, Input, Select } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, Sheet } from "@/components/ui/overlays";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { archiveContactsAction, assignContactsAction, countContactsAction, createSmartListAction, pinSmartListAction, tagContactsAction, updateSmartListAction } from "@/app/actions/crm";
 import { FilterBuilder, completeFilter, describeFilter, useFilterFields, type FilterOptions } from "@/components/crm/filter-builder";
 import { ContactFormDialog } from "@/components/crm/contact-form-dialog";
 import { displayFieldValue, type FieldDef } from "@/components/crm/field-input";
 import { Avatar, ConfirmDialog, LeadStatusBadge, Pagination, TagChip, useCrmAction } from "@/components/crm/ui";
+import { useUrlSearch } from "@/components/crm/url-search";
 import { CONTACT_COLUMN_LABELS, CONTACT_COLUMNS, CONTACT_SORT_LABELS, CONTACT_SORTS, EMPTY_FILTER, type FilterGroup } from "@/lib/crm/filters";
 import { CREATED_VIA_LABELS, formatPhone } from "@/lib/crm/types";
 import { encodeFilter } from "@/lib/crm/filter-codec";
 import type { ContactPage } from "@/server/crm/directory";
 import type { SmartListView } from "@/server/crm/smart-lists";
 import type { CrmScope } from "@/server/crm/page";
+import { RelativeTime } from "@/components/crm/relative-time";
 
 interface State {
   list: string | null;
@@ -61,7 +63,6 @@ export function ContactsWorkspace({
   const router = useRouter();
   const pathname = usePathname();
   const { run, busy } = useCrmAction();
-  const [q, setQ] = React.useState(state.q);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = React.useState(false);
   const [filterOpen, setFilterOpen] = React.useState(false);
@@ -103,12 +104,8 @@ export function ContactsWorkspace({
     [pathname, state],
   );
 
-  // Debounced server-side search.
-  React.useEffect(() => {
-    if (q === state.q) return;
-    const t = setTimeout(() => router.replace(hrefWith({ q: q.trim() || null })), 300);
-    return () => clearTimeout(t);
-  }, [q, state.q, router, hrefWith]);
+  // Typing replaces the address after a pause; a search changed elsewhere (Back, a link, a filter that clears it) replaces the box's text.
+  const search = useUrlSearch(state.q, state, (q) => router.replace(hrefWith({ q: q || null })));
 
   // Live count while building a filter.
   React.useEffect(() => {
@@ -150,8 +147,8 @@ export function ContactsWorkspace({
       case "source": return row.source || <span className="text-faint">—</span>;
       case "tags": return row.tags.length ? <div className="flex max-w-[240px] items-center gap-1 overflow-hidden">{row.tags.slice(0, 2).map((t) => <TagChip key={t.id} name={t.name} color={t.color} className="max-w-[110px]" />)}{row.tags.length > 2 && <span className="shrink-0 text-[12px] text-muted" title={row.tags.slice(2).map((t) => t.name).join(", ")}>+{row.tags.length - 2}</span>}</div> : <span className="text-faint">—</span>;
       case "lead_score": return row.leadScore ?? <span className="text-faint">—</span>;
-      case "created_at": return <span title={new Date(row.createdAt).toLocaleString()}>{relativeTime(row.createdAt)}</span>;
-      case "last_activity_at": return row.lastActivityAt ? relativeTime(row.lastActivityAt) : <span className="text-faint">—</span>;
+      case "created_at": return <RelativeTime iso={row.createdAt} timezone={scope.timezone} />;
+      case "last_activity_at": return row.lastActivityAt ? <RelativeTime iso={row.lastActivityAt} timezone={scope.timezone} /> : <span className="text-faint">—</span>;
       case "city": return row.city ?? <span className="text-faint">—</span>;
       case "country": return row.country ?? <span className="text-faint">—</span>;
       case "created_via": return CREATED_VIA_LABELS[row.createdVia] ?? row.createdVia;
@@ -244,7 +241,7 @@ export function ContactsWorkspace({
         </div>
             <div className="relative min-w-[200px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-              <Input aria-label="Search contacts" placeholder="Search name, email, phone or city" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
+              <Input aria-label="Search contacts" placeholder="Search name, email, phone or city" value={search.text} onChange={(e) => search.setText(e.target.value)} className="pl-9" />
             </div>
             <Button variant={filterActive ? "soft" : "secondary"} size="sm" onClick={() => { setDraft(state.filter ?? (editingList ? page.smartList!.filter : EMPTY_FILTER)); setFilterOpen(true); }}>
               <Filter className="size-4" />Filter{filterActive ? ` (${state.filter!.conditions.length})` : ""}
@@ -257,7 +254,7 @@ export function ContactsWorkspace({
                   const on = visibleCols.includes(col);
                   return (
                     <MenuItem key={col} onSelect={(e) => { e.preventDefault(); const next = on ? visibleCols.filter((c) => c !== col) : [...visibleCols, col]; router.replace(hrefWith({ cols: next.join(",") || "email" })); }}>
-                      <span className={cn("mr-2 inline-flex size-4 items-center justify-center rounded border", on ? "border-primary bg-primary text-white" : "border-line-strong")} aria-hidden>{on ? "✓" : ""}</span>
+                      <span className={cn("mr-2 inline-flex size-4 items-center justify-center rounded border", on ? "border-primary bg-primary text-primary-on" : "border-line-strong")} aria-hidden>{on ? "✓" : ""}</span>
                       {colLabel(col)}
                     </MenuItem>
                   );
@@ -276,7 +273,7 @@ export function ContactsWorkspace({
               </MenuContent>
             </Menu>
             {(filterActive || state.q) && (
-              <Button variant="ghost" size="sm" onClick={() => { setQ(""); router.replace(hrefWith({ f: null, q: null })); }}><X className="size-4" />Clear</Button>
+              <Button variant="ghost" size="sm" onClick={() => { search.reset(); router.replace(hrefWith({ f: null, q: null })); }}><X className="size-4" />Clear</Button>
             )}
           </div>
 

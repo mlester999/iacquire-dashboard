@@ -8,7 +8,7 @@ import { env } from "@/server/env";
 import type { SessionUser } from "@/server/auth/service";
 import { publishSetupChange } from "@/server/setup/hub";
 import { publishSetupRevision } from "@/server/setup/realtime";
-import { evaluateReadiness, type CheckKey, type CheckStatus, type InstanceState, type RuleTask, type SetupService, type TaskStatus, type CompletionMode } from "@/lib/setup";
+import { evaluateReadiness, type CheckKey, type CheckStatus, type InstanceState, type RuleTask, type SetupCrmProvider, type SetupService, type TaskStatus, type CompletionMode } from "@/lib/setup";
 
 export interface InstanceRow {
   id: string;
@@ -31,6 +31,7 @@ export interface TaskRow {
   completion_mode: CompletionMode;
   check_key: CheckKey | null;
   service: SetupService | null;
+  crm_provider: SetupCrmProvider | null;
   status: TaskStatus;
   required: boolean;
   hidden: boolean;
@@ -56,7 +57,7 @@ export interface TaskRow {
 
 /** Every column the agency side reads (the client side uses a narrower, RLS-granted list). */
 export const TASK_COLUMNS = `t.id, t.org_id, t.template_key, t.title, t.client_title, t.description, t.completion_notice, t.section,
-  t.completion_mode, t.check_key, t.service, t.status, t.required, t.hidden, t.service_excluded, t.requires_evidence,
+  t.completion_mode, t.check_key, t.service, t.crm_provider, t.status, t.required, t.hidden, t.service_excluded, t.requires_evidence,
   t.requires_client_response, t.sort_order, t.assigned_to, to_char(t.estimated_completion_at, 'YYYY-MM-DD') as estimated_completion_at,
   t.client_note, t.blocked_reason, t.completion_note, t.client_action, t.client_response, t.client_responded_at, t.completed_at,
   t.completed_by, t.completion_source, t.verified_at, t.verified_detail, t.updated_at`;
@@ -86,12 +87,15 @@ export async function ensureSetupInstance(db: Queryable, orgId: string, actorUse
     return again.rows[0] ? { id: again.rows[0].id, created: false } : null;
   }
   const instanceId = ins.rows[0].id;
+  // A step outside the purchased services, or for a CRM provider this workspace doesn't use (the GoHighLevel location for a native
+  // client), is created excluded. app.setup_crm_uses follows crm_workspaces, and a later provider change re-evaluates it (0037 trigger).
   await db.query(
     `insert into client_setup_tasks (org_id, instance_id, template_key, title, client_title, description, completion_notice, section,
-       completion_mode, check_key, service, required, requires_evidence, requires_client_response, client_action, sort_order, service_excluded)
+       completion_mode, check_key, service, required, requires_evidence, requires_client_response, client_action, sort_order, service_excluded, crm_provider)
      select $1, $2, tt.key, tt.title, tt.client_title, tt.description, tt.completion_notice, tt.section, tt.completion_mode, tt.check_key,
             tt.service, tt.required, tt.requires_evidence, tt.requires_client_response, tt.client_action, tt.sort_order,
-            tt.service is not null and not (tt.service = any(i.services))
+            (tt.service is not null and not (tt.service = any(i.services))) or (tt.crm_provider is not null and not app.setup_crm_uses($1, tt.crm_provider)),
+            tt.crm_provider
      from client_setup_template_tasks tt join client_setup_templates t on t.id = tt.template_id and t.is_default
      join client_setup_instances i on i.id = $2`,
     [orgId, instanceId],
@@ -106,6 +110,9 @@ export async function ensureSetupInstance(db: Queryable, orgId: string, actorUse
      join client_setup_tasks d on d.instance_id = $2 and d.template_key = dep.key`,
     [orgId, instanceId],
   );
+  // The same rule a later provider change applies (0037): for a workspace already on GoHighLevel, the snapshot step keeps its GoHighLevel
+  // title ("CRM snapshot installed") instead of the template's provider-neutral one.
+  await syncSetupApplicability(db, orgId);
   await recordSetupEvent(db, { orgId, instanceId, actorUserId, actorKind: actorUserId ? "agency" : "system", event: "instance_created", visibility: "internal" });
   await recordAudit({ orgId, actorUserId, actorKind: actorUserId ? "agency" : "system", action: "setup.instance_created", targetType: "setup", targetId: instanceId, result: "success" }, db);
   return { id: instanceId, created: true };
@@ -124,6 +131,16 @@ export async function backfillSetupInstances(): Promise<string[]> {
     if (res?.created) created.push(r.id);
   }
   return created;
+}
+
+/**
+ * Re-evaluates which of a workspace's steps apply (purchased services and the CRM provider), inside the caller's transaction. Returns how
+ * many steps changed. A provider change already does this through the 0037 trigger; call it after changing services, or from code that
+ * changes the provider and wants the count. The caller bumps the revision (mutateSetup does).
+ */
+export async function syncSetupApplicability(db: Queryable, orgId: string): Promise<number> {
+  const { rows } = await db.query<{ n: number }>("select app.refresh_setup_applicability($1) as n", [orgId]);
+  return Number(rows[0]?.n ?? 0);
 }
 
 export async function ensureInstanceStandalone(orgId: string, actorUserId: string | null = null) {

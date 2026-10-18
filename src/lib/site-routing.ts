@@ -12,6 +12,11 @@ export type SiteRoute =
 
 export const SITE_PREFIX = "/site-runtime";
 
+/** /_book, /_book/<calendar>, /_book/<calendar>/<type>: slugs only, so nothing else can be smuggled into the internal route. */
+const BOOK_PATH = /^\/_book(\/[a-z0-9]+(?:-[a-z0-9]+)*)?(\/[a-z0-9]+(?:-[a-z0-9]+)*)?\/?$/;
+/** /_booked/t/<manage token> or /_booked/a/<appointment id>/<signature>: the page a visitor lands on after booking. */
+const BOOKED_PATH = /^\/_booked\/(t\/[A-Za-z0-9_-]{20,64}|a\/[0-9a-f-]{36}\/[0-9a-f]{40})\/?$/;
+
 export function normalizeRequestHost(raw: string | null | undefined): string {
   return (raw ?? "").trim().toLowerCase().replace(/:\d{1,5}$/, "").replace(/\.$/, "");
 }
@@ -28,6 +33,12 @@ export function routeRequest(input: { role: DeploymentRole; hostHeader: string |
   if (!host) return { kind: "block" };
   const h = encodeURIComponent(host);
   if (pathname === "/__iaq/form") return { kind: "site", host, target: `${SITE_PREFIX}/${h}/form`, isForm: true };
+  // The site's own booking pages (see lib/website/booking.ts). Only well-formed addresses are routed; anything else is a missing page.
+  if (pathname === "/__iaq/book") return { kind: "site", host, target: `${SITE_PREFIX}/${h}/book/submit`, isForm: true };
+  const book = BOOK_PATH.exec(pathname);
+  if (book) return { kind: "site", host, target: `${SITE_PREFIX}/${h}/book/p${book[1] ?? ""}${book[2] ?? ""}`, isForm: false };
+  const booked = BOOKED_PATH.exec(pathname);
+  if (booked) return { kind: "site", host, target: `${SITE_PREFIX}/${h}/book/done/${booked[1]}`, isForm: false };
   if (pathname.startsWith("/_a/")) return { kind: "site", host, target: `${SITE_PREFIX}/${h}/asset/${encodeURIComponent(pathname.slice(4).split("/")[0])}`, isForm: false };
   if (pathname === "/robots.txt") return { kind: "site", host, target: `${SITE_PREFIX}/${h}/robots`, isForm: false };
   if (pathname === "/sitemap.xml") return { kind: "site", host, target: `${SITE_PREFIX}/${h}/sitemap`, isForm: false };

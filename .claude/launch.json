@@ -29,6 +29,14 @@
         "scripts/sites-qa.mjs"
       ],
       "port": 3210
+    },
+    {
+      "name": "crm-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/crm-qa.mjs"
+      ],
+      "port": 3230
     }
   ]
 }

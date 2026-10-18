@@ -17,9 +17,9 @@ export function SetupNudge() {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[12.5px] font-medium uppercase tracking-wider text-primary">Your setup</p>
-          <h3 className="mt-0.5 text-[16px] font-semibold tracking-tight text-ink">
+          <h2 className="mt-0.5 text-[16px] font-semibold tracking-tight text-ink">
             {setup.percent === null ? "See what we're setting up for you" : `Your system is ${setup.percent}% set up`}
-          </h3>
+          </h2>
           <p className="mt-0.5 text-[13.5px] text-muted">
             {setup.needsAttention > 0 ? `${setup.needsAttention} ${setup.needsAttention === 1 ? "thing needs" : "things need"} your attention.` : "Follow what the iAcquire team is building for you."}
           </p>

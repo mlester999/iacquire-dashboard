@@ -1,5 +1,5 @@
 import "server-only";
-import { pendingMigrations, pingDb, withSystem } from "@/server/db";
+import { pendingMigrations, pingDb, withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import { getN8nStatus, type N8nStatus } from "@/server/integrations/n8n";
 import { helpAiAvailable } from "@/server/help/service";
@@ -16,6 +16,70 @@ export interface SystemHealth {
   recentErrors: Array<{ at: string; source: string; detail: string; org: string | null }>;
   runs24h: { total: number; failed: number; cancelled: number; tokens: number };
   pendingProvisioning: number;
+  crm: CrmDeliveryHealth;
+}
+
+/**
+ * Native CRM background work across every client: counts only (no client names, records or message text). Each number is a count of
+ * rows that exist now, or that changed in the last 24 hours where it says so.
+ */
+export interface CrmDeliveryHealth {
+  /** CRM events waiting for the dispatcher, and how long the oldest has waited. */
+  events: { backlog: number; oldestPendingAt: string | null; oldestPendingMinutes: number | null; deadLetters24h: number; retrying: number };
+  workflows: { failed24h: number; dead24h: number; waitingApproval: number };
+  /** Native form and built-in website form submissions. */
+  forms: { queued: number; retrying: number; failed24h: number };
+  /** Booking writes to connected calendars that last failed, and reminders that were held back in the last 24 hours. */
+  bookings: { calendarWritesFailing: number; remindersBlocked24h: number };
+  calendarSync: { failed24h: number; connectionsNeedingAttention: number };
+  webhooks: { failed24h: number; dead24h: number; pending: number };
+}
+
+export const EMPTY_CRM_HEALTH: CrmDeliveryHealth = {
+  events: { backlog: 0, oldestPendingAt: null, oldestPendingMinutes: null, deadLetters24h: 0, retrying: 0 },
+  workflows: { failed24h: 0, dead24h: 0, waitingApproval: 0 },
+  forms: { queued: 0, retrying: 0, failed24h: 0 },
+  bookings: { calendarWritesFailing: 0, remindersBlocked24h: 0 },
+  calendarSync: { failed24h: 0, connectionsNeedingAttention: 0 },
+  webhooks: { failed24h: 0, dead24h: 0, pending: 0 },
+};
+
+export async function crmDeliveryHealth(q: Queryable, now: Date = new Date()): Promise<CrmDeliveryHealth> {
+  const { rows } = await q.query<Record<string, string | Date | null>>(
+    `select (select count(*) from crm_events where dispatched_at is null)::text as backlog,
+            (select min(occurred_at) from crm_events where dispatched_at is null) as oldest,
+            (select count(*) from crm_events where dispatched_at is null and dispatch_attempts > 0)::text as retrying,
+            (select count(*) from crm_events where dispatched_at is not null and dispatch_error is not null and dispatched_at > $1::timestamptz - interval '1 day')::text as dead_letters,
+            (select count(*) from crm_workflow_runs where status = 'failed' and coalesce(finished_at, created_at) > $1::timestamptz - interval '1 day')::text as wf_failed,
+            (select count(*) from crm_workflow_runs where status = 'dead' and coalesce(finished_at, created_at) > $1::timestamptz - interval '1 day')::text as wf_dead,
+            (select count(*) from crm_workflow_runs where status = 'awaiting_approval')::text as wf_approval,
+            ((select count(*) from crm_form_submissions where status = 'received') + (select count(*) from website_form_submissions where status = 'received'))::text as forms_queued,
+            ((select count(*) from crm_form_submissions where status = 'received' and attempts > 0) + (select count(*) from website_form_submissions where status = 'received' and attempts > 0))::text as forms_retrying,
+            ((select count(*) from crm_form_submissions where status = 'failed' and coalesce(processed_at, created_at) > $1::timestamptz - interval '1 day')
+              + (select count(*) from website_form_submissions where status = 'failed' and coalesce(processed_at, created_at) > $1::timestamptz - interval '1 day'))::text as forms_failed,
+            (select count(*) from crm_external_events where last_error is not null)::text as writes_failing,
+            (select count(*) from appointment_reminders where status = 'blocked' and updated_at > $1::timestamptz - interval '1 day')::text as reminders_blocked,
+            (select count(*) from crm_calendar_sync_runs where status = 'failed' and started_at > $1::timestamptz - interval '1 day')::text as sync_failed,
+            (select count(*) from crm_calendar_connections where status in ('error', 'needs_reauth'))::text as connections_attention,
+            (select count(*) from crm_webhook_deliveries where status = 'failed' and created_at > $1::timestamptz - interval '1 day')::text as hooks_failed,
+            (select count(*) from crm_webhook_deliveries where status = 'dead' and created_at > $1::timestamptz - interval '1 day')::text as hooks_dead,
+            (select count(*) from crm_webhook_deliveries where status in ('pending', 'delivering'))::text as hooks_pending`,
+    [now.toISOString()],
+  );
+  const r = rows[0] ?? {};
+  const c = (k: string) => Number(r[k] ?? 0) || 0;
+  const oldest = r.oldest ? new Date(r.oldest as Date) : null;
+  return {
+    events: {
+      backlog: c("backlog"), oldestPendingAt: oldest ? oldest.toISOString() : null, oldestPendingMinutes: oldest ? Math.max(0, Math.floor((now.getTime() - oldest.getTime()) / 60_000)) : null,
+      deadLetters24h: c("dead_letters"), retrying: c("retrying"),
+    },
+    workflows: { failed24h: c("wf_failed"), dead24h: c("wf_dead"), waitingApproval: c("wf_approval") },
+    forms: { queued: c("forms_queued"), retrying: c("forms_retrying"), failed24h: c("forms_failed") },
+    bookings: { calendarWritesFailing: c("writes_failing"), remindersBlocked24h: c("reminders_blocked") },
+    calendarSync: { failed24h: c("sync_failed"), connectionsNeedingAttention: c("connections_attention") },
+    webhooks: { failed24h: c("hooks_failed"), dead24h: c("hooks_dead"), pending: c("hooks_pending") },
+  };
 }
 
 export async function getSystemHealth(): Promise<SystemHealth> {
@@ -53,7 +117,8 @@ export async function getSystemHealth(): Promise<SystemHealth> {
         const provisioning = await q.query<{ n: number }>(
           "select count(*)::int as n from agent_provisioning_jobs where status in ('requested', 'in_progress', 'awaiting_health_check')",
         );
-        return { agents: agents.rows, ghl: ghl.rows, email: email.rows[0], runs: runs.rows[0], errors: errors.rows, provisioning: provisioning.rows[0].n };
+        const crm = await crmDeliveryHealth(q);
+        return { agents: agents.rows, ghl: ghl.rows, email: email.rows[0], runs: runs.rows[0], errors: errors.rows, provisioning: provisioning.rows[0].n, crm };
       })
     : null;
 
@@ -83,5 +148,6 @@ export async function getSystemHealth(): Promise<SystemHealth> {
     recentErrors: (data?.errors ?? []).map((r) => ({ at: r.at ? new Date(r.at).toISOString() : "", source: r.source, detail: r.detail, org: r.org })),
     runs24h: data?.runs ?? { total: 0, failed: 0, cancelled: 0, tokens: 0 },
     pendingProvisioning: data?.provisioning ?? 0,
+    crm: data?.crm ?? EMPTY_CRM_HEALTH,
   };
 }

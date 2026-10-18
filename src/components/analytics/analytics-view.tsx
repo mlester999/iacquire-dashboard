@@ -14,13 +14,14 @@ import { AGENT_BY_KEY, AGENT_ROLES } from "@/lib/agents";
 import { formatCurrency, formatNumber, formatPercent, timeZoneLabel } from "@/lib/utils";
 
 interface Data {
-  sources: { crm: boolean; calendar: boolean };
+  /** `native`: which numbers come from iAcquire's own CRM (its calendars and deals) rather than a connected GoHighLevel location. */
+  sources: { crm: boolean; calendar: boolean; native?: { opportunities: boolean; appointments: boolean } };
   leads: {
     totals: { total: number; approved: number; rejected: number; reviewed: number; avg_score: string | null; with_sources: number };
     bySource: Array<{ source: string; total: number; approved: number; avg_score: string | null }>;
   };
   appointments: { booked: number; showed: number; noshow: number; cancelled: number } | null;
-  sales: { stages: Array<{ stage: string; n: number; value: string | null }>; won: number; lost: number; wonValue: number } | null;
+  sales: { stages: Array<{ stage: string; n: number; value: string | null }>; won: number; lost: number; wonValue: number; wonValues?: Array<{ currency: string; value: number }> } | null;
   workforce: { byAgent: Array<{ role_key: string; total: number; completed: number; failed: number; tokens: number }>; toolSteps: number; cancelled: number };
   execution: { succeeded: number; blocked: number; failed: number; rejected: number; expired: number };
   usage: { messages: number; tokens: number; research: number; help: number };
@@ -97,6 +98,10 @@ export function AnalyticsView({
   const completed = data.workforce.byAgent.reduce((s, a) => s + a.completed, 0);
   const failed = data.workforce.byAgent.reduce((s, a) => s + a.failed, 0);
   const query = range.key === "custom" ? `range=custom&from=${from}&to=${to}` : `range=${range.key}`;
+  const nativeDeals = Boolean(data.sources.native?.opportunities);
+  const nativeCalendar = Boolean(data.sources.native?.appointments);
+  const calendarWord = nativeCalendar ? "on your iAcquire CRM calendars" : "in your calendar";
+  const crmWord = nativeDeals ? "Deals marked {s} in your iAcquire CRM during this period." : "Opportunities marked {s} in your CRM during this period.";
 
   return (
     <div className="module-stack space-y-6">
@@ -212,8 +217,8 @@ export function AnalyticsView({
               <div className="grid grid-cols-2 gap-3">
                 <Metric label="Booked" value={formatNumber(data.appointments.booked)} definition="Appointments with status new, confirmed, showed or no-show." />
                 <Metric label="Show rate" value={formatPercent(data.appointments.showed + data.appointments.noshow ? data.appointments.showed / (data.appointments.showed + data.appointments.noshow) : null)} definition="Showed ÷ (showed + no-show). Upcoming meetings are excluded." />
-                <Metric label="No-shows" value={formatNumber(data.appointments.noshow)} definition="Appointments marked no-show in your calendar." />
-                <Metric label="Cancelled" value={formatNumber(data.appointments.cancelled)} definition="Appointments cancelled in your calendar." />
+                <Metric label="No-shows" value={formatNumber(data.appointments.noshow)} definition={`Appointments marked no-show ${calendarWord}.`} />
+                <Metric label="Cancelled" value={formatNumber(data.appointments.cancelled)} definition={`Appointments cancelled ${calendarWord}.`} />
               </div>
             ) : (
               <Unavailable what="Appointment data" />
@@ -232,12 +237,15 @@ export function AnalyticsView({
             {data.sales ? (
               <>
                 <div className="grid grid-cols-3 gap-3">
-                  <Metric label="Won" value={formatNumber(data.sales.won)} definition="Opportunities marked Won in your CRM during this period." />
-                  <Metric label="Lost" value={formatNumber(data.sales.lost)} definition="Opportunities marked Lost in your CRM during this period." />
+                  <Metric label="Won" value={formatNumber(data.sales.won)} definition={crmWord.replace("{s}", "Won")} />
+                  <Metric label="Lost" value={formatNumber(data.sales.lost)} definition={crmWord.replace("{s}", "Lost")} />
                   <Metric label="Win rate" value={formatPercent(data.sales.won + data.sales.lost ? data.sales.won / (data.sales.won + data.sales.lost) : null)} definition="Won ÷ (won + lost) in this period." />
                 </div>
                 <HBarList unit="opportunities" rows={data.sales.stages.map((s) => ({ key: s.stage, label: s.stage, value: s.n }))} emptyLabel="No open opportunities." />
-                {data.sales.wonValue > 0 && <p className="text-[12.5px] text-muted">Won value in period: {formatCurrency(data.sales.wonValue)}</p>}
+                {data.sales.wonValues
+                  ? data.sales.wonValues.length > 0 && <p className="text-[12.5px] text-muted">Won value in period: {data.sales.wonValues.map((v) => formatCurrency(v.value, v.currency)).join(" · ")}</p>
+                  : data.sales.wonValue > 0 && <p className="text-[12.5px] text-muted">Won value in period: {formatCurrency(data.sales.wonValue)}</p>}
+                {nativeDeals && <Link href="/crm/reports" className="inline-flex min-h-11 items-center text-[12.5px] font-medium text-primary hover:underline sm:min-h-0">Pipeline, stage and lead source detail in CRM Reports</Link>}
               </>
             ) : (
               <Unavailable what="Sales funnel data" />
@@ -299,7 +307,12 @@ export function AnalyticsView({
               Held means the action was approved but its integration isn&apos;t enabled, so nothing ran. Rejected: {data.execution.rejected} · Expired: {data.execution.expired}.
             </p>
             <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] text-muted">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" /> Automation workflow (n8n/GHL) run statistics appear once those workflows are connected and live.
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              {nativeDeals ? (
+                <span>Workflow runs, form submissions and campaign results from your iAcquire CRM are in <Link href="/crm/reports" className="font-medium text-primary hover:underline">CRM Reports</Link>.</span>
+              ) : (
+                "Automation workflow (n8n/GHL) run statistics appear once those workflows are connected and live."
+              )}
             </p>
           </CardContent>
         </Card>

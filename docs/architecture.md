@@ -100,6 +100,26 @@ only for the explicit local synthetic demo and tests; production configuration r
 - An employee is `online` only after an authenticated health check against its own Hermes profile
   succeeds **and** that profile exposes no restricted tools. Otherwise it is `setup_required`,
   `offline` or `error`, and chat is disabled.
+- The same registry serves iAcquire's internal workforce and every client workforce. A super admin
+  gets an owner membership in the active agency organization only (audited, once), and
+  `/admin/workforce/open` switches to it before reusing the normal chat and employee screens.
+- Employee-specific knowledge lives in `employee_knowledge_entries` and in
+  `knowledge_documents.agent_instance_id`; the same compiler that builds run instructions reports which
+  sources are included, so the UI never claims more than the provider receives. Migrations `0045`–`0046`
+  add extraction states and evidence for selectable-text PDF/DOCX files, and `0047` persists the
+  complete Hermes runtime tool-inventory contract, digest, expiry and compact snapshot used by the
+  live-run gate.
+- An employee goes online only after the authenticated Hermes profile identity, capabilities, the
+  five-toolset explicit allowlist and the complete runtime catalog (`GET /v1/tools`) pass. The gate
+  fails closed on MCP/plugin/connector/Tool Search bridge entries, an unstable or changed catalog,
+  an expired attestation or an unavailable inventory service. See
+  [hermes-tool-inventory.md](hermes-tool-inventory.md).
+- Draft configurations can be tested against the real provider without writing a version, message or
+  run. A unique preview session and memory scope keep the test out of production history. See
+  [ai-workforce.md](ai-workforce.md#draft-testing).
+- SOUL.md remains a Hermes profile file. The verified API has no write endpoint for it, so the portal
+  shows it read-only and sends the editable, versioned configuration per run beneath the protected
+  policy.
 
 ## Chat pipeline
 
@@ -133,7 +153,7 @@ Hermes tool approvals resume the paused run; CRM writes and any customer messagi
 | --- | --- |
 | Identity & auth | `users`, `auth_credentials`, `auth_sessions`, `auth_tokens`, `rate_limit_buckets`, `email_outbox`, `invitations`, `access_requests` |
 | Tenancy & roles | `organizations`, `company_profiles`, `organization_memberships`, `staff_assignments`, `role_permissions`, `org_features` |
-| Onboarding & knowledge | `onboarding_responses`, `company_knowledge`, `knowledge_documents` |
+| Onboarding & knowledge | `onboarding_responses`, `company_knowledge`, `knowledge_documents` (optional employee scope, risk flags, last-used evidence), `employee_knowledge_entries` |
 | AI workforce | `agent_roles`, `agent_instances`, `agent_config_versions`, `agent_provisioning_jobs`, `agent_runs`, `tool_executions` |
 | Chat | `chat_conversations`, `chat_messages` |
 | Integrations | `integration_credentials` (reference only for new secrets; legacy ciphertext preserved for migration), `credential_references` (Supabase Vault), `integration_connections`, `integration_connection_checks`, `integration_status`, `ghl_location_mappings`, `automation_template_mappings` |
@@ -168,7 +188,14 @@ projects, maintenance), `0016_operating_controls` (pauses, employee modes), `001
 `0018_billing_credits` (credits ledger, metering, PayMongo), `0019_messaging` (unified inbox, consent,
 follow-ups, handoff), `0020_onboarding_v2`, `0021_websites` (Website Studio and the public site runtime role),
 `0022_operations` (heartbeats, incidents, email delivery), `0023_appointments`, `0024_retention`,
-`0025_commercial_operations` (agency finance, fair use, inactivity, offboarding).
+`0025_commercial_operations` (agency finance, fair use, inactivity, offboarding),
+`0045_ai_workforce_experience` (employee-specific knowledge, document scope/risk/use evidence; see
+[ai-workforce.md](ai-workforce.md)), `0046_knowledge_document_extraction` (bounded PDF/DOCX
+processing states, extraction evidence and retry) and `0047_hermes_tool_inventory` (complete
+runtime inventory contract, digest, expiry, compact snapshot and diagnostic; see
+[hermes-tool-inventory.md](hermes-tool-inventory.md)). They are numbered after the hosted project's
+existing 0041–0044 CRM migrations. Migrations `0026`–`0040` cover Website Studio, the native CRM,
+Hermes gateways and row-level-security performance; their tables are documented with those modules.
 
 ### Requested table names and their equivalents
 
