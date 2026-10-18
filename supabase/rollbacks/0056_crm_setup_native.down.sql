@@ -1,4 +1,4 @@
--- Rollback for 0037_crm_setup_native.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the
+-- Rollback for 0056_crm_setup_native.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the
 -- portal's Setup Center and CRM setup guide first, and run it in one transaction (tests/crm-migrations.test.ts proves it executes on a fully
 -- migrated local database). Roll back later migrations first (highest number first).
 --
@@ -69,4 +69,4 @@ drop function if exists app.setup_crm_uses(uuid, text);
 
 update client_setup_instances set revision = revision + 1 where state <> 'activated';
 
-delete from schema_migrations where version = '0037_crm_setup_native';
+delete from schema_migrations where version = '0056_crm_setup_native';

@@ -1,4 +1,4 @@
--- Rollback for 0047_hermes_tool_inventory.sql.
+-- Rollback for 0059_hermes_tool_inventory.sql.
 --
 -- Dropping these columns removes only the persisted inventory attestation. The live-run gate
 -- re-reads the gateway inventory on every run, so removing the snapshot cannot authorize a run.

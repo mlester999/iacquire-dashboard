@@ -14,7 +14,7 @@
 --
 -- Ownership itself stays where it was defined in 0027 (crm_workspaces.mode and switching, crm_capability_providers); the switch service is
 -- the only code that writes them after a workspace is created. The Setup Center re-scopes itself on those writes (0037 triggers).
--- Rollback: supabase/rollbacks/0039_crm_provider_switch.down.sql.
+-- Rollback: supabase/rollbacks/0058_crm_provider_switch.down.sql.
 
 -- ---------------------------------------------------------------------------
 -- Backups

@@ -14,7 +14,7 @@ const CRM_MIGRATION_NAMES = [
   "0031_crm_messaging.sql", "0032_crm_automation.sql", "0033_crm_growth.sql", "0054_crm_blueprints.sql",
   "0055_crm_ghl_migration.sql", "0056_crm_setup_native.sql", "0057_crm_performance.sql", "0058_crm_provider_switch.sql",
   "0041_crm_action_permissions.sql", "0042_company_delete_permission.sql", "0060_rls_initplan.sql",
-  "0061_agency_manager_blueprint_permissions.sql",
+  "0062_agency_manager_blueprint_permissions.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

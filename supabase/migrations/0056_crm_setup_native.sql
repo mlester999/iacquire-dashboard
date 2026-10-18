@@ -24,7 +24,7 @@
 --
 -- As elsewhere in the CRM, the application role only reads its own workspace's rows (row-level security) and trusted server code writes
 -- after authorizing the action. No permission is added: the guide uses crm.view to read, setup.respond (owner, admin) to edit and
--- crm.provider.manage (owner) for the initial provider choice. Rollback: supabase/rollbacks/0037_crm_setup_native.down.sql.
+-- crm.provider.manage (owner) for the initial provider choice. Rollback: supabase/rollbacks/0056_crm_setup_native.down.sql.
 
 -- ---------------------------------------------------------------------------
 -- Provider scope of a setup step

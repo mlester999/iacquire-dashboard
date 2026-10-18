@@ -32,8 +32,8 @@ function statements(sql: string): string[] {
 }
 
 const DOWN = readFileSync("supabase/rollbacks/0054_crm_blueprints.down.sql", "utf8");
-const MANAGER_GRANTS_UP = readFileSync("supabase/migrations/0061_agency_manager_blueprint_permissions.sql", "utf8");
-const MANAGER_GRANTS_DOWN = readFileSync("supabase/rollbacks/0061_agency_manager_blueprint_permissions.down.sql", "utf8");
+const MANAGER_GRANTS_UP = readFileSync("supabase/migrations/0062_agency_manager_blueprint_permissions.sql", "utf8");
+const MANAGER_GRANTS_DOWN = readFileSync("supabase/rollbacks/0062_agency_manager_blueprint_permissions.down.sql", "utf8");
 const runDown = async (db: Queryable) => {
   for (const stmt of statements(DOWN)) await db.query(stmt);
 };

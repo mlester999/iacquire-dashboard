@@ -17,7 +17,7 @@
 -- Hosted rollout: the migration runner applies a file in one transaction, where CREATE INDEX CONCURRENTLY is not allowed, so these are plain
 -- CREATE INDEX statements (they block writes to the table while they build). On large hosted tables, build them beforehand with
 -- CREATE INDEX CONCURRENTLY under the same names and definitions; IF NOT EXISTS then leaves them as they are.
--- Rollback: supabase/rollbacks/0038_crm_performance.down.sql (drops exactly these indexes).
+-- Rollback: supabase/rollbacks/0057_crm_performance.down.sql (drops exactly these indexes).
 
 -- ---------------------------------------------------------------------------
 -- Contact directory

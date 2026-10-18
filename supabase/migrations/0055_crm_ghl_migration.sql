@@ -18,7 +18,7 @@
 --     a custom field value with no matching field, an abandoned deal recorded as lost, a do-not-disturb contact) without parsing messages.
 --
 -- No new table and no new permission: the job and row tables keep their row-level security and grants from 0027. The GoHighLevel cache rows
--- (crm_pipelines / crm_opportunities with provider 'ghl') are never touched by any of this. Rollback: supabase/rollbacks/0036_crm_ghl_migration.down.sql.
+-- (crm_pipelines / crm_opportunities with provider 'ghl') are never touched by any of this. Rollback: supabase/rollbacks/0055_crm_ghl_migration.down.sql.
 
 -- ---------------------------------------------------------------------------
 -- Job kinds and statuses

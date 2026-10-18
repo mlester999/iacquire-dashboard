@@ -1,4 +1,4 @@
--- Rollback for 0039_crm_provider_switch.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the
+-- Rollback for 0058_crm_provider_switch.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the
 -- portal's CRM screens and the scheduler first, and run it in one transaction (tests/crm-migrations.test.ts proves it executes on a fully
 -- migrated local database). Roll back later migrations first (highest number first).
 --
@@ -18,4 +18,4 @@ alter table crm_import_jobs drop constraint if exists crm_import_jobs_switch_fk;
 drop table if exists crm_provider_switches;
 drop table if exists crm_provider_switch_backups;
 
-delete from schema_migrations where version = '0039_crm_provider_switch';
+delete from schema_migrations where version = '0058_crm_provider_switch';

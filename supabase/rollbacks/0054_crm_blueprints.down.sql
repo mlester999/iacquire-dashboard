@@ -1,4 +1,4 @@
--- Rollback for 0035_crm_blueprints.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the portal's
+-- Rollback for 0054_crm_blueprints.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the portal's
 -- CRM screens and the agency Blueprint library first, and run it in one transaction (tests/crm-migrations.test.ts proves it executes on a fully
 -- migrated local database). Roll back later migrations first (highest number first).
 --
@@ -65,4 +65,4 @@ alter table notifications add constraint notifications_kind_check check (kind in
   'crm_booking_new', 'crm_calendar_sync',
   'crm_workflow_failed', 'crm_webhook_failing'));
 
-delete from schema_migrations where version = '0035_crm_blueprints';
+delete from schema_migrations where version = '0054_crm_blueprints';

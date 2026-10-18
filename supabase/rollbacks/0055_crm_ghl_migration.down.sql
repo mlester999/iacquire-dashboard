@@ -1,4 +1,4 @@
--- Rollback for 0036_crm_ghl_migration.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the
+-- Rollback for 0055_crm_ghl_migration.sql. NOT a migration: the Supabase CLI does not run this folder. Review it, take a backup, stop the
 -- portal's CRM screens and the scheduler first, and run it in one transaction (tests/crm-migrations.test.ts proves it executes on a fully
 -- migrated local database). Roll back later migrations first (highest number first).
 --
@@ -35,4 +35,4 @@ alter table crm_import_jobs drop constraint if exists crm_import_jobs_config_sou
 alter table crm_import_jobs drop constraint crm_import_jobs_entity_check;
 alter table crm_import_jobs add constraint crm_import_jobs_entity_check check (entity in ('contact', 'company', 'opportunity'));
 
-delete from schema_migrations where version = '0036_crm_ghl_migration';
+delete from schema_migrations where version = '0055_crm_ghl_migration';
