@@ -1,7 +1,7 @@
 import "server-only";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
 import { withSystem } from "@/server/db";
-import { AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS, canChat, type AgentStatus } from "@/lib/agents";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { secretFingerprint } from "@/server/security/crypto";
 
@@ -29,9 +29,9 @@ export interface HermesConnection {
   accessClientId?: string;
   accessClientSecret?: string;
   /**
-   * Digest of the last inventory attestation persisted for this employee. When present, a run is
-   * refused if the gateway's effective inventory no longer matches it, so an unexpected profile,
-   * plugin or MCP change can never be used silently.
+   * Digest of the last inventory attestation persisted for this employee. A run is refused when it is
+   * missing, or when the gateway's effective inventory no longer matches it, so an unexpected profile,
+   * plugin or MCP change can never be used silently and a never-health-checked employee cannot run.
    */
   expectedToolInventoryDigest?: string | null;
 }
@@ -244,13 +244,15 @@ export interface HermesToolCatalogEntry {
 
 export interface HermesToolCatalog {
   platform: string;
+  /** The catalog contract the gateway says it implements (`hermes.api_server.tool_catalog.v1` on the patched gateway). */
+  contract: string | null;
   /** The gateway certified that every enabled runtime tool was enumerated. */
   complete: boolean;
   incompleteReason: string | null;
   explicitConfigPresent: boolean;
   enabledToolsets: string[];
   tools: HermesToolCatalogEntry[];
-  /** Echoed only by an attestation-aware gateway extension. */
+  /** The request's `X-Hermes-Inventory-Challenge`, echoed by the patched gateway. The verifier requires it. */
   challenge: string | null;
   generatedAt: string | null;
   expiresAt: string | null;
@@ -297,6 +299,10 @@ export async function getToolCatalog(conn: HermesConnection, challenge?: string,
     const name = typeof fn.name === "string" ? fn.name : null;
     if (!name || !TOOL_NAME.test(name) || seen.has(name)) throw new HermesError("bad_response", "The tool catalog contained an invalid or duplicate tool name.");
     seen.add(name);
+    // Every real gateway row carries its tool schema; a row without one was not produced by the catalog resolver.
+    if (!fn.parameters || typeof fn.parameters !== "object" || Array.isArray(fn.parameters)) {
+      throw new HermesError("bad_response", "A tool catalog entry did not include its parameters schema.");
+    }
     const p = row.provenance && typeof row.provenance === "object" && !Array.isArray(row.provenance) ? (row.provenance as Record<string, unknown>) : null;
     if (!p || typeof p.source !== "string" || !TOOL_CATALOG_SOURCES.has(p.source) || !(p.toolset === null || typeof p.toolset === "string") || !Array.isArray(p.requested_toolsets) || p.requested_toolsets.some((t) => typeof t !== "string") || !(p.source_server === null || typeof p.source_server === "string") || typeof p.added_below_explicit_config !== "boolean") {
       throw new HermesError("bad_response", "A tool catalog entry did not include complete provenance.");
@@ -319,6 +325,7 @@ export async function getToolCatalog(conn: HermesConnection, challenge?: string,
   }
   return {
     platform: raw.platform,
+    contract: typeof raw.contract === "string" ? raw.contract : null,
     // Fail closed if the gateway does not explicitly certify completeness. An older
     // endpoint that never sends this field is treated as incomplete, not as complete.
     complete: raw.complete === true,
@@ -335,11 +342,16 @@ export async function getToolCatalog(conn: HermesConnection, challenge?: string,
   };
 }
 
+/**
+ * Low-level adapter call. Application code must not call it directly: `startAgentRun` is the one entry point
+ * that checks the employee's readiness (and the agency gate) before the live inventory check below.
+ */
 export async function startRun(conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
   // This gate is intentionally inside the adapter, not only in the caller: no code path can create
   // a live run without a fresh, complete and stable runtime inventory that matches the reviewed
-  // allowlist and the digest recorded by the last health check. The import is lazy so this module
-  // and the inventory verifier do not form an evaluation cycle.
+  // allowlist and a digest recorded by a previous health check (`purpose: "run"` refuses a connection
+  // that has none). The import is lazy so this module and the inventory verifier do not form an
+  // evaluation cycle.
   const { verifyToolInventory } = await import("./inventory");
   await verifyToolInventory(conn, { stabilityReads: 2, expectedDigest: conn.expectedToolInventoryDigest, purpose: "run" });
   const body: Record<string, unknown> = { input: input.input };
@@ -361,7 +373,7 @@ export async function startRun(conn: HermesConnection, input: StartRunInput): Pr
  * identity and authenticated API contract were verified, and which its Super Admin explicitly
  * acknowledged. Client profiles can never use this path.
  */
-export async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
   const { profile, currentAccess } = await withSystem(async (db) => {
     const { rows } = await db.query<{
       org_kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; enabled: boolean;
@@ -424,15 +436,66 @@ export async function startAcknowledgedInternalAgencyRun(agentId: string, conn: 
   return startRun(conn, input);
 }
 
-/** Selects the internal-profile exception only after matching the requested agent to its org. */
+export type AgentRunBlockReason = "disabled" | "not_ready" | "inventory_not_recorded" | "readiness_unknown";
+
+/** The employee has not passed the checks that unlock live runs. The message is safe to show to workspace users. */
+export class AgentRunNotReadyError extends HermesError {
+  constructor(readonly reason: AgentRunBlockReason, message: string) {
+    super("bad_response", message);
+    this.name = "AgentRunNotReadyError";
+  }
+}
+
+interface AgentRunGateRow {
+  kind: string;
+  enabled: boolean;
+  status: string;
+  tool_inventory_digest: string | null;
+}
+
+/**
+ * Readiness every employee needs before any run, whichever feature starts it: enabled, online (the state a passing
+ * health check sets) and a tool-inventory digest recorded by that check. Without a recorded digest the live catalog
+ * would have nothing to be compared against, so a never-health-checked employee could run on a catalog that merely
+ * looks safe today.
+ */
+export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "tool_inventory_digest">): string {
+  if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
+  if (!canChat(row.status as AgentStatus)) {
+    throw new AgentRunNotReadyError("not_ready", "This AI employee hasn't passed its connection and tool-inventory check yet, so it can't run.");
+  }
+  if (!row.tool_inventory_digest || !/^[0-9a-f]{64}$/.test(row.tool_inventory_digest)) {
+    throw new AgentRunNotReadyError("inventory_not_recorded", "This AI employee has no verified tool inventory on record yet, so it can't run. Run its health check first.");
+  }
+  return row.tool_inventory_digest;
+}
+
+async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRunGateRow | null> {
+  try {
+    const { rows } = await withSystem((db) => db.query<AgentRunGateRow>(
+      "select o.kind, a.enabled, a.status, a.tool_inventory_digest from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2",
+      [agentId, orgId],
+    ));
+    return rows[0] ?? null;
+  } catch {
+    // The inventory columns come from migration 0059; without them no digest can have been recorded.
+    throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's readiness could not be verified, so it can't run.");
+  }
+}
+
+/**
+ * The single entry point for starting a run: chat, lead research, customer replies and configuration previews all
+ * go through it. It matches the agent to its workspace, requires the readiness above for every employee, applies the
+ * internal-agency identity and acknowledgement gate for agency employees, and always compares the live inventory
+ * with the digest persisted by the last health check rather than with whatever the caller put on the connection.
+ */
 export async function startAgentRun(agentId: string, orgId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
-  const { rows } = await withSystem((db) => db.query<{ kind: string }>(
-    "select o.kind from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2",
-    [agentId, orgId],
-  ));
-  if (!rows[0]) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
-  if (rows[0].kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, conn, input);
-  return startRun(conn, input);
+  const gate = await loadAgentRunGate(agentId, orgId);
+  if (!gate) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+  const digest = assertAgentRunnable(gate);
+  const bound: HermesConnection = { ...conn, expectedToolInventoryDigest: digest };
+  if (gate.kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, bound, input);
+  return startRun(bound, input);
 }
 
 

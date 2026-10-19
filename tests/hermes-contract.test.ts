@@ -2,7 +2,7 @@
 // (gateway/platforms/api_server.py, api_server_runs.py, tools/approval.py, toolsets.py).
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getCapabilities, getProfileModels, getToolsets, normalizeEvent, resolveRunApproval, restrictedToolsIn, startRun } from "@/server/integrations/hermes/client";
-import { ToolInventoryError, verifyToolInventory } from "@/server/integrations/hermes/inventory";
+import { verifyToolInventory } from "@/server/integrations/hermes/inventory";
 import { inspectHermes } from "@/server/integrations/inspection";
 import { validateHermesBaseUrl } from "@/server/workforce/service";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
@@ -84,7 +84,7 @@ describe("Hermes verification fails closed",()=>{
     expect(result.capabilities.toolInventoryScope).toBe("not_verified");
     expect(result.detail).toMatch(/GET \/v1\/tools/);
     const spy=vi.mocked(globalThis.fetch);spy.mockClear();
-    await expect(startRun(conn,{input:"blocked",idempotencyKey:"blocked-live-run"})).rejects.toBeInstanceOf(ToolInventoryError);
+    await expect(startRun({...conn,expectedToolInventoryDigest:"a".repeat(64)},{input:"blocked",idempotencyKey:"blocked-live-run"})).rejects.toMatchObject({detail:{code:"contract_unavailable"}});
     expect(spy.mock.calls.some(([url])=>String(url).includes("/v1/runs"))).toBe(false);
   });
 
@@ -160,7 +160,9 @@ describe("Hermes HTTP contract", () => {
   });
 
   it("routes through the profile prefix and resolves approvals with { choice, request_id }", async () => {
-    const { runId } = await startRun(conn(), { input: "hi", idempotencyKey: "contract-1" });
+    // A run is compared with the digest recorded by the last health check, so record one first.
+    const { digest } = await verifyToolInventory(conn(), { stabilityReads: 2 });
+    const { runId } = await startRun({ ...conn(), expectedToolInventoryDigest: digest }, { input: "hi", idempotencyKey: "contract-1" });
     expect(mock.requests.at(-1)).toMatchObject({ path: "/v1/runs", profile: "acme-sales" });
     await resolveRunApproval(conn(), runId, "deny", "appr_1");
     expect(mock.runs.get(runId)?.approvalResolved).toBe("deny");

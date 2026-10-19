@@ -4,16 +4,20 @@
  *   node --env-file=.env --conditions=react-server --import tsx scripts/hermes-live-audit.ts --live
  *
  * It reads the gateway/profile mapping from the configured database, resolves each mapped profile's stored
- * credential, and calls only GET /v1/capabilities, GET /v1/models and GET /v1/toolsets. It never starts a run,
- * writes a database row, or prints a credential, API key, base URL path, profile identifier or organization name.
+ * credential, and issues only GET requests: /v1/capabilities, /v1/models, /v1/toolsets and /v1/tools (twice, through
+ * the same verifier a health check and a run use). It never starts a run, writes a database row, or prints a
+ * credential, API key, base URL path, profile identifier or organization name.
  *
  * A profile is ready for a controlled run only when:
  *   - the gateway authenticates and returns the Hermes capabilities contract;
  *   - the intended profile identity is present in GET /v1/models;
  *   - no restricted or unreviewed tool is enabled;
- *   - the complete tool-inventory gate accepts the connection (currently only the explicit loopback test setup).
- * Until all four hold, the script reports a concrete blocker and exits without touching the provider's tools.
+ *   - verifyToolInventory accepts the live catalog: challenge echoed, explicit allowlist, exactly the five reviewed
+ *     toolsets, the required reviewed tools, no MCP/plugin/Tool Search tool, and two stable reads.
+ * This audit does not replace the employee's own health check: the report also shows whether the portal has an
+ * applied configuration and a recorded inventory digest, both of which a live run needs.
  */
+import { pathToFileURL } from "node:url";
 import { withSystem } from "../src/server/db/index";
 import { loadConnection } from "../src/server/workforce/service";
 import { PORTAL_SAFE_TOOLSETS, unauthorizedToolsets } from "../src/server/workforce/tool-policies";
@@ -21,14 +25,42 @@ import {
   getCapabilities,
   getProfileModels,
   getToolsets,
-  hasVerifiedCompleteToolInventory,
   restrictedToolsIn,
   type HermesConnection,
 } from "../src/server/integrations/hermes/client";
+import { ToolInventoryError, verifyToolInventory } from "../src/server/integrations/hermes/inventory";
 
-function safeError(err: unknown) {
+export function safeError(err: unknown) {
   if (err instanceof Error) return `${err.name}: ${err.message.slice(0, 180)}`;
   return "Unknown error";
+}
+
+export interface InventoryAudit {
+  verified: boolean;
+  /** `ToolInventoryFailureCode` when the verifier refused the catalog, "error" for anything else. */
+  failureCode: string | null;
+  failure: string | null;
+  toolCount?: number;
+  tools?: string[];
+  digestPrefix?: string;
+}
+
+/** Runs the portal's own two-read inventory verification (GET only) and reports the failure code instead of throwing. */
+export async function auditInventory(conn: HermesConnection): Promise<InventoryAudit> {
+  try {
+    const snapshot = await verifyToolInventory(conn, { stabilityReads: 2, purpose: "audit" });
+    return {
+      verified: true,
+      failureCode: null,
+      failure: null,
+      toolCount: snapshot.toolCount,
+      tools: snapshot.tools.map((tool) => tool.name),
+      digestPrefix: snapshot.digest.slice(0, 12),
+    };
+  } catch (err) {
+    if (err instanceof ToolInventoryError) return { verified: false, failureCode: err.detail.code, failure: err.message.slice(0, 400) };
+    return { verified: false, failureCode: "error", failure: safeError(err) };
+  }
 }
 
 async function auditProfile(conn: HermesConnection, label: Record<string, unknown>) {
@@ -79,7 +111,9 @@ async function auditProfile(conn: HermesConnection, label: Record<string, unknow
   } catch (err) {
     result.toolsetsError = safeError(err);
   }
-  result.completeInventoryVerified = hasVerifiedCompleteToolInventory(conn);
+  const inventory = await auditInventory(conn);
+  result.completeInventoryVerified = inventory.verified;
+  result.inventory = inventory;
   const caps = result.capabilities as Record<string, unknown>;
   const tools = result.toolsets as Record<string, unknown> | undefined;
   const restrictedCount = Number(tools?.restrictedCount ?? -1);
@@ -97,7 +131,7 @@ async function auditProfile(conn: HermesConnection, label: Record<string, unknow
         : restrictedCount < 0 ? "GET /v1/toolsets failed, so tool exposure is unknown."
           : unauthorized.length > 0 ? `Enabled toolsets outside the portal allowlist: ${unauthorized.join(", ")}. Disable them in the Hermes profile.`
             : restrictedCount > 0 ? `${restrictedCount} restricted or unreviewed tools are enabled; disable them in the Hermes profile.`
-              : result.completeInventoryVerified !== true ? "The public API cannot prove a complete plugin/MCP inventory; the live-run gate remains closed."
+              : result.completeInventoryVerified !== true ? `The complete tool inventory was not verified (${inventory.failureCode}): ${inventory.failure}`
                 : null;
   return result;
 }
@@ -112,9 +146,14 @@ async function main() {
     const gateways = await db.query<{ id: string; base_url: string; gateway_type: string; status: string; profile_creation_status: string }>(
       "select id, base_url, gateway_type, status, profile_creation_status from hermes_gateways order by created_at",
     );
-    const agents = await db.query<{ id: string; role_key: string; status: string; has_profile: boolean; has_credential: boolean; kind: string }>(
+    const agents = await db.query<{
+      id: string; role_key: string; status: string; has_profile: boolean; has_credential: boolean; kind: string;
+      has_applied_config: boolean; has_inventory_digest: boolean;
+    }>(
       `select a.id, a.role_key, a.status, (a.hermes_profile is not null) as has_profile,
-              (a.credential_id is not null) as has_credential, o.kind
+              (a.credential_id is not null) as has_credential, o.kind,
+              (a.active_config_version_id is not null) as has_applied_config,
+              (a.tool_inventory_digest is not null) as has_inventory_digest
        from agent_instances a join organizations o on o.id = a.org_id
        where a.hermes_profile is not null or a.credential_id is not null
        order by o.kind, a.role_key`,
@@ -147,11 +186,17 @@ async function main() {
       profiles.push({ kind: agent.kind, role: agent.role_key, blocker: "No usable credential was resolved." });
       continue;
     }
-    profiles.push(await auditProfile(conn, { kind: agent.kind, role: agent.role_key, status: agent.status }));
+    profiles.push(await auditProfile(conn, {
+      kind: agent.kind,
+      role: agent.role_key,
+      status: agent.status,
+      hasAppliedConfig: agent.has_applied_config,
+      hasRecordedInventoryDigest: agent.has_inventory_digest,
+    }));
   }
   report.profiles = profiles;
   report.readyProfiles = profiles.filter((p) => (p as Record<string, unknown>).readyForControlledRun === true).length;
-  report.liveRunGate = "closed until complete tool-inventory verification is supported by the gateway contract";
+  report.liveRunGate = "This audit never starts a run. startAgentRun separately requires each employee to be online with a recorded inventory digest (and, for internal employees, a current Super Admin acknowledgement).";
   console.log(JSON.stringify(report, null, 2));
   const blocked = profiles.filter((p) => (p as Record<string, unknown>).readyForControlledRun !== true);
   if (blocked.length) {
@@ -161,7 +206,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.log("Hermes live audit failed:", safeError(err));
-  process.exit(1);
-});
+// Only run when executed directly, so tests can import the helpers above without contacting a database.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.log("Hermes live audit failed:", safeError(err));
+    process.exit(1);
+  });
+}

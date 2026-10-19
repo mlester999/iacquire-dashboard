@@ -12,12 +12,12 @@ import {
   getCapabilities,
   getRunStatus,
   HermesError,
-  startRun,
   startAgentRun,
   stopRun,
   streamRunEvents,
   toolActivityLabel,
   type HermesConnection,
+  type StartRunInput,
 } from "@/server/integrations/hermes/client";
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
@@ -338,7 +338,7 @@ interface ExecuteRunInput {
   /** Sources that were actually included in the instructions. Recorded only after the provider accepts the run. */
   knowledgeEntryIds?: string[];
   knowledgeDocumentIds?: string[];
-  request: Parameters<typeof startRun>[1];
+  request: StartRunInput;
 }
 
 const FRIENDLY_FAILURE: Record<string, string> = {

@@ -419,7 +419,7 @@ async function loadPersistedInventoryDigest(db: Queryable, agentId: string): Pro
     await db.query("release savepoint tool_inventory_digest_lookup");
     return rows[0]?.tool_inventory_digest ?? null;
   } catch {
-    // Migration 0047 may not be applied yet. Roll back only this lookup so the caller's
+    // Migration 0059 may not be applied yet. Roll back only this lookup so the caller's
     // transaction stays usable; no persisted digest is fail-closed.
     try {
       await db.query("rollback to savepoint tool_inventory_digest_lookup");
@@ -430,7 +430,7 @@ async function loadPersistedInventoryDigest(db: Queryable, agentId: string): Pro
   }
 }
 
-/** Whether the additive inventory-attestation columns from migration 0047 are present. */
+/** Whether the additive inventory-attestation columns from migration 0059 are present. */
 export async function toolInventorySchemaReady(db: Queryable): Promise<boolean> {
   try {
     const { rows } = await db.query(
@@ -646,7 +646,11 @@ export async function runHealthCheck(
             detail: `Complete runtime inventory verified: ${snapshot.toolCount} tool${snapshot.toolCount === 1 ? "" : "s"} across ${snapshot.enabledToolsets.length} reviewed toolsets (digest ${snapshot.digest.slice(0, 12)}…).`,
           };
           if (!hasConfig) {
-            result = { ok: false, status: "setup_required", detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online.` };
+            result = {
+              ok: false,
+              status: "setup_required",
+              detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online. A Super Admin needs to save an initial configuration for this employee in its own workspace (AI Workforce, open the employee, save its settings), then run the health check again.`,
+            };
           } else {
             result = {
               ok: true,
@@ -691,7 +695,7 @@ export async function runHealthCheck(
     result = {
       ok: false,
       status: "setup_required",
-      detail: `${result.detail} Migration 0047 (tool-inventory attestation) is not applied, so the verified inventory cannot be persisted; live runs stay blocked.`,
+      detail: `${result.detail} Migration 0059 (tool-inventory attestation) is not applied, so the verified inventory cannot be persisted; live runs stay blocked.`,
     };
   }
   await withSystem(async (db) => {

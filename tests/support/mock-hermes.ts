@@ -12,6 +12,8 @@ export interface MockInventoryTool {
   sourceServer?: string | null;
   addedBelowExplicitConfig?: boolean;
   available?: boolean;
+  /** Drop the `parameters` schema, which every real gateway row carries. */
+  omitParameters?: boolean;
 }
 
 export interface MockInventory {
@@ -26,8 +28,12 @@ export interface MockInventory {
   /** Whether the gateway certifies the catalog as complete. Defaults to true. */
   complete?: boolean;
   incompleteReason?: string;
-  /** Echo X-Hermes-Inventory-Challenge as `challenge` (default true). */
+  /** Echo X-Hermes-Inventory-Challenge as `challenge` (default true, like the patched gateway). */
   echoChallenge?: boolean;
+  /** The `contract` the gateway reports. Defaults to the patched gateway's value; null omits the field. */
+  contract?: string | null;
+  /** Wrap each row as `{ type: "function", function: {...}, provenance }` instead of the flat live shape. */
+  functionWrapped?: boolean;
   /** Return this challenge instead of the request's, to prove replay binding fails closed. */
   challengeOverride?: string;
   generatedAt?: string;
@@ -164,16 +170,16 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
       const tools: MockInventoryTool[] = read > 1 && inventory.changeAfterFirstRead ? inventory.changeAfterFirstRead : inventory.tools ?? SAFE_INVENTORY_TOOLS;
       const challengeHeader = req.headers["x-hermes-inventory-challenge"];
       const challenge = Array.isArray(challengeHeader) ? challengeHeader[0] : challengeHeader;
-      return send(200, {
-        object: "list",
-        platform: "api_server",
-        complete: inventory.complete ?? true,
-        incomplete_reason: inventory.incompleteReason ?? null,
-        explicit_config_present: inventory.explicitConfigPresent ?? true,
-        enabled_toolsets: inventory.enabledToolsets ?? SAFE_TOOLSETS,
-        data: tools.map((tool) => ({
-          type: "function",
-          function: { name: tool.name, description: "", parameters: { type: "object", properties: {} } },
+      // Rows mirror the patched Hermes 0.21.5 gateway: the tool schema is flattened next to `provenance`, and
+      // `available` appears on MCP rows only.
+      const row = (tool: MockInventoryTool) => {
+        const schema = {
+          name: tool.name,
+          description: `Reviewed ${tool.name} tool (test double).`,
+          ...(tool.omitParameters ? {} : { parameters: { type: "object", properties: {} } }),
+        };
+        return {
+          ...(inventory.functionWrapped ? { type: "function", function: schema } : schema),
           provenance: {
             source: tool.source ?? "configurable",
             toolset: tool.toolset ?? null,
@@ -182,7 +188,17 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
             added_below_explicit_config: tool.addedBelowExplicitConfig ?? false,
           },
           ...(tool.available !== undefined ? { available: tool.available } : {}),
-        })),
+        };
+      };
+      return send(200, {
+        object: "list",
+        platform: "api_server",
+        ...(inventory.contract === null ? {} : { contract: inventory.contract ?? "hermes.api_server.tool_catalog.v1" }),
+        complete: inventory.complete ?? true,
+        incomplete_reason: inventory.incompleteReason ?? null,
+        explicit_config_present: inventory.explicitConfigPresent ?? true,
+        enabled_toolsets: inventory.enabledToolsets ?? SAFE_TOOLSETS,
+        data: tools.map(row),
         ...(inventory.echoChallenge !== false && challenge ? { challenge: inventory.challengeOverride ?? challenge } : {}),
         ...(inventory.generatedAt ? { generated_at: inventory.generatedAt } : {}),
         ...(inventory.expiresAt ? { expires_at: inventory.expiresAt } : {}),

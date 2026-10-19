@@ -7,7 +7,7 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { agentSettingsSchema, diffAgentSettings, type AgentSettings } from "@/lib/agent-settings";
 import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import type { ConfigPreviewEvent, ConfigPreviewSummary, PreviewMessage } from "@/lib/workforce-types";
-import { getCapabilities, getRunStatus, HermesError, startRun, stopRun, streamRunEvents, toolActivityLabel } from "@/server/integrations/hermes/client";
+import { AgentRunNotReadyError, getCapabilities, getRunStatus, HermesError, startAgentRun, stopRun, streamRunEvents, toolActivityLabel } from "@/server/integrations/hermes/client";
 import {
   compileDraftConfig,
   composeRunInstructions,
@@ -142,7 +142,7 @@ export async function* runConfigPreview(
   let runId: string | null = null;
   let content = "";
   try {
-    const started = await startRun(prepared.connection, {
+    const started = await startAgentRun(prepared.agentId, ctx.org.orgId, prepared.connection, {
       input: last.content,
       instructions: prepared.instructions,
       sessionId: `preview-${testId}`,
@@ -271,11 +271,16 @@ export async function* runConfigPreview(
           action: "agent.config_test_run",
           targetType: "agent_config_version",
           result: "failure",
-          metadata: { version: prepared.summary.version, code: err instanceof HermesError ? err.kind : "unknown" },
+          metadata: { version: prepared.summary.version, code: err instanceof AgentRunNotReadyError ? err.reason : err instanceof HermesError ? err.kind : "unknown" },
         },
         db,
       ),
     ).catch(() => undefined);
+    if (err instanceof AgentRunNotReadyError) {
+      // Not a transient failure: the employee must pass its health check before it can run anything, even a test.
+      yield { type: "unavailable", message: `${err.message} The draft itself is valid and nothing was changed.` };
+      return;
+    }
     yield { type: "error", message: friendly(err), retryable: true };
   }
 }

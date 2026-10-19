@@ -155,9 +155,10 @@ A read-only audit was run against the configured multiplexed gateway
 - The provisioning runbook was corrected to disable `image_gen` and `skills` as well; it previously
   missed those two. The live gateway has not yet been changed.
 - No client employee is mapped to a live profile yet.
-- The complete plugin/MCP inventory cannot be proven by the public API server contract, so
-  `hasVerifiedCompleteToolInventory` remains false and the live-run gate stays closed. This is not a
-  cosmetic warning: `startRun` refuses to contact the provider.
+- The complete plugin/MCP inventory could not be proven by the public API server contract at that point, so
+  `verifyToolInventory` failed and the live-run gate stayed closed. This is not a cosmetic warning:
+  `startAgentRun` refuses to contact the provider. (A patched gateway has since been deployed; see
+  [hermes-tool-inventory.md](hermes-tool-inventory.md).)
 - No model run was started; no customer data, tool action or write was performed.
 
 Reproduce the evidence without starting a run:
