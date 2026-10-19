@@ -209,6 +209,9 @@ describe("status lifecycle", () => {
   it("uses feedback stages, not raw statuses, for feedback", async () => {
     const f = (await submitRequest(w.ctx.member, { requestType: "feedback", subject: "Show tags in the inbox", message: "Tags would help.", category: "improvement" })).id;
     await expect(changeRequestStatus(w.agency.staff, f, "resolved")).rejects.toThrow(/feedback status control/);
+    // A reply to feedback is just a reply: it never changes the feedback's status on its own.
+    await agencyPostMessage(w.agency.staff, f, { body: "Thanks, this is useful. We will take a look." });
+    expect(await ticketRow(f)).toMatchObject({ status: "open", feedback_stage: "under_review" });
     await setFeedbackStage(w.agency.staff, f, "under_review");
     expect(await ticketRow(f)).toMatchObject({ status: "open", feedback_stage: "under_review" });
     await setFeedbackStage(w.agency.staff, f, "planned", "Scheduled for the next release train.");

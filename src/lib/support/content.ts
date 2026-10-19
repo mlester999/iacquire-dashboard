@@ -4,9 +4,8 @@
 import { ATTACHMENT_TYPES } from "@/lib/support/lifecycle";
 
 /** Characters that can hide or reorder text (bidi overrides, zero-width joiners used for spoofing) or are control codes. */
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u0080-\u009F]/g;
-const SPOOFING = /[​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+const SPOOFING = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 
 /** Plain text for a subject or message: normalised newlines, no control or direction-spoofing characters, trimmed, bounded blank lines. */
 export function cleanText(input: string, max: number): string {

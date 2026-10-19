@@ -279,7 +279,7 @@ export async function listTickets(ctx: OrgContext) {
 
 interface DetailRow extends ListRow {
   priority: TicketPriority; resolved_at: Date | null; closed_at: Date | null; reopened_count: number; diagnostics: Diagnostics | null; project_id: string | null;
-  first_responded_at: Date | null; org_id: string; created_by: string | null; assigned_to: string | null; updated_at: Date; client_last_read_at: Date | null;
+  first_responded_at: Date | null; org_id: string; created_by: string | null; assigned_to: string | null; updated_at: Date; client_last_read_at: Date | null; agency_last_read_at: Date | null;
 }
 
 async function namesFor(ids: string[], orgId: string): Promise<Map<string, string>> {
@@ -308,7 +308,7 @@ export async function getRequestDetail(ctx: OrgContext, ticketId: string): Promi
   const loaded = await withUser(ctx.user.id, async (db) => {
     const t = (await db.query<DetailRow>(
       `select t.id, t.ref, t.subject, t.category, t.request_type, t.status, t.priority, t.feedback_stage, t.client_urgency, t.affected_feature, t.created_at, t.updated_at, t.last_message_at,
-         t.resolved_at, t.closed_at, t.reopened_count, t.diagnostics, t.project_id, t.first_responded_at, t.org_id, t.created_by, t.assigned_to, t.client_last_read_at,
+         t.resolved_at, t.closed_at, t.reopened_count, t.diagnostics, t.project_id, t.first_responded_at, t.org_id, t.created_by, t.assigned_to, t.client_last_read_at, t.agency_last_read_at,
          cu.full_name as created_by_name, (t.assigned_to is not null) as is_assigned, false as has_unread_reply, '1' as total
        from support_tickets t left join users cu on cu.id = t.created_by where t.id = $1 and t.org_id = $2`,
       [ticketId, ctx.org.orgId],
@@ -358,6 +358,7 @@ export async function getRequestDetail(ctx: OrgContext, ticketId: string): Promi
     },
     messages: thread,
     timeline,
+    teamLastReadAt: t.agency_last_read_at ? new Date(t.agency_last_read_at).toISOString() : null,
     canReply: blocked === null,
     replyBlockedReason: blocked,
     canReopen,

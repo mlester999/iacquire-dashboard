@@ -322,7 +322,8 @@ export async function agencyPostMessage(user: SessionUser, ticketId: string, inp
     const status = await acknowledgeIfNew(db, current, actorOf(user));
     current = { ...current, status };
     // Legacy default: a public reply hands the next move to the client unless the person chose a status.
-    const next = target ?? (internal ? null : "waiting_for_client");
+    // Feedback keeps its own stages, so a reply to feedback never changes its status on its own.
+    const next = target ?? (internal || current.request_type === "feedback" ? null : "waiting_for_client");
     let statusNotified = false;
     if (next && next !== current.status) {
       const finishing = next === "resolved" || next === "closed";

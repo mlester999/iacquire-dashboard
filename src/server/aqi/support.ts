@@ -9,6 +9,7 @@ import type { AqiViewer } from "@/server/aqi/access";
 import { cleanText } from "@/lib/support/content";
 import { redactSecrets, suggestRequestKind } from "@/lib/support/suggest";
 import { CATEGORIES_BY_TYPE, REQUEST_TYPES, type RequestType } from "@/lib/support/lifecycle";
+import { clientExpectationText, loadSupportSettings } from "@/server/support/settings";
 
 // AQi can help a person prepare a support request, never send one. The flow is: AQi offers to prepare it -> the person reads and edits
 // the proposed subject, description and topic -> they choose whether any of the AQi conversation is shared (with an explicit
@@ -83,6 +84,9 @@ export interface AqiSupportDraft {
   pageContext: string;
   /** What will be shared if the person agrees, in plain words. */
   sharedSummary: string;
+  /** File limits for anything the person adds, and the response sentence if the agency chose to show one. */
+  limits: { maxMb: number; maxFiles: number };
+  expectation: string | null;
 }
 
 /** A starting point built from the person's own words in this conversation. Nothing is created or sent. */
@@ -101,7 +105,10 @@ export async function prepareAqiSupportDraft(viewer: AqiViewer, conversationId: 
   ].filter(Boolean).join("\n\n");
   const kind = suggestRequestKind(subject, mine.join("\n"));
   const excerpt = excerptOf(c.messages);
+  const settings = await loadSupportSettings();
   return {
+    limits: { maxMb: settings.maxAttachmentMb, maxFiles: settings.maxAttachmentsPerMessage },
+    expectation: clientExpectationText(settings, "first", settings.defaultPriority[kind.requestType]),
     subject, description, requestType: kind.requestType, category: kind.category, confidence: kind.confidence, reason: kind.reason, excerpt, pageContext: pagePath(c.pageRoute),
     sharedSummary: excerpt.length
       ? `Your last ${excerpt.length} message${excerpt.length === 1 ? "" : "s"} with AQi (about ${excerpt.reduce((n, e) => n + e.text.length, 0).toLocaleString("en-US")} characters, passwords and keys removed) and the page you were on.`

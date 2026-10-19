@@ -34,7 +34,10 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/settings/usage", label: "Usage", description: "Workspace usage and limits.", permission: "usage.view" },
   { path: "/billing", label: "Billing", description: "Plan, payment and usage billing.", permission: "billing.view" },
   { path: "/setup", label: "Setup Center", description: "The work needed to activate the workspace.", permission: "setup.view" },
-  { path: "/support", label: "Support", description: "Ask the iAcquire team for help and follow requests.", permission: "support.use" },
+  { path: "/support", label: "Get Support", description: "Ask the iAcquire team for help.", permission: "support.use" },
+  { path: "/support/report-issue", label: "Report an Issue", description: "Tell the iAcquire team about something that isn't working.", permission: "support.use" },
+  { path: "/support/feedback", label: "Provide Feedback", description: "Share a suggestion or comment with the iAcquire team.", permission: "support.use" },
+  { path: "/support/requests", label: "My Requests", description: "Follow your support requests, issue reports and feedback.", permission: "support.use" },
   { path: "/projects", label: "Projects", description: "Custom projects, quotes and deliverables.", permission: "projects.view" },
   { path: "/website", label: "Website", description: "Your website and publishing status.", permission: "website.view" },
   { path: "/admin", label: "Admin overview", description: "The iAcquire agency dashboard.", agency: "staff" },
@@ -45,7 +48,7 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/admin/integrations", label: "Integrations", description: "Provider credentials and connections.", agency: "staff", permission: "agency.integrations.health" },
   { path: "/admin/health", label: "Health", description: "Platform health and incidents.", agency: "staff", permission: "agency.security.manage" },
   { path: "/admin/usage", label: "Usage", description: "Platform usage and limits.", agency: "staff" },
-  { path: "/admin/support", label: "Support requests", description: "Client support requests.", agency: "staff" },
+  { path: "/admin/support", label: "Requests", description: "Client support requests, issue reports and feedback.", agency: "staff" },
   { path: "/admin/aqi", label: "AQi Management", description: "Configure AQi, its knowledge and publishing.", agency: "super_admin" },
 ];
 

@@ -65,6 +65,8 @@ export interface ClientRequestDetail {
   };
   messages: ThreadMessage[];
   timeline: TimelineEntry[];
+  /** When the iAcquire team last opened the request. A message the client sent before this moment has been seen. */
+  teamLastReadAt: string | null;
   canReply: boolean;
   /** Why replying is unavailable, in words for the client; null when replying is possible. */
   replyBlockedReason: string | null;
