@@ -178,7 +178,9 @@ opposite direction from production: the database is local and has no 150 ms netw
 | `/crm/contacts` statements | 29 | 12 | `IAQ_DB_TRACE` |
 | Warm `/crm/contacts` end-to-end | 4.35 s | 2.08 s | browser timing |
 | Warm sidebar navigation, second pass | 0.4-1.1 s to heading (one sample) | 0.2-1.1 s to heading (7 routes) | browser timing |
-| AQi warm first delta (80 ms mock) | not measured on the old tree | 340-430 ms (median 369) | stream timestamps |
+| AQi warm first delta (80 ms mock) | not measured on the old tree | 340-430 ms (median 369) | dev stream timestamps |
+| AQi first delta, final production build (80 ms mock) | not measured on the old tree | **265-276 ms** (median 276) | production stream timestamps |
+| AQi complete answer, final production build | not measured on the old tree | **931-942 ms** | production stream timestamps |
 | AQi warm complete answer | not measured on the old tree | 1.02-1.10 s | stream timestamps |
 | AQi panel open | 44-46 ms (previous pass) | 59-63 ms warm | browser timing |
 | AQi suggestions visible | 44-46 ms (previous pass) | 66-70 ms warm | browser timing |
@@ -229,6 +231,10 @@ Other checks on the same production build:
 
 - AQi panel visible in **148 ms** (first open) / **325 ms** (second open); suggestions at
   157 / 328 ms.
+- **AQi streaming on the final production build** (80 ms mock first token): first response byte
+  **79-88 ms**, first text delta **265-276 ms**, complete answer **931-942 ms** on warm requests
+  (cold route: 431 / 638 / 1,298 ms). Three requests, no page errors. Panel reopen on the same
+  build: **73 ms** first / **323 ms** second.
 - Agency admin routes: `/admin` 453 ms, `/admin/clients` 468 ms, `/admin/aqi` 457 ms;
   `/admin/workforce` 435 ms, `/admin/health` 371 ms; all usable, no page errors.
 - Client staff routes: `/overview` 364 ms, `/crm/contacts` 386 ms, `/crm/pipelines` 471 ms,
@@ -286,7 +292,8 @@ The previous pass added the card/spotlight/placement fixes and the browser QA de
 - Full unit suite: **3,046 / 3,046 tests passed across 185 files** (`vitest run --maxWorkers=2`,
   664.17 s on the merged release tree), exit 0.
 - Browser: real login, dashboard, contacts, sidebar transitions and a real streamed AQi answer
-  against the local mock provider; the six new tours were started through the real resume/tour UI.
+  against the local mock provider; the six new tours were started through the real resume/tour UI;
+  AQi streaming was re-measured on the final production build.
 - New migration test: `tests/aqi-migration-0064.test.ts` verifies all six published definitions,
   their target coverage and the six contextual tips on a fresh migrated database.
 - Production build: `next build --turbopack` completed with **TypeScript passing** on the merged
