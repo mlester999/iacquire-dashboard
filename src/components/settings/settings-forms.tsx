@@ -169,7 +169,10 @@ export function ProfileForms({
             <InfoChip icon={<Mail aria-hidden />} className="max-w-[16rem]">
               {user.email}
             </InfoChip>
-            <Button variant="secondary" size="sm" onClick={() => void startTutorial("getting-started", "library")}>
+            <Button variant="secondary" size="sm" onClick={async () => {
+              const started = await startTutorial("getting-started", "library");
+              if (!started) toast.error("This walkthrough isn't available for your role right now.");
+            }}>
               <RotateCcw className="size-3.5" /> Restart tour
             </Button>
           </>

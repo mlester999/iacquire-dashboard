@@ -855,23 +855,28 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
   const attachmentIds = [...new Set(input.attachmentIds ?? [])].slice(0, 20);
   if (!text && !attachmentIds.length) throw new AppError("invalid_input", "Type a question or attach a file for AQi.");
   if (text.length > AQI_MAX_MESSAGE) throw new AppError("invalid_input", `Keep questions under ${AQI_MAX_MESSAGE.toLocaleString()} characters.`);
-  const limit = await consumeRateLimit(RATE_LIMITS.aqiMessageByUser, viewer.user.id);
+  // Three independent gates. Awaiting them one at a time cost three serial database waits before
+  // the model could be called; the published config is also needed by the attachment limit below.
+  // The rate limit keeps its precedence: if it rejects, the usage check is not reported instead.
+  const configPromise = getPublishedAqiConfig();
+  // Attach a handler immediately so a later rejection while another gate throws is never unhandled.
+  void configPromise.catch(() => undefined);
+  const limitPromise = consumeRateLimit(RATE_LIMITS.aqiMessageByUser, viewer.user.id);
+  const usageGate = viewer.org ? assertWithinLimits(viewer.org.orgId, "help_request") : Promise.resolve(null);
+  const limit = await limitPromise;
   if (!limit.allowed) {
+    await Promise.allSettled([configPromise, usageGate]);
     await withSystem((db) => db.query(
       "insert into aqi_usage_events (org_id, user_id, kind, status) values ($1, $2, 'rate_limit', 'failed')",
       [viewer.org?.orgId ?? null, viewer.user.id],
     ));
     throw new AppError("rate_limited", "You're asking quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
   }
-  if (viewer.org) await assertWithinLimits(viewer.org.orgId, "help_request");
+  await usageGate;
+  const configView = await configPromise;
 
   const requestId = crypto.randomUUID();
   const superAdmin = viewer.user.platformRole === "agency_super_admin";
-  // These reads are independent. Awaiting them one at a time meant five serial database waits
-  // before the model could even be called; on a hosted connection that is most of the time to
-  // first token. The attachment limits come from the published config, so that one value is read
-  // first and the remaining reads run together.
-  const configView = await getPublishedAqiConfig();
   const intent = classifyAqiIntent(text, { hasHistory: Boolean(input.conversationId) });
   const page = intent.usePageContext ? pageForViewer(viewer, input.pathname) : null;
   const knowledgePromise = intent.needsKnowledge
@@ -1093,8 +1098,12 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     const actualOutput = outputTokens ?? estimateAqiTokens(modelOutput);
     const costEstimated = inputTokens === undefined || outputTokens === undefined;
     const costMicros = reservation.price ? aqiCostMicros(reservation.price, actualInput, actualOutput) : null;
-    await claimAqiAttachments(viewer, attachmentIds, prepared.conversationId, prepared.userMessageId);
-    const message = await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), "complete", null, model, inputTokens, outputTokens, latencyMs);
+    // The attachment claim and the final message write are independent rows, so they run together
+    // instead of adding another sequential transaction before the answer is shown.
+    const [message] = await Promise.all([
+      finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), "complete", null, model, inputTokens, outputTokens, latencyMs),
+      claimAqiAttachments(viewer, attachmentIds, prepared.conversationId, prepared.userMessageId),
+    ]);
     await withUser(viewer.user.id, (db) => db.query(
       `update aqi_messages set context = jsonb_build_object('page', $2::text, 'sources', $3::jsonb, 'citationWarning', $4::text, 'guide', $5::jsonb, 'suggestedQuestions', $6::jsonb, 'suggestSupport', $7::boolean)
        where id = $1 and user_id = $8`,
@@ -1104,36 +1113,39 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     if (guide) message.guide = guide;
     message.suggestedQuestions = nextSteps.questions;
     message.suggestSupport = nextSteps.suggestSupport;
-    // Real, privacy-conscious analytics: record knowledge use and misses without storing the text.
-    await withSystem(async (db) => {
-      const categories = [...new Set(knowledge.sources.map((source) => source.category))].slice(0, 8);
-      await db.query(
-        `insert into aqi_usage_events (org_id, user_id, kind, conversation_id, page_route, intent, metadata)
-         values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
-        [
-          viewer.org?.orgId ?? null,
-          viewer.user.id,
-          knowledge.sources.length ? "knowledge_retrieval" : "knowledge_miss",
-          prepared.conversationId,
-          page?.path ?? null,
-          intent.kind,
-          JSON.stringify({ categories, matched: knowledge.sources.length, page: page?.path ?? null }),
-        ],
-      );
-    }).catch(() => undefined);
-    await recordAqiUsage(viewer, {
-      reservationId: reservation.id,
-      conversationId: prepared.conversationId,
-      model: model,
-      inputTokens: actualInput,
-      outputTokens: actualOutput,
-      latencyMs,
-      status: "recorded",
-      costMicros,
-      costEstimated,
-      pageRoute: page?.path ?? null,
-      configVersionId: configView.versionId,
-    });
+    // The knowledge analytics row and the billable usage record are independent. Running them in
+    // parallel removes a sequential transaction from the tail before `done` reaches the browser.
+    const categories = [...new Set(knowledge.sources.map((source) => source.category))].slice(0, 8);
+    await Promise.all([
+      withSystem((db) =>
+        db.query(
+          `insert into aqi_usage_events (org_id, user_id, kind, conversation_id, page_route, intent, metadata)
+           values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+          [
+            viewer.org?.orgId ?? null,
+            viewer.user.id,
+            knowledge.sources.length ? "knowledge_retrieval" : "knowledge_miss",
+            prepared.conversationId,
+            page?.path ?? null,
+            intent.kind,
+            JSON.stringify({ categories, matched: knowledge.sources.length, page: page?.path ?? null }),
+          ],
+        ),
+      ).catch(() => undefined),
+      recordAqiUsage(viewer, {
+        reservationId: reservation.id,
+        conversationId: prepared.conversationId,
+        model: model,
+        inputTokens: actualInput,
+        outputTokens: actualOutput,
+        latencyMs,
+        status: "recorded",
+        costMicros,
+        costEstimated,
+        pageRoute: page?.path ?? null,
+        configVersionId: configView.versionId,
+      }),
+    ]);
     yield { type: "done", message, sources: usedSources, guide, usage: { inputTokens: actualInput, outputTokens: actualOutput, latencyMs } };
   } catch (err) {
     const aborted = signal.aborted || (err instanceof DOMException && err.name === "AbortError");

@@ -581,6 +581,19 @@ const HEALTH_DETAIL: Record<string, string> = {
   upstream: "Hermes reported a server error.",
 };
 
+/**
+ * Refreshes an AI employee's connection status when the last check is stale. Called from the chat
+ * page after its response, so the first message does not pay the provider round trips itself.
+ */
+export async function refreshAgentHealthIfStale(agentId: string, userId: string): Promise<void> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ last_health_check_at: Date | null }>("select last_health_check_at from agent_instances where id = $1", [agentId]),
+  );
+  const checkedAt = rows[0]?.last_health_check_at ? new Date(rows[0].last_health_check_at).getTime() : 0;
+  if (Date.now() - checkedAt <= 10 * 60 * 1000) return;
+  await runHealthCheck(agentId, { userId, kind: "system" }).catch(() => undefined);
+}
+
 /** Performs a real authenticated capabilities check and records the outcome. */
 export async function runHealthCheck(
   agentId: string,

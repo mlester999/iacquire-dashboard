@@ -152,7 +152,15 @@ export function ChatWorkspace(props: Props) {
   };
 
   // --- conversation list ----------------------------------------------------
+  // The first list is rendered by the server page. Re-fetching it on mount cost another five
+  // transactions (viewer resolution + agent + list) before the chat was usable, so only a changed
+  // search term triggers a request now.
+  const skipInitialList = React.useRef(true);
   React.useEffect(() => {
+    if (skipInitialList.current) {
+      skipInitialList.current = false;
+      if (!search) return;
+    }
     const t = setTimeout(async () => {
       const res = await searchConversationsAction(meta.key, search);
       if (res.ok) setConversations(res.data);

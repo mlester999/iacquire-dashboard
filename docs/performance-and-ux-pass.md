@@ -1,5 +1,10 @@
 # Performance and UX pass: measured findings
 
+> Follow-up (2026-10-20): session-resolution round trips, sidebar prefetch fan-out, AQi preflight
+> and tail waits, the duplicate AI-chat list fetch and the walkthrough mobile dead-end were
+> addressed in [performance-ux-pass-20261020.md](performance-ux-pass-20261020.md). This document
+> remains the record of the earlier statement-count and bundle-trace pass.
+
 Status: **local diagnosis and implementation; production verification is pending.** Nothing in this
 pass was pushed or deployed. The only production interaction was read-only: HTTP requests to the
 public login/health endpoints and `SELECT 1` / `SELECT count(*)` against the production database.

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { requireOrgContext } from "@/server/tenancy/context";
-import { getAgentByRole, listConfigVersions } from "@/server/workforce/service";
+import { getAgentByRole, listConfigVersions, refreshAgentHealthIfStale } from "@/server/workforce/service";
 import { getConversation, listConversations } from "@/server/chat/service";
 import { isChannelActive } from "@/server/chat/hub";
 import { ChatWorkspace, type ChatMessage } from "@/components/chat/chat-workspace";
@@ -19,6 +20,12 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
   const ctx = await requireOrgContext("agents.use");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
+  // Refresh a stale connection check after the page has been sent, so opening the conversation
+  // warms the employee instead of making the first message pay six provider round trips. The send
+  // path keeps its own freshness check; this only makes it cheaper.
+  if (agent.enabled) {
+    after(() => refreshAgentHealthIfStale(agent.id, ctx.user.id));
+  }
 
   const [conversations, convo, versions] = await Promise.all([
     listConversations(ctx, agent.id),

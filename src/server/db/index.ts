@@ -227,6 +227,24 @@ export async function withSystem<T>(fn: (db: Queryable) => Promise<T>): Promise<
 }
 
 /**
+ * Read-only counterpart to `withSystem` for one trusted query. A read does not need BEGIN/COMMIT,
+ * and on the hosted database those two extra round trips cost roughly 300 ms per call. Callers
+ * authorize and scope the read exactly as a `withSystem` caller would; only `select`/`with`
+ * statements are accepted so this helper can never become an unreviewed write path.
+ */
+export async function readSystem<T>(fn: (db: Queryable) => Promise<T>): Promise<T> {
+  const outer = activeTx.getStore();
+  if (outer?.open) throw new NestedTransactionError(outer.label, "readSystem");
+  const d = await driver();
+  return fn({
+    query: async <R>(sql: string, params?: unknown[]) => {
+      if (!/^\s*(select|with)\b/i.test(sql)) throw new Error("readSystem only runs select statements");
+      return d.query<R>(sql, params);
+    },
+  });
+}
+
+/**
  * Executes as Supabase's service_role for narrowly scoped server operations that need its
  * explicit grants (for example credential metadata). The database login must be allowed to
  * assume service_role; the transaction-local switch is automatically reset before the pooled

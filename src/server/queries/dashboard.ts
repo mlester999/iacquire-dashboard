@@ -41,39 +41,48 @@ export async function nativeCrmOwners(db: Queryable, orgId: string): Promise<Nat
   return { opportunities: owners.opportunities === "native", appointments: owners.appointments === "native" };
 }
 
-export async function sourceAvailability(db: Queryable, orgId: string, isDemo: boolean): Promise<SourceAvailability> {
-  // Three former round trips are one statement: the connection statuses, the cached-row counts and
-  // the CRM capability owners are independent reads on the same tenant.
-  const { rows } = await db.query<{
-    integrations: Array<{ provider: string; status: string; detail: string | null }>;
-    opp: number;
-    appt: number;
-    mode: CrmMode | null;
-    capabilities: Array<{ capability: string; provider: CapabilityProvider }>;
-  }>(
-    `select
+interface SourceAvailabilityRow {
+  sa_integrations: Array<{ provider: string; status: string; detail: string | null }>;
+  sa_opp: number;
+  sa_appt: number;
+  sa_mode: CrmMode | null;
+  sa_capabilities: Array<{ capability: string; provider: CapabilityProvider }>;
+}
+
+/**
+ * The availability columns, kept as one fragment so the dashboard can merge them into its own
+ * statement instead of paying a second sequential round trip. They are independent reads on the
+ * same tenant and only use $1.
+ */
+const SOURCE_AVAILABILITY_COLUMNS = `
        coalesce((select json_agg(json_build_object('provider', provider, 'status', status, 'detail', detail))
-                 from integration_status where org_id = $1 and provider in ('ghl', 'ghl_calendar')), '[]'::json) as integrations,
-       (select count(*)::int from crm_opportunities where org_id = $1) as opp,
-       (select count(*)::int from appointment_refs where org_id = $1) as appt,
-       (select mode from crm_workspaces where org_id = $1) as mode,
+                 from integration_status where org_id = $1 and provider in ('ghl', 'ghl_calendar')), '[]'::json) as sa_integrations,
+       (select count(*)::int from crm_opportunities where org_id = $1) as sa_opp,
+       (select count(*)::int from appointment_refs where org_id = $1) as sa_appt,
+       (select mode from crm_workspaces where org_id = $1) as sa_mode,
        coalesce((select json_agg(json_build_object('capability', capability, 'provider', provider))
-                 from crm_capability_providers where org_id = $1 and capability in ('opportunities', 'appointments')), '[]'::json) as capabilities`,
-    [orgId],
-  );
-  const row = rows[0];
-  const status = (p: string) => row.integrations.find((r) => r.provider === p)?.status;
-  const native: NativeCrmOwners = row.mode
+                 from crm_capability_providers where org_id = $1 and capability in ('opportunities', 'appointments')), '[]'::json) as sa_capabilities`;
+
+function interpretSourceAvailability(row: SourceAvailabilityRow, isDemo: boolean): SourceAvailability {
+  const status = (p: string) => row.sa_integrations.find((r) => r.provider === p)?.status;
+  const native: NativeCrmOwners = row.sa_mode
     ? (() => {
-        const owners = resolveCapabilities(row.mode, row.capabilities);
+        const owners = resolveCapabilities(row.sa_mode, row.sa_capabilities);
         return { opportunities: owners.opportunities === "native", appointments: owners.appointments === "native" };
       })()
     : { opportunities: false, appointments: false };
   // Demo workspaces show their seeded sample records; real tenants need a verified connection, or iAcquire's own CRM owning the records
   // (there is nothing to connect: deals and appointments are kept here).
-  const crm = status("ghl") === "connected" || (isDemo && row.opp > 0) || native.opportunities;
-  const calendar = status("ghl_calendar") === "connected" || (isDemo && row.appt > 0) || native.appointments;
-  return { crm, calendar, crmDetail: native.opportunities ? "iAcquire CRM" : (row.integrations.find((r) => r.provider === "ghl")?.detail ?? "Not connected"), native };
+  const crm = status("ghl") === "connected" || (isDemo && row.sa_opp > 0) || native.opportunities;
+  const calendar = status("ghl_calendar") === "connected" || (isDemo && row.sa_appt > 0) || native.appointments;
+  return { crm, calendar, crmDetail: native.opportunities ? "iAcquire CRM" : (row.sa_integrations.find((r) => r.provider === "ghl")?.detail ?? "Not connected"), native };
+}
+
+export async function sourceAvailability(db: Queryable, orgId: string, isDemo: boolean): Promise<SourceAvailability> {
+  // Three former round trips are one statement: the connection statuses, the cached-row counts and
+  // the CRM capability owners are independent reads on the same tenant.
+  const { rows } = await db.query<SourceAvailabilityRow>(`select ${SOURCE_AVAILABILITY_COLUMNS}`, [orgId]);
+  return interpretSourceAvailability(rows[0], isDemo);
 }
 
 export interface DashboardData {
@@ -133,9 +142,9 @@ interface DashboardRow {
  * The dashboard used to send 23 independent statements one after another. On a hosted database
  * (iad1 functions, Tokyo database) every statement is another ~150 ms round trip, so the page could
  * spend more than three seconds waiting after the shell had already streamed. These are independent
- * reads, so they are collected into one statement and one round trip. `sourceAvailability` stays a
- * separate call because it is shared with the reports and scheduling surfaces, but it too is now one
- * statement instead of three.
+ * reads, so they are collected into one statement and one round trip. The availability columns are
+ * shared with the reports and scheduling surfaces through `sourceAvailability`, but are folded into
+ * this statement too: a second sequential round trip cost another ~150 ms for no extra data.
  */
 export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
   const orgId = ctx.org.orgId;
@@ -143,9 +152,9 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
   const includeActivity = ctx.can("activity.view");
   const includeIntegrations = ctx.can("integrations.view");
   return withUser(ctx.user.id, async (db) => {
-    const sources = await sourceAvailability(db, orgId, ctx.org.isDemo);
-    const { rows } = await db.query<DashboardRow>(
+    const { rows } = await db.query<DashboardRow & SourceAvailabilityRow>(
       `select
+         ${SOURCE_AVAILABILITY_COLUMNS},
          (select count(*)::int from leads where org_id = $1 and created_at > now() - interval '30 days') as new_leads,
          (select count(*)::int from leads where org_id = $1 and review_status = 'approved' and created_at > now() - interval '30 days') as qualified_leads,
          (select count(*)::int from tasks where org_id = $1 and status in ('open', 'in_progress') and (due_at is null or due_at < now() + interval '1 day')) as follow_ups,
@@ -194,6 +203,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
       [orgId, includeRetention, includeIntegrations, includeActivity],
     );
     const data = rows[0];
+    const sources = interpretSourceAvailability(data, ctx.org.isDemo);
     const agents = data.agents ?? [];
 
     let appointmentsBooked: Metric = unavailable("Calendar not connected");

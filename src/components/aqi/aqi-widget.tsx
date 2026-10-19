@@ -260,6 +260,10 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   const [sourcePreview, setSourcePreview] = React.useState<{ title: string; category: string; snippet?: string; index: number } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const abortRef = React.useRef<AbortController | null>(null);
+  // Background warming runs once per mounted shell, not on every route change: the panel refreshes
+  // its welcome payload when it opens, so re-warming on each navigation only competed with the
+  // page's own data for database connections.
+  const warmedRef = React.useRef(false);
   const launcherRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -410,9 +414,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     if (window.matchMedia("(max-width: 639px)").matches) setOpen(false);
   }, []);
 
-  // Warm the welcome payload and provider health off the critical path. This is one small request
-  // per shell mount and per page change, not per open.
+  // Warm the welcome payload and provider health off the critical path. Once per mounted shell, not
+  // per route change: the panel refreshes both when it opens, so re-warming on every navigation only
+  // competed with the page's own data for database connections.
   React.useEffect(() => {
+    if (warmedRef.current) return;
+    warmedRef.current = true;
     let cancelled = false;
     const start = () => {
       if (cancelled) return;
@@ -487,7 +494,12 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   });
 
   React.useEffect(() => {
-    if (nearBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: messages.some((message) => message.status === "streaming") ? "auto" : "smooth" });
+    const el = scrollRef.current;
+    if (!el || !nearBottom.current) return;
+    // While tokens stream, jumping straight to the bottom avoids a smooth-scroll animation that is
+    // restarted on every delta and forces layout on each render.
+    if (messages.some((message) => message.status === "streaming")) el.scrollTop = el.scrollHeight;
+    else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   React.useEffect(() => {
@@ -833,6 +845,31 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     nearBottom.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
+    // Tokens can arrive faster than the browser paints. Coalescing deltas into one state update per
+    // animation frame avoids re-parsing the whole markdown answer (and forcing layout) for every
+    // chunk while still showing text as soon as it is available.
+    let deltaFrame: number | null = null;
+    let bufferedDelta = "";
+    const flushDelta = () => {
+      if (!bufferedDelta) return;
+      const text = bufferedDelta;
+      bufferedDelta = "";
+      setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? { ...message, content: message.content + text } : message)));
+    };
+    const scheduleDelta = () => {
+      if (deltaFrame !== null) return;
+      deltaFrame = window.requestAnimationFrame(() => {
+        deltaFrame = null;
+        flushDelta();
+      });
+    };
+    const flushDeltaNow = () => {
+      if (deltaFrame !== null) {
+        window.cancelAnimationFrame(deltaFrame);
+        deltaFrame = null;
+      }
+      flushDelta();
+    };
     try {
       if (!id) {
         const res = await fetch("/api/aqi/conversations", {
@@ -879,8 +916,10 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
             setConversationId(metaId);
             setMessages((current) => current.map((message) => (message.id === assistantMessage.id ? { ...message, id: String(event.messageId) } : message)));
           } else if (event.type === "delta") {
-            setMessages((current) => current.map((message) => (message.id === assistantMessage.id || message.status === "streaming" ? { ...message, content: message.content + String(event.text) } : message)));
+            bufferedDelta += String(event.text);
+            scheduleDelta();
           } else if (event.type === "done") {
+            flushDeltaNow();
             const finalMessage = {
               ...(event.message as Message),
               sources: Array.isArray(event.sources) ? (event.sources as Message["sources"]) : undefined,
@@ -901,9 +940,11 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
           }
         }
       }
+      flushDeltaNow();
       setStreaming(false);
     } catch (err) {
       const aborted = controller.signal.aborted;
+      flushDeltaNow();
       setStreaming(false);
       setMessages((current) => current.map((message) => (message.status === "streaming" ? { ...message, status: aborted ? "cancelled" : "failed" } : message)));
       if (!aborted) {
