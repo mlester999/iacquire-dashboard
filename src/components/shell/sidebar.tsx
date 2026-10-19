@@ -1,8 +1,8 @@
 "use client";
 import * as React from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, Waypoints, Wrench } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
@@ -48,9 +48,20 @@ const FOOTER: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ];
 export const CLIENT_NAV = [...MAIN, ...CRM, { href: "/workforce", label: "AI Workforce", icon: Sparkles }, { href: "/setup", label: "Setup Center", icon: ClipboardCheck }, ...GROW, ...FOOTER] as NavItem[];
+function NavPendingBar() {
+  // useLinkStatus must live inside the Link. A fixed-height bar cannot shift the row, and the
+  // click feedback is visible even when the destination's server render is still in flight.
+  const { pending } = useLinkStatus();
+  return <span aria-hidden className={cn("pointer-events-none absolute inset-x-2 bottom-0.5 h-[2px] origin-left rounded-full bg-[#8ab4ff] transition-opacity duration-150", pending ? "opacity-100" : "opacity-0")} />;
+}
 function NavLink({ item, pathname, count, trailing, onNavigate, compact = false }: { item: NavItem; pathname: string; count?: number; trailing?: string; onNavigate?: () => void; compact?: boolean }) {
   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-  const link = <Link href={item.href} onClick={onNavigate} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? item.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+  const router = useRouter();
+  // Warm the full route on intent. This is deliberately hover/focus only: prefetching every
+  // dynamic route in the sidebar would fan out many database renders for pages nobody opens.
+  const warm = () => { if (!active) router.prefetch(item.href); };
+  const link = <Link href={item.href} onClick={onNavigate} onMouseEnter={warm} onFocus={warm} onPointerDown={warm} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? item.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+    <NavPendingBar />
     {active && <motion.span layoutId="client-nav-active" className="absolute inset-0 rounded-xl border border-[#5582ff]/25 bg-[#4268c6]/15" transition={{ type: "spring", stiffness: 460, damping: 38 }} />}
     <span className="nav-icon-box relative"><item.icon className="size-[17px]" /></span>
     {!compact && <><span className="relative min-w-0 flex-1 truncate">{item.label}</span>{count ? <span className="relative flex min-w-5 items-center justify-center rounded-md bg-[#305ecb] px-1.5 py-0.5 text-[10px] font-semibold text-white">{count > 99 ? "99+" : count}</span> : trailing ? <span className="relative text-[11px] tabular-nums text-[#a9bada]">{trailing}</span> : null}</>}

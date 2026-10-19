@@ -122,11 +122,11 @@ export async function contactWhere(db: Queryable, actor: CrmActor, q: Pick<Conta
   return { where: parts.join(" and "), smartList };
 }
 
-export async function listContacts(actor: CrmActor, q: ContactListQuery = {}): Promise<ContactPage> {
+export async function listContacts(actor: CrmActor, q: ContactListQuery = {}, existing?: Queryable): Promise<ContactPage> {
   assertCan(actor, "contacts.view");
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.trunc(q.pageSize ?? 25)));
   const page = Math.max(1, Math.trunc(q.page ?? 1));
-  return crmRead(actor, async (db) => {
+  const run = async (db: Queryable) => {
     const params: unknown[] = [actor.orgId];
     const { where, smartList } = await contactWhere(db, actor, q, params);
     const sort = q.sort ?? smartList?.sort;
@@ -179,7 +179,8 @@ export async function listContacts(actor: CrmActor, q: ContactListQuery = {}): P
       pageSize,
       smartList,
     };
-  });
+  };
+  return existing ? run(existing) : crmRead(actor, run);
 }
 
 /** Values of the custom-field columns a view shows, for one page of records, in one query. */

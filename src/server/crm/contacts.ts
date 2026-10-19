@@ -629,9 +629,9 @@ export async function getContactDetail(actor: CrmActor, id: string): Promise<Con
 // ---------------------------------------------------------------------------
 
 /** Teammates who can own contacts and deals (active members who can see contacts). */
-export async function listAssignableMembers(actor: CrmActor): Promise<Array<{ id: string; name: string; role: string }>> {
+export async function listAssignableMembers(actor: CrmActor, existing?: Queryable): Promise<Array<{ id: string; name: string; role: string }>> {
   assertCan(actor, "crm.view");
-  return crmRead(actor, async (db) => {
+  const run = async (db: Queryable) => {
     const { rows } = await db.query<{ id: string; name: string; role: string }>(
       `select u.id, coalesce(nullif(u.full_name, ''), u.email::text) as name, m.role from organization_memberships m join users u on u.id = m.user_id
        where m.org_id = $1 and m.status = 'active' and u.status = 'active'
@@ -642,7 +642,8 @@ export async function listAssignableMembers(actor: CrmActor): Promise<Array<{ id
       [actor.orgId],
     );
     return rows;
-  });
+  };
+  return existing ? run(existing) : crmRead(actor, run);
 }
 
 /** Contacts whose name, email or phone matches, for pickers (deal, task and booking forms). */

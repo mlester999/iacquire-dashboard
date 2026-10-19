@@ -49,8 +49,29 @@ export interface ChatMessageRow {
 // Reads (row-level security restricts these to the signed-in user's own conversations)
 // ---------------------------------------------------------------------------
 
+/**
+ * Retention cleanup used to run on every chat load: a trusted transaction plus two UPDATEs even
+ * when the workspace has no retention setting. It is a housekeeping job, not part of reading the
+ * conversation list, so remember when it last ran per workspace and keep it off the critical path
+ * for the next ten minutes. A failure clears the timestamp so the next load retries.
+ */
+const RETENTION_CHECK_MS = 10 * 60 * 1000;
+const retentionCheckedAt = new Map<string, number>();
+
+async function applyRetentionIfDue(orgId: string): Promise<void> {
+  const now = Date.now();
+  if (now - (retentionCheckedAt.get(orgId) ?? 0) < RETENTION_CHECK_MS) return;
+  retentionCheckedAt.set(orgId, now);
+  try {
+    await applyRetention(orgId);
+  } catch (err) {
+    retentionCheckedAt.delete(orgId);
+    throw err;
+  }
+}
+
 export async function listConversations(ctx: OrgContext, agentId: string, search?: string): Promise<ConversationSummary[]> {
-  await applyRetention(ctx.org.orgId);
+  await applyRetentionIfDue(ctx.org.orgId);
   return withUser(ctx.user.id, async (db) => {
     const q = search?.trim().slice(0, 100);
     const { rows } = await db.query<ConversationSummary>(

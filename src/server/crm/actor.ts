@@ -161,10 +161,7 @@ const QUERY_CANCELED = "57014";
  */
 export function crmRead<T>(actor: CrmActor, fn: (db: Queryable) => Promise<T>): Promise<T> {
   if (actor.kind === "member" && actor.userId) {
-    return withUser(actor.userId, async (db) => {
-      await db.query("select set_config('statement_timeout', $1, true)", [MEMBER_READ_STATEMENT_TIMEOUT]);
-      return fn(db);
-    }).catch((err: unknown) => {
+    return withUser(actor.userId, fn, { statementTimeout: MEMBER_READ_STATEMENT_TIMEOUT }).catch((err: unknown) => {
       // The hosted driver wraps the cancel in an OperationFailure (the code sits in its cause); PGlite throws it bare.
       if (hasDbErrorCode(err, QUERY_CANCELED)) {
         throw new AppError("internal", "This took too long to load, so it was stopped. Narrow the search or filter and try again.");

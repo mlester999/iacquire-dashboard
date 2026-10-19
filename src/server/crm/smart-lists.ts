@@ -4,6 +4,7 @@ import { recordAudit } from "@/server/audit";
 import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
 import { compileContactFilter, compileCompanyFilter } from "@/server/crm/filter-sql";
 import { loadCustomFieldMetas, parseFilterOrThrow } from "@/server/crm/directory";
+import type { Queryable } from "@/server/db";
 import { EMPTY_FILTER, type FilterGroup } from "@/lib/crm/filters";
 
 export type SmartListEntity = "contact" | "company" | "opportunity";
@@ -59,9 +60,9 @@ async function assertCompiles(actor: CrmActor, entity: SmartListEntity, filter: 
   });
 }
 
-export async function listSmartLists(actor: CrmActor, entity: SmartListEntity = "contact"): Promise<SmartListView[]> {
+export async function listSmartLists(actor: CrmActor, entity: SmartListEntity = "contact", existing?: Queryable): Promise<SmartListView[]> {
   assertCan(actor, "crm.view");
-  return crmRead(actor, async (db) => {
+  const run = async (db: Queryable) => {
     const { rows } = await db.query<{
       id: string; entity: SmartListEntity; name: string; description: string | null; folder_id: string | null; folder_name: string | null; filter: FilterGroup; columns: string[];
       sort: { by?: string; dir?: "asc" | "desc" }; visibility: "private" | "team"; owner_user_id: string; owner_name: string | null; is_default: boolean; pinned: boolean | null; last_used_at: Date | null; updated_at: Date;
@@ -79,7 +80,8 @@ export async function listSmartLists(actor: CrmActor, entity: SmartListEntity = 
       visibility: r.visibility, ownerUserId: r.owner_user_id, ownerName: r.owner_name, isDefault: r.is_default, pinned: r.pinned === true,
       lastUsedAt: r.last_used_at ? new Date(r.last_used_at).toISOString() : null, mine: r.owner_user_id === actor.userId, updatedAt: new Date(r.updated_at).toISOString(),
     }));
-  });
+  };
+  return existing ? run(existing) : crmRead(actor, run);
 }
 
 export async function createSmartList(actor: CrmActor, input: SmartListInput): Promise<{ id: string }> {

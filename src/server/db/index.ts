@@ -189,9 +189,28 @@ async function runTransaction<T>(label: string, fn: (tx: Queryable) => Promise<T
   }
   const marker = { open: true, label };
   return activeTx.run(marker, async () => {
+    // Opt-in profiling for high-latency deployments: one line per transaction showing how many
+    // statements it sends. Off in normal runs, so it adds no logging or output overhead.
+    const trace = process.env.IAQ_DB_TRACE === "1";
+    const started = trace ? performance.now() : 0;
+    let statements = 0;
     try {
-      return await d.transaction(fn);
+      return await d.transaction((tx) =>
+        fn(
+          trace
+            ? {
+                query: <R>(sql: string, params?: unknown[]) => {
+                  statements += 1;
+                  return tx.query<R>(sql, params);
+                },
+              }
+            : tx,
+        ),
+      );
     } finally {
+      if (trace) {
+        console.log(`[db-trace] ${label} driver=${d.kind} statements=${statements} ms=${Math.round(performance.now() - started)}`);
+      }
       marker.open = false;
     }
   });
@@ -224,15 +243,27 @@ export async function withServiceRole<T>(fn: (db: Queryable) => Promise<T>): Pro
 /**
  * Runs queries as the signed-in user under row-level security. Tenant isolation is enforced
  * by PostgreSQL policies in addition to application checks.
+ *
+ * The identity, role and statement timeout are applied in one statement. On a hosted database
+ * every extra statement is another network round trip (~150 ms between iad1 and Tokyo), so the
+ * former `set_config` + `set local role` pair cost one round trip per transaction.
  */
-export async function withUser<T>(userId: string, fn: (db: Queryable) => Promise<T>): Promise<T> {
+export async function withUser<T>(
+  userId: string,
+  fn: (db: Queryable) => Promise<T>,
+  options: { statementTimeout?: string } = {},
+): Promise<T> {
   if (!UUID_RE.test(userId)) throw new Error("withUser requires a valid user id");
   const d = await driver();
   return runTransaction(
     "withUser",
     async (tx) => {
-      await tx.query("select set_config('app.user_id', $1, true)", [userId]);
-      await tx.query("set local role iaq_app_user");
+      await tx.query(
+        `select set_config('app.user_id', $1, true),
+                set_config('role', 'iaq_app_user', true),
+                set_config('statement_timeout', $2, true)`,
+        [userId, options.statementTimeout ?? "0"],
+      );
       return fn(tx);
     },
     d,
