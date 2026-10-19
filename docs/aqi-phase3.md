@@ -79,7 +79,7 @@ review columns and new usage kinds present, `create-contact` v1 archived and v2 
 Local, automated (hardening branch):
 
 ```
-npm test -- --maxWorkers=2        # 2,987 tests in 177 files passed
+npm test -- --maxWorkers=2        # 3,000 tests in 179 files passed (includes the native-first pass)
 npx vitest run tests/aqi-…        # focused Phase 3 and hardening suite
 npm run typecheck                 # passed
 npm run lint                      # passed
