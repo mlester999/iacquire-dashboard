@@ -232,6 +232,8 @@ async function highlightMatches(page, targetId, label) {
   const highlight = page.locator("[data-aqi-highlight]").first();
   const target = page.locator(`[data-aqi-target="${targetId}"]`).first();
   await target.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+  // The guide slides to its new position when the step changes; measure it once it has settled.
+  await page.waitForFunction(() => document.querySelector("[data-aqi-card]")?.getAttribute("data-aqi-moving") !== "true", undefined, { timeout: 3_000 }).catch(() => {});
   const [h, t] = await Promise.all([highlight.boundingBox().catch(() => null), target.boundingBox().catch(() => null)]);
   if (!h || !t) {
     check(`${label}: spotlight and target exist`, false, JSON.stringify({ h, t }));
@@ -254,7 +256,7 @@ if (want("desktop")) {
   const { context, page, bucket } = await newContext("sales_rep", { width: 1440, height: 900 });
   await page.goto(`${BASE}/overview`, { waitUntil: "domcontentloaded", timeout: 120_000 });
   await resetGuidance(page, { onboarding: true, bucket });
-  await page.getByText("Welcome to iAcquireOS").waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+  await page.getByText("New to iAcquireOS?").waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
   check("first-time owner sees the optional welcome card", await page.locator("#aqi-welcome-title").isVisible().catch(() => false));
   await page.getByRole("button", { name: "Don't show again" }).click().catch(() => {});
   await page.waitForTimeout(1_200);
@@ -479,8 +481,8 @@ if (want("error")) {
     else await route.continue();
   });
   await page.locator('[data-aqi-control="next"]').click();
-  await page.getByText("Something interrupted the walkthrough").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
-  check("network failure shows a friendly walkthrough error", await page.getByText("Something interrupted the walkthrough").isVisible().catch(() => false));
+  await page.getByText("That didn't save").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  check("network failure shows a friendly walkthrough error", await page.getByText("That didn't save").isVisible().catch(() => false));
   check("failed action offers a retry control", await page.getByRole("button", { name: "Try again" }).isVisible().catch(() => false));
   abortNext = false;
   await page.getByRole("button", { name: "Try again" }).click();

@@ -2,100 +2,112 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { ArrowRight, Sparkles, X } from "lucide-react";
-import { currentGuidance, setOnboardingVisible, startTutorial, useGuidance } from "@/components/aqi/tutorial/tutorial-store";
-import type { AqiTutorialSummary } from "@/lib/aqi/tutorials";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { GuidanceCard, GuidanceCloseButton, GuidanceGhostButton, GuidancePrimaryButton, GuidanceQuietButton } from "@/components/aqi/tutorial/guidance-card";
+import { dismissOnboardingLocally, markOnboardingOffered, setOnboardingVisible, startTutorial, useAqiPanelOpen, useGuidance } from "@/components/aqi/tutorial/tutorial-store";
 
-interface OnboardingView {
-  recommended: AqiTutorialSummary | null;
-  shouldOffer: boolean;
-  reason: string;
+/** Matches the server's quiet routes: the welcome is never offered on a chat or onboarding page. */
+const QUIET_ROUTE = /^\/(chat|onboarding)(\/|$)/;
+/** Wait for the page to settle before offering anything, so the prompt never competes with first paint. */
+const SETTLE_TIMEOUT_MS = 1200;
+const RETRY_MS = 2500;
+const MAX_RETRIES = 6;
+
+/** True while the person is typing or a modal dialog owns the screen: not the time for a welcome. */
+function workflowBusy(): boolean {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return true;
+  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]:not([data-aqi-panel])'));
 }
 
 /**
- * Optional first-time guidance. The server decides eligibility from the person's real permissions,
- * and every choice is remembered server-side. It never auto-starts a walkthrough and never returns
- * after "Don't show again".
+ * Optional first-time guidance. The server decides eligibility from the person's real permissions and
+ * returns it with the guidance bootstrap, so there is no second request. Every choice is remembered
+ * server-side. It never auto-starts a walkthrough, never returns after "Don't show again", and waits
+ * out a form being edited or a dialog being open.
  */
 export function OnboardingNudge() {
   const pathname = usePathname();
   const state = useGuidance();
-  const [view, setView] = React.useState<OnboardingView | null>(null);
+  const panelOpen = useAqiPanelOpen();
   const [busy, setBusy] = React.useState(false);
-  const timer = React.useRef<number | null>(null);
+  const [readyPath, setReadyPath] = React.useState<string | null>(null);
+
+  const path = pathname ?? "/";
+  const offer = state.onboarding;
+  // Offered at most once per page session: after it has been shown, moving to another page does not bring it back.
+  const eligible = Boolean(offer?.shouldOffer && offer.recommended) && !QUIET_ROUTE.test(path) && !state.open && !state.resume && !panelOpen && state.phase !== "starting" && (!state.onboardingOffered || readyPath === path);
 
   React.useEffect(() => {
-    const path = pathname ?? "/";
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const res = await fetch(`/api/aqi/onboarding?path=${encodeURIComponent(path)}`, { cache: "no-store" });
-          if (!res.ok) return;
-          const data = (await res.json()) as OnboardingView;
-          if (!data.shouldOffer || !data.recommended) return;
-          // Re-check the live store: a walkthrough may have started while this request was in flight.
-          const live = currentGuidance();
-          if (live.open || live.resume) return;
-          setView(data);
-        } catch {
-          // Optional guidance failing is never an error the person needs to see.
-        }
-      })();
-    }, 1800);
-    return () => {
-      if (timer.current) window.clearTimeout(timer.current);
+    if (!eligible) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer = 0;
+    let idle = 0;
+    const show = () => {
+      if (cancelled) return;
+      if (workflowBusy() && attempts < MAX_RETRIES) {
+        attempts += 1;
+        timer = window.setTimeout(show, RETRY_MS);
+        return;
+      }
+      if (!workflowBusy()) {
+        setReadyPath(path);
+        markOnboardingOffered();
+      }
     };
-  }, [pathname]);
+    const hasIdle = typeof window.requestIdleCallback === "function";
+    if (hasIdle) idle = window.requestIdleCallback(show, { timeout: SETTLE_TIMEOUT_MS });
+    else timer = window.setTimeout(show, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (hasIdle) window.cancelIdleCallback(idle);
+    };
+  }, [eligible, path]);
 
+  const visible = eligible && readyPath === path;
   React.useEffect(() => {
-    setOnboardingVisible(Boolean(view?.shouldOffer));
+    setOnboardingVisible(visible);
     return () => setOnboardingVisible(false);
-  }, [view?.shouldOffer]);
+  }, [visible]);
 
-  if (!view?.recommended || !view.shouldOffer || state.open || state.resume) return null;
-  const tutorial = view.recommended;
+  if (!visible || !offer?.recommended) return null;
+  const tutorial = offer.recommended;
 
   async function act(action: "start" | "defer" | "dismiss") {
     if (busy) return;
     setBusy(true);
-    try {
-      await fetch("/api/aqi/onboarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-    } catch {
-      // The preference may not save; the card still closes so it never traps the page.
-    }
-    setView((current) => (current ? { ...current, shouldOffer: false } : current));
+    // Close immediately: the choice is saved in the background, and a failed save only means the
+    // welcome may be offered again later.
+    dismissOnboardingLocally();
     setOnboardingVisible(false);
+    const saved = fetch("/api/aqi/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    }).catch(() => undefined);
+    if (action === "start") await Promise.all([saved, startTutorial(tutorial.slug, "onboarding")]);
+    else await saved;
     setBusy(false);
-    if (action === "start") await startTutorial(tutorial.slug, "onboarding");
   }
 
   return (
-    <div
-      className="fixed z-40 w-[min(348px,calc(100vw-24px))] rounded-2xl border border-line bg-surface p-3.5 shadow-float"
-      style={{ right: "max(12px, env(safe-area-inset-right))", bottom: "calc(max(14px, env(safe-area-inset-bottom)) + 70px)" }}
-      role="dialog"
-      aria-labelledby="aqi-welcome-title"
-    >
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl brand-gradient text-white"><Sparkles className="size-4" /></span>
-        <div className="min-w-0 flex-1">
-          <p id="aqi-welcome-title" className="text-[13px] font-semibold tracking-tight text-ink">Welcome to iAcquireOS</p>
-          <p className="mt-0.5 text-[12px] leading-relaxed text-muted">Want a quick tour? AQi can show you the workspace, your AI team and where to get help.</p>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-            <button type="button" disabled={busy} onClick={() => void act("start")} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11.5px] font-semibold text-white hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-              Start tour <ArrowRight className="size-3" />
-            </button>
-            <button type="button" disabled={busy} onClick={() => void act("defer")} className="inline-flex h-8 items-center rounded-lg px-2 text-[11px] font-medium text-muted hover:bg-surface-2 hover:text-ink disabled:opacity-60">Maybe later</button>
-            <button type="button" disabled={busy} onClick={() => void act("dismiss")} className="inline-flex h-8 items-center rounded-lg px-2 text-[10.5px] font-medium text-faint hover:bg-surface-2 hover:text-muted disabled:opacity-60">Don&apos;t show again</button>
-          </div>
-        </div>
-        <button type="button" disabled={busy} onClick={() => void act("defer")} aria-label="Postpone the tour" className="-mr-1 -mt-1 flex size-7 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink"><X className="size-3.5" /></button>
+    <GuidanceCard role="dialog" labelledBy="aqi-welcome-title" icon={<Sparkles className="size-[18px]" aria-hidden />}>
+      <div className="flex items-start justify-between gap-2">
+        <p id="aqi-welcome-title" className="text-[14px] font-semibold leading-snug tracking-tight text-ink">New to iAcquireOS?</p>
+        <GuidanceCloseButton label="Postpone the tour" disabled={busy} onClick={() => void act("defer")} />
       </div>
-    </div>
+      <p className="mt-1 text-[13px] leading-relaxed text-muted">Want a quick tour? I&apos;ll show you around.</p>
+      <div className="mt-3 flex items-center gap-1.5">
+        <GuidancePrimaryButton disabled={busy} onClick={() => void act("start")}>
+          Start tour <ArrowRight className="size-3.5" aria-hidden />
+        </GuidancePrimaryButton>
+        <GuidanceGhostButton disabled={busy} onClick={() => void act("defer")}>Maybe later</GuidanceGhostButton>
+      </div>
+      <div className="mt-2 border-t border-line pt-1.5">
+        <GuidanceQuietButton disabled={busy} onClick={() => void act("dismiss")}>Don&apos;t show again</GuidanceQuietButton>
+      </div>
+    </GuidanceCard>
   );
 }

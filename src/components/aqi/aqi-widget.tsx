@@ -41,7 +41,8 @@ import { Field, Input, Textarea } from "@/components/ui/primitives";
 import { EmojiPicker } from "@/components/aqi/emoji-picker";
 import { AqiMessageFeedback } from "@/components/aqi/message-feedback";
 import { useMessageFeedback, type FeedbackValue } from "@/components/aqi/use-message-feedback";
-import { recordChatGuidance, startTutorial, useGuidance } from "@/components/aqi/tutorial/tutorial-store";
+import { recordChatGuidance, setAqiPanelOpen, startTutorial, useGuidanceSelect } from "@/components/aqi/tutorial/tutorial-store";
+import { normalizeAqiNavigation, type AqiNavRoute } from "@/lib/aqi/navigation-links";
 import { DEFAULT_AQI_CONVERSATION_TITLE, isMeaningfulAqiMessage } from "@/lib/aqi/title";
 import { cn, relativeTime } from "@/lib/utils";
 
@@ -50,6 +51,8 @@ interface Welcome {
   suggestions: Array<{ id: string; question: string }>;
   page: { path: string; label: string; description: string } | null;
   allowedPaths: string[];
+  /** Pages this person may open; the only things an answer may link to. */
+  navigation?: AqiNavRoute[];
 }
 
 interface Health {
@@ -148,12 +151,33 @@ interface PendingAttachment extends Partial<AqiAttachment> {
 
 type View = "chat" | "history";
 
-function internalLinksAllowed(content: string, allowedPaths: string[]) {
-  return content.replace(/\[([^\]]+)\]\((\/[^)\s]+)\)/g, (whole, label: string, href: string) => {
-    const allowed = allowedPaths.some((path) => href === path || href.startsWith(`${path}/`));
-    return allowed ? whole : label;
-  });
-}
+/**
+ * One assistant answer. Page references the model wrote as pseudo-links ("[Team]", "[Integrations]
+ * (Settings → Integrations)") become verified links to pages this person can open, or plain words,
+ * and a half-written link is held back while the answer streams. Memoised so only the message that is
+ * still arriving re-renders.
+ */
+const AqiAnswer = React.memo(function AqiAnswer({
+  content,
+  streaming,
+  routes,
+  currentPath,
+  onNavigate,
+}: {
+  content: string;
+  streaming: boolean;
+  routes: AqiNavRoute[];
+  currentPath: string | null;
+  onNavigate: () => void;
+}) {
+  const text = React.useMemo(
+    () => normalizeAqiNavigation(content, { routes, currentPath, streaming, externalLinks: "strip", rawPaths: true }),
+    [content, routes, currentPath, streaming],
+  );
+  return <Markdown className="prose-aqi" onNavigate={onNavigate}>{text}</Markdown>;
+});
+
+const NO_ROUTES: AqiNavRoute[] = [];
 
 function parseSseBlock(block: string): Record<string, unknown> | null {
   const data = block
@@ -174,7 +198,9 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   // The AI employee chat page has a bottom composer; lift the launcher there.
   const raised = raisedProp ?? Boolean(pathname?.startsWith("/chat"));
   const reduced = useReducedMotion();
-  const guidance = useGuidance();
+  // Only these two fields matter here; subscribing to the whole snapshot re-rendered the widget on every tour step.
+  const guidanceOpen = useGuidanceSelect((snapshot) => snapshot.open);
+  const guidanceTutorials = useGuidanceSelect((snapshot) => snapshot.tutorials);
   const [open, setOpen] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [view, setView] = React.useState<View>("chat");
@@ -366,6 +392,24 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
     conversationsRef.current = conversations;
   }, [conversations]);
 
+  // Quiet prompts beside the launcher stay out of the open panel's way, and the launcher publishes its
+  // offset (raised on chat pages) so those prompts sit exactly above it.
+  React.useEffect(() => {
+    setAqiPanelOpen(open);
+    return () => setAqiPanelOpen(false);
+  }, [open]);
+  React.useEffect(() => {
+    if (raised) document.body.dataset.aqiRaised = "true";
+    else delete document.body.dataset.aqiRaised;
+    return () => {
+      delete document.body.dataset.aqiRaised;
+    };
+  }, [raised]);
+  // On a phone the open panel covers the page a followed link opens.
+  const closeForNavigation = React.useCallback(() => {
+    if (window.matchMedia("(max-width: 639px)").matches) setOpen(false);
+  }, []);
+
   // Warm the welcome payload and provider health off the critical path. This is one small request
   // per shell mount and per page change, not per open.
   React.useEffect(() => {
@@ -443,7 +487,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   });
 
   React.useEffect(() => {
-    if (nearBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (nearBottom.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: messages.some((message) => message.status === "streaming") ? "auto" : "smooth" });
   }, [messages]);
 
   React.useEffect(() => {
@@ -880,10 +924,13 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   }
 
   async function startGuide(guide: GuideOffer) {
+    // A walkthrough points at the page itself, so the chat steps aside; it reopens from the launcher.
+    setOpen(false);
     const started = await startTutorial(guide.slug, "chat");
     if (started) {
       void recordChatGuidance("guidance_accept", guide.slug);
     } else {
+      setOpen(true);
       showError("I couldn't start that walkthrough. Its published steps may have changed; ask me again and I'll explain it here instead.");
     }
   }
@@ -1177,9 +1224,9 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                           )}
                         </div>
                         <p className="mt-auto pt-5 text-center text-[11.5px] text-muted">Still stuck? <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="font-medium text-primary hover:underline">Get help from iAcquire</button> or <Link href="/support" className="font-medium text-primary hover:underline">open Support</Link>.</p>
-                        {guidance.tutorials.some((tutorial) => tutorial.slug === "getting-started") && (
+                        {guidanceTutorials.some((tutorial) => tutorial.slug === "getting-started") && (
                           <div className="mt-3 text-center">
-                            <button type="button" onClick={() => void startTutorial("getting-started", "library")} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[11px] font-medium text-ink-2 shadow-soft transition hover:border-line-strong hover:text-ink">
+                            <button type="button" onClick={() => { setOpen(false); void startTutorial("getting-started", "library").then((started) => { if (!started) setOpen(true); }); }} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[11px] font-medium text-ink-2 shadow-soft transition hover:border-line-strong hover:text-ink">
                               <Sparkles className="size-3" /> Take a quick guided tour
                             </button>
                           </div>
@@ -1196,10 +1243,10 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                         )}
                         {messages.map((message) => (
                           <div key={message.id} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                            <div className={cn("max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", message.role === "user" ? "bg-primary text-white" : "border border-line bg-surface text-ink")}>
+                            <div className={cn("min-w-0 max-w-[92%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed", message.role === "user" ? "bg-primary text-primary-on" : "border border-line bg-surface text-ink")}>
                               {message.role === "assistant" ? (
                                 <>
-                                  {message.content ? <Markdown>{internalLinksAllowed(message.content, welcome?.allowedPaths ?? [])}</Markdown> : <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span>}
+                                  {message.content ? <AqiAnswer content={message.content} streaming={message.status === "streaming"} routes={welcome?.navigation ?? NO_ROUTES} currentPath={pathname ?? null} onNavigate={closeForNavigation} /> : <span className="flex items-center gap-1.5 text-muted"><span className="size-1.5 animate-pulse rounded-full bg-primary" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:120ms]" /><span className="size-1.5 animate-pulse rounded-full bg-primary [animation-delay:240ms]" /><span className="ml-1">Thinking…</span></span>}
                           {message.attachments?.length ? (
                             <div className="mt-2 grid grid-cols-2 gap-1.5">
                               {message.attachments.map((attachment) => attachment.kind === "image" ? (
@@ -1226,14 +1273,19 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                         size="sm"
                                         variant="brand"
                                         className="mt-1.5"
-                                        disabled={guidance.open}
+                                        disabled={guidanceOpen}
                                         onClick={() => void startGuide(message.guide!)}
                                       >
-                                        <Sparkles className="size-3.5" /> {guidance.open ? "Walkthrough open" : "Show me how"}
+                                        <Sparkles className="size-3.5" /> {guidanceOpen ? "Walkthrough open" : "Show me how"}
                                       </Button>
                                     </div>
                                   )}
-                                  {message.status === "streaming" && message.content && <span className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-primary align-middle" aria-label="AQi is writing" />}
+                                  {message.status === "streaming" && message.content && (
+                                    <>
+                                      <span data-aqi-writing aria-hidden className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-primary align-middle" />
+                                      <span role="status" className="sr-only">AQi is writing</span>
+                                    </>
+                                  )}
                                   {message.status !== "streaming" && message.content && (
                                     <div className="mt-2 flex flex-wrap items-center gap-0.5 border-t border-line/70 pt-1.5">
                                       <button type="button" title="Copy response" onClick={() => void copyMessage(message)} className="flex min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" aria-label={copiedId === message.id ? "Copied" : "Copy answer"} aria-live="polite">{copiedId === message.id ? <><Check className="size-3.5 text-success-ink" /><span className="text-[10px] text-success-ink">Copied!</span></> : <Copy className="size-3.5" />}</button>

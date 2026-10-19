@@ -129,3 +129,5 @@ Not verified here:
 6. Confirm Insights against real staging events, including a custom date range and an empty period.
 7. Only then request explicit authorization for another production migration or push. Production
    currently runs the hardening merge; staging acceptance is still outstanding.
+
+UX polish (navigation links, walkthrough card and positioning, welcome popup, start-up performance) is recorded in [aqi-ux-polish.md](aqi-ux-polish.md).

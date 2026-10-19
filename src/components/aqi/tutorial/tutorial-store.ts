@@ -15,6 +15,13 @@ export interface GuidanceResume {
   status: "in_progress" | "paused" | "unavailable";
 }
 
+/** What the server says about the first-run welcome, delivered with the guidance bootstrap. */
+export interface GuidanceOnboarding {
+  recommended: AqiTutorialSummary | null;
+  shouldOffer: boolean;
+  reason: string;
+}
+
 export interface GuidanceSnapshot {
   ready: boolean;
   busy: boolean;
@@ -33,6 +40,14 @@ export interface GuidanceSnapshot {
   tipVisible: boolean;
   lastPath: string | null;
   preview: boolean;
+  /** Server eligibility for the welcome card, from the same request as the tutorial list. */
+  onboarding: GuidanceOnboarding | null;
+  /** The welcome was already offered in this page session; it is not offered again on every page. */
+  onboardingOffered: boolean;
+  /** Title shown on the immediate "starting" card while the walkthrough is being set up. */
+  startingTitle: string | null;
+  /** The walkthrough card has been placed and is visible; the "starting" card can hand over to it. */
+  stageReady: boolean;
 }
 
 const INITIAL: GuidanceSnapshot = {
@@ -53,6 +68,10 @@ const INITIAL: GuidanceSnapshot = {
   tipVisible: false,
   lastPath: null,
   preview: false,
+  onboarding: null,
+  onboardingOffered: false,
+  startingTitle: null,
+  stageReady: false,
 };
 
 let snapshot: GuidanceSnapshot = INITIAL;
@@ -81,6 +100,15 @@ export function useGuidance(): GuidanceSnapshot {
   return React.useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
 }
 
+/**
+ * Subscribe to one field of the snapshot. The chat widget is large; with useGuidance() it rendered
+ * again on every walkthrough step, save and card handover. A selected primitive or stable reference
+ * only re-renders its consumer when that value itself changes.
+ */
+export function useGuidanceSelect<T>(select: (snapshot: GuidanceSnapshot) => T): T {
+  return React.useSyncExternalStore(subscribe, () => select(snapshot), () => select(SERVER_SNAPSHOT));
+}
+
 export function currentGuidance(): GuidanceSnapshot {
   return snapshot;
 }
@@ -104,6 +132,7 @@ export async function bootstrapGuidance(pathname: string | null, force = false):
       const data = await requestJson<{
         tutorials: AqiTutorialSummary[];
         state: { active: Array<AqiTutorialProgressView & { tutorialStatus: string }>; completed: AqiTutorialProgressView[]; availableCount: number };
+        onboarding?: GuidanceOnboarding;
       }>(`/api/aqi/tutorials?path=${encodeURIComponent(pathname ?? "/")}`);
       const active = data.state?.active?.[0] ?? null;
       const resume: GuidanceResume | null = active
@@ -117,7 +146,15 @@ export async function bootstrapGuidance(pathname: string | null, force = false):
           }
         : null;
       bootstrappedAt = Date.now();
-      emit({ ready: true, tutorials: data.tutorials ?? [], resume, lastPath: pathname });
+      emit({
+        ready: true,
+        tutorials: data.tutorials ?? [],
+        resume,
+        lastPath: pathname,
+        onboarding: data.onboarding
+          ? { recommended: data.onboarding.recommended ?? null, shouldOffer: Boolean(data.onboarding.shouldOffer), reason: String(data.onboarding.reason ?? "") }
+          : null,
+      });
     } catch {
       // Guidance is an enhancement; a bootstrap failure must never block the page or AQi chat.
       emit({ ready: false, lastPath: pathname });
@@ -133,10 +170,23 @@ function isGuidancePath(): boolean {
   return /^\/(activity|add-ons|analytics|appointments|approvals|chat|crm|inbox|knowledge|leads|maintenance|notifications|our-work|overview|projects|retention|sales|settings|setup|support|website|workforce|admin)(\/|$)/.test(window.location.pathname);
 }
 
+/** A User Timing mark, so start-up latency can be read from the browser's own performance timeline. */
+export function markGuidance(name: string): void {
+  try {
+    performance.mark(`aqi:${name}`);
+  } catch {
+    // Marks are diagnostic only.
+  }
+}
+
 export async function startTutorial(slug: string, source: "chat" | "library" | "onboarding" | "tip" = "library"): Promise<boolean> {
   if (snapshot.busy) return false;
   if (!isGuidancePath()) return false;
-  emit({ busy: true, error: null, message: null, phase: "starting" });
+  markGuidance("start:click");
+  // Acknowledge the click at once: the compact "starting" card appears while the server sets up
+  // the walkthrough, and the AQi panel steps out of the way.
+  const summary = snapshot.tutorials.find((tutorial) => tutorial.slug === slug);
+  emit({ busy: true, error: null, message: null, phase: "starting", startingTitle: summary?.title ?? null });
   try {
     const result = await requestJson<{ tutorial: AqiTutorialView; progress: AqiTutorialProgressView; resumed: boolean }>("/api/aqi/tutorials", {
       method: "POST",
@@ -158,7 +208,10 @@ export async function startTutorial(slug: string, source: "chat" | "library" | "
       onboardingVisible: false,
       tipVisible: false,
       preview: false,
+      startingTitle: null,
+      stageReady: false,
     });
+    markGuidance("start:posted");
     if (typeof document !== "undefined") document.body.dataset.aqiTutorial = "on";
     return true;
   } catch (err) {
@@ -168,6 +221,7 @@ export async function startTutorial(slug: string, source: "chat" | "library" | "
       phase: "error",
       error: err instanceof Error ? err.message : "I couldn't start that walkthrough. Please try again.",
       targetState: "idle",
+      startingTitle: null,
     });
     return false;
   }
@@ -322,12 +376,43 @@ export async function confirmTutorialCompletion(pathname: string): Promise<void>
   await progressAction("complete", { pathname });
 }
 
+/** The step a Next or Previous press will land on, or null when the press is not a plain step change. */
+function optimisticStep(action: TutorialAction): number | null {
+  const tutorial = snapshot.tutorial;
+  if (!tutorial || snapshot.phase !== "active" || snapshot.preview) return null;
+  const last = tutorial.steps.length - 1;
+  if (action === "next" && snapshot.stepIndex < last) return snapshot.stepIndex + 1;
+  if (action === "previous" && snapshot.stepIndex > 0) return snapshot.stepIndex - 1;
+  return null;
+}
+
 type TutorialAction = "next" | "previous" | "pause" | "resume" | "exit" | "complete" | "skip" | "target_missing" | "route_verified" | "restart" | "viewed";
 
 let progressSequence = 0;
 let lastFailedAction: { action: TutorialAction; extra: { step?: number; pathname?: string | null } } | null = null;
 
-async function progressAction(action: TutorialAction, extra: { step?: number; pathname?: string | null } = {}) {
+let inflight: Promise<unknown> | null = null;
+
+/**
+ * Pause and exit are decisions the person must never lose. Because Next and Previous are shown at
+ * once while their save is still in flight, a Pause pressed straight after a Next would otherwise be
+ * ignored as "busy". It waits for the earlier save to finish and then runs, in order.
+ */
+function progressAction(action: TutorialAction, extra: { step?: number; pathname?: string | null } = {}) {
+  // Everything else starts synchronously, so a step change is applied in the same tick as the click.
+  const run = (action === "pause" || action === "exit") && inflight
+    ? inflight.catch(() => undefined).then(() => runProgressAction(action, extra))
+    : runProgressAction(action, extra);
+  // Analytics-only "viewed" calls return at once and must not replace the save being waited on.
+  if (action === "viewed") return run;
+  const tracked: Promise<unknown> = run.finally(() => {
+    if (inflight === tracked) inflight = null;
+  });
+  inflight = tracked;
+  return run;
+}
+
+async function runProgressAction(action: TutorialAction, extra: { step?: number; pathname?: string | null } = {}) {
   const tutorial = snapshot.tutorial;
   const progress = snapshot.progress;
   if (!tutorial || !progress) return null;
@@ -356,7 +441,16 @@ async function progressAction(action: TutorialAction, extra: { step?: number; pa
   if (snapshot.busy && !silent) return null;
   const sequence = ++progressSequence;
   lastFailedAction = { action, extra };
-  if (!silent) emit({ busy: true, error: null });
+  // Moving between steps is shown at once; the server remains the record. If it cannot save, the
+  // view returns to the last confirmed step with a retry, so the screen never claims saved progress.
+  const optimistic = optimisticStep(action);
+  if (!silent) {
+    emit({
+      busy: true,
+      error: null,
+      ...(optimistic !== null ? { stepIndex: optimistic, targetState: "idle" as TargetState, message: null } : {}),
+    });
+  }
   try {
     const result = await requestJson<{
       progress: AqiTutorialProgressView;
@@ -398,6 +492,7 @@ async function progressAction(action: TutorialAction, extra: { step?: number; pa
       busy: false,
       phase: "error",
       error: err instanceof Error ? err.message : "That step could not be saved. Please try again.",
+      ...(optimistic !== null ? { stepIndex: Math.min(progress.currentStep, Math.max(0, tutorial.steps.length - 1)) } : {}),
     });
     return null;
   }
@@ -517,6 +612,8 @@ export function closeTutorial(): void {
     targetState: "idle",
     resume: resume ?? (phase === "completed" || phase === "exited" ? null : snapshot.resume),
     preview: false,
+    startingTitle: null,
+    stageReady: false,
   });
   if (typeof document !== "undefined") delete document.body.dataset.aqiTutorial;
 }
@@ -532,6 +629,49 @@ export function clearGuidanceError(): void {
 export function setOnboardingVisible(visible: boolean): void {
   if (snapshot.onboardingVisible === visible) return;
   emit({ onboardingVisible: visible });
+}
+
+/** Closes the welcome right away and remembers that it was offered, so it is not shown on every page. */
+export function dismissOnboardingLocally(): void {
+  emit({
+    onboarding: snapshot.onboarding ? { ...snapshot.onboarding, shouldOffer: false } : null,
+    onboardingOffered: true,
+    onboardingVisible: false,
+  });
+}
+
+export function markOnboardingOffered(): void {
+  if (!snapshot.onboardingOffered) emit({ onboardingOffered: true });
+}
+
+/** The walkthrough card reports once it is placed and visible. */
+export function setStageReady(ready: boolean): void {
+  if (snapshot.stageReady !== ready) emit({ stageReady: ready });
+}
+
+/**
+ * Whether the AQi chat panel is open, so quiet prompts stay out of its way. This is deliberately a
+ * separate tiny store: the chat widget publishes it, and if it lived in the guidance snapshot the
+ * widget (which subscribes to that snapshot) would render a second time every time it opened.
+ */
+let panelOpen = false;
+const panelListeners = new Set<() => void>();
+
+export function setAqiPanelOpen(open: boolean): void {
+  if (panelOpen === open) return;
+  panelOpen = open;
+  for (const listener of panelListeners) listener();
+}
+
+export function useAqiPanelOpen(): boolean {
+  return React.useSyncExternalStore(
+    (listener) => {
+      panelListeners.add(listener);
+      return () => panelListeners.delete(listener);
+    },
+    () => panelOpen,
+    () => false,
+  );
 }
 
 export function setTipVisible(visible: boolean): void {

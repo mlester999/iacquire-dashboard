@@ -16,10 +16,11 @@ export async function GET(request: Request) {
   try {
     const viewer = await resolveAqiViewer();
     const path = new URL(request.url).searchParams.get("path");
-    const [tutorials, state, onboarding] = await Promise.all([
-      listAqiTutorialsForViewer(viewer),
-      getAqiTutorialState(viewer),
-      getAqiOnboarding(viewer, path),
+    // One eligibility pass feeds the list, the progress state and the welcome decision.
+    const tutorials = await listAqiTutorialsForViewer(viewer);
+    const [state, onboarding] = await Promise.all([
+      getAqiTutorialState(viewer, tutorials),
+      getAqiOnboarding(viewer, path, tutorials),
     ]);
     return NextResponse.json({ tutorials, state, onboarding, page: path }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err) {

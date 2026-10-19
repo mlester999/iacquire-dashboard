@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { withSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { canOpenAqiRoute, matchAqiRoute } from "@/lib/aqi/routes";
@@ -144,12 +144,12 @@ async function viewerCrmProviders(viewer: AqiViewer): Promise<Map<CrmCapability,
   const orgId = viewer.org?.orgId;
   if (!orgId) return null;
   return withSystem(async (db) => {
-    const workspace = await db.query<{ mode: string }>("select mode from crm_workspaces where org_id = $1", [orgId]);
+    // Two independent reads; issue them together instead of one after the other.
+    const [workspace, overrides] = await Promise.all([
+      db.query<{ mode: string }>("select mode from crm_workspaces where org_id = $1", [orgId]),
+      db.query<{ capability: string; provider: CapabilityProvider }>("select capability, provider from crm_capability_providers where org_id = $1", [orgId]),
+    ]);
     const mode = workspace.rows[0]?.mode ?? "native";
-    const overrides = await db.query<{ capability: string; provider: CapabilityProvider }>(
-      "select capability, provider from crm_capability_providers where org_id = $1",
-      [orgId],
-    );
     const map = new Map<CrmCapability, CapabilityProvider>();
     for (const capability of CRM_CAPABILITIES) {
       if (mode === "hybrid") map.set(capability, overrides.rows.find((row) => row.capability === capability)?.provider ?? "native");
@@ -204,7 +204,8 @@ async function isEligible(
 }
 
 export async function listAqiTutorialsForViewer(viewer: AqiViewer): Promise<AqiTutorialSummary[]> {
-  const [tutorials, providers] = await Promise.all([loadPublishedTutorials(), viewerCrmProviders(viewer)]);
+  const tutorials = await loadPublishedTutorials();
+  const providers = tutorials.some((tutorial) => tutorial.definition.requiresCrm) ? await viewerCrmProviders(viewer) : null;
   const eligible: AqiTutorialSummary[] = [];
   for (const tutorial of tutorials) {
     if (await isEligible(viewer, tutorial, providers)) eligible.push(tutorial.summary);
@@ -213,9 +214,10 @@ export async function listAqiTutorialsForViewer(viewer: AqiViewer): Promise<AqiT
 }
 
 export async function getAqiTutorialForViewer(viewer: AqiViewer, slug: string): Promise<AqiTutorialView | null> {
-  const [tutorials, providers] = await Promise.all([loadPublishedTutorials(), viewerCrmProviders(viewer)]);
+  const tutorials = await loadPublishedTutorials();
   const tutorial = tutorials.find((row) => row.slug === slug);
   if (!tutorial) return null;
+  const providers = tutorial.definition.requiresCrm ? await viewerCrmProviders(viewer) : null;
   if (!(await isEligible(viewer, tutorial, providers))) return null;
   return {
     ...tutorial.summary,
@@ -302,8 +304,8 @@ export interface AqiTutorialState {
   availableCount: number;
 }
 
-export async function getAqiTutorialState(viewer: AqiViewer): Promise<AqiTutorialState> {
-  const [rows, summaries] = await Promise.all([loadProgressRows(viewer), listAqiTutorialsForViewer(viewer)]);
+export async function getAqiTutorialState(viewer: AqiViewer, available?: AqiTutorialSummary[]): Promise<AqiTutorialState> {
+  const [rows, summaries] = await Promise.all([loadProgressRows(viewer), available ?? listAqiTutorialsForViewer(viewer)]);
   const bySlug = new Map(summaries.map((summary) => [summary.slug, summary]));
   const active: AqiTutorialState["active"] = [];
   const completed: AqiTutorialProgressView[] = [];
@@ -327,13 +329,15 @@ async function writeEvent(input: {
   kind: string;
   dedupeKey: string;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
-  await withSystem((db) => db.query(
+}, client?: Queryable): Promise<void> {
+  const insert = (db: Queryable) => db.query(
     `insert into aqi_tutorial_events (org_id, user_id, tutorial_id, tutorial_version, attempt, step_key, kind, dedupe_key, metadata)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
      on conflict (dedupe_key) do nothing`,
     [input.orgId, input.userId, input.tutorialId, input.version, input.attempt, input.stepKey, input.kind, input.dedupeKey, JSON.stringify(input.metadata ?? {})],
-  ));
+  );
+  // Inside an existing transaction when one is supplied, so a start is recorded together with its events.
+  await (client ? insert(client) : withSystem(insert));
 }
 
 function dedupe(tutorialId: string, version: number, attempt: number, userId: string, kind: string, stepKey: string | null, suffix = ""): string {
@@ -389,20 +393,20 @@ export async function startAqiTutorial(viewer: AqiViewer, slug: string, source: 
       )).rows[0];
       row = { ...inserted, slug: tutorial.slug, title: tutorial.title, tutorial_status: "published", published_version: tutorial.version, published_version_id: tutorial.versionId };
     }
+    // The two start events share the transaction that created the progress row: one connection, no
+    // extra round trips, and a start can never be saved without its events.
+    await writeEvent({
+      orgId, userId: viewer.user.id, tutorialId: tutorial.id, version: tutorial.version, attempt,
+      stepKey: tutorial.steps[0]?.key ?? null, kind: "started", dedupeKey: dedupe(tutorial.id, tutorial.version, attempt, viewer.user.id, "started", null),
+      metadata: { source, stepCount },
+    }, db);
+    await writeEvent({
+      orgId, userId: viewer.user.id, tutorialId: tutorial.id, version: tutorial.version, attempt,
+      stepKey: tutorial.steps[0]?.key ?? null, kind: "step_viewed", dedupeKey: dedupe(tutorial.id, tutorial.version, attempt, viewer.user.id, "step_viewed", tutorial.steps[0]?.key ?? null),
+    }, db);
     return { row, resumed: false, attempt };
   });
 
-  if (!result.resumed) {
-    await writeEvent({
-      orgId, userId: viewer.user.id, tutorialId: tutorial.id, version: tutorial.version, attempt: result.attempt,
-      stepKey: tutorial.steps[0]?.key ?? null, kind: "started", dedupeKey: dedupe(tutorial.id, tutorial.version, result.attempt, viewer.user.id, "started", null),
-      metadata: { source, stepCount },
-    });
-    await writeEvent({
-      orgId, userId: viewer.user.id, tutorialId: tutorial.id, version: tutorial.version, attempt: result.attempt,
-      stepKey: tutorial.steps[0]?.key ?? null, kind: "step_viewed", dedupeKey: dedupe(tutorial.id, tutorial.version, result.attempt, viewer.user.id, "step_viewed", tutorial.steps[0]?.key ?? null),
-    });
-  }
   return { progress: progressView(result.row, stepCount), tutorial, resumed: result.resumed };
 }
 

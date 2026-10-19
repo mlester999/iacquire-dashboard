@@ -158,6 +158,16 @@ opening control disappeared, and low-contrast Insights metric labels. It does **
 staging identity, a live-provider chat action or a manual screen-reader result. The hosted schema was
 verified separately with read-only queries after migration 0061.
 
+### AQi UX polish (2026-10-19; local branch `aqi/phase3-ux-polish`, no migration, not pushed)
+
+Navigation links and Markdown, the walkthrough card and positioning engine, the welcome popup and
+start-up performance were reworked without a schema change. Locally verified: full suite 184 files and
+3,042 tests, `tsc`, `eslint` and `npm run build` clean, 62 UX browser checks, and the existing 65-check Phase 3 browser
+suite. Measured on the isolated development server only: first spotlight after "Start tour" 444 ms to
+109 ms desktop, step change 188 ms to 11 ms, layout shift 0.0818 to 0.0002. **Not verified:** a live
+DeepSeek model, a production-build timing, a screen reader, staging. Details, root causes and the
+staging acceptance list: [aqi-ux-polish.md](aqi-ux-polish.md).
+
 ### Website Studio rebuild (2026-10-15, migration 0026)
 
 Details and the honest scope are in [website-studio.md](website-studio.md); the apply plan is [website-studio-migration-0026.md](website-studio-migration-0026.md).

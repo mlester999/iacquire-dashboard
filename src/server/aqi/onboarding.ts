@@ -84,9 +84,9 @@ const QUIET_ROUTE = /^\/(chat|onboarding)(\/|$)/;
  * First-time guidance is optional, server-backed and deliberately quiet: it never auto-opens the
  * overlay, never repeats after a dismissal, and never offers a walkthrough the person cannot use.
  */
-export async function getAqiOnboarding(viewer: AqiViewer, pathname: string | null): Promise<AqiOnboardingView> {
-  const preferences = await getAqiPreferences(viewer);
-  const tutorials = await listAqiTutorialsForViewer(viewer);
+export async function getAqiOnboarding(viewer: AqiViewer, pathname: string | null, available?: AqiTutorialSummary[]): Promise<AqiOnboardingView> {
+  // Preferences and the eligible tutorial list are independent; a caller that already has the list passes it in.
+  const [preferences, tutorials] = await Promise.all([getAqiPreferences(viewer), available ?? listAqiTutorialsForViewer(viewer)]);
   const recommended = tutorials.find((tutorial) => tutorial.slug === "getting-started") ?? tutorials[0] ?? null;
   if (!recommended) return { preferences, recommended: null, shouldOffer: false, reason: "no_tutorial" };
   if (preferences.onboardingStatus === "dismissed") return { preferences, recommended, shouldOffer: false, reason: "dismissed" };
