@@ -64,7 +64,7 @@ export function KnowledgeCenter({ sections, documents, canEdit, accept, timeZone
   const [filter, setFilter] = React.useState("all");
   const visible = sections.filter((s) => (filter === "all" || filter === "missing" && !s.content.trim() || filter === "review" && s.held) && `${s.label} ${s.hint} ${s.content}`.toLowerCase().includes(search.toLowerCase()));
   return (
-    <div className="module-stack space-y-6">
+    <div className="module-stack space-y-6" data-aqi-target="knowledge.list">
       <PageHero eyebrow="Your business memory" title="Give your AI team the context to get it right." description="Brief your employees as you would a trusted teammate. Keep approved business facts, preferences and private reference documents together." icon={<BookOpen />} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-xs font-semibold">{filled} of {sections.length} knowledge sections supplied</p><div className="mt-3"><CoverageBar label="Business knowledge completeness" parts={[{label:"Supplied",count:filled,color:"var(--primary)"},{label:"Missing",count:sections.length-filled,color:"var(--surface-3)"}]} /></div><p className="mt-3 text-[11px] text-muted">{lastApplied ? `Last applied ${relativeTime(lastApplied)}` : "No application timestamp recorded"}</p></div>} />
       <DataToolbar><div className="relative w-full max-w-sm"><Search className="absolute left-3 top-3 size-4 text-muted" /><Input aria-label="Search business knowledge" placeholder="Find a section or business fact…" className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="flex flex-wrap gap-1">{[{key:"all",label:"All sections"},{key:"missing",label:"Needs information"},{key:"review",label:"In review"}].map((f) => <Button key={f.key} size="sm" variant={filter === f.key ? "soft" : "ghost"} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</Button>)}</div></DataToolbar>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -187,7 +187,7 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
   };
 
   return (
-    <Card className="self-start">
+    <Card className="self-start" data-aqi-target="knowledge.upload">
       <CardHeader>
         <div>
           <CardTitle>Reference documents</CardTitle>

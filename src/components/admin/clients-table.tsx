@@ -84,7 +84,7 @@ export function ClientsTable({ rows, timeZone }: { rows: ClientSetupRow[]; timeZ
   const approvedShare = rows.length ? Math.round((counts.activated / rows.length) * 100) : 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-aqi-target="admin.clients.table">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Client workspaces" value={rows.length} icon={<Building2 className="size-4" />} tone="blue" detail={needAttention ? `${needAttention} ${needAttention === 1 ? "needs" : "need"} attention` : "All clear"} />
         <MetricCard label="Taking shape" value={counts.in_setup + counts.awaiting_onboarding + counts.not_started} icon={<Workflow className="size-4" />} tone="violet" detail={`${counts.awaiting_onboarding} awaiting onboarding`} />

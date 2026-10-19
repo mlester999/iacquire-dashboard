@@ -1,13 +1,16 @@
-# AQi — platform assistant (Phase 2)
+# AQi — platform assistant (Phase 2 + Phase 3)
 
 AQi is the official iAcquireOS platform assistant. It is **not** one of the AI employees and it
 does **not** use the Hermes employee gateway. It has its own identity, configuration versions,
-knowledge, conversations, messages, feedback and usage records.
+knowledge, conversations, messages, feedback and usage records. Phase 3 adds approved visual
+guidance, interactive tutorials, onboarding, contextual tips, document-backed knowledge and the
+Insights dashboard; the detailed Phase 3 record is [aqi-phase3.md](aqi-phase3.md).
 
 ## Status
 
 | Capability | Status |
 | --- | --- |
+| Phase 3 visual guidance, tutorials, onboarding, tips, knowledge documents and Insights | **Implemented and locally/browser verified**; migration 0061 not applied hosted. See [aqi-phase3.md](aqi-phase3.md) |
 | AQi identity, floating launcher and chat panel | Locally verified |
 | Real provider request path + token streaming | **Live controlled probe passed** against the existing production DeepSeek credential: `deepseek-flash`, OpenAI format, `OK` response and one real SSE delta; no customer data |
 | Streaming fallback for a non-SSE JSON answer | Locally verified |
@@ -25,7 +28,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Citation validation and stale-knowledge warnings | Locally verified |
 | Intent-aware greetings, response length and page-context restraint | Locally verified; real DeepSeek greeting returned 8 words with no knowledge/page prompt |
 | Clickable authorized navigation | Locally verified; real DeepSeek navigation answer produced a validated `Integrations` markdown link |
-| Polished citations and source preview | Locally/browser verified: superscript markers, numbered readable source cards and preview modal |
+| Polished citations and source preview | Locally/browser verified: clean answer text, numbered readable source cards and preview modal |
 | Copy, like/dislike and undo | Browser verified: real clipboard result, Copied! state, persisted selected feedback, reason + optional comment |
 | RLS and user/tenant isolation | Locally verified |
 | Provider resolution and role-aware errors | Locally verified with connected DeepSeek, status/credential failures, recovery after negative cache, client-safe messages and Super Admin diagnostics |
@@ -146,6 +149,21 @@ Migration 0052 adds the explicit conversation lifecycle:
   type, count, storage-quota and content validation.
 - `GET/DELETE /api/aqi/attachments/[id]` — owner/conversation-authorized inline download (with video
   byte ranges) and deletion of unsent attachments.
+- `GET/POST /api/aqi/tutorials` — eligible tutorials, persisted state and onboarding summary, or
+  start a published walkthrough. Eligibility is resolved from the server-side role, permissions,
+  route access and CRM capability.
+- `GET/POST /api/aqi/tutorials/[slug]` — the tutorial definition for an eligible person, or one
+  progress action (`next`, `previous`, `pause`, `resume`, `exit`, `complete`, `skip`,
+  `target_missing`, `route_verified`, `restart`, `viewed`). Progress writes are ownership-scoped and
+  events are idempotent.
+- `GET/POST /api/aqi/onboarding` — first-time preference and Start/Defer/Dismiss/Complete/Reset.
+- `GET/POST /api/aqi/tips` — one configured tip for the authorized page, dismissal, an on/off
+  preference and a 12-hour impression dedupe.
+- `POST /api/aqi/guidance` — privacy-conscious guide offer/accept/decline signals.
+- `GET /api/aqi/insights` — Super-Admin-only real aggregates with date, organization and role filters.
+- `GET/POST /api/aqi/knowledge/documents` and `GET/DELETE /api/aqi/knowledge/documents/[id]` —
+  Super-Admin-only document upload, listing, private download and archive. No normal browser role
+  can read the metadata table.
 
 All routes resolve the person from the session; none accepts a role or organization from the
 browser. AQi never executes a model-generated tool call.
@@ -173,17 +191,32 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   follow-up and citation style. Complex requests have a separate admin-configurable token budget
   because reasoning tokens count against the provider output budget; the same budget is reserved in
   cost accounting.
-- Adjacent citations are spaced and standalone citation lines are removed so `[K1][K4]` cannot render
-  as the misleading number “14”.
+- `[K#]` markers are internal. Valid markers are removed from answer prose, while the UI shows
+  numbered, clickable source cards with a readable approved-source snippet. Unsupported markers are
+  removed. Sources are omitted when there are no valid citations.
 - Responses must answer the question first and use plain conversational text for simple answers.
+- Responses avoid em dashes; the server replaces them with readable punctuation if the model uses one.
 - Authorized internal paths are converted server-side to human-labelled Markdown links; unauthorized
   or external links are removed. The browser also validates links against the authorized route list.
-- `[K#]` markers are internal. Valid markers are rendered as compact superscript numbers and the UI
-  shows numbered, clickable source cards with a readable approved-source snippet; unsupported markers
-  are removed. Sources are omitted when there are no valid citations.
 - Casual replies never get a forced Sources section.
-- The message toolbar supports real clipboard copy with a check/Copied state, persisted
-  like/dislike, change/undo feedback, and a reason-plus-comment dislike form.
+- The message toolbar supports real clipboard copy with a check/Copied state and immediate
+  like/dislike feedback. The selected thumb and acknowledgement update before the database request
+  finishes. Likes have a brief local confetti burst; dislikes have a gentle thumb dip. Reduced-motion
+  preferences remove the movement and confetti.
+- Votes still persist to `aqi_messages.feedback_rating` and optional details to `feedback_comment`.
+  A dislike saves on the first click; **Skip** only dismisses its optional reason/comment form.
+  Changes are serialized per message and rapid choices are coalesced, without locking other messages.
+  Closing the panel leaves saves running. A failed latest save restores the last confirmed value and
+  offers **Retry feedback**, including any details submitted with it.
+- Completed answers can include three or four role-aware follow-up prompts. The provider returns
+  them in a private response block that is removed before rendering and saving the answer. The
+  prompts are stored with the message's existing JSON context and remain available in saved chat
+  history; no migration is needed. When an answer resolves a substantive request without a useful
+  next question, or a person may need human help, AQi offers an **Open Support** action that opens
+  the existing support request flow. Greetings and thanks stay uncluttered. Missing or invalid
+  prompt metadata falls back to that support action.
+- File-size limits continue to be checked during upload. The composer no longer repeats those limits
+  in the small helper text below AQi.
 - Admin knowledge supports search and status filtering; conversation probes can test greetings and
   navigation without saving a conversation.
 
@@ -353,8 +386,9 @@ text extraction, not a multimodal model call.
   Live provider acceptance was a separate controlled probe, not a full deployed-UI run.
 - AQi knowledge document upload/reuse is not part of this phase; knowledge is managed as approved
   text entries. The workforce PDF/DOCX pipeline is separate.
-- Feedback supports an optional comment after a thumbs-down; the comment is stored but not yet
-  shown in an Insights dashboard (Phase 3).
+- Feedback supports an optional comment after a thumbs-down; the comment is stored but deliberately
+  not displayed in normal analytics. Use the knowledge review area or Support to investigate a
+  specific report.
 - Provider selection is through the existing global LLM integration. The verified integration model
   is authoritative unless a Super Admin enables the explicit AQi model override.
 - AQi accepts `connected` or `permission_limited` connections and routes DeepSeek through the
@@ -372,7 +406,10 @@ text extraction, not a multimodal model call.
 - The production LLM connection is now `connected`, and controlled provider probes succeeded.
   The deployed AQi build is older than the resolution/error fixes, and the deployment URL is Vercel
   SSO protected, so the full deployed AQi UI was not tested from this environment.
-- Phase 3 items (visual highlighting, guided tutorials, full Insights dashboard) are not built.
+- Phase 3 visual guidance, tutorials, onboarding, contextual tips, knowledge documents, freshness
+  review and the Insights dashboard are implemented and locally/browser verified. Migration `0061`
+  is **not applied hosted**, and no staging or production deployment was made. See
+  [aqi-phase3.md](aqi-phase3.md) for evidence and the remaining release gates.
 - Temporary state is per browser tab. Another tab does not see an unsaved chat, and closing the tab
   cannot restore it; stale temporary rows are hidden immediately and purged after 24 hours.
 - AQi is mounted on portal, AI-employee chat and agency admin routes. Auth, setup/onboarding and
@@ -454,3 +491,11 @@ not exercised through the browser.
 
 Production audit, staging-first gate, backup/restore and real-provider acceptance steps:
 [aqi-phase2-release-gate.md](aqi-phase2-release-gate.md).
+
+The immediate-feedback update was checked with 7 UI regression cases and the 13 existing AQi
+service cases (20 passed), plus typecheck and lint. A standalone browser harness rendered the real
+feedback components with the app's styles at desktop and 390 px, including dark mode, reduced motion,
+a delayed response and a deliberately failed save/retry. The acknowledgement appeared in 167 ms
+while the mocked save took 3 seconds; there were 0 page errors, 0 axe violations and no horizontal
+overflow. The only console error was the deliberate HTTP 500. This measures local interaction
+responsiveness, not production database latency.

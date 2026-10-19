@@ -115,7 +115,7 @@ export function CalendarWorkspace({
         actions={
           <>
             <Link href={`${scope.base}/appointments`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2 sm:h-9"><ListChecks className="size-4" aria-hidden />All appointments</Link>
-            {canBook && hasTypes && <Button onClick={() => setNewOpen(true)}><Plus className="size-4" />New appointment</Button>}
+            {canBook && hasTypes && <Button data-aqi-target="crm.calendar.new-appointment" onClick={() => setNewOpen(true)}><Plus className="size-4" />New appointment</Button>}
           </>
         }
       />
@@ -128,7 +128,7 @@ export function CalendarWorkspace({
         </div>
       )}
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-aqi-target="crm.calendar.grid">
         <div className="flex flex-wrap items-center gap-2 border-b border-line p-3 sm:p-4">
           <div className="flex items-center gap-1">
             <Button variant="secondary" size="sm" onClick={() => go({ date: today })}>Today</Button>

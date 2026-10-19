@@ -58,7 +58,7 @@ async function requireFile(input: PrivateFileInput) {
   if (!file) throw new AppError("not_found", "File not found.");
   return file;
 }
-function validSignature(bytes: Buffer, mime: string) {
+export function validPrivateFileSignature(bytes: Buffer, mime: string) {
   if (mime === "application/pdf") return bytes.subarray(0, 4).equals(Buffer.from("%PDF"));
   if (mime === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (mime === "image/jpeg") return bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
@@ -68,6 +68,7 @@ function validSignature(bytes: Buffer, mime: string) {
   if (mime.includes("wordprocessingml")) return bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4]));
   return !bytes.subarray(0, 8192).includes(0);
 }
+const validSignature = validPrivateFileSignature;
 
 /** Saves validated bytes to a private bucket. Server authorization is rechecked from PostgreSQL. */
 export async function uploadPrivateFile(input: PrivateFileInput & {
@@ -165,4 +166,61 @@ export async function removeStoredObjectTrusted(file: { orgId: string; bucket: P
   }
   const { error } = await createSupabaseAdminClient().storage.from(file.bucket).remove([file.storageKey]);
   if (error) throw new AppError("integration_unavailable", "A stored file could not be removed.");
+}
+
+/**
+ * Platform-knowledge files (AQi) live in the existing private `company-documents` bucket, under a
+ * server-only `platform/aqi/` prefix. No `private_files` metadata row is written, so no browser role
+ * can read them through Storage; only Super-Admin-authorized server code calls these functions.
+ */
+export interface PlatformKnowledgeFile {
+  bucket: "company-documents";
+  storagePath: string;
+}
+
+const PLATFORM_KNOWLEDGE_PATH = /^platform\/aqi\/[0-9a-f-]{36}\/[A-Za-z0-9_. ()-]{1,160}$/;
+
+function safePlatformFilename(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? "document";
+  const clean = base.replace(/[^A-Za-z0-9_. ()-]/g, "_").slice(0, 160) || "document";
+  return clean === "." || clean === ".." ? "document" : clean;
+}
+
+function assertPlatformPath(storagePath: string): void {
+  if (!PLATFORM_KNOWLEDGE_PATH.test(storagePath) || storagePath.includes("..")) throw new AppError("invalid_input", "Invalid knowledge file path.");
+}
+
+export async function putPlatformKnowledgeFile(input: { userId: string; filename: string; contentType: string; bytes: Buffer }): Promise<PlatformKnowledgeFile> {
+  if (!input.bytes.length) throw new AppError("invalid_input", "The document is empty.");
+  const storagePath = `platform/aqi/${crypto.randomUUID()}/${safePlatformFilename(input.filename)}`;
+  assertPlatformPath(storagePath);
+  if (localMode()) {
+    const target = path.join(/* turbopackIgnore: true */ path.resolve(/* turbopackIgnore: true */ process.cwd(), env().UPLOAD_DIR), "company-documents", ...storagePath.split("/"));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, input.bytes, { flag: "wx" });
+  } else {
+    const { error } = await createSupabaseAdminClient().storage.from("company-documents").upload(storagePath, input.bytes, { contentType: input.contentType, upsert: false });
+    if (error) throw new AppError("integration_unavailable", "Private storage could not save this document. Please try again.");
+  }
+  return { bucket: "company-documents", storagePath };
+}
+
+export async function readPlatformKnowledgeFile(storagePath: string): Promise<Buffer> {
+  assertPlatformPath(storagePath);
+  if (localMode()) {
+    return fs.readFile(path.join(/* turbopackIgnore: true */ path.resolve(/* turbopackIgnore: true */ process.cwd(), env().UPLOAD_DIR), "company-documents", ...storagePath.split("/")));
+  }
+  const { data, error } = await createSupabaseAdminClient().storage.from("company-documents").download(storagePath);
+  if (error || !data) throw new AppError("integration_unavailable", "Private storage is unavailable. Please try again.");
+  return Buffer.from(await data.arrayBuffer());
+}
+
+export async function removePlatformKnowledgeFile(storagePath: string): Promise<void> {
+  assertPlatformPath(storagePath);
+  if (localMode()) {
+    await fs.rm(path.join(/* turbopackIgnore: true */ path.resolve(/* turbopackIgnore: true */ process.cwd(), env().UPLOAD_DIR), "company-documents", ...storagePath.split("/")), { force: true });
+    return;
+  }
+  const { error } = await createSupabaseAdminClient().storage.from("company-documents").remove([storagePath]);
+  if (error) throw new AppError("integration_unavailable", "The document metadata changed, but storage cleanup needs another attempt.");
 }

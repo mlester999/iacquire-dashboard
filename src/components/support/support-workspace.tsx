@@ -41,7 +41,7 @@ export function SupportWorkspace({ tickets }: { tickets: SupportTicketView[] }) 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <section className="min-w-0">
           <SectionLabel title="Your conversations" count={shown.length} />
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden" data-aqi-target="support.ticket-list">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line bg-surface-2/40 p-3 sm:p-4">
               <FilterTabs
                 label="Filter support conversations"

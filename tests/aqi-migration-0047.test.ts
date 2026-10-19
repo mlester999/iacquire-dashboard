@@ -8,7 +8,10 @@ describe("migration 0047 AQi schema", () => {
       "select relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname='public' and c.relkind='r' and c.relname like 'aqi_%' order by relname",
     ));
     expect(tables.rows.map((row) => row.name)).toEqual([
-      "aqi_attachments", "aqi_budgets", "aqi_config_versions", "aqi_conversations", "aqi_knowledge_entries", "aqi_messages", "aqi_model_prices", "aqi_suggested_questions", "aqi_usage_events",
+      "aqi_attachments", "aqi_budgets", "aqi_config_versions", "aqi_contextual_tips", "aqi_conversations",
+      "aqi_knowledge_documents", "aqi_knowledge_entries", "aqi_messages", "aqi_model_prices", "aqi_suggested_questions",
+      "aqi_tutorial_events", "aqi_tutorial_progress", "aqi_tutorial_versions", "aqi_tutorials", "aqi_usage_events",
+      "aqi_user_preferences",
     ]);
     const rls = await withSystem(async (db) => db.query<{ relname: string; relrowsecurity: boolean }>(
       "select relname, relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname='public' and c.relname in ('aqi_conversations','aqi_messages','aqi_knowledge_entries')",

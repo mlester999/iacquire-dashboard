@@ -28,7 +28,7 @@ export default async function AppointmentsPage() {
   ]);
   return (
     <div className="space-y-6">
-      <PageHero eyebrow="Your meeting schedule" title="Make room for better conversations." description={<>Your calendar&apos;s recorded meetings, confirmations and booking links, shown in {ctx.org.timezone.replace(/_/g," ")}. Your Appointment Setter only ever offers times your calendar reports as free.</>} icon={<CalendarDays className="size-4"/>} tone="neutral"/>
+      <PageHero target="appointments.hero" eyebrow="Your meeting schedule" title="Make room for better conversations." description={<>Your calendar&apos;s recorded meetings, confirmations and booking links, shown in {ctx.org.timezone.replace(/_/g," ")}. Your Appointment Setter only ever offers times your calendar reports as free.</>} icon={<CalendarDays className="size-4"/>} tone="neutral"/>
       {data.connected ? (
         <AppointmentsView
           appointments={JSON.parse(JSON.stringify(data.appointments))}

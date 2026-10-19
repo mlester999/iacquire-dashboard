@@ -53,6 +53,7 @@ export function SettingsNav({ permissions }: { permissions: Permission[] }) {
                   <li key={i.href} className="shrink-0">
                     <Link
                       href={i.href}
+                      data-aqi-target={i.href === "/settings/team" ? "settings.team.nav" : i.href === "/settings/integrations" ? "settings.integrations.nav" : undefined}
                       aria-current={active ? "page" : undefined}
                       className={cn("relative flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-[13px] font-medium transition-colors", active ? "text-primary-ink" : "text-muted hover:bg-surface-2 hover:text-ink")}
                     >

@@ -77,11 +77,11 @@ export function ContactFormDialog({
       footer={
         <>
           <Button variant="secondary" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" form="contact-form" loading={saving}>Add contact</Button>
+          <Button type="submit" form="contact-form" loading={saving} data-aqi-target="crm.contact.save">Add contact</Button>
         </>
       }
     >
-      <form id="contact-form" onSubmit={submit} className="space-y-4" noValidate>
+      <form id="contact-form" onSubmit={submit} className="space-y-4" noValidate data-aqi-target="crm.contact.form">
         {error && (
           <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2.5 text-[13px] text-danger-ink">
             {error.message}{" "}
@@ -91,7 +91,7 @@ export function ContactFormDialog({
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="First name" htmlFor="c-first"><Input id="c-first" autoComplete="off" value={form.firstName} onChange={set("firstName")} autoFocus /></Field>
+          <Field label="First name" htmlFor="c-first"><Input id="c-first" data-aqi-target="crm.contact.first-name" autoComplete="off" value={form.firstName} onChange={set("firstName")} autoFocus /></Field>
           <Field label="Last name" htmlFor="c-last" optional><Input id="c-last" autoComplete="off" value={form.lastName} onChange={set("lastName")} /></Field>
           <Field label="Email" htmlFor="c-email" optional><Input id="c-email" type="email" autoComplete="off" value={form.email} onChange={set("email")} /></Field>
           <Field label="Phone" htmlFor="c-phone" optional hint="Include the country code, like +63."><Input id="c-phone" type="tel" autoComplete="off" value={form.phone} onChange={set("phone")} /></Field>

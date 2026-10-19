@@ -11,6 +11,7 @@ import { AvatarTile } from "@/components/ui/status";
 import { AGENT_BY_KEY } from "@/lib/agents";
 import { cn, initials } from "@/lib/utils";
 import { useShell } from "@/components/shell/shell-context";
+import { aqiNavTarget } from "@/lib/aqi/targets";
 import type { Permission } from "@/lib/permissions";
 
 interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox"; tour?: string; }
@@ -49,7 +50,7 @@ const FOOTER: NavItem[] = [
 export const CLIENT_NAV = [...MAIN, ...CRM, { href: "/workforce", label: "AI Workforce", icon: Sparkles }, { href: "/setup", label: "Setup Center", icon: ClipboardCheck }, ...GROW, ...FOOTER] as NavItem[];
 function NavLink({ item, pathname, count, trailing, onNavigate, compact = false }: { item: NavItem; pathname: string; count?: number; trailing?: string; onNavigate?: () => void; compact?: boolean }) {
   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-  const link = <Link href={item.href} onClick={onNavigate} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? item.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+  const link = <Link href={item.href} onClick={onNavigate} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? item.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
     {active && <motion.span layoutId="client-nav-active" className="absolute inset-0 rounded-xl border border-[#5582ff]/25 bg-[#4268c6]/15" transition={{ type: "spring", stiffness: 460, damping: 38 }} />}
     <span className="nav-icon-box relative"><item.icon className="size-[17px]" /></span>
     {!compact && <><span className="relative min-w-0 flex-1 truncate">{item.label}</span>{count ? <span className="relative flex min-w-5 items-center justify-center rounded-md bg-[#305ecb] px-1.5 py-0.5 text-[10px] font-semibold text-white">{count > 99 ? "99+" : count}</span> : trailing ? <span className="relative text-[11px] tabular-nums text-[#a9bada]">{trailing}</span> : null}</>}

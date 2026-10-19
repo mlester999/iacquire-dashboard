@@ -35,7 +35,7 @@ export function NewTicketButton() {
   const ready = subject.trim().length >= 3 && message.trim().length >= 5;
   return (
     <>
-      <Button variant="brand" onClick={() => setOpen(true)}>
+      <Button variant="brand" data-aqi-target="support.new-ticket" onClick={() => setOpen(true)}>
         <Plus className="size-4" /> New request
       </Button>
       <Dialog

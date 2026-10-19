@@ -11,6 +11,7 @@ import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { useTheme } from "@/components/providers";
+import { aqiNavTarget } from "@/lib/aqi/targets";
 import { logoutAction } from "@/app/(auth)/actions";
 import { cn, initials } from "@/lib/utils";
 
@@ -53,7 +54,7 @@ function Nav({ superAdmin, compact, onNavigate }: { superAdmin: boolean; compact
       {!compact && <button type="button" aria-expanded={!closed} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3" onClick={() => setCollapsed((s) => s.includes(group) ? s.filter((g) => g !== group) : [...s, group])}>{group}<ChevronDown className={cn("size-3 transition-transform", closed && "-rotate-90")} /></button>}
       {!closed && <ul className="space-y-1">{items.map((n) => {
         const active = isNavActive(pathname, n.href, n.exact);
-        const link = <Link href={n.href} onClick={onNavigate} aria-current={active ? "page" : undefined} aria-label={compact ? n.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+        const link = <Link href={n.href} onClick={onNavigate} data-aqi-target={aqiNavTarget(n.href, "agency")} aria-current={active ? "page" : undefined} aria-label={compact ? n.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
           {active && <motion.span layoutId="admin-active" className="absolute inset-0 rounded-xl border border-[#5582ff]/25 bg-[#4268c6]/15" transition={{ type: "spring", stiffness: 460, damping: 38 }} />}
           <span className="nav-icon-box relative"><n.icon className="size-[17px]" /></span>{!compact && <span className="relative flex-1">{n.label}</span>}{active && !compact && <span className="relative size-1.5 rounded-full bg-[#91b1ff]" aria-hidden />}
         </Link>;

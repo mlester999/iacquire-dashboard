@@ -5,6 +5,7 @@ import { Dialog as D, DropdownMenu as DM, Tooltip as T, Tabs as TB, Switch as SW
 import { AnimatePresence, motion } from "motion/react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useGuidance } from "@/components/aqi/tutorial/tutorial-store";
 
 // ---------------------------------------------------------------------------
 // Dialog
@@ -37,8 +38,11 @@ export function Dialog({
 }) {
   const width = { sm: "sm:max-w-md", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
   const returnFocus = React.useRef<HTMLElement | null>(null);
+  // While AQi is guiding someone, a page dialog must not hide the guidance card from the
+  // accessibility tree or trap focus away from its controls. The dialog keeps its own focus order.
+  const guidanceOpen = useGuidance().open;
   return (
-    <D.Root open={open} onOpenChange={onOpenChange}>
+    <D.Root open={open} onOpenChange={onOpenChange} modal={!guidanceOpen}>
       {trigger && <D.Trigger asChild>{trigger}</D.Trigger>}
       <AnimatePresence>
         {open && (
@@ -55,6 +59,10 @@ export function Dialog({
             <D.Content
               asChild
               forceMount
+              onPointerDownOutside={(event) => { if (guidanceOpen) event.preventDefault(); }}
+              onFocusOutside={(event) => { if (guidanceOpen) event.preventDefault(); }}
+              onInteractOutside={(event) => { if (guidanceOpen) event.preventDefault(); }}
+              onEscapeKeyDown={(event) => { if (guidanceOpen) event.preventDefault(); }}
               onOpenAutoFocus={() => {
                 // Programmatically opened dialogs also need an explicit return target.
                 if (document.activeElement instanceof HTMLElement) returnFocus.current = document.activeElement;

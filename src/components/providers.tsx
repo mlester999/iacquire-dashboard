@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/overlays";
 import { LogoutConfirmationProvider } from "@/components/auth/logout-confirmation";
 import { AqiWidget } from "@/components/aqi/aqi-widget";
+import { GuidanceHost } from "@/components/aqi/tutorial/guidance-host";
 
 export type ThemePreference = "light" | "dark" | "system";
 
@@ -21,22 +22,15 @@ function isAqiSurface(pathname: string | null) {
   return Boolean(pathname && AQI_SURFACE.test(pathname));
 }
 
-function AqiMount() {
+function AqiMount({ allowed }: { allowed: boolean }) {
   const pathname = usePathname();
-  const [hostAllowed, setHostAllowed] = React.useState(false);
-  React.useEffect(() => {
-    // Customer websites are rendered by the same root layout. Only the configured portal host may
-    // show AQi; an unset APP_URL keeps the portal-only default. Compare hostnames, never host:port —
-    // the dev server, previews and proxies can serve the portal on a different port, and a mismatch
-    // here hides AQi silently.
-    const appHost = document.documentElement.dataset.appHost?.trim().toLowerCase() ?? "";
-    const currentHost = window.location.hostname.toLowerCase();
-    const loopback = (host: string) => host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only host check after hydration
-    setHostAllowed(!appHost || currentHost === appHost || (loopback(currentHost) && loopback(appHost)));
-  }, []);
-  if (!hostAllowed || !isAqiSurface(pathname)) return null;
-  return <AqiWidget />;
+  if (!allowed || !isAqiSurface(pathname)) return null;
+  return (
+    <>
+      <AqiWidget />
+      <GuidanceHost />
+    </>
+  );
 }
 
 const ThemeContext = React.createContext<{ theme: ThemePreference; resolved: "light" | "dark"; setTheme: (t: ThemePreference) => void }>({
@@ -54,7 +48,7 @@ function resolve(t: ThemePreference): "light" | "dark" {
   return t;
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children, aqiAllowed }: { children: React.ReactNode; aqiAllowed: boolean }) {
   const [theme, setThemeState] = React.useState<ThemePreference>("light");
   const [resolved, setResolved] = React.useState<"light" | "dark">("light");
 
@@ -103,7 +97,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <MotionConfig reducedMotion="user">
           <TooltipProvider>
             {children}
-            <AqiMount />
+            <AqiMount allowed={aqiAllowed} />
             <Toaster
               position="top-center"
               theme={resolved}

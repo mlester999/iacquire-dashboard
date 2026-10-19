@@ -128,7 +128,7 @@ export function PipelineBoard({
               </MenuContent>
             </Menu>
           )}
-          {canMove && <Button onClick={() => setNewDeal({})}><Plus className="size-4" />New deal</Button>}
+          {canMove && <Button data-aqi-target="crm.pipelines.new-deal" onClick={() => setNewDeal({})}><Plus className="size-4" />New deal</Button>}
         </div>
       </div>
 
@@ -167,7 +167,7 @@ export function PipelineBoard({
       <p className="sr-only" aria-live="polite">{announce}</p>
       <p id="board-kbd-hint" className="sr-only">Press Alt and the left or right arrow to move this deal to the previous or next stage.</p>
 
-      <div className="scrollbar-thin -mx-1 snap-x snap-mandatory overflow-x-auto scroll-px-1 px-1 pb-3 sm:snap-none">
+      <div data-aqi-target="crm.pipelines.board" className="scrollbar-thin -mx-1 snap-x snap-mandatory overflow-x-auto scroll-px-1 px-1 pb-3 sm:snap-none">
         <ol className="flex min-h-[420px] gap-3" aria-label={`${pipeline.name} stages`}>
           {cols.map((col) => {
             const isOver = over === col.stage.id && dragging && dragging.from !== col.stage.id;

@@ -4,12 +4,14 @@ import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Module identity and context, with space for meaningful status or structural visuals. */
-export function PageHero({ eyebrow = "iAcquire workspace", title, description, action, aside, icon, tone = "blue", children, className }: {
+export function PageHero({ eyebrow = "iAcquire workspace", title, description, action, aside, icon, tone = "blue", children, className, target }: {
   eyebrow?: string; title: string; description?: React.ReactNode; action?: React.ReactNode;
   aside?: React.ReactNode; icon?: React.ReactNode; tone?: "blue" | "dark" | "neutral";
   children?: React.ReactNode; className?: string;
+  /** Approved AQi guidance target id. Never a CSS selector. */
+  target?: string;
 }) {
-  return <section className={cn("workspace-hero", `workspace-hero-${tone}`, className)}>
+  return <section data-aqi-target={target} className={cn("workspace-hero", `workspace-hero-${tone}`, className)}>
     <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_auto]">
       <div className="min-w-0">
         <p className="hero-eyebrow">{icon && <span className="hero-module-icon" aria-hidden>{icon}</span>}{eyebrow}</p>

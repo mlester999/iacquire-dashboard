@@ -1,12 +1,15 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, BookOpen, CheckCircle2, FlaskConical, History, KeyRound, LifeBuoy, Plus, RotateCcw, Save, Settings2, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { Archive, BarChart3, BookOpen, CheckCircle2, FlaskConical, History, KeyRound, LifeBuoy, ListChecks, Plus, RotateCcw, Save, Settings2, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status";
+import { AqiTutorialManager } from "@/components/admin/aqi-tutorials";
+import { AqiKnowledgeReview } from "@/components/admin/aqi-knowledge-review";
 import {
   archiveAqiKnowledgeAction,
   deleteAqiQuestionAction,
@@ -20,10 +23,12 @@ import {
   testAqiProviderAction,
 } from "@/app/actions/aqi";
 import type { AqiAdminData, AqiConfig } from "@/server/aqi/service";
+import type { AqiTutorialAdminData } from "@/server/aqi/tutorials";
+import type { AqiKnowledgeDocumentView, AqiKnowledgeReviewRow } from "@/server/aqi/knowledge-documents";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 import { Markdown } from "@/components/markdown";
 
-type Tab = "overview" | "provider" | "instructions" | "conversation" | "knowledge" | "questions" | "testing" | "history" | "usage" | "budgets" | "attachments";
+type Tab = "overview" | "provider" | "instructions" | "conversation" | "knowledge" | "questions" | "tutorials" | "testing" | "history" | "usage" | "budgets" | "attachments";
 
 const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "overview", label: "Overview", icon: <Sparkles className="size-3.5" /> },
@@ -32,6 +37,7 @@ const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "conversation", label: "Conversation behavior", icon: <Sparkles className="size-3.5" /> },
   { key: "knowledge", label: "Platform knowledge", icon: <BookOpen className="size-3.5" /> },
   { key: "questions", label: "Suggested questions", icon: <Plus className="size-3.5" /> },
+  { key: "tutorials", label: "Tutorials", icon: <ListChecks className="size-3.5" /> },
   { key: "testing", label: "Testing & publishing", icon: <FlaskConical className="size-3.5" /> },
   { key: "history", label: "Version history", icon: <History className="size-3.5" /> },
   { key: "usage", label: "Usage & health", icon: <CheckCircle2 className="size-3.5" /> },
@@ -39,7 +45,17 @@ const TABS: Array<{ key: Tab; label: string; icon: React.ReactNode }> = [
   { key: "attachments", label: "Messaging & attachments", icon: <LifeBuoy className="size-3.5" /> },
 ];
 
-export function AqiAdmin({ data }: { data: AqiAdminData }) {
+export function AqiAdmin({
+  data,
+  tutorialData,
+  documents,
+  knowledgeReview,
+}: {
+  data: AqiAdminData;
+  tutorialData: AqiTutorialAdminData;
+  documents: AqiKnowledgeDocumentView[];
+  knowledgeReview: AqiKnowledgeReviewRow[];
+}) {
   const router = useRouter();
   const [tab, setTab] = React.useState<Tab>("overview");
   const [config, setConfig] = React.useState<AqiConfig>(data.published.config);
@@ -183,13 +199,22 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={data.health.available ? "success" : "warning"}>{data.health.available ? "Provider connected" : "No provider"}</StatusPill>
           <span className="text-[12px] text-muted">{changed.length ? `${changed.length} unpublished change${changed.length === 1 ? "" : "s"}` : "No unpublished changes"}</span>
-          <Button variant="brand" onClick={() => void saveDraft()} loading={saving}><Save className="size-4" /> Save draft</Button>
+          <Link href="/admin/aqi/insights" data-aqi-target="admin.aqi.insights-link" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-medium text-ink-2 shadow-soft hover:bg-surface-2"><BarChart3 className="size-3.5" /> AQi Insights</Link>
+          <Button variant="brand" data-aqi-target="admin.aqi.save-draft" onClick={() => void saveDraft()} loading={saving}><Save className="size-4" /> Save draft</Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="AQi management sections">
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="AQi management sections" data-aqi-target="admin.aqi.tabs">
         {TABS.map((item) => (
-          <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)} className={cn("inline-flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[12px] font-medium transition", tab === item.key ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink")}>
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.key}
+            data-aqi-target={item.key === "tutorials" ? "admin.aqi.tutorials-tab" : item.key === "knowledge" ? "admin.aqi.knowledge-tab" : undefined}
+            onClick={() => setTab(item.key)}
+            className={cn("inline-flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[12px] font-medium transition", tab === item.key ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:text-ink")}
+          >
             {item.icon}{item.label}
           </button>
         ))}
@@ -200,6 +225,7 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
           <Metric label="Published version" value={data.published.version ? `v${data.published.version}` : "None"} detail={data.published.version ? "Live configuration" : "Save and publish a draft"} />
           <Metric label="Knowledge entries" value={String(data.knowledge.filter((entry) => entry.status === "published").length)} detail={`${data.knowledge.length} total, including drafts`} />
           <Metric label="Messages" value={String(data.usage.messages)} detail={`${data.usage.failures} failed; ${data.usage.feedback} feedback`} />
+          <Metric label="Tutorials" value={String(tutorialData.tutorials.filter((tutorial) => tutorial.status === "published").length)} detail={`${tutorialData.tutorials.length} total; ${tutorialData.tutorials.reduce((sum, tutorial) => sum + tutorial.metrics.starts, 0)} starts recorded`} />
           <Metric label="Average latency" value={data.usage.avgLatencyMs ? `${data.usage.avgLatencyMs} ms` : "Not reported"} detail={data.health.detail} />
           <Card className="sm:col-span-2 xl:col-span-4">
             <CardHeader><CardTitle>Current configuration</CardTitle><CardDescription>Only real values from the published version and the configured integration are shown.</CardDescription></CardHeader>
@@ -342,8 +368,15 @@ export function AqiAdmin({ data }: { data: AqiAdminData }) {
         </Card>
       )}
 
-      {tab === "questions" && (
-        <div className="grid gap-4 xl:grid-cols-2">
+      {tab === "knowledge" && (
+        <AqiKnowledgeReview documents={documents} review={knowledgeReview} />
+      )}
+
+      {tab === "tutorials" && (
+        <AqiTutorialManager data={tutorialData} />
+      )}
+
+      {tab === "questions" && (        <div className="grid gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader><CardTitle>Configured questions</CardTitle><CardDescription>Only enabled questions that match the person&apos;s role or page appear.</CardDescription></CardHeader>
             <CardContent className="space-y-2">

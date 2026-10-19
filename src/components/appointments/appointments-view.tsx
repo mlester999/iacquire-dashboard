@@ -121,7 +121,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:col-span-3"><MetricCard label="Upcoming meetings" value={upcoming.length} detail="Future meetings recorded by your calendar." icon={<CalendarDays className="size-4"/>}/><MetricCard label="Confirmed" value={upcoming.filter(appointment=>appointment.status==="confirmed").length} detail="Confirmed appointments among upcoming meetings." icon={<Video className="size-4"/>} tone="green"/><MetricCard label="Calendar time zone" value={<span className="text-[18px]">{timeZoneLabel(timeZone)}</span>} detail={lastSync?`Last checked ${relativeTime(lastSync)}`:"No synchronization timestamp recorded."} icon={<Clock className="size-4"/>} tone="neutral"/></div>
       <PendingBookings rows={pending} canBook={canBook} />
       <div className="space-y-4 xl:col-span-2">
-        <Card>
+        <Card data-aqi-target="appointments.calendar">
           <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
             {view === "calendar" && (
               <div className="flex items-center gap-1">
@@ -135,7 +135,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
               </div>
             )}
             <div className="ml-auto flex items-center gap-2">
-              {canBook && <BookButton onClick={() => setBooking(true)} />}
+              {canBook && <span data-aqi-target="appointments.book"><BookButton onClick={() => setBooking(true)} /></span>}
               {canRefresh && (
                 <Button
                   size="sm"

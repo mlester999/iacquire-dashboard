@@ -54,7 +54,7 @@ export default async function IntegrationsPage() {
         <MetricCard label="Verified connections" value={connected} detail="From the latest recorded service checks" tone="green" icon={<CheckCircle2 className="size-4" />} />
         <MetricCard label="AI employees online" value={`${agents.online}/${agents.total}`} detail="Ready employees in your private workforce" tone="blue" icon={<Bot className="size-4" />} />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2" data-aqi-target="settings.integrations.list">
         {rows.map((r) => {
           const s = r.status?.status;
           const t = tone(s);
@@ -85,7 +85,7 @@ export default async function IntegrationsPage() {
                 ) : (
                   <InfoChip className="min-w-0" icon={<ShieldCheck aria-hidden />}>Managed by iAcquire</InfoChip>
                 )}
-                {s !== "connected" && ctx.can("support.use") && <RequestConnection what={r.name} />}
+                {s !== "connected" && ctx.can("support.use") && <span data-aqi-target="settings.integrations.request"><RequestConnection what={r.name} /></span>}
               </div>
             </Card>
           );

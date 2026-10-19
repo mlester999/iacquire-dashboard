@@ -322,6 +322,7 @@ const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0042_company_delete_permission": ["0041_crm_action_permissions"],
   "0043_agency_manager_operational_defaults": ["0042_company_delete_permission"],
   "0044_agency_module_view_overrides": ["0043_agency_manager_operational_defaults"],
+  "0061_aqi_phase3_guidance": ["0047_aqi_assistant", "0048_aqi_cost_controls", "0052_aqi_conversation_lifecycle"],
 };
 
 /**

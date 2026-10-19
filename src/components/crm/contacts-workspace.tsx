@@ -213,13 +213,13 @@ export function ContactsWorkspace({
           </div>
           <div className="flex flex-wrap gap-2">
             {scope.can["contacts.export"] && <a href={exportHref} className="inline-flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft hover:bg-surface-2 sm:h-9"><Download className="size-4" />Export</a>}
-            {scope.can["contacts.edit"] && !scope.readOnly && <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="size-4" />New contact</Button>}
+            {scope.can["contacts.edit"] && !scope.readOnly && <Button size="sm" data-aqi-target="crm.contacts.new" onClick={() => setCreateOpen(true)}><Plus className="size-4" />New contact</Button>}
           </div>
         </div>
 
         {error && <p role="alert" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] text-warning-ink">{error} Showing all contacts instead.</p>}
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-aqi-target="crm.contacts.table">
           <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
         <div className="w-full sm:w-52 2xl:hidden">
           <label htmlFor="view-select" className="sr-only">View</label>
@@ -241,7 +241,7 @@ export function ContactsWorkspace({
         </div>
             <div className="relative min-w-[200px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-              <Input aria-label="Search contacts" placeholder="Search name, email, phone or city" value={search.text} onChange={(e) => search.setText(e.target.value)} className="pl-9" />
+              <Input aria-label="Search contacts" data-aqi-target="crm.contacts.search" placeholder="Search name, email, phone or city" value={search.text} onChange={(e) => search.setText(e.target.value)} className="pl-9" />
             </div>
             <Button variant={filterActive ? "soft" : "secondary"} size="sm" onClick={() => { setDraft(state.filter ?? (editingList ? page.smartList!.filter : EMPTY_FILTER)); setFilterOpen(true); }}>
               <Filter className="size-4" />Filter{filterActive ? ` (${state.filter!.conditions.length})` : ""}

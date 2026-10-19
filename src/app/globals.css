@@ -567,3 +567,12 @@ a.metric-card:hover { transform: translateY(-3px); border-color: var(--line-stro
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
+
+/* AQi Phase 3: while a walkthrough is open, the assistant panel stays above the spotlight so people can ask a question without losing their place. */
+body[data-aqi-tutorial='on'] [data-aqi-panel] {
+  z-index: 90 !important;
+}
+body[data-aqi-tutorial='on'] [data-aqi-target] {
+  scroll-margin-block: 96px 48px;
+}
+

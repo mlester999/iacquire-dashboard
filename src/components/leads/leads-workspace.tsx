@@ -133,6 +133,7 @@ export function LeadsWorkspace(props: {
           </ButtonLink>
         ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-muted">Your research pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[13px] text-muted">researched leads</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
       <HunterBanner ready={props.hunterReady} status={props.hunterStatus} />
+      <div data-aqi-target="leads.tabs">
       <Tabs
         id="leads-tabs"
         value={tab}
@@ -149,6 +150,7 @@ export function LeadsWorkspace(props: {
       {tab === "research" && <ResearchPanel {...props} />}
       {tab === "targeting" && <TargetingForm targeting={props.targeting} canEdit={props.canResearch} />}
       </Tabs>
+      </div>
     </div>
   );
 }
@@ -221,7 +223,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
   }
   const selectedLeads = leads.filter((l) => selected.includes(l.id));
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-aqi-target="leads.review-table">
       <div className="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
@@ -526,7 +528,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
       <Panel className="lg:col-span-2" icon={<Radar />} tone="primary" title="New research request" description="Describe who you want to find. Your targeting rules are applied automatically." bodyClassName="space-y-4">
           <Segmented id="campaign" ariaLabel="Campaign type" value={campaign} onChange={setCampaign} options={[{ value: "business", label: "Businesses" }, { value: "influencer", label: "Influencer partners" }]} />
           <Field label="What should the Lead Hunter look for?" htmlFor="research-prompt">
-            <Textarea id="research-prompt" rows={4} maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={!canResearch} placeholder="Find businesses in California that may need appointment automation." />
+            <Textarea id="research-prompt" data-aqi-target="leads.research" rows={4} maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={!canResearch} placeholder="Find businesses in California that may need appointment automation." />
           </Field>
           {campaign === "influencer" && (
             <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12.5px] text-muted">

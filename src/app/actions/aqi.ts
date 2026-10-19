@@ -15,6 +15,19 @@ import {
   saveAqiQuestion,
   testAqiProvider,
 } from "@/server/aqi/service";
+import {
+  archiveAqiTutorial,
+  duplicateAqiTutorial,
+  previewAqiTutorialDefinition,
+  publishAqiTutorial,
+  rollbackAqiTutorial,
+  saveAqiTutorialDraft,
+} from "@/server/aqi/tutorials";
+import {
+  archiveAqiKnowledgeDocument,
+  createAqiKnowledgeEntryFromDocument,
+  reviewAqiKnowledgeEntry,
+} from "@/server/aqi/knowledge-documents";
 
 function refresh() {
   revalidatePath("/admin/aqi");
@@ -139,6 +152,109 @@ export async function testAqiProviderAction(prompt: string, draftConfig?: unknow
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     return { ok: true as const, data: await testAqiProvider(admin, prompt, draftConfig) };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function saveAqiTutorialAction(input: { id?: string | null; slug?: string | null; definition: unknown; notes?: string | null }) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const result = await saveAqiTutorialDraft(admin, input);
+    refresh();
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function publishAqiTutorialAction(tutorialId: string, versionId?: string | null) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    return { ok: true as const, data: await publishAqiTutorial(admin, tutorialId, versionId ?? null) };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function archiveAqiTutorialAction(tutorialId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    await archiveAqiTutorial(admin, tutorialId);
+    refresh();
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function duplicateAqiTutorialAction(tutorialId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const result = await duplicateAqiTutorial(admin, tutorialId);
+    refresh();
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function rollbackAqiTutorialAction(tutorialId: string, versionId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    return { ok: true as const, data: await rollbackAqiTutorial(admin, tutorialId, versionId) };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function previewAqiTutorialAction(definition: unknown, role: string) {
+  try {
+    await requireAgencyOrThrow("super_admin");
+    return { ok: true as const, data: previewAqiTutorialDefinition(definition, role) };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function reviewAqiKnowledgeAction(
+  id: string,
+  input: { action: "review" | "publish" | "archive"; note?: string | null; freshnessDays?: number | null },
+) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    await reviewAqiKnowledgeEntry(admin, id, input);
+    refresh();
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function createAqiKnowledgeEntryFromDocumentAction(input: {
+  documentId: string;
+  title: string;
+  category: string;
+  body?: string | null;
+  routePrefix?: string | null;
+  roles?: string[];
+}) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const result = await createAqiKnowledgeEntryFromDocument(admin, input);
+    refresh();
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function archiveAqiKnowledgeDocumentAction(documentId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    await archiveAqiKnowledgeDocument(admin, documentId);
+    refresh();
+    return { ok: true as const };
   } catch (err) {
     return actionError(err);
   }

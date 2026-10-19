@@ -164,7 +164,7 @@ export function CreateClientButton({ initial }: { initial?: Prefill }) {
 
   return (
     <>
-      <Button variant="brand" onClick={openDialog}>
+      <Button variant="brand" data-aqi-target="admin.clients.new" onClick={openDialog}>
         <Plus className="size-4" /> New client
       </Button>
       <Dialog

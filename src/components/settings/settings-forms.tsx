@@ -42,7 +42,7 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuTrigger, Segmented, Switch } f
 import { AvatarTile, InfoChip, RelativeTime, StatusPill } from "@/components/ui/status";
 import { IconTile, Notice, OptionCard, Panel, SaveBar, SettingRow } from "@/components/settings/panel";
 import { ROLE_META, RolePill } from "@/components/settings/role-pill";
-import { startTour } from "@/components/shell/guided-tour";
+import { startTutorial } from "@/components/aqi/tutorial/tutorial-store";
 import {
   changePasswordAction,
   changeRoleAction,
@@ -169,7 +169,7 @@ export function ProfileForms({
             <InfoChip icon={<Mail aria-hidden />} className="max-w-[16rem]">
               {user.email}
             </InfoChip>
-            <Button variant="secondary" size="sm" onClick={() => startTour()}>
+            <Button variant="secondary" size="sm" onClick={() => void startTutorial("getting-started", "library")}>
               <RotateCcw className="size-3.5" /> Restart tour
             </Button>
           </>
@@ -243,6 +243,7 @@ export function TeamManager({
       {canManage && (
         <Panel icon={<UserPlus />} title="Invite a teammate" description="They'll get an email to set up their account. Invitations expire after 7 days.">
           <form
+            data-aqi-target="settings.team.invite"
             className="flex flex-col gap-2 sm:flex-row"
             onSubmit={(e) => {
               e.preventDefault();
@@ -252,7 +253,7 @@ export function TeamManager({
             <label htmlFor="inv-email" className="sr-only">
               Email
             </label>
-            <Input id="inv-email" type="email" required placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="inv-email" data-aqi-target="settings.team.email" type="email" required placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             <label htmlFor="inv-role" className="sr-only">
               Role
             </label>
@@ -263,7 +264,7 @@ export function TeamManager({
                 </option>
               ))}
             </Select>
-            <Button type="submit" loading={pending === "invite"}>
+            <Button type="submit" data-aqi-target="settings.team.submit" loading={pending === "invite"}>
               <UserPlus className="size-4" /> Invite
             </Button>
           </form>
