@@ -1058,6 +1058,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
           <motion.button
             ref={launcherRef}
             type="button"
+            data-aqi-target="aqi.launcher"
             onClick={() => setOpen(true)}
             initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}

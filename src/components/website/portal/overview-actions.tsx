@@ -31,7 +31,7 @@ export function OverviewActions({ canEdit, canPublish, isLive, host }: { canEdit
   return (
     <>
       {canEdit && (
-        <Link href="/website/edit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl brand-gradient px-4 text-sm font-medium text-white shadow-glow transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-10">
+        <Link href="/website/edit" data-aqi-target="website.edit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl brand-gradient px-4 text-sm font-medium text-white shadow-glow transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-10">
           <Pencil className="size-4" aria-hidden /> Edit website
         </Link>
       )}

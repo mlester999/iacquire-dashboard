@@ -241,44 +241,62 @@ Other checks on the same production build:
 
 ## 5. Walkthrough audit
 
-The walkthrough is no longer the six-step tour described in the brief. The repository contains
-**16 published starter tours**:
+The walkthrough is no longer the six-step tour described in the brief. After migration `0064` the
+repository contains **22 published starter tours / 74 steps**:
 
-- General: `getting-started` (6 steps), `navigate-dashboard` (3).
-- CRM: `create-contact` (4), `manage-leads` (3), `use-pipelines` (3).
+- General: `getting-started` (6), `navigate-dashboard` (3), `setup-workspace` (2), `ask-aqi` (1).
+- CRM: `create-contact` (4), `manage-leads` (3), `use-pipelines` (3), `manage-tasks` (4).
+- Automation: `build-workflow` (3).
 - Calendar: `manage-appointments-native` (3), `manage-appointments-external` (3).
 - AI workforce: `view-ai-employees` (3).
+- Website: `manage-website` (2).
+- Analytics: `read-analytics` (2).
 - Account: `find-integrations` (4), `contact-support` (3), `invite-team-member` (5).
 - Agency: `agency-tools` (4), `aqi-management` (4), `aqi-knowledge` (3), `aqi-tutorials` (5),
   `aqi-insights` (4).
 
-Roles are filtered on the server, every target is from the approved target registry, steps that span
-pages wait for the real page, and the tour can be paused, resumed, skipped and replayed. The previous
-pass added the card/spotlight/placement fixes and the browser QA described in
-[aqi-ux-polish.md](aqi-ux-polish.md).
+The six new tours cover every feature area the brief listed that was previously missing: setup and
+onboarding, AQi itself, CRM tasks, workflows/automations, Website Studio and analytics. Each has
+contextual tips on its real page, so a user can start it without hunting through a library.
 
-**Gap:** there are not yet dedicated tours for CRM tasks, workflows/automations, Website Studio,
-reporting/analytics, client onboarding, or the AQi user launcher. Those remain follow-up work; this
-pass did not invent tours for pages it did not test.
+Browser QA for the new tours:
+
+- Owner sees all six new tours; a read-only viewer sees `setup-workspace`, `ask-aqi` and
+  `read-analytics` but **not** tasks, workflows or Website Studio. The server refuses the hidden
+  slugs by name too.
+- All **14 target ids** across the six tours were present and visible on their declared routes.
+- `manage-tasks` completed through the real UI: 4 steps, ending on “Walkthrough finished” with
+  Replay and Done.
+- `manage-website` completed through the real UI in 2 steps.
+- Mobile 390×844: the analytics tour card was placed at x=12, width=366, inside the 390 px viewport,
+  with zero horizontal overflow.
+- No page errors during the tour run.
+
+The 0064 migration only inserts tours and tips. It changes no table, policy or existing progress.
+The rollback refuses to delete a tour that a person has started, and only removes the six new rows.
+**Migration 0064 is not applied to production; applying it requires approval.**
+
+The previous pass added the card/spotlight/placement fixes and the browser QA described in
+[aqi-ux-polish.md](aqi-ux-polish.md).
 
 ## 6. Verification and limits
 
 - `npm run typecheck`: pass.
 - `eslint src tests scripts --max-warnings=0`: pass.
-- Full unit suite: **3,042 / 3,042 tests passed across 184 files** (`vitest run --maxWorkers=2`,
-  703.77 s), exit 0.
+- Full unit suite: **3,046 / 3,046 tests passed across 185 files** (`vitest run --maxWorkers=2`,
+  738.83 s), exit 0.
 - Browser: real login, dashboard, contacts, sidebar transitions and a real streamed AQi answer
-  against the local mock provider.
-- Production build: `next build --turbopack` completed with **TypeScript passing**, all routes
-  emitted, and 278 route traces (compile 69 s, TypeScript 83 s). A separate `next build --webpack`
-  attempt was stopped under memory pressure; Turbopack is the production build path the project
-  already used.
-- Trace check: `/login` 3.4 MB, `/overview` 5.1 MB, `/crm/contacts` 6.3 MB and `/api/aqi/chat`
-  12.6 MB, each containing **0 bytes** of `@electric-sql/pglite`.
+  against the local mock provider; the six new tours were started through the real resume/tour UI.
+- New migration test: `tests/aqi-migration-0064.test.ts` verifies all six published definitions,
+  their target coverage and the six contextual tips on a fresh migrated database.
+- Production build: `next build --turbopack` completed with **TypeScript passing** after the tour
+  changes; trace exclusion still holds (`/login` 3.4 MB, `/overview` 5.1 MB, 0 MB PGlite).
 - **Not completed in this pass:** the deployed cold start and hosted-AQi TTFT cannot be measured
   until this commit is released. The production build run used placeholder Supabase configuration,
   so it validates compilation and tracing, not hosted runtime.
-- No migration was added by this pass.
+- Migration `0064_aqi_feature_tours.sql` was added: data only (six tours + six tips), no schema,
+  policy or existing-progress changes. It is applied to the local test/dev database and covered by
+  `tests/aqi-migration-0064.test.ts`. **It is not applied to production; applying it requires approval.**
 - Hosted production was not deployed. Region routing remains **iad1 functions → Tokyo database**.
   Moving functions to `hnd1` is a plausible next step but is a deployment change and needs approval;
   it was not made here.

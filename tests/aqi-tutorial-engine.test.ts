@@ -103,6 +103,23 @@ describe("AQi tutorial eligibility and progress", () => {
     expect(await matchAqiTutorialOffer(viewer.viewer, "How do I add a contact?", "/overview")).toBeNull();
   });
 
+  it("offers the new feature tours only to roles that can complete their steps", async () => {
+    const owner = await fixture("owner");
+    const ownerTutorials = (await listAqiTutorialsForViewer(owner.viewer)).map((tutorial) => tutorial.slug);
+    expect(ownerTutorials).toEqual(expect.arrayContaining([
+      "setup-workspace", "ask-aqi", "manage-tasks", "build-workflow", "manage-website", "read-analytics",
+    ]));
+
+    const viewer = await fixture("viewer");
+    const viewerTutorials = (await listAqiTutorialsForViewer(viewer.viewer)).map((tutorial) => tutorial.slug);
+    expect(viewerTutorials).toEqual(expect.arrayContaining(["setup-workspace", "ask-aqi", "read-analytics"]));
+    for (const slug of ["manage-tasks", "build-workflow", "manage-website"]) {
+      expect(viewerTutorials, slug).not.toContain(slug);
+      expect(await getAqiTutorialForViewer(viewer.viewer, slug), slug).toBeNull();
+    }
+    expect(await matchAqiTutorialOffer(viewer.viewer, "How do I build a workflow?", "/crm/workflows")).toBeNull();
+  });
+
   it("excludes native-CRM walkthroughs from a workspace whose CRM is owned elsewhere", async () => {
     const { org, viewer } = await fixture("owner");
     await withSystem((db) => db.query("insert into crm_workspaces (org_id, mode) values ($1, 'ghl') on conflict (org_id) do update set mode = 'ghl'", [org.id]));
