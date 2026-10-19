@@ -92,7 +92,32 @@ export function isDevRestartInterruption(bucket, navigationError = "") {
   const failedConnections = (bucket?.failedRequests ?? []).filter((request) => connectionFailure.test(request.error ?? ""));
   const chunkRuntimeError = (bucket?.pageErrors ?? []).some((error) => chunkFailure.test(error));
   // Loading chunk errors are explicit even when the browser never emits requestfailed (for example, a stale 404 response).
-  return chunkRuntimeError || (failedConnections.length > 0 && connectionFailure.test(navigationError));
+  // Every failedRequests entry has already been restricted to the QA server's exact loopback origin. A reset on
+  // an API, asset, streamed redirect, or document request is therefore a local server interruption too.
+  return chunkRuntimeError || chunkFailure.test(navigationError) || failedConnections.length > 0;
+}
+
+/** Read the destination embedded in Next's streamed redirect meta tag. */
+export function parseNextRedirectMeta(content, currentUrl) {
+  const match = /^\s*\d+(?:\.\d+)?\s*;\s*url\s*=\s*(.+?)\s*$/i.exec(String(content ?? ""));
+  if (!match) return null;
+  const destination = match[1].trim().replace(/^(['"])(.*)\1$/, "$2");
+  try {
+    return new URL(destination, currentUrl);
+  } catch {
+    return null;
+  }
+}
+
+/** A streamed redirect may already have replaced the URL before the browser check starts waiting. */
+export function isRedirectTargetCurrent(currentUrl, targetUrl) {
+  try {
+    const current = new URL(currentUrl);
+    const target = targetUrl instanceof URL ? targetUrl : new URL(targetUrl, current);
+    return current.origin === target.origin && current.pathname === target.pathname && current.search === target.search;
+  } catch {
+    return false;
+  }
 }
 
 /** Remove only noise caused by the confirmed restart, preserving unrelated app and browser errors. */
@@ -117,7 +142,7 @@ export function clearDevRestartNoise(bucket, { clearConnections = false } = {}) 
 }
 
 /** Waits for the isolated server after Next's dev worker restarts above its configured memory threshold. */
-async function waitForQaServer(base, timeoutMs = 45_000) {
+async function waitForQaServer(base, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   const healthUrl = new URL("/login", base);
   while (Date.now() < deadline) {
@@ -130,6 +155,37 @@ async function waitForQaServer(base, timeoutMs = 45_000) {
     await pause(500);
   }
   return false;
+}
+
+/** Wait for the final document after a Next streamed redirect, including role-denied redirects. */
+async function waitForNextRedirect(page, routePath, base, bucket) {
+  const expected = EXPECTED_REDIRECTS[routePath];
+  const currentUrl = page.url();
+  const content = await page.locator("meta#__next-page-redirect").getAttribute("content").catch(() => null);
+  const target = expected ? new URL(expected.path, currentUrl) : parseNextRedirectMeta(content, currentUrl);
+  if (!target) return null;
+  if (!isLocalUrl(target.href, base)) return `Streamed redirect from ${routePath} left the isolated QA origin: ${target.origin}`;
+  try {
+    const destination = { origin: target.origin, pathname: target.pathname, search: target.search };
+    // Poll the current document instead of waiting for a URL event. The streamed redirect can
+    // land between a URL snapshot and Playwright registering its event listener.
+    await page.waitForFunction(({ destination: targetUrl }) => {
+      const current = new URL(window.location.href);
+      return current.origin === targetUrl.origin && current.pathname === targetUrl.pathname && current.search === targetUrl.search;
+    }, { destination }, { timeout: 20_000 });
+    await page.waitForFunction(({ destination: targetUrl, title }) => {
+      const current = new URL(window.location.href);
+      if (current.origin !== targetUrl.origin || current.pathname !== targetUrl.pathname || current.search !== targetUrl.search) return false;
+      const main = document.querySelector("main, [role=main]");
+      const heading = main?.querySelector("h1, [role=heading][aria-level='1']");
+      return !document.querySelector("meta#__next-page-redirect") && Boolean(heading) && (title ? document.title === title : Boolean(document.title));
+    }, { destination, title: expected?.title ?? null }, { timeout: 30_000 });
+    return null;
+  } catch (error) {
+    const reset = bucket?.failedRequests.find((request) => connectionFailure.test(request.error ?? ""));
+    const network = reset ? `; ${reset.error} ${reset.url}` : "";
+    return `Expected ${routePath} to finish at ${target.pathname}${target.search}: ${errText(error)}${network}`;
+  }
 }
 
 /** One retry handles a local navigation interrupted by the isolated Next dev worker restarting. */
@@ -740,23 +796,20 @@ async function main() {
     } catch (e) {
       v.error = errText(e);
     }
-    const expectedRedirect = EXPECTED_REDIRECTS[route.path];
-    const waitForExpectedRedirect = async () => {
-      if (!expectedRedirect || v.error) return;
-      try {
-        await page.waitForURL((u) => u.pathname === expectedRedirect.path, { timeout: 20_000 });
-        await page.waitForFunction((title) => document.title === title && Boolean(document.querySelector("main h1, main [role=heading][aria-level='1']")), expectedRedirect.title, { timeout: 20_000 });
-      } catch (e) {
-        v.error = `Expected ${route.path} to finish at ${expectedRedirect.path}: ${errText(e)}`;
-      }
-    };
+    const redirectError = await waitForNextRedirect(page, route.path, base, rec.bucket);
+    if (redirectError) v.error = redirectError;
     let readiness = await settle(page);
-    await waitForExpectedRedirect();
+    if (!v.error) {
+      // Streamed App Router redirects can arrive after DOMContentLoaded. Recheck once the
+      // destination has had time to render, then capture the final page instead of the meta tag.
+      const settledRedirectError = await waitForNextRedirect(page, route.path, base, rec.bucket);
+      if (settledRedirectError) v.error = settledRedirectError;
+    }
     if (isDevRestartInterruption(rec.bucket, v.error ?? "") && await waitForQaServer(base)) {
       // Only a confirmed dev-server connection/chunk failure is discarded. The retried document
       // gets a fresh measurement, while any unrelated errors from the first attempt stay visible.
       await page.goto("about:blank", { waitUntil: "load", timeout: 5_000 }).catch(() => {});
-      clearDevRestartNoise(rec.bucket, { clearConnections: connectionFailure.test(v.error ?? "") });
+      clearDevRestartNoise(rec.bucket, { clearConnections: true });
       const retry = await gotoQa(page, route.path, base, () => {
         clearDevRestartNoise(rec.bucket, { clearConnections: true });
         console.log(`chunk retry  ${rec.role} ${route.path} after QA server restart`);
@@ -767,8 +820,13 @@ async function main() {
         v.status = retry.response ? retry.response.status() : null;
         v.error = undefined;
       }
-      await waitForExpectedRedirect();
+      const retryRedirectError = await waitForNextRedirect(page, route.path, base, rec.bucket);
+      if (retryRedirectError) v.error = retryRedirectError;
       readiness = await settle(page);
+      if (!v.error) {
+        const settledRetryRedirectError = await waitForNextRedirect(page, route.path, base, rec.bucket);
+        if (settledRetryRedirectError) v.error = settledRetryRedirectError;
+      }
     }
     v.readiness = readiness;
     v.ms = Date.now() - t0;
@@ -859,16 +917,22 @@ async function main() {
     });
     if (navigation.error) throw navigation.error;
     let res = navigation.response;
-    await settle(page);
     const rec = [...contexts.values()].find((candidate) => candidate.page === page);
-    if (rec && isDevRestartInterruption(rec.bucket) && await waitForQaServer(base)) {
+    let redirectError = rec ? await waitForNextRedirect(page, p, base, rec.bucket) : null;
+    await settle(page);
+    if (!redirectError && rec) redirectError = await waitForNextRedirect(page, p, base, rec.bucket);
+    if (rec && isDevRestartInterruption(rec.bucket, redirectError ?? "")) {
+      if (!(await waitForQaServer(base))) throw new Error("The isolated QA server did not recover from a connection reset.");
       await page.goto("about:blank", { waitUntil: "load", timeout: 5_000 }).catch(() => {});
-      clearDevRestartNoise(rec.bucket);
+      clearDevRestartNoise(rec.bucket, { clearConnections: true });
       const retry = await gotoQa(page, p, base, () => clearDevRestartNoise(rec.bucket, { clearConnections: true }));
       if (retry.error) throw retry.error;
       res = retry.response;
+      redirectError = await waitForNextRedirect(page, p, base, rec.bucket);
       await settle(page);
+      if (!redirectError) redirectError = await waitForNextRedirect(page, p, base, rec.bucket);
     }
+    if (redirectError) throw new Error(redirectError);
     return res;
   };
   const runTag = Date.now().toString(36);

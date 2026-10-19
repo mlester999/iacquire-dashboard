@@ -4,8 +4,13 @@ GoHighLevel is used only as a **functional benchmark** for the CRM capabilities 
 claim of literal 100% GoHighLevel parity, and no GoHighLevel code, design, branding, API shape or snapshot content was copied.
 
 Status values: `Not implemented` · `In progress` · `Implemented locally` · `Integration verified` · `Production verified` · `Blocked`.
-"Implemented locally" means built and covered by automated tests against an embedded PostgreSQL database. **Nothing in this
-matrix is production verified**: no migration from this work has been applied to the hosted project and nothing was deployed.
+"Implemented locally" means built and covered by automated tests against an embedded PostgreSQL database. A read-only hosted
+check on 2026-10-19 found all 61 repository migrations through `0062_agency_manager_blueprint_permissions` recorded in
+`public.schema_migrations`, with no pending local migration. The hosted public schema had 258 tables and row-level security
+enabled on all 258. The production health endpoint also returned `status=ok` and `database=ok`.
+
+These checks confirm migration and deployment state, not CRM behavior in production. No CRM client workflow or live provider
+integration was exercised against production, so no capability in this matrix is marked `Production verified`.
 
 Last updated: 2026-10-19 (Phase 1 and Phase 2: data model, contacts, companies, tags, fields, Smart Lists, pipelines, deals, tasks, imports/exports, permissions, agency workspace, native calendars and booking, booking pages, calendar connections, Website Studio booking; Phase 3: native email/SMS/WhatsApp transports, webhooks, templates and channel setup; Phase 4: workflow engine, follow-ups, agent tools, lead assignment, API and webhooks; Phase 5: forms, campaigns, reviews, calls, reporting, configuration values; CRM Blueprints; Phase 6: GoHighLevel live-record migration, native Setup Center and CRM setup guide, performance indexes, seven-step provider switching, active-switch migration-panel lock, native-channel owner enforcement, capability-aware navigation, and the final RLS rewrite in migration 0060). The local acceptance evidence is in [crm-local-qa.md](crm-local-qa.md). See [native-crm-audit.md](native-crm-audit.md) for the evidence behind the "Before" column.
 

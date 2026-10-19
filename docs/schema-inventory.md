@@ -1,10 +1,8 @@
 # Portal schema inventory
 
-**Current checkpoint:** the repository contains **26 versioned migrations**, `0001` through `0026`, declaring **154 public tables**: 153 application tables and the
-`schema_migrations` bookkeeping table (counted from the migration source; the generic isolation test checks every table with an `org_id` against the real
-migrated schema on each run). The first 89 tables (migrations `0001`–`0015`) are unchanged from the earlier verified inventory, and all **51 original tables** in
-`0001`–`0004` are preserved. Migrations `0016`–`0026` add 65 tables, listed below. These counts describe the local schema source and disposable PostgreSQL
-verification. **The hosted Supabase project was inspected on 2026-10-15: it had `0001`–`0025` applied (149 tables) and `0026` was applied then, giving 26 migrations and 154 public tables, matching this inventory.**
+**Historical detailed baseline (2026-10-15):** the inventory below enumerates the first 26 versioned migrations, `0001` through `0026`, which declared 154 public tables at that checkpoint. The first 89 tables (migrations `0001`–`0015`) were unchanged from the earlier verified inventory, and all 51 original tables in `0001`–`0004` were preserved. Migrations `0016`–`0026` added 65 tables.
+
+**Current hosted schema check (2026-10-19):** a read-only linked-project query found 61 applied migration records in `public.schema_migrations`, latest `0062_agency_manager_blueprint_permissions`, matching all migrations in the release checkout. The hosted public schema contained 258 tables, with row-level security enabled on all 258. The detailed table list below remains the historical `0001`–`0026` baseline; it is not a current exhaustive inventory.
 
 Supabase-managed `auth`, `storage`, `realtime`, `vault` and CLI migration-history tables are excluded from the public-table count. `supabase/local-compat.sql` emulates managed schemas only for isolated development/tests and must never run against a hosted project.
 
