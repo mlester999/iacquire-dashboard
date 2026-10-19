@@ -151,5 +151,7 @@ The service reads with trusted code after authorizing the actor, and every query
 - The sender steps are optional by default. A Blueprint that requires SMS or WhatsApp doesn't make them required yet (the Blueprint checklist on CRM → Settings → Blueprints & setup still lists the requirement).
 - `email_domain`, `sms_sender` and `whatsapp_sender` read the latest recorded capability test; a live Setup Center run doesn't re-run the provider test (it is run from Communication settings).
 - The Blueprint checklist's own channel items (`email_provider`, `sms_provider`, `whatsapp_provider` in `src/server/crm/blueprints/checklist.ts`, not this package's file) still count a channel as done whenever it is enabled, even when its last passed test is more than 30 days old. The guide then says In progress (the test must be run again) while the checklist says done. Moving the checklist onto `channelEvidence` is with the lead.
-- Native clients still get the `manual_ghl_mapping` preparation job from onboarding (it waits for an admin and blocks nothing). Skipping it for native clients would change `tests/provisioning.test.ts`, which this package doesn't own.
+- Native clients do not get the `manual_ghl_mapping` preparation job; onboarding queues the three
+  native preparation jobs (`tests/provisioning.test.ts`). The GoHighLevel mapping job remains
+  available only for a client that keeps GoHighLevel.
 - "A provider switch has run" is detected from hybrid mode, recorded capability owners, an in-progress switch, or an audit action starting with `crm.provider.switch` (or `crm.provider_switch`). Provider switching (package B) should record its switches that way.

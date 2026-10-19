@@ -45,6 +45,12 @@ This pass keeps the GoHighLevel integration working while removing the places wh
 
 The integrations-page axe run covers WCAG 2.0/2.1 A and AA only, not best-practice rules or a screen reader. It does not replace a staging run or a manual accessibility session.
 
+### CRM launch acceptance and funnel audit (2026-10-19)
+
+- [crm-launch-acceptance-20261019.md](crm-launch-acceptance-20261019.md): all **114 CRM routes** at desktop/light, 0 render/5xx/external/overflow/axe failures; focused **17-route 390 px/dark** layout pass clean after reruns; dev-server restart transients are separated from product results. Hosted production is native-first but has no CRM records yet; staging and Hermes/Website Studio live acceptance remain outstanding.
+- [sales-and-demo-funnel-audit.md](sales-and-demo-funnel-audit.md): demo workspace, Super Admin demo pipeline, consultation CTA, public checkout and purchase-token invitation are missing; setup-fee/payment infrastructure exists, but activation does not yet require `setup_payment_status = paid/waived`. The dependency-ordered plan is included; no funnel code was added.
+- The production scheduler is still **503 / never_ran**; no provider write or scheduler activation occurred.
+
 ### Native CRM Phase 6 acceptance (2026-10-19; local only)
 
 The feature matrix and scope notes are in [native-crm-parity.md](native-crm-parity.md); the isolated browser setup and reports are in [crm-local-qa.md](crm-local-qa.md).

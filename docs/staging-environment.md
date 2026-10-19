@@ -88,6 +88,32 @@ Do not proceed until each item is explicitly approved:
 
 Still explicitly **not approved** by this document: the production scheduler, any outbound provider write, a live GoHighLevel migration, production data changes, or any further production migration.
 
+## Execution once approved
+
+Run only after the approvals above. Use a **separate checkout/worktree that has no production `.env`**, so no production secret can be picked up accidentally.
+
+1. Create the project with the command above and capture its reference.
+2. Copy `.env.staging.example` to `.env.staging.local` in that checkout and fill every value. Confirm the `DATABASE_URL` host contains the staging reference, not `lkkiavjwxaeoqgsbjyso`.
+3. Apply migrations with the staging-only env file:
+
+   ```bash
+   node --env-file-if-exists=.env.staging.local --conditions=react-server --import tsx scripts/migrate.ts
+   ```
+
+   Do **not** use `npm run db:migrate` for staging: that script also loads `.env`/`.env.local`, which are production values in the main checkout. Record the printed schema versions and confirm `Still pending:` is absent.
+
+4. Create the six staging identities through the Supabase dashboard/Admin API (client owner/manager/staff, agency admin/staff, second client tenant). Do not create production organizations, users or records.
+5. Start the app against staging from the clean checkout:
+
+   ```bash
+   node --env-file-if-exists=.env.staging.local node_modules/next/dist/bin/next dev -p 3101
+   ```
+
+   Then run the acceptance matrix below against `http://127.0.0.1:3101` with `EMAIL_PROVIDER=capture` and every write switch `false`.
+6. Optional hosted staging deployment: a separate Vercel project/preview with the same staging variables; do not point it at production.
+7. Optional supervised scheduler test: staging-only `CRON_SECRET`, `SCHEDULER_ENABLED=true`, one manual tick, observe, then disable. No production scheduler.
+8. Tear down or pause the staging project after acceptance if the Free plan is used, so it does not consume the second active-project slot.
+
 ## Acceptance matrix
 
 Run in this order; stop at the first failure and record it. These are the release gates for staging.
