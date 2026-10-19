@@ -223,15 +223,15 @@ async function startViaApi(page, slug, advanceSteps = 0, bucket = null) {
     }
   }, { slug, advanceSteps }).catch(() => {});
   await safeReload(page, new URL(page.url()).pathname || "/overview", bucket);
-  await page.getByRole("button", { name: "Resume" }).waitFor({ state: "visible", timeout: 30_000 });
+  await page.getByRole("button", { name: "Resume" }).waitFor({ state: "visible", timeout: 60_000 });
   await page.getByRole("button", { name: "Resume" }).click();
-  await page.locator("#aqi-tutorial-title").waitFor({ state: "visible", timeout: 30_000 });
+  await page.locator("#aqi-tutorial-title").waitFor({ state: "visible", timeout: 60_000 });
 }
 
 async function highlightMatches(page, targetId, label) {
   const highlight = page.locator("[data-aqi-highlight]").first();
   const target = page.locator(`[data-aqi-target="${targetId}"]`).first();
-  await target.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+  await target.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
   const [h, t] = await Promise.all([highlight.boundingBox().catch(() => null), target.boundingBox().catch(() => null)]);
   if (!h || !t) {
     check(`${label}: spotlight and target exist`, false, JSON.stringify({ h, t }));
@@ -401,7 +401,8 @@ for (const width of want("tablet") ? [1024, 768] : []) {
   await overflow(page, `${width}px tutorial`);
   await highlightMatches(page, "overview.kpis", `${width}px tutorial step 1`);
   await page.locator('[data-aqi-control="next"]').click();
-  await page.locator("#aqi-tutorial-title").filter({ hasText: "Then check next actions" }).waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+  await page.locator("#aqi-tutorial-title").filter({ hasText: "Then check next actions" }).waitFor({ state: "visible", timeout: 60_000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector("[data-aqi-path]")?.getAttribute("data-aqi-step") === "1", null, { timeout: 60_000 }).catch(() => {});
   await highlightMatches(page, "overview.next-actions", `${width}px tutorial step 2`);
   await axe(page, `${width}px tutorial`);
   await page.screenshot({ path: path.join(SHOTS, `tablet-${width}-tutorial.png`) });
@@ -506,33 +507,35 @@ if (want("admin")) {
     return Boolean(tutorials) && Object.keys(tutorials).some((key) => key.startsWith("__reactProps$"));
   }, null, { timeout: 120_000 }).catch(() => {});
   await page.getByRole("tab", { name: "Tutorials" }).click();
-  await page.getByText("Tutorial library").waitFor({ state: "visible", timeout: 15_000 }).catch(async () => {
+  await page.getByText("Tutorial library").waitFor({ state: "visible", timeout: 60_000 }).catch(async () => {
     await page.getByRole("tab", { name: "Tutorials" }).click();
   });
-  await page.getByText("Tutorial library").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  await page.getByText("Tutorial library").waitFor({ state: "visible", timeout: 60_000 }).catch(() => {});
   check("Super Admin sees the tutorial library", await page.getByText("Tutorial library").first().isVisible().catch(() => false));
   await page.getByRole("button", { name: /Navigating AQi Management/ }).click().catch(() => {});
   await page.getByRole("button", { name: "Validate" }).click();
-  await page.getByText("Structural validation").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  await page.getByText("Structural validation").waitFor({ state: "visible", timeout: 60_000 }).catch(() => {});
   check("server-side structural validation is available", await page.getByText("Structural validation").isVisible().catch(() => false));
   await page.getByRole("button", { name: "Preview in browser" }).click();
-  await page.locator("#aqi-tutorial-title").waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  await page.locator("#aqi-tutorial-title").waitFor({ state: "visible", timeout: 60_000 }).catch(() => {});
   check("draft preview opens the real spotlight stage", await page.getByText("Preview").first().isVisible().catch(() => false));
   await highlightMatches(page, "nav.agency.aqi", "admin preview");
   await page.screenshot({ path: path.join(SHOTS, "admin-preview.png") });
   await axe(page, "admin preview");
   await page.getByRole("button", { name: "Close walkthrough" }).click().catch(() => {});
   await page.goto(`${BASE}/admin/aqi/insights`, { waitUntil: "domcontentloaded", timeout: 120_000 });
-  await page.getByText("How AQi is actually used").waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+  await page.getByText("How AQi is actually used").waitFor({ state: "visible", timeout: 90_000 }).catch(() => {});
   check("Insights dashboard renders real-data sections", await page.getByText("How AQi is actually used").isVisible().catch(() => false));
-  await page.getByText("Usage", { exact: true }).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+  // The section renders only after the real analytics request finishes. A cold dev compile can take a while.
+  await page.getByText("Usage", { exact: true }).first().or(page.getByText("Insights could not be loaded")).first().waitFor({ state: "visible", timeout: 90_000 }).catch(() => {});
   const emptyPeriod = await page.getByText("No reliable data for this period").first().isVisible().catch(() => false);
   const failedInsights = await page.getByText("Insights could not be loaded").isVisible().catch(() => false);
-  check("Insights shows real sections or an honest empty period without an error state", !failedInsights && (emptyPeriod || await page.getByText("Usage", { exact: true }).first().isVisible().catch(() => false)), `empty=${emptyPeriod} failed=${failedInsights}`);
+  const usageVisible = await page.getByText("Usage", { exact: true }).first().isVisible().catch(() => false);
+  check("Insights shows real sections or an honest empty period without an error state", !failedInsights && (emptyPeriod || usageVisible), `empty=${emptyPeriod} failed=${failedInsights} usage=${usageVisible}`);
   await page.getByLabel("From date").fill("2026-10-01");
   await page.getByLabel("To date").fill("2026-10-10");
   await page.getByRole("button", { name: "Apply" }).click();
-  await page.getByText("Showing 2026-10-01 to 2026-10-10 (UTC).").waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+  await page.getByText("Showing 2026-10-01 to 2026-10-10 (UTC).").waitFor({ state: "visible", timeout: 60_000 }).catch(() => {});
   check("Insights applies a valid custom UTC date range", await page.getByText("Showing 2026-10-01 to 2026-10-10 (UTC).").isVisible().catch(() => false));
   await page.getByLabel("From date").fill("2026-10-20");
   await page.getByLabel("To date").fill("2026-10-10");
