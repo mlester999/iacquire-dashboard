@@ -6,7 +6,17 @@ import { approvedTutorialRoute, getAqiTarget, routeInTarget } from "@/lib/aqi/ta
 export const AQI_TUTORIAL_STEP_LIMIT = 12;
 
 export type AqiTutorialAdvance = "next" | "click";
-export type AqiTutorialCompletion = { kind: "finish" } | { kind: "route"; pattern: string };
+/**
+ * Completion semantics:
+ * - `finish`: the person reached the end. This is a walkthrough completion, never a business action.
+ * - `route`: the real destination was reached. This verifies navigation only.
+ * - `contact_created`: the destination matched AND the server found a contact created during this
+ *   attempt. Only this kind can set `verified` on progress.
+ */
+export type AqiTutorialCompletion =
+  | { kind: "finish" }
+  | { kind: "route"; pattern: string }
+  | { kind: "contact_created"; pattern: string };
 
 export interface AqiTutorialStep {
   key: string;
@@ -102,9 +112,19 @@ export function compileCompletionPattern(pattern: string): RegExp | null {
 }
 
 export function tutorialCompletionMatches(completion: AqiTutorialCompletion, pathname: string | null): boolean {
-  if (completion.kind !== "route" || !pathname) return false;
+  if (completion.kind === "finish" || !pathname) return false;
   const matcher = compileCompletionPattern(completion.pattern);
   return Boolean(matcher && matcher.test(pathname.split("?")[0].split("#")[0]));
+}
+
+/** Extracts the `:id` segment of an approved completion pattern without trusting any other path text. */
+export function completionIdFromPath(pattern: string, pathname: string | null): string | null {
+  if (!pathname || !pattern.includes(":id")) return null;
+  const clean = pathname.split("?")[0].split("#")[0].replace(/\/+$/, "");
+  const prefix = pattern.slice(0, pattern.indexOf(":id"));
+  if (!clean.startsWith(prefix)) return null;
+  const id = clean.slice(prefix.length).split("/")[0];
+  return /^[0-9a-f-]{8,}$/i.test(id) ? id : null;
 }
 
 export interface TutorialValidation {
@@ -138,7 +158,13 @@ export function validateTutorialDefinition(def: AqiTutorialDefinition): Tutorial
   if (!Array.isArray(def.aliases) || def.aliases.length > 20 || def.aliases.some((alias) => typeof alias !== "string" || alias.length > 80 || !cleanPlainText(alias))) errors.push("Aliases must be up to 20 short plain-text phrases.");
   if (!Array.isArray(def.keywords) || def.keywords.length > 30 || def.keywords.some((word) => typeof word !== "string" || word.length > 40 || !cleanPlainText(word))) errors.push("Keywords must be up to 30 short plain-text words.");
   if (!Array.isArray(def.steps) || def.steps.length < 1 || def.steps.length > AQI_TUTORIAL_STEP_LIMIT) errors.push(`A tutorial needs between 1 and ${AQI_TUTORIAL_STEP_LIMIT} steps.`);
-  if (def.completion?.kind === "route" && !compileCompletionPattern(def.completion.pattern)) errors.push("The completion route pattern is invalid.");
+  if (def.completion?.kind !== "finish" && def.completion?.kind !== undefined && !compileCompletionPattern(def.completion.pattern)) {
+    errors.push("The completion route pattern is invalid.");
+  }
+  if (def.completion?.kind === "contact_created") {
+    if (!def.completion.pattern.includes(":id")) errors.push("A created-contact completion must include :id in its route pattern.");
+    if (!def.completion.pattern.startsWith("/crm/contacts/")) errors.push("A created-contact completion must use a Contacts detail route.");
+  }
   if (def.requiresCrm && (!(def.requiresCrm.capability in CRM_CAPABILITY_NAMES) || !["native", "ghl"].includes(def.requiresCrm.provider))) errors.push("The CRM requirement is invalid.");
   if (def.roles.some((role) => role.startsWith("agency_")) && def.roles.some((role) => !role.startsWith("agency_"))) {
     warnings.push("This tutorial mixes client and agency roles. Check that its routes work in both shells.");
@@ -269,7 +295,7 @@ export const STARTER_TUTORIALS: AqiStarterTutorial[] = [
         { key: "first-name", title: "Enter the contact's details", body: "Start with a first name. Email and phone are optional, but a duplicate email or phone is flagged instead of creating a second record.", targetId: "crm.contact.first-name", route: "/crm/contacts" },
         { key: "save", title: "Save it yourself", body: "When you are ready, choose Add contact. AQi does not press this button or submit the form; the walkthrough completes only when the new contact page opens.", targetId: "crm.contact.save", route: "/crm/contacts" },
       ],
-      completion: { kind: "route", pattern: "/crm/contacts/:id" },
+      completion: { kind: "contact_created", pattern: "/crm/contacts/:id" },
     },
   },
   {

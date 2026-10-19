@@ -3,7 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { bootstrapGuidance, syncGuidanceProgress, useGuidance } from "@/components/aqi/tutorial/tutorial-store";
+import { bootstrapGuidance, restoreGuidanceFocus, syncGuidanceProgress, useGuidance } from "@/components/aqi/tutorial/tutorial-store";
 import { ContextualTip } from "@/components/aqi/tutorial/contextual-tip";
 import { OnboardingNudge } from "@/components/aqi/tutorial/onboarding-nudge";
 import { TutorialResumePill } from "@/components/aqi/tutorial/resume-pill";
@@ -24,10 +24,16 @@ function LazyStage() {
  */
 export function GuidanceHost() {
   const pathname = usePathname();
+  const state = useGuidance();
+  const wasOpen = React.useRef(false);
   React.useEffect(() => {
     void bootstrapGuidance(pathname);
     void syncGuidanceProgress(pathname);
   }, [pathname]);
+  React.useEffect(() => {
+    if (wasOpen.current && !state.open) restoreGuidanceFocus();
+    wasOpen.current = state.open;
+  }, [state.open]);
   return (
     <>
       <LazyStage />

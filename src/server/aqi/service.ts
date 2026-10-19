@@ -1252,7 +1252,7 @@ export async function publishAqiConfig(admin: SessionUser, versionId: string): P
   });
 }
 
-export async function saveAqiKnowledge(admin: SessionUser, input: { id?: string | null; title: string; category: string; body: string; routePrefix?: string | null; roles?: string[]; status?: "draft" | "published" | "archived"; source?: string }): Promise<void> {
+export async function saveAqiKnowledge(admin: SessionUser, input: { id?: string | null; title: string; category: string; body: string; routePrefix?: string | null; roles?: string[]; status?: "draft" | "published" | "archived"; source?: string }): Promise<{ id: string; version: number }> {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only a Super Admin can manage AQi.");
   const title = input.title.trim().slice(0, 160);
   const category = input.category.trim().slice(0, 60);
@@ -1260,8 +1260,22 @@ export async function saveAqiKnowledge(admin: SessionUser, input: { id?: string 
   const route = input.routePrefix?.trim() || null;
   if (!title || !category || !body) throw new AppError("invalid_input", "Title, category and body are required.");
   if (route && !/^\/[a-z0-9/_-]*$/.test(route)) throw new AppError("invalid_input", "Use an internal route such as /workforce.");
-  await withSystem(async (db) => {
+  return withSystem(async (db) => {
     if (input.id) {
+      const current = (await db.query<{ id: string; version: number; title: string; category: string; body: string; route_prefix: string | null; roles: string[]; status: string; source: string; created_by: string | null; updated_by: string | null }>(
+        "select id, version, title, category, body, route_prefix, roles, status, source, created_by, updated_by from aqi_knowledge_entries where id = $1 for update",
+        [input.id],
+      )).rows[0];
+      if (!current) throw new AppError("not_found", "Knowledge entry not found.");
+      // Preserve the actual prior content once, before the live row changes. This is the only point
+      // at which the old body still exists.
+      await db.query(
+        `insert into aqi_knowledge_versions
+           (knowledge_entry_id, version, title, category, body, route_prefix, roles, status, source, change_note, created_by)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Captured before edit', $10)
+         on conflict (knowledge_entry_id, version) do nothing`,
+        [current.id, current.version, current.title, current.category, current.body, current.route_prefix, current.roles, current.status, current.source, current.updated_by ?? current.created_by],
+      );
       await db.query(
         `update aqi_knowledge_entries set title = $2, category = $3, body = $4, route_prefix = $5, roles = $6,
            status = $7, source = $8, version = version + 1, updated_by = $9, updated_at = now(),
@@ -1269,14 +1283,25 @@ export async function saveAqiKnowledge(admin: SessionUser, input: { id?: string 
          where id = $1`,
         [input.id, title, category, body, route, input.roles ?? [], input.status ?? "draft", input.source ?? "iAcquire approved documentation", admin.id],
       );
-    } else {
-      await db.query(
-        `insert into aqi_knowledge_entries (title, category, body, route_prefix, roles, status, source, published_at, created_by, updated_by)
-         values ($1, $2, $3, $4, $5, $6, $7, case when $6 = 'published' then now() end, $8, $8)`,
-        [title, category, body, route, input.roles ?? [], input.status ?? "draft", input.source ?? "iAcquire approved documentation", admin.id],
-      );
+      await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "aqi.knowledge_saved", targetType: "aqi_knowledge", targetId: input.id, result: "success", metadata: { title, status: input.status ?? "draft", previousVersion: current.version } }, db);
+      return { id: input.id, version: current.version + 1 };
     }
-    await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "aqi.knowledge_saved", targetType: "aqi_knowledge", targetId: input.id ?? undefined, result: "success", metadata: { title, status: input.status ?? "draft" } }, db);
+
+    const inserted = (await db.query<{ id: string; version: number }>(
+      `insert into aqi_knowledge_entries (title, category, body, route_prefix, roles, status, source, published_at, created_by, updated_by)
+       values ($1, $2, $3, $4, $5, $6, $7, case when $6 = 'published' then now() end, $8, $8)
+       returning id, version`,
+      [title, category, body, route, input.roles ?? [], input.status ?? "draft", input.source ?? "iAcquire approved documentation", admin.id],
+    )).rows[0];
+    await db.query(
+      `insert into aqi_knowledge_versions
+         (knowledge_entry_id, version, title, category, body, route_prefix, roles, status, source, change_note, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Created', $10)
+       on conflict (knowledge_entry_id, version) do nothing`,
+      [inserted.id, inserted.version, title, category, body, route, input.roles ?? [], input.status ?? "draft", input.source ?? "iAcquire approved documentation", admin.id],
+    );
+    await recordAudit({ actorUserId: admin.id, actorKind: "agency", action: "aqi.knowledge_created", targetType: "aqi_knowledge", targetId: inserted.id, result: "success", metadata: { title, status: input.status ?? "draft" } }, db);
+    return { id: inserted.id, version: inserted.version };
   });
 }
 

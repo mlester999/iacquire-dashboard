@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { AqiTutorialDefinition, AqiTutorialProgressView, AqiTutorialSummary, AqiTutorialView } from "@/lib/aqi/tutorials";
 
-export type GuidancePhase = "idle" | "starting" | "active" | "paused" | "completed" | "exited" | "unavailable" | "error";
+export type GuidancePhase = "idle" | "starting" | "active" | "confirming" | "paused" | "completed" | "exited" | "unavailable" | "error";
 export type TargetState = "idle" | "searching" | "found" | "missing";
 
 export interface GuidanceResume {
@@ -266,8 +266,14 @@ function previewStep(action: TutorialAction, extra: { step?: number; pathname?: 
   if (action === "viewed" || action === "target_missing" || action === "route_verified") return;
   if (action === "skip" && !tutorial.steps[index]?.optional) return;
   if (index >= total - 1) {
-    const routeVerified = tutorial.completion.kind === "route" && routePatternMatches(tutorial.completion.pattern, extra.pathname ?? (typeof window !== "undefined" ? window.location.pathname : null));
-    emit({ phase: "completed", verified: routeVerified, message: "Preview only — no progress, completion or event was recorded." });
+    const routeMatched = tutorial.completion.kind !== "finish" && routePatternMatches(tutorial.completion.pattern, extra.pathname ?? (typeof window !== "undefined" ? window.location.pathname : null));
+    emit({
+      phase: "completed",
+      verified: false,
+      message: tutorial.completion.kind === "contact_created"
+        ? `Preview only — the destination matched (${routeMatched ? "yes" : "no"}), but business confirmation is not recorded in preview.`
+        : "Preview only — no progress, completion or event was recorded.",
+    });
     return;
   }
   emit({ stepIndex: index + 1, phase: "active", targetState: "idle" });
@@ -279,53 +285,47 @@ function routePatternMatches(pattern: string, pathname: string | null): boolean 
   return new RegExp(`^${escaped}/?$`, "i").test(pathname.split("?")[0].split("#")[0]);
 }
 
+/** Remembers the control that opened the walkthrough so focus can return to it on close. */
+let guidanceReturnFocus: HTMLElement | null = null;
+export function rememberGuidanceFocus(): void {
+  const active = typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  guidanceReturnFocus = active && active !== document.body && active !== document.documentElement ? active : null;
+}
+
+/** Called by the persistent guidance host after the stage unmounts. */
+export function restoreGuidanceFocus(): void {
+  const target = guidanceReturnFocus;
+  guidanceReturnFocus = null;
+  window.setTimeout(() => {
+    if (target?.isConnected && target.getClientRects().length > 0) {
+      target.focus();
+      return;
+    }
+    const fallback = [...document.querySelectorAll<HTMLElement>('[data-aqi-panel] button, [data-aqi-launcher]')]
+      .find((element) => !element.hasAttribute("disabled") && element.getClientRects().length > 0);
+    fallback?.focus();
+  }, 180);
+}
+
 export function dismissResume(): void {
   emit({ resume: null });
 }
 
 /**
- * Marks a route-verified walkthrough complete in the interface as soon as the real destination
- * matches, and records the completion event on the server best-effort. The destination itself is
- * the verification: no claim is made from a timer or a simulated click.
+ * Asks the server to confirm completion after the real destination appears. The UI does not claim
+ * completion until the response: a route match alone is navigation, and a created-contact tutorial
+ * needs the CRM record as authoritative proof.
  */
-export function completeTutorialFromRoute(pathname: string): void {
-  const tutorial = snapshot.tutorial;
-  if (!tutorial || snapshot.preview) return;
-  const progress = snapshot.progress;
-  emit({
-    phase: "completed",
-    verified: true,
-    message: "Verified by the real workspace page.",
-    busy: false,
-    error: null,
-    resume: null,
-    ...(progress
-      ? {
-          progress: {
-            ...progress,
-            status: "completed",
-            currentStep: Math.min(snapshot.stepIndex, tutorial.steps.length - 1),
-            completedAt: new Date().toISOString(),
-            verified: true,
-          },
-        }
-      : {}),
-  });
-  void fetch(`/api/aqi/tutorials/${encodeURIComponent(tutorial.slug)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      action: "route_verified",
-      step: snapshot.stepIndex,
-      pathname,
-      eventId: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null,
-    }),
-  }).catch(() => undefined);
+export async function confirmTutorialCompletion(pathname: string): Promise<void> {
+  if (!snapshot.open || !snapshot.tutorial || snapshot.preview) return;
+  if (!snapshot.busy) emit({ phase: "confirming", message: null, error: null });
+  await progressAction("complete", { pathname });
 }
 
 type TutorialAction = "next" | "previous" | "pause" | "resume" | "exit" | "complete" | "skip" | "target_missing" | "route_verified" | "restart" | "viewed";
 
 let progressSequence = 0;
+let lastFailedAction: { action: TutorialAction; extra: { step?: number; pathname?: string | null } } | null = null;
 
 async function progressAction(action: TutorialAction, extra: { step?: number; pathname?: string | null } = {}) {
   const tutorial = snapshot.tutorial;
@@ -350,11 +350,12 @@ async function progressAction(action: TutorialAction, extra: { step?: number; pa
     }).catch(() => undefined);
     return null;
   }
-  // Route verification can arrive while another request is in flight. Ignoring it would leave the
-  // person on the last step even though the real destination already proved completion.
-  const silent = action === "route_verified";
+  // Completion checks can arrive while another request is in flight. Ignoring them would leave the
+  // person on the last step even though the real destination already appeared.
+  const silent = action === "route_verified" || action === "complete";
   if (snapshot.busy && !silent) return null;
   const sequence = ++progressSequence;
+  lastFailedAction = { action, extra };
   if (!silent) emit({ busy: true, error: null });
   try {
     const result = await requestJson<{
@@ -377,6 +378,7 @@ async function progressAction(action: TutorialAction, extra: { step?: number; pa
     const phase: GuidancePhase = status === "completed" ? "completed" : status === "exited" ? "exited" : status === "paused" ? "paused" : status === "unavailable" ? "unavailable" : "active";
     // A slower, older response must never overwrite a completion or a newer step.
     if (sequence !== progressSequence) return result;
+    lastFailedAction = null;
     emit({
       busy: false,
       progress: result.progress,
@@ -402,8 +404,7 @@ async function progressAction(action: TutorialAction, extra: { step?: number; pa
 }
 
 export const tutorialActions = {
-  next: () => progressAction("next"),
-  previous: () => progressAction("previous"),
+  next: () => progressAction("next"),  previous: () => progressAction("previous"),
   pause: async () => {
     const result = await progressAction("pause");
     return result;
@@ -416,6 +417,12 @@ export const tutorialActions = {
   viewed: (step: number) => progressAction("viewed", { step }),
   routeVerified: (pathname: string) => progressAction("route_verified", { pathname }),
 };
+
+/** Retries the last failed save or completion check without resetting the walkthrough. */
+export function retryTutorialAction(): void {
+  if (!lastFailedAction) return;
+  void progressAction(lastFailedAction.action, lastFailedAction.extra);
+}
 
 const missingReported = new Set<string>();
 

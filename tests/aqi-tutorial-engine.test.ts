@@ -141,30 +141,47 @@ describe("AQi tutorial eligibility and progress", () => {
     expect(org.id).toBeTruthy();
   });
 
-  it("only verifies a route-based completion when the real destination matches", async () => {
-    const { user, viewer } = await fixture("owner");
+  it("never claims a contact was created from navigation alone", async () => {
+    const { org, user, viewer } = await fixture("owner");
     const started = await startAqiTutorial(viewer, "create-contact", "chat");
-    // Step 1 -> 2 -> 3 -> 4
-    await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts" });
-    await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts" });
-    await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts" });
-    const exited = await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts" });
-    expect(exited.status).toBe("exited");
-    expect(exited.verified).toBe(false);
-    expect(exited.message).toMatch(/not marked complete|ended/i);
-
-    // Replay, then create the contact: the new detail route is the verification.
-    await startAqiTutorial(viewer, "create-contact", "chat");
     for (let i = 0; i < 3; i += 1) await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts" });
-    const completed = await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts/58f2c43c-3a9f-4bc0-9a48-1f2e8d9b1234" });
+
+    const wrongPage = await updateAqiTutorialProgress(viewer, "create-contact", { action: "complete", pathname: "/overview" });
+    expect(wrongPage.status).toBe("in_progress");
+    expect(wrongPage.verified).toBe(false);
+    expect(wrongPage.message).toMatch(/specific page/i);
+
+    const contactId = "58f2c43c-3a9f-4bc0-9a48-1f2e8d9b1234";
+    const unconfirmed = await updateAqiTutorialProgress(viewer, "create-contact", { action: "complete", pathname: `/crm/contacts/${contactId}` });
+    expect(unconfirmed.status).toBe("in_progress");
+    expect(unconfirmed.verified).toBe(false);
+    expect(unconfirmed.message).toMatch(/hasn't confirmed|not confirmed/i);
+    const noEvents = await withSystem(async (db) => (await db.query<{ n: number }>("select count(*)::int as n from aqi_tutorial_events where user_id = $1 and tutorial_id = $2 and kind = 'completed'", [user.id, started.tutorial.id])).rows[0].n);
+    expect(noEvents).toBe(0);
+
+    // Authoritative proof: the CRM owns a contact in this workspace created during the attempt.
+    await withSystem((db) => db.query(
+      "insert into contacts (id, org_id, display_name, source) values ($1, $2, 'AQi completion proof', 'aqi_test')",
+      [contactId, org.id],
+    ));
+    const completed = await updateAqiTutorialProgress(viewer, "create-contact", { action: "complete", pathname: `/crm/contacts/${contactId}` });
     expect(completed.status).toBe("completed");
     expect(completed.verified).toBe(true);
+    expect(completed.message).toMatch(/Contact created/i);
     const completedEvents = await withSystem(async (db) => (await db.query<{ n: number }>("select count(*)::int as n from aqi_tutorial_events where user_id = $1 and tutorial_id = $2 and kind = 'completed'", [user.id, started.tutorial.id])).rows[0].n);
     expect(completedEvents).toBe(1);
-    // A duplicate completion request cannot create a second completion event.
-    await updateAqiTutorialProgress(viewer, "create-contact", { action: "next", pathname: "/crm/contacts/58f2c43c-3a9f-4bc0-9a48-1f2e8d9b1234" });
-    const stillOne = await withSystem(async (db) => (await db.query<{ n: number }>("select count(*)::int as n from aqi_tutorial_events where user_id = $1 and tutorial_id = $2 and kind = 'completed'", [user.id, started.tutorial.id])).rows[0].n);
-    expect(stillOne).toBe(1);
+  });
+
+  it("marks a finished walkthrough as finished, never as a verified business action", async () => {
+    const { viewer } = await fixture("owner");
+    const started = await startAqiTutorial(viewer, "navigate-dashboard", "library");
+    for (let i = 0; i < started.tutorial.steps.length - 1; i += 1) {
+      await updateAqiTutorialProgress(viewer, "navigate-dashboard", { action: "next", pathname: "/overview" });
+    }
+    const completed = await updateAqiTutorialProgress(viewer, "navigate-dashboard", { action: "complete", pathname: "/overview" });
+    expect(completed.status).toBe("completed");
+    expect(completed.verified).toBe(false);
+    expect(completed.message).toMatch(/Walkthrough finished|No business action/i);
   });
 
   it("supports optional-step skipping only when the step is optional", async () => {
@@ -178,9 +195,21 @@ describe("AQi tutorial eligibility and progress", () => {
     }
     const skipped = await updateAqiTutorialProgress(viewer, "find-integrations", { action: "skip", pathname: "/settings/integrations" });
     expect(skipped.status).toBe("completed");
+    expect(skipped.verified).toBe(false);
     const atFirst = await startAqiTutorial(viewer, "find-integrations", "library");
     expect(atFirst.progress.currentStep).toBe(0);
     await expect(updateAqiTutorialProgress(viewer, "find-integrations", { action: "skip", pathname: "/settings" })).rejects.toThrow(/required/i);
+  });
+
+  it("records a missing target without advancing, clicking or exiting", async () => {
+    const { user, viewer } = await fixture("owner");
+    const started = await startAqiTutorial(viewer, "getting-started", "library");
+    const missing = await updateAqiTutorialProgress(viewer, "getting-started", { action: "target_missing", pathname: "/overview", reason: "target_not_found" });
+    expect(missing.status).toBe("in_progress");
+    expect(missing.progress.currentStep).toBe(0);
+    expect(missing.message).toMatch(/Nothing was clicked|retry/i);
+    const events = await withSystem(async (db) => (await db.query<{ kind: string }>("select kind from aqi_tutorial_events where user_id = $1 and tutorial_id = $2 and kind = 'target_missing'", [user.id, started.tutorial.id])).rows);
+    expect(events).toHaveLength(1);
   });
 
   it("isolates progress between people and rejects an unavailable tutorial", async () => {

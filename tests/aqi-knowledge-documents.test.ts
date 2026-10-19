@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
-import { agencyUser, createUser } from "./support/fixtures";
+import { agencyUser, addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import {
   createAqiKnowledgeEntryFromDocument,
   listAqiKnowledgeDocuments,
   listAqiKnowledgeReview,
+  restoreAqiKnowledgeVersion,
   reviewAqiKnowledgeEntry,
   uploadAqiKnowledgeDocument,
 } from "@/server/aqi/knowledge-documents";
@@ -133,5 +134,47 @@ describe("AQi platform knowledge document ingestion", () => {
     const stale = rows.find((row) => row.title === staleTitle)!;
     expect(stale.freshness).toBe("needs_attention");
     expect(stale.daysOverdue).toBeGreaterThan(30);
+  });
+
+  it("keeps platform documents in the private platform path and out of tenant document tables", async () => {
+    const admin = await superAdmin();
+    const uploaded = await uploadAqiKnowledgeDocument(admin, { filename: "private-path.txt", mimeType: "text/plain", bytes: textBytes(`Private path ${Math.random().toString(16).slice(2)}`) });
+    const stored = await withSystem(async (db) => (await db.query<{ storage_path: string; status: string }>(
+      "select storage_path, status from aqi_knowledge_documents where id = $1",
+      [uploaded.document.id],
+    )).rows[0]);
+    expect(stored.storage_path).toMatch(/^platform\/aqi\/[0-9a-f-]{36}\//);
+    expect(stored.status).toBe("draft");
+    const privateFiles = await withSystem(async (db) => (await db.query<{ n: number }>(
+      "select count(*)::int as n from private_files where storage_key = $1",
+      [stored.storage_path],
+    )).rows[0].n);
+    expect(privateFiles).toBe(0);
+
+    const org = await createOrg({ name: "Tenant knowledge isolation" });
+    const owner = await createUser();
+    await addMember(org.id, owner.id, "owner");
+    const tenantFilename = `tenant-${Math.random().toString(16).slice(2)}.txt`;
+    await withSystem((db) => db.query(
+      `insert into knowledge_documents (org_id, filename, mime_type, size_bytes, sha256, storage_key, status, extracted_text)
+       values ($1, $2, 'text/plain', 12, $3, $4, 'ready', 'Tenant private text')`,
+      [org.id, tenantFilename, "a".repeat(64), `${org.id}/${crypto.randomUUID()}/${tenantFilename}`],
+    ));
+    const platformDocuments = await listAqiKnowledgeDocuments();
+    expect(platformDocuments.some((document) => document.filename === tenantFilename)).toBe(false);
+    const platformEntries = await withSystem(async (db) => (await db.query<{ n: number }>(
+      "select count(*)::int as n from aqi_knowledge_entries where source_kind = 'document' and title = $1",
+      [tenantFilename],
+    )).rows[0].n);
+    expect(platformEntries).toBe(0);
+  });
+
+  it("refuses platform knowledge access to a client owner and cross-tenant reads", async () => {
+    const org = await createOrg({ name: "Client owner isolation" });
+    const user = await createUser();
+    await addMember(org.id, user.id, "owner");
+    const owner = ctxFor(user, { ...org, slug: "x" }, "owner").user;
+    await expect(uploadAqiKnowledgeDocument(owner, { filename: "client.txt", mimeType: "text/plain", bytes: textBytes("client") })).rejects.toThrow(/Super Admin/i);
+    await expect(restoreAqiKnowledgeVersion(owner, "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000")).rejects.toThrow(/Super Admin/i);
   });
 });

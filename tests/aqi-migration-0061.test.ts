@@ -59,9 +59,13 @@ describe("migration 0061 AQi Phase 3 guidance", () => {
       const definition = parseTutorialDefinition(tutorial.definition);
       const validation = validateTutorialDefinition(definition);
       expect({ slug: tutorial.slug, errors: validation.errors }).toEqual({ slug: tutorial.slug, errors: [] });
-      expect(tutorial.version).toBe(1);
+      expect(tutorial.version).toBeGreaterThanOrEqual(1);
       for (const step of definition.steps) {
         if (step.targetId) expect(getAqiTarget(step.targetId), `${tutorial.slug} → ${step.targetId}`).not.toBeNull();
+      }
+      if (tutorial.slug === "create-contact") {
+        expect(definition.completion.kind).toBe("contact_created");
+        expect(tutorial.version).toBe(2);
       }
     }
     expect(tutorials.map((tutorial) => tutorial.slug)).toEqual(expect.arrayContaining([

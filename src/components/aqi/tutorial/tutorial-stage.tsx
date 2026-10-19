@@ -9,9 +9,11 @@ import { compileCompletionPattern } from "@/lib/aqi/tutorials";
 import { cn } from "@/lib/utils";
 import {
   closeTutorial,
-  completeTutorialFromRoute,
+  confirmTutorialCompletion,
   pauseAndClose,
+  rememberGuidanceFocus,
   reportTargetMissing,
+  retryTutorialAction,
   setTargetState,
   tutorialActions,
   useGuidance,
@@ -32,7 +34,6 @@ export function TutorialStage() {
   const [placement, setPlacement] = React.useState<Placement | null>(null);
   const [mobile, setMobile] = React.useState(false);
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const previousFocus = React.useRef<HTMLElement | null>(null);
   const completedRef = React.useRef<string | null>(null);
   const viewedRef = React.useRef<string | null>(null);
   const advancingRef = React.useRef(false);
@@ -61,17 +62,10 @@ export function TutorialStage() {
 
   React.useEffect(() => {
     if (!state.open) return;
-    previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    rememberGuidanceFocus();
     const timer = window.setTimeout(() => cardRef.current?.focus(), reduced ? 0 : 120);
     return () => window.clearTimeout(timer);
   }, [state.open, reduced]);
-
-  React.useEffect(() => {
-    if (state.open) return;
-    const target = previousFocus.current;
-    previousFocus.current = null;
-    if (target?.isConnected) target.focus();
-  }, [state.open]);
 
   // Resolve the approved target. No target means a centered instruction; a missing target becomes a
   // readable fallback instead of an endless wait or a broken overlay.
@@ -148,19 +142,22 @@ export function TutorialStage() {
     const onClick = () => {
       if (advancingRef.current) return;
       advancingRef.current = true;
+      // Advance immediately: a delayed timer can be cancelled when the control navigates. The
+      // control's own click behaviour is never prevented.
+      void tutorialActions.next();
       window.setTimeout(() => {
         advancingRef.current = false;
-        void tutorialActions.next();
-      }, 220);
+      }, 600);
     };
     element.addEventListener("click", onClick, true);
     return () => element.removeEventListener("click", onClick, true);
   }, [state.open, effectivePhase, hit, step?.advance]);
 
-  // A route-based completion is only marked when the real destination appears.
+  // A completion check is requested only after the real destination appears. The server decides
+  // whether this is navigation, a finished walkthrough or a confirmed business action.
   React.useEffect(() => {
     if (!state.open || !tutorial || effectivePhase !== "active") return;
-    if (tutorial.completion.kind !== "route") return;
+    if (tutorial.completion.kind === "finish") return;
     const isLast = state.stepIndex >= tutorial.steps.length - 1;
     if (!isLast) return;
     const matcher = compileCompletionPattern(tutorial.completion.pattern);
@@ -168,7 +165,7 @@ export function TutorialStage() {
     const key = `${tutorial.slug}:${state.progress?.tutorialVersion}:${state.progress?.startedAt}`;
     if (completedRef.current === key) return;
     completedRef.current = key;
-    completeTutorialFromRoute(cleanPath);
+    void confirmTutorialCompletion(cleanPath);
   }, [state.open, tutorial, effectivePhase, state.stepIndex, cleanPath, state.progress?.tutorialVersion, state.progress?.startedAt]);
 
   React.useEffect(() => {
@@ -211,12 +208,16 @@ export function TutorialStage() {
 
   const announce =
     effectivePhase === "completed"
-      ? `Walkthrough complete. ${state.verified ? "Verified by the real workspace." : "Finished."}`
-      : effectivePhase === "exited"
-        ? "Walkthrough ended."
-        : effectivePhase === "paused"
-          ? `Walkthrough paused at step ${stepNumber} of ${total}.`
-          : `Step ${stepNumber} of ${total}: ${step.title}. ${step.body}`;
+      ? state.verified
+        ? `Action verified. ${state.message ?? "Confirmed by the workspace."}`
+        : `Walkthrough finished. ${state.message ?? "No business action was confirmed."}`
+      : effectivePhase === "confirming"
+        ? "Checking the workspace for completion."
+        : effectivePhase === "exited"
+          ? "Walkthrough ended."
+          : effectivePhase === "paused"
+            ? `Walkthrough paused at step ${stepNumber} of ${total}.`
+            : `Step ${stepNumber} of ${total}: ${step.title}. ${step.body}`;
 
   return (
     <AnimatePresence>
@@ -247,7 +248,7 @@ export function TutorialStage() {
             aria-hidden
           >
             {active && step.advance === "click" && (
-              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-soft motion-safe:animate-pulse">1</span>
+              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-on shadow-soft motion-safe:animate-pulse">1</span>
             )}
           </motion.div>
         )}
@@ -289,8 +290,8 @@ export function TutorialStage() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              {active && <button type="button" onClick={() => void tutorialActions.pause()} disabled={busy} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" aria-label="Pause walkthrough"><Pause className="size-3.5" /></button>}
-              <button type="button" onClick={() => (active || effectivePhase === "paused" ? pauseAndClose() : closeTutorial())} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" aria-label="Close walkthrough"><X className="size-4" /></button>
+              {active && <button type="button" onClick={() => void tutorialActions.pause()} disabled={busy} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" data-aqi-control="pause" aria-label="Pause walkthrough"><Pause className="size-3.5" /></button>}
+              <button type="button" onClick={() => (active || effectivePhase === "paused" ? pauseAndClose() : closeTutorial())} className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" data-aqi-control="close" aria-label="Close walkthrough"><X className="size-4" /></button>
             </div>
           </div>
 
@@ -306,6 +307,11 @@ export function TutorialStage() {
               <div className="space-y-2">
                 <p className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Pause className="size-4 text-primary" /> Paused at step {stepNumber}</p>
                 <p className="text-[13px] leading-relaxed text-muted">Your progress is saved. You can come back from the AQi launcher, or resume now.</p>
+              </div>
+            ) : effectivePhase === "confirming" ? (
+              <div role="status" className="space-y-2">
+                <p className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Loader2 className="size-4 animate-spin text-primary" /> Checking the workspace</p>
+                <p className="text-[13px] leading-relaxed text-muted">AQi is confirming what actually happened. It will only say the action was completed when the workspace confirms it.</p>
               </div>
             ) : effectivePhase === "unavailable" ? (
               <div className="space-y-2">
@@ -336,6 +342,11 @@ export function TutorialStage() {
                     I couldn&apos;t find that control on this page. It may have moved or been renamed. You can retry, skip {canSkip ? "" : "only when this step is optional"} or exit without losing your progress.
                   </div>
                 )}
+                {state.message && (
+                  <div role="status" className="mt-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-ink-2">
+                    {state.message}
+                  </div>
+                )}
                 {step.advance === "click" && !missing && (
                   <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary-soft px-2 py-1 text-[11px] font-medium text-primary-ink">
                     <ArrowRight className="size-3" aria-hidden /> Select the highlighted control to continue — or use Next.
@@ -347,8 +358,8 @@ export function TutorialStage() {
 
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-3 py-2.5">
             <div className="flex items-center gap-1">
-              {(active || effectivePhase === "paused") && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => void tutorialActions.exit()} disabled={busy} className="text-muted"><X className="size-3.5" /> Exit</Button>
+              {(active || effectivePhase === "paused" || effectivePhase === "confirming") && (
+                <Button type="button" size="sm" variant="ghost" data-aqi-control="exit" onClick={() => void tutorialActions.exit()} disabled={busy} className="text-muted"><X className="size-3.5" /> Exit</Button>
               )}
               {active && !isLast && canSkip && !missing && (
                 <Button type="button" size="sm" variant="ghost" onClick={() => void tutorialActions.skip()} disabled={busy}><SkipForward className="size-3.5" /> Skip</Button>
@@ -364,13 +375,13 @@ export function TutorialStage() {
               )}
               {!routeMismatch && active && (
                 <>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => void tutorialActions.previous()} disabled={busy || state.stepIndex === 0}><ArrowLeft className="size-3.5" /> Back</Button>
-                  {isLast && tutorial.completion.kind === "route" ? (
+                  <Button type="button" size="sm" variant="secondary" data-aqi-control="back" onClick={() => void tutorialActions.previous()} disabled={busy || state.stepIndex === 0}><ArrowLeft className="size-3.5" /> Back</Button>
+                  {isLast && tutorial.completion.kind !== "finish" ? (
                     <Button type="button" size="sm" variant="brand" onClick={() => void tutorialActions.complete()} loading={busy} aria-label="Check completion">
                       Check completion <ShieldCheck className="size-3.5" />
                     </Button>
                   ) : (
-                    <Button type="button" size="sm" variant="brand" onClick={() => void tutorialActions.next()} loading={busy} disabled={waiting || missing} aria-label={isLast ? "Finish walkthrough" : "Next step"}>
+                    <Button type="button" size="sm" variant="brand" onClick={() => void tutorialActions.next()} loading={busy} disabled={waiting || missing} data-aqi-control="next" aria-label={isLast ? "Finish walkthrough" : "Next step"}>
                       {isLast ? "Finish" : "Next"} <ArrowRight className="size-3.5" />
                     </Button>
                   )}
@@ -385,7 +396,15 @@ export function TutorialStage() {
                   <Button type="button" size="sm" variant="brand" onClick={closeTutorial}>Done</Button>
                 </>
               )}
-              {effectivePhase === "error" && <Button type="button" size="sm" variant="secondary" onClick={closeTutorial}>Close</Button>}
+              {effectivePhase === "confirming" && (
+                <Button type="button" size="sm" variant="secondary" onClick={() => void tutorialActions.complete()} loading={busy}><RotateCcw className="size-3.5" /> Check again</Button>
+              )}
+              {effectivePhase === "error" && (
+                <>
+                  <Button type="button" size="sm" variant="secondary" onClick={retryTutorialAction} disabled={busy}><RotateCcw className="size-3.5" /> Try again</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={closeTutorial}>Close</Button>
+                </>
+              )}
             </div>
           </div>
           <p className="sr-only" role="status" aria-live="polite">{announce}</p>
@@ -401,9 +420,9 @@ function CompletionCard({ verified, title, message }: { verified: boolean; title
       <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide", verified ? "bg-success-soft text-success-ink" : "bg-primary-soft text-primary-ink")}>
         <Check className="size-3" /> {verified ? "Verified" : "Finished"}
       </span>
-      <p className="text-[15px] font-semibold tracking-tight text-ink">{verified ? "Walkthrough complete" : "Walkthrough finished"}</p>
+      <p className="text-[15px] font-semibold tracking-tight text-ink">{verified ? "Action verified" : "Walkthrough finished"}</p>
       <p className="text-[13px] leading-relaxed text-muted">
-        {message ?? (verified ? `You completed “${title}”. The real workspace page confirmed the final step.` : `You reached the end of “${title}”. Nothing was submitted or changed on your behalf.`)}
+        {message ?? (verified ? `The workspace confirmed the action for “${title}”.` : `You reached the end of “${title}”. No business action was submitted or confirmed.`)}
       </p>
     </div>
   );

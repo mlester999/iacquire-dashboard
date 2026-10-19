@@ -26,6 +26,7 @@ import {
 import {
   archiveAqiKnowledgeDocument,
   createAqiKnowledgeEntryFromDocument,
+  restoreAqiKnowledgeVersion,
   reviewAqiKnowledgeEntry,
 } from "@/server/aqi/knowledge-documents";
 
@@ -255,6 +256,17 @@ export async function archiveAqiKnowledgeDocumentAction(documentId: string) {
     await archiveAqiKnowledgeDocument(admin, documentId);
     refresh();
     return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function restoreAqiKnowledgeVersionAction(entryId: string, versionId: string) {
+  try {
+    const admin = await requireAgencyOrThrow("super_admin");
+    const result = await restoreAqiKnowledgeVersion(admin, entryId, versionId);
+    refresh();
+    return { ok: true as const, data: result };
   } catch (err) {
     return actionError(err);
   }

@@ -1024,6 +1024,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
               bottom: raised ? "calc(max(14px, env(safe-area-inset-bottom)) + 150px)" : "max(16px, env(safe-area-inset-bottom))",
             }}
             aria-label="Open AQi, the iAcquireOS assistant"
+            data-aqi-launcher
           >
             <span className="grid size-8 place-items-center rounded-xl bg-white/15"><Sparkles className="size-4" /></span>
             <span className="text-[13px] font-semibold tracking-tight">AQi</span>

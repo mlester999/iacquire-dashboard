@@ -30,6 +30,7 @@ import { syncAllWhatsappTemplates } from "@/server/messaging/whatsapp-templates"
 import { processCampaigns } from "@/server/crm/campaigns/job";
 import { processFormSubmissions } from "@/server/crm/forms/process";
 import { reconcileAllSetupInstances } from "@/server/setup/automation";
+import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 
 export interface ScheduledJob {
   name: string;
@@ -104,6 +105,10 @@ export const JOBS: ScheduledJob[] = [
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
   // matching setup steps within fifteen minutes. Recorded evidence only: no provider is contacted.
   { name: "setupEvidence", run: async () => ((await withinInterval("setupEvidence", 15)) ? 0 : await reconcileAllSetupInstances()) },
+  // AQi tutorial analytics retention: bounded to 500 events per run, never deletes progress, and
+  // keeps events for people still in progress. It runs only when an external scheduler calls the
+  // tick endpoint; registering the job does not create a cron.
+  { name: "aqiTutorialEventRetention", run: async () => ((await withinInterval("aqiTutorialEventRetention", 1440)) ? 0 : (await purgeExpiredAqiTutorialEvents()).deleted) },
 ];
 
 /**

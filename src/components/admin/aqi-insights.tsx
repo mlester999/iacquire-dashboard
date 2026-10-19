@@ -11,8 +11,13 @@ import type { AqiInsights } from "@/server/aqi/insights";
 
 const DAY_OPTIONS = [7, 30, 90] as const;
 
+type InsightsRange = { kind: "preset"; days: number } | { kind: "custom"; from: string; to: string };
+
 export function AqiInsightsDashboard() {
-  const [days, setDays] = React.useState<number>(30);
+  const [range, setRange] = React.useState<InsightsRange>({ kind: "preset", days: 30 });
+  const [customFrom, setCustomFrom] = React.useState("");
+  const [customTo, setCustomTo] = React.useState("");
+  const [rangeError, setRangeError] = React.useState<string | null>(null);
   const [orgId, setOrgId] = React.useState("");
   const [role, setRole] = React.useState("");
   const [data, setData] = React.useState<AqiInsights | null>(null);
@@ -25,7 +30,12 @@ export function AqiInsightsDashboard() {
     setRefreshing(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ days: String(days) });
+      const params = new URLSearchParams();
+      if (range.kind === "preset") params.set("days", String(range.days));
+      else {
+        params.set("from", range.from);
+        params.set("to", range.to);
+      }
       if (orgId) params.set("orgId", orgId);
       if (role) params.set("role", role);
       const res = await fetch(`/api/aqi/insights?${params.toString()}`, { cache: "no-store", signal });
@@ -40,7 +50,38 @@ export function AqiInsightsDashboard() {
     } finally {
       setRefreshing(false);
     }
-  }, [days, orgId, role]);
+  }, [range, orgId, role]);
+
+  function applyCustomRange() {
+    setRangeError(null);
+    if (!customFrom || !customTo) {
+      setRangeError("Choose both a start and an end date.");
+      return;
+    }
+    const from = new Date(`${customFrom}T00:00:00.000Z`);
+    const to = new Date(`${customTo}T00:00:00.000Z`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      setRangeError("Those dates are not valid.");
+      return;
+    }
+    if (from.getTime() > to.getTime()) {
+      setRangeError("The start date must be before the end date.");
+      return;
+    }
+    const days = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+    if (days > 366) {
+      setRangeError("Choose a period of 366 days or less.");
+      return;
+    }
+    setRange({ kind: "custom", from: customFrom, to: customTo });
+  }
+
+  function resetRange() {
+    setCustomFrom("");
+    setCustomTo("");
+    setRangeError(null);
+    setRange({ kind: "preset", days: 30 });
+  }
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -71,9 +112,35 @@ export function AqiInsightsDashboard() {
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Period</p>
           <div className="flex gap-1" role="group" aria-label="Date range">
             {DAY_OPTIONS.map((option) => (
-              <button key={option} type="button" aria-pressed={days === option} onClick={() => setDays(option)} className={cn("h-9 rounded-xl border px-3 text-[12px] font-medium transition", days === option ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line text-muted hover:bg-surface-2 hover:text-ink")}>{option} days</button>
+              <button
+                key={option}
+                type="button"
+                aria-pressed={range.kind === "preset" && range.days === option}
+                onClick={() => { setRangeError(null); setRange({ kind: "preset", days: option }); }}
+                className={cn("h-9 rounded-xl border px-3 text-[12px] font-medium transition", range.kind === "preset" && range.days === option ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-line text-muted hover:bg-surface-2 hover:text-ink")}
+              >
+                {option} days
+              </button>
             ))}
           </div>
+        </div>
+        <div className="min-w-[280px] flex-1">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Custom range <span className="font-normal normal-case tracking-normal text-faint">(UTC calendar dates)</span></p>
+          <div className="flex flex-wrap items-end gap-1.5">
+            <label className="min-w-[128px]">
+              <span className="sr-only">From date</span>
+              <input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} aria-label="From date" className="h-9 w-full rounded-xl border border-line bg-surface px-2 text-[12px] text-ink" />
+            </label>
+            <span className="pb-2 text-[11px] text-muted">to</span>
+            <label className="min-w-[128px]">
+              <span className="sr-only">To date</span>
+              <input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} aria-label="To date" className="h-9 w-full rounded-xl border border-line bg-surface px-2 text-[12px] text-ink" />
+            </label>
+            <Button size="sm" variant="secondary" onClick={applyCustomRange}>Apply</Button>
+            <Button size="sm" variant="ghost" onClick={resetRange}>Reset</Button>
+          </div>
+          {rangeError && <p role="alert" className="mt-1 text-[11px] font-medium text-danger-ink">{rangeError}</p>}
+          {range.kind === "custom" && !rangeError && <p className="mt-1 text-[10.5px] text-muted">Showing {range.from} to {range.to} (UTC).</p>}
         </div>
         <label className="min-w-[180px] flex-1">
           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">Organization</span>
@@ -267,9 +334,9 @@ function Metric({ label, value, detail, icon, definition, compact = false }: { l
   return (
     <Card title={definition}>
       <CardContent className={cn("pt-4", compact && "pb-3")}>
-        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">{icon}{label}</span>
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-2">{icon}{label}</span>
         <p className={cn("mt-1 font-semibold tracking-tight text-ink", compact ? "text-[19px]" : "text-[25px]")}>{value}</p>
-        <p className="mt-0.5 text-[10.5px] leading-relaxed text-muted">{detail}</p>
+        <p className="mt-0.5 text-[10.5px] leading-relaxed text-ink-2">{detail}</p>
       </CardContent>
     </Card>
   );

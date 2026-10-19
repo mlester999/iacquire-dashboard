@@ -241,10 +241,118 @@ export async function readAqiKnowledgeDocument(admin: SessionUser, documentId: s
 
 export type AqiKnowledgeFreshness = "up_to_date" | "review_due" | "needs_attention" | "archived";
 
+export interface AqiKnowledgeVersionView {
+  id: string;
+  entryId: string;
+  version: number;
+  title: string;
+  category: string;
+  body: string;
+  routePrefix: string | null;
+  roles: string[];
+  status: string;
+  source: string;
+  changeNote: string | null;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+interface KnowledgeVersionRow {
+  id: string;
+  knowledge_entry_id: string;
+  version: number;
+  title: string;
+  category: string;
+  body: string;
+  route_prefix: string | null;
+  roles: string[];
+  status: string;
+  source: string;
+  change_note: string | null;
+  created_at: Date;
+  created_by_name: string | null;
+}
+
+/** Every preserved knowledge version, newest first. Management-only server data. */
+export async function listAqiKnowledgeVersions(): Promise<AqiKnowledgeVersionView[]> {
+  return withSystem(async (db) => (await db.query<KnowledgeVersionRow>(
+    `select v.id, v.knowledge_entry_id, v.version, v.title, v.category, v.body, v.route_prefix, v.roles,
+            v.status, v.source, v.change_note, v.created_at, u.full_name as created_by_name
+       from aqi_knowledge_versions v
+       left join users u on u.id = v.created_by
+      order by v.created_at desc, v.version desc
+      limit 500`,
+  )).rows.map((row) => ({
+    id: row.id,
+    entryId: row.knowledge_entry_id,
+    version: row.version,
+    title: row.title,
+    category: row.category,
+    body: row.body,
+    routePrefix: row.route_prefix,
+    roles: row.roles,
+    status: row.status,
+    source: row.source,
+    changeNote: row.change_note,
+    createdAt: iso(row.created_at),
+    createdBy: row.created_by_name,
+  })));
+}
+
+/** Restores an earlier body as a new draft. The current content is preserved first. */
+export async function restoreAqiKnowledgeVersion(admin: SessionUser, entryId: string, versionId: string): Promise<{ version: number }> {
+  requireSuperAdmin(admin);
+  return withSystem(async (db) => {
+    const current = (await db.query<{
+      id: string; version: number; title: string; category: string; body: string; route_prefix: string | null;
+      roles: string[]; status: string; source: string; created_by: string | null; updated_by: string | null;
+    }>(
+      "select id, version, title, category, body, route_prefix, roles, status, source, created_by, updated_by from aqi_knowledge_entries where id = $1 for update",
+      [entryId],
+    )).rows[0];
+    if (!current) throw new AppError("not_found", "Knowledge entry not found.");
+    const version = (await db.query<KnowledgeVersionRow>(
+      `select v.id, v.knowledge_entry_id, v.version, v.title, v.category, v.body, v.route_prefix, v.roles,
+              v.status, v.source, v.change_note, v.created_at, u.full_name as created_by_name
+         from aqi_knowledge_versions v left join users u on u.id = v.created_by
+        where v.id = $1 and v.knowledge_entry_id = $2`,
+      [versionId, entryId],
+    )).rows[0];
+    if (!version) throw new AppError("not_found", "Knowledge version not found.");
+    await db.query(
+      `insert into aqi_knowledge_versions
+         (knowledge_entry_id, version, title, category, body, route_prefix, roles, status, source, change_note, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       on conflict (knowledge_entry_id, version) do nothing`,
+      [current.id, current.version, current.title, current.category, current.body, current.route_prefix, current.roles, current.status, current.source, `Before restoring v${version.version}`, current.updated_by ?? current.created_by],
+    );
+    await db.query(
+      `update aqi_knowledge_entries
+          set title = $2, category = $3, body = $4, route_prefix = $5, roles = $6, status = 'draft',
+              source = $7, version = version + 1, last_reviewed_at = null, next_review_at = null,
+              published_at = null, updated_by = $8, updated_at = now()
+        where id = $1`,
+      [current.id, version.title, version.category, version.body, version.route_prefix, version.roles, `Restored from version ${version.version}`.slice(0, 200), admin.id],
+    );
+    await recordAudit({
+      actorUserId: admin.id,
+      actorKind: "agency",
+      action: "aqi.knowledge_version_restored",
+      targetType: "aqi_knowledge",
+      targetId: current.id,
+      result: "success",
+      metadata: { restoredVersion: version.version, newVersion: current.version + 1 },
+    }, db);
+    return { version: current.version + 1 };
+  });
+}
+
 export interface AqiKnowledgeReviewRow {
   id: string;
   title: string;
   category: string;
+  body: string;
+  version: number;
   status: string;
   source: string;
   sourceKind: "manual" | "document";
@@ -268,6 +376,8 @@ interface ReviewQueryRow {
   id: string;
   title: string;
   category: string;
+  body: string;
+  version: number;
   status: string;
   source: string;
   source_kind: "manual" | "document";
@@ -288,7 +398,7 @@ export async function listAqiKnowledgeReview(): Promise<AqiKnowledgeReviewRow[]>
   const config = await getPublishedAqiConfig();
   const now = Date.now();
   const rows = await withSystem(async (db) => (await db.query<ReviewQueryRow>(
-    `select k.id, k.title, k.category, k.status, k.source, k.source_kind, k.source_document_id, d.filename as source_filename,
+    `select k.id, k.title, k.category, k.body, k.version, k.status, k.source, k.source_kind, k.source_document_id, d.filename as source_filename,
             k.route_prefix, k.roles, k.freshness_days, k.last_reviewed_at, k.next_review_at, k.reviewed_by, k.review_note,
             k.updated_at, u.full_name as updated_by_name
        from aqi_knowledge_entries k
@@ -306,6 +416,8 @@ export async function listAqiKnowledgeReview(): Promise<AqiKnowledgeReviewRow[]>
       id: row.id,
       title: row.title,
       category: row.category,
+      body: row.body,
+      version: row.version,
       status: row.status,
       source: row.source,
       sourceKind: row.source_kind,
@@ -354,7 +466,7 @@ export async function reviewAqiKnowledgeEntry(
       await db.query(
         `update aqi_knowledge_entries set status = 'published', published_at = coalesce(published_at, now()),
            last_reviewed_at = now(), next_review_at = now() + make_interval(days => $2), reviewed_by = $3, review_note = $4,
-           freshness_days = $2, version = version + 1, updated_by = $3, updated_at = now()
+           freshness_days = $2, updated_by = $3, updated_at = now()
          where id = $1`,
         [entryId, days, admin.id, note],
       );

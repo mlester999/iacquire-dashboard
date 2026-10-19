@@ -35,7 +35,7 @@ describe("AQi chat guide actions", () => {
       "select context->'guide' as guide from aqi_messages where id = $1",
       [meta!.messageId],
     )).rows[0].guide);
-    expect(context).toMatchObject({ slug: "create-contact", stepCount: 4, version: 1 });
+    expect(context).toMatchObject({ slug: "create-contact", stepCount: 4, version: 2 });
     expect(context?.title).toMatch(/contact/i);
 
     // The offer is recorded as a privacy-conscious signal, not as a completed tutorial.

@@ -24,7 +24,7 @@ import {
 } from "@/app/actions/aqi";
 import type { AqiAdminData, AqiConfig } from "@/server/aqi/service";
 import type { AqiTutorialAdminData } from "@/server/aqi/tutorials";
-import type { AqiKnowledgeDocumentView, AqiKnowledgeReviewRow } from "@/server/aqi/knowledge-documents";
+import type { AqiKnowledgeDocumentView, AqiKnowledgeReviewRow, AqiKnowledgeVersionView } from "@/server/aqi/knowledge-documents";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 import { Markdown } from "@/components/markdown";
 
@@ -50,11 +50,13 @@ export function AqiAdmin({
   tutorialData,
   documents,
   knowledgeReview,
+  knowledgeVersions,
 }: {
   data: AqiAdminData;
   tutorialData: AqiTutorialAdminData;
   documents: AqiKnowledgeDocumentView[];
   knowledgeReview: AqiKnowledgeReviewRow[];
+  knowledgeVersions: AqiKnowledgeVersionView[];
 }) {
   const router = useRouter();
   const [tab, setTab] = React.useState<Tab>("overview");
@@ -369,7 +371,7 @@ export function AqiAdmin({
       )}
 
       {tab === "knowledge" && (
-        <AqiKnowledgeReview documents={documents} review={knowledgeReview} />
+        <AqiKnowledgeReview documents={documents} review={knowledgeReview} versions={knowledgeVersions} />
       )}
 
       {tab === "tutorials" && (

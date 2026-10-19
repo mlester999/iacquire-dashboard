@@ -8,6 +8,7 @@ import { getAqiTarget, AQI_TARGETS, routeInTarget, type AqiTarget } from "@/lib/
 import {
   AQI_TUTORIAL_STEP_LIMIT,
   compileCompletionPattern,
+  completionIdFromPath,
   matchAqiTutorialIntent,
   summaryFromDefinition,
   tutorialCompletionMatches,
@@ -47,6 +48,7 @@ const definitionSchema = z.object({
   completion: z.union([
     z.object({ kind: z.literal("finish") }),
     z.object({ kind: z.literal("route"), pattern: z.string().trim().max(200) }),
+    z.object({ kind: z.literal("contact_created"), pattern: z.string().trim().max(200) }),
   ]),
   aliases: z.array(z.string().trim().max(80)).max(20).default([]),
   keywords: z.array(z.string().trim().max(40)).max(30).default([]),
@@ -571,8 +573,13 @@ export async function updateAqiTutorialProgress(
     if (action === "skip") {
       if (!step?.optional) throw new AppError("invalid_input", "This step is required and cannot be skipped.");
       if (currentStep >= stepCount - 1) {
-        const completed = await complete(tutorial.completion.kind === "finish", "skipped_last_optional");
-        return { progress: progressView(completed, stepCount), status: "completed", verified: completed.verified };
+        const completed = await complete(false, "skipped_last_optional");
+        return {
+          progress: progressView(completed, stepCount),
+          status: "completed",
+          verified: false,
+          message: "Walkthrough finished without completing the optional final step. No business action was confirmed.",
+        };
       }
       const next = currentStep + 1;
       const key = tutorial.steps[next]?.key ?? null;
@@ -592,27 +599,71 @@ export async function updateAqiTutorialProgress(
     const lastStep = currentStep >= stepCount - 1;
     if (action === "complete" && !lastStep) throw new AppError("invalid_input", "Finish the remaining steps first.");
     if (lastStep) {
-      if (tutorial.completion.kind === "route") {
-        const verified = tutorialCompletionMatches(tutorial.completion, input.pathname ?? null);
-        if (!verified) {
-          const exited = await exit("completion_not_verified");
+      const completion = tutorial.completion;
+      if (completion.kind === "finish") {
+        const completed = await complete(false, "walkthrough_finished");
+        return {
+          progress: progressView(completed, stepCount),
+          status: "completed",
+          verified: false,
+          message: "Walkthrough finished. No business action was submitted or confirmed.",
+        };
+      }
+
+      const matches = tutorialCompletionMatches(completion, input.pathname ?? null);
+      if (!matches) {
+        await db.query("update aqi_tutorial_progress set last_activity_at = now(), updated_at = now() where id = $1", [row.id]);
+        return {
+          progress: progressView(row, stepCount),
+          status: row.status,
+          verified: false,
+          message: "This walkthrough finishes on a specific page. Open that page, then check completion again.",
+        };
+      }
+
+      if (completion.kind === "contact_created") {
+        const contactId = completionIdFromPath(completion.pattern, input.pathname ?? null);
+        if (!viewer.org || !contactId) {
+          await db.query("update aqi_tutorial_progress set last_activity_at = now(), updated_at = now() where id = $1", [row.id]);
           return {
-            progress: progressView(exited, stepCount),
-            status: "exited",
+            progress: progressView(row, stepCount),
+            status: row.status,
             verified: false,
-            message: "The walkthrough ended before its completion condition was verified. Nothing was marked complete.",
+            message: "I couldn't identify a created contact from this page. Nothing was marked complete.",
           };
         }
-        const completed = await complete(true, "route_verified");
+        const proof = (await db.query<{ id: string; created_at: Date }>(
+          `select id, created_at from contacts
+            where id = $1 and org_id = $2 and deleted_at is null
+              and created_at >= $3::timestamptz - interval '2 minutes'`,
+          [contactId, viewer.org.orgId, row.started_at],
+        )).rows[0];
+        if (!proof) {
+          await db.query("update aqi_tutorial_progress set last_activity_at = now(), updated_at = now() where id = $1", [row.id]);
+          return {
+            progress: progressView(row, stepCount),
+            status: row.status,
+            verified: false,
+            message: "The CRM hasn't confirmed a new contact yet. If you've just saved it, wait a moment and check completion again.",
+          };
+        }
+        const completed = await complete(true, "contact_created");
         return {
           progress: progressView(completed, stepCount),
           status: "completed",
           verified: true,
-          message: "Verified by the real workspace page.",
+          message: "Contact created — confirmed by the CRM.",
         };
       }
-      const completed = await complete(true, "walkthrough_finished");
-      return { progress: progressView(completed, stepCount), status: "completed", verified: true };
+
+      // Navigation-only completion. This is deliberately not a business-action claim.
+      const completed = await complete(false, "navigation_verified");
+      return {
+        progress: progressView(completed, stepCount),
+        status: "completed",
+        verified: false,
+        message: "You're on the required page. This walkthrough confirmed navigation, not a business action.",
+      };
     }
     await emit("step_completed", stepKey, false);
     const next = currentStep + 1;

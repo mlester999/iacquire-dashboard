@@ -46,6 +46,7 @@ export function StatTile({
   accent = "primary",
   format,
   index = 0,
+  targetId,
 }: {
   label: string;
   value: number | null;
@@ -56,6 +57,7 @@ export function StatTile({
   accent?: "primary" | "violet" | "success" | "warning";
   format?: (n: number) => string;
   index?: number;
+  targetId?: string;
 }) {
   const reduce = useReducedMotion();
   const tone = {
@@ -69,6 +71,7 @@ export function StatTile({
   ) : <AnimatedNumber value={value} format={format} className="mt-1 block text-[28px] font-semibold leading-none tracking-tight tabular-nums text-ink" />}</>;
   const content = (
     <motion.div
+      data-aqi-target={targetId}
       style={{ animationDelay: `${index * 40}ms` }}
       whileHover={reduce ? undefined : { y: -2 }}
       className="card-surface rise-in group relative h-full min-w-0 overflow-hidden rounded-2xl p-4 transition-shadow hover:shadow-float sm:p-5"

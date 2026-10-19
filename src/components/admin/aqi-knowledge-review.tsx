@@ -3,17 +3,17 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, CheckCircle2, Clock, Download, FileText, Loader2, ShieldAlert, UploadCloud } from "lucide-react";
+import { Archive, CheckCircle2, Clock, Download, FileText, History, Loader2, RotateCcw, ShieldAlert, UploadCloud } from "lucide-react";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status";
-import { archiveAqiKnowledgeDocumentAction, createAqiKnowledgeEntryFromDocumentAction, reviewAqiKnowledgeAction } from "@/app/actions/aqi";
+import { archiveAqiKnowledgeDocumentAction, createAqiKnowledgeEntryFromDocumentAction, restoreAqiKnowledgeVersionAction, reviewAqiKnowledgeAction } from "@/app/actions/aqi";
 import { cn, formatDateTime } from "@/lib/utils";
-import type { AqiKnowledgeDocumentView, AqiKnowledgeReviewRow } from "@/server/aqi/knowledge-documents";
+import type { AqiKnowledgeDocumentView, AqiKnowledgeReviewRow, AqiKnowledgeVersionView } from "@/server/aqi/knowledge-documents";
 
 const FRESHNESS_TONE = { up_to_date: "success", review_due: "warning", needs_attention: "danger", archived: "neutral" } as const;
 
-export function AqiKnowledgeReview({ documents, review }: { documents: AqiKnowledgeDocumentView[]; review: AqiKnowledgeReviewRow[] }) {
+export function AqiKnowledgeReview({ documents, review, versions }: { documents: AqiKnowledgeDocumentView[]; review: AqiKnowledgeReviewRow[]; versions: AqiKnowledgeVersionView[] }) {
   const router = useRouter();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = React.useState(false);
@@ -23,6 +23,8 @@ export function AqiKnowledgeReview({ documents, review }: { documents: AqiKnowle
   const [note, setNote] = React.useState<Record<string, string>>({});
   const [linking, setLinking] = React.useState<AqiKnowledgeDocumentView | null>(null);
   const [linkDraft, setLinkDraft] = React.useState({ title: "", category: "Platform overview", routePrefix: "" });
+  const [historyFor, setHistoryFor] = React.useState<string | null>(null);
+  const [compare, setCompare] = React.useState<{ entry: AqiKnowledgeReviewRow; version: AqiKnowledgeVersionView } | null>(null);
 
   const due = review.filter((entry) => entry.freshness === "review_due").length;
   const attention = review.filter((entry) => entry.freshness === "needs_attention").length;
@@ -55,6 +57,18 @@ export function AqiKnowledgeReview({ documents, review }: { documents: AqiKnowle
     setBusy(null);
     if (!result.ok) return toast.error(result.error);
     toast.success(action === "review" ? "Marked as reviewed" : action === "publish" ? "Knowledge published" : "Knowledge archived");
+    router.refresh();
+  }
+
+  async function restore(entry: AqiKnowledgeReviewRow, version: AqiKnowledgeVersionView) {
+    if (busy) return;
+    if (!window.confirm(`Restore version ${version.version} as a new draft? The current content is preserved in history.`)) return;
+    setBusy(`${entry.id}:restore:${version.id}`);
+    const result = await restoreAqiKnowledgeVersionAction(entry.id, version.id);
+    setBusy(null);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(`Version ${version.version} restored as draft v${result.data.version}`, { description: "Review it before publishing." });
+    setCompare(null);
     router.refresh();
   }
 
@@ -187,7 +201,9 @@ export function AqiKnowledgeReview({ documents, review }: { documents: AqiKnowle
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {review.map((entry) => (
+          {review.map((entry) => {
+            const entryVersions = versions.filter((version) => version.entryId === entry.id);
+            return (
             <div key={entry.id} className="rounded-xl border border-line p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -215,8 +231,44 @@ export function AqiKnowledgeReview({ documents, review }: { documents: AqiKnowle
                 </div>
               </div>
               <Input className="mt-2 h-8 text-[11.5px]" aria-label={`Review note for ${entry.title}`} placeholder="Optional review note (why it changed or was checked)" maxLength={500} value={note[entry.id] ?? ""} onChange={(e) => setNote({ ...note, [entry.id]: e.target.value })} />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setHistoryFor(historyFor === entry.id ? null : entry.id)} aria-expanded={historyFor === entry.id}>
+                  <History className="size-3.5" /> Version history ({entryVersions.length})
+                </Button>
+                {entryVersions.length === 0 && <span className="text-[10.5px] text-muted">History starts with the next edit; earlier versions were not stored.</span>}
+              </div>
+              {historyFor === entry.id && entryVersions.length > 0 && (
+                <div className="mt-2 space-y-1.5 rounded-xl border border-line bg-surface-2/50 p-2.5">
+                  {entryVersions.map((version) => (
+                    <div key={version.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface px-2.5 py-2">
+                      <div className="min-w-0">
+                        <p className="text-[11.5px] font-medium text-ink">v{version.version} · {version.title} <Badge tone={version.status === "published" ? "success" : version.status === "draft" ? "warning" : "neutral"}>{version.status}</Badge></p>
+                        <p className="mt-0.5 text-[10.5px] text-muted">{formatDateTime(version.createdAt)}{version.createdBy ? ` · ${version.createdBy}` : ""}{version.changeNote ? ` · ${version.changeNote}` : ""}</p>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="ghost" onClick={() => setCompare(compare?.version.id === version.id ? null : { entry, version })}>Compare</Button>
+                        <Button size="sm" variant="secondary" loading={busy === `${entry.id}:restore:${version.id}`} onClick={() => void restore(entry, version)}><RotateCcw className="size-3.5" /> Restore as draft</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {compare && compare.entry.id === entry.id && (
+                <div className="mt-2 grid gap-2 rounded-xl border border-primary/25 bg-primary-soft/30 p-2.5 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Restored version v{compare.version.version}</p>
+                    <pre className="scrollbar-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-[11px] leading-relaxed text-ink-2">{compare.version.body}</pre>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Current live content (v{entry.version})</p>
+                    <pre className="scrollbar-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-surface p-2 text-[11px] leading-relaxed text-ink-2">{entry.body}</pre>
+                  </div>
+                  <p className="text-[10.5px] text-muted sm:col-span-2">Restoring creates a new draft and keeps both versions. Nothing is published automatically.</p>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
           {review.length === 0 && <p className="rounded-xl border border-dashed border-line-strong p-3 text-[12px] text-muted">No platform knowledge entries yet.</p>}
         </CardContent>
       </Card>

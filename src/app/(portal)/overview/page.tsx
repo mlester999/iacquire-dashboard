@@ -90,15 +90,13 @@ export default async function OverviewPage() {
 
       {data.nextActions.length>0&&<section aria-label="What needs your attention" data-aqi-target="overview.next-actions" className="control-panel grid gap-3 p-4 md:grid-cols-3">{data.nextActions.map((action,index)=><Link key={action.title} href={action.href} className="flex items-start gap-3 rounded-xl px-2 py-2 transition hover:bg-surface"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-[11px] font-semibold text-primary-ink">0{index+1}</span><span className="min-w-0"><strong className="block text-[13px] font-semibold">{action.title}</strong><span className="mt-1 block text-[12px] leading-relaxed text-muted">{action.body}</span><span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-200">{action.cta}<ArrowRight className="size-3"/></span></span></Link>)}</section>}
 
-      <div data-aqi-target="overview.kpis">
-        <KpiGrid
-          tiles={tiles.map((t) => ({
-            ...t,
-            value: metric(k[t.key]),
-            unavailableReason: reason(k[t.key]),
-          }))}
-        />
-      </div>
+      <KpiGrid
+        tiles={tiles.map((t) => ({
+          ...t,
+          value: metric(k[t.key]),
+          unavailableReason: reason(k[t.key]),
+        }))}
+      />
 
       <SetupNudge />
 

@@ -283,13 +283,45 @@ export function AqiTutorialManager({ data }: { data: AqiTutorialAdminData }) {
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Completion rule" htmlFor="tut-completion">
-                <Select id="tut-completion" value={draft.completion.kind} onChange={(e) => setDefinition("completion", e.target.value === "route" ? { kind: "route", pattern: "/crm/contacts/:id" } : { kind: "finish" })}>
+                <Select
+                  id="tut-completion"
+                  value={draft.completion.kind}
+                  onChange={(e) => {
+                    const kind = e.target.value;
+                    setDefinition(
+                      "completion",
+                      kind === "contact_created"
+                        ? { kind: "contact_created", pattern: "/crm/contacts/:id" }
+                        : kind === "route"
+                          ? { kind: "route", pattern: "/crm/contacts" }
+                          : { kind: "finish" },
+                    );
+                  }}
+                >
                   <option value="finish">Finished by the person</option>
-                  <option value="route">Verified by a real page</option>
+                  <option value="route">Navigation verified by a real page</option>
+                  <option value="contact_created">Contact created — confirmed by the CRM</option>
                 </Select>
               </Field>
-              {draft.completion.kind === "route" && (
-                <Field label="Completion route pattern" htmlFor="tut-completion-route" hint="For example /crm/contacts/:id"><Input id="tut-completion-route" value={draft.completion.pattern} onChange={(e) => setDefinition("completion", { kind: "route", pattern: e.target.value })} /></Field>
+              {draft.completion.kind !== "finish" && (
+                <Field
+                  label="Completion route pattern"
+                  htmlFor="tut-completion-route"
+                  hint={draft.completion.kind === "contact_created" ? "Must contain :id, for example /crm/contacts/:id" : "For example /crm/contacts"}
+                >
+                  <Input
+                    id="tut-completion-route"
+                    value={draft.completion.pattern}
+                    onChange={(e) =>
+                      setDefinition(
+                        "completion",
+                        draft.completion.kind === "contact_created"
+                          ? { kind: "contact_created", pattern: e.target.value }
+                          : { kind: "route", pattern: e.target.value },
+                      )
+                    }
+                  />
+                </Field>
               )}
               <Field label="Workspace requirement" htmlFor="tut-crm">
                 <Select

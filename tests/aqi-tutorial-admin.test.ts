@@ -151,4 +151,34 @@ describe("AQi tutorial management", () => {
     const progress = await withSystem(async (db) => (await db.query<{ status: string }>("select status from aqi_tutorial_progress where tutorial_id = $1", [saved.id])).rows);
     expect(progress.every((row) => row.status !== "in_progress" || true)).toBe(true);
   });
+
+  it("labels navigation-only completion honestly and rejects an unverifiable business claim", async () => {
+    const admin = await superAdmin();
+    const org = await createOrg({ name: "Tutorial navigation semantics" });
+    const owner = await createUser();
+    await addMember(org.id, owner.id, "owner");
+    const viewer = clientViewer(org, owner);
+    const slug = `navigation-only-${Date.now().toString(36)}`;
+    const saved = await saveAqiTutorialDraft(admin, {
+      slug,
+      definition: definition({
+        title: "Navigate the overview",
+        description: "A navigation-only walkthrough.",
+        routePrefix: "/overview",
+        completion: { kind: "route", pattern: "/overview" },
+        steps: [{ key: "kpis", title: "See metrics", body: "Look at the metrics.", targetId: "overview.kpis", route: "/overview" }],
+      }),
+    });
+    await publishAqiTutorial(admin, saved.id);
+    await startAqiTutorial(viewer, slug, "library");
+    const completed = await updateAqiTutorialProgress(viewer, slug, { action: "complete", pathname: "/overview" });
+    expect(completed.status).toBe("completed");
+    expect(completed.verified).toBe(false);
+    expect(completed.message).toMatch(/required page|navigation/i);
+    expect(completed.message).not.toMatch(/contact created/i);
+
+    await expect(saveAqiTutorialDraft(admin, {
+      definition: definition({ completion: { kind: "contact_created", pattern: "/crm/contacts" } }),
+    })).rejects.toThrow(/include :id/i);
+  });
 });

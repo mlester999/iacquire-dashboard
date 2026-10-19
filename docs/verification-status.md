@@ -111,33 +111,38 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 
 AQi details: [aqi.md](aqi.md).
 
-### AQi Phase 3 — guidance, tutorials and Insights (2026-10-19; local and browser verified)
+### AQi Phase 3 — guidance, tutorials and Insights (2026-10-19; base deployed, hardening local and browser verified)
 
-Details, honest limits and release gates: [aqi-phase3.md](aqi-phase3.md).
+Details, honest limits and release gates: [aqi-phase3.md](aqi-phase3.md). Staging procedure:
+[aqi-phase3-staging-acceptance.md](aqi-phase3-staging-acceptance.md).
 
 | Gate | Result |
 | --- | --- |
-| Migration 0061 schema, RLS, seeded 16-tutorial library and tips | Locally verified (`tests/aqi-migration-0061.test.ts`, 6 tests); guarded rollback (`tests/aqi-migration-0061-rollback.test.ts`, 2) |
-| Target registry, definition validation and intent matching | Locally verified (`tests/aqi-tutorial-engine.test.ts`, 9); every seeded target exists |
-| Progress persistence, permissions, pause/resume, version change and route verification | Locally verified; browser verified for refresh/resume and verified contact creation |
-| Tutorial admin draft/publish/duplicate/archive/rollback and structural preview | Locally verified (`tests/aqi-tutorial-admin.test.ts`, 6); browser verified for library, validation and draft spotlight preview |
-| Chat guide offer and structured message guide | Locally verified (`tests/aqi-guide-chat.test.ts`, 2); greeting/unrelated turns are not offered a tutorial |
-| Onboarding preferences and contextual tips | Locally verified (`tests/aqi-onboarding-tips.test.ts`, 6); browser verified for welcome dismissal and a tip-launched walkthrough |
-| Knowledge document ingestion and freshness | Locally verified (`tests/aqi-knowledge-documents.test.ts`, 5) using the existing PDF/DOCX extractor |
-| Insights real aggregates, filters, privacy and empty states | Locally verified (`tests/aqi-insights.test.ts`, 4); browser verified for real sections and empty state |
-| Typecheck / lint / production build | Passed; build compiled and emitted all new routes including `/admin/aqi/insights` |
-| Full regression suite | **2,964 tests in 173 files passed** (`npm test -- --maxWorkers=2`), including the 40 new Phase 3 tests and the RLS init-plan guard |
-| Desktop/mobile/admin browser QA | `scripts/aqi-guidance-browser-qa.mjs`: **33/33 checks**, 0 console/page errors, 0 failed requests, 0 5xx, 0 serious/critical axe findings in tested states; 1440 px and 390 px |
-| Hosted migration 0061 | **Applied 2026-10-19** after a custom-format `pg_dump` backup; hosted pending migrations are now **none**. Verified: **258 public tables**, 16 published tutorials with 16 published versions, 6 tips, RLS enabled on the tutorial tables, no `iaq_app_user` grant on `aqi_knowledge_documents`, review columns present, new usage-event kinds present |
-| Staging / production | **Not staging-verified.** Production deployment is triggered by the authorized master push; no staging acceptance run and no post-deploy browser smoke test have been recorded yet |
+| Migration 0061 schema, RLS, seeded 16-tutorial library and tips | Verified (`tests/aqi-migration-0061.test.ts`, 6); guarded rollback (2) |
+| **Migration 0063 knowledge history and contact v2** | Verified (`tests/aqi-migration-0063.test.ts`, 3) including transactional rollback; **not applied hosted** |
+| Target registry, definition validation and intent matching | Verified (`tests/aqi-tutorial-engine.test.ts`, 10); every seeded target exists |
+| **Tutorial completion accuracy** | Verified: finish is not `verified`; route completion verifies navigation only; contact completion requires a CRM record created during the attempt. Wrong page, missing record and real record covered (`tests/aqi-tutorial-engine.test.ts`); admin nav wording (`tests/aqi-tutorial-admin.test.ts`, 7) |
+| Progress persistence, permissions, pause/resume, version change and click-to-advance | Verified; browser verified for refresh/resume and real contact creation |
+| Tutorial admin draft/publish/duplicate/archive/rollback, completion rules and structural preview | Verified (7); browser library, validation and draft preview |
+| Chat guide offer and structured message guide | Verified (`tests/aqi-guide-chat.test.ts`, 2); greeting/unrelated turns are not offered |
+| Onboarding preferences and contextual tips | Verified (`tests/aqi-onboarding-tips.test.ts`, 6); browser welcome dismissal and tip-launched walkthrough |
+| **Knowledge document security and tenant isolation** | Verified (`tests/aqi-knowledge-documents.test.ts`, 7): draft-only upload, private `platform/aqi/` path, no `private_files` row, no tenant document in platform tables, client-owner refusal |
+| **Knowledge history, compare and restore** | Verified (`tests/aqi-knowledge-history.test.ts`, 3): real prior body preserved, restore creates a draft, no fabricated legacy versions |
+| **Tutorial event retention** | Verified (`tests/aqi-tutorial-retention.test.ts`, 2): bounded batch, org scope, active-progress protection, audit, configurable limits |
+| Insights real aggregates, filters, privacy and empty states | Verified (`tests/aqi-insights.test.ts`, 4); browser 7/30/90, custom UTC range, invalid range, Reset and axe |
+| Typecheck / lint / production build | Passed; build compiled and emitted all routes including `/admin/aqi/insights` |
+| Full regression suite | **2,987 tests in 177 files passed** (`npm test -- --maxWorkers=2`) |
+| Browser QA | **65/65 checks across six scenario groups**: desktop 14, resume/mobile 11, tablet 20, keyboard 5, error/retry 3, admin/insights 12; 0 unexpected console/page errors, 0 failed requests, 0 5xx, 0 serious/critical axe findings in tested states |
+| Hosted migration 0061 | **Applied 2026-10-19** after a custom-format `pg_dump` backup; hosted ledger had no pending migrations through 0062. Verified: 258 public tables, 16 published tutorials/versions, 6 tips, RLS, no `iaq_app_user` grant on documents, review columns and new usage kinds |
+| **Hosted migration 0063** | **Not applied**; requires explicit staging and production authorization |
+| Staging / production | **Not staging-verified.** Base Phase 3 is deployed at `ddd1804` (Vercel Production deployment succeeded). No authenticated post-deploy smoke test or staging acceptance run has been recorded |
 | Live chat `Show me how` with a real provider | **Not verified in a browser**; the QA provider is disabled. Server tests prove the stored guide action |
 
-Browser QA used real Chromium against the isolated PGlite CRM QA server and fictional data only.
-It verified spotlight-to-element alignment (within 10 px), tooltip/target non-overlap, a modal target,
-the contact detail completion route and verified badge, pause/reload/resume at the same step, the
-390 px sheet, Super Admin tutorial validation/preview and the Insights empty state. It does **not**
-establish staging identity or a live-provider chat action. The hosted schema was verified separately
-with read-only queries after migration 0061.
+Browser QA used real Chromium against the isolated PGlite CRM QA server and fictional data only. It
+found and fixed a tablet tooltip/target overlap on the KPI grid, a focus-restoration loss when the
+opening control disappeared, and low-contrast Insights metric labels. It does **not** establish
+staging identity, a live-provider chat action or a manual screen-reader result. The hosted schema was
+verified separately with read-only queries after migration 0061.
 
 ### Website Studio rebuild (2026-10-15, migration 0026)
 

@@ -29,7 +29,7 @@ export function KpiGrid({
     <section aria-label="Key metrics" className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">
         {tiles.slice(0, 5).map((t, i) => (
-          <StatTile key={t.key} index={i} label={t.label} icon={t.icon} definition={t.definition} href={t.href} accent={t.accent} value={t.value} unavailableReason={t.unavailableReason} />
+          <StatTile key={t.key} index={i} targetId={i === 0 ? "overview.kpis" : undefined} label={t.label} icon={t.icon} definition={t.definition} href={t.href} accent={t.accent} value={t.value} unavailableReason={t.unavailableReason} />
         ))}
       </div>
       <ul className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">

@@ -10,7 +10,7 @@ Insights dashboard; the detailed Phase 3 record is [aqi-phase3.md](aqi-phase3.md
 
 | Capability | Status |
 | --- | --- |
-| Phase 3 visual guidance, tutorials, onboarding, tips, knowledge documents and Insights | **Implemented and locally/browser verified**; migration 0061 applied hosted 2026-10-19; staging acceptance not recorded. See [aqi-phase3.md](aqi-phase3.md) |
+| Phase 3 visual guidance, tutorials, onboarding, tips, knowledge documents and Insights | **Base deployed at `ddd1804`; hardening implemented and locally/browser verified**; migration 0061 applied hosted 2026-10-19, 0063 not applied; staging acceptance not recorded. See [aqi-phase3.md](aqi-phase3.md) |
 | AQi identity, floating launcher and chat panel | Locally verified |
 | Real provider request path + token streaming | **Live controlled probe passed** against the existing production DeepSeek credential: `deepseek-flash`, OpenAI format, `OK` response and one real SSE delta; no customer data |
 | Streaming fallback for a non-SSE JSON answer | Locally verified |
@@ -406,10 +406,13 @@ text extraction, not a multimodal model call.
   The deployed AQi build is older than the resolution/error fixes, and the deployment URL is Vercel
   SSO protected, so the full deployed AQi UI was not tested from this environment.
 - Phase 3 visual guidance, tutorials, onboarding, contextual tips, knowledge documents, freshness
-  review and the Insights dashboard are implemented and locally/browser verified. Migration `0061`
-  is **applied to hosted Supabase** (2026-10-19, after a backup). Staging acceptance and a post-deploy
-  production smoke test are still outstanding. See [aqi-phase3.md](aqi-phase3.md) for evidence and
-  the remaining release gates.
+  review and the Insights dashboard are deployed at `ddd1804`. The hardening branch adds
+  server-confirmed business completion, knowledge version history, tutorial-event retention, a custom
+  Insights date range, tablet/keyboard/error browser coverage and layout/accessibility fixes. Migration
+  `0061` is **applied to hosted Supabase** (2026-10-19, after a backup); the new `0063` is **not
+  applied**. Staging acceptance and an authenticated post-deploy smoke test are still outstanding.
+  See [aqi-phase3.md](aqi-phase3.md) and
+  [aqi-phase3-staging-acceptance.md](aqi-phase3-staging-acceptance.md).
 - Temporary state is per browser tab. Another tab does not see an unsaved chat, and closing the tab
   cannot restore it; stale temporary rows are hidden immediately and purged after 24 hours.
 - AQi is mounted on portal, AI-employee chat and agency admin routes. Auth, setup/onboarding and
