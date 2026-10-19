@@ -436,7 +436,7 @@ async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesC
   return startRun(conn, input);
 }
 
-export type AgentRunBlockReason = "disabled" | "not_ready" | "inventory_not_recorded" | "readiness_unknown";
+export type AgentRunBlockReason = "disabled" | "not_ready" | "not_configured" | "inventory_not_recorded" | "readiness_unknown";
 
 /** The employee has not passed the checks that unlock live runs. The message is safe to show to workspace users. */
 export class AgentRunNotReadyError extends HermesError {
@@ -450,19 +450,25 @@ interface AgentRunGateRow {
   kind: string;
   enabled: boolean;
   status: string;
+  active_config_version_id: string | null;
   tool_inventory_digest: string | null;
 }
 
 /**
  * Readiness every employee needs before any run, whichever feature starts it: enabled, online (the state a passing
- * health check sets) and a tool-inventory digest recorded by that check. Without a recorded digest the live catalog
- * would have nothing to be compared against, so a never-health-checked employee could run on a catalog that merely
- * looks safe today.
+ * health check sets), configured with an applied version and holding a tool-inventory digest recorded by that health
+ * check. The explicit configuration check keeps a run from being started directly against an employee whose applied
+ * settings were removed after it went online, even if a future caller forgot to build its instructions first. Without
+ * a recorded digest the live catalog would have nothing to be compared against, so a never-health-checked employee
+ * could run on a catalog that merely looks safe today.
  */
-export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "tool_inventory_digest">): string {
+export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "tool_inventory_digest">): string {
   if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
   if (!canChat(row.status as AgentStatus)) {
     throw new AgentRunNotReadyError("not_ready", "This AI employee hasn't passed its connection and tool-inventory check yet, so it can't run.");
+  }
+  if (!row.active_config_version_id) {
+    throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
   }
   if (!row.tool_inventory_digest || !/^[0-9a-f]{64}$/.test(row.tool_inventory_digest)) {
     throw new AgentRunNotReadyError("inventory_not_recorded", "This AI employee has no verified tool inventory on record yet, so it can't run. Run its health check first.");
@@ -473,7 +479,7 @@ export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "stat
 async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRunGateRow | null> {
   try {
     const { rows } = await withSystem((db) => db.query<AgentRunGateRow>(
-      "select o.kind, a.enabled, a.status, a.tool_inventory_digest from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2",
+      "select o.kind, a.enabled, a.status, a.active_config_version_id, a.tool_inventory_digest from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2",
       [agentId, orgId],
     ));
     return rows[0] ?? null;

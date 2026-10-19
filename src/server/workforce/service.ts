@@ -581,6 +581,27 @@ const HEALTH_DETAIL: Record<string, string> = {
   upstream: "Hermes reported a server error.",
 };
 
+/**
+ * A health check rewrites the employee's status, inventory attestation and integration status, so an
+ * agency actor needs the same management permission and client scope as every other workforce write.
+ * The check runs before the credential is resolved (which itself appends an audit row) and before any
+ * gateway request. `system` calls are internal refresh paths; a client user may not drive this action.
+ */
+async function assertCanRunHealthCheck(db: Queryable, agentOrgId: string, actor: { userId: string | null; kind: "agency" | "system" | "user" }) {
+  if (actor.kind === "system") return;
+  if (actor.kind === "user") {
+    throw new AppError("forbidden", "Only an agency manager or Super Admin can run a health check.");
+  }
+  if (!actor.userId) throw new AppError("forbidden", "An agency identity is required to run a health check.");
+  const { rows } = await db.query<{ allowed: boolean }>(
+    "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,'agency.workforce.manage') as allowed",
+    [actor.userId, agentOrgId],
+  );
+  if (rows[0]?.allowed !== true) {
+    throw new AppError("forbidden", "Your agency role or client scope does not allow running a health check.");
+  }
+}
+
 /** Performs a real authenticated capabilities check and records the outcome. */
 export async function runHealthCheck(
   agentId: string,
@@ -593,6 +614,7 @@ export async function runHealthCheck(
       [agentId],
     );
     if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
+    await assertCanRunHealthCheck(db, rows[0].org_id, actor);
     return {
       conn: await loadConnection(db, agentId),
       orgId: rows[0].org_id,

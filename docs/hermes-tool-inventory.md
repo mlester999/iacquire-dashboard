@@ -244,7 +244,9 @@ configuration previews, before any request reaches the gateway.
    sets the employee `online`. After any later inventory change, one more health check must confirm it.
 3. **Run the agency profile check, then record the full-capabilities acknowledgement** for each internal
    profile. The acknowledgement must be newer than the latest profile check, so a re-check invalidates it.
-4. **Re-run the read-only audit** (`npm run hermes:audit -- --live`, GET requests only). Acceptance requires
+4. **Re-run the read-only audit** (`npm run hermes:audit -- --live`, GET requests only). The audit changes no
+   gateway, profile, employee, configuration or inventory state, but it is not strictly zero-write: resolving each
+   stored profile credential appends one `credential.resolved` audit-log row. Acceptance requires
    `completeInventoryVerified: true`, `restrictedCount: 0`, `unauthorizedToolsets: []` and
    `readyForControlledRun: true` for every profile; the report also shows whether each employee has an applied
    configuration and a recorded inventory digest.

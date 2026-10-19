@@ -23,8 +23,11 @@ screens, not through the client portal.
 - creates or raises the super admin's **owner membership in the agency organization only** and writes an
   audit event the first time;
 - `GET /admin/workforce/open?role=<slug>` switches the active organization to the agency organization and
-  redirects to the existing `/chat/<slug>` or `/workforce/<slug>` screen. It is super-admin-only and
-  records an audit event.
+  redirects to the existing `/chat/<slug>` screen, or to `/workforce/<slug>?tab=configure` when
+  `&to=manage` is present. The configuration screen is the normal employee detail page; it now also
+  accepts the internal agency organization for a Super Admin, so activation step 1 (saving each internal
+  employee's initial configuration) uses the same reviewed form as a client employee. It is
+  super-admin-only and records an audit event.
 
 The admin employee page `/admin/workforce/[slug]` shows the real identity, runtime, connection evidence,
 configuration summary, SOUL.md, knowledge counts, approvals and recorded runs, with health-check and
@@ -159,7 +162,9 @@ A read-only audit was run against the configured multiplexed gateway
   `verifyToolInventory` failed and the live-run gate stayed closed. This is not a cosmetic warning:
   `startAgentRun` refuses to contact the provider. (A patched gateway has since been deployed; see
   [hermes-tool-inventory.md](hermes-tool-inventory.md).)
-- No model run was started; no customer data, tool action or write was performed.
+- No model run was started and no gateway, profile, employee, configuration or inventory state was
+  changed. Credential resolution appended `credential.resolved` audit-log rows; this audit is therefore
+  not strictly zero-write, and no customer data or tool action was involved.
 
 Reproduce the evidence without starting a run:
 
@@ -175,6 +180,10 @@ remediation and the controlled-run procedure.
 
 - Health is evidence-based: an employee is online only after the authenticated capabilities, profile
   identity and toolset checks pass; a saved key alone is not enough.
+- A health check writes the employee's status, inventory attestation and integration state, so it
+  requires `agency.workforce.manage` and the existing assigned-client scope. Super Admins keep access;
+  internal system refreshes (chat status rechecks and the setup engine) do not depend on an agency
+  permission. Read-only staff can still view the workforce and its last recorded evidence.
 - The employee view shows last check, detail, tokens, runs, failures, tool steps and average latency.
 - Provider cost is not reported by Hermes, so no estimate is shown.
 - Configuration changes, knowledge changes, draft tests, internal-workspace access, publishing and

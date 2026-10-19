@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "@/lib/agents";
 import type { ConfigPreviewEvent } from "@/lib/workforce-types";
 import { withSystem } from "@/server/db";
-import { assertAgentRunnable } from "@/server/integrations/hermes/client";
+import { assertAgentRunnable, startAgentRun } from "@/server/integrations/hermes/client";
 import { createResearchRequest, runResearch } from "@/server/leads/service";
 import { hermesReplyGenerator, type ReplyContext } from "@/server/messaging/responder";
 import { runConfigPreview } from "@/server/workforce/preview";
@@ -19,13 +19,15 @@ import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const KEY = "g".repeat(40);
 const HEALTH_CHECK_REQUIRED = /hasn't passed its connection and tool-inventory check/;
+const CONFIG_REQUIRED = /no applied configuration/;
 const INVENTORY_REQUIRED = /no verified tool inventory on record/;
 const DIGEST = "a".repeat(64);
+const CONFIG = "11111111-1111-4111-8111-111111111111";
 
 describe("the readiness rules", () => {
-  const ready = { enabled: true, status: "online", tool_inventory_digest: DIGEST };
+  const ready = { enabled: true, status: "online", active_config_version_id: CONFIG, tool_inventory_digest: DIGEST };
 
-  it("accepts an enabled, online employee with a recorded digest, and returns the digest to compare against", () => {
+  it("accepts an enabled, online, configured employee with a recorded digest, and returns the digest to compare against", () => {
     expect(assertAgentRunnable(ready)).toBe(DIGEST);
     expect(assertAgentRunnable({ ...ready, status: "busy" })).toBe(DIGEST);
   });
@@ -34,11 +36,18 @@ describe("the readiness rules", () => {
     expect(() => assertAgentRunnable({ ...ready, status })).toThrow(HEALTH_CHECK_REQUIRED);
   });
 
-  it("refuses a disabled employee, a missing digest and a malformed digest", () => {
+  it("refuses a disabled employee, a missing configuration, a missing digest and a malformed digest", () => {
     expect(() => assertAgentRunnable({ ...ready, enabled: false })).toThrow(/isn't enabled/);
+    expect(() => assertAgentRunnable({ ...ready, active_config_version_id: null })).toThrow(CONFIG_REQUIRED);
     expect(() => assertAgentRunnable({ ...ready, tool_inventory_digest: null })).toThrow(INVENTORY_REQUIRED);
     expect(() => assertAgentRunnable({ ...ready, tool_inventory_digest: "" })).toThrow(INVENTORY_REQUIRED);
     expect(() => assertAgentRunnable({ ...ready, tool_inventory_digest: "not-a-sha256" })).toThrow(INVENTORY_REQUIRED);
+  });
+
+  it("checks status, then configuration, then inventory so the activation sequence is unambiguous", () => {
+    expect(() => assertAgentRunnable({ enabled: true, status: "provisioning", active_config_version_id: null, tool_inventory_digest: null })).toThrow(HEALTH_CHECK_REQUIRED);
+    expect(() => assertAgentRunnable({ enabled: true, status: "online", active_config_version_id: null, tool_inventory_digest: null })).toThrow(CONFIG_REQUIRED);
+    expect(() => assertAgentRunnable({ enabled: true, status: "online", active_config_version_id: CONFIG, tool_inventory_digest: null })).toThrow(INVENTORY_REQUIRED);
   });
 });
 
@@ -201,6 +210,21 @@ describe("runs through every entry point", () => {
       const outcome = await hermesReplyGenerator(replyContext(agency.id, agency$.sales_assistant!));
       expect(outcome).toMatchObject({ kind: "unavailable" });
       expect((outcome as { reason: string }).reason).toMatch(HEALTH_CHECK_REQUIRED);
+      expect(mock.requests).toHaveLength(requestsBefore);
+    });
+  });
+
+  describe("tenant authorization", () => {
+    it("refuses an employee presented under another workspace before contacting the gateway", async () => {
+      const requestsBefore = mock.requests.length;
+      await expect(startAgentRun(client$.sales_assistant!, agency.id, { baseUrl: mock.url, profile: "c-gate-sales-assistant", apiKey: KEY }, {
+        input: "cross-tenant",
+        idempotencyKey: `cross-tenant-${crypto.randomUUID()}`,
+      })).rejects.toMatchObject({ kind: "not_found" });
+      await expect(startAgentRun(agency$.sales_assistant!, client.id, { baseUrl: mock.url, profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant, apiKey: KEY }, {
+        input: "cross-tenant agency",
+        idempotencyKey: `cross-tenant-agency-${crypto.randomUUID()}`,
+      })).rejects.toMatchObject({ kind: "not_found" });
       expect(mock.requests).toHaveLength(requestsBefore);
     });
   });

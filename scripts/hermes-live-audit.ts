@@ -5,8 +5,10 @@
  *
  * It reads the gateway/profile mapping from the configured database, resolves each mapped profile's stored
  * credential, and issues only GET requests: /v1/capabilities, /v1/models, /v1/toolsets and /v1/tools (twice, through
- * the same verifier a health check and a run use). It never starts a run, writes a database row, or prints a
- * credential, API key, base URL path, profile identifier or organization name.
+ * the same verifier a health check and a run use). It never starts a run and does not change gateway, profile,
+ * employee, configuration or inventory state. It is not strictly zero-write: resolving a credential appends a
+ * `credential.resolved` audit-log row (one per mapped profile), and that audit row is the only write it makes. It
+ * never prints a credential, API key, base URL path, profile identifier or organization name.
  *
  * A profile is ready for a controlled run only when:
  *   - the gateway authenticates and returns the Hermes capabilities contract;

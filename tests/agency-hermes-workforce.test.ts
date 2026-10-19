@@ -380,7 +380,8 @@ describe("agency Hermes workforce isolation", () => {
     // A client employee that never passed a health check is refused by the readiness gate before any gateway request.
     await expect(clientRequest()).rejects.toBeInstanceOf(AgentRunNotReadyError);
     expect(mock.requests).toHaveLength(requestsStart);
-    // Online with a recorded digest, the only thing left to stop it is the gateway's inventory contract.
+    // Online and configured with a recorded digest, the only thing left to stop it is the gateway's inventory contract.
+    await withSystem((db) => createConfigVersion(db, { orgId: clientOrg.id, agentId: rows[0].id, settings: defaultSettings(rows[0].role_key), source: "onboarding", userId: admin.id, apply: true }));
     await withSystem((db) => db.query("update agent_instances set status='online', last_health_ok=true, tool_inventory_digest=$2 where id=$1", [rows[0].id, "a".repeat(64)]));
     mock.setInventory(CLIENT_TEST_PROFILE, { advertised: false });
     try {
