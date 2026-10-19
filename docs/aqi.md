@@ -182,8 +182,15 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   shows numbered, clickable source cards with a readable approved-source snippet; unsupported markers
   are removed. Sources are omitted when there are no valid citations.
 - Casual replies never get a forced Sources section.
-- The message toolbar supports real clipboard copy with a check/Copied state, persisted
-  like/dislike, change/undo feedback, and a reason-plus-comment dislike form.
+- The message toolbar supports real clipboard copy with a check/Copied state and immediate
+  like/dislike feedback. The selected thumb and acknowledgement update before the database request
+  finishes. Likes have a brief local confetti burst; dislikes have a gentle thumb dip. Reduced-motion
+  preferences remove the movement and confetti.
+- Votes still persist to `aqi_messages.feedback_rating` and optional details to `feedback_comment`.
+  A dislike saves on the first click; **Skip** only dismisses its optional reason/comment form.
+  Changes are serialized per message and rapid choices are coalesced, without locking other messages.
+  Closing the panel leaves saves running. A failed latest save restores the last confirmed value and
+  offers **Retry feedback**, including any details submitted with it.
 - Admin knowledge supports search and status filtering; conversation probes can test greetings and
   navigation without saving a conversation.
 
@@ -454,3 +461,11 @@ not exercised through the browser.
 
 Production audit, staging-first gate, backup/restore and real-provider acceptance steps:
 [aqi-phase2-release-gate.md](aqi-phase2-release-gate.md).
+
+The immediate-feedback update was checked with 7 UI regression cases and the 13 existing AQi
+service cases (20 passed), plus typecheck and lint. A standalone browser harness rendered the real
+feedback components with the app's styles at desktop and 390 px, including dark mode, reduced motion,
+a delayed response and a deliberately failed save/retry. The acknowledgement appeared in 167 ms
+while the mocked save took 3 seconds; there were 0 page errors, 0 axe violations and no horizontal
+overflow. The only console error was the deliberate HTTP 500. This measures local interaction
+responsiveness, not production database latency.
