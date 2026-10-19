@@ -158,7 +158,7 @@ opening control disappeared, and low-contrast Insights metric labels. It does **
 staging identity, a live-provider chat action or a manual screen-reader result. The hosted schema was
 verified separately with read-only queries after migration 0061.
 
-### AQi UX polish (2026-10-19; local branch `aqi/phase3-ux-polish`, no migration, not pushed)
+### AQi UX polish (2026-10-19; commit `f6b6b62` pushed to `master` at the owner's request, no migration; deployment result and staging acceptance not verified)
 
 Navigation links and Markdown, the walkthrough card and positioning engine, the welcome popup and
 start-up performance were reworked without a schema change. Locally verified: full suite 184 files and

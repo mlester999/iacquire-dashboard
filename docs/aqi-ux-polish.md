@@ -4,10 +4,12 @@ This pass polishes the existing AQi implementation. It adds no migration, no new
 feature area. Everything from Phase 2 and the Phase 3 hardening (`d6204e6`) is preserved.
 
 **Status words used below.** *Implemented locally* means the code is in the working tree and
-committed on a local branch. *Unit/integration verified* means a vitest test runs it against the real
-migrations on PGlite. *Browser verified* means the isolated QA server in real Chromium. *Staging
-verified* and *Production deployed* are **not claimed anywhere in this document**: nothing was
-pushed, deployed, or applied to a hosted database in this pass.
+committed. *Unit/integration verified* means a vitest test runs it against the real migrations on
+PGlite. *Browser verified* means the isolated QA server in real Chromium. *Staging verified* and
+*Production deployed* are **not claimed anywhere in this document**. The commit (`f6b6b62`) was
+pushed to `master` afterwards, on the owner's explicit instruction; whether the resulting hosting
+deployment succeeded has not been checked. No migration exists in this change, so none was applied
+to any hosted database.
 
 ## 1. Git, branch and migration state (verified at the start, then re-checked)
 
@@ -16,15 +18,16 @@ pushed, deployed, or applied to a hosted database in this pass.
 | Hardening is commit `d6204e6` on `aqi/phase3-hardening` | True. `git merge-base --is-ancestor d6204e6 HEAD` succeeded at the start and at the end, so it was **not re-integrated or duplicated**. |
 | Hardening was not pushed or deployed | **Not current.** At the end of this pass `origin/master` (`f2165c4`) contains `d6204e6`, and `docs/aqi-phase3.md` says the hardening merge is deployed to production on 2026-10-19. That happened in another session during this work; **this pass pushed nothing, deployed nothing and applied nothing.** |
 | Migration `0063` is local/pending | **Not current.** `docs/verification-status.md` and `docs/aqi-phase3-staging-acceptance.md` record `0061` and `0063` as applied to hosted Supabase on 2026-10-19 after custom-format backups. This was read from the repository's own records; the hosted ledger was **not** queried here. No migration was added, renumbered or applied by this pass. |
-| Master pushes deploy production | Respected: this branch is not on `master` and was not pushed. |
+| Master pushes deploy production | During the work nothing was pushed. After verification the owner explicitly asked for the commit to be pushed to `master`, and it was (`f2165c4..f6b6b62`, fast-forward). That push is expected to trigger a production deployment; its result was not observed. |
 
 While this work ran, another Claude session in the same checkout merged `origin/master` into
 `aqi/phase3-hardening`, fast-forwarded local `master`, switched the checkout to `master`, committed
 the native-first client-surface work and release docs there, and pushed it. Those commits and the
 unrelated untracked files (`docs/hermes-production-cutover.md`, `scripts/hermes-cutover/`, `dist/`,
 `output/`, `tmp/`, `scripts/__pycache__/`, `scripts/build_iacquire_system_guide.py`) were left alone.
-The AQi polish is committed on its own branch, `aqi/phase3-ux-polish`, cut from that `master`, so it
-can be reviewed, tested on staging, or discarded independently. One unmerged commit exists on
+The AQi polish was committed on its own branch, `aqi/phase3-ux-polish`, cut from that `master`, and
+then fast-forwarded into `master` and pushed at the owner's request; only this work's files were
+committed (the other session's uncommitted edits were not). One unmerged commit exists on
 `aqi/conversation-lifecycle` (a docs-only verification note in another worktree); it was not touched.
 
 ## 2. Root causes (each reproduced before fixing)
@@ -298,7 +301,8 @@ dominated by the page scrolling the target above the bottom sheet (smooth, about
 
 ## 8. Staging acceptance requirements
 
-Nothing below has been run. Deploy this branch to a **staging** environment (never production), then:
+Nothing below has been run. The change is already on `master`, so run these against the deployed
+build or a staging deployment of it, and treat any failure as a reason to revert `f6b6b62`:
 
 1. `npm ci && npm run build` on the branch; confirm the build is clean. No migration is part of this
    change; do not apply or renumber anything (`0061`, `0063` are recorded as applied hosted already;
