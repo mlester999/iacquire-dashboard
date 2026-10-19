@@ -30,6 +30,20 @@ A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044
 
 The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for **`ceae6e5`** by `vercel[bot]` on 2026-10-19; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. `ceae6e5` includes the provider-resolution, role-aware error, budget, support, attachment/composer, GIF-removal, conversational-intelligence and conversation title/lifecycle changes. There is no `.github/workflows` or Vercel config in the repository; the integration is external.
 
+### Native-first surface pass (2026-10-19)
+
+This pass keeps the GoHighLevel integration working while removing the places where a new native client was still shown a GoHighLevel-first experience. All browser evidence below is **local only** (isolated PGlite, fictional data, synthetic sign-in).
+
+| Area | Evidence | Result |
+| --- | --- | --- |
+| Client Integrations page | New pure card builder (`src/lib/integrations/client-tools.ts`) and `tests/client-integrations.test.ts` (6). Browser-checked as a native owner and a GoHighLevel owner at 1440 px, and at 390 px for overflow: native sees **iAcquire CRM** and **iAcquire Calendar** with real counts, no GoHighLevel CRM card, and an explicit “GoHighLevel is optional” notice; the GoHighLevel owner still sees its saved location, check state and calendar card. 0 axe violations (WCAG 2.0/2.1 A/AA), no horizontal overflow at either width, 0 console/page errors. | Implemented and browser-checked locally; no provider contacted |
+| Legacy Sales route | A native or hybrid workspace is redirected from `/sales` to `/crm/opportunities` instead of seeing “connect GoHighLevel”. Browser-verified: `/sales` finished at `/crm/opportunities` with the native CRM workspace rendered. GoHighLevel-owned workspaces keep the existing read-only view. | Implemented and browser-checked locally |
+| Agency fleet health | Native CRM data (contacts, native pipelines, active native calendars) or an activated setup counts as configured; a native client no longer needs a GoHighLevel location to be healthy. GoHighLevel workspaces keep the previous rule. `tests/setup-fleet-health.test.ts` (7); the agency clients table now shows the native QA client as “Partly connected” (agents offline) rather than disconnected. | Implemented locally; browser-checked badge |
+| Staging preparation | [staging-environment.md](staging-environment.md) now states the exact project, region, size, Free/Pro quota and monthly cost, required credentials, approval list and the end-to-end acceptance matrix. **No staging resource was created.** | Prepared; blocked on approval |
+| AQi Phase 3 hardening | Migration `0063` is in the repository and recorded as applied on hosted Supabase with 259 public tables. The browser groups were re-run after the dev-server timeout fixes: tablet 768/1024 px **16/16**, admin/Insights **12/12**; the branch record has the complete 65/65 across groups. | Local browser plus hosted migration recorded; staging acceptance still outstanding |
+
+The integrations-page axe run covers WCAG 2.0/2.1 A and AA only, not best-practice rules or a screen reader. It does not replace a staging run or a manual accessibility session.
+
 ### Native CRM Phase 6 acceptance (2026-10-19; local only)
 
 The feature matrix and scope notes are in [native-crm-parity.md](native-crm-parity.md); the isolated browser setup and reports are in [crm-local-qa.md](crm-local-qa.md).

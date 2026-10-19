@@ -1,5 +1,8 @@
+import { redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
+import { withUser } from "@/server/db";
 import { getSalesPipeline } from "@/server/queries/business";
+import { nativeCrmOwners } from "@/server/queries/dashboard";
 import { NotConnected } from "@/components/not-connected";
 import { SalesBoard } from "@/components/sales/sales-board";
 import { Handshake } from "lucide-react";
@@ -9,6 +12,12 @@ export const metadata = { title: "Sales Pipeline" };
 
 export default async function SalesPage() {
   const ctx = await requireOrgContext("sales.view");
+  // This is the GoHighLevel read-only sales view. iAcquire's own CRM has the full pipeline workspace, so a native or hybrid
+  // workspace goes there instead of seeing a "connect GoHighLevel" empty state.
+  if (ctx.org.kind === "client" && ctx.can("crm.view")) {
+    const owners = await withUser(ctx.user.id, (db) => nativeCrmOwners(db, ctx.org.orgId));
+    if (owners.opportunities) redirect("/crm/opportunities");
+  }
   const data = await getSalesPipeline(ctx);
   return (
     <div className="space-y-6">

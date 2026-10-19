@@ -4,6 +4,8 @@ import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { connectorsFor, connectorSummary } from "@/server/setup/connectors";
+import { fleetHealth } from "@/lib/setup/health";
+import type { CrmMode } from "@/lib/crm/types";
 import {
   assertAgencyAccess,
   clientTitle,
@@ -457,6 +459,8 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
       ghl_status: string | null;
       calendar_status: string | null;
       n8n_status: string | null;
+      crm_mode: CrmMode | null;
+      native_records: number;
       failed_checks: number;
       open_tickets: number;
       last_audit_at: Date | null;
@@ -471,6 +475,10 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
               (select g.status from ghl_location_mappings g where g.org_id = o.id) as ghl_status,
               (select s.status from integration_status s where s.org_id = o.id and s.provider = 'ghl_calendar') as calendar_status,
               (select s.status from integration_status s where s.org_id = o.id and s.provider = 'n8n') as n8n_status,
+              (select w.mode from crm_workspaces w where w.org_id = o.id) as crm_mode,
+              (select count(*)::int from contacts c where c.org_id = o.id and c.deleted_at is null)
+                + (select count(*)::int from crm_pipelines p where p.org_id = o.id and p.provider = 'native' and p.archived_at is null)
+                + (select count(*)::int from crm_calendars cal where cal.org_id = o.id and cal.status = 'active' and cal.archived_at is null) as native_records,
               (select count(*)::int from client_setup_checks c where c.org_id = o.id and c.status = 'failed') as failed_checks,
               (select count(*)::int from support_tickets t where t.org_id = o.id and t.status in ('open', 'in_progress')) as open_tickets,
               (select max(l.created_at) from audit_logs l where l.org_id = o.id and l.action <> 'agent.health_check') as last_audit_at
@@ -500,10 +508,18 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
     );
   });
   return rows.map((r) => {
-    const unhealthy = (s: string | null) => ["error", "disconnected", "needs_attention", "failed"].includes(s ?? "");
-    const failing = r.failed_checks > 0 || r.agents_failing > 0 || unhealthy(r.ghl_status) || unhealthy(r.calendar_status) || unhealthy(r.n8n_status);
-    const healthy = !failing && r.agents_enabled > 0 && r.agents_online === r.agents_enabled && r.ghl_status === "connected" && r.calendar_status === "connected" && r.n8n_status === "connected";
-    const none = r.agents_online === 0 && ![r.ghl_status, r.calendar_status, r.n8n_status].some((s) => s === "connected");
+    const level = fleetHealth({
+      agentsOnline: r.agents_online,
+      agentsEnabled: r.agents_enabled,
+      failedChecks: r.failed_checks,
+      failingAgents: r.agents_failing,
+      ghl: r.ghl_status,
+      calendar: r.calendar_status,
+      n8n: r.n8n_status,
+      crmMode: r.crm_mode,
+      setupState: r.state,
+      nativeRecords: r.native_records,
+    });
     const last = [r.last_task_at, r.last_audit_at].filter(Boolean).map((d) => new Date(d as Date).getTime());
     const total = r.total ?? 0;
     return {
@@ -529,7 +545,7 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
       },
       responsible: r.responsible_user_id ? { id: r.responsible_user_id, name: r.responsible_name || "Team member" } : null,
       health: {
-        level: failing ? "issue" : healthy ? "healthy" : none ? "not_connected" : "partial",
+        level,
         agentsOnline: r.agents_online,
         agentsEnabled: r.agents_enabled,
         ghl: r.ghl_status,
