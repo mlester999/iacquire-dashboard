@@ -25,7 +25,7 @@ knowledge, conversations, messages, feedback and usage records.
 | Citation validation and stale-knowledge warnings | Locally verified |
 | Intent-aware greetings, response length and page-context restraint | Locally verified; real DeepSeek greeting returned 8 words with no knowledge/page prompt |
 | Clickable authorized navigation | Locally verified; real DeepSeek navigation answer produced a validated `Integrations` markdown link |
-| Polished citations and source preview | Locally/browser verified: superscript markers, numbered readable source cards and preview modal |
+| Polished citations and source preview | Locally/browser verified: clean answer text, numbered readable source cards and preview modal |
 | Copy, like/dislike and undo | Browser verified: real clipboard result, Copied! state, persisted selected feedback, reason + optional comment |
 | RLS and user/tenant isolation | Locally verified |
 | Provider resolution and role-aware errors | Locally verified with connected DeepSeek, status/credential failures, recovery after negative cache, client-safe messages and Super Admin diagnostics |
@@ -173,14 +173,15 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   follow-up and citation style. Complex requests have a separate admin-configurable token budget
   because reasoning tokens count against the provider output budget; the same budget is reserved in
   cost accounting.
-- Adjacent citations are spaced and standalone citation lines are removed so `[K1][K4]` cannot render
-  as the misleading number “14”.
+- `[K#]` markers are private source references. They are removed from answer prose while the UI keeps
+  numbered, clickable source cards. Older saved answers are cleaned when loaded.
 - Responses must answer the question first and use plain conversational text for simple answers.
+- Responses avoid em dashes; the server replaces them with readable punctuation if the model uses one.
 - Authorized internal paths are converted server-side to human-labelled Markdown links; unauthorized
   or external links are removed. The browser also validates links against the authorized route list.
-- `[K#]` markers are internal. Valid markers are rendered as compact superscript numbers and the UI
-  shows numbered, clickable source cards with a readable approved-source snippet; unsupported markers
-  are removed. Sources are omitted when there are no valid citations.
+- `[K#]` markers are internal. The UI shows numbered, clickable source cards with a readable
+  approved-source snippet; unsupported markers are removed. Sources are omitted when there are no
+  valid citations.
 - Casual replies never get a forced Sources section.
 - The message toolbar supports real clipboard copy with a check/Copied state and immediate
   like/dislike feedback. The selected thumb and acknowledgement update before the database request

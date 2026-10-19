@@ -41,6 +41,7 @@ describe("AQi prompt behavior", () => {
     expect(prompt).toContain("fully resolves the request and has no worthwhile next question");
     expect(prompt).toContain("so the person can still ask the iAcquire team");
     expect(prompt).toContain("the app removes it before saving or showing the reply");
+    expect(prompt).toContain("Do not use em dashes (—)");
   });
 
   it("does not inject page context, knowledge or route lists into a greeting", () => {
@@ -76,6 +77,11 @@ describe("AQi prompt behavior", () => {
 });
 
 describe("AQi navigation normalization", () => {
+  it("replaces em dashes with readable punctuation in answers", () => {
+    expect(normalizeAqiLinks("Save a draft — then send it.", client)).toBe("Save a draft, then send it.");
+    expect(normalizeAqiLinks("Wait—.", client)).toBe("Wait.");
+  });
+
   it("turns a raw authorized path into a human-labelled markdown link", () => {
     expect(normalizeAqiLinks("Open /knowledge to review company documents.", client)).toContain("[Knowledge Center](/knowledge)");
   });
