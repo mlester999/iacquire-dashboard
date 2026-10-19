@@ -286,7 +286,7 @@ export async function listTenants(user: SessionUser): Promise<TenantListRow[]> {
          (select count(*)::int from organization_memberships m where m.org_id = o.id and m.status = 'active') as members,
          (select count(*)::int from agent_instances a where a.org_id = o.id and a.status in ('online', 'busy')) as agents_online,
          (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled) as agents_enabled,
-         (select count(*)::int from support_tickets t where t.org_id = o.id and t.status in ('open', 'in_progress')) as open_tickets,
+         (select count(*)::int from support_tickets t where t.org_id = o.id and t.status in ('new', 'open', 'in_progress')) as open_tickets,
          (select g.status from ghl_location_mappings g where g.org_id = o.id) as ghl_status,
          (select b.setup_payment_status from billing_accounts b where b.org_id = o.id) as setup_payment_status,
          (select coalesce(sum(u.quantity), 0)::int from usage_events u where u.org_id = o.id and u.kind = 'agent_message'

@@ -13,7 +13,7 @@ export interface PrivateFileInput { userId: string; orgId: string; bucket: Priva
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIMES: Record<PrivateBucket, string[]> = {
   "company-documents": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/markdown", "text/csv"],
-  "support-attachments": ["application/pdf", "image/png", "image/jpeg", "text/plain"],
+  "support-attachments": ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   "project-files": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg", "text/plain", "text/markdown", "text/csv"],
   "project-uploads": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg", "text/plain", "text/markdown", "text/csv"],
   "portfolio-assets": ["image/png", "image/jpeg", "image/webp"],
