@@ -10,6 +10,7 @@ import { classifyAqiError, logAqiError, providerAqiError, type AqiDiagnostic } f
 import { attachmentPromptContext, claimAqiAttachments, cleanupConversationAttachments, listAqiAttachments, type AqiAttachmentView } from "@/server/aqi/attachments";
 import { AQI_ROUTES, canOpenAqiRoute, matchAqiRoute, pageFor, type AqiRoute } from "@/lib/aqi/routes";
 import { canSeeAqiSuggestion, dedupeAqiSuggestions } from "@/lib/aqi/suggestions";
+import { AQI_NEXT_STEPS_CLOSE, AQI_NEXT_STEPS_OPEN, extractAqiNextSteps } from "@/lib/aqi/followups";
 import { classifyAqiIntent, intentLengthRule, type AqiIntent } from "@/lib/aqi/intent";
 import type { AqiViewer } from "@/server/aqi/access";
 import type { SessionUser } from "@/server/auth/service";
@@ -442,6 +443,12 @@ function systemPrompt(viewer: AqiViewer, config: AqiConfig, page: AqiPage | null
     : config.followUpBehavior === "always"
       ? "End with one useful follow-up question when it is natural."
       : "Ask a follow-up only when it would genuinely help; otherwise answer and stop.";
+  const nextStepsRule = [
+    `After the answer, append a private metadata block using this exact format: ${AQI_NEXT_STEPS_OPEN}{\"questions\":[\"...\",\"...\",\"...\"],\"support\":false}${AQI_NEXT_STEPS_CLOSE}`,
+    "Never mention or display this metadata in the answer; the app removes it before saving or showing the reply.",
+    "For a substantive answer, suggest 3 or 4 short, specific questions that naturally continue this conversation. These are separate optional prompt buttons and do not change the configured follow-up behavior of the visible answer. Do not repeat the user's request or a question already asked in the visible answer. Make each question safe to send as-is and answerable from AQi's approved knowledge and the person's permissions.",
+    "For a greeting or thanks, use an empty questions array and set support to false. If a substantive answer fully resolves the request and has no worthwhile next question, use an empty questions array and set support to true so the person can still ask the iAcquire team. Also set support to true when a person may be needed; otherwise set it to false. Never invent follow-up questions just to fill the list.",
+  ].join(" ");
   const prompt = [
     AQI_IMMUTABLE_POLICY.join("\n"),
     "",
@@ -456,6 +463,7 @@ function systemPrompt(viewer: AqiViewer, config: AqiConfig, page: AqiPage | null
     `Navigation behavior: ${config.navigationBehavior === "link_when_relevant" ? "When pointing to a page, use a markdown link with the human page name; never write a raw route." : "Explain the page name and only add a link when it clearly helps."}`,
     `Citation behavior: ${citationRule}`,
     `Follow-up behavior: ${followUpRule}`,
+    `Suggested next steps: ${nextStepsRule}`,
     `Safe fallback: ${config.fallbackInstructions}`,
     "",
     `Signed-in person: workspace role ${viewer.org?.role ?? viewer.agencyRole ?? "unknown"}.`,
@@ -489,6 +497,8 @@ export interface AqiMessageView {
   sources?: AqiSource[];
   citationWarning?: string | null;
   attachments?: AqiAttachmentView[];
+  suggestedQuestions?: string[];
+  suggestSupport?: boolean;
 }
 
 function iso(value: Date | string): string {
@@ -551,7 +561,7 @@ export async function getAqiConversation(viewer: AqiViewer, conversationId: stri
     );
     const conversation = rows[0];
     if (!conversation) throw new AppError("not_found", "Conversation not found.");
-    const { rows: messages } = await db.query<{ id: string; role: "user" | "assistant"; content: string; status: string; feedback_rating: number | null; feedback_comment: string | null; context: { sources?: AqiSource[]; citationWarning?: string | null } | null; created_at: Date }>(
+    const { rows: messages } = await db.query<{ id: string; role: "user" | "assistant"; content: string; status: string; feedback_rating: number | null; feedback_comment: string | null; context: { sources?: AqiSource[]; citationWarning?: string | null; suggestedQuestions?: string[]; suggestSupport?: boolean } | null; created_at: Date }>(
       `select id, role, content, status, feedback_rating, feedback_comment, context, created_at from aqi_messages
        where conversation_id = $1 and ($2::timestamptz is null or created_at < $2::timestamptz)
        order by created_at desc limit 31`,
@@ -572,6 +582,8 @@ export async function getAqiConversation(viewer: AqiViewer, conversationId: stri
         createdAt: iso(message.created_at),
         sources: Array.isArray(message.context?.sources) ? message.context.sources : undefined,
         citationWarning: message.context?.citationWarning ?? null,
+        suggestedQuestions: Array.isArray(message.context?.suggestedQuestions) ? message.context.suggestedQuestions : undefined,
+        suggestSupport: typeof message.context?.suggestSupport === "boolean" ? message.context.suggestSupport : undefined,
         attachments: attachmentMap.get(message.id),
       })),
       hasMore,
@@ -825,6 +837,9 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
 
   const started = Date.now();
   let content = "";
+  let modelOutput = "";
+  let streamTail = "";
+  let nextStepsStarted = false;
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
   const history = await withUser(viewer.user.id, async (db) => {
@@ -845,7 +860,8 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     return selected;
   });
 
-  const completionBudget = Math.min(2000, intent.kind === "complex" ? Math.max(configView.config.maxTokens, configView.config.complexMaxTokens) : configView.config.maxTokens);
+  const answerBudget = intent.kind === "complex" ? Math.max(configView.config.maxTokens, configView.config.complexMaxTokens) : configView.config.maxTokens;
+  const completionBudget = Math.min(2000, answerBudget + 140);
   let reservation: AqiReservation | null = null;
   try {
     reservation = await reserveAqiSpend(
@@ -874,14 +890,42 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
       temperature: configView.config.temperature,
     }, signal)) {
       if (event.type === "delta") {
-        content += event.text;
-        yield { type: "delta", text: event.text };
+        modelOutput += event.text;
+        if (!nextStepsStarted) {
+          streamTail += event.text;
+          const markerIndex = streamTail.indexOf(AQI_NEXT_STEPS_OPEN);
+          if (markerIndex >= 0) {
+            const visible = streamTail.slice(0, markerIndex);
+            if (visible) {
+              content += visible;
+              yield { type: "delta", text: visible };
+            }
+            streamTail = streamTail.slice(markerIndex);
+            nextStepsStarted = true;
+          } else {
+            // Keep a small tail so the private marker can be recognized even when the provider
+            // splits it across several stream chunks.
+            const safeLength = Math.max(0, streamTail.length - AQI_NEXT_STEPS_OPEN.length - 8);
+            const visible = streamTail.slice(0, safeLength);
+            if (visible) {
+              content += visible;
+              yield { type: "delta", text: visible };
+            }
+            streamTail = streamTail.slice(safeLength);
+          }
+        }
       } else {
         inputTokens = event.inputTokens ?? inputTokens;
         outputTokens = event.outputTokens ?? outputTokens;
       }
     }
     if (signal.aborted) throw new DOMException("aborted", "AbortError");
+    const nextSteps = extractAqiNextSteps(modelOutput);
+    if (!nextStepsStarted && nextSteps.content.startsWith(content)) {
+      const visible = nextSteps.content.slice(content.length);
+      if (visible) yield { type: "delta", text: visible };
+    }
+    content = nextSteps.content;
     if (!content.trim()) {
       await finishAqiMessage(viewer, prepared.assistantMessageId, "", "failed", "empty_response", model, inputTokens, outputTokens, Date.now() - started);
       await recordAqiUsage(viewer, {
@@ -906,17 +950,19 @@ export async function* runAqiTurn(viewer: AqiViewer, input: AqiTurnInput, signal
     content = normalizeAqiLinks(citation.content, viewer);
     const usedSources = citation.cited.map((index) => knowledge.sources[index - 1]).filter((source): source is AqiSource => Boolean(source));
     const actualInput = inputTokens ?? estimateAqiTokens(system) + estimateAqiTokens(history.map((row) => row.content).join("\n"));
-    const actualOutput = outputTokens ?? estimateAqiTokens(content);
+    const actualOutput = outputTokens ?? estimateAqiTokens(modelOutput);
     const costEstimated = inputTokens === undefined || outputTokens === undefined;
     const costMicros = reservation.price ? aqiCostMicros(reservation.price, actualInput, actualOutput) : null;
     await claimAqiAttachments(viewer, attachmentIds, prepared.conversationId, prepared.userMessageId);
     const message = await finishAqiMessage(viewer, prepared.assistantMessageId, content.slice(0, 20000), "complete", null, model, inputTokens, outputTokens, latencyMs);
     await withUser(viewer.user.id, (db) => db.query(
-      `update aqi_messages set context = jsonb_build_object('page', $2::text, 'sources', $3::jsonb, 'citationWarning', $4::text)
-       where id = $1 and user_id = $5`,
-      [prepared.assistantMessageId, page?.path ?? null, JSON.stringify(usedSources), citation.warning, viewer.user.id],
+      `update aqi_messages set context = jsonb_build_object('page', $2::text, 'sources', $3::jsonb, 'citationWarning', $4::text, 'suggestedQuestions', $5::jsonb, 'suggestSupport', $6::boolean)
+       where id = $1 and user_id = $7`,
+      [prepared.assistantMessageId, page?.path ?? null, JSON.stringify(usedSources), citation.warning, JSON.stringify(nextSteps.questions), nextSteps.suggestSupport, viewer.user.id],
     ));
     if (citation.warning) message.citationWarning = citation.warning;
+    message.suggestedQuestions = nextSteps.questions;
+    message.suggestSupport = nextSteps.suggestSupport;
     await recordAqiUsage(viewer, {
       reservationId: reservation.id,
       conversationId: prepared.conversationId,

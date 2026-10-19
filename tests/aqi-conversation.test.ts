@@ -32,6 +32,17 @@ describe("AQi conversational intent", () => {
 });
 
 describe("AQi prompt behavior", () => {
+  it("requests private, role-aware suggested questions and a support fallback", () => {
+    const prompt = buildAqiSystemPrompt(client, DEFAULT_AQI_CONFIG, null, emptyKnowledge, classifyAqiIntent("How do I invite a teammate?"));
+    expect(prompt).toContain("<aqi-next-steps>");
+    expect(prompt).toContain("3 or 4 short, specific questions");
+    expect(prompt).toContain("answerable from AQi's approved knowledge and the person's permissions");
+    expect(prompt).toContain("Also set support to true when a person may be needed");
+    expect(prompt).toContain("fully resolves the request and has no worthwhile next question");
+    expect(prompt).toContain("so the person can still ask the iAcquire team");
+    expect(prompt).toContain("the app removes it before saving or showing the reply");
+  });
+
   it("does not inject page context, knowledge or route lists into a greeting", () => {
     const prompt = buildAqiSystemPrompt(client, DEFAULT_AQI_CONFIG, { path: "/settings/integrations", label: "Integrations", description: "Connected services" }, emptyKnowledge, classifyAqiIntent("hey"));
     expect(prompt).toContain("Detected intent: greeting");

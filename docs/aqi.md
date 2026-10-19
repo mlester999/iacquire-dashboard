@@ -188,9 +188,18 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   preferences remove the movement and confetti.
 - Votes still persist to `aqi_messages.feedback_rating` and optional details to `feedback_comment`.
   A dislike saves on the first click; **Skip** only dismisses its optional reason/comment form.
-  Changes are serialized per message and rapid choices are coalesced, without locking other messages.
-  Closing the panel leaves saves running. A failed latest save restores the last confirmed value and
-  offers **Retry feedback**, including any details submitted with it.
+  Changes are serialized per message and rapid choices are coalesced, without locking other
+  messages. Closing the panel leaves saves running. A failed latest save restores the last confirmed
+  value and offers **Retry feedback**, including any details submitted with it.
+- Completed answers can include three or four role-aware follow-up prompts. The provider returns
+  them in a private response block that is removed before rendering and saving the answer. The
+  prompts are stored with the message's existing JSON context and remain available in saved chat
+  history; no migration is needed. When an answer resolves a substantive request without a useful
+  next question, or a person may need human help, AQi offers an **Open Support** action that opens
+  the existing support request flow. Greetings and thanks stay uncluttered. Missing or invalid
+  prompt metadata falls back to that support action.
+- File-size limits continue to be checked during upload. The composer no longer repeats those limits
+  in the small helper text below AQi.
 - Admin knowledge supports search and status filtering; conversation probes can test greetings and
   navigation without saving a conversation.
 

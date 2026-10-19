@@ -98,6 +98,8 @@ interface Message {
   sources?: Array<{ id: string; title: string; category: string; snippet?: string }>;
   citationWarning?: string | null;
   attachments?: AqiAttachment[];
+  suggestedQuestions?: string[];
+  suggestSupport?: boolean;
 }
 
 interface AqiAttachment {
@@ -1205,6 +1207,35 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                                     </div>
                                   ) : null}
                                   {message.citationWarning && <p className="mt-1.5 text-[10.5px] leading-snug text-warning-ink">{message.citationWarning}</p>}
+                                  {message.status !== "streaming" && ((message.suggestedQuestions?.length ?? 0) > 0 || message.suggestSupport) && (
+                                    <div className="mt-3 border-t border-line/70 pt-2.5">
+                                      {message.suggestedQuestions?.length ? (
+                                        <>
+                                          <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted"><Sparkles className="size-3 text-primary" aria-hidden /> Try asking next</p>
+                                          <div className="grid gap-1.5">
+                                            {message.suggestedQuestions.slice(0, 4).map((question) => (
+                                              <button
+                                                key={question}
+                                                type="button"
+                                                onClick={() => { setSendingSuggestion(question); void send(question).finally(() => setSendingSuggestion(null)); }}
+                                                disabled={streaming || Boolean(sendingSuggestion) || uploadsBusy}
+                                                className="group flex min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface-2/60 px-2.5 py-2 text-left text-[11.5px] leading-snug text-ink-2 transition-[border-color,background-color] hover:border-primary/30 hover:bg-primary-soft/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                              >
+                                                <span className="line-clamp-2">{question}</span>
+                                                {sendingSuggestion === question ? <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" aria-hidden /> : <ArrowUpRight className="size-3.5 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </>
+                                      ) : null}
+                                      {message.suggestSupport && (
+                                        <div className={cn("flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg bg-surface-2/70 px-2.5 py-2", message.suggestedQuestions?.length ? "mt-2" : "")}>
+                                          <span className="flex items-center gap-1.5 text-[11px] text-muted"><LifeBuoy className="size-3.5 shrink-0 text-primary" aria-hidden /> Need a person from iAcquire?</span>
+                                          <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Open Support <ArrowUpRight className="size-3" aria-hidden /></button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </>
                               ) : (
                                 <>
@@ -1336,7 +1367,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                       <input ref={fileInputRef} type="file" multiple hidden accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,.txt,.csv,.mp4,.webm" onChange={(event) => { if (event.target.files) void addFiles(event.target.files); event.target.value = ""; }} />
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
-                      <p className="text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.{limits ? ` Images up to ${limits.imageMaxMb} MB, documents up to ${limits.documentMaxMb} MB, video up to ${limits.videoMaxSeconds}s.` : ""}</p>
+                      <p className="text-[10.5px] text-faint">AQi can make mistakes. Check important details or ask Support.</p>
                       <button type="button" onClick={() => { setSupportOpen(true); setSupportError(null); setSupportResult(null); }} className="inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-primary hover:underline"><LifeBuoy className="size-3" /> Get help</button>
                     </div>
                   </div>
