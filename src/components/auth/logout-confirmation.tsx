@@ -73,14 +73,16 @@ export function LogoutConfirmationProvider({ children }: { children: React.React
         title="Log out of iAcquire?"
         description={unsaved
           ? <>Your {unsaved.label.toLowerCase()} has changes that may not be saved yet. {unsaved.secretLabel ? `Any ${unsaved.secretLabel} entered but not saved will be cleared.` : "Recent edits still being saved may be lost."}{unsavedEntries.length > 1 ? ` You also have ${unsavedEntries.length - 1} other unsaved change${unsavedEntries.length === 2 ? "" : "s"}.` : ""}</>
-          : "This ends your iAcquire session on this device. You can sign in again later."}
-        icon={unsaved ? <AlertTriangle /> : <LogOut />}
+          : "You'll be signed out of iAcquire on this device. You can sign in again anytime."}
+        icon={unsaved ? <AlertTriangle className="size-4" /> : <LogOut className="size-4" />}
+        iconClassName={unsaved ? "bg-warning-soft text-warning-ink" : "bg-danger-soft text-danger-ink"}
+        hideBodyWhenEmpty
         size="sm"
         footer={
           <>
             {unsaved && <Button variant="secondary" disabled={pending} onClick={() => { setOpen(false); router.push(unsaved.returnHref); }}>Return to save</Button>}
             <Button variant="secondary" disabled={pending} onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="danger" loading={pending} onClick={() => void confirmLogout()}>Log out</Button>
+            <Button variant="danger" className="bg-[#b42328] text-white hover:bg-[#981b1f]" loading={pending} onClick={() => void confirmLogout()}>Log out</Button>
           </>
         }
       >
