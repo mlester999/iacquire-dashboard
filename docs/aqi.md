@@ -10,7 +10,7 @@ Insights dashboard; the detailed Phase 3 record is [aqi-phase3.md](aqi-phase3.md
 
 | Capability | Status |
 | --- | --- |
-| Phase 3 visual guidance, tutorials, onboarding, tips, knowledge documents and Insights | **Implemented and locally/browser verified**; migration 0061 not applied hosted. See [aqi-phase3.md](aqi-phase3.md) |
+| Phase 3 visual guidance, tutorials, onboarding, tips, knowledge documents and Insights | **Implemented and locally/browser verified**; migration 0061 applied hosted 2026-10-19; staging acceptance not recorded. See [aqi-phase3.md](aqi-phase3.md) |
 | AQi identity, floating launcher and chat panel | Locally verified |
 | Real provider request path + token streaming | **Live controlled probe passed** against the existing production DeepSeek credential: `deepseek-flash`, OpenAI format, `OK` response and one real SSE delta; no customer data |
 | Streaming fallback for a non-SSE JSON answer | Locally verified |
@@ -408,8 +408,9 @@ text extraction, not a multimodal model call.
   SSO protected, so the full deployed AQi UI was not tested from this environment.
 - Phase 3 visual guidance, tutorials, onboarding, contextual tips, knowledge documents, freshness
   review and the Insights dashboard are implemented and locally/browser verified. Migration `0061`
-  is **not applied hosted**, and no staging or production deployment was made. See
-  [aqi-phase3.md](aqi-phase3.md) for evidence and the remaining release gates.
+  is **applied to hosted Supabase** (2026-10-19, after a backup). Staging acceptance and a post-deploy
+  production smoke test are still outstanding. See [aqi-phase3.md](aqi-phase3.md) for evidence and
+  the remaining release gates.
 - Temporary state is per browser tab. Another tab does not see an unsaved chat, and closing the tab
   cannot restore it; stale temporary rows are hidden immediately and purged after 24 hours.
 - AQi is mounted on portal, AI-employee chat and agency admin routes. Auth, setup/onboarding and

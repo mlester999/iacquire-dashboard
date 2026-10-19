@@ -111,6 +111,34 @@ The previously deployed build used its seeded `deepseek-chat` instead of the int
 
 AQi details: [aqi.md](aqi.md).
 
+### AQi Phase 3 — guidance, tutorials and Insights (2026-10-19; local and browser verified)
+
+Details, honest limits and release gates: [aqi-phase3.md](aqi-phase3.md).
+
+| Gate | Result |
+| --- | --- |
+| Migration 0061 schema, RLS, seeded 16-tutorial library and tips | Locally verified (`tests/aqi-migration-0061.test.ts`, 6 tests); guarded rollback (`tests/aqi-migration-0061-rollback.test.ts`, 2) |
+| Target registry, definition validation and intent matching | Locally verified (`tests/aqi-tutorial-engine.test.ts`, 9); every seeded target exists |
+| Progress persistence, permissions, pause/resume, version change and route verification | Locally verified; browser verified for refresh/resume and verified contact creation |
+| Tutorial admin draft/publish/duplicate/archive/rollback and structural preview | Locally verified (`tests/aqi-tutorial-admin.test.ts`, 6); browser verified for library, validation and draft spotlight preview |
+| Chat guide offer and structured message guide | Locally verified (`tests/aqi-guide-chat.test.ts`, 2); greeting/unrelated turns are not offered a tutorial |
+| Onboarding preferences and contextual tips | Locally verified (`tests/aqi-onboarding-tips.test.ts`, 6); browser verified for welcome dismissal and a tip-launched walkthrough |
+| Knowledge document ingestion and freshness | Locally verified (`tests/aqi-knowledge-documents.test.ts`, 5) using the existing PDF/DOCX extractor |
+| Insights real aggregates, filters, privacy and empty states | Locally verified (`tests/aqi-insights.test.ts`, 4); browser verified for real sections and empty state |
+| Typecheck / lint / production build | Passed; build compiled and emitted all new routes including `/admin/aqi/insights` |
+| Full regression suite | **2,964 tests in 173 files passed** (`npm test -- --maxWorkers=2`), including the 40 new Phase 3 tests and the RLS init-plan guard |
+| Desktop/mobile/admin browser QA | `scripts/aqi-guidance-browser-qa.mjs`: **33/33 checks**, 0 console/page errors, 0 failed requests, 0 5xx, 0 serious/critical axe findings in tested states; 1440 px and 390 px |
+| Hosted migration 0061 | **Applied 2026-10-19** after a custom-format `pg_dump` backup; hosted pending migrations are now **none**. Verified: **258 public tables**, 16 published tutorials with 16 published versions, 6 tips, RLS enabled on the tutorial tables, no `iaq_app_user` grant on `aqi_knowledge_documents`, review columns present, new usage-event kinds present |
+| Staging / production | **Not staging-verified.** Production deployment is triggered by the authorized master push; no staging acceptance run and no post-deploy browser smoke test have been recorded yet |
+| Live chat `Show me how` with a real provider | **Not verified in a browser**; the QA provider is disabled. Server tests prove the stored guide action |
+
+Browser QA used real Chromium against the isolated PGlite CRM QA server and fictional data only.
+It verified spotlight-to-element alignment (within 10 px), tooltip/target non-overlap, a modal target,
+the contact detail completion route and verified badge, pause/reload/resume at the same step, the
+390 px sheet, Super Admin tutorial validation/preview and the Insights empty state. It does **not**
+establish staging identity or a live-provider chat action. The hosted schema was verified separately
+with read-only queries after migration 0061.
+
 ### Website Studio rebuild (2026-10-15, migration 0026)
 
 Details and the honest scope are in [website-studio.md](website-studio.md); the apply plan is [website-studio-migration-0026.md](website-studio-migration-0026.md).

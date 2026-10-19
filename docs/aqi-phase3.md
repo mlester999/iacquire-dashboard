@@ -1,7 +1,8 @@
 # AQi Phase 3 — intelligent visual guidance
 
-Status: **implemented and locally verified; no hosted migration, staging deployment or production
-deployment was made.**
+Status: **implemented and locally/browser verified; migration 0061 applied to hosted Supabase on
+2026-10-19 after a backup. Staging acceptance and production post-deploy smoke testing have not been
+recorded.**
 
 Phase 3 turns AQi from an assistant that explains where to click into an assistant that can show the
 real, authorized interface and walk a person through a workflow. It reuses the Phase 2 conversation,
@@ -74,8 +75,15 @@ tutorial events or uploaded documents; tests prove both the guard and the clean 
 The next migration in the repository after this one is `0062_agency_manager_blueprint_permissions`.
 Phase 3 requires `0047`, `0048` and `0052` to be applied first; the repository migration runner enforces
 these prerequisites. Progress and tutorial-event RLS is owner-only (`user_id = app.current_user_id()`),
-so it needs no statement-level permission helper and remains independent of `0060`. Hosted Supabase is
-recorded through `0058`; `0059`, `0060`, `0061` and `0062` are **not applied**.
+so it needs no statement-level permission helper and remains independent of `0060`.
+
+**Hosted state (2026-10-19):** hosted Supabase now records `0001`–`0062` with **no pending migrations**.
+`0061` was applied alone with `npm run db:migrate -- --only 0061_aqi_phase3_guidance` after a
+custom-format `pg_dump` backup
+(`.data/backups/pre-aqi-phase3-20261019T113320.dump`, 4,172 TOC entries). Read-only verification:
+258 public tables, 16 published tutorials with 16 published versions, 6 tips, RLS on the tutorial
+tables, no `iaq_app_user` grant on `aqi_knowledge_documents`, review columns present and the new
+usage-event kinds present.
 
 ## Verification
 
@@ -103,18 +111,17 @@ Not verified here:
   action; the QA provider is disabled);
 - tablet widths other than desktop/390 px;
 - a manual screen-reader session;
-- hosted `0061` application, staging or production;
+- staging acceptance and a post-deploy production smoke test;
 - a real production analytics dataset.
 
 ## Release requirements
 
-1. Apply `0059`, `0060`, `0061` and `0062` to a staging copy in order, after a verified backup; do not
-   apply them to production directly.
+1. Run the same migration set against a staging copy and repeat the read-only verification there.
 2. Confirm RLS, the seeded tutorial library and the absence of browser grants on
    `aqi_knowledge_documents` in staging.
 3. Run the browser QA against staging with a real provider and a test tenant.
 4. Confirm the `company-documents` private bucket is available for platform knowledge, and test one
    PDF/DOCX upload, extraction, review and publishing.
 5. Confirm Insights against real staging events and that an empty period shows an empty state.
-6. Only then promote through the normal controlled release process. No push, deploy or hosted
-   migration was performed by this work.
+6. After the authorized master push, run a production smoke test of `/admin/aqi`, a tutorial start and
+   the Insights empty state. Hosted `0061` is applied; staging acceptance is still outstanding.
