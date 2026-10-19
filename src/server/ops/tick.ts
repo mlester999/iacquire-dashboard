@@ -106,6 +106,41 @@ export const JOBS: ScheduledJob[] = [
   { name: "setupEvidence", run: async () => ((await withinInterval("setupEvidence", 15)) ? 0 : await reconcileAllSetupInstances()) },
 ];
 
+/**
+ * One scheduler tick at a time. Vercel Cron (or any external scheduler) can overlap a slow run; this lease row makes a second
+ * invocation return without doing any work. It is not based on `last_finished_at` alone: a crashed run is reclaimable after five
+ * minutes, while a normal run is finished and reclaimable after thirty seconds. The individual jobs are already idempotent.
+ */
+export async function claimSchedulerTick(): Promise<boolean> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ job_name: string }>(
+      `insert into worker_job_runs (job_name, last_started_at, last_finished_at)
+       values ('scheduler_tick', now(), null)
+       on conflict (job_name) do update
+         set last_started_at = now(), last_finished_at = null
+         where (worker_job_runs.last_finished_at is not null and worker_job_runs.last_finished_at < now() - interval '30 seconds')
+            or worker_job_runs.last_started_at < now() - interval '5 minutes'
+       returning job_name`,
+    ),
+  );
+  return rows.length > 0;
+}
+
+/** Releases the tick lease. Best effort: a failure here is reclaimed by the five-minute stale-run rule. */
+export async function finishSchedulerTick(ok: boolean, error: string | null = null): Promise<void> {
+  await withSystem((db) =>
+    db.query(
+      `update worker_job_runs set last_finished_at = now(),
+         last_success_at = case when $1 then now() else last_success_at end,
+         last_failure_at = case when $1 then last_failure_at else now() end,
+         consecutive_failures = case when $1 then 0 else consecutive_failures + 1 end,
+         last_error = case when $1 then null else $2 end
+       where job_name = 'scheduler_tick'`,
+      [ok, error],
+    ),
+  ).catch(() => undefined);
+}
+
 export async function runScheduledJobs(): Promise<Record<string, number | string>> {
   const ran: Record<string, number | string> = {};
   const outcome = await runJob("tick", async () => {

@@ -1,4 +1,7 @@
 export async function registerNode() {
+  // Fail fast, before any connection or startup job, when development is pointed at a remote database without an explicit opt-in.
+  const { assertSafeDevelopmentDatabase } = await import("@/server/env");
+  assertSafeDevelopmentDatabase();
   const { logSafeServerDiagnostic } = await import("@/server/diagnostics");
   // Runs that were streaming when the previous server process stopped can never finish; mark
   // them interrupted so the UI never shows a stale "in progress" state.

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
-import { JOBS, runScheduledJobs } from "@/server/ops/tick";
+import { JOBS, claimSchedulerTick, finishSchedulerTick, runScheduledJobs } from "@/server/ops/tick";
 import { listJobRuns, runJob } from "@/server/ops/jobs";
 import {
   acknowledgeIncident, addIncidentNote, applyCollector, escalateUnacknowledged, incidentTimeline, listIncidentsForAgency, listIncidentsForClient, recordUnhealthy,
@@ -371,12 +371,25 @@ describe("the scheduler cannot report its own death, so something else watches i
     expect((await withSystem((db) => db.query("select 1 from incidents where dedupe_key = 'scheduler:stale' and status <> 'resolved'"))).rows).toHaveLength(0);
   });
 
+  it("serializes an overlapping tick and reclaims a crashed one", async () => {
+    await withSystem((db) => db.query("delete from worker_job_runs where job_name = 'scheduler_tick'"));
+    expect(await claimSchedulerTick()).toBe(true);
+    expect(await claimSchedulerTick()).toBe(false);
+    await finishSchedulerTick(true);
+    // A just-finished run sits inside the 30-second overlap window.
+    expect(await claimSchedulerTick()).toBe(false);
+    // A crashed run (or one older than the window) is reclaimed.
+    await withSystem((db) => db.query("update worker_job_runs set last_finished_at = now() - interval '40 seconds' where job_name = 'scheduler_tick'"));
+    expect(await claimSchedulerTick()).toBe(true);
+    await finishSchedulerTick(true);
+  });
+
   it("is checked from the public liveness probe without revealing anything", async () => {
     await runJob("tick", async () => 1);
     await setLast(120);
     const res = await healthRoute();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok", database: "ok" });
+    expect(await res.json()).toEqual({ status: "ok", database: "ok", scheduler: "stale" });
     expect((await withSystem((db) => db.query("select 1 from incidents where dedupe_key = 'scheduler:stale' and status <> 'resolved'"))).rows).toHaveLength(1);
   });
 });

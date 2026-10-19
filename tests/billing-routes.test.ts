@@ -6,10 +6,11 @@ const CRON = "cron-secret-for-route-tests-0123456789";
 process.env.PAYMONGO_SECRET_KEY = "sk_test_routekey123";
 process.env.PAYMONGO_WEBHOOK_SECRET = WEBHOOK_SECRET;
 process.env.CRON_SECRET = CRON;
+process.env.SCHEDULER_ENABLED = "true";
 
 import { resetEnvCache } from "@/server/env";
 import { POST as webhook } from "@/app/api/webhooks/paymongo/route";
-import { POST as tick } from "@/app/api/internal/tick/route";
+import { POST as tick, GET as tickGet } from "@/app/api/internal/tick/route";
 import { withSystem } from "@/server/db";
 import { createOrg } from "./support/fixtures";
 
@@ -52,10 +53,13 @@ describe("PayMongo webhook route", () => {
 
 describe("worker tick route", () => {
   const call = (headers: Record<string, string>) => tick(new Request("http://localhost/api/internal/tick", { method: "POST", headers }));
+  const callGet = (headers: Record<string, string>) => tickGet(new Request("http://localhost/api/internal/tick", { method: "GET", headers }));
 
   it("requires the shared secret", async () => {
     expect((await call({})).status).toBe(401);
     expect((await call({ authorization: "Bearer wrong-secret-value-wrong-secret" })).status).toBe(401);
+    // Vercel Cron calls with GET; it is the same authenticated handler, never a cookie or query parameter.
+    expect((await callGet({})).status).toBe(401);
   });
 
   it("runs the idempotent jobs when authorized", async () => {
@@ -72,6 +76,20 @@ describe("worker tick route", () => {
     expect(json.ran.expiredReservations).toBeGreaterThanOrEqual(1);
     const { rows } = await withSystem((db) => db.query<{ reserved_micros: string }>("select reserved_micros from credit_accounts where org_id = $1", [org.id]));
     expect(Number(rows[0].reserved_micros)).toBe(0);
+  });
+
+  it("stays off until SCHEDULER_ENABLED is explicitly true", async () => {
+    const saved = process.env.SCHEDULER_ENABLED;
+    process.env.SCHEDULER_ENABLED = "false";
+    resetEnvCache();
+    try {
+      const res = await call({ authorization: `Bearer ${CRON}` });
+      expect(res.status).toBe(503);
+      expect((await res.json()) as { error: string }).toMatchObject({ error: expect.stringContaining("SCHEDULER_ENABLED") });
+    } finally {
+      process.env.SCHEDULER_ENABLED = saved;
+      resetEnvCache();
+    }
   });
 
   it("stays off when no secret is configured", async () => {

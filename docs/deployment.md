@@ -60,18 +60,23 @@ their GoHighLevel location and employee profiles, following [integrations-setup.
 
 Messaging, follow-ups, appointment reminders, retention programs, website enquiries, health checks, incident detection, fair-use checks, inactivity
 review and offboarding reminders all run from **one** endpoint, `POST /api/internal/tick`, authorized by `Authorization: Bearer $CRON_SECRET`
-(24+ random characters). Call it every one to two minutes from your host's scheduler. Each job is idempotent, so overlapping or repeated calls
-are safe, and a failing job never stops the others. See [operations-and-incidents.md](operations-and-incidents.md).
+(24+ random characters). Call it every one to two minutes from your host's scheduler. Each job is idempotent, overlapping invocations are
+serialized by a short database lease, and a failing job never stops the others. Two switches are required: `CRON_SECRET` **and**
+`SCHEDULER_ENABLED=true`. Deploying a scheduler definition cannot start outbound work by itself. See
+[production-scheduler.md](production-scheduler.md) for architecture options, approval steps and rollback.
 
 | Variable | Purpose |
 | --- | --- |
 | `CRON_SECRET` | Authorizes `/api/internal/*`. Without it the scheduler cannot run and **no queued message is ever sent** |
+| `SCHEDULER_ENABLED` (default false) | Second deliberate switch. Must be `true` before any job runs, even with a valid secret |
 | `SCHEDULER_STALE_MINUTES` (default 20) | Minutes without a heartbeat before a "scheduled jobs stopped" incident opens |
 | `OFFBOARDING_PURGE_ENABLED` (default false) | Permanent deletion of a departed client's data. Leave off until a backup restore has been proven (see [offboarding-and-export.md](offboarding-and-export.md)) |
 | `SITES_BASE_DOMAIN`, `SITES_CNAME_TARGET`, `SITES_FORM_SECRET`, `SITES_PROBE_ORIGIN`, `DEPLOYMENT_ROLE` | Website Studio. Serve published sites from their own deployment (`DEPLOYMENT_ROLE=sites`) with wildcard DNS and certificate, see [website-studio.md](website-studio.md) |
 | `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, `PAYMONGO_PAYMENT_METHODS` | Credit top-ups. Start with **test** keys; live checkout needs the live-payments review recorded in `/admin/billing` |
 
-Also point an external uptime monitor at `GET /api/health`: it is where the scheduler-freshness check runs from, because a stopped scheduler cannot report itself.
+Also point an external uptime monitor at `GET /api/health`: it is where the scheduler-freshness check runs from, because a stopped scheduler
+cannot report itself. The response includes `scheduler: "fresh" | "stale" | "never_ran" | "unknown"`; alert on `never_ran`/`stale` without
+treating the web tier as down.
 
 ## Operations
 

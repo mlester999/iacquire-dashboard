@@ -26,27 +26,25 @@ Integrations Manager, provisioning and activation review) for iAcquire staff.
 The Hostinger appointment-event PostgreSQL and n8n's internal database are separate systems and are
 never used by the portal.
 
-## Quick start (local synthetic demo)
+## Quick start (safe local synthetic demo)
 
-The default configuration needs Supabase and shows a clear configuration notice until it is connected.
-For a disposable local demo, opt in explicitly in `.env.local` (development and tests only; production
-refuses it):
+`npm run dev` loads `.env.development`, which uses the embedded PGlite database and local sign-in. It does **not** connect to the
+hosted Supabase project, and it refuses a remote database unless `ALLOW_REMOTE_DB_IN_DEV=true` is set explicitly. See
+[docs/development-database-safety.md](docs/development-database-safety.md).
 
 ```bash
 npm install
-cp .env.example .env.local          # then uncomment AUTH_PROVIDER=local and DATABASE_DRIVER=pglite,
-                                    # and set APP_ENCRYPTION_KEY (32+ random characters)
-npm run db:seed -- --demo --mock-hermes http://127.0.0.1:8787
+npm run db:seed:local -- --demo --mock-hermes http://127.0.0.1:8787
 npm run mock:hermes                 # optional: local Hermes test double on :8787 (labelled, not a live AI)
-npm run dev                         # http://localhost:3000
+npm run dev                         # http://localhost:3100
 ```
 
-Local mode uses an embedded PostgreSQL (PGlite) in `.data/pglite`, migrated automatically on first use.
+Local mode uses an embedded PostgreSQL (PGlite) in `.data/pglite-development`, migrated automatically on first use.
 `--demo` creates a clearly labelled demo workspace with fictional sample records plus a second, empty
 tenant for isolation checks. Demo passwords are random and written to `.data/dev-credentials.local.json`
 (gitignored). Captured emails (verification, reset, invitations) are viewable at `/dev/mailbox`
-in development only. To connect a real development project, follow
-[docs/supabase-setup.md](docs/supabase-setup.md) instead.
+in development only. To work against an approved staging project, follow
+[docs/staging-environment.md](docs/staging-environment.md); never point ordinary development at production.
 
 | Account | Role |
 | --- | --- |

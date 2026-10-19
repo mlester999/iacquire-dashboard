@@ -65,6 +65,8 @@ export const CRM_QA_ENV = {
   SITES_FORM_SECRET: "local-crm-qa-only-form-secret-0123456789",
   // Lets the browser run ask this local server to process queued work (form submissions) once, on its configured loopback port only.
   CRON_SECRET: "local-crm-qa-only-cron-secret-0123456789abcdef",
+  // The isolated QA harness is allowed to run scheduled jobs so the worker path is exercised; production keeps this false.
+  SCHEDULER_ENABLED: "true",
   INTEGRATION_ALLOWED_HOSTS: "",
 
   // Email is captured in the local database, never sent.
@@ -205,6 +207,7 @@ export function assertIsolated({ root = path.resolve(import.meta.dirname, ".."),
   if (env.EMAIL_PROVIDER !== "capture") problems.push("EMAIL_PROVIDER must be capture");
   if (env.HELP_LLM_PROVIDER !== "none") problems.push("HELP_LLM_PROVIDER must be none");
   if (env.NEXT_TELEMETRY_DISABLED !== "1") problems.push('NEXT_TELEMETRY_DISABLED must be "1"');
+  if (env.SCHEDULER_ENABLED !== "true") problems.push("SCHEDULER_ENABLED must be \"true\" in the isolated QA harness");
   if (env.SECRET_STORE !== "vault") problems.push("SECRET_STORE must be vault (fails closed on the embedded database, so no credential is ever stored)");  if (problems.length) throw new Error(`The CRM QA environment is not isolated: ${problems.join("; ")}.`);
   return { checkedFiles: checked, pinned: Object.keys(env).length };
 }

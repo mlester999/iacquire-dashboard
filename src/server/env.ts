@@ -16,6 +16,9 @@ const schema = z.object({
   APP_URL: z.string().url().default("http://localhost:3000"),
   DATABASE_DRIVER: z.enum(["pglite", "pglite-memory", "postgres"]).optional(),
   DATABASE_URL: z.string().optional(),
+  // Development refuses a remote Postgres database unless this is explicitly true. It is a guard against
+  // `npm run dev` / scripts silently writing to the hosted Supabase project; it has no effect in production.
+  ALLOW_REMOTE_DB_IN_DEV: bool,
   // Supabase's root CA (PEM text, or a file path) so database TLS can be verified. Required in production.
   DATABASE_SSL_CA: z.string().optional(),
   DATABASE_SSL_CA_FILE: z.string().optional(),
@@ -64,6 +67,9 @@ const schema = z.object({
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
   // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
   CRON_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
+  // Second, deliberate switch for the scheduled worker. Both this and CRON_SECRET must be set before any job can run, so deploying
+  // the scheduler configuration cannot start outbound work by itself. Off unless explicitly enabled.
+  SCHEDULER_ENABLED: bool,
   // The scheduler is reported as stopped when its last completed run is older than this. Set it to a few times the schedule interval.
   SCHEDULER_STALE_MINUTES: z.coerce.number().int().min(2).max(1440).default(20),
   // Website Studio. Included sites live at <label>.<SITES_BASE_DOMAIN>; custom domains point (CNAME) at SITES_CNAME_TARGET.
@@ -124,6 +130,22 @@ export function env(): Env {
   const leaks = checkSupabaseConfig(process.env, false).filter((p) => p.code === "secret_in_public_var");
   if (leaks.length) throw new Error(leaks.map((p) => p.message).join(" "));
   if (value.SECRET_STORE === "test-memory" && value.NODE_ENV !== "test") throw new Error("SECRET_STORE=test-memory is allowed only in tests.");
+  // Development must never reach a hosted database by accident. The sample `.env` historically pointed `npm run dev` and the
+  // maintenance scripts at the production Supabase project; one manual test could then change real client data. Local PGlite is
+  // the safe default (see .env.development). Remote development is still possible, but only as an explicit, visible opt-in.
+  if (value.NODE_ENV === "development" && driver === "postgres" && value.DATABASE_URL?.trim() && !isLocalDatabaseHost(value.DATABASE_URL)) {
+    let host = "the configured remote host";
+    try { host = new URL(value.DATABASE_URL).hostname; } catch { /* fall back to the generic description */ }
+    if (!value.ALLOW_REMOTE_DB_IN_DEV) {
+      throw new Error(
+        `Refusing to run development against a remote database (${host}). ` +
+          "Local development defaults to the embedded database in .env.development. " +
+          "If this remote database is intentional (for example a dedicated staging project), set ALLOW_REMOTE_DB_IN_DEV=true explicitly. " +
+          "Production ignores this guard.",
+      );
+    }
+    console.warn(`[iacquire] DEVELOPMENT is connected to a remote Postgres database (${host}); writes affect that environment.`);
+  }
   if (value.NODE_ENV === "production") {
     if (authProvider === "local") {
       throw new Error(
@@ -155,6 +177,15 @@ export function env(): Env {
 }
 
 export const isProduction = () => env().NODE_ENV === "production";
+
+/**
+ * Called once when the Node server starts. It exists separately from `env()` because startup work catches and logs its own
+ * failures; a misconfigured development database must stop the process instead of being swallowed and failing per request.
+ */
+export function assertSafeDevelopmentDatabase(): void {
+  // env() performs the check (and warns once when a remote development database was explicitly allowed).
+  env();
+}
 
 /** Clears the cached configuration. Tests only. */
 export function resetEnvCache() {
