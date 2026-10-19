@@ -1,10 +1,9 @@
 # AQi Phase 3 — intelligent visual guidance
 
-Status: **Phase 3 is deployed in production at commit `ddd1804` (2026-10-19), and migration `0061` is
-applied to hosted Supabase. The hardening work in this branch is implemented, automated-test and
-browser verified locally; it is not pushed or deployed, and migration `0063` is not applied to
-production. Staging acceptance has not run.** The staging procedure is
-[aqi-phase3-staging-acceptance.md](aqi-phase3-staging-acceptance.md).
+Status: **Phase 3 hardening is merged to `master` and deployed in production on 2026-10-19. Migration
+`0061` was applied earlier and the hardening migration `0063` was applied on 2026-10-19 after a fresh
+backup. The work is automated-test and browser verified locally; staging acceptance has not run.** The
+staging procedure is [aqi-phase3-staging-acceptance.md](aqi-phase3-staging-acceptance.md).
 
 Phase 3 turns AQi from an assistant that explains where to click into an assistant that can show the
 real, authorized interface and walk a person through a workflow. It reuses the Phase 2 conversation,
@@ -66,11 +65,14 @@ independent of `0060`.
 Rollbacks: `0061` refuses to destroy progress, events or documents; `0063` drops history and restores
 v1 only when v2 is still the hardening version. Both are tested transactionally.
 
-**Hosted state (2026-10-19):** before this hardening branch, hosted Supabase recorded `0001`–`0062`
-with **no pending migrations**. `0061` was applied alone after a custom-format `pg_dump` backup
-(`.data/backups/pre-aqi-phase3-20261019T113320.dump`, 4,172 TOC entries). Read-only verification: 258
-public tables, 16 published tutorials/versions, 6 tips, RLS, no browser grant on documents, review
-columns and new usage kinds. **0063 is pending and was not applied.**
+**Hosted state (2026-10-19):** hosted Supabase records `0001`–`0063` with **no pending migrations**.
+`0061` was applied after a custom-format `pg_dump` backup; `0063` was applied separately on
+2026-10-19 after a second backup
+(`.data/backups/pre-aqi-hardening-20261019T155059.dump`, 4,264 TOC entries). Read-only verification:
+**259 public tables**, 16 published tutorials/versions, 6 tips, RLS on the tutorial and knowledge
+history tables, no `iaq_app_user` grant on `aqi_knowledge_documents` or `aqi_knowledge_versions`,
+review columns and new usage kinds present, `create-contact` v1 archived and v2 published with
+`contact_created` completion.
 
 ## Verification
 
@@ -119,11 +121,11 @@ Not verified here:
 1. Follow [aqi-phase3-staging-acceptance.md](aqi-phase3-staging-acceptance.md) in a separate staging
    project with test users.
 2. Apply migrations through `0063`, verify RLS, seed library, history table and the absence of browser
-   grants.
+   grants. (Production did this on 2026-10-19; staging still needs its own run.)
 3. Run `0063` rollback in a scratch database and verify progress preservation.
 4. Test the private `company-documents` bucket and one PDF/DOCX upload → draft → review → publish.
 5. Run the browser groups against staging with a real DeepSeek connection and record the model,
    request id and outcome. Run a manual screen-reader session.
 6. Confirm Insights against real staging events, including a custom date range and an empty period.
-7. Only then request explicit authorization for the production migration and push. Production
-   currently runs `ddd1804`; the hardening branch is not deployed.
+7. Only then request explicit authorization for another production migration or push. Production
+   currently runs the hardening merge; staging acceptance is still outstanding.

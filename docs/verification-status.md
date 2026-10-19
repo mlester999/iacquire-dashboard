@@ -118,8 +118,8 @@ Details, honest limits and release gates: [aqi-phase3.md](aqi-phase3.md). Stagin
 
 | Gate | Result |
 | --- | --- |
-| Migration 0061 schema, RLS, seeded 16-tutorial library and tips | Verified (`tests/aqi-migration-0061.test.ts`, 6); guarded rollback (2) |
-| **Migration 0063 knowledge history and contact v2** | Verified (`tests/aqi-migration-0063.test.ts`, 3) including transactional rollback; **not applied hosted** |
+| **Migration 0063 knowledge history and contact v2** | Verified (`tests/aqi-migration-0063.test.ts`, 3) including transactional rollback; **applied hosted 2026-10-19** |
+| Migration 0061 schema, RLS, seeded 16-tutorial library and tips | Verified (`tests/aqi-migration-0061.test.ts`, 6); guarded rollback (2); applied hosted 2026-10-19 |
 | Target registry, definition validation and intent matching | Verified (`tests/aqi-tutorial-engine.test.ts`, 10); every seeded target exists |
 | **Tutorial completion accuracy** | Verified: finish is not `verified`; route completion verifies navigation only; contact completion requires a CRM record created during the attempt. Wrong page, missing record and real record covered (`tests/aqi-tutorial-engine.test.ts`); admin nav wording (`tests/aqi-tutorial-admin.test.ts`, 7) |
 | Progress persistence, permissions, pause/resume, version change and click-to-advance | Verified; browser verified for refresh/resume and real contact creation |
@@ -133,9 +133,8 @@ Details, honest limits and release gates: [aqi-phase3.md](aqi-phase3.md). Stagin
 | Typecheck / lint / production build | Passed; build compiled and emitted all routes including `/admin/aqi/insights` |
 | Full regression suite | **2,987 tests in 177 files passed** (`npm test -- --maxWorkers=2`) |
 | Browser QA | **65/65 checks across six scenario groups**: desktop 14, resume/mobile 11, tablet 20, keyboard 5, error/retry 3, admin/insights 12; 0 unexpected console/page errors, 0 failed requests, 0 5xx, 0 serious/critical axe findings in tested states |
-| Hosted migration 0061 | **Applied 2026-10-19** after a custom-format `pg_dump` backup; hosted ledger had no pending migrations through 0062. Verified: 258 public tables, 16 published tutorials/versions, 6 tips, RLS, no `iaq_app_user` grant on documents, review columns and new usage kinds |
-| **Hosted migration 0063** | **Not applied**; requires explicit staging and production authorization |
-| Staging / production | **Not staging-verified.** Base Phase 3 is deployed at `ddd1804` (Vercel Production deployment succeeded). No authenticated post-deploy smoke test or staging acceptance run has been recorded |
+| Hosted migrations 0061 and 0063 | **Both applied 2026-10-19**, each after a custom-format `pg_dump` backup. Verified: **259 public tables**, 16 published tutorials/versions, 6 tips, RLS on tutorial and history tables, no `iaq_app_user` grant on documents or history, `create-contact` v2 `contact_created` published and v1 archived |
+| Staging / production | **Not staging-verified.** The hardening release is on `master` and production deployment is triggered by that push; no staging acceptance run or authenticated post-deploy smoke test has been recorded |
 | Live chat `Show me how` with a real provider | **Not verified in a browser**; the QA provider is disabled. Server tests prove the stored guide action |
 
 Browser QA used real Chromium against the isolated PGlite CRM QA server and fictional data only. It

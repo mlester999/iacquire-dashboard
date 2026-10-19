@@ -34,8 +34,8 @@ project and must not share the staging database or storage bucket.
 
 ## 3. Migration sequence
 
-Hosted production was observed at migration **0062** before this hardening work; `0061` was applied on
-2026-10-19. The new migration in this branch is **0063_aqi_phase3_hardening**:
+Hosted production applied `0061` on 2026-10-19 and `0063` later the same day, after explicit
+authorization and a fresh backup. The migration set is **0063_aqi_phase3_hardening**:
 
 - `0061` adds the Phase 3 tables, seed library and tips.
 - `0063` adds `aqi_knowledge_versions` and publishes a new `create-contact` version whose completion
@@ -45,8 +45,8 @@ Hosted production was observed at migration **0062** before this hardening work;
   read the actual ledger first with a read-only query.
 - Apply to staging in order with `npm run db:migrate`; do not use `--only` unless the ledger has been
   inspected and the missing set is known.
-- **Do not apply `0063` to production** without a separate explicit authorization, backup and smoke
-  plan.
+- `0063` was applied to production on 2026-10-19 under explicit authorization, after a backup and
+  read-only schema verification. A staging copy still needs its own run; do not re-apply it blindly.
 
 Verification after migration:
 
@@ -152,8 +152,8 @@ Run the browser suite against staging with `AQI_QA_URL`, or run the documented m
 1. Record the staging commit, migration ledger, backup and acceptance evidence.
 2. Obtain explicit authorization for the production migration and push.
 3. Back up production, apply only the reviewed migration set, verify the schema read-only.
-4. Push to `master`; Vercel's Production deployment is triggered by the push (observed deployment
-   records for `ddd1804`). Confirm the deployment status is `success`.
+4. Push to `master`; Vercel's Production deployment is triggered by the push. Confirm the deployment
+   status is `success` (the earlier `ddd1804` push was verified this way).
 5. Smoke test `/api/health`, `/login`, `/admin/aqi`, one tutorial, one knowledge read and Insights.
 6. Keep the previous deployment available for rollback. Do not delete production evidence or records.
 
