@@ -284,13 +284,13 @@ The previous pass added the card/spotlight/placement fixes and the browser QA de
 - `npm run typecheck`: pass.
 - `eslint src tests scripts --max-warnings=0`: pass.
 - Full unit suite: **3,046 / 3,046 tests passed across 185 files** (`vitest run --maxWorkers=2`,
-  738.83 s), exit 0.
+  664.17 s on the merged release tree), exit 0.
 - Browser: real login, dashboard, contacts, sidebar transitions and a real streamed AQi answer
   against the local mock provider; the six new tours were started through the real resume/tour UI.
 - New migration test: `tests/aqi-migration-0064.test.ts` verifies all six published definitions,
   their target coverage and the six contextual tips on a fresh migrated database.
-- Production build: `next build --turbopack` completed with **TypeScript passing** after the tour
-  changes; trace exclusion still holds (`/login` 3.4 MB, `/overview` 5.1 MB, 0 MB PGlite).
+- Production build: `next build --turbopack` completed with **TypeScript passing** on the merged
+  release tree; trace exclusion still holds (`/login` 3.4 MB, 0 MB PGlite).
 - **Not completed in this pass:** the deployed cold start and hosted-AQi TTFT cannot be measured
   until this commit is released. The production build run used placeholder Supabase configuration,
   so it validates compilation and tracing, not hosted runtime.
@@ -303,9 +303,10 @@ The previous pass added the card/spotlight/placement fixes and the browser QA de
 
 ## 7. Release boundary
 
-As of 2026-10-19, the verified release tree is the merge commit `524664f` (`master`), which contains
-the performance work (`2a4ebbb`), the build/test evidence (`9799672`, `95816a9`) and the six feature
-tours (`ed7a07d`). It is **ahead of `origin/master` and has not been pushed**.
+As of 2026-10-19, the verified release tree is the current `master` head, which contains the
+performance work (`2a4ebbb`), the build/test evidence (`9799672`, `95816a9`) and the six feature
+tours (`ed7a07d`), merged with the remote sign-out confirmation. It is **ahead of `origin/master`
+and has not been pushed**.
 
 Ordered release steps, each requiring the stated approval:
 
