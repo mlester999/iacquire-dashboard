@@ -77,9 +77,10 @@ consume quota or incur billing, so it was not run. Docker is not installed, so a
 local substitute.
 
 Prepared: [staging-environment.md](staging-environment.md) with the exact `supabase projects create` command, environment shape, migration
-command, test-identity plan and acceptance matrix, plus [`.env.staging.example`](../.env.staging.example). **Required action:** approve a
-separate staging project (and its cost) or provide an existing staging project/credentials. No production organizations, users or records
-were created.
+command, test-identity plan and acceptance matrix, plus [`.env.staging.example`](../.env.staging.example). The 2026-10-19 update adds the exact
+project/region/size, the Free vs Pro quota and monthly cost (Free $0 within the two-project limit; Pro about +$10/month for a second Micro
+project), the credentials list and the explicit approval checklist. **Required action:** approve a separate staging project (and its cost) or
+provide an existing staging project/credentials. No production organizations, users or records were created.
 
 ## 4. Workflow verification
 
