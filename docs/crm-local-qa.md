@@ -10,7 +10,7 @@ This harness exercises the Native CRM with fictional accounts and records in an 
 
 If another worktree already uses port 3230, set `CRM_QA_PORT` to an available port before starting the server and set the same value before running the browser sweep. For example, use `$env:CRM_QA_PORT='3231'` in PowerShell for both commands. The browser remains restricted to that exact loopback port.
 
-The local synthetic sign-in is intentionally refused by the app's production auth guard, so this harness uses development mode. The isolated QA server has a separate `.next-crm-qa` output directory and an 8 GiB Node heap cap. Each route is considered ready only when its hydrated main landmark contains a level-one heading, the route-loading fallback is gone, and that state remains stable for 500 ms. Next restarts its development worker when it approaches the heap threshold; if that interrupts a route's JavaScript chunks, the browser runner waits for the local server and retries that route once. The retry's errors remain visible in the report.
+The local synthetic sign-in is intentionally refused by the app's production auth guard, so this harness uses development mode. The isolated QA server has a separate `.next-crm-qa` output directory and an 8 GiB Node heap cap. Its supervisor takes a per-worktree lock at `.data/crm-qa/server.lock`, refuses a second server using the same data directory, and restarts the Next process if its development worker exits. On Windows, orphan cleanup only targets a listener whose recorded parent PID and command line match this worktree's isolated Next server. Each route is considered ready only when its hydrated main landmark contains a level-one heading, the route-loading fallback is gone, and that state remains stable for 500 ms. Next restarts its development worker when it approaches the heap threshold; if that interrupts a route's JavaScript chunks, the browser runner waits for the local server and retries that route once. The retry's errors remain visible in the report.
 
 Playwright is not a production dependency. If it is installed outside this repository, set `PLAYWRIGHT_MODULE` to its absolute `playwright/index.mjs` path before step 3. The QA runner uses Chromium and `axe-core` from the local dependencies.
 
@@ -18,7 +18,7 @@ The default run covers every listed client, agency, staff and public route for o
 
 Each visit records its status and final URL, render and landmark checks, page and console errors, failed and external requests, server errors, phone-width overflow, axe violations, and a full-page screenshot. Interaction results include a screenshot. Routes and interaction names can be listed without opening a browser:
 
-If a development navigation is interrupted by a connection reset, or a 200 response arrives with a failed JavaScript chunk, the runner waits for the isolated `/login` endpoint, stops the old document and retries that navigation once. It clears only errors tied to the confirmed server reset; other first-attempt errors and all retry errors remain in the report. A measurement interrupted by a client navigation is also retried once after the new document settles.
+If a development navigation is interrupted by a connection reset, or a 200 response arrives with a failed JavaScript chunk, the runner waits for the isolated `/login` endpoint, stops the old document and retries that navigation once. It clears only errors tied to the confirmed server reset; other first-attempt errors and all retry errors remain in the report. Streamed App Router redirects are followed to their final same-origin destination, including when the browser reaches that destination before the checker starts waiting for the URL event. A measurement interrupted by a client navigation is also retried once after the new document settles.
 
 ```powershell
 node scripts/crm-browser-qa.mjs --list
@@ -37,6 +37,10 @@ The run accepts repeatable `--only` patterns plus `--viewports`, `--themes`, and
 The runner exits nonzero if a request leaves the QA origin, a server returns 5xx, the run is interrupted, an interaction fails, or any route has a render, browser, layout, screenshot or axe failure. The full machine-readable and Markdown reports are `.data/crm-qa/report.json` and `.data/crm-qa/report.md`; screenshots are under `.data/crm-qa/screens/`.
 
 ## Acceptance evidence
+
+### Focused redirect recheck (2026-10-19)
+
+The owner calendar shortcut (`/appointments`) reached `/crm/calendar`, the owner CRM settings shortcut (`/crm/settings`) reached `/crm/settings/provider`, and a sales representative opening `/crm/workflows` reached the denied overview at `/overview?denied=1`. The final provider-settings replay passed after the redirect check was changed to poll the current URL, preventing a streamed navigation from being missed between a URL check and event-listener registration. Each focused replay had 0 external requests, 5xx responses, console errors, page errors, failed requests, and axe violations. Screenshots are `owner-appointments-1280-light.png`, `owner-crm-settings-1280-light.png`, and `sales_rep-crm-workflows-1280-light.png` under the ignored `.data/crm-qa/screens/` folder. These focused replays supplement the broader matrix below; they are not a replacement for it.
 
 ### Post-merge check (2026-10-19)
 

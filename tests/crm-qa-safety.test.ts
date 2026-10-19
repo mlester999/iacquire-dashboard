@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CRM_QA_ENV, assertIsolated } from "../scripts/crm-qa-env.mjs";
-import { clearDevRestartNoise, exitCodeFor, isDevRestartInterruption, isLocalUrl } from "../scripts/crm-browser-qa.mjs";
+import { clearDevRestartNoise, exitCodeFor, isDevRestartInterruption, isLocalUrl, isRedirectTargetCurrent, parseNextRedirectMeta } from "../scripts/crm-browser-qa.mjs";
 
 const roots: string[] = [];
 
@@ -88,6 +88,27 @@ describe("CRM browser QA stays isolated", () => {
     expect(isDevRestartInterruption(navigationFailure, "Expected redirect: net::ERR_CONNECTION_REFUSED")).toBe(true);
     clearDevRestartNoise(navigationFailure, { clearConnections: true });
     expect(navigationFailure.failedRequests).toEqual([]);
+  });
+
+  it("recognizes same-origin document, API, and asset connection resets even when navigation returned 200", () => {
+    for (const url of ["/crm/contacts", "/api/aqi/health", "/_next/static/chunks/app/layout.js"]) {
+      expect(isDevRestartInterruption({ failedRequests: [{ url, error: "net::ERR_CONNECTION_REFUSED" }] }), url).toBe(true);
+    }
+    expect(isDevRestartInterruption({ failedRequests: [{ url: "/api/crm", error: "net::ERR_FAILED" }] })).toBe(false);
+  });
+
+  it("parses same-origin streamed redirects emitted by the App Router", () => {
+    const target = parseNextRedirectMeta("1;url=/overview?denied=1", "http://127.0.0.1:3230/crm/workflows");
+    expect(target?.pathname).toBe("/overview");
+    expect(target?.search).toBe("?denied=1");
+    expect(parseNextRedirectMeta("not a redirect", "http://127.0.0.1:3230/crm/workflows")).toBeNull();
+  });
+
+  it("accepts a streamed redirect destination that the browser already reached", () => {
+    const target = new URL("http://127.0.0.1:3230/overview?denied=1");
+    expect(isRedirectTargetCurrent("http://127.0.0.1:3230/overview?denied=1", target)).toBe(true);
+    expect(isRedirectTargetCurrent("http://127.0.0.1:3230/overview", target)).toBe(false);
+    expect(isRedirectTargetCurrent("http://localhost:3230/overview?denied=1", target)).toBe(false);
   });
 });
 
