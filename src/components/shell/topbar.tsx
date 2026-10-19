@@ -28,10 +28,10 @@ import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
 import { CLIENT_NAV } from "@/components/shell/sidebar";
+import { useLogoutConfirmation } from "@/components/auth/logout-confirmation";
 import { useTheme } from "@/components/providers";
 import { useShell } from "@/components/shell/shell-context";
 import { fetchNotificationsAction, markNotificationsReadAction, switchOrgAction } from "@/app/actions/shell";
-import { logoutAction } from "@/app/(auth)/actions";
 import { cn, initials, relativeTime } from "@/lib/utils";
 
 const TITLES: Array<[RegExp, string]> = [
@@ -221,6 +221,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const shell = useShell();
+  const { requestLogout } = useLogoutConfirmation();
   const [navigationOpen, setNavigationOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const { resolved, setTheme } = useTheme();
@@ -303,11 +304,9 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
             <MenuLabel>Appearance</MenuLabel>
             <ThemeMenuItems />
             <MenuSeparator />
-            <form action={async () => { await logoutAction(); }}>
-              <button type="submit" className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 hover:text-ink">
-                <LogOut className="size-4" /> Sign out
-              </button>
-            </form>
+            <MenuItem onSelect={requestLogout} destructive className="w-full">
+              <LogOut className="size-4" /> Sign out
+            </MenuItem>
           </MenuContent>
         </Menu>
       </div>
