@@ -194,6 +194,51 @@ for the first TLS connection. The production function is in iad1, which makes ea
 trips more expensive. This explains why the statement-count reductions matter more in production
 than the local milliseconds suggest.
 
+### Production-build runtime timings
+
+The actual `next build --turbopack` output was served with `next start` against the local demo
+database. The build is production output; `NODE_ENV=test` was used only at runtime to unlock the
+local synthetic-auth path (production rejects local auth by design). No hosted data was touched.
+The database is still local, so network latency to Tokyo is **not** included.
+
+Desktop 1440x900, owner persona:
+
+| Route | Cold document (fresh context) | Warm reload | Usable |
+| --- | ---: | ---: | --- |
+| `/overview` | 696 ms | 446 ms | yes |
+| `/crm/contacts` | 715 ms | 571 ms | yes |
+| `/crm/pipelines` | 638 ms | 428 ms | yes |
+| `/inbox` | 461 ms | 291 ms | yes |
+| `/settings` | 465 ms | 222 ms | yes |
+| `/workforce` | 321 ms | 278 ms | yes |
+| `/website` | 865 ms | 276 ms | yes |
+
+Cold median **638 ms**, p95 **865 ms**; warm median **291 ms**, p95 **571 ms**.
+
+Warm client-side sidebar navigation (two passes, nine routes per pass):
+
+| Pass | URL change median / p95 | Heading visible median / p95 |
+| --- | ---: | ---: |
+| First | 34 / 142 ms | 347 / 388 ms |
+| Second | 32 / 38 ms | 342 / 358 ms |
+
+All 18 transitions reached a usable heading in under **0.4 s**; the slowest was 388 ms. This is
+the production build, not the dev server.
+
+Other checks on the same production build:
+
+- AQi panel visible in **148 ms** (first open) / **325 ms** (second open); suggestions at
+  157 / 328 ms.
+- Agency admin routes: `/admin` 453 ms, `/admin/clients` 468 ms, `/admin/aqi` 457 ms;
+  `/admin/workforce` 435 ms, `/admin/health` 371 ms; all usable, no page errors.
+- Client staff routes: `/overview` 364 ms, `/crm/contacts` 386 ms, `/crm/pipelines` 471 ms,
+  `/inbox` 307 ms; all usable, no page errors.
+- Phone 390x844: all seven checked routes usable with `scrollWidth === innerWidth` (no horizontal
+  overflow).
+- All `ERR_ABORTED` request entries were Next prefetch requests cancelled by the next navigation;
+  there were **no page errors and no non-abort failures**.
+- Initial JavaScript was 383-455 KB transferred per measured route in this local build.
+
 ## 5. Walkthrough audit
 
 The walkthrough is no longer the six-step tour described in the brief. The repository contains
