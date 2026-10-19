@@ -90,16 +90,16 @@ describe("AQi context and knowledge", () => {
   it("removes citations that do not map to retrieved sources", () => {
     const result = validateAqiCitations("Use [K1] but not [K3].", [{ id: "a", title: "A", category: "C" }]);
     expect(result.cited).toEqual([1]);
-    expect(result.content).toBe("Use ¹ but not .");
+    expect(result.content).toBe("Use but not.");
     expect(result.warning).toMatch(/did not match/);
   });
 
-  it("keeps adjacent source citations visually distinct", () => {
+  it("removes inline reference numbers while retaining the linked sources", () => {
     const result = validateAqiCitations("Grounded claim [K1][K2].", [
       { id: "1", title: "One", category: "Test" },
       { id: "2", title: "Two", category: "Test" },
     ]);
-    expect(result.content).toBe("Grounded claim ¹ ².");
+    expect(result.content).toBe("Grounded claim.");
     expect(result.cited).toEqual([1, 2]);
   });
 
@@ -173,6 +173,19 @@ describe("AQi context and knowledge", () => {
 });
 
 describe("AQi conversation privacy", () => {
+  it("cleans old inline source numbers and em dashes when loading saved answers", async () => {
+    const conversation = await createAqiConversation(viewer, "/overview");
+    const sources = Array.from({ length: 5 }, (_, index) => ({ id: String(index + 1), title: `Source ${index + 1}`, category: "Test" }));
+    await withUser(owner.id, (db) => db.query(
+      "insert into aqi_messages (conversation_id,org_id,user_id,role,content,status,context) values ($1,$2,$3,'assistant',$4,'complete',$5::jsonb)",
+      [conversation.id, org.id, owner.id, "Open the workspace² — then add a contact⁵.", JSON.stringify({ sources })],
+    ));
+
+    const loaded = await getAqiConversation(viewer, conversation.id);
+    expect(loaded.messages[0].content).toBe("Open the workspace, then add a contact.");
+    expect(loaded.messages[0].sources).toHaveLength(5);
+  });
+
   it("persists, changes and clears feedback on the correct assistant message", async () => {
     const conversation = await createAqiConversation(viewer, "/overview");
     const messageId = await withUser(owner.id, async (db) => {

@@ -191,9 +191,8 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   follow-up and citation style. Complex requests have a separate admin-configurable token budget
   because reasoning tokens count against the provider output budget; the same budget is reserved in
   cost accounting.
-- `[K#]` markers are internal. Valid markers are removed from answer prose, while the UI shows
-  numbered, clickable source cards with a readable approved-source snippet. Unsupported markers are
-  removed. Sources are omitted when there are no valid citations.
+- `[K#]` markers are private source references. They are removed from answer prose while the UI keeps
+  numbered, clickable source cards. Older saved answers are cleaned when loaded.
 - Responses must answer the question first and use plain conversational text for simple answers.
 - Responses avoid em dashes; the server replaces them with readable punctuation if the model uses one.
 - Authorized internal paths are converted server-side to human-labelled Markdown links; unauthorized
@@ -205,9 +204,9 @@ text as data, not instructions. Unpublished knowledge and archived entries never
   preferences remove the movement and confetti.
 - Votes still persist to `aqi_messages.feedback_rating` and optional details to `feedback_comment`.
   A dislike saves on the first click; **Skip** only dismisses its optional reason/comment form.
-  Changes are serialized per message and rapid choices are coalesced, without locking other messages.
-  Closing the panel leaves saves running. A failed latest save restores the last confirmed value and
-  offers **Retry feedback**, including any details submitted with it.
+  Changes are serialized per message and rapid choices are coalesced, without locking other
+  messages. Closing the panel leaves saves running. A failed latest save restores the last confirmed
+  value and offers **Retry feedback**, including any details submitted with it.
 - Completed answers can include three or four role-aware follow-up prompts. The provider returns
   them in a private response block that is removed before rendering and saving the answer. The
   prompts are stored with the message's existing JSON context and remain available in saved chat
