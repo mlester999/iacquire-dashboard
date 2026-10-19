@@ -184,7 +184,10 @@ opposite direction from production: the database is local and has no 150 ms netw
 | AQi suggestions visible | 44-46 ms (previous pass) | 66-70 ms warm | browser timing |
 | Cold `/login` | 26.8 s | **pending deployment** | production HTTP |
 | Cold `/api/health` | 18.7 s | **pending deployment** | production HTTP |
-| Function trace size | 22.0 MB (17.2 MB PGlite) | **pending build verification** | old `.next` trace |
+| Function trace size (`/login`) | 22.0 MB (17.2 MB PGlite) | **3.4 MB (0 MB PGlite)** | production build trace |
+| Function trace size (`/overview`) | not measured separately | **5.1 MB (0 MB PGlite)** | production build trace |
+| Function trace size (`/crm/contacts`) | not measured separately | **6.3 MB (0 MB PGlite)** | production build trace |
+| Function trace size (`/api/aqi/chat`) | not measured separately | **12.6 MB (0 MB PGlite)** | production build trace |
 
 The direct database measurement was **83-84 ms per round trip** from Singapore to Tokyo, with 523 ms
 for the first TLS connection. The production function is in iad1, which makes each of those round
@@ -217,19 +220,20 @@ pass did not invent tours for pages it did not test.
 
 - `npm run typecheck`: pass.
 - `eslint src tests scripts --max-warnings=0`: pass.
-- Focused suites: CRM foundation/reports/lead items, AQi pipeline, chat and retention passed.
+- Full unit suite: **3,042 / 3,042 tests passed across 184 files** (`vitest run --maxWorkers=2`,
+  703.77 s), exit 0.
 - Browser: real login, dashboard, contacts, sidebar transitions and a real streamed AQi answer
   against the local mock provider.
-- Production compilation: `next build --webpack --experimental-build-mode compile` exited 0 with
-  this tree (webpack compiled successfully). That mode skips the full typecheck and page-data phase;
-  `npm run typecheck` was run separately.
-- **Not completed:** the full optimized production build (`next build`, typecheck + page data +
-  trace collection), because a concurrent release audit held ~6-8 GB of memory in the same
-  workstation and the build spent minutes swapping. The complete unit suite was not run for the same
-  reason. Do not treat this page as a production build or release result.
+- Production build: `next build --turbopack` completed with **TypeScript passing**, all routes
+  emitted, and 278 route traces (compile 69 s, TypeScript 83 s). A separate `next build --webpack`
+  attempt was stopped under memory pressure; Turbopack is the production build path the project
+  already used.
+- Trace check: `/login` 3.4 MB, `/overview` 5.1 MB, `/crm/contacts` 6.3 MB and `/api/aqi/chat`
+  12.6 MB, each containing **0 bytes** of `@electric-sql/pglite`.
+- **Not completed in this pass:** the deployed cold start and hosted-AQi TTFT cannot be measured
+  until this commit is released. The production build run used placeholder Supabase configuration,
+  so it validates compilation and tracing, not hosted runtime.
 - No migration was added by this pass.
 - Hosted production was not deployed. Region routing remains **iad1 functions → Tokyo database**.
   Moving functions to `hnd1` is a plausible next step but is a deployment change and needs approval;
   it was not made here.
-- The production trace-exclusion change needs one clean `next build` to verify the emitted trace
-  shrinks from ~22 MB to roughly 5 MB. That verification is pending.
