@@ -300,3 +300,24 @@ The previous pass added the card/spotlight/placement fixes and the browser QA de
 - Hosted production was not deployed. Region routing remains **iad1 functions → Tokyo database**.
   Moving functions to `hnd1` is a plausible next step but is a deployment change and needs approval;
   it was not made here.
+
+## 7. Release boundary
+
+As of 2026-10-19, the verified release tree is the merge commit `524664f` (`master`), which contains
+the performance work (`2a4ebbb`), the build/test evidence (`9799672`, `95816a9`) and the six feature
+tours (`ed7a07d`). It is **ahead of `origin/master` and has not been pushed**.
+
+Ordered release steps, each requiring the stated approval:
+
+1. **Apply migration `0064`** to the approved hosted project after a backup/restore check. It is
+   data-only, but production customer data is involved.
+2. **Merge/push the release tree** through the normal branch and deployment process.
+3. **Verify the deployment:** `/login` and `/api/health` cold and warm TTFB, `/overview` and
+   `/crm/contacts` authenticated timings, AQi panel open, one real streamed answer's first token and
+   total time, and the function trace size. Compare with the local production-build numbers in
+   Section 4.
+4. **Decide the function region** only after that measurement. `hnd1` would put the function next to
+   the Tokyo database; `sin1` would be nearer to Singapore users. Neither was applied.
+
+Do not deploy the code before deciding how to handle `0064`: the application works without it, but
+the six new tours and their tips remain absent until the data migration is applied.
