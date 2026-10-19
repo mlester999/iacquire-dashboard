@@ -184,8 +184,10 @@ opposite direction from production: the database is local and has no 150 ms netw
 | AQi warm complete answer | not measured on the old tree | 1.02-1.10 s | stream timestamps |
 | AQi panel open | 44-46 ms (previous pass) | 59-63 ms warm | browser timing |
 | AQi suggestions visible | 44-46 ms (previous pass) | 66-70 ms warm | browser timing |
-| Cold `/login` | 26.8 s | **pending deployment** | production HTTP |
-| Cold `/api/health` | 18.7 s | **pending deployment** | production HTTP |
+| Cold `/login` | 26.8 s | **9.4 s** — improved, still above target | production HTTP after deploy |
+| Cold `/api/health` | 18.7 s | **18.2 s** — not improved | production HTTP after deploy |
+| Warm `/login` | 350-446 ms | **401-622 ms** | production HTTP after deploy |
+| Warm `/api/health` | 478-497 ms | **462-750 ms** | production HTTP after deploy |
 | Function trace size (`/login`) | 22.0 MB (17.2 MB PGlite) | **3.4 MB (0 MB PGlite)** | production build trace |
 | Function trace size (`/overview`) | not measured separately | **5.1 MB (0 MB PGlite)** | production build trace |
 | Function trace size (`/crm/contacts`) | not measured separately | **6.3 MB (0 MB PGlite)** | production build trace |
@@ -195,6 +197,22 @@ The direct database measurement was **83-84 ms per round trip** from Singapore t
 for the first TLS connection. The production function is in iad1, which makes each of those round
 trips more expensive. This explains why the statement-count reductions matter more in production
 than the local milliseconds suggest.
+
+### Production deployment result
+
+The release was pushed to `origin/master` as `88393c1`; Vercel reported the production deployment as
+successful. Subsequent production measurements:
+
+- `/login` cold **9.4 s**, warm **401-622 ms**. The 22 MB → 3.4 MB trace reduction cut the cold
+  login from **26.8 s to 9.4 s**, but the result is still far above the 3 s cold target.
+- `/api/health` cold **18.2 s**, warm **462-750 ms**. Its function trace is only **2.5 MB** with
+  no PGlite, so the remaining cold delay is not explained by the bundle. It is most likely the
+  Supabase connection path and/or function/instance startup; this needs a region or connection
+  investigation rather than another bundle exclusion.
+- The function still executes in **iad1**. Region routing was not changed.
+
+**Conclusion:** tracing/bundle work delivered a large cold-login improvement, but it did not solve
+the `/api/health` cold path. Do not claim the 3 s cold target is met.
 
 ### Production-build runtime timings
 
@@ -298,34 +316,32 @@ The previous pass added the card/spotlight/placement fixes and the browser QA de
   their target coverage and the six contextual tips on a fresh migrated database.
 - Production build: `next build --turbopack` completed with **TypeScript passing** on the merged
   release tree; trace exclusion still holds (`/login` 3.4 MB, 0 MB PGlite).
-- **Not completed in this pass:** the deployed cold start and hosted-AQi TTFT cannot be measured
-  until this commit is released. The production build run used placeholder Supabase configuration,
-  so it validates compilation and tracing, not hosted runtime.
+- **Deployed cold start measured:** `/login` improved to 9.4 s but is still above the 3 s target;
+  `/api/health` remains 18.2 s cold. **Hosted AQi TTFT is not measured** because no production
+  account/provider test was authorized. The local production-build run validates compilation,
+  tracing, streaming and timings, not hosted model speed.
 - Migration `0064_aqi_feature_tours.sql` was added: data only (six tours + six tips), no schema,
   policy or existing-progress changes. It is applied to the local test/dev database and covered by
   `tests/aqi-migration-0064.test.ts`. **It is not applied to production; applying it requires approval.**
-- Hosted production was not deployed. Region routing remains **iad1 functions → Tokyo database**.
+- Hosted production **was deployed** at `88393c1`; Vercel reported success. Region routing remains **iad1 functions → Tokyo database**.
   Moving functions to `hnd1` is a plausible next step but is a deployment change and needs approval;
   it was not made here.
 
 ## 7. Release boundary
 
-As of 2026-10-19, the verified release tree is the current `master` head, which contains the
-performance work (`2a4ebbb`), the build/test evidence (`9799672`, `95816a9`) and the six feature
-tours (`ed7a07d`), merged with the remote sign-out confirmation. It is **ahead of `origin/master`
-and has not been pushed**.
+The code was pushed to `origin/master` as `88393c1` and Vercel reported the production deployment
+as successful. Public production checks were run after that deployment.
 
-Ordered release steps, each requiring the stated approval:
+Remaining release steps:
 
 1. **Apply migration `0064`** to the approved hosted project after a backup/restore check. It is
-   data-only, but production customer data is involved.
-2. **Merge/push the release tree** through the normal branch and deployment process.
-3. **Verify the deployment:** `/login` and `/api/health` cold and warm TTFB, `/overview` and
-   `/crm/contacts` authenticated timings, AQi panel open, one real streamed answer's first token and
-   total time, and the function trace size. Compare with the local production-build numbers in
-   Section 4.
-4. **Decide the function region** only after that measurement. `hnd1` would put the function next to
-   the Tokyo database; `sin1` would be nearer to Singapore users. Neither was applied.
+   data-only, but production customer data is involved. Until it is applied, the six new tours and
+   their tips do not exist in production.
+2. **Authenticated production verification** of `/overview`, `/crm/contacts`, AQi and the tours with
+   a real production test account, if one is authorized.
+3. **Investigate the `/api/health` cold path.** Its 2.5 MB trace does not explain 18.2 s; the next
+   candidates are function/instance startup and the Supabase connection path. A function-region
+   change is one possible experiment but needs approval; it was not made.
 
-Do not deploy the code before deciding how to handle `0064`: the application works without it, but
-the six new tours and their tips remain absent until the data migration is applied.
+The deployed code is safe without `0064`: it reads the published tutorial rows that exist, so the
+six new tours simply remain absent until the data migration runs.
