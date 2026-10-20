@@ -21,11 +21,11 @@ import { NotificationTimestamp } from "@/components/notifications/notification-v
 import { rollbackAction } from "@/app/actions/workforce";
 import {
   configRiskLabel,
+  configVersionSourceLabel,
   configVersionStatus,
   type NotificationTone,
 } from "@/lib/notification-presentation";
 import { diffAgentSettings, LENGTH_COPY, TONE_COPY, type AgentSettings, type AgentSettingsChange } from "@/lib/agent-settings";
-import { configSourceLabel } from "@/lib/config-review";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime } from "@/lib/utils";
 
@@ -58,6 +58,15 @@ const TILE: Record<NotificationTone, string> = {
   danger: "border-danger/25 bg-danger-soft text-danger-ink",
   violet: "border-violet/25 bg-violet-soft text-violet-ink",
 };
+
+/**
+ * Legacy internal saves were persisted as `client_edit`. Label them from the authenticated workspace
+ * context without changing the stored source, which remains visible in the details panel.
+ */
+function historySourceLabel(source: string, isInternalWorkspace: boolean): string {
+  if (isInternalWorkspace && (source === "client_edit" || source === "agency")) return "Internal edit";
+  return configVersionSourceLabel(source);
+}
 
 function versionCardTone(status: string): string {
   if (status === "applied") return "border-success/30";
@@ -252,7 +261,7 @@ export function ConfigVersionHistory({
                               {status.label}
                             </StatusPill>
                             <Badge tone="outline" className="h-5 px-2 text-[11px]">
-                              {configSourceLabel(version.source, isInternalWorkspace ? "agency" : "client")}
+                              {historySourceLabel(version.source, isInternalWorkspace)}
                             </Badge>
                           </div>
                           <NotificationTimestamp value={version.created_at} timeZone={timeZone} now={now} />
@@ -374,7 +383,7 @@ export function ConfigVersionHistory({
                                     label="Recorded source"
                                     value={
                                       <>
-                                        {configSourceLabel(version.source, isInternalWorkspace ? "agency" : "client")}
+                                        {historySourceLabel(version.source, isInternalWorkspace)}
                                         {version.source && (
                                           <code className="ml-1.5 rounded bg-surface-3 px-1 py-0.5 font-mono text-[10.5px] text-muted">{version.source}</code>
                                         )}

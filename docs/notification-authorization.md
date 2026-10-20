@@ -2,7 +2,7 @@
 
 Status: implemented and verified locally on `release/ai-workforce-notif-security`; **not pushed, deployed or applied to any hosted database**.
 
-Integration base: current `master` (`27fe4f7`) plus the configuration-review hardening and notification-centre integration (`b4dc4fe`, with conflicts resolved in favour of the hardened review flow and the current master support/sidebar work).
+Integration base: current `master` (`332dea1`, including the AI Employees / `/employees` rename and migration `0066_rename_workforce_routes`) plus the configuration-review hardening and notification-centre integration (`b4dc4fe`, with conflicts resolved in favour of the hardened review flow and the current master support/sidebar work).
 
 ## 1. Root cause
 
@@ -73,7 +73,7 @@ Repository-wide `npm run lint` is clean (0 errors, 0 warnings) on the merged wor
 
 ## 6. Known limits
 
-- The migration is not applied; the production code at `5c93fc1`/`27fe4f7` still has the old null-org behavior until this branch is deployed and `0067` is applied.
+- The migration is not applied. Production is at `332dea1` (through `0066_rename_workforce_routes`) and still has the old null-org behavior until this branch is deployed and `0067` is applied.
 - Historical agency rows that cannot be associated from their stored link stay agency-wide and are hidden from Manager/Staff. This is intentional and is not deletion.
 - A future producer that inserts into `notifications` directly must set `audience`/`org_id` deliberately; the `client` default will not make an agency row scope-aware.
 - The notification email path is covered by the shared predicate and the existing operations tests, not by a live email provider.

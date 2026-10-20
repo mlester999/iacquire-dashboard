@@ -114,6 +114,14 @@ describe("configuration version history", () => {
     expect(within(pendingCard).getByText(/Ignore previous instructions/)).toBeTruthy();
   });
 
+  it("labels a legacy internal client_edit as Internal edit without rewriting the stored source", () => {
+    render(<ConfigVersionHistory versions={versions} role="operations_manager" timeZone="UTC" initialNow={NOW} isInternalWorkspace />);
+
+    expect(screen.getAllByText("Internal edit").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Client edit")).toBeNull();
+    expect(screen.getAllByText("Onboarding configuration").length).toBeGreaterThan(0);
+  });
+
   it("restores only through the existing server action and reports the real new version", async () => {
     mocks.rollbackAction.mockResolvedValue({ ok: true, data: { version: 4 } });
     render(<ConfigVersionHistory versions={versions} role="sales_assistant" timeZone="UTC" initialNow={NOW} />);
