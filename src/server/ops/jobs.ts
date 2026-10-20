@@ -78,6 +78,51 @@ export async function listJobRuns(): Promise<JobRunRow[]> {
   }));
 }
 
+/**
+ * Fleet-wide single-flight for the setup-evidence reconciliation, which lives in
+ * `@/server/setup/startup`. It is idempotent, but it is also the most connection-expensive work the
+ * app does without a user waiting on it: it walks every unfinished client workspace at roughly two
+ * transactions each (25 transactions measured on the demo data). Every Vercel function boots its own
+ * instrumentation, so before this lease one deployment ran the walk once per cold function — hundreds
+ * of transactions arriving while real requests were competing for the same Supavisor pool.
+ *
+ * Claiming a row in `worker_job_runs` makes one boot or one scheduler tick the only runner for
+ * `minutes`; every other runner skips and the work is retried later. A crashed runner is reclaimed by
+ * the five-minute stale-run rule, the same rule the scheduler tick lease uses.
+ */
+export const SETUP_EVIDENCE_LEASE = "setup_evidence_reconcile";
+
+/** Atomically claims the setup-evidence lease. Returns false when another runner has it or ran it recently. */
+export async function claimSetupEvidenceReconcile(minutes = 15): Promise<boolean> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ job_name: string }>(
+      `insert into worker_job_runs (job_name, last_started_at) values ($1, now())
+       on conflict (job_name) do update set last_started_at = now()
+       where (worker_job_runs.last_success_at is null or worker_job_runs.last_success_at < now() - make_interval(mins => $2::int))
+         and (worker_job_runs.last_started_at < now() - interval '5 minutes'
+              or (worker_job_runs.last_finished_at is not null and worker_job_runs.last_finished_at < now() - interval '30 seconds'))
+       returning job_name`,
+      [SETUP_EVIDENCE_LEASE, minutes],
+    ),
+  );
+  return rows.length > 0;
+}
+
+/** Releases the setup-evidence lease. Best effort: a failure here is reclaimed by the stale-run rule. */
+export async function finishSetupEvidenceReconcile(ok: boolean, error?: unknown): Promise<void> {
+  await withSystem((db) =>
+    db.query(
+      `update worker_job_runs set last_finished_at = now(),
+         last_success_at = case when $2 then now() else last_success_at end,
+         last_failure_at = case when $2 then last_failure_at else now() end,
+         consecutive_failures = case when $2 then 0 else consecutive_failures + 1 end,
+         last_error = case when $2 then null else $3 end
+       where job_name = $1`,
+      [SETUP_EVIDENCE_LEASE, ok, ok ? null : sanitizeErrorText(error)],
+    ),
+  ).catch(() => undefined);
+}
+
 /** True if this job succeeded less than `minutes` ago, so a slow-rhythm job can sit out most scheduler runs. A job that has never succeeded is due. */
 export async function withinInterval(name: string, minutes: number, now = new Date()): Promise<boolean> {
   const { rows } = await withSystem((db) => db.query<{ last: Date | null }>("select last_success_at as last from worker_job_runs where job_name = $1", [name]));

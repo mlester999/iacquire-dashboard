@@ -83,25 +83,28 @@ export async function employeeKnowledgeContext(db: Queryable, orgId: string, age
   documentIds: string[];
   truncated: boolean;
 }> {
-  const [{ rows: orgKnowledge }, { rows: entries }, { rows: docs }] = await Promise.all([
-    db.query<{ section: string; content: string }>(
-      "select section, content from company_knowledge where org_id = $1 and review_status = 'approved' and content <> '' order by section",
-      [orgId],
-    ),
-    db.query<{ id: string; title: string; content: string }>(
-      `select id, title, content from employee_knowledge_entries
+  // One transaction, one pooled connection. node-postgres queues statements on a single client, so
+  // Promise.all over these three reads never overlapped any work — it only made the statements
+  // depend on the driver's internal queue, which pg 8 deprecates ("calling client.query() when the
+  // client is already executing a query") and pg 9 removes. The reads are issued in order instead;
+  // the row limits (20 notes, 8 documents) keep the whole block to three round trips.
+  const { rows: orgKnowledge } = await db.query<{ section: string; content: string }>(
+    "select section, content from company_knowledge where org_id = $1 and review_status = 'approved' and content <> '' order by section",
+    [orgId],
+  );
+  const { rows: entries } = await db.query<{ id: string; title: string; content: string }>(
+    `select id, title, content from employee_knowledge_entries
        where org_id = $1 and agent_instance_id = $2 and status = 'approved' and content <> ''
        order by updated_at desc limit $3`,
-      [orgId, agentId, MAX_ENTRIES],
-    ),
-    db.query<{ id: string; filename: string; excerpt: string }>(
-      `select id, filename, left(extracted_text, 3000) as excerpt from knowledge_documents
+    [orgId, agentId, MAX_ENTRIES],
+  );
+  const { rows: docs } = await db.query<{ id: string; filename: string; excerpt: string }>(
+    `select id, filename, left(extracted_text, 3000) as excerpt from knowledge_documents
        where org_id = $1 and (agent_instance_id is null or agent_instance_id = $2)
          and status = 'ready' and extracted_text is not null and applied_at is not null
        order by (agent_instance_id is not null) desc, created_at desc limit $3`,
-      [orgId, agentId, MAX_DOCUMENTS],
-    ),
-  ]);
+    [orgId, agentId, MAX_DOCUMENTS],
+  );
   const sections: KnowledgeSection[] = [
     ...orgKnowledge.map((k) => ({ section: k.section, content: k.content })),
     ...entries.map((e) => ({ id: `entry:${e.id}`, section: "employee_note", label: `Employee note: ${e.title}`, content: e.content })),

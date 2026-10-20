@@ -1,19 +1,24 @@
 # Production scheduler
 
-## Current state (2026-10-19)
+## Current state (2026-10-20)
 
 The scheduler is **prepared but not activated**.
 
 - `POST /api/internal/tick` exists and runs every job in `src/server/ops/tick.ts`.
 - Production has **no `CRON_SECRET`**, so the endpoint returns `503 Worker endpoint is not configured`.
 - `SCHEDULER_ENABLED` is not set in production. Even with a secret, the endpoint returns `503` until it is explicitly `true`.
-- `worker_job_runs` is empty (`0` rows): no tick has ever run.
-- No Vercel cron, `vercel.json`, Supabase `pg_cron`/`pg_net`, or n8n schedule is configured.
+  Both absences were confirmed in the Vercel-pulled production environment file (variable names read; values never printed).
+- `worker_job_runs` had no `tick` row: no scheduler tick has ever run.
+- No Vercel cron, `vercel.json`, Supabase `pg_cron`/`pg_net`, or n8n schedule is configured. `vercel.json` does not exist in the repository.
 - Production pending work is currently zero: 0 queued messages, 0 queued email, 0 appointment reminders, 0 workflow runs, 0 running
   campaigns, 0 imports, 0 provider switches, 0 pending webhooks. Every provider write switch is `false`.
 
 Enabling the scheduler is therefore a deliberate two-part change, and it requires approval because it starts processing outbound work
 (email, SMS, WhatsApp, campaign messages, workflow actions, imports, webhooks) as soon as rows exist.
+
+Because the scheduler is off, two maintenance passes currently run from the server boot instead (see
+[Database connection reliability](database-connection-reliability.md)): marking runs a dead server left behind as interrupted, and the
+Setup Center backfill/evidence reconciliation. Both are idempotent and both are retried by the scheduler once it is enabled.
 
 ## Two switches
 
@@ -52,8 +57,11 @@ now accepts both `POST` and `GET`; the secret is still mandatory and is never re
 }
 ```
 
-Confirm the plan supports a minute-level schedule before adding it. `SCHEDULER_ENABLED` stays `false` until the supervised activation in
-the checklist below, so deploying the cron definition alone cannot run jobs.
+Confirm the plan supports a minute-level schedule before adding it: Hobby cannot run cron jobs more than once a day, so a per-minute
+cadence needs Pro (or one of the two alternatives below). The plan is not recorded in the repository — check it in the Vercel dashboard.
+The `CRON_SECRET` variable is what Vercel uses to sign its request, so it must exist in the project before the cron is added.
+`SCHEDULER_ENABLED` stays `false` until the supervised activation in the checklist below, so deploying the cron definition alone cannot
+run jobs.
 
 ### 2. Supabase `pg_cron` + `pg_net` (recommended if staying inside Supabase)
 
@@ -89,8 +97,14 @@ a URL query string.
   `worker_job_runs`. A failure in one job never stops the others.
 - **Job-level idempotency:** each job claims the rows it acts on and is safe to run twice. The suite covers duplicate sends, campaign
   recipients, workflow runs, imports, provider switches and webhook deliveries.
-- **Slow rhythms:** `withinInterval()` skips jobs such as fair-use checks, inactivity review, WhatsApp template sync and setup evidence
-  until their interval has elapsed.
+- **Setup-evidence lease:** `setupEvidence` and the server boot both go through `runSetupMaintenance()`, which claims a
+  `setup_evidence_reconcile` row in `worker_job_runs` before walking the workspaces. Only one runner in any fifteen-minute window does
+  the walk (a crashed one is reclaimed after five minutes); the rest return `0` without touching the database. This is what keeps a
+  deployment that cold-starts many functions from multiplying the same 25-transaction walk, and it means the scheduled job and the boot
+  path can never run it twice at once.
+- **Slow rhythms:** `withinInterval()` skips jobs such as fair-use checks, inactivity review, WhatsApp template sync and AQi tutorial
+  retention until their interval has elapsed. Setup evidence uses its lease instead of `withinInterval`, so the boot path and the
+  scheduler share exactly one window.
 
 ## Failure handling
 
@@ -122,4 +136,6 @@ a URL query string.
 - `tests/billing-routes.test.ts` — secret required; correct secret + enabled runs; disabled returns 503; no secret returns 503.
 - `tests/operations.test.ts` — heartbeat success/failure, isolated job failures, stale/fresh/never-run detection, incident open/close,
   tick lease serialization and crash reclaim, public health shape.
+- `tests/setup-maintenance-lease.test.ts` — the setup-evidence lease shared by the boot path and the `setupEvidence` job: one claim,
+  fifteen-minute window, retry and crash reclaim, and a skipped run creating no checklist.
 - `tests/environment-safety.test.ts` — development database guard.

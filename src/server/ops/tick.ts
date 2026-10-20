@@ -29,7 +29,7 @@ import { syncDueConnections, writeBackDue } from "@/server/calendars/sync";
 import { syncAllWhatsappTemplates } from "@/server/messaging/whatsapp-templates";
 import { processCampaigns } from "@/server/crm/campaigns/job";
 import { processFormSubmissions } from "@/server/crm/forms/process";
-import { reconcileAllSetupInstances } from "@/server/setup/automation";
+import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 
@@ -110,8 +110,10 @@ export const JOBS: ScheduledJob[] = [
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
   { name: "whatsappTemplateSync", run: async () => ((await withinInterval("whatsappTemplateSync", 180)) ? 0 : (await syncAllWhatsappTemplates()).synced) },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
-  // matching setup steps within fifteen minutes. Recorded evidence only: no provider is contacted.
-  { name: "setupEvidence", run: async () => ((await withinInterval("setupEvidence", 15)) ? 0 : await reconcileAllSetupInstances()) },
+  // matching setup steps within fifteen minutes. Recorded evidence only: no provider is contacted. The shared fleet-wide lease is what
+  // keeps this to once per fifteen minutes when server boot maintenance and several scheduled ticks overlap; when the lease is held this
+  // job returns 0 without touching the database.
+  { name: "setupEvidence", run: async () => { const r = await runSetupMaintenance(); return r.created + r.updated; } },
   // AQi tutorial analytics retention: bounded to 500 events per run, never deletes progress, and
   // keeps events for people still in progress. It runs only when an external scheduler calls the
   // tick endpoint; registering the job does not create a cron.
