@@ -80,10 +80,10 @@ export default async function OverviewPage() {
           <ButtonLink href="/approvals" variant="secondary" size="md">
             <ShieldCheck className="size-4" /> Approvals
           </ButtonLink>
-          <ButtonLink href={operationsReady?"/chat/operations-manager":"/workforce"} variant="brand" size="md">
+          <ButtonLink href={operationsReady?"/chat/operations-manager":"/employees"} variant="brand" size="md">
             {operationsReady?"Ask your Operations Manager":"Review your AI team"} <ArrowRight className="size-4" />
           </ButtonLink>
-        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-slate-300">Your AI workforce</p><div className="mt-3 flex -space-x-2">{agents.filter(agent=>agent.enabled).map(agent=><span key={agent.id} className="rounded-xl border-2 border-[#11192c]"><AgentAvatar role={AGENT_BY_KEY[agent.role_key]} size="md"/></span>)}</div><p className="mt-4 text-[20px] font-semibold">{agents.filter(agent=>agent.enabled&&["online","busy"].includes(agent.status)).length}<span className="ml-2 text-[13px] font-normal text-slate-300">employees ready to work</span></p><Link href="/workforce" className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-blue-200">Meet your team<ArrowRight className="size-3"/></Link></div>}/>
+        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[11px] font-medium uppercase tracking-wider text-slate-300">Your AI workforce</p><div className="mt-3 flex -space-x-2">{agents.filter(agent=>agent.enabled).map(agent=><span key={agent.id} className="rounded-xl border-2 border-[#11192c]"><AgentAvatar role={AGENT_BY_KEY[agent.role_key]} size="md"/></span>)}</div><p className="mt-4 text-[20px] font-semibold">{agents.filter(agent=>agent.enabled&&["online","busy"].includes(agent.status)).length}<span className="ml-2 text-[13px] font-normal text-slate-300">employees ready to work</span></p><Link href="/employees" className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-blue-200">Meet your team<ArrowRight className="size-3"/></Link></div>}/>
 
       <ClosingNotice view={closing} />
       <ServiceNotices incidents={notices} />
@@ -175,7 +175,7 @@ export default async function OverviewPage() {
               <CardTitle>Your AI team</CardTitle>
               <CardDescription>Latest recorded connection status for each employee.</CardDescription>
             </div>
-            <ButtonLink href="/workforce" variant="ghost" size="sm">
+            <ButtonLink href="/employees" variant="ghost" size="sm">
               Manage <ArrowRight className="size-3.5" />
             </ButtonLink>
           </CardHeader>
@@ -186,7 +186,7 @@ export default async function OverviewPage() {
                 return (
                   <li key={a.id}>
                     <Link
-                      href={a.enabled ? `/chat/${meta.slug}` : `/workforce/${meta.slug}`}
+                      href={a.enabled ? `/chat/${meta.slug}` : `/employees/${meta.slug}`}
                       className="group flex h-full items-center gap-3 rounded-xl border border-line bg-surface p-3 transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card"
                     >
                       <AgentAvatar role={meta} size="md" />

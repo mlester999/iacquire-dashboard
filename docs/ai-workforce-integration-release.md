@@ -15,24 +15,22 @@ Final local commit: reported in the delivery response.
 
 The notification/version-history work was complete but uncommitted on `design/version-history-notifications`. It was preserved as `8bacef0` before any integration work, without changing working files.
 
-An active parallel worktree, `.data/wt-notif-security` (`release/ai-workforce-notif-security`), was discovered with staged, uncommitted changes. It was inspected read-only and **not** overwritten, merged, or relied on. See “Remaining limitations”.
+A parallel worktree, `.data/wt-notif-security` (`release/ai-workforce-notif-security`), was active during reconnaissance. Its commits later landed on `origin/master` and are included through the merge; it was never overwritten or forced.
 
-## 2. Base drift at completion (important)
+## 2. Reconciliation with current master
 
-The task's confirmed base was `466c96ed256af5cbb974440bd97aab39ed330f5c`. While this isolated integration was running, `origin/master` advanced to `47098f165dd9b893ffc900d4dc595f789d5e1cbf` (15 commits). Those commits include:
+The confirmed base at task start was `466c96ed256af5cbb974440bd97aab39ed330f5c`. While this integration was in progress, `origin/master` advanced to `03de0bf` (24 commits), including the AI Employees rename with `/employees` URLs and redirects, Support & Requests, the notification-authorization migration `0067`, and the serverless DB fix. The guided release was therefore merged with `origin/master` (`03de0bf`) before release, not shipped from the stale base.
 
-- the AI Employees rename with `/employees` URLs and redirects (`cf398b8`, merged in `332dea1`);
-- the notification centre release record (`27fe4f7`), which is the same line of work this branch integrated as `8bacef0`;
-- Support & Requests (merged through `08257ee` / `a37cdb7`);
-- a serverless database-connection fix (`47098f1`).
-
-This release branch intentionally remains based on `466c96e` and does **not** include those commits. It must be rebased or merged onto `47098f1`, with the AI Employees rename and the duplicated notification history reconciled, then re-verified before any deployment. No rebase, merge, push or deployment was performed without approval.
+The merge kept the master chat/navigation rewrite, adopted `/employees` routes throughout, preserved the guided configuration/review flow, and re-applied the version-history recovery affordances and role labels on top of master's legacy-attribution fix. The branch is now a fast-forward candidate from `03de0bf`.
 
 ## 3. Conflict resolution
 
 - `src/components/workforce/employee-detail.tsx` — configuration-review-hardening conflicted with the premium profile rewrite. Resolution kept the premium hero/tabs/publishing layout and ported the hardening semantics: read-only approval policy, draft notice, reason-aware outcomes, truthful status labels, and the selected-draft entry point.
 - `src/server/workforce/service.ts` — hardening added classification, decision guards, stale checks and audit metadata; the notification branch added routing, dedupe keys and version metadata. Resolution kept the hardening guard/decision/audit path, used the scoped notification routing, added the review reason to the notices, and sent decisions as `approval_decided`. Internal-agency saves remain silent so iAcquire does not tell itself it is reviewing its own configuration.
 - `src/components/workforce/employee-detail.tsx` (notification merge) — the premium tabs were retained and the History tab was delegated to `ConfigVersionHistory` with the widened version shape and request-stable clock.
+- `src/components/chat/chat-rail.tsx` / `chat-workspace.tsx` — adopted master's premium chat navigation and `/employees` manage target, then re-applied the `chat.rail`, `chat.employee` and `chat.composer` AQi anchors.
+- `src/components/workforce/config-version-history.tsx` — adopted master's legacy internal-attribution fix, then re-applied role labels, draft recovery, the older-rejected guard and the pending-restore warning.
+- `src/server/workforce/service.ts` — kept the hardened review flow and changed the held-review notification link to `/employees/<slug>?tab=history`.
 - `tests/config-review-notifications.test.ts` — fixtures were changed from blocked instruction-override text to review-level approval-bypass text, matching the hardened classifier. Internal agency saves use `apply: true` so a held version is pending rather than a draft.
 
 No conflict was resolved by blindly choosing “ours” or “theirs”; every security-relevant hunk was rebuilt from both sides.
@@ -100,7 +98,7 @@ Role questions additionally explain what each answer changes for that role, and 
 
 ## 9. Review queue and notifications
 
-- Internal `/admin/workforce/reviews` queue with client, employee, version, submitter/role, applied version, reasons, before/after diff, compiled-instruction evidence for authorized reviewers, required decision note and audited approve/reject.
+- Internal `/admin/employees/reviews` queue with client, employee, version, submitter/role, applied version, reasons, before/after diff, compiled-instruction evidence for authorized reviewers, required decision note and audited approve/reject.
 - Client detail review tab uses the same card; view-only agency teammates do not receive compiled prompts.
 - Decision notes are required (minimum 5 characters) in both the dialog and the server action.
 - Held versions notify the client with a truthful non-actionable confirmation and the scoped agency reviewers with `approval_requested`. Notifications are deduplicated per version.
@@ -110,7 +108,7 @@ Role questions additionally explain what each answer changes for that role, and 
 
 ## 10. Chat and shell
 
-- Shared chat rail now has readable dark branding (`Logo onDark`), full workspace name and workspace kind, Back to AI Workforce, Dashboard, specialists, conversation history, search and New.
+- Shared chat rail uses master's premium navigation: readable on-dark branding via the shared `Logo`/workspace-nav tokens, workspace identity, Back to AI Employees, specialists, conversation history, search and New.
 - Accurate readiness from the backend; connection-required state is shown honestly rather than as “Online”.
 - “Manage employee” is a real authorized action; selecting an employee only navigates and does not start a model run.
 - Quick reply-length changes use the draft-aware settings so they cannot discard a pending version; if the combined change needs review, the active value is restored and the person is told.
@@ -118,34 +116,38 @@ Role questions additionally explain what each answer changes for that role, and 
 
 ## 11. Verification
 
-- Focused tests: guided configuration (7), version history (4), review recovery (3), review notifications (3), field guidance; all passed.
-- Full automated suite: 203 files, 3,184 tests passed, exit 0 (final run on the frozen release code).
+- Focused tests after the merge: 45 tests across guided configuration, version history, review recovery, review notifications, notification centre, workforce navigation and chat rail; all passed.
+- Full automated suite on the reconciled code: **218 files, 3,359 tests passed**, exit 0.
 - `npm run typecheck`: passed (`tsc --noEmit` and the scripts project).
-- `npm run lint`: passed with 0 errors and 0 warnings after the temporary QA scripts were removed.
-- Production build: passed with `next build --webpack` (80s compile, 66s TypeScript, exit 0). Turbopack cannot resolve the worktree's junctioned `node_modules`; webpack is the same mode used by local dev.
-- Browser QA: client 53 checks / 23 screenshots, 0 failures and 0 console errors; Super Admin 11 checks / 6 screenshots, 0 failures and 0 console errors, both against an isolated PGlite demo database. Coverage includes 1440, 1024, 768 and 390 widths, light and dark, info popover, review-required, blocked, safe auto-apply, version history recovery, client/agency notification centre and bell, chat, AQi overlay and the real review decision dialog. Axe WCAG A/AA checks passed after fixing the notification badge contrast and the review-diff keyboard access.
-- Evidence: `docs/design-qa/workforce-guided/report.md`, `admin-report.md`, the 29 screenshots in that directory, and the machine-readable `report.json` / `admin-report.json`.
+- `npm run lint`: passed with 0 errors and 0 warnings after removing four imports that master's rewrite had made unused.
+- Production build: passed with `next build --webpack` on the reconciled code. Turbopack cannot resolve the worktree's junctioned `node_modules`; webpack is the same mode used by local dev.
+- Merged-route browser smoke: **9/9 checks**, 0 page errors — client `/employees/operations-manager?tab=configure`, `/employees/operations-manager?tab=history`, `/notifications`, `/chat/lead-hunter`; agency `/admin/employees/reviews`, `/admin/notifications`; guided field and AQi anchors present.
+- Pre-merge visual QA (same guided UI, before the `/workforce` → `/employees` rename): client 53 checks / 23 screenshots and Super Admin 11 checks / 6 screenshots, both 0 failures and 0 console errors, including 1440/1024/768/390 widths, light/dark, info popover, review-required, blocked, safe auto-apply, version history, notification centre/bell, chat and axe WCAG A/AA. The merged-route smoke covers the rename; the screenshots were not recaptured under the new URLs.
 
 ## 12. Migrations
 
-None. No schema change was required for the guided fields, review queue, decision metadata, version history or notifications.
+**No new migration is introduced by this release.** The guided fields, review hardening, decision metadata, version history and notification read-state changes use existing tables and columns.
+
+Production state was verified read-only through the linked Supabase project (`lkkiavjwxaeoqgsbjyso`):
+
+| Migration | Production ledger |
+| --- | --- |
+| `0065_support_requests` | Applied |
+| `0066_rename_workforce_routes` | Applied |
+| `0067_notification_authorization` | Applied (latest) |
+
+The local QA database ledger also ends at `0067`; `npm run db:migrate:local` reports “No new migrations to apply.” No production migration write was needed or performed.
 
 ## 13. Remaining limitations
 
 - The “Ask before any business action” preference is still not consulted by the runtime approval gate. The UI and server pin it and say so; full runtime enforcement remains a separate project.
 - Tool switches change the compiled instructions; the provider profile and connection check remain the enforced boundary.
-- The active parallel worktree `release/ai-workforce-notif-security` has staged, uncommitted work and was not merged. Reconcile it explicitly before release.
-- Browser QA ran against the isolated dev server. The production build passed, but `next start` refuses non-Supabase auth locally, so production-mode browser QA was not run.
+- Visual QA screenshots were captured before the master rename and were not recaptured under `/employees`; the merged-route smoke and full UI test suite cover the renamed routes.
+- `next start` refuses local non-Supabase auth, so production-mode browser QA was not run locally.
 - The isolated chat fixture has no Hermes profile, so the captured chat state is the honest “connection check required” state, not a live composer. The ready-state chat composer and run gate are covered by tests.
-- No production deployment, push, migration, activation, Hermes run, VPS or Cloudflare change was performed.
 
 ## 14. Recommendation
 
-GO for review of this confirmed-base release and for an authorized staging reconciliation. NO-GO for production merge/deployment until:
+**GO for push/deploy of the reconciled commit.** The branch now contains current `origin/master` (`03de0bf`), the full suite and build passed, production migration `0067` is applied, and the merged-route smoke test is green.
 
-1. the branch is reconciled with current `origin/master` (`47098f1`), including the AI Employees rename and the already-merged notification-centre history;
-2. the full suite, typecheck, lint, build and browser QA are rerun on the reconciled result;
-3. the staging smoke test passes against the real tenant; and
-4. explicit deployment authorization is given.
-
-No push, deployment, production migration, activation, Hermes run, VPS or Cloudflare change was performed.
+No production migration, activation, Hermes run, VPS or Cloudflare change is required by this work. Rollback for the application is redeploying `03de0bf`; no new schema rollback is involved.

@@ -4,6 +4,8 @@
 
 **Current hosted schema check (2026-10-19):** a read-only linked-project query found 61 applied migration records in `public.schema_migrations`, latest `0062_agency_manager_blueprint_permissions`, matching all migrations in the release checkout. The hosted public schema contained 258 tables, with row-level security enabled on all 258. The detailed table list below remains the historical `0001`–`0026` baseline; it is not a current exhaustive inventory.
 
+**Pending (not applied to any hosted project): `0065_support_requests`** extends `support_tickets`, `support_messages` and `support_attachments` (see [support-requests.md](support-requests.md)) and adds six tables: `support_ticket_events`, `support_ticket_ops`, `support_ticket_links`, `support_settings`, `support_notification_rules` and `support_notification_log`. It is not counted in the totals below.
+
 Supabase-managed `auth`, `storage`, `realtime`, `vault` and CLI migration-history tables are excluded from the public-table count. `supabase/local-compat.sql` emulates managed schemas only for isolated development/tests and must never run against a hosted project.
 
 ## Original application tables: 51

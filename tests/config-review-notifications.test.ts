@@ -49,7 +49,7 @@ describe("configuration review notifications", () => {
         expect.objectContaining({
           kind: "agent_status",
           title: expect.stringContaining("waiting for iAcquire review"),
-          link: expect.stringContaining("/workforce/sales-assistant"),
+          link: expect.stringContaining("/employees/sales-assistant"),
         }),
       ]),
     );
@@ -74,7 +74,7 @@ describe("configuration review notifications", () => {
         expect.objectContaining({
           kind: "approval_decided",
           title: expect.stringContaining("was not approved"),
-          link: "/workforce/sales-assistant?tab=history",
+          link: "/employees/sales-assistant?tab=history",
         }),
       ]),
     );

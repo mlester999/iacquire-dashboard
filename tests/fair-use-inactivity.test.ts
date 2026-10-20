@@ -197,7 +197,7 @@ describe("noticing an account that has gone quiet", () => {
     expect(note.title).toBe("Your workspace has been quiet for a while");
     expect(note.body).toMatch(/Nothing has been deleted, and nothing will be deleted without your say-so/);
     expect(note.body).toMatch(/live website, if you have one, counts as activity/);
-    expect((await withSystem((db) => db.query("select 1 from notifications where org_id is null and kind = 'account_inactivity_notice' and title like $1", ["Quiet Co%"]))).rows.length).toBeGreaterThanOrEqual(1);
+    expect((await withSystem((db) => db.query("select 1 from notifications where org_id = $1 and audience = 'agency' and kind = 'account_inactivity_notice' and title like $2", [org.id, "Quiet Co%"]))).rows.length).toBeGreaterThanOrEqual(1);
     // Nothing was touched.
     expect((await withSystem((db) => db.query("select status from organizations where id = $1", [org.id]))).rows[0]).toMatchObject({ status: "active" });
     expect((await withSystem((db) => db.query("select status from organization_memberships where org_id = $1", [org.id]))).rows[0]).toMatchObject({ status: "active" });

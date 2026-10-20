@@ -53,8 +53,8 @@ const IMPORTANT_KINDS = new Set([
  */
 const CUSTOMER_CONTENT_KINDS = new Set(["escalation_action_required", "escalation_fyi", "escalation_claimed", "escalation_unclaimed", "message_blocked", "message_failed", "system", "booking_confirmed", "booking_cancelled", "booking_rescheduled", "booking_conflict", "booking_needs_action", "lead_awaiting_approval"]);
 
-/** Kinds that already send their own email (owner-first escalations honour the person's own alert settings; setup updates email from the setup engine). */
-export const emailedElsewhere = (kind: string) => kind.startsWith("escalation_") || kind.startsWith("setup_");
+/** Kinds that already send their own email (owner-first escalations honour the person's own alert settings; setup updates email from the setup engine; support updates follow the delivery rules the Super Admin chose). */
+export const emailedElsewhere = (kind: string) => kind.startsWith("escalation_") || kind.startsWith("setup_") || kind.startsWith("support_");
 
 export function shouldEmail(kind: string, severity: string, preference: EmailPreference): boolean {
   if (preference === "off") return severity === "critical";
@@ -87,6 +87,10 @@ export const JOB_LABELS: Record<string, string> = {
   notificationEmails: "Email notifications",
   incidentChecks: "Run health checks",
   incidentEscalations: "Re-alert unacknowledged incidents",
+  supportResponseTargets: "Check support response targets",
+  supportEmails: "Send support email updates",
+  supportAutoClose: "Close resolved support requests",
+  supportAttachmentCleanup: "Remove unsent support files",
   fairUseChecks: "Measure usage against fair-use limits",
   inactivityReview: "Review accounts that have gone quiet",
   offboardingReminders: "Remind departing clients before deletion",

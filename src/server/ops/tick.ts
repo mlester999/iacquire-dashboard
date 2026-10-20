@@ -31,6 +31,7 @@ import { processCampaigns } from "@/server/crm/campaigns/job";
 import { processFormSubmissions } from "@/server/crm/forms/process";
 import { reconcileAllSetupInstances } from "@/server/setup/automation";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
+import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 
 export interface ScheduledJob {
   name: string;
@@ -94,6 +95,12 @@ export const JOBS: ScheduledJob[] = [
     },
   },
   { name: "incidentEscalations", run: () => escalateUnacknowledged() },
+  // Support & Requests: response-target notices and escalation flags, support emails (and their retries), auto-closing resolved requests
+  // and removing files nobody sent. Targets, auto-close and retention do nothing until the Super Admin turns them on.
+  { name: "supportResponseTargets", run: () => runResponseTargetCheck() },
+  { name: "supportEmails", run: () => runSupportEmails() },
+  { name: "supportAutoClose", run: async () => ((await withinInterval("supportAutoClose", 60)) ? 0 : await autoCloseResolvedRequests()) },
+  { name: "supportAttachmentCleanup", run: async () => ((await withinInterval("supportAttachmentCleanup", 60)) ? 0 : await runAttachmentCleanup()) },
   // Slower rhythms: each is skipped (returning 0) until enough time has passed since its last successful run.
   { name: "fairUseChecks", run: async () => ((await withinInterval("fairUseChecks", 60)) ? 0 : (await runFairUseChecks()).checked) },
   { name: "inactivityReview", run: async () => ((await withinInterval("inactivityReview", 360)) ? 0 : (await runInactivityReview()).notified) },

@@ -655,7 +655,7 @@ function CompletionCard({ verified, title, message, titleId }: { verified: boole
 
 const ROUTE_LABELS: Record<string, string> = {
   "/overview": "Overview",
-  "/workforce": "AI Workforce",
+  "/employees": "AI Employees",
   "/crm/contacts": "Contacts",
   "/crm/pipelines": "Pipelines",
   "/crm/calendar": "Calendar",

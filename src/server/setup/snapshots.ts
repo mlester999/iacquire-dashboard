@@ -480,7 +480,7 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
                 + (select count(*)::int from crm_pipelines p where p.org_id = o.id and p.provider = 'native' and p.archived_at is null)
                 + (select count(*)::int from crm_calendars cal where cal.org_id = o.id and cal.status = 'active' and cal.archived_at is null) as native_records,
               (select count(*)::int from client_setup_checks c where c.org_id = o.id and c.status = 'failed') as failed_checks,
-              (select count(*)::int from support_tickets t where t.org_id = o.id and t.status in ('open', 'in_progress')) as open_tickets,
+              (select count(*)::int from support_tickets t where t.org_id = o.id and t.status in ('new', 'open', 'in_progress')) as open_tickets,
               (select max(l.created_at) from audit_logs l where l.org_id = o.id and l.action <> 'agent.health_check') as last_audit_at
        from organizations o
        left join client_setup_instances i on i.org_id = o.id

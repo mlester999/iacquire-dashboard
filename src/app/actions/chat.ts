@@ -107,7 +107,7 @@ export async function setReplyLengthAction(role: string, length: string) {
       });
     });
     revalidatePath(`/chat/${AGENT_BY_KEY[role].slug}`);
-    revalidatePath(`/workforce/${AGENT_BY_KEY[role].slug}`);
+    revalidatePath(`/employees/${AGENT_BY_KEY[role].slug}`);
     return { ok: true as const, data: { version: result?.version ?? null, status: result?.status ?? null } };
   } catch (err) {
     return actionError(err);

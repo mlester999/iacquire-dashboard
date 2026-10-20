@@ -51,7 +51,9 @@
     ".next-notif/types/**/*.ts",
     ".next-notif/dev/types/**/*.ts",
     ".next-notif-qa/types/**/*.ts",
-    ".next-notif-qa/dev/types/**/*.ts"
+    ".next-notif-qa/dev/types/**/*.ts",
+    ".next-notif-security/types/**/*.ts",
+    ".next-notif-security/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

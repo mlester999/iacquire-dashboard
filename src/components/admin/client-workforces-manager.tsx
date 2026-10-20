@@ -22,7 +22,7 @@ export function ClientWorkforcesManager({ clients, timeZone }: { clients: Client
   return (
     <section className="module-stack" aria-labelledby="client-workforces-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/admin/workforce" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-medium text-primary hover:bg-surface-2"><ArrowLeft className="size-4" />Internal Workforce</Link>
+        <Link href="/admin/employees" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-medium text-primary hover:bg-surface-2"><ArrowLeft className="size-4" />Internal Workforce</Link>
         <ButtonLink href="/admin/clients" variant="secondary">Open clients</ButtonLink>
       </div>
       <PageHero tone="dark" eyebrow="Client operations" icon={<Building2 className="size-5" />} title="Client Workforces" description="Each client has a separate set of employee identities, credentials and health checks. Select a client to inspect its workforce." aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Client workspaces" value={clients.length} detail="Visible under your agency access" icon={<Users className="size-4" />} /><MetricCard label="Profiles verified" value={verified} detail="From each client’s latest saved checks" tone="green" icon={<ShieldCheck className="size-4" />} /></div>} />

@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem, withUser, type Queryable } from "@/server/db";
+import { withUser, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import type { OrgRole } from "@/lib/permissions";
 import { NOTIFICATION_GROUPS } from "@/lib/notification-groups";
@@ -64,7 +64,11 @@ export type NotificationKind =
   | "crm_calendar_sync"
   | "crm_workflow_failed"
   | "crm_webhook_failing"
-  | "crm_blueprint_applied";
+  | "crm_blueprint_applied"
+  | "support_assigned"
+  | "support_status"
+  | "support_escalated"
+  | "support_sla";
 
 export interface NotificationInput {
   kind: NotificationKind;
@@ -81,29 +85,45 @@ function safeLink(link?: string) {
   return link && /^\/[A-Za-z0-9/_?=&%.-]*$/.test(link) ? link : null;
 }
 
+/**
+ * A direct notification is addressed to one person. Agency recipients of a client-scoped
+ * notification are recorded as agency mail so a later loss of that client's access hides it.
+ */
 export async function notifyUser(db: Queryable, userId: string, orgId: string | null, n: NotificationInput) {
   await db.query(
-    `insert into notifications (org_id, user_id, kind, severity, title, body, link, dedupe_key) values ($1, $2, $3, $4, $5, $6, $7, $8)
+    `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
+     select case
+              when u.platform_role in ('agency_staff','agency_manager','agency_super_admin') and $2::uuid is not null then 'agency'
+              when u.platform_role in ('agency_staff','agency_manager','agency_super_admin') then 'direct'
+              when $2::uuid is null then 'direct'
+              else 'client'
+            end,
+            $2, u.id, $3, $4, $5, $6, $7, $8
+       from users u where u.id = $1
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [orgId, userId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
+    [userId, orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
   );
 }
 
 export async function notifyOrgRoles(db: Queryable, orgId: string, roles: OrgRole[], n: NotificationInput) {
   await db.query(
-    `insert into notifications (org_id, user_id, kind, severity, title, body, link, dedupe_key)
-     select $1, m.user_id, $3, $4, $5, $6, $7, $8 from organization_memberships m
+    `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
+     select 'client', $1, m.user_id, $3, $4, $5, $6, $7, $8 from organization_memberships m
      where m.org_id = $1 and m.status = 'active' and m.role = any($2::text[])
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
     [orgId, roles, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
   );
 }
 
-/** Notifies agency users whose current client scope includes the tenant. */
+/**
+ * Notifies agency users whose current client scope includes the tenant. The client organisation is
+ * stored on the row even though the recipient is an agency user; read authorisation is re-evaluated
+ * against the recipient's current scope, so revoking the assignment hides the history too.
+ */
 export async function notifyAgency(db: Queryable, orgId: string | null, n: NotificationInput) {
   await db.query(
-    `insert into notifications (org_id, user_id, kind, severity, title, body, link, dedupe_key)
-     select null, u.id, $2, $3, $4, $5, $6, $7 from users u
+    `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
+     select 'agency', $1, u.id, $2, $3, $4, $5, $6, $7 from users u
      where u.status = 'active' and u.platform_role in ('agency_staff','agency_manager','agency_super_admin') and (
        ($1::uuid is null and coalesce(app.user_has_agency_permission(u.id,'agency.security.manage'),false))
        or ($1::uuid is not null and app.user_can_access_org(u.id,$1::uuid))
@@ -157,15 +177,35 @@ export interface ListNotificationsOptions {
   orgId?: string | null;
 }
 
+/**
+ * The feed mode follows the authenticated account, not the route that happens to call it. An agency
+ * account can hold client memberships from an earlier role; those must not turn its agency inbox into
+ * a client feed. A client account is always client-scoped even while its active workspace is switching.
+ */
+async function notificationFeedScope(db: Queryable, userId: string, requestedOrgId: string | null) {
+  const { rows } = await db.query<{ platform_role: string | null }>(
+    "select platform_role from users where id = $1 and status = 'active'",
+    [userId],
+  );
+  const role = rows[0]?.platform_role;
+  const agency = Boolean(role && role !== "none");
+  return { agency, orgId: agency ? null : requestedOrgId };
+}
+
 export async function listNotifications(userId: string, options: ListNotificationsOptions = {}) {
-  // RLS on notifications already limits every row to the signed-in user; the user_id predicate is kept
-  // explicit as a second boundary so a policy regression cannot turn this into a cross-tenant read.
+  // RLS on notifications already limits every row to the signed-in user and its current tenant scope;
+  // the explicit predicates are a second boundary so a policy regression cannot become a data leak.
   const limit = Math.min(100, Math.max(1, Math.trunc(options.limit ?? 30)));
   const hidden = options.hidden ?? [];
   const before = options.before && !Number.isNaN(Date.parse(options.before)) ? new Date(options.before).toISOString() : null;
   const beforeId = options.beforeId && /^[0-9a-f-]{36}$/i.test(options.beforeId) ? options.beforeId : null;
-  const orgId = options.orgId && /^[0-9a-f-]{36}$/i.test(options.orgId) ? options.orgId : null;
+  const requestedOrgId = options.orgId && /^[0-9a-f-]{36}$/i.test(options.orgId) ? options.orgId : null;
   return withUser(userId, async (db) => {
+    const { agency, orgId } = await notificationFeedScope(db, userId, requestedOrgId);
+    const feed = `(($7::boolean and audience in ('agency','direct') and app.notification_visible($4, audience, org_id))
+      or (not $7::boolean and audience in ('client','direct')
+          and ($6::uuid is null or org_id = $6::uuid or org_id is null)
+          and app.notification_visible($4, audience, org_id)))`;
     const { rows } = await db.query<{
       id: string;
       kind: NotificationKind;
@@ -179,17 +219,21 @@ export async function listNotifications(userId: string, options: ListNotificatio
       `select id, kind, severity, title, body, link, read_at, created_at from notifications
        where user_id = $4
          and (kind <> all($2::text[]) or severity = 'critical')
-         and ($6::uuid is null or org_id = $6::uuid or org_id is null)
+         and ${feed}
          and ($3::timestamptz is null or created_at < $3::timestamptz or (created_at = $3::timestamptz and id < $5::uuid))
        order by created_at desc, id desc
        limit $1`,
-      [limit + 1, hidden, before, userId, beforeId, orgId],
+      [limit + 1, hidden, before, userId, beforeId, orgId, agency],
     );
+    const unreadFeed = `(($4::boolean and audience in ('agency','direct') and app.notification_visible($2, audience, org_id))
+      or (not $4::boolean and audience in ('client','direct')
+          and ($3::uuid is null or org_id = $3::uuid or org_id is null)
+          and app.notification_visible($2, audience, org_id)))`;
     const unread = await db.query<{ count: string }>(
       `select count(*)::text as count from notifications
        where user_id = $2 and read_at is null and (kind <> all($1::text[]) or severity = 'critical')
-         and ($3::uuid is null or org_id = $3::uuid or org_id is null)`,
-      [hidden, userId, orgId],
+         and ${unreadFeed}`,
+      [hidden, userId, orgId, agency],
     );
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
@@ -205,28 +249,55 @@ export async function listNotifications(userId: string, options: ListNotificatio
 }
 
 export async function markNotificationsRead(userId: string, ids: string[] | "all", opts: { orgId?: string | null } = {}) {
-  const orgId = opts.orgId && /^[0-9a-f-]{36}$/i.test(opts.orgId) ? opts.orgId : null;
+  const requestedOrgId = opts.orgId && /^[0-9a-f-]{36}$/i.test(opts.orgId) ? opts.orgId : null;
   await withUser(userId, async (db) => {
-    // The explicit user_id predicate is intentional: RLS enforces the same boundary, but a mistake in
-    // a future policy must not let "mark all read" touch someone else's inbox. The optional workspace
-    // predicate keeps a client's "mark all" from silently clearing another workspace's badge.
-    if (ids === "all") {
+    const { agency, orgId } = await notificationFeedScope(db, userId, requestedOrgId);
+    // RLS and this predicate use the same authorization function. A hidden row therefore cannot be
+    // marked read through a guessed id, and "mark all" cannot clear another workspace's badge.
+    if (agency) {
+      if (ids === "all") {
+        await db.query(
+          `update notifications set read_at = now() where user_id = $1 and read_at is null
+             and audience in ('agency','direct') and app.notification_visible($1, audience, org_id)`,
+          [userId],
+        );
+      } else if (ids.length) {
+        await db.query(
+          `update notifications set read_at = now() where user_id = $1 and id = any($2::uuid[]) and read_at is null
+             and audience in ('agency','direct') and app.notification_visible($1, audience, org_id)`,
+          [userId, ids],
+        );
+      }
+    } else if (ids === "all") {
       await db.query(
-        "update notifications set read_at = now() where user_id = $1 and read_at is null and ($2::uuid is null or org_id = $2::uuid or org_id is null)",
+        `update notifications set read_at = now() where user_id = $1 and read_at is null
+           and audience in ('client','direct') and ($2::uuid is null or org_id = $2::uuid or org_id is null)
+           and app.notification_visible($1, audience, org_id)`,
         [userId, orgId],
       );
     } else if (ids.length) {
       await db.query(
-        "update notifications set read_at = now() where user_id = $1 and id = any($2::uuid[]) and read_at is null and ($3::uuid is null or org_id = $3::uuid or org_id is null)",
-        [userId, ids, orgId],
+        `update notifications set read_at = now() where user_id = $1 and id = any($3::uuid[]) and read_at is null
+           and audience in ('client','direct') and ($2::uuid is null or org_id = $2::uuid or org_id is null)
+           and app.notification_visible($1, audience, org_id)`,
+        [userId, orgId, ids],
       );
     }
   });
 }
 
 export async function unreadCount(userId: string): Promise<number> {
-  const { rows } = await withSystem((db) =>
-    db.query<{ count: string }>("select count(*)::text as count from notifications where user_id = $1 and read_at is null", [userId]),
-  );
-  return Number(rows[0]?.count ?? 0);
+  return withUser(userId, async (db) => {
+    const { agency, orgId } = await notificationFeedScope(db, userId, null);
+    const scope = agency
+      ? `audience in ('agency','direct') and app.notification_visible($1, audience, org_id)`
+      : `audience in ('client','direct') and ($2::uuid is null or org_id = $2::uuid or org_id is null)
+         and app.notification_visible($1, audience, org_id)`;
+    const params = agency ? [userId] : [userId, orgId];
+    const { rows } = await db.query<{ count: string }>(
+      `select count(*)::text as count from notifications where user_id = $1 and read_at is null and ${scope}`,
+      params,
+    );
+    return Number(rows[0]?.count ?? 0);
+  });
 }

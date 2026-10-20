@@ -84,7 +84,7 @@ export const CRM_NAV: CrmNavSection[] = [
       { path: "/workflows", label: "Workflows", icon: "workflow", permission: "workflows.view", capability: "workflows" },
       { path: "/workflows/activity", label: "Workflow Activity", icon: "activity", permission: "workflows.view", capability: "workflows" },
       { path: "/follow-ups", label: "Follow-up Sequences", icon: "repeat", permission: "inbox.view", capability: "conversations" },
-      { path: "/workforce", label: "AI Employees", icon: "sparkles", permission: "agents.use", external: true },
+      { path: "/employees", label: "AI Employees", icon: "sparkles", permission: "agents.use", external: true },
       { path: "/settings/ai-tools", label: "AI Employee Tools", icon: "shield-check", permission: "activity.view" },
     ],
   },

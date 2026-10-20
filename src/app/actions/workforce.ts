@@ -22,8 +22,8 @@ async function resolve(role: string) {
 
 function revalidateAgent(role: string) {
   if (!isAgentRoleKey(role)) return;
-  revalidatePath(`/workforce/${AGENT_BY_KEY[role].slug}`);
-  revalidatePath("/workforce");
+  revalidatePath(`/employees/${AGENT_BY_KEY[role].slug}`);
+  revalidatePath("/employees");
 }
 
 export async function saveAgentSettingsAction(role: string, input: unknown) {
@@ -123,7 +123,7 @@ export async function requestSetupAction() {
   try {
     const ctx = await requireOrgContextOrThrow("agents.configure");
     const n = await withSystem((db) => requestProvisioning(db, ctx.org.orgId, ctx.user.id));
-    revalidatePath("/workforce");
+    revalidatePath("/employees");
     return { ok: true as const, data: { requested: n } };
   } catch (err) {
     return actionError(err);

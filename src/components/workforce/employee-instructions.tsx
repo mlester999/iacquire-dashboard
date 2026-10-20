@@ -53,7 +53,7 @@ export function EmployeeInstructions({
           <div>
             <p className="text-[12px] font-semibold text-ink">Editable in Configure</p>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">Identity, tone, responsibilities, goals, rules, escalation and tool switches.</p>
-            <Link href={`/workforce/${role.replaceAll("_", "-")}?tab=configure`} className="mt-1.5 inline-flex text-[12px] font-medium text-primary hover:underline">Open Configure</Link>
+            <Link href={`/employees/${role.replaceAll("_", "-")}?tab=configure`} className="mt-1.5 inline-flex text-[12px] font-medium text-primary hover:underline">Open Configure</Link>
           </div>
           <div>
             <p className="text-[12px] font-semibold text-ink">Managed in Knowledge</p>
@@ -77,7 +77,7 @@ export function EmployeeInstructions({
             <Button size="sm" variant="secondary" onClick={() => setTesting(true)} disabled={!settings}>
               <FlaskConical className="size-3.5" aria-hidden /> Test active configuration
             </Button>
-            <Link href={`/workforce/${role.replaceAll("_", "-")}?tab=configure`} className="inline-flex min-h-9 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2">
+            <Link href={`/employees/${role.replaceAll("_", "-")}?tab=configure`} className="inline-flex min-h-9 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2">
               Edit in Configure
             </Link>
           </div>

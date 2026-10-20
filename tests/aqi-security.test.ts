@@ -9,7 +9,7 @@ const agencyManager: AqiAccess = { can: (permission) => permission === "agency.w
 describe("AQi navigation safety", () => {
   it("matches the most specific route", () => {
     expect(matchAqiRoute("/settings/team")?.path).toBe("/settings/team");
-    expect(pageFor("/workforce/sales-assistant/configure")?.path).toBe("/workforce");
+    expect(pageFor("/employees/sales-assistant/configure")?.path).toBe("/employees");
     expect(pageFor("/not-a-real-page")).toBeNull();
   });
 
@@ -17,12 +17,12 @@ describe("AQi navigation safety", () => {
     expect(safeAqiHref("https://evil.example", superAdmin)).toBeNull();
     expect(safeAqiHref("//evil.example/path", superAdmin)).toBeNull();
     expect(safeAqiHref("/admin/aqi", clientOwner)).toBeNull();
-    expect(safeAqiHref("/workforce", clientOwner)?.path).toBe("/workforce");
+    expect(safeAqiHref("/employees", clientOwner)?.path).toBe("/employees");
     expect(safeAqiHref("/admin/aqi", superAdmin)?.path).toBe("/admin/aqi");
   });
 
   it("does not let a client open agency-only routes", () => {
-    const adminRoute = matchAqiRoute("/admin/workforce");
+    const adminRoute = matchAqiRoute("/admin/employees");
     expect(adminRoute).not.toBeNull();
     expect(canOpenAqiRoute(adminRoute!, clientOwner)).toBe(false);
     expect(canOpenAqiRoute(adminRoute!, superAdmin)).toBe(true);
@@ -31,11 +31,11 @@ describe("AQi navigation safety", () => {
   it("checks the actual agency permission, not just the agency role", () => {
     expect(safeAqiHref("/admin/health", agencyStaff)).toBeNull();
     expect(safeAqiHref("/admin/integrations", agencyStaff)).toBeNull();
-    expect(safeAqiHref("/admin/workforce/policies", agencyStaff)).toBeNull();
-    expect(safeAqiHref("/admin/workforce/clients", agencyStaff)?.path).toBe("/admin/workforce/clients");
-    expect(safeAqiHref("/admin/workforce", agencyStaff)).toBeNull();
+    expect(safeAqiHref("/admin/employees/policies", agencyStaff)).toBeNull();
+    expect(safeAqiHref("/admin/employees/clients", agencyStaff)?.path).toBe("/admin/employees/clients");
+    expect(safeAqiHref("/admin/employees", agencyStaff)).toBeNull();
     expect(safeAqiHref("/admin/aqi", agencyManager)).toBeNull();
-    expect(safeAqiHref("/admin/workforce/policies", agencyManager)?.path).toBe("/admin/workforce/policies");
+    expect(safeAqiHref("/admin/employees/policies", agencyManager)?.path).toBe("/admin/employees/policies");
     expect(safeAqiHref("/admin", agencyStaff)?.path).toBe("/admin");
   });
 
@@ -44,6 +44,6 @@ describe("AQi navigation safety", () => {
     expect(safeAqiHref("/support", clientOwner)).toBeNull();
     const viewer: AqiAccess = { can: (permission) => permission === "workspace.view" || permission === "support.use", agencyRole: null };
     expect(safeAqiHref("/support", viewer)?.path).toBe("/support");
-    expect(safeAqiHref("/workforce", viewer)).toBeNull();
+    expect(safeAqiHref("/employees", viewer)).toBeNull();
   });
 });

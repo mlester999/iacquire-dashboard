@@ -3,7 +3,7 @@ import { normalizeAqiNavigation, trimIncompleteLink, type AqiNavRoute } from "@/
 
 const OWNER: AqiNavRoute[] = [
   { path: "/overview", label: "Overview" },
-  { path: "/workforce", label: "AI Workforce" },
+  { path: "/employees", label: "AI Employees" },
   { path: "/knowledge", label: "Knowledge Center" },
   { path: "/settings", label: "Settings" },
   { path: "/settings/integrations", label: "Integrations" },
@@ -34,8 +34,8 @@ describe("AQi navigation normalizer", () => {
   });
 
   it("C: a label-as-destination reference is linked only when authorized", () => {
-    expect(run("Employees live in [AI Workforce](AI Workforce).")).toBe("Employees live in [AI Workforce](/workforce).");
-    expect(run("Employees live in [AI Workforce](AI Workforce).", [])).toBe("Employees live in AI Workforce.");
+    expect(run("Employees live in [AI Employees](AI Employees).")).toBe("Employees live in [AI Employees](/employees).");
+    expect(run("Employees live in [AI Employees](AI Employees).", [])).toBe("Employees live in AI Employees.");
   });
 
   it("D: a real internal path is linked only for an authorized route", () => {
@@ -82,18 +82,18 @@ describe("AQi navigation normalizer", () => {
   });
 
   it("is idempotent", () => {
-    const sample = "Open [Team] (Settings → Team) or [Integrations](Settings → Integrations); see [AI Workforce](AI Workforce). `[Team]`";
+    const sample = "Open [Team] (Settings → Team) or [Integrations](Settings → Integrations); see [AI Employees](AI Employees). `[Team]`";
     const once = run(sample);
     expect(run(once)).toBe(once);
   });
 
   it("F: streamed prefixes never expose raw bracket syntax and the final text matches the full result", () => {
-    const answer = "Add people under [Team] (Settings → Team), then connect tools in [Integrations](Settings → Integrations) or see [AI Workforce](AI Workforce).";
+    const answer = "Add people under [Team] (Settings → Team), then connect tools in [Integrations](Settings → Integrations) or see [AI Employees](AI Employees).";
     const final = run(answer);
     for (let end = 1; end <= answer.length; end += 1) {
       const partial = run(answer.slice(0, end), OWNER, { streaming: true });
       expect(partial).not.toMatch(/\]\((?!\/)/);
-      expect(partial).not.toMatch(/\[(?:Team|Integrations|AI Workforce)\](?!\()/);
+      expect(partial).not.toMatch(/\[(?:Team|Integrations|AI Employees)\](?!\()/);
       expect(partial).not.toMatch(/\[[^\]]*$/);
     }
     expect(run(answer, OWNER, { streaming: true })).toBe(final);

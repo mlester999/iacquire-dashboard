@@ -34,7 +34,7 @@ function item(overrides: Partial<Record<string, unknown>> = {}) {
     severity: "warning",
     title: "Sales Assistant update needs review",
     body: "Part of the new instructions looked like it could change safety rules.",
-    link: "/workforce/sales-assistant",
+    link: "/employees/sales-assistant",
     read_at: null,
     created_at: CREATED,
     ...overrides,
@@ -102,7 +102,7 @@ describe("notification centre", () => {
     fireEvent.click(row);
 
     await waitFor(() => expect(mocks.markNotificationsReadAction).toHaveBeenCalledWith(["11111111-1111-4111-8111-111111111111"]));
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/workforce/sales-assistant"));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/employees/sales-assistant"));
   });
 
   it("marks everything read and restores the count if the server call fails", async () => {

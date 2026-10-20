@@ -636,7 +636,7 @@ export function ConnectionWizard({
             <p className="text-[13px] leading-relaxed text-muted">The six existing iAcquire identities have separate profile keys and individual read-only checks. The portal does not create profiles or use Hermes&apos; default profile as a substitute.</p>
             <Row ok={step?.complete === true} title={step?.complete ? "Agency profiles verified" : "Agency profile mapping and checks"}>{step?.detail ?? `${selectedGateway?.mappedProfileCount ?? 0} of 6 existing agency identities mapped to this gateway.`}</Row>
             <p className="text-xs text-muted">Client profile mappings on this gateway: {selectedGateway?.clientMappedProfileCount ?? 0}. Client identity checks stay in their own client workspaces.</p>
-            <Link href="/admin/workforce?from=integrations" className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 text-sm font-medium text-primary hover:bg-surface-2">Open Internal Workforce</Link>
+            <Link href="/admin/employees?from=integrations" className="inline-flex min-h-10 items-center rounded-xl border border-line px-3 text-sm font-medium text-primary hover:bg-surface-2">Open Internal Workforce</Link>
             <Notice>Compare each prefilled profile ID with the authorized Hermes inventory before confirming. Profile keys are stored separately in Vault.</Notice>
           </div>
         );

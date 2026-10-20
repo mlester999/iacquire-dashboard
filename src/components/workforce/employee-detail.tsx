@@ -151,8 +151,8 @@ export function EmployeeDetail(props: Props) {
 
   return (
     <div className="space-y-6">
-      <Link href="/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink">
-        <ArrowLeft className="size-3.5" /> AI Workforce
+      <Link href="/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink">
+        <ArrowLeft className="size-3.5" /> AI Employees
       </Link>
 
       <EmployeeProfileHero
@@ -199,7 +199,7 @@ export function EmployeeDetail(props: Props) {
             {tab === "knowledge" && props.knowledgeView && (
               <EmployeeKnowledge agentId={agent.id} agentName={agent.displayName} data={props.knowledgeView} canEdit={props.canEditKnowledge} accept={props.uploadAccept} timeZone={props.timeZone} />
             )}
-            {tab === "history" && <HistoryTab {...props} onEdit={(versionId) => router.push(`/workforce/${meta.slug}?tab=configure&version=${versionId}`)} />}
+            {tab === "history" && <HistoryTab {...props} onEdit={(versionId) => router.push(`/employees/${meta.slug}?tab=configure&version=${versionId}`)} />}
             {tab === "activity" && <ActivityTab {...props} />}
           </motion.div>
         </AnimatePresence>

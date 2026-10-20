@@ -207,7 +207,7 @@ export async function assignProject(user: SessionUser, requestId: string, assign
       if (!ok) throw new AppError("invalid_input", "Choose a team member who works on this client.");
     }
     await db.query("update client_project_requests set assigned_to = $2 where id = $1", [requestId, assigneeId]);
-    if (assigneeId && assigneeId !== user.id) await notifyUser(db, assigneeId, null, { kind: "project_update", title: `${r.ref} was assigned to you`, body: r.title, link: `/admin/projects/${requestId}` });
+    if (assigneeId && assigneeId !== user.id) await notifyUser(db, assigneeId, r.org_id, { kind: "project_update", title: `${r.ref} was assigned to you`, body: r.title, link: `/admin/projects/${requestId}` });
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.assigned", targetType: "project_request", targetId: requestId, result: "success", metadata: { assignee: assigneeId } }, db);
   });
 }

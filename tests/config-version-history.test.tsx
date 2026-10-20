@@ -114,6 +114,14 @@ describe("configuration version history", () => {
     expect(within(pendingCard).getByText(/Ignore previous instructions/)).toBeTruthy();
   });
 
+  it("labels a legacy internal client_edit as Internal edit without rewriting the stored source", () => {
+    render(<ConfigVersionHistory versions={versions} role="operations_manager" timeZone="UTC" initialNow={NOW} isInternalWorkspace />);
+
+    expect(screen.getAllByText("Internal edit").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Client edit")).toBeNull();
+    expect(screen.getAllByText("Onboarding configuration").length).toBeGreaterThan(0);
+  });
+
   it("restores only through the existing server action and reports the real new version", async () => {
     mocks.rollbackAction.mockResolvedValue({ ok: true, data: { version: 4 } });
     render(<ConfigVersionHistory versions={versions} role="sales_assistant" timeZone="UTC" initialNow={NOW} />);
@@ -188,8 +196,8 @@ describe("configuration version history", () => {
 
     const pending = screen.getByText("Configuration version 4").closest("article")!;
     fireEvent.click(within(pending).getByRole("button", { name: "View changes" }));
-    expect(within(pending).getByText(/May let sensitive or external work proceed/)).toBeTruthy();
-    expect(within(pending).getByText(/cannot be applied until an authorized reviewer approves it/i)).toBeTruthy();
+    expect(within(pending).getByText(/Approval bypass/)).toBeTruthy();
+    expect(within(pending).getByText(/cannot be applied until an authorized internal reviewer approves it/i)).toBeTruthy();
   });
 
   it("offers revision for a rejected version when nothing newer is pending", () => {

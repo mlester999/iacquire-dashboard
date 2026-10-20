@@ -18,6 +18,7 @@ import {
   Settings2,
   ShieldCheck,
   Square,
+  UserRound,
   Wrench,
 } from "lucide-react";
 import { AgentAvatar, ThinkingDots } from "@/components/brand";
@@ -26,7 +27,7 @@ import { Markdown } from "@/components/markdown";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Dialog, Segmented, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
-import { ChatRail, type ConversationItem } from "@/components/chat/chat-rail";
+import { ChatRail, type ConversationItem, type ListState } from "@/components/chat/chat-rail";
 import { openHelp } from "@/components/help/help-widget";
 import {
   deleteConversationAction,
@@ -37,6 +38,7 @@ import {
   setReplyLengthAction,
 } from "@/app/actions/chat";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
+import { chatNavTargets } from "@/lib/chat-navigation";
 import type { ReplyLength } from "@/lib/agent-settings";
 import { cn, formatTime } from "@/lib/utils";
 
@@ -63,6 +65,10 @@ interface Props {
   initialConversation: { id: string; title: string; messages: ChatMessage[]; hasMore?: boolean } | null;
   activeRunId: string | null;
   timeZone: string;
+  /** The kind of workspace the viewer is in (client or agency), so "back" and "home" go to the right place. */
+  orgKind: string;
+  /** The server's clock at render time, so grouped dates and relative times hydrate identically. */
+  nowIso: string;
   /** Pre-filled composer text (e.g. from "Ask Performance Analyst"). Never auto-sent. */
   initialInput?: string;
 }
@@ -124,18 +130,53 @@ const ERROR_TEXT: Record<string, string> = {
   stream_ended: "The response ended unexpectedly.",
 };
 
+const RAIL_KEY = "iaq-chat-rail";
+let memoryCompact = false;
+const railListeners = new Set<() => void>();
+function readCompactRail() {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "compact";
+  } catch {
+    return memoryCompact;
+  }
+}
+function subscribeRail(callback: () => void) {
+  railListeners.add(callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    railListeners.delete(callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+/** The desktop rail's collapsed state, remembered per browser so switching employee does not reset it. */
+function useCompactRail() {
+  const compact = React.useSyncExternalStore(subscribeRail, readCompactRail, () => false);
+  const toggle = React.useCallback(() => {
+    memoryCompact = !readCompactRail();
+    try {
+      localStorage.setItem(RAIL_KEY, memoryCompact ? "compact" : "full");
+    } catch {
+      /* storage blocked: the in-memory value still applies for this page */
+    }
+    railListeners.forEach((listener) => listener());
+  }, []);
+  return [compact, toggle] as const;
+}
+
+function useNow(initialIso: string) {
+  const [now, setNow] = React.useState(() => new Date(initialIso));
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
 export function ChatWorkspace(props: Props) {
   const { meta } = props;
   const reduce = useReducedMotion();
   const ready = canChat(props.status);
   const statusMeta = chatStatusMeta(ready, props.configured, props.hasPendingReview, props.status);
-  const statusCopy = ready
-    ? props.status === "busy" ? "Working on a current task." : "Online and ready for a conversation."
-    : props.hasPendingReview
-      ? "A configuration change is waiting for iAcquire review."
-      : props.configured
-        ? "The configuration is applied. A connection check is still required."
-        : "Complete this employee's setup before starting a conversation.";
   const [conversations, setConversations] = React.useState(props.initialConversations);
   const [conversationId, setConversationId] = React.useState<string | null>(props.initialConversation?.id ?? null);
   const [messages, setMessages] = React.useState<ChatMessage[]>(props.initialConversation?.messages ?? []);
@@ -149,6 +190,10 @@ export function ChatWorkspace(props: Props) {
   const [input, setInput] = React.useState(props.initialInput ?? "");
   const [search, setSearch] = React.useState("");
   const [railOpen, setRailOpen] = React.useState(false);
+  const [listState, setListState] = React.useState<ListState>("idle");
+  const [compactRail, toggleCompactRail] = useCompactRail();
+  const now = useNow(props.nowIso);
+  const targets = chatNavTargets(props.orgKind, meta.slug);
   const [replyLength, setReplyLength] = React.useState<ReplyLength>(props.replyLength);
   const [renaming, setRenaming] = React.useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = React.useState<string | null>(null);
@@ -177,24 +222,43 @@ export function ChatWorkspace(props: Props) {
   // --- conversation list ----------------------------------------------------
   // The first list is rendered by the server page. Re-fetching it on mount cost another five
   // transactions (viewer resolution + agent + list) before the chat was usable, so only a changed
-  // search term triggers a request now.
+  // search term triggers a request now. A response that a newer request has overtaken is dropped,
+  // so typing "ab" can never be overwritten by the slower answer for "a".
+  const listSeq = React.useRef(0);
+  const loadList = React.useCallback(
+    async (query: string, quiet: boolean) => {
+      const seq = ++listSeq.current;
+      const res = await searchConversationsAction(meta.key, query);
+      if (seq !== listSeq.current) return;
+      if (res.ok) {
+        setConversations(res.data);
+        setListState("idle");
+      } else {
+        // A failed background refresh keeps the list the person is already reading.
+        setListState((s) => (quiet ? (s === "loading" ? "idle" : s) : "error"));
+      }
+    },
+    [meta.key],
+  );
   const skipInitialList = React.useRef(true);
   React.useEffect(() => {
     if (skipInitialList.current) {
       skipInitialList.current = false;
       if (!search) return;
     }
-    const t = setTimeout(async () => {
-      const res = await searchConversationsAction(meta.key, search);
-      if (res.ok) setConversations(res.data);
-    }, search ? 250 : 0);
+    const t = setTimeout(() => void loadList(search, false), search ? 250 : 0);
     return () => clearTimeout(t);
-  }, [search, meta.key]);
+  }, [search, loadList]);
 
-  const refreshList = React.useCallback(async () => {
-    const res = await searchConversationsAction(meta.key, search);
-    if (res.ok) setConversations(res.data);
-  }, [meta.key, search]);
+  const refreshList = React.useCallback(() => loadList(search, true), [loadList, search]);
+  const changeSearch = (q: string) => {
+    setSearch(q);
+    setListState("loading");
+  };
+  const retryList = () => {
+    setListState("loading");
+    void loadList(search, false);
+  };
 
   const setUrl = (id: string | null) => {
     const url = id ? `/chat/${meta.slug}?c=${id}` : `/chat/${meta.slug}`;
@@ -395,32 +459,41 @@ export function ChatWorkspace(props: Props) {
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
   const awaitingFirstToken = Boolean(streaming) && !messages.some((m) => m.id === streaming?.assistantId && m.content);
 
-  const rail = (
-    <ChatRail
-      role={meta.key}
-      conversations={conversations}
-      activeId={conversationId}
-      search={search}
-      onSearch={setSearch}
-      onSelect={selectConversation}
-      onNew={newChat}
-      onRename={(id) => setRenaming({ id, title: conversations.find((c) => c.id === id)?.title ?? "" })}
-      onDelete={(id) => setDeleting(id)}
-      onNavigate={() => setRailOpen(false)}
-    />
-  );
+  const activeTitle = conversationId
+    ? (conversations.find((c) => c.id === conversationId)?.title ?? (props.initialConversation?.id === conversationId ? props.initialConversation.title : null))
+    : null;
+  const railProps = {
+    role: meta.key,
+    agentName: props.agentName,
+    currentStatus: props.status,
+    conversations,
+    activeId: conversationId,
+    search,
+    listState,
+    onSearch: changeSearch,
+    onRetry: retryList,
+    onSelect: selectConversation,
+    onNew: newChat,
+    onRename: (id: string) => setRenaming({ id, title: conversations.find((c) => c.id === id)?.title ?? "" }),
+    onDelete: (id: string) => setDeleting(id),
+    canManage: props.canConfigure,
+    now,
+    timeZone: props.timeZone,
+  };
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface">
-      <aside className="hidden w-[280px] shrink-0 border-r border-line bg-surface-2 lg:block">{rail}</aside>
-      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Conversations" hideHeader>
-        {rail}
+      <aside className={cn("hidden shrink-0 border-r border-white/10 lg:block", compactRail ? "w-20" : "w-[280px]")}>
+        <ChatRail {...railProps} compact={compactRail} onToggleCompact={toggleCompactRail} />
+      </aside>
+      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Chat navigation" description="Switch AI specialist, open a conversation, or return to AI Employees." hideHeader className="!bg-[#0c101b]">
+        <ChatRail {...railProps} idPrefix="conv-search-drawer" onNavigate={() => setRailOpen(false)} onClose={() => setRailOpen(false)} />
       </Sheet>
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-3 sm:px-6" data-aqi-target="chat.employee">
-          <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open conversations">
+        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6" data-aqi-target="chat.employee">
+          <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 shrink-0 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open chat navigation" aria-haspopup="dialog" aria-expanded={railOpen}>
             <MenuIcon className="size-5" />
           </button>
           <AgentAvatar role={meta} size="md" thinking={Boolean(streaming)} />
@@ -429,9 +502,9 @@ export function ChatWorkspace(props: Props) {
               <h1 className="truncate text-[17px] font-semibold tracking-tight text-ink">{props.agentName}</h1>
               <span className="hidden rounded-md bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted xl:inline">Private workspace</span>
             </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <StatusPill tone={statusMeta.tone} size="sm">{statusMeta.label}</StatusPill>
-              <span className="truncate text-[12px] text-muted">{statusCopy}</span>
+            <div className="mt-0.5 flex min-w-0 items-center gap-x-2">
+              <StatusPill tone={statusMeta.tone} size="sm" className="shrink-0">{statusMeta.label}</StatusPill>
+              <span className="min-w-0 truncate text-[12px] text-muted" title={activeTitle ?? undefined}>{activeTitle ?? "New conversation"}</span>
             </div>
           </div>
           {props.canConfigure && ready && !props.hasPendingReview && (
@@ -460,17 +533,17 @@ export function ChatWorkspace(props: Props) {
               <Plus className="size-4" />
             </Button>
           </Tooltip>
+          <Tooltip content={`${props.agentName} profile`}>
+            <ButtonLink href={targets.profile} prefetch={false} variant="ghost" size="icon" aria-label={`Open ${props.agentName} profile`} className="hidden sm:inline-flex">
+              <UserRound className="size-4" />
+            </ButtonLink>
+          </Tooltip>
           {props.canConfigure && (
-            <>
-              <Tooltip content="Manage employee">
-                <ButtonLink href={`/workforce/${meta.slug}`} variant="ghost" size="icon" aria-label="Manage employee" className="xl:hidden">
-                  <Settings2 className="size-4" />
-                </ButtonLink>
-              </Tooltip>
-              <ButtonLink href={`/workforce/${meta.slug}`} variant="secondary" size="sm" className="hidden xl:inline-flex">
-                <Settings2 className="size-3.5" /> Manage employee
+            <Tooltip content="Manage employee">
+              <ButtonLink href={targets.manage} prefetch={false} variant="ghost" size="icon" aria-label="Manage employee" className="hidden sm:inline-flex">
+                <Settings2 className="size-4" />
               </ButtonLink>
-            </>
+            </Tooltip>
           )}
         </header>
 
@@ -691,8 +764,8 @@ function EmptyState({ meta, ready, status, statusDetail, configured, hasPendingR
             ))}
           </ol>
           <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-            {canConfigure && <ButtonLink size="sm" variant="brand" href={`/workforce/${meta.slug}?tab=configure`}>{configured ? "Review configuration" : "Complete setup"} <ArrowUpRight className="size-3.5" /></ButtonLink>}
-            <ButtonLink size="sm" variant="secondary" href={`/workforce/${meta.slug}`}>View employee</ButtonLink>
+            {canConfigure && <ButtonLink size="sm" variant="brand" href={`/employees/${meta.slug}?tab=configure`}>{configured ? "Review configuration" : "Complete setup"} <ArrowUpRight className="size-3.5" /></ButtonLink>}
+            <ButtonLink size="sm" variant="secondary" href={`/employees/${meta.slug}`}>View employee</ButtonLink>
             <Button size="sm" variant="ghost" onClick={() => openHelp("human")}>Contact iAcquire</Button>
           </div>
         </div>
@@ -721,8 +794,8 @@ function ChatUnavailableDock({ meta, status, statusDetail, configured, hasPendin
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {canConfigure && <ButtonLink size="sm" variant="brand" href={`/workforce/${meta.slug}?tab=configure`}>{configured ? "Review setup" : "Complete setup"}</ButtonLink>}
-          <ButtonLink size="sm" variant="secondary" href={`/workforce/${meta.slug}`}>View employee</ButtonLink>
+          {canConfigure && <ButtonLink size="sm" variant="brand" href={`/employees/${meta.slug}?tab=configure`}>{configured ? "Review setup" : "Complete setup"}</ButtonLink>}
+          <ButtonLink size="sm" variant="secondary" href={`/employees/${meta.slug}`}>View employee</ButtonLink>
         </div>
       </div>
     </div>

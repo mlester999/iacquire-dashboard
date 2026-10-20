@@ -30,6 +30,21 @@ A later hosted inspection on 2026-10-18 found `0001`–`0029` and `0034`–`0044
 
 The repository has an **external Vercel production deployment** from master. GitHub records a successful Production deployment for **`ceae6e5`** by `vercel[bot]` on 2026-10-19; the deployment URL is protected by Vercel SSO, so the running app itself could not be inspected without a session. `ceae6e5` includes the provider-resolution, role-aware error, budget, support, attachment/composer, GIF-removal, conversational-intelligence and conversation title/lifecycle changes. There is no `.github/workflows` or Vercel config in the repository; the integration is external.
 
+### Support & Requests (2026-10-20; local only, branch `feat/support-requests`, migration `0065` not applied anywhere)
+
+The full evidence, per area and per tier, is in [support-requests.md §18](support-requests.md#18-verification). In short:
+
+| Gate | Result |
+| --- | --- |
+| `npx vitest run --maxWorkers=2` | **3,163 passed / 3,166 (194 files).** The 3 failures (`crm-calendars` ×2, `crm-booking-pages` ×1) also fail on `6e18e1b`, the commit this branch started from; `master` has a later calendar-fixture fix (`f59edc7`). About 128 of the passing cases are support-specific (`tests/support-*.test.ts`, `tests/aqi-support.test.ts`) |
+| `npm run typecheck`, `npm run lint` | pass; 0 errors and 0 warnings |
+| `next build --webpack` | passes; the nine support pages and the support and AQi-support API routes are emitted |
+| Migration `0065_support_requests` | applied by the test harness on embedded PostgreSQL; rollback and re-apply proved by `tests/support-migration-0065.test.ts`; `tests/crm-migrations.test.ts` rolls it back first. Renumbered from 0064 because `master` took 0064 (`0064_aqi_feature_tours`, applied to the hosted project); **nothing was applied to a hosted database** |
+| Browser QA (local only) | 34 checks driven in Chromium against the isolated QA server (embedded database, local sign-in, fictional accounts, email captured): signed-out visitor, client team member, owner, viewer, a second client, agency Super Admin, agency staff and out-of-scope staff, at 390/768/1024/1440 px; axe-core clean at 390 and 1440; 0 requests left the loopback origin. Not driven in a browser: reopening a request, upload cancel/retry, the 20-second refresh, and the agency keyboard shortcuts |
+| Not verified | Real email delivery (capture mode only), a real AI provider, the scheduler on a real host, Supabase row-level security on the hosted project, staging, production, screen readers. No malware scanner exists for uploads |
+
+No push, merge to `master`, hosted migration, deployment, customer email or live provider call was made. `master` has moved on since this branch was cut: a trial merge shows one textual conflict, in `src/components/shell/sidebar.tsx` (master added an `onWarm` prop to every `NavLink`; the new Requests group adds calls that need it), and the migration number must be re-checked before merging.
+
 ### Native-first surface pass (2026-10-19)
 
 This pass keeps the GoHighLevel integration working while removing the places where a new native client was still shown a GoHighLevel-first experience. All browser evidence below is **local only** (isolated PGlite, fictional data, synthetic sign-in).

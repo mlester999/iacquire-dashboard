@@ -21,10 +21,11 @@ import { FilterTabs, Notice } from "@/components/settings/panel";
 import { NotificationTimestamp } from "@/components/notifications/notification-visuals";
 import { rollbackAction } from "@/app/actions/workforce";
 import {
+  configRiskLabel,
+  configVersionSourceLabel,
   configVersionStatus,
   type NotificationTone,
 } from "@/lib/notification-presentation";
-import { configSourceLabel, describeRiskCodes } from "@/lib/config-review";
 import { diffAgentSettings, LENGTH_COPY, TONE_COPY, type AgentSettings, type AgentSettingsChange } from "@/lib/agent-settings";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -63,38 +64,13 @@ const TILE: Record<NotificationTone, string> = {
   violet: "border-violet/25 bg-violet-soft text-violet-ink",
 };
 
-function versionCardTone(status: string): string {
-  if (status === "applied") return "border-success/30";
-  if (status === "pending_agency_review" || status === "pending_approval") return "border-warning/35";
-  if (status === "rejected") return "border-danger/25";
-  if (status === "draft") return "border-primary/25";
-  return "border-line";
-}
-
-/** Show the same human words the configuration form uses, not the stored enum value. */
-function diffValue(change: AgentSettingsChange, raw: string): string {
-  if (change.key === "tone") return TONE_COPY[raw as keyof typeof TONE_COPY]?.label ?? raw;
-  if (change.key === "replyLength") return LENGTH_COPY[raw as keyof typeof LENGTH_COPY]?.label ?? raw;
-  if (change.key === "disabledTools" && raw !== "None") {
-    return raw
-      .split(", ")
-      .filter(Boolean)
-      .map((tool) => agentToolLabel(tool))
-      .join(", ");
-  }
-  return raw;
-}
-
-function startingSettings(settings: AgentSettings): Array<[string, string]> {
-  const out: Array<[string, string]> = [
-    ["Name", settings.displayName || "Not set"],
-    ["Tone", TONE_COPY[settings.tone]?.label ?? settings.tone],
-    ["Reply length", LENGTH_COPY[settings.replyLength]?.label ?? settings.replyLength],
-    ["Language", settings.language],
-    ["Approval preference", settings.approvalPreference === "always" ? "Ask before any action" : "Ask for high-impact actions"],
-  ];
-  if (settings.disabledTools.length) out.push(["Tools switched off", settings.disabledTools.join(", ")]);
-  return out;
+/**
+ * Legacy internal saves were persisted as `client_edit`. Label them from the authenticated workspace
+ * context without changing the stored source, which remains visible in the details panel.
+ */
+function historySourceLabel(source: string, isInternalWorkspace: boolean): string {
+  if (isInternalWorkspace && (source === "client_edit" || source === "agency")) return "Internal edit";
+  return configVersionSourceLabel(source);
 }
 
 /** A verified stored role, worded safely for clients. Agency roles are not disguised as clients. */
@@ -121,6 +97,39 @@ function decisionLabel(status: string): string {
   return "No decision recorded";
 }
 
+function versionCardTone(status: string): string {
+  if (status === "applied") return "border-success/30";
+  if (status === "pending_agency_review" || status === "pending_approval") return "border-warning/35";
+  if (status === "rejected") return "border-danger/25";
+  if (status === "draft") return "border-primary/25";
+  return "border-line";
+}
+
+/** Show the same human words the configuration form uses, not the stored enum value. */
+function diffValue(change: AgentSettingsChange, raw: string): string {  if (change.key === "tone") return TONE_COPY[raw as keyof typeof TONE_COPY]?.label ?? raw;
+  if (change.key === "replyLength") return LENGTH_COPY[raw as keyof typeof LENGTH_COPY]?.label ?? raw;
+  if (change.key === "disabledTools" && raw !== "None") {
+    return raw
+      .split(", ")
+      .filter(Boolean)
+      .map((tool) => agentToolLabel(tool))
+      .join(", ");
+  }
+  return raw;
+}
+
+function startingSettings(settings: AgentSettings): Array<[string, string]> {
+  const out: Array<[string, string]> = [
+    ["Name", settings.displayName || "Not set"],
+    ["Tone", TONE_COPY[settings.tone]?.label ?? settings.tone],
+    ["Reply length", LENGTH_COPY[settings.replyLength]?.label ?? settings.replyLength],
+    ["Language", settings.language],
+    ["Approval preference", settings.approvalPreference === "always" ? "Ask before any action" : "Ask for high-impact actions"],
+  ];
+  if (settings.disabledTools.length) out.push(["Tools switched off", settings.disabledTools.join(", ")]);
+  return out;
+}
+
 /**
  * A readable activity history of an AI employee's configuration. Every card is built from the saved
  * version row: no review decision, author, timestamp or changed field is inferred. Where two stored
@@ -141,7 +150,7 @@ export function ConfigVersionHistory({
   role: string;
   timeZone: string;
   initialNow: number;
-  /** Internal agency workspaces label legacy client_edit rows truthfully as internal edits. */
+  /** Legacy internal saves were persisted as client_edit; label them from authenticated workspace context. */
   isInternalWorkspace?: boolean;
   /** The unapplied version currently open in Configure, if any. */
   draftVersion?: number | null;
@@ -276,7 +285,7 @@ export function ConfigVersionHistory({
                         )}
                         aria-label={`Version ${version.version}`}
                       >
-                        <span className="text-[9px] font-semibold uppercase leading-none tracking-[.14em]">Ver</span>
+                        <span className="text-[8.5px] font-semibold uppercase leading-none tracking-[.14em] opacity-80">Ver</span>
                         <span className="mt-0.5 text-[18px] font-semibold leading-none tabular-nums">{version.version}</span>
                       </div>
 
@@ -288,10 +297,12 @@ export function ConfigVersionHistory({
                               {statusLabel(version.status, isInternalWorkspace)}
                             </StatusPill>
                             <Badge tone="outline" className="h-5 px-2 text-[11px]">
-                              {configSourceLabel(version.source, isInternalWorkspace ? "agency" : "client")}
+                              {historySourceLabel(version.source, isInternalWorkspace)}
                             </Badge>
-                            {draftVersion === version.version && version.status !== "applied" && (
-                              <Badge tone="primary" className="h-5 px-2 text-[11px]">Editing now</Badge>
+                            {version.version === draftVersion && (
+                              <Badge tone="primary" className="h-5 px-2 text-[11px]">
+                                Editing now
+                              </Badge>
                             )}
                           </div>
                           <NotificationTimestamp value={version.created_at} timeZone={timeZone} now={now} />
@@ -302,24 +313,21 @@ export function ConfigVersionHistory({
                           {version.created_by_name ? (
                             <span>
                               Saved by <span className="font-medium text-ink-2">{version.created_by_name}</span>
-                              {actorRoleLabel(version.created_by_role, isInternalWorkspace) && (
-                                <span className="text-faint"> · {actorRoleLabel(version.created_by_role, isInternalWorkspace)}</span>
-                              )}
                             </span>
                           ) : version.created_by ? (
                             <span>Saved by a teammate whose profile isn&apos;t visible in this workspace</span>
                           ) : (
                             <span>Saved automatically</span>
                           )}
+                          {actorRoleLabel(version.created_by_role, isInternalWorkspace) && (
+                            <>
+                              <span aria-hidden className="text-faint">·</span>
+                              <span>{actorRoleLabel(version.created_by_role, isInternalWorkspace)}</span>
+                            </>
+                          )}
                           <span aria-hidden className="text-faint">·</span>
-                          <span>{decisionLabel(version.status)}</span>
+                          <span>{status.description}</span>
                         </p>
-
-                        {version.status === "pending_agency_review" && (
-                          <p className="mt-2 rounded-lg border border-warning/25 bg-warning-soft/30 px-2.5 py-1.5 text-[12px] leading-relaxed text-warning-ink">
-                            Your current approved configuration remains active until this version is approved.
-                          </p>
-                        )}
 
                         {version.change_request && (
                           <p className="mt-2.5 line-clamp-2 rounded-lg border-l-2 border-primary/30 bg-primary-soft/25 px-2.5 py-1.5 text-[12.5px] leading-relaxed text-ink-2">
@@ -381,6 +389,11 @@ export function ConfigVersionHistory({
                                 <ShieldCheck className="size-3.5" aria-hidden /> {riskCount} safety {riskCount === 1 ? "flag" : "flags"}
                               </span>
                             )}
+                            {version.status === "superseded" && (
+                              <Button size="sm" variant="secondary" onClick={() => setConfirm(version)}>
+                                <RotateCcw className="size-3.5" aria-hidden /> Restore this version
+                              </Button>
+                            )}
                             {canEdit && onEdit && ["pending_agency_review", "rejected", "draft"].includes(version.status) && (
                               latestPendingVersion > version.version && version.status !== "pending_agency_review" ? (
                                 <span className="text-[11px] text-muted">A newer version is awaiting review. Revise that version instead.</span>
@@ -394,11 +407,6 @@ export function ConfigVersionHistory({
                                   {version.status === "rejected" ? `Revise v${version.version}` : `Continue editing v${version.version}`}
                                 </Button>
                               )
-                            )}
-                            {version.status === "superseded" && (
-                              <Button size="sm" variant="secondary" onClick={() => setConfirm(version)}>
-                                <RotateCcw className="size-3.5" aria-hidden /> Restore this version
-                              </Button>
                             )}
                           </div>
                         </div>
@@ -424,23 +432,25 @@ export function ConfigVersionHistory({
                                 <dl className="mt-2 grid gap-x-5 gap-y-2.5 sm:grid-cols-2">
                                   <Meta label="Created" value={formatDateTime(version.created_at, timeZone)} />
                                   <Meta label="Applied" value={version.applied_at ? formatDateTime(version.applied_at, timeZone) : "Not applied"} />
-                                  <Meta label="Decision" value={decisionLabel(version.status)} />
                                   <Meta
                                     label="Decision recorded by"
                                     value={
-                                      version.decided_by_name
-                                        ? <>{version.decided_by_name}{actorRoleLabel(version.decided_by_role, isInternalWorkspace) && <span className="text-faint"> · {actorRoleLabel(version.decided_by_role, isInternalWorkspace)}</span>}</>
-                                        : version.decided_by
-                                          ? "A reviewer whose profile isn't visible in this workspace"
-                                          : "No decision recorded"
+                                      <>
+                                        {version.decided_by_name ??
+                                          (version.decided_by ? "A reviewer whose profile isn't visible in this workspace" : "No decision recorded")}
+                                        {actorRoleLabel(version.decided_by_role, isInternalWorkspace) && (
+                                          <span className="text-muted"> · {actorRoleLabel(version.decided_by_role, isInternalWorkspace)}</span>
+                                        )}
+                                      </>
                                     }
                                   />
+                                  <Meta label="Decision" value={decisionLabel(version.status)} />
                                   <Meta label="Decision time" value={version.decided_at ? formatDateTime(version.decided_at, timeZone) : "No decision recorded"} />
                                   <Meta
                                     label="Recorded source"
                                     value={
                                       <>
-                                        {configSourceLabel(version.source, isInternalWorkspace ? "agency" : "client")}
+                                        {historySourceLabel(version.source, isInternalWorkspace)}
                                         {version.source && (
                                           <code className="ml-1.5 rounded bg-surface-3 px-1 py-0.5 font-mono text-[10.5px] text-muted">{version.source}</code>
                                         )}
@@ -462,14 +472,13 @@ export function ConfigVersionHistory({
                               >
                                 {riskCount > 0 ? (
                                   <div>
-                                    <p>This version was held for review because:</p>
-                                    <ul className="mt-1.5 space-y-1.5">
-                                      {describeRiskCodes(version.risk_flags).map((reason) => (
-                                        <li key={reason.code}>
+                                    <p>This version was held because these patterns were detected:</p>
+                                    <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                                      {version.risk_flags.map((flag) => (
+                                        <li key={flag}>
                                           <StatusPill tone="warning" size="sm">
-                                            {reason.label}
+                                            {configRiskLabel(flag)}
                                           </StatusPill>
-                                          <span className="ml-1.5 text-[12px]">{reason.detail}</span>
                                         </li>
                                       ))}
                                     </ul>
@@ -478,10 +487,12 @@ export function ConfigVersionHistory({
                                   <p>No safety flags were recorded when this version was saved.</p>
                                 )}
                                 {version.status === "pending_agency_review" && (
-                                  <p className="mt-1.5 text-[12px]">It cannot be applied until an authorized reviewer approves it. Your current approved configuration remains active.</p>
+                                  <p className="mt-1.5 text-[12px]">
+                                    It cannot be applied until {isInternalWorkspace ? "an authorized internal reviewer" : "an iAcquire reviewer"} approves it.
+                                  </p>
                                 )}
                                 {version.status === "rejected" && (
-                                  <p className="mt-1.5 text-[12px]">It was reviewed and not applied. The previous configuration stayed active. You can revise it without losing the record.</p>
+                                  <p className="mt-1.5 text-[12px]">It was reviewed and not applied. The previous configuration stayed active.</p>
                                 )}
                               </Notice>
                             </div>

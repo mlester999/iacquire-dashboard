@@ -88,6 +88,13 @@ export const RATE_LIMITS = {
   // Automatic conversation naming is a tiny background call, but it must never be loopable.
   aqiTitleByUser: { name: "aqi:title:user", limit: 30, windowSeconds: 3600 },
   supportTicketByUser: { name: "ticket:user", limit: 10, windowSeconds: 3600 },
+  // Replies inside a request, per person. High enough for a real back-and-forth, low enough to stop a loop.
+  supportReplyByUser: { name: "support:reply:user", limit: 60, windowSeconds: 3600 },
+  // Optional AI help on requests (rewrites, category suggestions, summaries, drafts). Each call can reach the AI provider.
+  supportAiByUser: { name: "support:ai:user", limit: 20, windowSeconds: 3600 },
+  supportAgencyActionByUser: { name: "support:agency:user", limit: 600, windowSeconds: 3600 },
+  // "Similar requests" suggestions while a person types a title.
+  supportSimilarByUser: { name: "support:similar:user", limit: 200, windowSeconds: 3600 },
   uploadByUser: { name: "upload:user", limit: 30, windowSeconds: 3600 },
   // Re-running bounded extraction against an already stored document, per user.
   knowledgeReprocessByUser: { name: "knowledge:reprocess:user", limit: 20, windowSeconds: 3600 },

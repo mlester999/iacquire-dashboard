@@ -58,16 +58,16 @@ afterAll(async () => {
 
 describe("AQi context and knowledge", () => {
   it("adapts suggestions to the current page and only exposes authorized routes", async () => {
-    const bootstrap = await getAqiBootstrap(viewer, "/workforce");
-    expect(bootstrap.page?.label).toBe("AI Workforce");
+    const bootstrap = await getAqiBootstrap(viewer, "/employees");
+    expect(bootstrap.page?.label).toBe("AI Employees");
     expect(bootstrap.suggestions.map((item) => item.question)).toContain("How do I change an employee's instructions?");
-    expect(bootstrap.allowedPaths).toContain("/workforce");
+    expect(bootstrap.allowedPaths).toContain("/employees");
     expect(bootstrap.allowedPaths).not.toContain("/admin/aqi");
     expect(bootstrap.config.identity).toBe("AQi");
   });
 
   it("retrieves approved knowledge for the workspace role and page", async () => {
-    const result = await retrieveAqiKnowledge(viewer, "How do I change an employee's instructions?", "/workforce");
+    const result = await retrieveAqiKnowledge(viewer, "How do I change an employee's instructions?", "/employees");
     expect(result.sources.length).toBeGreaterThan(0);
     expect(result.entries.some((entry) => entry.title === "Employee instructions and knowledge")).toBe(true);
     expect(result.entries.every((entry) => entry.roles.length === 0 || entry.roles.includes("owner"))).toBe(true);
@@ -166,9 +166,9 @@ describe("AQi context and knowledge", () => {
 
   it("lets a Super Admin preview retrieval without an answer", async () => {
     const admin = await createUser({ platformRole: "agency_super_admin" });
-    const preview = await previewAqiRetrieval(agencyUser(admin, "agency_super_admin"), "employee instructions", "/workforce");
+    const preview = await previewAqiRetrieval(agencyUser(admin, "agency_super_admin"), "employee instructions", "/employees");
     expect(preview.entries.some((entry) => entry.title === "Employee instructions and knowledge")).toBe(true);
-    await expect(previewAqiRetrieval(viewer.user, "employee instructions", "/workforce")).rejects.toThrow(/Super Admin/i);
+    await expect(previewAqiRetrieval(viewer.user, "employee instructions", "/employees")).rejects.toThrow(/Super Admin/i);
   });
 });
 
@@ -208,7 +208,7 @@ describe("AQi conversation privacy", () => {
   });
 
   it("creates, lists, renames, reads and deletes only the signed-in person's conversation", async () => {
-    const created = await createAqiConversation(viewer, "/workforce");
+    const created = await createAqiConversation(viewer, "/employees");
     expect((await listAqiConversations(viewer)).some((conversation) => conversation.id === created.id)).toBe(false);
     const { saveAqiConversation } = await import("@/server/aqi/lifecycle");
     await saveAqiConversation(viewer, created.id);

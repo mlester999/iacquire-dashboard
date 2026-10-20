@@ -529,9 +529,9 @@ async function onboardingScenario(viewport, tag) {
 // markdown: stream awkward chunks through the real widget and inspect the rendered DOM
 // ---------------------------------------------------------------------------
 const MALFORMED = [
-  "AQi helps in one place. As the owner, you can also manage the workspace itself: add teammates and their roles under [Team] (Settings → Team), and connect outside services such as Hermes under [Integrations](Settings → Integrations). AI employees live in [AI Workforce](AI Workforce), where you can chat with each one.",
+  "AQi helps in one place. As the owner, you can also manage the workspace itself: add teammates and their roles under [Team] (Settings → Team), and connect outside services such as Hermes under [Integrations](Settings → Integrations). AI employees live in [AI Employees](AI Employees), where you can chat with each one.",
   "",
-  "A good starting point is checking Integrations, then [Team], then [AI Workforce].",
+  "A good starting point is checking Integrations, then [Team], then [AI Employees].",
 ].join("\n");
 
 const RICH = [
@@ -626,8 +626,8 @@ async function markdownScenario(viewport, tag, role = "owner") {
     });
     result.malformed = malformed;
     await shot(page, `${tag}-markdown-malformed`);
-    check(`${tag}: no raw [Label] syntax is displayed for page references`, !/\[(Team|Integrations|AI Workforce)\]/.test(malformed.text), malformed.text.slice(0, 400));
-    check(`${tag}: no raw (Settings → Team) destinations are displayed`, !/\]\(|\(Settings →|\(AI Workforce\)/.test(malformed.text), malformed.text.slice(0, 400));
+    check(`${tag}: no raw [Label] syntax is displayed for page references`, !/\[(Team|Integrations|AI Employees)\]/.test(malformed.text), malformed.text.slice(0, 400));
+    check(`${tag}: no raw (Settings → Team) destinations are displayed`, !/\]\(|\(Settings →|\(AI Employees\)/.test(malformed.text), malformed.text.slice(0, 400));
     check(`${tag}: only real routes become links`, malformed.links.every((l) => l.href?.startsWith("/") && !/\s|→/.test(l.href)), malformed.links);
 
     await page.locator("[data-aqi-panel]").getByRole("button", { name: /New chat|new conversation/i }).first().click({ timeout: 3_000 }).catch(() => {});

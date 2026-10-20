@@ -4,293 +4,508 @@ import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { notifyAgency, notifyUser, sendAgencySlackAlert } from "@/server/notifications";
+import { sendAgencySlackAlert } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
-import type { SessionUser } from "@/server/auth/service";
+import {
+  AFFECTED_FEATURES, ALL_CATEGORIES, CLIENT_URGENCIES, PRIORITIES, REQUEST_TYPES, REQUEST_TYPE_LABELS, TICKET_STATUSES, categoryLabel, clientCanReopen,
+  isCategoryForType, isAwaitingAgency, type FeedbackStage, type RequestType, type TicketPriority, type TicketStatus,
+} from "@/lib/support/lifecycle";
+import { cleanText, likePattern, sanitizeDiagnostics, type Diagnostics } from "@/lib/support/content";
+import { firstName } from "@/lib/utils";
+import { loadSupportSettings, clientExpectationText } from "@/server/support/settings";
+import { recordTicketEvent } from "@/server/support/events";
+import { agencyHandlers, dispatchSupportNotice, sendQueuedSupportEmails } from "@/server/support/notify";
+import { ensureResponseClock } from "@/server/support/response-clock";
+import { applyStatusChange } from "@/server/support/lifecycle";
+import { bindStagedAttachments } from "@/server/support/attachments";
+import type { TicketCore } from "@/server/support/access";
+import type { ClientRequestDetail, RequestListItem, RequestPage, ThreadAttachment, ThreadMessage, TimelineEntry } from "@/server/support/types";
 
-export const TICKET_STATUSES = ["open", "in_progress", "waiting_for_client", "resolved", "closed"] as const;
-export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export { TICKET_STATUSES };
+export type { TicketStatus };
 
-export const newTicketSchema = z.object({
-  subject: z.string().trim().min(3, "Add a short subject.").max(160),
-  message: z.string().trim().min(5, "Tell us a little more.").max(5000),
-  category: z.enum(["general", "ai_employees", "integrations", "billing", "account", "bug", "onboarding", "project", "maintenance"]).default("general"),
+// ---------------------------------------------------------------------------
+// Creating a request
+// ---------------------------------------------------------------------------
+
+const PAGE_PATH = /^\/[A-Za-z0-9/_-]*$/;
+
+export const submitRequestSchema = z.object({
+  requestType: z.enum(REQUEST_TYPES).default("support"),
+  subject: z.string().trim().min(3, "Add a short title.").max(160),
+  /** The description. For an issue report it can be left out when `issue.happened` is given. */
+  message: z.string().trim().max(5000).optional(),
+  issue: z.object({
+    happened: z.string().trim().max(3000).optional(),
+    expected: z.string().trim().max(1500).optional(),
+    steps: z.string().trim().max(1500).optional(),
+  }).optional(),
+  category: z.string().refine((c) => ALL_CATEGORIES.includes(c), "Choose what this is about.").default("general"),
+  affectedFeature: z.enum(AFFECTED_FEATURES).optional(),
+  clientUrgency: z.enum(CLIENT_URGENCIES).optional(),
+  pageContext: z.string().max(200).regex(PAGE_PATH).optional().catch(undefined),
   projectId: z.string().uuid().optional(),
-  priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
-  pageContext: z
-    .string()
-    .max(200)
-    .regex(/^\/[A-Za-z0-9/_-]*$/)
-    .optional()
-    .catch(undefined),
+  idempotencyKey: z.string().min(8).max(80).optional(),
+  attachmentIds: z.array(z.string().uuid()).max(10).default([]),
+  /** Must be true for any technical details to be stored. */
+  shareDiagnostics: z.boolean().default(false),
+  diagnostics: z.unknown().optional(),
+  /** Older callers sent a priority. Clients no longer set the team's priority; it is read as how urgent the person says it is. */
+  priority: z.enum(PRIORITIES).optional(),
 });
+/** Kept for the callers that existed before request types. */
+export const newTicketSchema = submitRequestSchema;
 
-export interface TicketRow {
+/** The text of a request as the team reads it. An issue report keeps its three answers under plain headings. */
+export function composeRequestBody(data: z.infer<typeof submitRequestSchema>): string {
+  if (data.requestType === "issue" && data.issue?.happened) {
+    const parts = [`What happened:\n${data.issue.happened}`];
+    if (data.issue.expected) parts.push(`What I expected:\n${data.issue.expected}`);
+    if (data.issue.steps) parts.push(`Steps to reproduce:\n${data.issue.steps}`);
+    if (data.message) parts.push(`More details:\n${data.message}`);
+    return cleanText(parts.join("\n\n"), 5000);
+  }
+  return cleanText(data.message ?? "", 5000);
+}
+
+export interface SubmitResult {
   id: string;
   ref: string;
-  subject: string;
-  category: string;
-  priority: string;
   status: TicketStatus;
-  created_at: Date;
-  updated_at: Date;
-  last_message_at: Date;
-  external_notification: string;
-  created_by_name: string | null;
-  /** Null for client users: row-level security keeps agency staff profiles private. */
-  assigned_to_name: string | null;
-  is_assigned: boolean;
-  org_name?: string;
-  org_id?: string;
+  /** True when this key had already created the request: nothing new was made. */
+  existing: boolean;
+  externalNotification: string;
+  expectation: string | null;
 }
 
-type AgencySupportPermission = "agency.support.view" | "agency.support.manage";
-
-async function assertAgencySupportPermission(user: Pick<SessionUser, "id" | "platformRole">, orgId: string | null, permission: AgencySupportPermission) {
-  const { rows } = await withSystem((db) => db.query<{ active: boolean; platform_role: string; in_scope: boolean; allowed: boolean }>(
-    `select u.status='active' as active,u.platform_role,
-       ($2::uuid is null or app.user_can_access_org(u.id,$2)) as in_scope,
-       coalesce(app.user_has_agency_permission(u.id,$3),false) as allowed
-     from users u where u.id=$1`,
-    [user.id, orgId, permission],
-  ));
-  const current = rows[0];
-  if (!current?.active || current.platform_role !== user.platformRole || current.platform_role === "none") {
-    throw new AppError("forbidden", "Agency access is required; authorization has changed.");
-  }
-  if (!current.in_scope) throw new AppError("not_found", "Support request not found.");
-  if (!current.allowed) throw new AppError("forbidden", "Your agency role does not allow this support action.");
+function urgencyFromLegacy(priority: string | undefined) {
+  return priority === "urgent" ? "blocking" : priority === "high" ? "soon" : null;
 }
 
-export async function createTicket(ctx: OrgContext, input: z.input<typeof newTicketSchema>) {
+export async function submitRequest(ctx: OrgContext, input: z.input<typeof submitRequestSchema>): Promise<SubmitResult> {
   if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't open support requests.");
-  const data = newTicketSchema.parse(input);
+  const parsed = submitRequestSchema.safeParse(input);
+  if (!parsed.success) throw new AppError("invalid_input", parsed.error.issues[0]?.message ?? "Check the form and try again.");
+  const data = parsed.data;
+  const type: RequestType = data.requestType;
+  if (type !== "support" && !isCategoryForType(type, data.category)) throw new AppError("invalid_input", "Choose what this is about.");
+  const body = composeRequestBody(data);
+  if (body.length < 5) throw new AppError("invalid_input", type === "issue" ? "Tell us what happened." : "Tell us a little more.");
+  const subject = cleanText(data.subject, 160).replace(/\s*\n\s*/g, " ");
+  if (subject.length < 3) throw new AppError("invalid_input", "Add a short title.");
+  const settings = await loadSupportSettings();
+
+  // A retry of the same submission (double click, dropped connection) returns the request that already exists.
+  if (data.idempotencyKey) {
+    const found = await withSystem(async (db) =>
+      (await db.query<{ id: string; ref: string; status: TicketStatus; priority: string; external_notification: string }>(
+        "select id, ref, status, priority, external_notification from support_tickets where org_id = $1 and created_by = $2 and idempotency_key = $3",
+        [ctx.org.orgId, ctx.user.id, data.idempotencyKey],
+      )).rows[0],
+    );
+    if (found) return { id: found.id, ref: found.ref, status: found.status, existing: true, externalNotification: found.external_notification, expectation: clientExpectationText(settings, "first", found.priority) };
+  }
   const limit = await consumeRateLimit(RATE_LIMITS.supportTicketByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You've opened several requests recently. Please add to an existing one.");
 
-  const ticket = await withSystem(async (db) => {
+  const priority = settings.defaultPriority[type];
+  const diagnostics = data.shareDiagnostics ? sanitizeDiagnostics(data.diagnostics) : null;
+  const urgency = data.clientUrgency ?? urgencyFromLegacy(data.priority);
+  const stage: FeedbackStage | null = type === "feedback" ? "received" : null;
+
+  const outcome = await withSystem(async (db) => {
     if (data.projectId) {
       const own = await db.query("select 1 from client_project_requests where id = $1 and org_id = $2", [data.projectId, ctx.org.orgId]);
       if (!own.rows[0]) throw new AppError("not_found", "Project not found.");
     }
-    const { rows } = await db.query<{ id: string; ref: string }>(
-      `insert into support_tickets (org_id, created_by, subject, category, priority, page_context, project_id)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id, ref`,
-      [ctx.org.orgId, ctx.user.id, data.subject, data.category, data.priority, data.pageContext ?? null, data.projectId ?? null],
+    const inserted = await db.query<{ id: string; ref: string }>(
+      `insert into support_tickets (org_id, created_by, subject, category, priority, status, request_type, affected_feature, client_urgency, feedback_stage, diagnostics, page_context, project_id, idempotency_key)
+       values ($1, $2, $3, $4, $5, 'new', $6, $7, $8, $9, $10, $11, $12, $13)
+       on conflict (org_id, created_by, idempotency_key) where idempotency_key is not null do nothing returning id, ref`,
+      [ctx.org.orgId, ctx.user.id, subject, data.category, priority, type, data.affectedFeature ?? null, urgency, stage, diagnostics ? JSON.stringify(diagnostics) : null, data.pageContext ?? null, data.projectId ?? null, data.idempotencyKey ?? null],
     );
-    const t = rows[0];
-    await db.query("insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4)", [
-      t.id,
-      ctx.org.orgId,
-      ctx.user.id,
-      data.message,
-    ]);
-    await notifyAgency(db, ctx.org.orgId, {
-      kind: "support_ticket_created",
-      severity: data.priority === "urgent" || data.priority === "high" ? "warning" : "info",
-      title: `${t.ref}: ${data.subject}`,
-      body: `${ctx.org.name} · ${data.category.replace("_", " ")}`,
-      link: `/admin/support/${t.id}`,
+    const t = inserted.rows[0];
+    if (!t) {
+      // Two identical submissions arrived together; the other one won.
+      const again = await db.query<{ id: string; ref: string; status: TicketStatus; priority: string; external_notification: string }>(
+        "select id, ref, status, priority, external_notification from support_tickets where org_id = $1 and created_by = $2 and idempotency_key = $3",
+        [ctx.org.orgId, ctx.user.id, data.idempotencyKey],
+      );
+      return { existing: again.rows[0], created: null };
+    }
+    const message = await db.query<{ id: string }>(
+      "insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4) returning id",
+      [t.id, ctx.org.orgId, ctx.user.id, body],
+    );
+    await bindStagedAttachments(db, { ticketId: t.id, orgId: ctx.org.orgId, messageId: message.rows[0].id, userId: ctx.user.id, ids: data.attachmentIds, visibility: "client", maxCount: settings.maxAttachmentsPerMessage });
+    await recordTicketEvent(db, { ticketId: t.id, orgId: ctx.org.orgId, kind: "created", actorUserId: ctx.user.id, actorKind: "client" });
+    await ensureResponseClock(db, { id: t.id, org_id: ctx.org.orgId, priority, status: "new", first_responded_at: null }, { settings });
+    await dispatchSupportNotice(db, {
+      event: "request_submitted",
+      ticket: { id: t.id, org_id: ctx.org.orgId, ref: t.ref, subject },
+      eventKey: `submitted:${t.id}`,
+      recipients: await agencyHandlers(db, { org_id: ctx.org.orgId, assigned_to: null }),
+      title: `${t.ref}: ${subject}`,
+      body: `${ctx.org.name} · ${REQUEST_TYPE_LABELS[type].label} · ${categoryLabel(data.category)}`,
+      severity: urgency === "blocking" ? "warning" : "info",
     });
     await recordAudit(
-      { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "support.ticket_created", targetType: "support_ticket", targetId: t.id, result: "success", metadata: { ref: t.ref, category: data.category } },
+      { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "support.ticket_created", targetType: "support_ticket", targetId: t.id, result: "success", metadata: { ref: t.ref, type, category: data.category, attachments: data.attachmentIds.length, diagnostics: Boolean(diagnostics) } },
       db,
     );
-    return t;
+    return { existing: null, created: t };
   });
 
-  // External alert carries no message body: only the reference, tenant name and category.
-  const external = await sendAgencySlackAlert(`New iAcquire support request ${ticket.ref} from ${ctx.org.name} (${data.category}, ${data.priority}).`);
-  await withSystem((db) => db.query("update support_tickets set external_notification = $2 where id = $1", [ticket.id, external]));
-  return { ...ticket, externalNotification: external };
-}
-
-export async function listTickets(ctx: OrgContext): Promise<TicketRow[]> {
-  return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<TicketRow>(
-      `select t.id, t.ref, t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at, t.last_message_at,
-              t.external_notification, cu.full_name as created_by_name, au.full_name as assigned_to_name, (t.assigned_to is not null) as is_assigned
-       from support_tickets t left join users cu on cu.id = t.created_by left join users au on au.id = t.assigned_to
-       where t.org_id = $1 order by t.last_message_at desc limit 100`,
-      [ctx.org.orgId],
-    );
-    return rows;
-  });
-}
-
-export interface TicketMessage {
-  id: string;
-  author_kind: "client" | "agency" | "system";
-  author_name: string | null;
-  body: string;
-  internal: boolean;
-  created_at: Date;
-}
-
-export async function getTicketForClient(ctx: OrgContext, ticketId: string) {
-  return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<TicketRow>(
-      `select t.id, t.ref, t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at, t.last_message_at,
-              t.external_notification, cu.full_name as created_by_name, au.full_name as assigned_to_name, (t.assigned_to is not null) as is_assigned
-       from support_tickets t left join users cu on cu.id = t.created_by left join users au on au.id = t.assigned_to
-       where t.id = $1 and t.org_id = $2`,
-      [ticketId, ctx.org.orgId],
-    );
-    if (!rows[0]) return null;
-    // RLS hides internal agency notes from client users.
-    const { rows: messages } = await db.query<TicketMessage>(
-      `select m.id, m.author_kind, u.full_name as author_name, m.body, m.internal, m.created_at
-       from support_messages m left join users u on u.id = m.author_id
-       where m.ticket_id = $1 order by m.created_at asc`,
-      [ticketId],
-    );
-    return { ticket: rows[0], messages };
-  });
-}
-
-export async function clientReply(ctx: OrgContext, ticketId: string, body: string) {
-  if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't reply to support requests.");
-  const text = body.trim();
-  if (text.length < 1 || text.length > 5000) throw new AppError("invalid_input", "Replies can be up to 5,000 characters.");
-  const ticket = await getTicketForClient(ctx, ticketId);
-  if (!ticket) throw new AppError("not_found", "Support request not found.");
-  if (ticket.ticket.status === "closed") throw new AppError("conflict", "This request is closed. Open a new one if you still need help.");
-  await withSystem(async (db) => {
-    await db.query("insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4)", [
-      ticketId,
-      ctx.org.orgId,
-      ctx.user.id,
-      text,
-    ]);
-    await db.query(
-      `update support_tickets set last_message_at = now(),
-         status = case when status in ('waiting_for_client', 'resolved') then 'open' else status end
-       where id = $1`,
-      [ticketId],
-    );
-    await notifyAgency(db, ctx.org.orgId, {
-      kind: "support_reply",
-      title: `${ticket.ticket.ref}: new reply from ${ctx.org.name}`,
-      link: `/admin/support/${ticketId}`,
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Agency inbox
-// ---------------------------------------------------------------------------
-
-export async function listAgencyTickets(user: SessionUser, status?: TicketStatus | "active"): Promise<TicketRow[]> {
-  await assertAgencySupportPermission(user, null, "agency.support.view");
-  return withUser(user.id, async (db) => {
-    const { rows } = await db.query<TicketRow>(
-      `select t.id, t.ref, t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at, t.last_message_at,
-              t.external_notification, cu.full_name as created_by_name, au.full_name as assigned_to_name, (t.assigned_to is not null) as is_assigned, o.name as org_name, t.org_id
-       from support_tickets t join organizations o on o.id = t.org_id
-       left join users cu on cu.id = t.created_by left join users au on au.id = t.assigned_to
-       where app.user_can_access_org($2,t.org_id)
-         and ($1::text is null or ($1 = 'active' and t.status in ('open', 'in_progress', 'waiting_for_client')) or t.status = $1)
-       order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.last_message_at desc limit 200`,
-      [status ?? null, user.id],
-    );
-    return rows;
-  });
-}
-
-export async function getTicketForAgency(user: SessionUser, ticketId: string) {
-  const org = await withSystem((db) => db.query<{ org_id: string }>("select org_id from support_tickets where id=$1", [ticketId]));
-  if (!org.rows[0]) return null;
-  try {
-    await assertAgencySupportPermission(user, org.rows[0].org_id, "agency.support.view");
-  } catch (error) {
-    if (error instanceof AppError && error.code === "not_found") return null;
-    throw error;
+  if (!outcome.created) {
+    const e = outcome.existing;
+    return { id: e.id, ref: e.ref, status: e.status, existing: true, externalNotification: e.external_notification, expectation: clientExpectationText(settings, "first", e.priority) };
   }
-  return withUser(user.id, async (db) => {
-    const { rows } = await db.query<TicketRow>(
-      `select t.id, t.ref, t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at, t.last_message_at,
-              t.external_notification, cu.full_name as created_by_name, au.full_name as assigned_to_name, (t.assigned_to is not null) as is_assigned, o.name as org_name, t.org_id
-       from support_tickets t join organizations o on o.id = t.org_id
-       left join users cu on cu.id = t.created_by left join users au on au.id = t.assigned_to where t.id = $1`,
-      [ticketId],
+  const ticket = outcome.created;
+  // The outside alert carries no message text: only the reference, workspace name, type and category.
+  const external = await sendAgencySlackAlert(`New iAcquire ${REQUEST_TYPE_LABELS[type].label.toLowerCase()} ${ticket.ref} from ${ctx.org.name} (${data.category}).`);
+  await withSystem((db) => db.query("update support_tickets set external_notification = $2 where id = $1", [ticket.id, external]));
+  await sendQueuedSupportEmails(ticket.id);
+  return { id: ticket.id, ref: ticket.ref, status: "new", existing: false, externalNotification: external, expectation: clientExpectationText(settings, "first", priority) };
+}
+
+/** The earlier entry point, kept for existing callers (help widget, maintenance, CRM setup). */
+export async function createTicket(ctx: OrgContext, input: z.input<typeof submitRequestSchema>) {
+  return submitRequest(ctx, input);
+}
+
+// ---------------------------------------------------------------------------
+// Listing (the client's own requests)
+// ---------------------------------------------------------------------------
+
+export const CLIENT_STATUS_FILTERS = ["all", "open", "in_progress", "waiting", "resolved", "closed"] as const;
+export type ClientStatusFilter = (typeof CLIENT_STATUS_FILTERS)[number];
+
+export interface MyRequestsQuery {
+  status?: ClientStatusFilter;
+  requestType?: RequestType;
+  q?: string;
+  sort?: "updated" | "newest" | "oldest" | "status";
+  /** Owners and managers can look at only their own requests. */
+  scope?: "all" | "mine";
+  page?: number;
+  pageSize?: number;
+}
+
+const STATUS_SQL: Record<Exclude<ClientStatusFilter, "all">, string> = {
+  open: "t.status in ('new', 'open')",
+  in_progress: "t.status = 'in_progress'",
+  waiting: "t.status = 'waiting_for_client'",
+  resolved: "t.status = 'resolved'",
+  closed: "t.status = 'closed'",
+};
+
+interface ListRow {
+  id: string; ref: string; subject: string; category: string; request_type: RequestType; status: TicketStatus; feedback_stage: FeedbackStage | null;
+  client_urgency: string | null; affected_feature: string | null; created_at: Date; last_message_at: Date; created_by_name: string | null; is_assigned: boolean;
+  has_unread_reply: boolean; total: string;
+}
+
+const toListItem = (r: ListRow): RequestListItem => ({
+  id: r.id, ref: r.ref, subject: r.subject, category: r.category, requestType: r.request_type, status: r.status, feedbackStage: r.feedback_stage,
+  clientUrgency: r.client_urgency, affectedFeature: r.affected_feature, createdAt: new Date(r.created_at).toISOString(), lastActivityAt: new Date(r.last_message_at).toISOString(),
+  createdByName: r.created_by_name, isAssigned: r.is_assigned, hasUnreadReply: r.has_unread_reply,
+});
+
+export async function listMyRequests(ctx: OrgContext, query: MyRequestsQuery = {}): Promise<RequestPage<RequestListItem>> {
+  if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't open support requests.");
+  const pageSize = Math.min(50, Math.max(1, Math.floor(query.pageSize ?? 10)));
+  const page = Math.max(1, Math.floor(query.page ?? 1));
+  const seesAll = ctx.can("support.view_all") && query.scope !== "mine";
+  const params: unknown[] = [ctx.org.orgId];
+  const where = ["t.org_id = $1"];
+  if (!seesAll) {
+    params.push(ctx.user.id);
+    where.push(`t.created_by = $${params.length}`);
+  }
+  if (query.status && query.status !== "all") where.push(STATUS_SQL[query.status]);
+  if (query.requestType && (REQUEST_TYPES as readonly string[]).includes(query.requestType)) {
+    params.push(query.requestType);
+    where.push(`t.request_type = $${params.length}`);
+  }
+  const q = (query.q ?? "").trim().slice(0, 100);
+  if (q) {
+    params.push(likePattern(q));
+    // Public messages only: row-level security hides internal notes from this query as well.
+    where.push(`(t.subject ilike $${params.length} or t.ref ilike $${params.length} or exists (select 1 from support_messages m where m.ticket_id = t.id and not m.internal and m.author_kind <> 'system' and m.body ilike $${params.length}))`);
+  }
+  const order = {
+    updated: "t.last_message_at desc",
+    newest: "t.created_at desc",
+    oldest: "t.created_at asc",
+    status: "case t.status when 'waiting_for_client' then 0 when 'new' then 1 when 'open' then 2 when 'in_progress' then 3 when 'resolved' then 4 else 5 end, t.last_message_at desc",
+  }[query.sort ?? "updated"];
+  params.push(pageSize, (page - 1) * pageSize);
+  return withUser(ctx.user.id, async (db) => {
+    const { rows } = await db.query<ListRow>(
+      `select t.id, t.ref, t.subject, t.category, t.request_type, t.status, t.feedback_stage, t.client_urgency, t.affected_feature, t.created_at, t.last_message_at,
+         cu.full_name as created_by_name, (t.assigned_to is not null) as is_assigned,
+         exists (select 1 from support_messages m where m.ticket_id = t.id and m.author_kind = 'agency' and not m.internal and m.created_at > coalesce(t.client_last_read_at, t.created_at)) as has_unread_reply,
+         count(*) over ()::text as total
+       from support_tickets t left join users cu on cu.id = t.created_by
+       where ${where.join(" and ")} order by ${order} limit $${params.length - 1} offset $${params.length}`,
+      params,
     );
-    if (!rows[0]) return null;
-    const { rows: messages } = await db.query<TicketMessage>(
-      `select m.id, m.author_kind, u.full_name as author_name, m.body, m.internal, m.created_at
-       from support_messages m left join users u on u.id = m.author_id where m.ticket_id = $1 order by m.created_at asc`,
-      [ticketId],
-    );
-    return { ticket: rows[0], messages };
+    return { items: rows.map(toListItem), total: rows[0] ? Number(rows[0].total) : 0, page, pageSize };
   });
 }
 
-async function assertAgencyTicketAccess(user: SessionUser, ticketId: string, permission: AgencySupportPermission) {
-  const { rows } = await withSystem((db) =>
-    db.query<{ org_id: string; created_by: string | null; ref: string; status: TicketStatus }>(
-      "select org_id, created_by, ref, status from support_tickets where id = $1",
-      [ticketId],
+/** Counts for the filter tabs on My Requests. */
+export async function countMyRequests(ctx: OrgContext, scope: "all" | "mine" = "all"): Promise<Record<ClientStatusFilter, number>> {
+  const seesAll = ctx.can("support.view_all") && scope !== "mine";
+  const { rows } = await withUser(ctx.user.id, (db) =>
+    db.query<{ status: TicketStatus; n: number }>(
+      `select t.status, count(*)::int as n from support_tickets t where t.org_id = $1 and ($3 or t.created_by = $2) group by t.status`,
+      [ctx.org.orgId, ctx.user.id, seesAll],
     ),
   );
-  const t = rows[0];
-  if (!t) throw new AppError("not_found", "Support request not found.");
-  await assertAgencySupportPermission(user, t.org_id, permission);
-  return t;
+  const by = (...s: TicketStatus[]) => rows.filter((r) => s.includes(r.status)).reduce((a, r) => a + r.n, 0);
+  return { all: by(...TICKET_STATUSES), open: by("new", "open"), in_progress: by("in_progress"), waiting: by("waiting_for_client"), resolved: by("resolved"), closed: by("closed") };
 }
 
-export async function agencyReply(user: SessionUser, ticketId: string, body: string, opts: { internal: boolean; status?: TicketStatus }) {
-  const text = body.trim();
-  if (!text || text.length > 5000) throw new AppError("invalid_input", "Replies can be up to 5,000 characters.");
-  const t = await assertAgencyTicketAccess(user, ticketId, "agency.support.manage");
-  await withSystem(async (db) => {
-    await db.query(
-      "insert into support_messages (ticket_id, org_id, author_id, author_kind, body, internal) values ($1, $2, $3, 'agency', $4, $5)",
-      [ticketId, t.org_id, user.id, text, opts.internal],
-    );
-    const nextStatus = opts.status ?? (opts.internal ? null : "waiting_for_client");
-    await db.query(
-      `update support_tickets set last_message_at = now(), status = coalesce($2, status),
-         assigned_to = coalesce(assigned_to, $3) where id = $1`,
-      [ticketId, nextStatus, user.id],
-    );
-    if (!opts.internal && t.created_by) {
-      await notifyUser(db, t.created_by, t.org_id, {
-        kind: "support_reply",
-        title: `iAcquire replied to ${t.ref}`,
-        body: text.slice(0, 140),
-        link: `/support/${ticketId}`,
-      });
-    }
-    await recordAudit(
-      { orgId: t.org_id, actorUserId: user.id, actorKind: "agency", action: opts.internal ? "support.internal_note" : "support.agency_reply", targetType: "support_ticket", targetId: ticketId, result: "success" },
-      db,
-    );
-  });
+/** Legacy shape used by the help widget and older callers. */
+export async function listTickets(ctx: OrgContext) {
+  const page = await listMyRequests(ctx, { pageSize: 50 });
+  return page.items.map((t) => ({ id: t.id, ref: t.ref, subject: t.subject, category: t.category, status: t.status, last_message_at: new Date(t.lastActivityAt), created_at: new Date(t.createdAt), created_by_name: t.createdByName, is_assigned: t.isAssigned }));
 }
 
-export async function updateTicket(user: SessionUser, ticketId: string, changes: { status?: TicketStatus; assignToMe?: boolean; priority?: string }) {
-  const t = await assertAgencyTicketAccess(user, ticketId, "agency.support.manage");
-  if (changes.status && !TICKET_STATUSES.includes(changes.status)) throw new AppError("invalid_input", "Unknown status.");
-  if (changes.priority && !["low", "normal", "high", "urgent"].includes(changes.priority)) throw new AppError("invalid_input", "Unknown priority.");
-  await withSystem(async (db) => {
-    await db.query(
-      `update support_tickets set status = coalesce($2, status), priority = coalesce($3, priority),
-         assigned_to = case when $4 then $5::uuid else assigned_to end where id = $1`,
-      [ticketId, changes.status ?? null, changes.priority ?? null, Boolean(changes.assignToMe), user.id],
-    );
-    if (changes.status && changes.status !== t.status && t.created_by) {
-      await db.query(
-        "insert into support_messages (ticket_id, org_id, author_kind, body) values ($1, $2, 'system', $3)",
-        [ticketId, t.org_id, `Status changed to ${changes.status.replace(/_/g, " ")}.`],
-      );
-      await notifyUser(db, t.created_by, t.org_id, {
-        kind: "support_reply",
-        title: `${t.ref} is now ${changes.status.replace(/_/g, " ")}`,
-        link: `/support/${ticketId}`,
-      });
-    }
-    await recordAudit(
-      { orgId: t.org_id, actorUserId: user.id, actorKind: "agency", action: "support.ticket_updated", targetType: "support_ticket", targetId: ticketId, result: "success", metadata: changes },
-      db,
-    );
+// ---------------------------------------------------------------------------
+// One request, as its owner sees it
+// ---------------------------------------------------------------------------
+
+interface DetailRow extends ListRow {
+  priority: TicketPriority; resolved_at: Date | null; closed_at: Date | null; reopened_count: number; diagnostics: Diagnostics | null; project_id: string | null;
+  first_responded_at: Date | null; org_id: string; created_by: string | null; assigned_to: string | null; updated_at: Date; client_last_read_at: Date | null; agency_last_read_at: Date | null;
+}
+
+async function namesFor(ids: string[], orgId: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  const { rows } = await withSystem((db) =>
+    db.query<{ id: string; full_name: string | null; email: string; platform_role: string; member: boolean }>(
+      `select u.id, u.full_name, u.email::text as email, u.platform_role,
+         exists (select 1 from organization_memberships m where m.user_id = u.id and m.org_id = $2) as member
+       from users u where u.id = any($1::uuid[])`,
+      [ids, orgId],
+    ),
+  );
+  for (const r of rows) {
+    // The team shows by first name only; a colleague on the client's side shows by name.
+    if (r.platform_role !== "none") out.set(r.id, firstName(r.full_name) || "iAcquire Support");
+    else if (r.member) out.set(r.id, r.full_name?.trim() || r.email.split("@")[0]);
+  }
+  return out;
+}
+
+export async function getRequestDetail(ctx: OrgContext, ticketId: string): Promise<ClientRequestDetail | null> {
+  if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't open support requests.");
+  if (!/^[0-9a-f-]{36}$/i.test(ticketId)) return null;
+  const settings = await loadSupportSettings();
+  const loaded = await withUser(ctx.user.id, async (db) => {
+    const t = (await db.query<DetailRow>(
+      `select t.id, t.ref, t.subject, t.category, t.request_type, t.status, t.priority, t.feedback_stage, t.client_urgency, t.affected_feature, t.created_at, t.updated_at, t.last_message_at,
+         t.resolved_at, t.closed_at, t.reopened_count, t.diagnostics, t.project_id, t.first_responded_at, t.org_id, t.created_by, t.assigned_to, t.client_last_read_at, t.agency_last_read_at,
+         cu.full_name as created_by_name, (t.assigned_to is not null) as is_assigned, false as has_unread_reply, '1' as total
+       from support_tickets t left join users cu on cu.id = t.created_by where t.id = $1 and t.org_id = $2`,
+      [ticketId, ctx.org.orgId],
+    )).rows[0];
+    if (!t) return null;
+    // Row-level security keeps internal notes, internal files and internal timeline entries out of these reads.
+    const messages = (await db.query<{ id: string; author_kind: "client" | "agency" | "system"; author_id: string | null; body: string; internal: boolean; created_at: Date; client_message_id: string | null }>(
+      "select id, author_kind, author_id, body, internal, created_at, client_message_id from support_messages where ticket_id = $1 and not internal order by created_at asc, id asc",
+      [ticketId],
+    )).rows;
+    const attachments = (await db.query<{ id: string; message_id: string | null; filename: string; mime_type: string; size_bytes: number; visibility: "client" | "internal" }>(
+      `select a.id, a.message_id, f.filename, f.mime_type, f.size_bytes, a.visibility from support_attachments a join private_files f on f.id = a.private_file_id and f.status = 'ready'
+       where a.ticket_id = $1 and a.status = 'attached' and a.visibility = 'client' order by a.created_at`,
+      [ticketId],
+    )).rows;
+    const events = (await db.query<{ id: string; kind: string; created_at: Date; actor_kind: "client" | "agency" | "system"; from_value: string | null; to_value: string | null; detail: string | null }>(
+      "select id, kind, created_at, actor_kind, from_value, to_value, detail from support_ticket_events where ticket_id = $1 and visibility = 'client' order by seq asc",
+      [ticketId],
+    )).rows;
+    return { t, messages, attachments, events };
   });
+  if (!loaded) return null;
+  const { t, messages, attachments, events } = loaded;
+  const names = await namesFor([...new Set(messages.map((m) => m.author_id).filter((x): x is string => Boolean(x)))], ctx.org.orgId);
+  const byMessage = new Map<string, ThreadAttachment[]>();
+  for (const a of attachments) {
+    if (!a.message_id) continue;
+    const list = byMessage.get(a.message_id) ?? [];
+    list.push({ id: a.id, filename: a.filename, mimeType: a.mime_type, sizeBytes: a.size_bytes, visibility: a.visibility });
+    byMessage.set(a.message_id, list);
+  }
+  const thread: ThreadMessage[] = messages.map((m) => ({
+    id: m.id, authorKind: m.author_kind, authorName: m.author_kind === "agency" ? (m.author_id ? names.get(m.author_id) ?? "iAcquire Support" : "iAcquire Support") : m.author_id ? names.get(m.author_id) ?? null : null,
+    body: m.body, internal: false, createdAt: new Date(m.created_at).toISOString(), clientMessageId: m.client_message_id, attachments: byMessage.get(m.id) ?? [],
+  }));
+  const timeline: TimelineEntry[] = events.map((e) => ({ id: e.id, kind: e.kind, createdAt: new Date(e.created_at).toISOString(), actorKind: e.actor_kind, from: e.from_value, to: e.to_value, detail: e.detail }));
+  const firstClientMessage = messages.find((m) => m.author_kind === "client");
+  const canReopen = clientCanReopen({ status: t.status, resolvedAt: t.resolved_at, windowDays: settings.reopenWindowDays });
+  let blocked: string | null = null;
+  if (t.status === "closed") blocked = "This request is closed. Open a new one if you still need help.";
+  else if (t.status === "resolved" && !canReopen) blocked = "This request was resolved a while ago. Open a new request if you still need help.";
+  const waitingOnTeam = isAwaitingAgency(t.status);
+  return {
+    ticket: {
+      ...toListItem(t), description: firstClientMessage?.body ?? "", resolvedAt: t.resolved_at ? new Date(t.resolved_at).toISOString() : null,
+      closedAt: t.closed_at ? new Date(t.closed_at).toISOString() : null, reopenedCount: t.reopened_count, diagnostics: t.diagnostics, projectId: t.project_id,
+    },
+    messages: thread,
+    timeline,
+    teamLastReadAt: t.agency_last_read_at ? new Date(t.agency_last_read_at).toISOString() : null,
+    canReply: blocked === null,
+    replyBlockedReason: blocked,
+    canReopen,
+    expectation: waitingOnTeam ? clientExpectationText(settings, t.first_responded_at ? "follow_up" : "first", t.priority) : null,
+    maxAttachmentMb: settings.maxAttachmentMb,
+    maxAttachments: settings.maxAttachmentsPerMessage,
+    reopenWindowDays: settings.reopenWindowDays,
+  };
+}
+
+/** Marks the team's replies as read for this person. Only the opener is tracked: that is who the "new reply" dot is for. */
+export async function markRequestRead(ctx: OrgContext, ticketId: string): Promise<void> {
+  if (!ctx.can("support.use")) return;
+  await withSystem((db) =>
+    db.query("update support_tickets set client_last_read_at = now() where id = $1 and org_id = $2 and created_by = $3", [ticketId, ctx.org.orgId, ctx.user.id]),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Replying and reopening
+// ---------------------------------------------------------------------------
+
+export const clientMessageSchema = z.object({
+  body: z.string().max(5000),
+  clientMessageId: z.string().uuid().optional(),
+  attachmentIds: z.array(z.string().uuid()).max(10).default([]),
+});
+
+export interface PostedMessage { id: string; existing: boolean; createdAt: string }
+
+async function loadOwnTicket(ctx: OrgContext, ticketId: string): Promise<TicketCore & { priority: TicketPriority }> {
+  // Read as the person (row-level security), so a request that is not theirs to see reads as not found.
+  const row = await withUser(ctx.user.id, async (db) =>
+    (await db.query<TicketCore>(
+      `select id, ref, org_id, created_by, subject, request_type, category, status, priority, assigned_to, feedback_stage, first_responded_at, resolved_at, reopened_count
+       from support_tickets where id = $1 and org_id = $2`,
+      [ticketId, ctx.org.orgId],
+    )).rows[0],
+  );
+  if (!row) throw new AppError("not_found", "Support request not found.");
+  return row;
+}
+
+export async function postClientMessage(ctx: OrgContext, ticketId: string, input: z.input<typeof clientMessageSchema>): Promise<PostedMessage> {
+  if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't reply to support requests.");
+  const parsed = clientMessageSchema.safeParse(input);
+  if (!parsed.success) throw new AppError("invalid_input", "That reply could not be read. Please try again.");
+  const text = cleanText(parsed.data.body, 5000);
+  if (!text) throw new AppError("invalid_input", "Write a reply first.");
+  const t = await loadOwnTicket(ctx, ticketId);
+  const settings = await loadSupportSettings();
+
+  // The same message sent twice (retry after a dropped connection) returns the one that was saved.
+  if (parsed.data.clientMessageId) {
+    const dup = await withUser(ctx.user.id, async (db) =>
+      (await db.query<{ id: string; created_at: Date }>("select id, created_at from support_messages where ticket_id = $1 and client_message_id = $2", [ticketId, parsed.data.clientMessageId])).rows[0],
+    );
+    if (dup) return { id: dup.id, existing: true, createdAt: new Date(dup.created_at).toISOString() };
+  }
+  const limit = await consumeRateLimit(RATE_LIMITS.supportReplyByUser, ctx.user.id);
+  if (!limit.allowed) throw new AppError("rate_limited", "You're sending replies quickly. Please wait a little and try again.");
+  if (t.status === "closed") throw new AppError("conflict", "This request is closed. Open a new one if you still need help.");
+  const reopening = t.status === "resolved";
+  if (reopening && !clientCanReopen({ status: t.status, resolvedAt: t.resolved_at, windowDays: settings.reopenWindowDays })) {
+    throw new AppError("conflict", "This request was resolved a while ago. Open a new request if you still need help.");
+  }
+
+  const posted = await withSystem(async (db) => {
+    const inserted = await db.query<{ id: string; created_at: Date }>(
+      `insert into support_messages (ticket_id, org_id, author_id, author_kind, body, client_message_id) values ($1, $2, $3, 'client', $4, $5)
+       on conflict (ticket_id, client_message_id) where client_message_id is not null do nothing returning id, created_at`,
+      [ticketId, ctx.org.orgId, ctx.user.id, text, parsed.data.clientMessageId ?? null],
+    );
+    if (!inserted.rows[0]) {
+      const dup = await db.query<{ id: string; created_at: Date }>("select id, created_at from support_messages where ticket_id = $1 and client_message_id = $2", [ticketId, parsed.data.clientMessageId]);
+      return { id: dup.rows[0].id, existing: true, createdAt: new Date(dup.rows[0].created_at).toISOString() };
+    }
+    const messageId = inserted.rows[0].id;
+    await bindStagedAttachments(db, { ticketId, orgId: ctx.org.orgId, messageId, userId: ctx.user.id, ids: parsed.data.attachmentIds, visibility: "client", maxCount: settings.maxAttachmentsPerMessage });
+    await db.query("update support_tickets set last_message_at = now() where id = $1", [ticketId]);
+    let status = t.status;
+    if (reopening) {
+      await applyStatusChange(db, t, "open", { userId: ctx.user.id, kind: "client" }, {});
+      status = "open";
+    } else if (t.status === "waiting_for_client") {
+      await applyStatusChange(db, t, "open", { userId: ctx.user.id, kind: "client" }, { silent: true });
+      status = "open";
+    }
+    await recordTicketEvent(db, { ticketId, orgId: ctx.org.orgId, kind: "reply", actorUserId: ctx.user.id, actorKind: "client" });
+    await ensureResponseClock(db, { id: ticketId, org_id: ctx.org.orgId, priority: t.priority, status, first_responded_at: t.first_responded_at }, { settings });
+    // The notice carries the reference, workspace and subject; what the client wrote stays in the portal.
+    await dispatchSupportNotice(db, {
+      event: "client_reply", ticket: { id: ticketId, org_id: ctx.org.orgId, ref: t.ref, subject: t.subject }, eventKey: `msg:${messageId}`,
+      recipients: await agencyHandlers(db, { org_id: ctx.org.orgId, assigned_to: t.assigned_to }),
+      title: `${t.ref}: new reply from ${ctx.org.name}`, body: t.subject,
+    });
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "support.client_reply", targetType: "support_ticket", targetId: ticketId, result: "success", metadata: { ref: t.ref, attachments: parsed.data.attachmentIds.length, reopened: reopening } }, db);
+    return { id: messageId, existing: false, createdAt: new Date(inserted.rows[0].created_at).toISOString() };
+  });
+  if (!posted.existing) await sendQueuedSupportEmails(ticketId);
+  return posted;
+}
+
+/** Older callers: a plain-text reply. */
+export async function clientReply(ctx: OrgContext, ticketId: string, body: string) {
+  await postClientMessage(ctx, ticketId, { body });
+}
+
+/** Reopens a resolved request inside the agency's reopen window. */
+export async function reopenRequest(ctx: OrgContext, ticketId: string, note?: string): Promise<void> {
+  if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't change support requests.");
+  const t = await loadOwnTicket(ctx, ticketId);
+  const settings = await loadSupportSettings();
+  if (t.status !== "resolved") throw new AppError("conflict", "Only a resolved request can be reopened.");
+  if (!clientCanReopen({ status: t.status, resolvedAt: t.resolved_at, windowDays: settings.reopenWindowDays })) {
+    throw new AppError("conflict", "This request was resolved a while ago. Open a new request if you still need help.");
+  }
+  const text = note ? cleanText(note, 1000) : "";
+  await withSystem(async (db) => {
+    if (text) {
+      const m = await db.query<{ id: string }>("insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4) returning id", [ticketId, ctx.org.orgId, ctx.user.id, text]);
+      await recordTicketEvent(db, { ticketId, orgId: ctx.org.orgId, kind: "reply", actorUserId: ctx.user.id, actorKind: "client", detail: null });
+      void m;
+    }
+    await db.query("update support_tickets set last_message_at = now() where id = $1", [ticketId]);
+    await applyStatusChange(db, t, "open", { userId: ctx.user.id, kind: "client" }, { note: text ? undefined : "Reopened by the client." });
+  });
+  await sendQueuedSupportEmails(ticketId);
+}
+
+// ---------------------------------------------------------------------------
+// Compatibility: the agency-side functions callers imported from this module before the split
+// ---------------------------------------------------------------------------
+
+export { listAgencyTickets, getTicketForAgency, agencyReply, updateTicket } from "@/server/support/agency";
+export type { TicketRow, TicketMessage } from "@/server/support/agency";
+
+/** The earlier detail shape (status, thread) for callers that predate request types. Clients never get a priority or a team member's name. */
+export async function getTicketForClient(ctx: OrgContext, ticketId: string) {
+  const d = await getRequestDetail(ctx, ticketId);
+  if (!d) return null;
+  const t = d.ticket;
+  return {
+    ticket: {
+      id: t.id, ref: t.ref, subject: t.subject, category: t.category, status: t.status, created_by_name: t.createdByName, is_assigned: t.isAssigned,
+      assigned_to_name: null as string | null, created_at: new Date(t.createdAt), last_message_at: new Date(t.lastActivityAt),
+    },
+    messages: d.messages.map((m) => ({ id: m.id, author_kind: m.authorKind, author_name: m.authorName, body: m.body, internal: m.internal, created_at: new Date(m.createdAt) })),
+  };
 }

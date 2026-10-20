@@ -363,7 +363,7 @@ export function RequestWizard({
           )}
           <Card className="p-4">
             <StatusPill tone="primary" icon={<Info className="size-3" />}>Good to know</StatusPill>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Workforce page first, and ask Support if you&apos;re unsure.</p>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">Requests for the standard iAcquire AI employees in your package aren&apos;t add-ons. Check the AI Employees page first, and ask Support if you&apos;re unsure.</p>
           </Card>
         </aside>
       </div>

@@ -47,6 +47,11 @@ const nextConfig: NextConfig = {
   async redirects() {
     // The brief suggested /dashboard/setup; the portal's routes live at the top level.
     return [
+      // "AI Workforce" became "AI Employees": old bookmarks, emails and notifications keep working.
+      { source: "/workforce", destination: "/employees", permanent: true },
+      { source: "/workforce/:path*", destination: "/employees/:path*", permanent: true },
+      { source: "/admin/workforce", destination: "/admin/employees", permanent: true },
+      { source: "/admin/workforce/:path*", destination: "/admin/employees/:path*", permanent: true },
       { source: "/dashboard/setup", destination: "/setup", permanent: false },
       { source: "/dashboard/add-ons", destination: "/add-ons", permanent: false },
       { source: "/dashboard/projects", destination: "/projects", permanent: false },

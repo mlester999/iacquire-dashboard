@@ -370,7 +370,7 @@ function workflowsStep(f: CrmSetupFacts): CrmSetupStep {
 function aiStep(f: CrmSetupFacts): CrmSetupStep {
   const title = "AI roles";
   const intro = "Your AI employees and what each one may do.";
-  const links: CrmSetupLink[] = [{ label: "AI Employees", path: "/workforce", portal: true }];
+  const links: CrmSetupLink[] = [{ label: "AI Employees", path: "/employees", portal: true }];
   const a = f.ai;
   if (!a.enabled) return step("ai_roles", title, intro, { status: "not_started", summary: a.summary, links });
   if (a.failing) return step("ai_roles", title, intro, { status: "failed", summary: a.summary, next: "iAcquire is fixing the connection.", links });
