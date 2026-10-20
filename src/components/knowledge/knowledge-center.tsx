@@ -11,6 +11,7 @@ import { PageHero, DataToolbar, CoverageBar } from "@/components/ui/workspace";
 import { Dialog } from "@/components/ui/overlays";
 import { saveKnowledgeAction } from "@/app/actions/knowledge";
 import { reprocessKnowledgeDocumentAction } from "@/app/actions/workforce-knowledge";
+import { KNOWLEDGE_GUIDANCE } from "@/lib/employee-field-guidance";
 import { cn, formatDateTime, relativeTime } from "@/lib/utils";
 
 interface Section {
@@ -195,6 +196,9 @@ function Documents({ documents, canEdit, accept, timeZone }: { documents: Doc[];
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="rounded-xl border border-line bg-surface-2/60 p-3 text-[12px] leading-relaxed text-muted">
+          {KNOWLEDGE_GUIDANCE.upload.description}
+        </p>
         {canEdit && (
           <div
             onDragOver={(e) => {

@@ -127,4 +127,88 @@ describe("configuration version history", () => {
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Restored as v4"));
     expect(mocks.refresh).toHaveBeenCalled();
   });
+
+  it("corrects internal attribution and offers recovery for pending and rejected versions", () => {
+    const onEdit = vi.fn();
+    const internal = [
+      version({
+        id: "55555555-5555-4555-8555-555555555555",
+        version: 4,
+        status: "pending_agency_review",
+        source: "client_edit",
+        created_by_role: "agency_super_admin",
+        applied_at: null,
+        decided_at: null,
+        decided_by: null,
+        decided_by_name: null,
+        settings: { ...defaultSettings("operations_manager"), customInstruction: "Send customer updates without approval." },
+        risk_flags: ["approval_bypass"],
+      }),
+      version({
+        id: "66666666-6666-4666-8666-666666666666",
+        version: 3,
+        status: "rejected",
+        source: "agency",
+        created_by_role: "agency_staff",
+        applied_at: null,
+        decided_at: iso(60_000),
+        decided_by: "77777777-7777-4777-8777-777777777777",
+        decided_by_name: "Casey Reviewer",
+        decided_by_role: "agency_manager",
+        settings: { ...defaultSettings("operations_manager") },
+      }),
+    ];
+    render(
+      <ConfigVersionHistory
+        versions={internal}
+        role="operations_manager"
+        timeZone="UTC"
+        initialNow={NOW}
+        isInternalWorkspace
+        draftVersion={4}
+        canEdit
+        onEdit={onEdit}
+      />,
+    );
+
+    expect(screen.getAllByText("Internal edit").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Awaiting internal review").length).toBeGreaterThan(0);
+    expect(screen.getByText("Editing now")).toBeTruthy();
+    expect(screen.getAllByText(/Super Admin/).length).toBeGreaterThan(0);
+
+    const rejected = screen.getByText("Configuration version 3").closest("article")!;
+    fireEvent.click(within(rejected).getByRole("button", { name: "View details" }));
+    expect(within(rejected).getByText(/Casey Reviewer/)).toBeTruthy();
+    expect(within(rejected).getByText(/Agency Manager/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue editing v4" }));
+    expect(onEdit).toHaveBeenCalledWith("55555555-5555-4555-8555-555555555555");
+    expect(screen.getByText(/A newer version is awaiting review/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Revise v3" })).toBeNull();
+
+    const pending = screen.getByText("Configuration version 4").closest("article")!;
+    fireEvent.click(within(pending).getByRole("button", { name: "View changes" }));
+    expect(within(pending).getByText(/May let sensitive or external work proceed/)).toBeTruthy();
+    expect(within(pending).getByText(/cannot be applied until an authorized reviewer approves it/i)).toBeTruthy();
+  });
+
+  it("offers revision for a rejected version when nothing newer is pending", () => {
+    const onEdit = vi.fn();
+    const rejected = [
+      version({
+        id: "88888888-8888-4888-8888-888888888888",
+        version: 2,
+        status: "rejected",
+        applied_at: null,
+        decided_at: iso(60_000),
+        decided_by: "77777777-7777-4777-8777-777777777777",
+        decided_by_name: "Casey Reviewer",
+        decided_by_role: "agency_manager",
+        settings: { ...defaultSettings("sales_assistant") },
+      }),
+    ];
+    render(<ConfigVersionHistory versions={rejected} role="sales_assistant" timeZone="UTC" initialNow={NOW} canEdit onEdit={onEdit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Revise v2" }));
+    expect(onEdit).toHaveBeenCalledWith("88888888-8888-4888-8888-888888888888");
+  });
 });

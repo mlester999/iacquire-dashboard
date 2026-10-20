@@ -61,12 +61,17 @@ export interface ReviewVersionView {
   agentRole: AgentRoleKey;
   agentName: string;
   version: number;
+  /** The version currently applied to this employee when the review was loaded, if any. */
+  appliedVersion: number | null;
   source: string;
   summary: string;
   changeRequest: string | null;
   submittedBy: string;
   submittedByRole: string | null;
   submittedAt: string;
+  /** Redacted compiled prompt evidence for an authorised reviewer. Null when unavailable. */
+  compiledInstructions: string | null;
+  compiledInstructionsTruncated: boolean;
   review: ReviewPayload;
 }
 
@@ -338,8 +343,11 @@ export function buildReviewDiff(previous: AgentSettings, next: AgentSettings): R
 
 /** Human label for a version's source, corrected for internal agency workspaces. */
 export function configSourceLabel(source: string, orgKind: ConfigOrgKind): string {
+  if (source === "onboarding") return "Onboarding configuration";
   if (orgKind === "agency" && (source === "agency" || source === "client_edit")) return "Internal edit";
   if (source === "agency") return "Agency edit";
+  if (source === "change_request") return "Requested change";
+  if (source === "rollback") return "Restored version";
   return sentenceCase(source);
 }
 

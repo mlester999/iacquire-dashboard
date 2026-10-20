@@ -19,7 +19,6 @@ import {
   LayoutDashboard,
   Lock,
   MessageSquare,
-  RotateCcw,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -28,13 +27,16 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { Dialog, Segmented, Switch, Tabs, Tooltip } from "@/components/ui/overlays";
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Input, Select, Textarea } from "@/components/ui/primitives";
+import { Tabs } from "@/components/ui/overlays";
 import { InfoChip } from "@/components/ui/status";
+import { GuidedChoiceField, GuidedField, GuidedSwitch, ChangeDecisionNotice, type FieldIssue } from "@/components/ui/guided-field";
 import { ConfigVersionHistory, type ConfigVersion } from "@/components/workforce/config-version-history";
-import { applyChangeAction, proposeChangeAction, rollbackAction, saveAgentSettingsAction } from "@/app/actions/workforce";
-import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type ReplyLength, type Tone } from "@/lib/agent-settings";
-import { configSourceLabel, describeRiskCodes } from "@/lib/config-review";
+import { applyChangeAction, previewConfigAction, proposeChangeAction, saveAgentSettingsAction } from "@/app/actions/workforce";
+import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type Tone } from "@/lib/agent-settings";
+import { changeFixForReason, configFieldElementId, employeeFieldGuidance, ROLE_TOOL_GUIDANCE, TOOL_BOUNDARY_NOTE } from "@/lib/employee-field-guidance";
+import type { ReviewReasonView } from "@/lib/config-review";
+import type { ConfigPreviewSummary } from "@/lib/workforce-types";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
@@ -78,6 +80,8 @@ interface Props {
   settings: AgentSettings | null;
   /** Version number when the Configure screen is editing a saved but unapplied version. */
   draftVersion: number | null;
+  /** Storage status of the version being edited: pending_agency_review, rejected or draft. */
+  draftStatus: string | null;
   isInternalWorkspace: boolean;
   versions: Version[];
   canConfigure: boolean;
@@ -103,6 +107,7 @@ interface Props {
 
 export function EmployeeDetail(props: Props) {
   const { meta, agent } = props;
+  const router = useRouter();
   const reduced = useReducedMotion();
   const [tab, setTab] = React.useState(props.initialTab);
   const hasPendingReview = props.versions.some((v) => v.status === "pending_agency_review");
@@ -155,13 +160,14 @@ export function EmployeeDetail(props: Props) {
         displayName={agent.displayName}
         description={props.description}
         readiness={readiness}
+        target="workforce.employee.hero"
         eyebrow={props.isAgencyEmployee ? "iAcquire internal employee" : "Your AI employee"}
         actions={<>{primary}{secondary}{props.adminManageHref && primary && readiness.cta !== "connection" ? <ButtonLink href={props.adminManageHref} variant="ghost">Admin controls <ArrowUpRight className="size-3.5" /></ButtonLink> : null}</>}
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <InfoChip icon={<Sparkles />}>{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured"}</InfoChip>
             <InfoChip icon={<ShieldCheck />}>{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools approved` : "Inventory not recorded"}</InfoChip>
-            <InfoChip icon={<History />}>{agent.lastHealthCheckAt ? `Checked ${relativeTime(agent.lastHealthCheckAt)}` : "Never checked"}</InfoChip>
+            <InfoChip icon={<History />}><span suppressHydrationWarning>{agent.lastHealthCheckAt ? `Checked ${relativeTime(agent.lastHealthCheckAt)}` : "Never checked"}</span></InfoChip>
             <span className="text-[11.5px] text-muted">{agent.assignedOrganization}</span>
           </div>
         }
@@ -193,7 +199,7 @@ export function EmployeeDetail(props: Props) {
             {tab === "knowledge" && props.knowledgeView && (
               <EmployeeKnowledge agentId={agent.id} agentName={agent.displayName} data={props.knowledgeView} canEdit={props.canEditKnowledge} accept={props.uploadAccept} timeZone={props.timeZone} />
             )}
-            {tab === "history" && <HistoryTab {...props} />}
+            {tab === "history" && <HistoryTab {...props} onEdit={(versionId) => router.push(`/workforce/${meta.slug}?tab=configure&version=${versionId}`)} />}
             {tab === "activity" && <ActivityTab {...props} />}
           </motion.div>
         </AnimatePresence>
@@ -310,214 +316,616 @@ function ConfigSection({ id, step, title, description, children }: { id: string;
   );
 }
 
-function ConfigureTab({ meta, agent, settings, draftVersion, hasPendingReview, onSaved, onOpenHistory }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
+type PreviewCheck =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "ready"; summary: ConfigPreviewSummary }
+  | { state: "error"; error: string };
+
+type SubmitResult =
+  | { kind: "applied"; version: number }
+  | { kind: "review"; version: number; reasons: ReviewReasonView[] }
+  | { kind: "blocked"; reasons: ReviewReasonView[]; message?: string }
+  | { kind: "error"; message: string };
+
+function issueForReason(reason: ReviewReasonView): FieldIssue {
+  return {
+    tone: reason.severity === "block" ? "danger" : "warning",
+    title: reason.severity === "block" ? "Change not allowed" : "Review required",
+    detail: reason.detail,
+    fix: changeFixForReason(reason.code, reason.field),
+  };
+}
+
+export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus, hasPendingReview, onSaved, onOpenHistory }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
   const router = useRouter();
   const [s, setS] = React.useState<AgentSettings>(settings);
+  const [justSaved, setJustSaved] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
-  const [saveState, setSaveState] = React.useState<string | null>(null);
-  const set = <K extends keyof AgentSettings>(k: K, v: AgentSettings[K]) => setS((p) => ({ ...p, [k]: v }));
-  const dirty = JSON.stringify(s) !== JSON.stringify(settings);
-  const nameError = s.displayName.trim().length === 0 ? "Give this employee a name." : null;
+  const [check, setCheck] = React.useState<PreviewCheck>({ state: "idle" });
+  const [result, setResult] = React.useState<SubmitResult | null>(null);
+  const [nameTouched, setNameTouched] = React.useState(false);
+  const [saveAttempted, setSaveAttempted] = React.useState(false);
+  const statusRef = React.useRef<HTMLDivElement>(null);
+  const previewSequence = React.useRef(0);
+  const set = <K extends keyof AgentSettings>(k: K, v: AgentSettings[K]) => {
+    setS((p) => ({ ...p, [k]: v }));
+    setJustSaved(false);
+    setResult(null);
+    setCheck({ state: "checking" });
+  };
+  const dirty = !justSaved && JSON.stringify(s) !== JSON.stringify(settings);
+  const nameError = s.displayName.trim().length === 0 ? "Enter a name for this employee." : null;
+  const showNameError = Boolean(nameError) && (nameTouched || saveAttempted);
+
+  React.useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  // The preview is a no-write, permission-scoped server check that uses the same classifier as the
+  // save path. If it fails, the form falls back to the server's final decision on submit.
+  React.useEffect(() => {
+    if (!dirty || nameError) return;
+    const sequence = previewSequence.current + 1;
+    previewSequence.current = sequence;
+    const timer = window.setTimeout(() => {
+      void previewConfigAction(meta.key, s).then((res) => {
+        if (previewSequence.current !== sequence) return;
+        setCheck(res.ok ? { state: "ready", summary: res.data } : { state: "error", error: res.error });
+      });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [s, dirty, nameError, meta.key]);
+
+  const activeCheck = React.useMemo<PreviewCheck>(() => (dirty && !nameError ? check : { state: "idle" }), [dirty, nameError, check]);
+  const reasons = React.useMemo(() => (activeCheck.state === "ready" ? activeCheck.summary.reasons ?? [] : []), [activeCheck]);
+  // One plain-English reason per affected field: a blocked reason wins over a review reason for the
+  // same field, so a single sentence is not repeated as both "not allowed" and "review required".
+  const primaryReasons = React.useMemo(() => {
+    const groups = new Map<string, ReviewReasonView[]>();
+    for (const reason of reasons) {
+      const key = reason.field || `code:${reason.code}`;
+      const list = groups.get(key) ?? [];
+      list.push(reason);
+      groups.set(key, list);
+    }
+    return [...groups.values()].map((list) => list.find((reason) => reason.severity === "block") ?? list[0]);
+  }, [reasons]);
+  const issuesByField = React.useMemo(() => {
+    const map = new Map<string, FieldIssue[]>();
+    for (const reason of primaryReasons) {
+      if (!reason.field) continue;
+      const list = map.get(reason.field) ?? [];
+      list.push(issueForReason(reason));
+      map.set(reason.field, list);
+    }
+    return map;
+  }, [primaryReasons]);
+  const issuesFor = (field: string) => issuesByField.get(field) ?? [];
+  const decision = activeCheck.state === "ready" ? activeCheck.summary.decision : null;
+  const blockedReasons = result?.kind === "blocked" ? result.reasons : activeCheck.state === "ready" && decision === "blocked" ? primaryReasons.filter((reason) => reason.severity === "block") : [];
+  const reviewReasons = result?.kind === "review" ? result.reasons : activeCheck.state === "ready" && decision === "review_required" ? primaryReasons.filter((reason) => reason.severity === "review") : [];
+  const pending = result?.kind === "review";
+  const displayedConfigVersion = result?.kind === "applied" || result?.kind === "review" ? result.version : agent.configVersion;
+  const saveLabel = pending ? "Saved for review" : decision === "blocked" ? "Change not allowed" : decision === "review_required" ? "Submit for review" : decision === "auto_apply" ? "Save & apply" : "Save changes";
+  const saveDisabled = saving || !dirty || Boolean(nameError) || decision === "blocked";
 
   const save = async () => {
-    if (nameError) return;
+    setSaveAttempted(true);
+    if (saving || !dirty) return;
+    if (nameError) {
+      document.getElementById("cfg-name")?.focus();
+      return;
+    }
+    if (decision === "blocked") {
+      const first = primaryReasons.find((reason) => reason.severity === "block" && reason.field);
+      const id = first ? configFieldElementId(first.field) : null;
+      if (id) document.getElementById(id)?.focus();
+      statusRef.current?.focus();
+      return;
+    }
     setSaving(true);
-    setSaveState(null);
+    setResult(null);
     const res = await saveAgentSettingsAction(meta.key, s);
     setSaving(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      const blocked = res.code === "forbidden";
+      setResult({ kind: blocked ? "blocked" : "error", reasons: [], message: res.error });
+      toast.error(blocked ? "This change can't be saved because it conflicts with platform security rules." : res.error);
+      window.requestAnimationFrame(() => statusRef.current?.focus());
+      return;
+    }
+    setJustSaved(true);
+    setCheck({ state: "idle" });
     if (res.data.status === "pending_agency_review") {
-      const reason = res.data.reasons?.[0];
-      setSaveState("Saved for review. Your current configuration stays active until a reviewer approves it.");
-      toast.warning("Submitted for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
+      setResult({ kind: "review", version: res.data.version, reasons: res.data.reasons ?? [] });
+      toast.warning("Submitted for review", { description: "Your current configuration remains active until an authorized reviewer approves it." });
     } else {
-      setSaveState(`Configuration v${res.data.version} applied.`);
-      toast.success(`Saved as configuration v${res.data.version}`, { description: "New conversations use it right away." });
+      setResult({ kind: "applied", version: res.data.version });
+      toast.success("Changes saved and applied successfully", { description: `Configuration v${res.data.version} is now active.` });
     }
     router.refresh();
-    onSaved();
+    window.requestAnimationFrame(() => statusRef.current?.focus());
   };
 
+  const fieldIssues = (field: string) => issuesFor(field);
+
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-      {draftVersion !== null && (
-        <div className="flex items-start gap-2 rounded-2xl border border-warning/25 bg-warning-soft/40 p-3.5 text-[12.5px] leading-relaxed text-warning-ink xl:col-span-2">
-          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <p>
-            You are editing saved configuration v{draftVersion}, which has not been applied yet. Saving creates a new version. Your
-            current live configuration stays in place until a reviewer approves the change.
-          </p>
-        </div>
-      )}
-      <div className="space-y-5">
-        <nav aria-label="Configuration sections" className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface-2/60 p-2">
-          {[
-            ["config-identity", "Identity"],
-            ["config-role", "Role"],
-            ["config-rules", "Rules"],
-            ["config-instructions", "Instructions"],
-            ["config-tools", "Tools"],
-          ].map(([href, label]) => (
-            <a key={href} href={`#${href}`} className="inline-flex min-h-9 items-center rounded-xl px-3 text-[12px] font-medium text-muted transition hover:bg-surface hover:text-ink">{label}</a>
-          ))}
-        </nav>
-
-        <ConfigSection id="config-identity" step="01" title="Identity & communication" description={`How ${agent.displayName} introduces itself and sounds in conversation.`}>
-          <Field label="Employee name" htmlFor="cfg-name" hint="What your team calls this employee." error={nameError}>
-            <Input id="cfg-name" value={s.displayName} maxLength={40} aria-invalid={Boolean(nameError)} onChange={(e) => set("displayName", e.target.value)} />
-          </Field>
-          <div>
-            <p className="mb-2 text-[13px] font-medium text-ink-2">Personality</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {TONES.map((t: Tone) => (
-                <button key={t} type="button" onClick={() => set("tone", t)} aria-pressed={s.tone === t} className={cn("rounded-2xl border p-3.5 text-left transition", s.tone === t ? "border-primary bg-primary-soft/50 ring-2 ring-primary/15" : "border-line bg-surface hover:border-line-strong")}>
-                  <span className="flex items-center justify-between text-[13px] font-semibold">{TONE_COPY[t].label}{s.tone === t && <Check className="size-4 text-primary" />}</span>
-                  <span className="mt-1 block text-[12px] leading-relaxed text-muted">{TONE_COPY[t].example}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-[13px] font-medium text-ink-2">Reply length</p>
-              <p className="mb-2 text-[12px] text-muted">{LENGTH_COPY[s.replyLength].description}</p>
-              <Segmented id="cfg-length" ariaLabel="Reply length" value={s.replyLength} onChange={(v: ReplyLength) => set("replyLength", v)} options={(["concise", "balanced", "detailed"] as const).map((v) => ({ value: v, label: LENGTH_COPY[v].label }))} />
-            </div>
-            <Field label="Language" htmlFor="cfg-lang">
-              <Select id="cfg-lang" value={s.language} onChange={(e) => set("language", e.target.value as AgentSettings["language"])}>{LANGUAGES.map((l) => <option key={l}>{l}</option>)}</Select>
-            </Field>
-          </div>
-        </ConfigSection>
-
-        <ConfigSection id="config-role" step="02" title="Role & responsibilities" description="The real work this employee should own. Short answers are perfect; blank fields use safe defaults.">
-          {meta.questions.map((q) => (
-            <Field key={q.id} label={q.label} htmlFor={`cfg-q-${q.id}`} optional>
-              <Textarea id={`cfg-q-${q.id}`} rows={2} maxLength={1000} placeholder={q.placeholder} value={s.roleAnswers[q.id] ?? ""} onChange={(e) => set("roleAnswers", { ...s.roleAnswers, [q.id]: e.target.value })} />
-            </Field>
-          ))}
-          <Field label="Main responsibilities" htmlFor="cfg-resp" optional><Textarea id="cfg-resp" rows={2} maxLength={1000} value={s.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} placeholder="e.g. Focus on commercial clients first" /></Field>
-          <Field label="Goals for this employee" htmlFor="cfg-goals" optional><Textarea id="cfg-goals" rows={2} maxLength={1000} value={s.goals} onChange={(e) => set("goals", e.target.value)} placeholder="e.g. Book 10 consultations a month" /></Field>
-          <Field label="Target audience" htmlFor="cfg-target" optional><Textarea id="cfg-target" rows={2} maxLength={1000} value={s.targetCustomers} onChange={(e) => set("targetCustomers", e.target.value)} /></Field>
-        </ConfigSection>
-
-        <ConfigSection id="config-rules" step="03" title="Behavior & business rules" description="Guardrails and escalation. These are combined with iAcquire's protected policy and cannot override it.">
-          <Field label="Company rules" htmlFor="cfg-rules" optional><Textarea id="cfg-rules" rows={2} maxLength={1500} value={s.companyRules} onChange={(e) => set("companyRules", e.target.value)} placeholder="e.g. Never discuss competitors by name" /></Field>
-          <Field label="Never promise" htmlFor="cfg-never" optional><Textarea id="cfg-never" rows={2} maxLength={1000} value={s.neverPromise} onChange={(e) => set("neverPromise", e.target.value)} placeholder="e.g. Same-day service, exact prices before an inspection" /></Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Ask a human when…" htmlFor="cfg-esc" optional><Input id="cfg-esc" maxLength={600} value={s.escalateWhen} onChange={(e) => set("escalateWhen", e.target.value)} placeholder="a customer is upset" /></Field>
-            <Field label="Escalation contact" htmlFor="cfg-esc-contact" optional><Input id="cfg-esc-contact" maxLength={200} value={s.escalationContact} onChange={(e) => set("escalationContact", e.target.value)} placeholder="Name and email" /></Field>
-          </div>
-          <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-[13px] font-medium"><Lock className="size-3.5 text-faint" aria-hidden /> Ask before any business action</p>
-                <p className="mt-1 text-[12px] leading-relaxed text-muted">Fixed by iAcquire policy. Customer-facing actions always need approval, and this setting cannot be changed here.</p>
+    <div className="space-y-5 pb-36 xl:pb-0" data-aqi-target="workforce.employee.configure">
+      <div ref={statusRef} tabIndex={-1} className="space-y-3 outline-none">
+        {result?.kind === "applied" && (
+          <ChangeDecisionNotice
+            tone="success"
+            title="Changes saved and applied successfully"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={onOpenHistory}>View version history</Button>
+                <Button size="sm" variant="ghost" onClick={onSaved}>Back to overview</Button>
               </div>
-              <Badge tone="neutral">Read-only</Badge>
-            </div>
-            <p className="mt-2.5 border-t border-line pt-2.5 text-[11.5px] leading-relaxed text-faint">
-              This preference is recorded for compatibility but is not currently read by the runtime approval gate. Your employee&apos;s
-              operating mode and the platform&apos;s tool policy remain the enforced approval boundary.
+            }
+          >
+            <p>Configuration v{result.version} is now active. New conversations use it right away.</p>
+          </ChangeDecisionNotice>
+        )}
+        {result?.kind === "review" && (
+          <ChangeDecisionNotice
+            tone="warning"
+            title={`Submitted for review — configuration v${result.version}`}
+            action={<Button size="sm" variant="secondary" onClick={onOpenHistory}>View version history</Button>}
+          >
+            <p>Your changes were saved and submitted for review. Your current configuration remains active until an authorized reviewer approves them.</p>
+            {result.reasons.length > 0 && <ReasonList reasons={result.reasons} />}
+          </ChangeDecisionNotice>
+        )}
+        {result?.kind === "blocked" && (
+          <ChangeDecisionNotice tone="danger" title="This change can't be saved">
+            <p>This change can&apos;t be saved because it conflicts with platform security rules. Your edits are still here; remove or change the flagged content and try again.</p>
+            {result.reasons.length > 0 && <ReasonList reasons={result.reasons} />}
+            {result.message && !result.reasons.length && <p>{result.message}</p>}
+          </ChangeDecisionNotice>
+        )}
+        {result?.kind === "error" && (
+          <ChangeDecisionNotice tone="danger" title="The configuration couldn't be saved">
+            <p>{result.message}</p>
+            <p>Your edits are still here. Check the highlighted fields and try again.</p>
+          </ChangeDecisionNotice>
+        )}
+
+        {draftVersion !== null && !result && (
+          <ChangeDecisionNotice
+            tone={draftStatus === "rejected" ? "danger" : "warning"}
+            title={
+              draftStatus === "rejected"
+                ? `Revising configuration v${draftVersion}, which was not approved`
+                : draftStatus === "draft"
+                  ? `Editing saved draft v${draftVersion}`
+                  : `Editing unapplied configuration v${draftVersion}`
+            }
+          >
+            <p>
+              {draftStatus === "rejected"
+                ? "This version was reviewed and not applied. Saving creates a new version. Routine changes may apply immediately; sensitive changes still need review."
+                : "This version has been saved but is not active. Saving creates a new version. Your current live configuration stays in place until a reviewer approves the change."}
             </p>
-          </div>
-        </ConfigSection>
+          </ChangeDecisionNotice>
+        )}
 
-        <ConfigSection id="config-instructions" step="04" title="Additional instructions" description="One short, plain-English instruction specific to this employee.">
-          <Field label="Employee-specific instruction" htmlFor="cfg-custom" optional hint="Keep it factual. Instructions cannot change permissions or safety rules."><Textarea id="cfg-custom" rows={3} maxLength={500} value={s.customInstruction} onChange={(e) => set("customInstruction", e.target.value)} placeholder="e.g. Always mention our free inspection." /></Field>
-        </ConfigSection>
+        {!result && activeCheck.state === "ready" && decision === "blocked" && (
+          <ChangeDecisionNotice tone="danger" title="Change not allowed">
+            <p>This change can&apos;t be saved because it conflicts with platform security rules. Your edits are still here.</p>
+            <ReasonList reasons={blockedReasons} />
+            <p>Remove or change the flagged content, then check the draft again. A blocked change cannot be approved as it stands.</p>
+          </ChangeDecisionNotice>
+        )}
 
-        <ConfigSection id="config-tools" step="05" title="Tool permissions" description="Only the tools granted to this role are listed. Client controls can switch tools off, never add new ones.">
-          <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
-            {agent.defaultTools.map((t) => {
-              const on = !s.disabledTools.includes(t);
-              return (
-                <div key={t} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div><p className="text-[13px] font-medium">{agentToolLabel(t)}</p><p className="mt-0.5 text-[11.5px] text-muted">Granted by iAcquire for this role.</p></div>
-                  <Switch checked={on} onCheckedChange={(v) => set("disabledTools", v ? s.disabledTools.filter((x) => x !== t) : [...s.disabledTools, t])} aria-label={agentToolLabel(t)} />
-                </div>
-              );
-            })}
-          </div>
-          <p className="rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted"><Lock className="mr-1.5 inline size-3.5" /> The provider profile and the connection health check remain the enforced boundary. A switch here changes instructions; it is not a separate sandbox.</p>
-        </ConfigSection>
+        {!result && activeCheck.state === "ready" && decision === "review_required" && (
+          <ChangeDecisionNotice tone="warning" title="Some changes require review">
+            <p>
+              Some of these changes will need review. None of the changes in this submission will become active until an authorized reviewer
+              approves it. Your current configuration remains active, and you can keep editing before you submit.
+            </p>
+            <ReasonList reasons={reviewReasons} />
+          </ChangeDecisionNotice>
+        )}
+
+        {!result && activeCheck.state === "error" && (
+          <ChangeDecisionNotice tone="info" title="We couldn't pre-check this change">
+            <p>
+              The change check is temporarily unavailable, so the server will make the final decision when you save. Your current configuration
+              stays active unless the save applies immediately.
+            </p>
+          </ChangeDecisionNotice>
+        )}
       </div>
 
-      <aside className="order-first xl:order-last xl:sticky xl:top-24 xl:self-start">
-        <Card className="overflow-hidden">
-          <div className="border-b border-line bg-surface-2/60 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[.15em] text-muted">Publishing</p>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-[14px] font-semibold text-ink">{hasPendingReview ? "Awaiting review" : agent.configVersion ? `Configuration v${agent.configVersion}` : "New configuration"}</p>
-              <span className={cn("size-2 rounded-full", dirty ? "bg-warning" : "bg-success")} aria-hidden />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-5">
+          <nav aria-label="Configuration sections" className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface-2/60 p-2">
+            {[
+              ["config-identity", "Identity"],
+              ["config-role", "Role"],
+              ["config-rules", "Rules"],
+              ["config-instructions", "Instructions"],
+              ["config-tools", "Tools"],
+            ].map(([href, label]) => (
+              <a key={href} href={`#${href}`} className="inline-flex min-h-9 items-center rounded-xl px-3 text-[12px] font-medium text-muted transition hover:bg-surface hover:text-ink">{label}</a>
+            ))}
+          </nav>
+
+          <ConfigSection id="config-identity" step="01" title="Identity & communication" description={`How ${agent.displayName} introduces itself and sounds in conversation.`}>
+            <GuidedField
+              id="cfg-name"
+              label="Employee name"
+              guidance={employeeFieldGuidance(meta.key, "displayName")}
+              required
+              error={showNameError ? nameError : null}
+              issues={fieldIssues("displayName")}
+              charLimit={40}
+              valueLength={s.displayName.length}
+            >
+              <Input value={s.displayName} maxLength={40} onBlur={() => setNameTouched(true)} onChange={(e) => set("displayName", e.target.value)} />
+            </GuidedField>
+
+            <GuidedChoiceField id="cfg-tone" label="Personality" guidance={employeeFieldGuidance(meta.key, "tone")} optional issues={fieldIssues("tone")}>
+              <div role="radiogroup" aria-label="Personality" className="grid gap-2 sm:grid-cols-2">
+                {TONES.map((t: Tone) => {
+                  const selected = s.tone === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => set("tone", t)}
+                      className={cn(
+                        "rounded-2xl border p-3.5 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                        selected ? "border-primary bg-primary-soft/50 ring-2 ring-primary/15" : "border-line bg-surface hover:border-line-strong",
+                      )}
+                    >
+                      <span className="flex items-center justify-between text-[13px] font-semibold text-ink">
+                        {TONE_COPY[t].label}
+                        {selected && <Check className="size-4 text-primary" aria-hidden />}
+                      </span>
+                      <span className="mt-1 block text-[12px] leading-relaxed text-muted">{TONE_COPY[t].description}</span>
+                      <span className="mt-1.5 block text-[11.5px] italic leading-relaxed text-faint">“{TONE_COPY[t].example}”</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </GuidedChoiceField>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <GuidedChoiceField id="cfg-length" label="Reply length" guidance={employeeFieldGuidance(meta.key, "replyLength")} optional issues={fieldIssues("replyLength")}>
+                <div role="radiogroup" aria-label="Reply length" className="grid gap-2">
+                  {(["concise", "balanced", "detailed"] as const).map((v) => {
+                    const selected = s.replyLength === v;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => set("replyLength", v)}
+                        className={cn(
+                          "flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                          selected ? "border-primary bg-primary-soft/50 ring-2 ring-primary/15" : "border-line bg-surface hover:border-line-strong",
+                        )}
+                      >
+                        <span>
+                          <span className="block text-[12.5px] font-medium text-ink">{LENGTH_COPY[v].label}</span>
+                          <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted">{LENGTH_COPY[v].description}</span>
+                        </span>
+                        {selected && <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </GuidedChoiceField>
+
+              <GuidedField id="cfg-language" label="Language" guidance={employeeFieldGuidance(meta.key, "language")} optional issues={fieldIssues("language")}>
+                <Select value={s.language} onChange={(e) => set("language", e.target.value as AgentSettings["language"])}>
+                  {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+                </Select>
+              </GuidedField>
             </div>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted">{dirty ? "You have unsaved changes." : "All changes are saved."}</p>
+          </ConfigSection>
+
+          <ConfigSection id="config-role" step="02" title="Role & responsibilities" description={`The work ${agent.displayName} should own. Short, specific answers work best; blank optional fields use safe defaults.`}>
+            {meta.questions.map((q) => (
+              <GuidedField
+                key={q.id}
+                id={`cfg-q-${q.id}`}
+                label={q.label}
+                guidance={{ description: q.help ?? "Describe what this employee should do in this situation.", example: q.placeholder }}
+                optional
+                issues={fieldIssues(`roleAnswers.${q.id}`)}
+                charLimit={1000}
+                valueLength={(s.roleAnswers[q.id] ?? "").length}
+              >
+                <Textarea rows={3} maxLength={1000} value={s.roleAnswers[q.id] ?? ""} onChange={(e) => set("roleAnswers", { ...s.roleAnswers, [q.id]: e.target.value })} />
+              </GuidedField>
+            ))}
+            <GuidedField id="cfg-resp" label="Main responsibilities" guidance={employeeFieldGuidance(meta.key, "responsibilities")} optional issues={fieldIssues("responsibilities")} charLimit={1000} valueLength={s.responsibilities.length}>
+              <Textarea rows={3} maxLength={1000} value={s.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-goals" label="Goals for this employee" guidance={employeeFieldGuidance(meta.key, "goals")} optional issues={fieldIssues("goals")} charLimit={1000} valueLength={s.goals.length}>
+              <Textarea rows={3} maxLength={1000} value={s.goals} onChange={(e) => set("goals", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-target" label="Target audience" guidance={employeeFieldGuidance(meta.key, "targetCustomers")} optional issues={fieldIssues("targetCustomers")} charLimit={1000} valueLength={s.targetCustomers.length}>
+              <Textarea rows={3} maxLength={1000} value={s.targetCustomers} onChange={(e) => set("targetCustomers", e.target.value)} />
+            </GuidedField>
+          </ConfigSection>
+
+          <ConfigSection id="config-rules" step="03" title="Behavior & business rules" description="Guardrails and escalation. These are combined with iAcquire's protected policy and cannot override it.">
+            <GuidedField id="cfg-rules" label="Company rules" guidance={employeeFieldGuidance(meta.key, "companyRules")} optional issues={fieldIssues("companyRules")} charLimit={1500} valueLength={s.companyRules.length}>
+              <Textarea rows={3} maxLength={1500} value={s.companyRules} onChange={(e) => set("companyRules", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-never" label="Never promise" guidance={employeeFieldGuidance(meta.key, "neverPromise")} optional issues={fieldIssues("neverPromise")} charLimit={1000} valueLength={s.neverPromise.length}>
+              <Textarea rows={3} maxLength={1000} value={s.neverPromise} onChange={(e) => set("neverPromise", e.target.value)} />
+            </GuidedField>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <GuidedField id="cfg-esc" label="When to ask a human" guidance={employeeFieldGuidance(meta.key, "escalateWhen")} optional issues={fieldIssues("escalateWhen")} charLimit={600} valueLength={s.escalateWhen.length}>
+                <Textarea rows={2} maxLength={600} value={s.escalateWhen} onChange={(e) => set("escalateWhen", e.target.value)} />
+              </GuidedField>
+              <GuidedField id="cfg-esc-contact" label="Escalation contact" guidance={employeeFieldGuidance(meta.key, "escalationContact")} optional issues={fieldIssues("escalationContact")} charLimit={200} valueLength={s.escalationContact.length}>
+                <Input maxLength={200} value={s.escalationContact} onChange={(e) => set("escalationContact", e.target.value)} />
+              </GuidedField>
+            </div>
+            <div id="cfg-approval" tabIndex={-1} className="scroll-mt-28 rounded-2xl border border-line bg-surface-2/50 p-4 outline-none">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium"><Lock className="size-3.5 text-faint" aria-hidden /> Required approval policy</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-muted">Fixed by iAcquire policy. Customer-facing actions always need approval, and this setting cannot be changed here.</p>
+                </div>
+                <Badge tone="neutral">Fixed by iAcquire policy</Badge>
+              </div>
+              <p className="mt-2.5 border-t border-line pt-2.5 text-[11.5px] leading-relaxed text-faint">
+                This preference is recorded for compatibility but is not currently read by the runtime approval gate. Your employee&apos;s
+                operating mode and the platform&apos;s tool policy remain the enforced approval boundary. Editing the instructions cannot grant
+                new permissions.
+              </p>
+            </div>
+          </ConfigSection>
+
+          <ConfigSection id="config-instructions" step="04" title="Additional instructions" description="One short, plain-English instruction specific to this employee.">
+            <GuidedField id="cfg-custom" label="Employee-specific instruction" guidance={employeeFieldGuidance(meta.key, "customInstruction")} optional issues={fieldIssues("customInstruction")} charLimit={500} valueLength={s.customInstruction.length}>
+              <Textarea rows={3} maxLength={500} value={s.customInstruction} onChange={(e) => set("customInstruction", e.target.value)} />
+            </GuidedField>
+          </ConfigSection>
+
+          <ConfigSection id="config-tools" step="05" title="Tool permissions" description="Only the tools granted to this role are listed. You can switch tools off, never add new ones.">
+            <div className="space-y-2">
+              {agent.defaultTools.map((t) => {
+                const on = !s.disabledTools.includes(t);
+                const wasOff = settings.disabledTools.includes(t);
+                const toolGuidance = ROLE_TOOL_GUIDANCE[t] ?? {
+                  description: `${agentToolLabel(t)} is granted for this role by iAcquire.`,
+                  off: "The employee will not be given this tool in its instructions.",
+                };
+                return (
+                  <GuidedSwitch
+                    key={t}
+                    id={`cfg-tool-${t.replaceAll(".", "-")}`}
+                    label={agentToolLabel(t)}
+                    description={toolGuidance.description}
+                    checked={on}
+                    onCheckedChange={(next) => set("disabledTools", next ? s.disabledTools.filter((x) => x !== t) : [...s.disabledTools, t])}
+                    issues={on && wasOff ? fieldIssues("disabledTools") : []}
+                    offLabel={toolGuidance.off}
+                    onLabel="Included in this employee's instructions."
+                  />
+                );
+              })}
+            </div>
+            <p className="rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted"><Lock className="mr-1.5 inline size-3.5" /> {TOOL_BOUNDARY_NOTE}</p>
+          </ConfigSection>
+        </div>
+
+        <aside className="order-first xl:order-last xl:sticky xl:top-24 xl:self-start">
+          <Card className="overflow-hidden">
+            <div className="border-b border-line bg-surface-2/60 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[.15em] text-muted">Publishing</p>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[14px] font-semibold text-ink">{hasPendingReview || pending ? "Awaiting review" : displayedConfigVersion ? `Configuration v${displayedConfigVersion}` : "New configuration"}</p>
+                <span className={cn("size-2 rounded-full", dirty ? "bg-warning" : "bg-success")} aria-hidden />
+              </div>
+              <p className="mt-1 text-[12px] leading-relaxed text-muted">
+                {dirty ? "You have unsaved changes." : pending ? "Saved for review. Your current configuration is still active." : "All changes are saved."}
+              </p>
+            </div>
+            <CardContent className="space-y-3">
+              <div aria-live="polite" className="min-h-5 text-[12px] text-muted">
+                {activeCheck.state === "checking" ? "Checking this change…" : activeCheck.state === "error" ? "The change check is unavailable. The server will decide when you save." : null}
+              </div>
+
+              {activeCheck.state === "ready" && decision === "auto_apply" && !result && (
+                <div className="rounded-xl border border-success/25 bg-success-soft/40 p-3">
+                  <p className="text-[12px] font-semibold text-success-ink">Ready to save</p>
+                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-success-ink/90">Routine changes apply immediately after validation.</p>
+                </div>
+              )}
+              {activeCheck.state === "ready" && decision === "review_required" && !result && (
+                <div className="rounded-xl border border-warning/30 bg-warning-soft/40 p-3">
+                  <p className="text-[12px] font-semibold text-warning-ink">Review required</p>
+                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-warning-ink/90">Your current configuration stays active while a reviewer decides.</p>
+                </div>
+              )}
+              {activeCheck.state === "ready" && decision === "blocked" && !result && (
+                <div className="rounded-xl border border-danger/25 bg-danger-soft/40 p-3">
+                  <p className="text-[12px] font-semibold text-danger-ink">Change not allowed</p>
+                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-danger-ink/90">Fix the flagged fields before saving.</p>
+                </div>
+              )}
+
+              <Button variant="brand" className="w-full" disabled={saveDisabled} loading={saving} onClick={save}>{saveLabel}</Button>
+              <Button variant="secondary" className="w-full" onClick={() => setTesting(true)}><Sparkles className="size-4" /> Test this draft</Button>
+              <Button variant="ghost" className="w-full" disabled={!dirty || saving} onClick={() => { setS(settings); setJustSaved(true); setResult(null); setCheck({ state: "idle" }); }}>Discard changes</Button>
+              <Button variant="ghost" className="w-full justify-start" onClick={onOpenHistory}><History className="size-4" /> Version history</Button>
+              <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /> Test draft uses the real provider in an isolated session. It does not save or change the active employee.</p>
+              <a href="#employee-readiness" className="inline-flex text-[12px] font-medium text-primary hover:underline">Review activation requirements</a>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-float backdrop-blur xl:hidden">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[12px] font-medium text-ink">{dirty ? "Unsaved changes" : pending ? "Waiting for review" : "All changes saved"}</p>
+            <p className="truncate text-[11px] text-muted">
+              {decision === "blocked" ? "Fix the flagged fields to continue" : decision === "review_required" ? "A reviewer must approve this change" : displayedConfigVersion ? `Active configuration v${displayedConfigVersion}` : "No active configuration"}
+            </p>
           </div>
-          <CardContent className="space-y-3">
-            <div aria-live="polite" className="min-h-5 text-[12px] text-muted">{saveState}</div>
-            <Button variant="brand" className="w-full" disabled={!dirty || Boolean(nameError)} loading={saving} onClick={save}>Save &amp; apply</Button>
-            <Button variant="secondary" className="w-full" onClick={() => setTesting(true)}><Sparkles className="size-4" /> Test this draft</Button>
-            <Button variant="ghost" className="w-full" disabled={!dirty} onClick={() => setS(settings)}>Discard changes</Button>
-            <Button variant="ghost" className="w-full justify-start" onClick={onOpenHistory}><History className="size-4" /> Version history</Button>
-            <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /> Test draft uses the real provider in an isolated session. It does not save or change the active employee.</p>
-            <a href="#employee-readiness" className="inline-flex text-[12px] font-medium text-primary hover:underline">Review activation requirements</a>
-          </CardContent>
-        </Card>
-      </aside>
+          <Button variant="brand" size="sm" disabled={saveDisabled} loading={saving} onClick={save} aria-label={`${saveLabel} (mobile)`}>{saveLabel}</Button>
+        </div>
+      </div>
 
       <ConfigTestDialog open={testing} onOpenChange={setTesting} role={meta.key} agentName={s.displayName || agent.displayName} draft={s} activeVersion={agent.configVersion} />
     </div>
   );
 }
 
-function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }) {
+function ReasonList({ reasons }: { reasons: ReviewReasonView[] }) {
+  if (!reasons.length) return null;
+  return (
+    <ul className="space-y-1.5">
+      {reasons.map((reason) => {
+        const id = reason.field ? configFieldElementId(reason.field) : null;
+        return (
+          <li key={`${reason.code}:${reason.field}`} className="rounded-xl border border-line bg-surface p-2.5 text-[12px] text-ink-2">
+            <p className="font-semibold text-ink">{reason.label}{reason.severity === "block" ? " — not allowed" : " — review required"}</p>
+            <p className="mt-0.5 leading-relaxed">{reason.detail}</p>
+            <p className="mt-1 leading-relaxed text-muted"><span className="font-medium text-ink-2">How to fix: </span>{changeFixForReason(reason.code, reason.field)}</p>
+            {id && <a href={`#${id}`} className="mt-1.5 inline-flex font-medium text-primary underline underline-offset-2">Go to this field</a>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+
+function ChangeTab({ meta, agent, settings, onApplied }: Props & { onApplied: () => void }) {
   const router = useRouter();
   const [text, setText] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [proposal, setProposal] = React.useState<{ status: string; changes: Partial<AgentSettings>; explanations: string[]; refusal?: string } | null>(null);
+  const [check, setCheck] = React.useState<PreviewCheck>({ state: "idle" });
+  const [applyError, setApplyError] = React.useState<string | null>(null);
   const examples = [`Make my ${meta.shortName} more friendly and less pushy`, "Keep answers shorter", "Reply in Spanish", "Don't use emojis"];
+  const decision = check.state === "ready" ? check.summary.decision : null;
+  const reasons = check.state === "ready" ? check.summary.reasons ?? [] : [];
+  const blocked = decision === "blocked";
+
   const propose = async () => {
     setPending(true);
+    setApplyError(null);
+    setCheck({ state: "idle" });
     const res = await proposeChangeAction(meta.key, text);
-    setPending(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setPending(false);
+      return toast.error(res.error);
+    }
     setProposal(res.data);
+    if (res.data.status === "proposed" && settings) {
+      const preview = await previewConfigAction(meta.key, { ...settings, ...res.data.changes });
+      setCheck(preview.ok ? { state: "ready", summary: preview.data } : { state: "error", error: preview.error });
+    }
+    setPending(false);
   };
   const apply = async () => {
-    if (!proposal) return;
+    if (!proposal || blocked) return;
     setPending(true);
+    setApplyError(null);
     const res = await applyChangeAction(meta.key, text, proposal.changes);
     setPending(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setApplyError(res.error);
+      return toast.error(res.error);
+    }
     if (res.data.status === "pending_agency_review") {
       const reason = res.data.reasons?.[0];
-      toast.warning("Sent for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
+      toast.warning("Submitted for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
     } else {
-      toast.success(`Applied as configuration v${res.data.version}`);
+      toast.success("Changes saved and applied successfully", { description: `Configuration v${res.data.version} is now active.` });
     }
     setText("");
     setProposal(null);
+    setCheck({ state: "idle" });
     router.refresh();
     onApplied();
   };
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <Card>
-        <CardHeader><div><CardTitle className="flex items-center gap-2"><Wand2 className="size-4 text-violet" /> Describe a change in plain English</CardTitle><CardDescription>We show exactly what will change before anything is applied. Safety rules cannot be changed here.</CardDescription></div></CardHeader>
+        <CardHeader><div><CardTitle className="flex items-center gap-2"><Wand2 className="size-4 text-violet" /> Describe a change in plain English</CardTitle><CardDescription>We show exactly what will change before anything is saved. Safety rules cannot be changed here.</CardDescription></div></CardHeader>
         <CardContent className="space-y-4">
-          <label htmlFor="change-text" className="sr-only">Change request</label>
-          <Textarea id="change-text" rows={4} maxLength={1000} value={text} onChange={(e) => { setText(e.target.value); setProposal(null); }} placeholder={`e.g. ${examples[0]}`} />
-          <div className="flex flex-wrap gap-2">{examples.map((e) => <button key={e} type="button" onClick={() => { setText(e); setProposal(null); }} className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] text-ink-2 transition hover:border-primary/30 hover:text-ink">{e}</button>)}</div>
+          <GuidedField
+            id="change-text"
+            label="What should change?"
+            guidance={{
+              description: "Describe the outcome you want in one or two sentences. The request is interpreted against the active configuration, and you see the exact fields before anything is saved.",
+              example: `e.g. ${examples[0]}`,
+              info: "Instructions can refine tone, wording and routine work. They cannot add tools, change the employee's role or relax iAcquire's approval policy.",
+            }}
+            required
+            charLimit={1000}
+            valueLength={text.length}
+          >
+            <Textarea rows={4} maxLength={1000} value={text} onChange={(e) => { setText(e.target.value); setProposal(null); setCheck({ state: "idle" }); setApplyError(null); }} />
+          </GuidedField>
+          <div>
+            <p className="mb-1.5 text-[11.5px] font-medium text-muted">Try an example</p>
+            <div className="flex flex-wrap gap-2">{examples.map((e) => <button key={e} type="button" onClick={() => { setText(e); setProposal(null); setCheck({ state: "idle" }); setApplyError(null); }} className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] text-ink-2 transition hover:border-primary/30 hover:text-ink">{e}</button>)}</div>
+          </div>
           <Button variant="secondary" onClick={propose} loading={pending && !proposal} disabled={!text.trim()}><Sparkles className="size-4" /> Preview change</Button>
           <AnimatePresence>
             {proposal && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-2xl border border-line bg-surface-2/60 p-4">
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3 rounded-2xl border border-line bg-surface-2/60 p-4">
                 {proposal.status === "refused" ? <p className="flex items-start gap-2 text-[13.5px] text-warning-ink"><XCircle className="mt-0.5 size-4 shrink-0" /> {proposal.refusal}</p>
                   : proposal.status === "no_change" ? <p className="text-[13.5px] text-muted">{proposal.explanations[0]}</p>
                     : <>
-                        <p className="mb-2 text-[13px] font-semibold">What will change for {agent.displayName}</p>
+                        <p className="text-[13px] font-semibold">What will change for {agent.displayName}</p>
                         <ul className="space-y-1.5">{proposal.explanations.map((e) => <li key={e} className="flex items-start gap-2 text-[13.5px]"><Check className="mt-0.5 size-4 shrink-0 text-success" /> {e}</li>)}</ul>
-                        <div className="mt-4 flex gap-2"><Button variant="brand" onClick={apply} loading={pending}>Apply change</Button><Button variant="ghost" onClick={() => setProposal(null)}>Cancel</Button></div>
+
+                        {check.state === "checking" && <p className="text-[12px] text-muted">Checking this change…</p>}
+                        {check.state === "error" && (
+                          <ChangeDecisionNotice tone="info" title="We couldn't pre-check this change">
+                            <p>The server will make the final decision when you apply it. Your current configuration remains active unless the change applies immediately.</p>
+                          </ChangeDecisionNotice>
+                        )}
+                        {check.state === "ready" && decision === "auto_apply" && (
+                          <ChangeDecisionNotice tone="success" title="Ready to apply">
+                            <p>This is a routine change. It will apply immediately after server validation.</p>
+                          </ChangeDecisionNotice>
+                        )}
+                        {check.state === "ready" && decision === "review_required" && (
+                          <ChangeDecisionNotice tone="warning" title="Some changes require review">
+                            <p>None of the changes in this submission will become active until an authorized reviewer approves it. Your current configuration remains active.</p>
+                            <ReasonList reasons={reasons} />
+                          </ChangeDecisionNotice>
+                        )}
+                        {check.state === "ready" && decision === "blocked" && (
+                          <ChangeDecisionNotice tone="danger" title="Change not allowed">
+                            <p>This change can&apos;t be saved because it conflicts with platform security rules. Edit the request to remove the flagged request.</p>
+                            <ReasonList reasons={reasons} />
+                          </ChangeDecisionNotice>
+                        )}
+
+                        {applyError && <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft/40 p-2.5 text-[12.5px] text-danger-ink">{applyError}</p>}
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="brand" onClick={apply} loading={pending} disabled={blocked}>
+                            {blocked ? "Change not allowed" : decision === "review_required" ? "Submit for review" : "Apply change"}
+                          </Button>
+                          <Button variant="ghost" onClick={() => { setProposal(null); setCheck({ state: "idle" }); setApplyError(null); }}>Cancel</Button>
+                        </div>
                       </>}
               </motion.div>
             )}
@@ -529,16 +937,27 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
         <CardContent className="space-y-3 text-[12.5px] leading-relaxed text-muted">
           <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> The request is interpreted against the active configuration.</p>
           <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> You see the exact fields before applying.</p>
-          <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> Risky instruction changes are held for iAcquire review.</p>
-          <p className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /> Tools, permissions and the run gate cannot be changed here.</p>
+          <p className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> If any part needs review, the whole submission is held so nothing applies partially.</p>
+          <p className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /> Tools, permissions and the run gate cannot be changed here. Blocked requests are refused, not sent for approval.</p>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function HistoryTab({ meta, versions, timeZone, now }: Props) {
-  return <ConfigVersionHistory versions={versions} role={meta.key} timeZone={timeZone} initialNow={now} />;
+function HistoryTab({ meta, versions, timeZone, now, draftVersion, isInternalWorkspace, canConfigure, onEdit }: Props & { onEdit: (versionId: string) => void }) {
+  return (
+    <ConfigVersionHistory
+      versions={versions}
+      role={meta.key}
+      timeZone={timeZone}
+      initialNow={now}
+      isInternalWorkspace={isInternalWorkspace}
+      draftVersion={draftVersion}
+      canEdit={canConfigure}
+      onEdit={onEdit}
+    />
+  );
 }
 
 function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse }: Props) {

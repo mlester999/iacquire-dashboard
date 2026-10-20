@@ -30,13 +30,13 @@ export function LogoMark({ className, title = "iAcquire" }: { className?: string
   );
 }
 
-export function Logo({ className, compact }: { className?: string; compact?: boolean }) {
+export function Logo({ className, compact, onDark = false }: { className?: string; compact?: boolean; onDark?: boolean }) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <LogoMark className="size-8 shrink-0 drop-shadow-[0_6px_16px_rgba(44,91,255,0.35)]" />
       {!compact && (
-        <span className="text-[17px] font-semibold tracking-tight text-ink">
-          i<span className="text-gradient">Acquire</span>
+        <span className={cn("text-[17px] font-semibold tracking-tight", onDark ? "text-white" : "text-ink")}>
+          i<span className={onDark ? "text-white/90" : "text-gradient"}>Acquire</span>
         </span>
       )}
     </span>

@@ -60,13 +60,13 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "a.description", section: "A", required: true, assist: "draft", title: "Tell us what your business does.",
-    help: "One or two sentences, in your own words. Your AI team uses this to introduce you accurately.",
+    help: "Explain what your business does, who it serves, and what makes it different. Your authorized AI employees may use this to understand your company.",
     example: "We're a family-owned roofing company helping homeowners in Austin with repairs, inspections and replacements.",
     kind: { type: "longtext", max: 2000, rows: 4, placeholder: "What you do and who you help" }, reviewLabel: "What you do",
   },
   {
     id: "a.website", section: "A", assist: "draft", title: "Where can we find you online?",
-    help: "Add your website if you have one. We can read the public pages to suggest answers, and you decide what to keep.",
+    help: "Provide a company webpage containing information you want included in your business knowledge. We read public pages to suggest answers, and you decide what to keep.",
     example: "brightsideroofing.com", kind: { type: "url" }, reviewLabel: "Website",
   },
   {
@@ -125,7 +125,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "b.ideal_customer", section: "B", assist: "draft", title: "What does your ideal customer look like?",
-    help: "Think of the customers you most want more of. Budget, location, urgency and need all count.",
+    help: "Describe the types of people or businesses you want to serve. Think of the customers you most want more of; budget, location, urgency and need all count.",
     example: "Homeowners with storm damage who want it fixed within a month and have insurance.",
     kind: { type: "longtext", max: 1500, rows: 4 }, reviewLabel: "Ideal customer",
   },
@@ -137,7 +137,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "b.services", section: "B", assist: "draft", title: "What services or offers do you sell?",
-    help: "List the main things customers can buy from you, including any current offers.",
+    help: "List the products or services you provide. Include important limitations or conditions.",
     example: "Roof inspections, storm damage repair, gutter replacement. Free inspection this month.",
     kind: { type: "longtext", max: 2000, rows: 4 }, reviewLabel: "Services and offers",
   },
@@ -396,7 +396,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "e.faqs", section: "E", sensitive: true, assist: "list", title: "What questions do customers ask most?",
-    help: "Add real questions with your answers. Your AI will use these word for word where it can.",
+    help: "Add questions customers commonly ask, along with the answers your employees are allowed to provide. Your AI will use these word for word where it can.",
     kind: { type: "list", maxRows: 20, addLabel: "Add a question", fields: [
       { key: "question", label: "Question", type: "text", max: 200, required: true },
       { key: "answer", label: "Answer", type: "longtext", max: 800, required: true },

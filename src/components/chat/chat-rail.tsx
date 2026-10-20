@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { LayoutDashboard, LifeBuoy, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2 } from "lucide-react";
+import { LayoutDashboard, LifeBuoy, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, Users } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/overlays";
 import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
@@ -65,18 +65,34 @@ export function ChatRail({
   }, [conversations]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="m-3 flex min-h-20 shrink-0 items-center justify-between rounded-2xl bg-[#11192c] px-4 text-white [&_a_span]:text-white">
-        <Link href="/overview" onClick={onNavigate} aria-label="iAcquire overview">
-          <Logo />
-        </Link>
-        {shell.org.isDemo && (
-          <span className="rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-ink" title="Demo workspace with fictional sample data">
-            Demo data
-          </span>
-        )}
+    <div className="flex h-full flex-col" data-aqi-target="chat.rail">
+      <div className="m-3 shrink-0 rounded-2xl bg-[#11192c] px-4 py-3.5 text-white">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <Link href="/overview" onClick={onNavigate} aria-label="iAcquire overview">
+            <Logo onDark />
+          </Link>
+          {shell.org.isDemo && (
+            <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] font-medium text-white ring-1 ring-inset ring-white/15" title="Demo workspace with fictional sample data">
+              Demo data
+            </span>
+          )}
+        </div>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-[#c9d4ec]">
+          <Users className="size-3 shrink-0" aria-hidden />
+          <span className="truncate" title={shell.org.name}>{shell.org.name}</span>
+        </div>
+        <p className="mt-0.5 text-[10px] uppercase tracking-[.12em] text-white/55">
+          {shell.org.kind === "agency" ? "Agency workspace" : "Company workspace"}
+        </p>
       </div>
-      <div className="px-3">
+      <div className="space-y-0.5 px-3">
+        <Link
+          href="/workforce"
+          onClick={onNavigate}
+          className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-[13.5px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink"
+        >
+          <Users className="size-[17px]" /> AI Workforce
+        </Link>
         <Link
           href="/overview"
           onClick={onNavigate}

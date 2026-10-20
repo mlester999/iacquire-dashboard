@@ -82,7 +82,7 @@ export function AdminShell({ user, hasWorkspace, notifications, children, qaDemo
     return () => document.removeEventListener("keydown", shortcut);
   }, []);
   const sidebar = (small = false) => <div className="workspace-nav flex h-full flex-col text-white">
-    <div className={cn("flex h-[76px] shrink-0 items-center px-5", small && "justify-center px-2")}>{small ? <Link href="/admin" aria-label="iAcquire dashboard"><Image src="/brand/icon.svg" alt="" width={36} height={36} /></Link> : <Link href="/admin" className="[&_span]:!text-white" aria-label="iAcquire agency dashboard"><Logo /></Link>}</div>
+    <div className={cn("flex h-[76px] shrink-0 items-center px-5", small && "justify-center px-2")}>{small ? <Link href="/admin" aria-label="iAcquire dashboard"><Image src="/brand/icon.svg" alt="" width={36} height={36} /></Link> : <Link href="/admin" aria-label="iAcquire agency dashboard"><Logo onDark /></Link>}</div>
     {!small && <div className="mx-4 mb-4 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5"><p className="flex items-center gap-2 text-[12px] font-semibold"><ShieldCheck className="size-3.5 text-[#9ebcff]" />Agency workspace</p><p className="mt-1 text-[11px] text-[#a6b3cd]">{superAdmin ? "Super admin access" : "Assigned client access"}</p></div>}
     <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav superAdmin={superAdmin} compact={small} onNavigate={() => setOpen(false)} /></div>
     <div className="mt-3 space-y-2 border-t border-white/10 p-3">

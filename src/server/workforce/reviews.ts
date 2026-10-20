@@ -36,6 +36,8 @@ export interface HeldConfigRow {
   created_by_platform_role: string | null;
   created_by_org_role: string | null;
   previous_settings: AgentSettings | null;
+  previous_version: number | null;
+  compiled_instructions: string | null;
 }
 
 const CONFIG_SOURCES: ConfigSource[] = ["onboarding", "client_edit", "change_request", "rollback", "agency"];
@@ -46,6 +48,16 @@ function configSource(value: string): ConfigSource {
 
 function orgKind(value: string): ConfigOrgKind {
   return value === "agency" ? "agency" : "client";
+}
+
+function actorRoleLabel(platformRole: string | null, orgRole: string | null): string | null {
+  const role = platformRole && platformRole !== "none" ? platformRole : orgRole;
+  if (!role) return null;
+  if (role === "owner" || role === "admin" || role === "member") return role.slice(0, 1).toUpperCase() + role.slice(1);
+  if (role === "agency_super_admin") return "Super Admin";
+  if (role === "agency_manager") return "Agency Manager";
+  if (role === "agency_staff") return "Agency Staff";
+  return role.replaceAll("_", " ");
 }
 
 function mergeReasons(computed: ReviewReasonView[], stored: ReviewReasonView[]): ReviewReasonView[] {
@@ -111,6 +123,10 @@ export function buildHeldConfigReview(row: HeldConfigRow): ReviewPayload {
 
 export function toReviewVersion(row: HeldConfigRow): ReviewVersionView {
   const role: AgentRoleKey = isAgentRoleKey(row.role_key) ? row.role_key : "operations_manager";
+  const compiled = row.compiled_instructions ? redactReviewText(row.compiled_instructions) : null;
+  // Evidence is truncated for the browser, not for storage. The full compiled instructions stay in
+  // the version row and the audit trail.
+  const MAX_EVIDENCE = 20_000;
   return {
     id: row.id,
     orgId: row.org_id,
@@ -119,30 +135,31 @@ export function toReviewVersion(row: HeldConfigRow): ReviewVersionView {
     agentRole: role,
     agentName: row.agent_name,
     version: row.version,
+    appliedVersion: row.previous_version === null ? null : Number(row.previous_version),
     source: row.source,
     summary: redactReviewText(row.summary),
     changeRequest: row.change_request ? redactReviewText(row.change_request) : null,
     submittedBy: row.created_by_name ?? "System",
-    submittedByRole: row.created_by_platform_role && row.created_by_platform_role !== "none"
-      ? row.created_by_platform_role.replaceAll("_", " ")
-      : row.created_by_org_role,
+    submittedByRole: actorRoleLabel(row.created_by_platform_role, row.created_by_org_role),
     submittedAt: new Date(row.created_at).toISOString(),
+    compiledInstructions: compiled ? compiled.slice(0, MAX_EVIDENCE) : null,
+    compiledInstructionsTruncated: Boolean(compiled && compiled.length > MAX_EVIDENCE),
     review: buildHeldConfigReview(row),
   };
 }
 
 const HELD_SELECT = `select v.id, v.org_id, o.name as org_name, o.kind as org_kind, v.agent_instance_id,
        a.role_key, a.display_name as agent_name, v.version, v.settings, v.summary, v.source, v.risk_flags, v.change_request,
-       v.created_at, v.created_by, u.full_name as created_by_name,
+       v.created_at, v.created_by, v.compiled_instructions, u.full_name as created_by_name,
        u.platform_role as created_by_platform_role, membership.role as created_by_org_role,
-       previous.settings as previous_settings
+       previous.settings as previous_settings, previous.version as previous_version
 from agent_config_versions v
 join agent_instances a on a.id = v.agent_instance_id
 join organizations o on o.id = v.org_id
 left join users u on u.id = v.created_by
 left join organization_memberships membership on membership.user_id = v.created_by and membership.org_id = v.org_id
 left join lateral (
-  select p.settings from agent_config_versions p
+  select p.settings, p.version from agent_config_versions p
   where p.agent_instance_id = v.agent_instance_id and p.version < v.version and p.status = 'applied'
   order by p.version desc limit 1
 ) previous on true

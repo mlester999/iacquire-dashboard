@@ -6,8 +6,8 @@ import { addMember, agentId, createOrg, createUser } from "./support/fixtures";
 
 async function notificationsFor(userId: string) {
   const { rows } = await withSystem((db) =>
-    db.query<{ kind: string; title: string; body: string | null; link: string | null }>(
-      "select kind, title, body, link from notifications where user_id = $1 order by created_at",
+    db.query<{ kind: string; title: string; body: string | null; link: string | null; read_at: Date | null }>(
+      "select kind, title, body, link, read_at from notifications where user_id = $1 order by created_at",
       [userId],
     ),
   );
@@ -78,6 +78,10 @@ describe("configuration review notifications", () => {
         }),
       ]),
     );
+    const ownerAfterDecision = await notificationsFor(owner.id);
+    expect(ownerAfterDecision.find((n) => n.title.includes("waiting for iAcquire review"))?.read_at).not.toBeNull();
+    const reviewerAfterDecision = await notificationsFor(reviewer.id);
+    expect(reviewerAfterDecision.find((n) => n.kind === "approval_requested")?.read_at).not.toBeNull();
     const versions = await listConfigVersions(owner.id, agent);
     expect(versions.find((version) => version.id === held.versionId)).toMatchObject({
       status: "rejected",

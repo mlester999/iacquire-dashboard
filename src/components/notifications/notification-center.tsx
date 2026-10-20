@@ -150,6 +150,7 @@ export function NotificationCenter({
         <PopoverTrigger asChild>
           <button
             type="button"
+            data-aqi-target="notifications.bell"
             className={cn(
               "relative flex size-10 items-center justify-center rounded-xl text-ink-2 transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
               open && "bg-surface-2 text-ink",
@@ -166,7 +167,7 @@ export function NotificationCenter({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg dark:text-danger-on"
+                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold tabular-nums text-danger-on ring-2 ring-bg"
                 >
                   {unread > 9 ? "9+" : unread}
                 </motion.span>

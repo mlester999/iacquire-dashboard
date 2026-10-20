@@ -143,7 +143,13 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       "select section, content, risk_flags, updated_at from company_knowledge where org_id = $1 and review_status = 'pending_agency_review'",
       [orgId],
     );
-    const heldVersions = access.workforce ? await listHeldConfigReviewsForOrg(db, orgId) : [];
+    const heldVersions = access.workforce
+      ? (await listHeldConfigReviewsForOrg(db, orgId)).map((item) =>
+          // Compiled instruction evidence is reviewer-only. A view-only agency teammate can see the
+          // review request and diff, but not the full compiled prompt.
+          access.workforceManage ? item : { ...item, compiledInstructions: null, compiledInstructionsTruncated: false },
+        )
+      : [];
     const provisioning = await db.query<TenantDetail["provisioning"][number]>(
       `select j.id, a.role_key as agent_role, j.kind, j.status, j.detail, j.created_at
        from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id

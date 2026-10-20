@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { deleteConversation, getConversation, listConversations, renameConversation } from "@/server/chat/service";
-import { getAgentByRole, createConfigVersion, currentSettings } from "@/server/workforce/service";
+import { getAgentByRole, createConfigVersion, editableSettings } from "@/server/workforce/service";
 import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
@@ -89,7 +89,10 @@ export async function setReplyLengthAction(role: string, length: string) {
     const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, role);
     if (!agent) throw new AppError("not_found", "Unknown employee.");
     const result = await withSystem(async (db) => {
-      const { settings } = await currentSettings(db, agent.id, ctx.org.orgId);
+      // Use the draft-aware settings so a quick preference change cannot silently discard a version
+      // that is already waiting for review. If that draft contains sensitive changes, the new
+      // version is held as a whole instead of auto-applying a partial replacement.
+      const { settings } = await editableSettings(db, agent.id, ctx.org.orgId);
       if (settings.replyLength === length) return null;
       const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
       return createConfigVersion(db, {
@@ -104,7 +107,8 @@ export async function setReplyLengthAction(role: string, length: string) {
       });
     });
     revalidatePath(`/chat/${AGENT_BY_KEY[role].slug}`);
-    return { ok: true as const, data: { version: result?.version ?? null } };
+    revalidatePath(`/workforce/${AGENT_BY_KEY[role].slug}`);
+    return { ok: true as const, data: { version: result?.version ?? null, status: result?.status ?? null } };
   } catch (err) {
     return actionError(err);
   }

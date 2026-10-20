@@ -382,7 +382,14 @@ export function ChatWorkspace(props: Props) {
     if (!res.ok) {
       setReplyLength(prev);
       toast.error(res.error);
-    } else toast.success(`Replies will be ${v}`, { description: res.data.version ? `Saved as configuration v${res.data.version}.` : undefined });
+    } else if (res.data.status === "pending_agency_review") {
+      // The quick control changed a draft that contains sensitive changes. Nothing is active yet,
+      // so show the active value again and send the person to the review status.
+      setReplyLength(prev);
+      toast.warning("Submitted for review", { description: "Your current reply length stays active until the whole configuration is approved." });
+    } else if (res.data.version) {
+      toast.success(`Replies will be ${v}`, { description: `Saved as configuration v${res.data.version}.` });
+    }
   };
 
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
@@ -412,7 +419,7 @@ export function ChatWorkspace(props: Props) {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-3 sm:px-6">
+        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-3 sm:px-6" data-aqi-target="chat.employee">
           <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open conversations">
             <MenuIcon className="size-5" />
           </button>
@@ -427,21 +434,26 @@ export function ChatWorkspace(props: Props) {
               <span className="truncate text-[12px] text-muted">{statusCopy}</span>
             </div>
           </div>
-          {props.canConfigure && ready && (
-            <div className="hidden xl:block">
-              <Segmented
-                id="reply-length"
-                ariaLabel="Reply length"
-                size="sm"
-                value={replyLength}
-                onChange={changeLength}
-                options={[
-                  { value: "concise", label: "Concise" },
-                  { value: "balanced", label: "Balanced" },
-                  { value: "detailed", label: "Detailed" },
-                ]}
-              />
-            </div>
+          {props.canConfigure && ready && !props.hasPendingReview && (
+            <Tooltip content="How much detail new replies use. Saved as a configuration change.">
+              <div className="hidden xl:block">
+                <Segmented
+                  id="reply-length"
+                  ariaLabel="Reply length"
+                  size="sm"
+                  value={replyLength}
+                  onChange={changeLength}
+                  options={[
+                    { value: "concise", label: "Concise" },
+                    { value: "balanced", label: "Balanced" },
+                    { value: "detailed", label: "Detailed" },
+                  ]}
+                />
+              </div>
+            </Tooltip>
+          )}
+          {props.hasPendingReview && (
+            <span className="hidden rounded-full border border-warning/25 bg-warning-soft/40 px-2.5 py-1 text-[11px] font-medium text-warning-ink xl:inline-flex">Configuration review pending</span>
           )}
           <Tooltip content="New chat">
             <Button variant="secondary" size="icon" onClick={newChat} aria-label="New chat">
@@ -449,11 +461,16 @@ export function ChatWorkspace(props: Props) {
             </Button>
           </Tooltip>
           {props.canConfigure && (
-            <Tooltip content="Configure employee">
-              <ButtonLink href={`/workforce/${meta.slug}`} variant="ghost" size="icon" aria-label="Configure employee">
-                <Settings2 className="size-4" />
+            <>
+              <Tooltip content="Manage employee">
+                <ButtonLink href={`/workforce/${meta.slug}`} variant="ghost" size="icon" aria-label="Manage employee" className="xl:hidden">
+                  <Settings2 className="size-4" />
+                </ButtonLink>
+              </Tooltip>
+              <ButtonLink href={`/workforce/${meta.slug}`} variant="secondary" size="sm" className="hidden xl:inline-flex">
+                <Settings2 className="size-3.5" /> Manage employee
               </ButtonLink>
-            </Tooltip>
+            </>
           )}
         </header>
 
@@ -852,7 +869,7 @@ function Composer({
   }, [value, textareaRef]);
 
   return (
-    <div className="shrink-0 bg-gradient-to-t from-surface via-surface to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5">
+    <div className="shrink-0 bg-gradient-to-t from-surface via-surface to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5" data-aqi-target="chat.composer">
       <div className="mx-auto w-full max-w-3xl">
         <div
           className={cn(

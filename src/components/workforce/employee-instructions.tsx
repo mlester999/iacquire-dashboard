@@ -48,6 +48,25 @@ export function EmployeeInstructions({
         </div>
       </div>
 
+      <Card className="bg-primary-soft/20">
+        <CardContent className="grid gap-4 pt-5 sm:grid-cols-3">
+          <div>
+            <p className="text-[12px] font-semibold text-ink">Editable in Configure</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">Identity, tone, responsibilities, goals, rules, escalation and tool switches.</p>
+            <Link href={`/workforce/${role.replaceAll("_", "-")}?tab=configure`} className="mt-1.5 inline-flex text-[12px] font-medium text-primary hover:underline">Open Configure</Link>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-ink">Managed in Knowledge</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">Approved employee notes and reference documents that the employee may use.</p>
+            <Button size="sm" variant="secondary" className="mt-1.5" onClick={onOpenKnowledge}><BookOpen className="size-3.5" aria-hidden /> Open Knowledge</Button>
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-ink">Fixed by iAcquire</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">Protected safety policy, provider/profile identity and SOUL.md. This workspace cannot rewrite them.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div>
