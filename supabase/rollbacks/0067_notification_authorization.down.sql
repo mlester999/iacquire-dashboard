@@ -1,7 +1,7 @@
--- Rollback for 0066_notification_authorization.
+-- Rollback for 0067_notification_authorization.
 --
 -- This restores the previous broad read/update policies so the application can be rolled back to the
--- pre-0066 build. It deliberately keeps the audience column and the client associations already
+-- pre-0067 build. It deliberately keeps the audience column and the client associations already
 -- backfilled: dropping them would destroy security evidence and make a later re-apply unable to tell
 -- historical agency mail from account-level mail. The old policies ignore the column.
 

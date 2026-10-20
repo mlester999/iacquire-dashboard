@@ -43,7 +43,7 @@ The feed mode is derived from the authenticated account's current `users.platfor
 
 ## 4. Historical backfill
 
-Migration `0066_notification_authorization`:
+Migration `0067_notification_authorization`:
 
 1. adds `audience` with a safe `client` default;
 2. marks historical rows addressed to agency accounts as `agency`;
@@ -73,7 +73,7 @@ Repository-wide `npm run lint` is clean (0 errors, 0 warnings) on the merged wor
 
 ## 6. Known limits
 
-- The migration is not applied; the production code at `5c93fc1`/`27fe4f7` still has the old null-org behavior until this branch is deployed and `0066` is applied.
+- The migration is not applied; the production code at `5c93fc1`/`27fe4f7` still has the old null-org behavior until this branch is deployed and `0067` is applied.
 - Historical agency rows that cannot be associated from their stored link stay agency-wide and are hidden from Manager/Staff. This is intentional and is not deletion.
 - A future producer that inserts into `notifications` directly must set `audience`/`org_id` deliberately; the `client` default will not make an agency row scope-aware.
 - The notification email path is covered by the shared predicate and the existing operations tests, not by a live email provider.

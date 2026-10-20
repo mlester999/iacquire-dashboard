@@ -1,6 +1,6 @@
 # Version History and Notification Centre
 
-Status: merged into `master` and deployed as part of `5c93fc1`; the access-revocation fix and migration `0066` are integrated locally on `release/ai-workforce-notif-security` and are **not** applied to production.
+Status: merged into `master` and deployed as part of `5c93fc1`; the access-revocation fix and migration `0067` are integrated locally on `release/ai-workforce-notif-security` and are **not** applied to production.
 
 ## 1. Root cause: why Super Admin had no notifications
 
@@ -82,7 +82,7 @@ An internal agency workspace no longer sends the client-facing "waiting for iAcq
 
 ### Access revocation and historical backfill
 
-Migration `0066_notification_authorization` adds the audience column, associates historical agency rows with a client only where the stored destination proves it (a client id, project id or support ticket id), and installs the scope-aware RLS and helper function. Rows that cannot be associated reliably remain agency-wide and therefore require `agency.security.manage`; they are **not deleted**. This is deliberately conservative: an unresolved historical row may become invisible to an Agency Manager/Staff member, but it cannot remain visible to someone who has lost that client.
+Migration `0067_notification_authorization` adds the audience column, associates historical agency rows with a client only where the stored destination proves it (a client id, project id or support ticket id), and installs the scope-aware RLS and helper function. Rows that cannot be associated reliably remain agency-wide and therefore require `agency.security.manage`; they are **not deleted**. This is deliberately conservative: an unresolved historical row may become invisible to an Agency Manager/Staff member, but it cannot remain visible to someone who has lost that client.
 
 The migration is prepared locally in this worktree and has **not** been applied to staging or production. The production ledger currently ends at `0065_support_requests`, and the production notification table has no `audience` column yet.
 
@@ -145,7 +145,7 @@ Checks performed: held version renders with its real status/source, details expa
 
 No schema change was needed for the bell, the inbox, the history data or the recipient notifications. The existing notification kinds and columns were sufficient.
 
-The later authorization fix adds migration `0066_notification_authorization` (audience, client association, scope-aware RLS and a conservative historical backfill). It is prepared on `release/ai-workforce-notif-security` and is **not applied** to any hosted database. See [notification-authorization.md](notification-authorization.md).
+The later authorization fix adds migration `0067_notification_authorization` (audience, client association, scope-aware RLS and a conservative historical backfill). It is prepared on `release/ai-workforce-notif-security` and is **not applied** to any hosted database. See [notification-authorization.md](notification-authorization.md).
 
 ## 8. Commit, push and deployment
 
