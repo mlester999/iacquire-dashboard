@@ -189,10 +189,10 @@ opposite direction from production: the database is local and has no 150 ms netw
 | AQi warm complete answer | not measured on the old tree | 1.02-1.10 s | stream timestamps |
 | AQi panel open | 44-46 ms (previous pass) | 59-63 ms warm | browser timing |
 | AQi suggestions visible | 44-46 ms (previous pass) | 66-70 ms warm | browser timing |
-| Cold `/login` | 26.8 s | **9.4-25.9 s across cold instances** — not reliably improved | production HTTP after deploy |
-| Cold `/api/health` | 18.7 s | **17.3-18.2 s** — not improved | production HTTP after deploy |
-| Warm `/login` | 350-446 ms | **401-622 ms** (one 9.45 s instance still cold) | production HTTP after deploy |
-| Warm `/api/health` | 478-497 ms | **462-773 ms** | production HTTP after deploy |
+| Cold `/login` | 26.8 s | **876 ms** after the boot-path fix | production HTTP after deploy |
+| Cold `/api/health` | 18.7 s | **527 ms** after the boot-path fix | production HTTP after deploy |
+| Warm `/login` | 350-446 ms | **326-629 ms** | production HTTP after deploy |
+| Warm `/api/health` | 478-497 ms | **479-534 ms** | production HTTP after deploy |
 | Function trace size (`/login`) | 22.0 MB (17.2 MB PGlite) | **3.4 MB (0 MB PGlite)** | production build trace |
 | Function trace size (`/overview`) | not measured separately | **5.1 MB (0 MB PGlite)** | production build trace |
 | Function trace size (`/crm/contacts`) | not measured separately | **6.3 MB (0 MB PGlite)** | production build trace |
@@ -205,19 +205,23 @@ than the local milliseconds suggest.
 
 ### Production deployment result
 
-The release was pushed to `origin/master` as `88393c1`, then the final merged release as `9797fbd`;
-Vercel reported both production deployments as successful. Production measurements:
+The earlier bundle/trace release (`88393c1`, then `9797fbd`) did **not** reliably fix cold starts:
+`/login` still ranged 9.4-25.9 s and `/api/health` 17.3-18.2 s across cold instances. The
+`/api/health` trace was only 2.5 MB, ruling out the PGlite bundle as the cause.
 
-- `/login` cold instances ranged **9.4-25.9 s**; warm **401-622 ms**. The 22 MB → 3.4 MB trace
-  reduction did **not** produce a reliable cold-start improvement across instances.
-- `/api/health` cold **17.3-18.2 s**, warm **462-773 ms**. Its function trace is only **2.5 MB**
-  with no PGlite, so the remaining cold delay is not explained by the bundle.
-- The function still executes in **iad1**. Region routing was not changed.
+The follow-up release (`6c3ce07`) found the real cold-path cause: `src/instrumentation-node.ts`
+awaited setup-checklist backfill and reconciliation on every cold boot — 25 database transactions
+before the first request. Those jobs now run after the response, leaving only the bounded orphaned-run
+reconciliation on the boot path.
 
-**Conclusion:** the bundle/trace work is real and the warm path is fast, but function cold start
-remains an infrastructure-level problem in the 9-26 s range. Do not claim the 3 s cold target is
-met. The next investigation should compare function/instance startup with the Supabase connection
-path (and, if approved, a function-region experiment), not add more bundle exclusions.
+After that deployment, fresh production instances measured:
+
+- `/login` **876 ms** cold; warm **326-629 ms**.
+- `/api/health` **527 ms** cold; warm **479-534 ms**.
+
+Other cold samples in the follow-up report ranged 1.1-1.9 s, and some public route functions still
+started in 2.4-6.1 s. Cold starts are **materially improved and now near the 3 s target**, but remain
+variable by route. The function still executes in **iad1**; region routing was not changed.
 
 ### Production-build runtime timings
 
@@ -322,34 +326,32 @@ The previous pass added the card/spotlight/placement fixes and the browser QA de
   their target coverage and the six contextual tips on a fresh migrated database.
 - Production build: `next build --turbopack` completed with **TypeScript passing** on the merged
   release tree; trace exclusion still holds (`/login` 3.4 MB, 0 MB PGlite).
-- **Deployed cold start measured:** `/login` improved to 9.4 s but is still above the 3 s target;
-  `/api/health` remains 18.2 s cold. **Hosted AQi TTFT is not measured** because no production
-  account/provider test was authorized. The local production-build run validates compilation,
-  tracing, streaming and timings, not hosted model speed.
-- Migration `0064_aqi_feature_tours.sql` was added: data only (six tours + six tips), no schema,
-  policy or existing-progress changes. It is applied to the local test/dev database and covered by
-  `tests/aqi-migration-0064.test.ts`. **It is not applied to production; applying it requires approval.**
-- Hosted production **was deployed** at `88393c1`, then `9797fbd`; Vercel reported both deployments
-  successful. Region routing remains **iad1 functions → Tokyo database**.
-  Moving functions to `hnd1` is a plausible next step but is a deployment change and needs approval;
-  it was not made here.
+- **Deployed cold start measured after the boot-path fix:** `/login` **876 ms**, `/api/health`
+  **527 ms** on fresh instances. Some public routes still cold-start in 2.4-6.1 s. **Hosted AQi
+  TTFT is not measured** because no production account/provider test was authorized. The local
+  production-build run validates compilation, tracing, streaming and timings, not hosted model speed.
+- Migration `0064_aqi_feature_tours.sql` was applied to production on 2026-10-20 after a targeted
+  backup. Verified live: **22 published tours / 74 steps / 12 tips**. No schema, policy or
+  existing-progress changes.
+- Hosted production **was deployed** at `88393c1`, `9797fbd`, then the follow-up performance release
+  `6c3ce07`; Vercel reported each deployment successful. Region routing remains **iad1 functions →
+  Tokyo database**. Moving functions to `hnd1` is a plausible next step but is a deployment change
+  and needs approval; it was not made here.
 
 ## 7. Release boundary
 
-The code was pushed to `origin/master` as `88393c1`, then the final merged release as `9797fbd`;
-Vercel reported both production deployments as successful. Public production checks were run after
-each deployment. Authenticated production QA and hosted AQi provider timing were not run.
+The code was pushed to `origin/master` as `88393c1`, `9797fbd`, then the follow-up performance
+release `6c3ce07`; Vercel reported each production deployment successful. Migration `0064` was
+applied to production on 2026-10-20 after a targeted backup of the affected AQi tutorial tables,
+and the live rows verify 22 tours / 74 steps / 12 tips. Authenticated production QA and hosted AQi
+provider timing were not run.
 
-Remaining release steps:
+Remaining work:
 
-1. **Apply migration `0064`** to the approved hosted project after a backup/restore check. It is
-   data-only, but production customer data is involved. Until it is applied, the six new tours and
-   their tips do not exist in production.
-2. **Authenticated production verification** of `/overview`, `/crm/contacts`, AQi and the tours with
+1. **Authenticated production verification** of `/overview`, `/crm/contacts`, AQi and the tours with
    a real production test account, if one is authorized.
-3. **Investigate the `/api/health` cold path.** Its 2.5 MB trace does not explain 18.2 s; the next
-   candidates are function/instance startup and the Supabase connection path. A function-region
-   change is one possible experiment but needs approval; it was not made.
-
-The deployed code is safe without `0064`: it reads the published tutorial rows that exist, so the
-six new tours simply remain absent until the data migration runs.
+2. **Cold-start variability:** `/login` and `/api/health` now cold-start in under 1 s on fresh
+   instances, but some public route functions still measured 2.4-6.1 s. The function remains in
+   `iad1`; a region experiment or route-level boot investigation needs approval.
+3. **Hosted AQi provider TTFT:** local production-build streaming is verified, but real DeepSeek
+   latency requires an authorized production account/provider test.
