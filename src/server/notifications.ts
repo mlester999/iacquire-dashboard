@@ -143,7 +143,28 @@ export async function hiddenKinds(userId: string, orgId: string | null): Promise
   return NOTIFICATION_GROUPS.flatMap((g) => (prefs[g.key] === false ? [...g.kinds] : []));
 }
 
-export async function listNotifications(userId: string, limit = 30, hidden: string[] = []) {
+export interface ListNotificationsOptions {
+  limit?: number;
+  /** Keyset cursor: only notifications strictly older than this instant (and id, for equal instants). */
+  before?: string | null;
+  beforeId?: string | null;
+  hidden?: string[];
+  /**
+   * Client workspace scope. When set, notifications addressed to another workspace are excluded
+   * (unscoped, account-level notifications remain visible). Agency feeds leave this unset because
+   * their job is to see the clients in their assigned scope.
+   */
+  orgId?: string | null;
+}
+
+export async function listNotifications(userId: string, options: ListNotificationsOptions = {}) {
+  // RLS on notifications already limits every row to the signed-in user; the user_id predicate is kept
+  // explicit as a second boundary so a policy regression cannot turn this into a cross-tenant read.
+  const limit = Math.min(100, Math.max(1, Math.trunc(options.limit ?? 30)));
+  const hidden = options.hidden ?? [];
+  const before = options.before && !Number.isNaN(Date.parse(options.before)) ? new Date(options.before).toISOString() : null;
+  const beforeId = options.beforeId && /^[0-9a-f-]{36}$/i.test(options.beforeId) ? options.beforeId : null;
+  const orgId = options.orgId && /^[0-9a-f-]{36}$/i.test(options.orgId) ? options.orgId : null;
   return withUser(userId, async (db) => {
     const { rows } = await db.query<{
       id: string;
@@ -156,21 +177,50 @@ export async function listNotifications(userId: string, limit = 30, hidden: stri
       created_at: Date;
     }>(
       `select id, kind, severity, title, body, link, read_at, created_at from notifications
-       where (kind <> all($2::text[]) or severity = 'critical') order by created_at desc limit $1`,
-      [limit, hidden],
+       where user_id = $4
+         and (kind <> all($2::text[]) or severity = 'critical')
+         and ($6::uuid is null or org_id = $6::uuid or org_id is null)
+         and ($3::timestamptz is null or created_at < $3::timestamptz or (created_at = $3::timestamptz and id < $5::uuid))
+       order by created_at desc, id desc
+       limit $1`,
+      [limit + 1, hidden, before, userId, beforeId, orgId],
     );
     const unread = await db.query<{ count: string }>(
-      "select count(*)::text as count from notifications where read_at is null and (kind <> all($1::text[]) or severity = 'critical')",
-      [hidden],
+      `select count(*)::text as count from notifications
+       where user_id = $2 and read_at is null and (kind <> all($1::text[]) or severity = 'critical')
+         and ($3::uuid is null or org_id = $3::uuid or org_id is null)`,
+      [hidden, userId, orgId],
     );
-    return { items: rows, unread: Number(unread.rows[0]?.count ?? 0) };
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    return {
+      items,
+      unread: Number(unread.rows[0]?.count ?? 0),
+      hasMore,
+      nextBefore: hasMore && last ? new Date(last.created_at).toISOString() : null,
+      nextBeforeId: hasMore && last ? last.id : null,
+    };
   });
 }
 
-export async function markNotificationsRead(userId: string, ids: string[] | "all") {
+export async function markNotificationsRead(userId: string, ids: string[] | "all", opts: { orgId?: string | null } = {}) {
+  const orgId = opts.orgId && /^[0-9a-f-]{36}$/i.test(opts.orgId) ? opts.orgId : null;
   await withUser(userId, async (db) => {
-    if (ids === "all") await db.query("update notifications set read_at = now() where read_at is null");
-    else if (ids.length) await db.query("update notifications set read_at = now() where id = any($1::uuid[]) and read_at is null", [ids]);
+    // The explicit user_id predicate is intentional: RLS enforces the same boundary, but a mistake in
+    // a future policy must not let "mark all read" touch someone else's inbox. The optional workspace
+    // predicate keeps a client's "mark all" from silently clearing another workspace's badge.
+    if (ids === "all") {
+      await db.query(
+        "update notifications set read_at = now() where user_id = $1 and read_at is null and ($2::uuid is null or org_id = $2::uuid or org_id is null)",
+        [userId, orgId],
+      );
+    } else if (ids.length) {
+      await db.query(
+        "update notifications set read_at = now() where user_id = $1 and id = any($2::uuid[]) and read_at is null and ($3::uuid is null or org_id = $3::uuid or org_id is null)",
+        [userId, ids, orgId],
+      );
+    }
   });
 }
 

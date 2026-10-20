@@ -112,18 +112,31 @@ export async function listConfigVersions(userId: string, agentId: string) {
       source: string;
       change_request: string | null;
       risk_flags: string[];
+      policy_version: string | null;
       created_at: Date;
       applied_at: Date | null;
-      settings: AgentSettings;
+      decided_at: Date | null;
+      settings: unknown;
+      created_by: string | null;
+      decided_by: string | null;
       created_by_name: string | null;
+      decided_by_name: string | null;
     }>(
-      `select v.id, v.version, v.summary, v.status, v.source, v.change_request, v.risk_flags, v.created_at,
-              v.applied_at, v.settings, u.full_name as created_by_name
-       from agent_config_versions v left join users u on u.id = v.created_by
+      `select v.id, v.version, v.summary, v.status, v.source, v.change_request, v.risk_flags, v.policy_version,
+              v.created_at, v.applied_at, v.decided_at, v.settings, v.created_by, v.decided_by,
+              u.full_name as created_by_name, d.full_name as decided_by_name
+       from agent_config_versions v
+       left join users u on u.id = v.created_by
+       left join users d on d.id = v.decided_by
        where v.agent_instance_id = $1 order by v.version desc limit 50`,
       [agentId],
     );
-    return rows;
+    // Old versions can predate a setting added to the schema. A version whose snapshot no longer parses
+    // is still shown (its metadata and summary are real), but it is never fed to the diff renderer.
+    return rows.map((row) => {
+      const parsed = agentSettingsSchema.safeParse(row.settings);
+      return { ...row, settings: parsed.success ? parsed.data : null };
+    });
   });
 }
 
@@ -377,36 +390,33 @@ export async function createConfigVersion(
     db,
   );
   if (held) {
-    const slug = AGENT_BY_KEY[agent.role_key].slug;
-    const title = `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for review`;
-    const body = classification.reasons[0]?.label
-      ? `The change was held for review: ${classification.reasons[0].label.toLowerCase()}.`
-      : "Part of the new instructions needs a person's review before it can be applied.";
-    if (orgKind === "client") {
+    const { rows: orgRows } = await db.query<{ name: string; kind: string }>("select name, kind from organizations where id = $1", [input.orgId]);
+    const org = orgRows[0];
+    const reason = classification.reasons[0];
+    if (org?.kind === "client") {
+      // The client gets a confirmation that their change is safe but held. The actionable review notice
+      // goes to the agency reviewers who can actually access this tenant — not back to the client, and
+      // not to every agency user regardless of scope. The existing agency review screen is the link.
       await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
         kind: "agent_status",
         severity: "warning",
-        title,
-        body: `${body} iAcquire will review it before it's applied.`,
-        link: `/workforce/${slug}`,
+        title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
+        body: `${reason ? `The change was held for review: ${reason.label.toLowerCase()}. ` : "Part of the new instructions needs a person's review. "}iAcquire will review it before it's applied.`,
+        link: `/workforce/${AGENT_BY_KEY[agent.role_key].slug}`,
+        dedupeKey: `config-review-client:${versionId}`,
       });
       await notifyAgency(db, input.orgId, {
-        kind: "agent_status",
+        kind: "approval_requested",
         severity: "warning",
-        title,
-        body,
+        title: `${org.name}: ${AGENT_BY_KEY[agent.role_key].shortName} configuration v${version} needs review`,
+        body: reason?.detail ?? "This version was held because part of the change may affect safety rules. Review the proposed settings before it can be applied.",
         link: `/admin/clients/${input.orgId}?tab=reviews`,
-      });
-    } else {
-      // Internal agency edits belong in the internal review queue, never the client queue.
-      await notifyAgency(db, input.orgId, {
-        kind: "agent_status",
-        severity: "warning",
-        title,
-        body,
-        link: "/admin/workforce/reviews",
+        dedupeKey: `config-review-agency:${versionId}`,
       });
     }
+    // An internal agency workspace has no separate reviewer to notify. Sending the client-facing
+    // "waiting for iAcquire review" message to the same Super Admin would be misleading; the held
+    // version remains visible in Version history, the review queue and the audit log.
   }
   return {
     versionId,
@@ -501,6 +511,7 @@ export async function decideHeldVersion(
   const decided = updated[0];
   if (!decided) throw new AppError("conflict", "This version has already been reviewed.");
   if (input.approve) await activateVersion(db, input.orgId, decided.agent_instance_id, decided.id, agentSettingsSchema.parse(decided.settings).displayName);
+
   await recordAudit(
     {
       orgId: input.orgId,
@@ -525,20 +536,25 @@ export async function decideHeldVersion(
 
   const slug = isAgentRoleKey(version.role_key) ? AGENT_BY_KEY[version.role_key].slug : "operations-manager";
   if (version.org_kind === "client") {
+    const label = isAgentRoleKey(version.role_key) ? AGENT_BY_KEY[version.role_key].shortName : "Configuration";
     await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
-      kind: "agent_status",
+      kind: "approval_decided",
       severity: input.approve ? "success" : "warning",
-      title: input.approve ? "Configuration update approved and applied" : "Configuration update was not applied",
-      body: note,
-      link: `/workforce/${slug}`,
+      title: input.approve ? `${label} configuration v${version.version} approved and applied` : `${label} configuration v${version.version} was not approved`,
+      body: input.approve
+        ? `The change is now active. ${label} will use it from the next message.`
+        : "The previous configuration stays active. You can adjust the change and submit it again.",
+      link: `/workforce/${slug}?tab=history`,
+      dedupeKey: `config-decision:${decided.id}`,
     });
   } else if (version.created_by && version.created_by !== input.agencyUserId) {
     await notifyUser(db, version.created_by, input.orgId, {
-      kind: "agent_status",
+      kind: "approval_decided",
       severity: input.approve ? "success" : "warning",
       title: input.approve ? "Your configuration update was approved" : "Your configuration update needs changes",
       body: note,
       link: `/workforce/${slug}?tab=history`,
+      dedupeKey: `config-decision:${decided.id}`,
     });
   }
 }
