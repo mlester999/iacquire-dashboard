@@ -11,12 +11,12 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
+import { ConfigReviewCard } from "@/components/admin/config-review-card";
 import { ResendInvitationButton, deliverySummary } from "@/components/admin/resend-invitation";
 import {
   assignStaffAction,
   connectHermesAction,
   decideHeldKnowledgeAction,
-  decideHeldVersionAction,
   healthCheckAction,
   inviteClientUserAction,
   provisioningBundleAction,
@@ -90,7 +90,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone }: { data:
       <motion.div key={tab} initial={false} animate={{opacity:1,y:0}} transition={{duration:.2}} className="page-in min-w-0">
       {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} />}
       {tab === "workforce" && <WorkforceTab data={data} superAdmin={superAdmin} />}
-      {tab === "reviews" && <ReviewsTab data={data} />}
+      {tab === "reviews" && <ReviewsTab data={data} timeZone={timeZone} canDecide={data.access.workforceManage} />}
       {tab === "integrations" && <IntegrationsTab data={data} superAdmin={superAdmin} />}
       {tab === "usage" && <UsageTab data={data} superAdmin={superAdmin} />}
       {tab === "billing" && <BillingTab data={data} superAdmin={superAdmin} timeZone={timeZone} />}
@@ -455,8 +455,8 @@ function BundleDialog({ bundle, onClose }: { bundle: ProvisioningBundle | null; 
   );
 }
 
-function ReviewsTab({ data }: { data: Detail }) {
-  const { run, pending } = useAction();
+function ReviewsTab({ data, timeZone, canDecide }: { data: Detail; timeZone: string; canDecide: boolean }) {
+  const { run } = useAction();
   if (!data.heldVersions.length && !data.heldKnowledge.length) {
     return (
       <Card>
@@ -466,31 +466,8 @@ function ReviewsTab({ data }: { data: Detail }) {
   }
   return (
     <div className="space-y-4">
-      {data.heldVersions.map((v) => (
-        <Card key={v.id}>
-          <CardContent className="space-y-3 pt-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[14px] font-semibold">
-                {AGENT_BY_KEY[v.agent_role].shortName} · configuration v{v.version}
-              </p>
-              {v.risk_flags.map((f) => (
-                <Badge key={f} tone="warning">
-                  {f.replace(/_/g, " ")}
-                </Badge>
-              ))}
-            </div>
-            {v.change_request && <p className="text-[13px] text-ink-2">Request: “{v.change_request}”</p>}
-            <p className="text-[13px] text-muted">{v.summary}</p>
-            <div className="flex gap-2">
-              <Button size="sm" loading={pending === `a-${v.id}`} onClick={() => run(`a-${v.id}`, () => decideHeldVersionAction(data.org.id, v.id, true), "Approved and applied")}>
-                Approve &amp; apply
-              </Button>
-              <Button size="sm" variant="secondary" loading={pending === `r-${v.id}`} onClick={() => run(`r-${v.id}`, () => decideHeldVersionAction(data.org.id, v.id, false), "Rejected")}>
-                Reject
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {data.heldVersions.map((item) => (
+        <ConfigReviewCard key={item.id} item={item} timeZone={timeZone} canDecide={canDecide} />
       ))}
       {data.heldKnowledge.map((k) => (
         <Card key={k.section}>
@@ -505,10 +482,10 @@ function ReviewsTab({ data }: { data: Detail }) {
             </div>
             <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[12.5px]">{k.content}</pre>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => run(`k-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, true), "Approved")}>
+              <Button size="sm" disabled={!canDecide} onClick={() => run(`k-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, true), "Approved")}>
                 Approve
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => run(`kr-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, false), "Rejected")}>
+              <Button size="sm" variant="secondary" disabled={!canDecide} onClick={() => run(`kr-${k.section}`, () => decideHeldKnowledgeAction(data.org.id, k.section, false), "Rejected")}>
                 Reject
               </Button>
             </div>

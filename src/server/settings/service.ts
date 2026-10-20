@@ -7,6 +7,8 @@ import { createInvitation, normalizeEmail } from "@/server/auth/service";
 import { createConfigVersion, currentSettings } from "@/server/workforce/service";
 import { onRoleChanged } from "@/server/staff/service";
 import { aiPreferencesSchema } from "@/lib/agent-settings";
+import { configAttribution } from "@/lib/config-review";
+import { scanInstructionText } from "@/lib/instruction-risk";
 import { grantableRoles, type OrgRole } from "@/lib/permissions";
 import { NOTIFICATION_GROUPS, type NotificationPrefsView } from "@/lib/notification-groups";
 import { parseEmailPreference } from "@/lib/ops";
@@ -63,6 +65,23 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
   if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only owners and admins can edit the business profile.");
   const d = profileSchema.parse(input);
   if (!isValidTimeZone(d.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
+  // Business profile text reaches every AI prompt as quoted context. Reject instruction-like
+  // content here rather than letting it bypass the configuration review gate.
+  const profileFindings = [
+    ...scanInstructionText(d.name),
+    ...scanInstructionText(d.industry),
+    ...scanInstructionText(d.region),
+    ...scanInstructionText(d.description),
+    ...scanInstructionText(d.services),
+    ...scanInstructionText(d.idealCustomers),
+  ];
+  const blockedProfileFindings = profileFindings.filter((finding) => finding.severity === "block");
+  if (blockedProfileFindings.length) {
+    throw new AppError(
+      "invalid_input",
+      `The business profile can't include text that conflicts with AI safety policy (${blockedProfileFindings[0].code.replaceAll("_", " ")}). Remove or rephrase that sentence.`,
+    );
+  }
   await withUser(ctx.user.id, async (db) => {
     await db.query("update organizations set name = $2, industry = nullif($3, ''), website = nullif($4, ''), region = nullif($5, ''), timezone = $6 where id = $1", [
       ctx.org.orgId,
@@ -80,7 +99,14 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
       [ctx.org.orgId, d.description, d.services, d.idealCustomers, d.brandColor, ctx.user.id],
     );
   });
-  await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "settings.profile_updated", result: "success" });
+  await recordAudit({
+    orgId: ctx.org.orgId,
+    actorUserId: ctx.user.id,
+    actorKind: ctx.user.platformRole !== "none" ? "agency" : "user",
+    action: "settings.profile_updated",
+    result: "success",
+    metadata: { riskFlags: [...new Set(profileFindings.map((finding) => finding.code))] },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -110,11 +136,13 @@ export async function updateAiPreferences(ctx: OrgContext, input: z.input<typeof
       const { rows } = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and active_config_version_id is not null", [ctx.org.orgId]);
       for (const a of rows) {
         const { settings } = await currentSettings(db, a.id, ctx.org.orgId);
+        const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
         await createConfigVersion(db, {
           orgId: ctx.org.orgId,
           agentId: a.id,
           settings: { ...settings, tone: prefs.tone, replyLength: prefs.replyLength, language: prefs.language, companyRules: prefs.companyRules, neverPromise: prefs.neverPromise, escalateWhen: prefs.escalateWhen },
-          source: "client_edit",
+          source: attribution.source,
+          actorKind: attribution.actorKind,
           changeRequest: "Company-wide AI preferences applied",
           userId: ctx.user.id,
           apply: true,

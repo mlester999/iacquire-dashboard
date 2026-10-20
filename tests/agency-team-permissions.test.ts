@@ -541,14 +541,14 @@ describe("agency manager and staff access", () => {
     });
 
     const managerDetail = await getTenantDetail(agencyUser(manager, "agency_manager"), org.id);
-    expect(managerDetail.access).toEqual({ team: true, workforce: true, integrations: true, setup: true });
+    expect(managerDetail.access).toEqual({ team: true, workforce: true, workforceManage: true, integrations: true, setup: true });
     expect(managerDetail.agents).toHaveLength(6);
     expect(managerDetail.integrations).toHaveLength(1);
     expect(managerDetail.staff).toContainEqual(expect.objectContaining({ user_id: staff.id, assigned: true }));
     expect(managerDetail.failedRuns).toHaveLength(1);
 
     const staffDetail = await getTenantDetail(agencyUser(staff, "agency_staff"), org.id);
-    expect(staffDetail.access).toEqual({ team: false, workforce: true, integrations: false, setup: true });
+    expect(staffDetail.access).toEqual({ team: false, workforce: true, workforceManage: false, integrations: false, setup: true });
     expect(staffDetail.members).toEqual([]);
     expect(staffDetail.staff).toEqual([]);
     expect(staffDetail.integrations).toEqual([]);

@@ -5,12 +5,15 @@ import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import { usageSummary, type UsageSummary } from "@/server/usage";
 import type { SessionUser } from "@/server/auth/service";
 import type { AgentRoleKey, AgentStatus } from "@/lib/agents";
+import { redactReviewText, type ReviewVersionView } from "@/lib/config-review";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
+import { listHeldConfigReviewsForOrg } from "@/server/workforce/reviews";
 
 export interface TenantDetail {
   access: {
     team: boolean;
     workforce: boolean;
+    workforceManage: boolean;
     integrations: boolean;
     setup: boolean;
   };
@@ -64,7 +67,7 @@ export interface TenantDetail {
     runs_30d: number;
     failed_30d: number;
   }>;
-  heldVersions: Array<{ id: string; agent_role: AgentRoleKey; version: number; summary: string; risk_flags: string[]; change_request: string | null; created_at: Date }>;
+  heldVersions: ReviewVersionView[];
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
   provisioning: Array<{ id: string; agent_role: AgentRoleKey; kind: string; status: string; detail: string | null; created_at: Date }>;
   ghl: { location_id: string; location_name: string | null; pipeline_id: string | null; calendar_ids: string[]; status: string; verified_at: Date | null; has_credential: boolean } | null;
@@ -76,16 +79,27 @@ export interface TenantDetail {
 }
 
 export async function getTenantDetail(user: SessionUser, orgId: string): Promise<TenantDetail> {
+  // This is an agency-only read. A client membership alone must never be able to call it even if a
+  // future route or action forgets the page-level requireAgency() guard.
+  if (user.platformRole === "none") throw new AppError("not_found", "Client not found.");
   if (!(await agencyCanAccessOrg(user, orgId))) throw new AppError("not_found", "Client not found.");
   return withSystem(async (db) => {
-    const accessResult = await db.query<{ team: boolean; workforce: boolean; integrations: boolean; setup: boolean }>(
+    const accessResult = await db.query<{ team: boolean; workforce: boolean; workforce_manage: boolean; integrations: boolean; setup: boolean }>(
       `select coalesce(app.user_has_agency_permission($1,'agency.clients.invite_users'),false) as team,
               coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as workforce,
+              coalesce(app.user_has_agency_permission($1,'agency.workforce.manage'),false) as workforce_manage,
               coalesce(app.user_has_agency_permission($1,'agency.integrations.health'),false) as integrations,
               coalesce(app.user_has_agency_permission($1,'setup.manage'),false) as setup`,
       [user.id],
     );
-    const access = accessResult.rows[0] ?? { team: false, workforce: false, integrations: false, setup: false };
+    const accessRow = accessResult.rows[0];
+    const access = {
+      team: accessRow?.team === true,
+      workforce: accessRow?.workforce === true,
+      workforceManage: accessRow?.workforce_manage === true,
+      integrations: accessRow?.integrations === true,
+      setup: accessRow?.setup === true,
+    };
     const { rows: org } = await db.query<TenantDetail["org"]>(
       "select id, name, slug, status, kind, is_demo, industry, website, timezone, created_at, onboarding_completed_at, suspended_reason from organizations where id = $1",
       [orgId],
@@ -125,16 +139,11 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
        where a.org_id = $1 order by ro.sort_order`,
       [orgId],
     );
-    const held = await db.query<TenantDetail["heldVersions"][number]>(
-      `select v.id, a.role_key as agent_role, v.version, v.summary, v.risk_flags, v.change_request, v.created_at
-       from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id
-       where v.org_id = $1 and v.status = 'pending_agency_review' order by v.created_at`,
-      [orgId],
-    );
     const heldKnowledge = await db.query<TenantDetail["heldKnowledge"][number]>(
       "select section, content, risk_flags, updated_at from company_knowledge where org_id = $1 and review_status = 'pending_agency_review'",
       [orgId],
     );
+    const heldVersions = access.workforce ? await listHeldConfigReviewsForOrg(db, orgId) : [];
     const provisioning = await db.query<TenantDetail["provisioning"][number]>(
       `select j.id, a.role_key as agent_role, j.kind, j.status, j.detail, j.created_at
        from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id
@@ -172,8 +181,10 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       members: access.team ? members.rows : [],
       invitations: access.team ? invitations.rows : [],
       agents: access.workforce ? agents.rows : [],
-      heldVersions: access.workforce ? held.rows : [],
-      heldKnowledge: access.workforce ? heldKnowledge.rows : [],
+      heldVersions,
+      heldKnowledge: access.workforce
+        ? heldKnowledge.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))
+        : [],
       provisioning: access.workforce ? provisioning.rows : [],
       ghl: access.integrations ? ghl.rows[0] ?? null : null,
       integrations: access.integrations ? integrations.rows : [],

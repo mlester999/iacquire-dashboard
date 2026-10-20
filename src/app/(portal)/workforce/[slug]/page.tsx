@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
-import { currentSettings, getAgentByRole, listConfigVersions } from "@/server/workforce/service";
+import { editableSettings, getAgentByRole, listConfigVersions } from "@/server/workforce/service";
 import { withSystem, withUser } from "@/server/db";
 import { EmployeeDetail } from "@/components/workforce/employee-detail";
 import { AGENT_BY_SLUG } from "@/lib/agents";
@@ -37,7 +37,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       return { autonomousBlockedReason: blocker, agencyPaused: pause.rows.length > 0 };
     }),
     canConfigure ? listConfigVersions(ctx.user.id, agent.id) : Promise.resolve([]),
-    canConfigure ? withSystem((db) => currentSettings(db, agent.id, ctx.org.orgId)) : Promise.resolve(null),
+    canConfigure ? withSystem((db) => editableSettings(db, agent.id, ctx.org.orgId)) : Promise.resolve(null),
     canViewKnowledge ? listEmployeeKnowledge(ctx, agent.id).catch(() => null) : Promise.resolve(null),
     canConfigure
       ? getEmployeeInstructionOverview({ orgId: ctx.org.orgId, agentId: agent.id, role: meta.key, companyName: ctx.org.name })
@@ -106,6 +106,8 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       autonomousBlockedReason={controls.autonomousBlockedReason}
       agencyPaused={controls.agencyPaused}
       settings={settings?.settings ?? null}
+      draftVersion={settings?.pendingVersion ?? null}
+      isInternalWorkspace={ctx.org.kind === "agency"}
       knowledgeView={knowledgeView}
       instructionOverview={instructionOverview}
       canViewKnowledge={canViewKnowledge}

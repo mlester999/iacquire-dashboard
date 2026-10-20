@@ -8,6 +8,7 @@ import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
 import { BUSINESS_GOALS, agentSettingsSchema, onboardingSchema, websiteLooksValid, type OnboardingData } from "@/lib/agent-settings";
 import { createConfigVersion, currentSettings } from "@/server/workforce/service";
 import { defaultSettings, detectRiskFlags, sanitizeClientText } from "@/server/workforce/compiler";
+import { scanInstructionText } from "@/lib/instruction-risk";
 import { queueOnboardingPreparations } from "@/server/setup/jobs";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { ensureSetupInstance } from "@/server/setup/core";
@@ -528,6 +529,23 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     .map((g) => BUSINESS_GOALS.find((x) => x.id === g)?.label ?? g)
     .concat(data.goals.other ? [sanitizeClientText(data.goals.other, 200)] : []);
   const website = b.website.trim() ? (/^https?:\/\//i.test(b.website.trim()) ? b.website.trim() : `https://${b.website.trim()}`) : "";
+  // The business profile is compiled into every employee prompt as quoted context. Hard-block
+  // prompt-control/privilege content at the source; sensitive-but-ambiguous instructions are
+  // caught by the config classifier when the employee configuration is created.
+  const profileRisks = [
+    ...scanInstructionText(b.companyName),
+    ...scanInstructionText(b.description),
+    ...scanInstructionText(b.services),
+    ...scanInstructionText(b.idealCustomers),
+    ...scanInstructionText(b.operatingArea),
+    ...scanInstructionText(goalLabels.join("\n")),
+  ].filter((finding) => finding.severity === "block");
+  if (profileRisks.length) {
+    throw new AppError(
+      "invalid_input",
+      `The business profile can't include text that conflicts with AI safety policy (${profileRisks[0].code.replaceAll("_", " ")}). Remove or rephrase that sentence.`,
+    );
+  }
 
   const outcome = await withSystem(async (db) => {
     await db.query(
@@ -594,7 +612,15 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
         out.push({ role, name: AGENT_BY_KEY[role].name, summary: "Already up to date with your answers.", configStatus: "unchanged", agentStatus: agent.status });
         continue;
       }
-      const v = await createConfigVersion(db, { orgId: ctx.org.orgId, agentId: agent.id, settings, source: "onboarding", userId: ctx.user.id, apply: true });
+      const v = await createConfigVersion(db, {
+        orgId: ctx.org.orgId,
+        agentId: agent.id,
+        settings,
+        source: "onboarding",
+        actorKind: ctx.org.kind === "agency" || ctx.user.platformRole !== "none" ? "agency" : "user",
+        userId: ctx.user.id,
+        apply: true,
+      });
       out.push({ role, name: AGENT_BY_KEY[role].name, summary: v.summary, configStatus: v.status, agentStatus: agent.status });
     }
     await db.query(
