@@ -676,6 +676,7 @@ export function ChatWorkspace(props: Props) {
         title="Delete this conversation?"
         description="The messages are removed for good. This can't be undone."
         size="sm"
+        hideBodyWhenEmpty
         footer={
           <>
             <Button variant="secondary" onClick={() => setDeleting(null)}>
