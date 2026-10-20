@@ -41,6 +41,7 @@ export function Dialog({
   fullScreen?: boolean;
 }) {
   const width = { sm: "sm:max-w-md", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
+  const hasBody = !hideBodyWhenEmpty || React.Children.toArray(children).length > 0;
   const returnFocus = React.useRef<HTMLElement | null>(null);
   // While AQi is guiding someone, a page dialog must not hide the guidance card from the
   // accessibility tree or trap focus away from its controls. The dialog keeps its own focus order.
@@ -90,7 +91,7 @@ export function Dialog({
                 exit={{ opacity: 0, y: 16, scale: 0.98 }}
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               >
-                <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
+                <div className={cn("flex items-start justify-between gap-4 px-5 py-4 sm:px-6", hasBody && "border-b border-line")}>
                   <div className="flex min-w-0 items-start gap-3">
                     {icon && <span aria-hidden className={cn("mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2", iconClassName)}>{icon}</span>}
                     <div className="min-w-0">
@@ -106,10 +107,10 @@ export function Dialog({
                     <X className="size-4" />
                   </D.Close>
                 </div>
-                {(!hideBodyWhenEmpty || React.Children.count(children) > 0) && (
+                {hasBody && (
                   <div tabIndex={0} role="region" aria-label={ariaLabel ?? (typeof title === "string" ? `${title} content` : "Dialog content")} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-6">{children}</div>
                 )}
-                {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">{footer}</div>}
+                {footer && <div className={cn("flex flex-wrap justify-end gap-2 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-6", hasBody && "border-t border-line")}>{footer}</div>}
               </motion.div>
             </D.Content>
           </D.Portal>

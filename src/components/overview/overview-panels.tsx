@@ -6,7 +6,7 @@ import { Card, EmptyState, ProgressBar } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { IconTile, TINT } from "@/components/overview/panel";
 import { describeAction } from "@/lib/activity";
-import { AGENT_BY_KEY, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { cn, relativeTime } from "@/lib/utils";
 
 /** The next best steps, as three actionable cards instead of a dark text band. */
@@ -106,8 +106,8 @@ export function TeamGrid({ agents }: { agents: Array<{ id: string; role_key: Age
             >
               <AgentAvatar role={meta} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-semibold text-ink" title={a.display_name}>
-                  {a.display_name}
+                <p className="truncate text-[13.5px] font-semibold text-ink" title={agentIdentityLabel(a.display_name, meta)}>
+                  {agentIdentityLabel(a.display_name, meta)}
                 </p>
                 <p className="mt-0.5 line-clamp-1 text-[12px] leading-snug text-muted" title={meta.tagline}>
                   {meta.tagline}

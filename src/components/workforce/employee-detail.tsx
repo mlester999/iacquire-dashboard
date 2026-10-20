@@ -572,6 +572,7 @@ export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus,
             >
               <Input value={s.displayName} maxLength={40} onBlur={() => setNameTouched(true)} onChange={(e) => set("displayName", e.target.value)} />
             </GuidedField>
+            <p className="-mt-3 text-[12px] leading-relaxed text-muted">Your employee&apos;s role is shown alongside this name throughout the workspace.</p>
 
             <GuidedChoiceField id="cfg-tone" label="Personality" guidance={employeeFieldGuidance(meta.key, "tone")} optional issues={fieldIssues("tone")}>
               <div role="radiogroup" aria-label="Personality" className="grid gap-2 sm:grid-cols-2">

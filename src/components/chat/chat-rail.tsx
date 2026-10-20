@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { AgentAvatar, Logo, LogoMark, StatusDot } from "@/components/brand";
 import { Menu, MenuContent, MenuItem, MenuTrigger, Tooltip } from "@/components/ui/overlays";
-import { AGENT_BY_KEY, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { chatNavTargets, specialistCaption } from "@/lib/chat-navigation";
 import { compactRelativeTime, fullTimestamp, groupConversations } from "@/lib/conversation-time";
 import { useShell } from "@/components/shell/shell-context";
@@ -111,7 +111,8 @@ export function ChatRail(props: ChatRailProps) {
     .map((a) => {
       const current = a.role === props.role;
       const status = current ? props.currentStatus : a.status;
-      return { role: a.role, name: current ? props.agentName : a.displayName, status, current, slug: AGENT_BY_KEY[a.role].slug, meta: AGENT_BY_KEY[a.role] };
+      const meta = AGENT_BY_KEY[a.role];
+      return { role: a.role, name: agentIdentityLabel(current ? props.agentName : a.displayName, meta), status, current, slug: meta.slug, meta };
     });
 
   const goToSpecialist = (event: React.MouseEvent, current: boolean) => {

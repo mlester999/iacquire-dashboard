@@ -29,7 +29,7 @@ import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
 import { ActivityChart, KpiGrid, OverviewFunnel } from "@/components/overview/overview-client";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
 import { describeAction } from "@/lib/activity";
 import { SetupNudge } from "@/components/setup/setup-nudge";
 import { PageHero } from "@/components/ui/workspace";
@@ -191,7 +191,7 @@ export default async function OverviewPage() {
                     >
                       <AgentAvatar role={meta} size="md" />
                       <div className="min-w-0">
-                        <p className="truncate text-[13.5px] font-semibold text-ink">{a.display_name}</p>
+                        <p className="truncate text-[13.5px] font-semibold text-ink" title={agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}>{agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}</p>
                         <AgentStatusBadge status={a.enabled?a.status:"disabled"} />
                       </div>
                     </Link>

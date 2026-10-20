@@ -32,7 +32,7 @@ import {
 } from "@/app/(admin)/admin/actions";
 import type { TenantDetail } from "@/server/admin/queries";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
 import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
 
 type Detail = TenantDetail;
@@ -237,7 +237,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                 <div className="flex items-center gap-3">
                   <AgentAvatar role={meta} size="lg" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold">{a.display_name}</p>
+                    <p className="truncate text-[14px] font-semibold" title={agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}>{agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}</p>
                     <AgentStatusBadge status={a.enabled ? a.status : "disabled"} />
                   </div>
                   {superAdmin && (

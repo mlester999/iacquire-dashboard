@@ -229,6 +229,25 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
 export const AGENT_BY_KEY = Object.fromEntries(AGENT_ROLES.map((r) => [r.key, r])) as Record<AgentRoleKey, AgentRoleMeta>;
 export const AGENT_BY_SLUG = Object.fromEntries(AGENT_ROLES.map((r) => [r.slug, r])) as Record<string, AgentRoleMeta>;
 
+/** Keeps a custom employee name tied to its fixed specialist role in identity labels. */
+export function agentIdentityLabel(displayName: string, role: AgentRoleMeta) {
+  const name = displayName.trim() || role.shortName;
+  const normalizedName = name.toLowerCase();
+  const normalizedRole = role.shortName.toLowerCase();
+  const normalizedFullRole = role.name.toLowerCase();
+
+  if (
+    normalizedName === normalizedRole ||
+    normalizedName === normalizedFullRole ||
+    normalizedName.endsWith(` · ${normalizedRole}`) ||
+    normalizedName.endsWith(` · ${normalizedFullRole}`)
+  ) {
+    return name;
+  }
+
+  return `${name} · ${role.shortName}`;
+}
+
 export function isAgentRoleKey(value: string): value is AgentRoleKey {
   return (AGENT_ROLE_KEYS as readonly string[]).includes(value);
 }
