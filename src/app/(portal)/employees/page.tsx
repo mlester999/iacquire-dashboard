@@ -9,10 +9,10 @@ import { ChevronDown,ShieldCheck } from "lucide-react";
 import { StatusPill } from "@/components/ui/status";
 import { IconTile } from "@/components/overview/panel";
 
-export const metadata = { title: "AI Workforce" };
+export const metadata = { title: "AI Employees" };
 export default async function WorkforcePage() {
   const ctx = await requireOrgContext();
-  if (ctx.org.kind !== "client") redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/workforce" : ctx.user.platformRole === "agency_staff" ? "/admin/workforce/clients" : "/no-workspace");
+  if (ctx.org.kind !== "client") redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");
   const agents = await listAgents(ctx.user.id, ctx.org.orgId);
   const caps = await withUser(ctx.user.id, (db) => db.query<{ key: string; capabilities: string[] }>("select key, capabilities from agent_roles"));
   const capMap = Object.fromEntries(caps.rows.map((r) => [r.key, r.capabilities]));

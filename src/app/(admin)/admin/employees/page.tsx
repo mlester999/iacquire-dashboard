@@ -6,7 +6,7 @@ import { withSystem } from "@/server/db";
 import { listHermesGateways } from "@/server/integrations/hermes/gateways";
 import { ensureAgencyWorkspace } from "@/server/workforce/agency";
 
-export const metadata = { title: "AI Workforce" };
+export const metadata = { title: "AI Employees" };
 
 export default async function AdminWorkforcePage() {
   const user = await requireAgency();

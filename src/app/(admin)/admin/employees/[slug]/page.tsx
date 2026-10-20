@@ -96,7 +96,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
   if (!data) {
     return (
       <div className="module-stack">
-        <Link href="/admin/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> AI Workforce</Link>
+        <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> AI Employees</Link>
         <Card className="border-dashed p-8 text-sm text-muted">This internal employee record doesn&apos;t exist in the agency workspace yet.</Card>
       </div>
     );
@@ -118,7 +118,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
 
   return (
     <div className="module-stack space-y-6">
-      <Link href="/admin/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal AI Workforce</Link>
+      <Link href="/admin/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal AI Employees</Link>
       <EmployeeProfileHero
         dark
         meta={meta}
@@ -169,7 +169,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
               <CardHeader><div><CardTitle>Configuration summary</CardTitle><CardDescription>The active version, in plain English.</CardDescription></div></CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-[13px] leading-relaxed text-ink-2">{agent.config_summary ?? "No configuration has been applied yet."}</p>
-                <Link href={`/admin/workforce/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-primary hover:bg-surface-2">
+                <Link href={`/admin/employees/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-primary hover:bg-surface-2">
                   Open configuration and knowledge <ArrowUpRight className="size-3.5" />
                 </Link>
                 <p className="text-[11.5px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this employee&apos;s active configuration.</p>
@@ -197,7 +197,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
         </div>
 
         <div className="space-y-6">
-          <ReadinessChecklist readiness={readiness} action={<Link href={`/admin/workforce/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-medium text-primary hover:bg-surface-2">Configure <ArrowUpRight className="size-3.5" /></Link>} />
+          <ReadinessChecklist readiness={readiness} action={<Link href={`/admin/employees/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-medium text-primary hover:bg-surface-2">Configure <ArrowUpRight className="size-3.5" /></Link>} />
           <Card>
             <CardHeader><div><CardTitle>Recorded activity</CardTitle><CardDescription>The latest saved runs. Tokens come from the provider when reported.</CardDescription></div></CardHeader>
             <CardContent>

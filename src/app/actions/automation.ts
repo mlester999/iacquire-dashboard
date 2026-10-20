@@ -8,7 +8,7 @@ import { isAgentMode, setAgencyPause, setAgentMode, setClientPause } from "@/ser
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function refresh() {
-  revalidatePath("/workforce");
+  revalidatePath("/employees");
   revalidatePath("/overview");
 }
 

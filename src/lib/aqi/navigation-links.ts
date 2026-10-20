@@ -4,7 +4,7 @@ import { AQI_ROUTES } from "@/lib/aqi/routes";
  * Turns the way a model *talks about* pages into verified, readable navigation.
  *
  * Models routinely write page names as pseudo-links: `[Team]`, `[Integrations](Settings → Integrations)`
- * or `[AI Workforce](AI Workforce)`. None of those is a destination, so Markdown shows the raw
+ * or `[AI Employees](AI Employees)`. None of those is a destination, so Markdown shows the raw
  * syntax. This module maps each such reference to a real, authorized route from the curated AQi
  * registry when the mapping is unambiguous, and otherwise leaves plain readable text. It never
  * invents a route, never trusts a model-supplied href, and never touches code.
@@ -192,7 +192,7 @@ export function normalizeAqiNavigation(content: string, options: AqiNavigationOp
       }
       // Any other scheme (javascript:, data:, vbscript:, file:) is never a link.
       if (ANY_SCHEME.test(destination)) return `${cleanLabel}${aside(null)}`;
-      // Prose such as "Settings → Integrations" or "AI Workforce": map it only when unambiguous.
+      // Prose such as "Settings → Integrations" or "AI Employees": map it only when unambiguous.
       const reference = splitReference(destination);
       const route = resolve(reference.name, reference.hint, authorized, options.currentPath)
         ?? resolve(cleanLabel, null, authorized, options.currentPath);

@@ -128,7 +128,7 @@ export async function connectHermesAction(agentId: string, input: { baseUrl?: st
     await connectHermesProfile({ agentId, ...input, agencyUserId: admin.id });
     const health = await runHealthCheck(agentId, { userId: admin.id, kind: "agency" });
     revalidatePath(`/admin/clients/${orgId}`);
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
     return { ok: true as const, data: health };
   } catch (err) {
@@ -140,7 +140,7 @@ export async function connectAgencyHermesProfileAction(agentId: string, input: {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     const health = await connectAgencyHermesProfile(admin, { agentId, ...input });
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
     return { ok: true as const, data: health };
   } catch (err) {
@@ -152,7 +152,7 @@ export async function testAgencyHermesProfileAction(agentId: string) {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     const health = await testAgencyHermesProfile(admin, agentId);
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
     return { ok: true as const, data: health };
   } catch (err) {
@@ -182,7 +182,7 @@ export async function testAllAgencyProfilesAction() {
   try {
     const admin = await requireAgencyOrThrow("super_admin");
     const result = await testAllAgencyHermesProfiles(admin);
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
     return { ok: true as const, data: result };
   } catch (err) {
@@ -198,7 +198,7 @@ export async function healthCheckAction(agentId: string) {
     const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
     const health = await runHealthCheck(agentId, { userId: user.id, kind: "agency" });
     revalidatePath(`/admin/clients/${orgId}`);
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees");
     return { ok: true as const, data: health };
   } catch (err) {
     return actionError(err);
@@ -509,8 +509,8 @@ export async function saveHermesToolPolicyAction(input: {
       allowedCapabilities: parsed.allowedCapabilities as HermesPolicyCapability[],
       blockedToolsets: parsed.blockedToolsets as HermesBlockableToolset[],
     });
-    revalidatePath("/admin/workforce/policies");
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees/policies");
+    revalidatePath("/admin/employees");
     return { ok: true as const };
   } catch (err) {
     if (err instanceof z.ZodError) return { ok: false as const, error: "Check the policy scope, capabilities and approval mode." };
@@ -523,7 +523,7 @@ export async function resetHermesToolPolicyAction(input: { scopeKind: "client" |
     const admin = await requireAgencyPermissionOrThrow("agency.tool_policies.manage");
     const parsed = z.object({ scopeKind: z.enum(["client", "agent"]), orgId: z.string().uuid().optional(), agentId: z.string().uuid().optional() }).parse(input);
     await resetHermesToolPolicy(admin, parsed);
-    revalidatePath("/admin/workforce/policies");
+    revalidatePath("/admin/employees/policies");
     return { ok: true as const };
   } catch (err) {
     if (err instanceof z.ZodError) return { ok: false as const, error: "Choose a valid client or employee." };
@@ -537,8 +537,8 @@ export async function acknowledgeInternalHermesCapabilitiesAction(agentIds: stri
     const parsed = z.array(z.string().uuid()).min(1).max(6).parse(agentIds);
     if (new Set(parsed).size !== parsed.length) throw new AppError("invalid_input", "Select each internal employee only once.");
     await acknowledgeInternalFullCapabilities(admin, parsed);
-    revalidatePath("/admin/workforce/policies");
-    revalidatePath("/admin/workforce");
+    revalidatePath("/admin/employees/policies");
+    revalidatePath("/admin/employees");
     return { ok: true as const };
   } catch (err) {
     if (err instanceof z.ZodError) return { ok: false as const, error: "Select one or more verified internal profiles." };

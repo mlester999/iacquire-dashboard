@@ -103,7 +103,7 @@ export function AiToolsScreen({ scope, overview }: { scope: CrmScope; overview: 
               )}
             </div>
           </div>
-          <ButtonLink href="/workforce" variant="secondary" size="sm" className="shrink-0"><ShieldCheck className="size-4" aria-hidden />Safety controls</ButtonLink>
+          <ButtonLink href="/employees" variant="secondary" size="sm" className="shrink-0"><ShieldCheck className="size-4" aria-hidden />Safety controls</ButtonLink>
         </div>
       </Card>
 
@@ -209,7 +209,7 @@ function EmployeeCard({ employee: e, canStop }: { employee: EmployeeToolAccess; 
           {e.liveTokens ? `${e.liveTokens} live tool ${e.liveTokens === 1 ? "credential" : "credentials"}` : "No live tool credentials"}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {meta && <ButtonLink href={`/workforce/${meta.slug}`} variant="ghost" size="sm"><PenLine className="size-3.5" aria-hidden />Mode<span className="sr-only"> for {e.name}</span></ButtonLink>}
+          {meta && <ButtonLink href={`/employees/${meta.slug}`} variant="ghost" size="sm"><PenLine className="size-3.5" aria-hidden />Mode<span className="sr-only"> for {e.name}</span></ButtonLink>}
           {canStop && e.liveTokens > 0 && (
             <Button variant="outline" size="sm" onClick={() => setConfirm(true)} aria-label={`Stop tool access for ${e.name}`}>
               <Ban className="size-3.5" aria-hidden />Stop tool access

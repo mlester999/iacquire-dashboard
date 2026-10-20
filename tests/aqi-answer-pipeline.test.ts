@@ -55,7 +55,7 @@ async function ask(viewer: AqiViewer, message: string, chunks: string[]) {
 const MALFORMED = [
   "You can add people under [Team] (Settings → Team), ",
   "connect services in [Integrations](Settings → Integrations) ",
-  "and find your employees in [AI Workforce](AI Workforce). ",
+  "and find your employees in [AI Employees](AI Employees). ",
   "See [Admin](/admin/aqi) and [x](javascript:alert(1)).",
 ];
 
@@ -67,7 +67,7 @@ describe("AQi answer pipeline", () => {
   it("turns malformed page references into verified links before saving", async () => {
     const { viewer } = await viewerFor("owner");
     const { done, meta } = await ask(viewer, "Where do I manage integrations?", MALFORMED);
-    const expected = "You can add people under [Team](/settings/team), connect services in [Integrations](/settings/integrations) and find your employees in [AI Workforce](/workforce). See Admin and x.";
+    const expected = "You can add people under [Team](/settings/team), connect services in [Integrations](/settings/integrations) and find your employees in [AI Employees](/employees). See Admin and x.";
     expect(done?.message.content).toBe(expected);
     const stored = await withSystem(async (db) => (await db.query<{ content: string }>("select content from aqi_messages where id = $1", [meta.messageId])).rows[0].content);
     expect(stored).toBe(expected);

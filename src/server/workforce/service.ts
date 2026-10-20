@@ -241,7 +241,7 @@ export async function createConfigVersion(
       severity: "warning",
       title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
       body: "Part of the new instructions looked like it could change safety rules, so our team will review it before it's applied.",
-      link: `/workforce/${AGENT_BY_KEY[agent.role_key].slug}`,
+      link: `/employees/${AGENT_BY_KEY[agent.role_key].slug}`,
     });
   }
   return { versionId, version, status, summary: compiled.summary, riskFlags: compiled.riskFlags };
@@ -688,7 +688,7 @@ export async function runHealthCheck(
             result = {
               ok: false,
               status: "setup_required",
-              detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online. A Super Admin needs to save an initial configuration for this employee in its own workspace (AI Workforce, open the employee, save its settings), then run the health check again.`,
+              detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online. A Super Admin needs to save an initial configuration for this employee in its own workspace (AI Employees, open the employee, save its settings), then run the health check again.`,
             };
           } else {
             result = {
@@ -789,7 +789,7 @@ export async function runHealthCheck(
           severity: result.ok ? "success" : "warning",
           title: result.ok ? `${meta.shortName} is online` : `${meta.shortName} is ${result.status === "offline" ? "offline" : "unavailable"}`,
           body: result.detail,
-          link: `/workforce/${meta.slug}`,
+          link: `/employees/${meta.slug}`,
         });
       }
     }

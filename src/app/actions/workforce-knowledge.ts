@@ -12,7 +12,7 @@ import {
 import { reprocessKnowledgeDocument } from "@/server/knowledge/service";
 
 function revalidateEmployee() {
-  revalidatePath("/workforce");
+  revalidatePath("/employees");
   revalidatePath("/knowledge");
 }
 

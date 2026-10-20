@@ -120,7 +120,7 @@ describe("AQi tutorial eligibility and progress", () => {
     await expect(startAqiTutorial(superAdmin, "getting-started", "onboarding")).rejects.toThrow(/available/i);
     expect(await matchAqiTutorialOffer(superAdmin, "Show me how to add a contact", "/overview")).toBeNull();
 
-    const onboarding = await getAqiOnboarding(superAdmin, "/admin/workforce");
+    const onboarding = await getAqiOnboarding(superAdmin, "/admin/employees");
     expect(onboarding.shouldOffer).toBe(false);
     expect(onboarding.reason).toBe("no_tutorial");
   });

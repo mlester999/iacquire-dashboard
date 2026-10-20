@@ -6,25 +6,25 @@ import { AGENT_STATUS_LABEL, type AgentStatus } from "@/lib/agents";
 import { calendarDaysAgo, compactRelativeTime, conversationGroup, fullTimestamp, groupConversations } from "@/lib/conversation-time";
 
 describe("chat navigation targets", () => {
-  it("sends a client workspace to the product dashboard and the AI Workforce directory", () => {
+  it("sends a client workspace to the product dashboard and the AI Employees directory", () => {
     const t = chatNavTargets("client", "lead-hunter");
-    expect(t).toMatchObject({ home: "/overview", workforce: "/workforce", profile: "/workforce/lead-hunter", manage: "/workforce/lead-hunter?tab=configure", chat: "/chat/lead-hunter" });
+    expect(t).toMatchObject({ home: "/overview", workforce: "/employees", profile: "/employees/lead-hunter", manage: "/employees/lead-hunter?tab=configure", chat: "/chat/lead-hunter" });
   });
 
   it("sends the agency workspace to the agency dashboard and the agency workforce area", () => {
     const t = chatNavTargets("agency", "operations-manager");
     expect(t.home).toBe("/admin");
-    expect(t.workforce).toBe("/admin/workforce");
+    expect(t.workforce).toBe("/admin/employees");
     // The employee screens are shared: a Super Admin manages an internal employee through the same routes.
-    expect(t.profile).toBe("/workforce/operations-manager");
-    expect(t.manage).toBe("/workforce/operations-manager?tab=configure");
+    expect(t.profile).toBe("/employees/operations-manager");
+    expect(t.manage).toBe("/employees/operations-manager?tab=configure");
   });
 
   it("keeps management and chat as different routes for the same employee", () => {
     const t = chatNavTargets("client", "crm-manager");
     expect(t.chat).not.toBe(t.profile);
     expect(t.chat.startsWith("/chat/")).toBe(true);
-    expect(t.profile.startsWith("/workforce/")).toBe(true);
+    expect(t.profile.startsWith("/employees/")).toBe(true);
   });
 
   it("describes every connection state honestly and never calls a blocked employee online", () => {

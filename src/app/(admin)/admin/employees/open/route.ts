@@ -14,6 +14,6 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const requested = url.searchParams.get("role") ?? "operations-manager";
   const slug = requested in AGENT_BY_SLUG ? requested : "operations-manager";
-  const target = url.searchParams.get("to") === "manage" ? `/workforce/${slug}?tab=configure` : `/chat/${slug}`;
+  const target = url.searchParams.get("to") === "manage" ? `/employees/${slug}?tab=configure` : `/chat/${slug}`;
   return NextResponse.redirect(new URL(target, request.url));
 }

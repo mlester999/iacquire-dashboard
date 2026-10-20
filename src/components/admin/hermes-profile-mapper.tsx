@@ -61,7 +61,7 @@ export function HermesProfileMapper({
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
-  useLogoutUnsavedChanges("Hermes profile credential", apiKey.length > 0, true, "/admin/workforce", "Hermes profile API key", `agency-hermes:${agentId}`);
+  useLogoutUnsavedChanges("Hermes profile credential", apiKey.length > 0, true, "/admin/employees", "Hermes profile API key", `agency-hermes:${agentId}`);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

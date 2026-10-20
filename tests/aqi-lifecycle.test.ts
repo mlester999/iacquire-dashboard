@@ -106,7 +106,7 @@ describe("AQi automatic conversation titles", () => {
 
   it("never overwrites a manual rename, even when generation was already requested", async () => {
     const { viewer } = await fixtures();
-    const conversation = await createAqiConversation(viewer, "/workforce");
+    const conversation = await createAqiConversation(viewer, "/employees");
     await addTurn(viewer, conversation.id, "How can I manage my AI employees?");
 
     const pending = generateAqiConversationTitle(viewer, conversation.id);
@@ -188,15 +188,15 @@ describe("AQi welcome suggestions respect permissions", () => {
       permissions: ["workspace.view"],
       can: (permission) => permission === "workspace.view",
     };
-    const welcome = await getAqiWelcome(restricted, "/workforce");
+    const welcome = await getAqiWelcome(restricted, "/employees");
     expect(welcome.page).toBeNull();
     expect(welcome.suggestions.map((item) => item.question)).not.toContain("How do I manage my AI employees?");
     expect(welcome.suggestions.map((item) => item.question)).not.toContain("Where can I find my integrations?");
     expect(welcome.suggestions.map((item) => item.question)).not.toContain("How do I contact support?");
     expect(welcome.suggestions.length).toBeGreaterThan(0);
 
-    const ownerWelcome = await getAqiWelcome(viewer, "/workforce");
-    expect(ownerWelcome.page?.label).toBe("AI Workforce");
+    const ownerWelcome = await getAqiWelcome(viewer, "/employees");
+    expect(ownerWelcome.page?.label).toBe("AI Employees");
     expect(ownerWelcome.suggestions.map((item) => item.question)).toContain("How do I change an employee's instructions?");
     expect(ownerWelcome.suggestions.length).toBeLessThanOrEqual(4);
     expect(org.id).toBeTruthy();

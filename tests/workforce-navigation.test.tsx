@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/overlays";
 import type { ShellData } from "@/server/queries/shell";
 import type { Permission } from "@/lib/permissions";
 
-const nav = vi.hoisted(() => ({ pathname: "/workforce" }));
+const nav = vi.hoisted(() => ({ pathname: "/employees" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ prefetch: vi.fn(), push: vi.fn() }),
@@ -26,7 +26,7 @@ beforeAll(() => {
   window.matchMedia ??= ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 });
 beforeEach(() => {
-  nav.pathname = "/workforce";
+  nav.pathname = "/employees";
 });
 afterEach(cleanup);
 
@@ -69,11 +69,11 @@ describe("management navigation (main iAcquire sidebar)", () => {
   it("opens an employee's profile when the employee is selected, never the chat", () => {
     renderSidebar();
     const links = hrefs();
-    expect(links).toContain("/workforce/operations-manager");
-    expect(links).toContain("/workforce/lead-hunter");
-    expect(links).toContain("/workforce/appointment-setter");
+    expect(links).toContain("/employees/operations-manager");
+    expect(links).toContain("/employees/lead-hunter");
+    expect(links).toContain("/employees/appointment-setter");
     // The primary row for an employee is the management route; chat is a separate, explicitly labelled action.
-    const lead = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/workforce/lead-hunter")!;
+    const lead = screen.getAllByRole("link").find((a) => a.getAttribute("href") === "/employees/lead-hunter")!;
     expect(lead.textContent).toContain("Lead Hunter");
     expect(links).not.toContain("/chat/lead-hunter");
   });
@@ -85,28 +85,28 @@ describe("management navigation (main iAcquire sidebar)", () => {
     // Setup required: no chat shortcut, so a management click can never land on a blocked chat by accident.
     expect(screen.queryByRole("link", { name: "Chat with Lead Hunter" })).toBeNull();
     // Not enabled for this workspace: not listed at all.
-    expect(hrefs()).not.toContain("/workforce/sales-assistant");
+    expect(hrefs()).not.toContain("/employees/sales-assistant");
     expect(screen.queryByRole("link", { name: /Chat with Sales Assistant/ })).toBeNull();
   });
 
   it("hides every chat shortcut from people who may not use AI employees", () => {
     renderSidebar([]);
     expect(screen.queryByRole("link", { name: /^Chat with/ })).toBeNull();
-    expect(hrefs()).toContain("/workforce/operations-manager");
+    expect(hrefs()).toContain("/employees/operations-manager");
   });
 
   it("highlights the employee being managed and nothing else", () => {
-    nav.pathname = "/workforce/lead-hunter";
+    nav.pathname = "/employees/lead-hunter";
     renderSidebar();
     const current = screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page");
-    const employeeRows = current.filter((a) => a.getAttribute("href")?.startsWith("/workforce/"));
-    expect(employeeRows.map((a) => a.getAttribute("href"))).toEqual(["/workforce/lead-hunter"]);
+    const employeeRows = current.filter((a) => a.getAttribute("href")?.startsWith("/employees/"));
+    expect(employeeRows.map((a) => a.getAttribute("href"))).toEqual(["/employees/lead-hunter"]);
   });
 
-  it("keeps the AQi walkthrough anchors for AI Workforce", () => {
+  it("keeps the AQi walkthrough anchors for AI Employees", () => {
     const { container } = renderSidebar();
     expect(container.querySelector('[data-tour="workforce"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/workforce"][data-aqi-target="nav.workforce"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/employees"][data-aqi-target="nav.workforce"]')).not.toBeNull();
     expect(container.querySelector('a[href="/overview"][data-aqi-target]')).not.toBeNull();
   });
 

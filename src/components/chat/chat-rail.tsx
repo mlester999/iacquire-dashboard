@@ -131,8 +131,8 @@ export function ChatRail(props: ChatRailProps) {
           </Tooltip>
         </div>
         <div className="scrollbar-thin flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto px-2 pb-3">
-          <Tooltip content="Back to AI Workforce" side="right">
-            <Link href={targets.workforce} aria-label="Back to AI Workforce" className={iconButton}>
+          <Tooltip content="Back to AI Employees" side="right">
+            <Link href={targets.workforce} aria-label="Back to AI Employees" className={iconButton}>
               <ArrowLeft className="size-[17px]" aria-hidden />
             </Link>
           </Tooltip>
@@ -225,7 +225,7 @@ export function ChatRail(props: ChatRailProps) {
       </div>
       <div className="shrink-0 px-3 pb-2">
         <Link href={targets.workforce} onClick={props.onNavigate} className={rowBase}>
-          <ArrowLeft className="size-[17px]" aria-hidden /> Back to AI Workforce
+          <ArrowLeft className="size-[17px]" aria-hidden /> Back to AI Employees
         </Link>
       </div>
 

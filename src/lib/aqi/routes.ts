@@ -14,7 +14,7 @@ export interface AqiRoute {
 
 export const AQI_ROUTES: AqiRoute[] = [
   { path: "/overview", label: "Overview", description: "Your workspace dashboard and current status.", permission: "workspace.view" },
-  { path: "/workforce", label: "AI Workforce", description: "See your AI employees, their status and chat with them.", permission: "agents.use" },
+  { path: "/employees", label: "AI Employees", description: "See your AI employees, their status and chat with them.", permission: "agents.use" },
   { path: "/knowledge", label: "Knowledge Center", description: "Company knowledge and reference documents.", permission: "knowledge.view" },
   { path: "/chat", label: "AI employee chat", description: "Conversations with your AI employees.", permission: "agents.use" },
   { path: "/leads", label: "Leads", description: "Leads, research and review queues.", permission: "leads.view" },
@@ -43,9 +43,9 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/projects", label: "Projects", description: "Custom projects, quotes and deliverables.", permission: "projects.view" },
   { path: "/website", label: "Website", description: "Your website and publishing status.", permission: "website.view" },
   { path: "/admin", label: "Admin overview", description: "The iAcquire agency dashboard.", agency: "staff" },
-  { path: "/admin/workforce", label: "Internal Workforce", description: "The iAcquire internal AI workforce.", agency: "super_admin" },
-  { path: "/admin/workforce/clients", label: "Client Workforces", description: "Client AI workforce readiness.", agency: "staff", permission: "agency.workforce.view" },
-  { path: "/admin/workforce/policies", label: "Hermes tool policies", description: "Review Hermes tool boundaries.", agency: "staff", permission: "agency.tool_policies.view" },
+  { path: "/admin/employees", label: "Internal Workforce", description: "The iAcquire internal AI workforce.", agency: "super_admin" },
+  { path: "/admin/employees/clients", label: "Client Workforces", description: "Client AI workforce readiness.", agency: "staff", permission: "agency.workforce.view" },
+  { path: "/admin/employees/policies", label: "Hermes tool policies", description: "Review Hermes tool boundaries.", agency: "staff", permission: "agency.tool_policies.view" },
   { path: "/admin/clients", label: "Clients", description: "Client workspaces and onboarding.", agency: "staff" },
   { path: "/admin/integrations", label: "Integrations", description: "Provider credentials and connections.", agency: "staff", permission: "agency.integrations.health" },
   { path: "/admin/health", label: "Health", description: "Platform health and incidents.", agency: "staff", permission: "agency.security.manage" },
