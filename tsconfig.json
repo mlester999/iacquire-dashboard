@@ -47,7 +47,11 @@
     ".next-pdf-demo/types/**/*.ts",
     ".next-pdf-demo/dev/types/**/*.ts",
     ".next-crm-qa/types/**/*.ts",
-    ".next-crm-qa/dev/types/**/*.ts"
+    ".next-crm-qa/dev/types/**/*.ts",
+    ".next-notif/types/**/*.ts",
+    ".next-notif/dev/types/**/*.ts",
+    ".next-notif-qa/types/**/*.ts",
+    ".next-notif-qa/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
