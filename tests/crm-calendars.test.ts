@@ -1,5 +1,5 @@
 // Native calendars and booking. Synthetic workspaces only; nothing here contacts a calendar provider or sends a message.
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import {
   addAvailabilityOverride, createAppointmentType, createCalendar, listCalendars, listHostAvailability, setHostAvailability, updateAppointmentType, updateCalendar,
@@ -15,6 +15,16 @@ const WEEKDAYS_9_TO_5 = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute
 // Monday 19 October 2026, 08:00 in Manila (00:00 UTC). Bookings are made "now" = this instant.
 const NOW = new Date("2026-10-19T00:00:00Z");
 const at = (localHHMM: string, date = "2026-10-20") => new Date(`${date}T${localHHMM}:00+08:00`);
+
+// The synthetic week is fixed so slot arithmetic stays readable. Freeze JavaScript time at NOW so a
+// real clock that has moved past the fixture cannot flip the "has started" and booking-horizon checks.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 async function setupWorkspace(a: CrmOrg, opts: { assignment?: "single" | "round_robin" | "collective"; capacity?: number; buffers?: number; dailyLimit?: number | null; hosts?: Array<keyof CrmOrg["people"]> } = {}) {
   const owner = a.actor("owner");
