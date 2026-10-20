@@ -109,7 +109,7 @@ export async function agencyCrmOperations(user: Pick<SessionUser, "id" | "platfo
               (select count(*) from metered_usage_events m where m.org_id = o.id and m.uncollected_micros > 0 and m.occurred_at > $3::timestamptz - interval '30 days')::text as uncollected,
               (select count(*) from human_escalations h where h.org_id = o.id and h.status in ('awaiting_owner', 'open', 'claimed'))::text as escalations,
               (select count(*) from human_escalations h where h.org_id = o.id and h.status in ('awaiting_owner', 'open', 'claimed') and h.urgency = 'urgent')::text as urgent,
-              (select count(*) from support_tickets st where st.org_id = o.id and st.status in ('open', 'in_progress', 'waiting_for_client'))::text as tickets,
+              (select count(*) from support_tickets st where st.org_id = o.id and st.status in ('new', 'open', 'in_progress', 'waiting_for_client'))::text as tickets,
               (select count(*) from contacts c where c.org_id = o.id and c.deleted_at is null and c.created_at > $3::timestamptz - interval '30 days')::text as new_contacts,
               ((select count(*) from crm_form_submissions fs where fs.org_id = o.id and fs.status <> 'spam' and fs.created_at > $3::timestamptz - interval '30 days')
                 + (select count(*) from website_form_submissions ws where ws.org_id = o.id and ws.status <> 'spam' and ws.created_at > $3::timestamptz - interval '30 days'))::text as submissions,

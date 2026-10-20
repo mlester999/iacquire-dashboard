@@ -71,6 +71,7 @@ function shellData(over: Partial<ShellData> = {}): ShellData {
     pendingApprovals: 0,
     setup: { visible: false, percent: null, needsAttention: 0 },
     projectsAttention: 0,
+    requestsAttention: 0,
     inboxAttention: 0,
     crmMode: null,
     ...over,

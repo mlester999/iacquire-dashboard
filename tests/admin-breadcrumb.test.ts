@@ -22,7 +22,9 @@ describe("agency breadcrumbs follow the route", () => {
 
   it("no longer calls every deep admin route a client page", () => {
     expect(labels("/admin/projects/p1")).toEqual(["Custom projects", "Project"]);
-    expect(labels("/admin/support/s1")).toEqual(["Support inbox", "Request"]);
+    expect(labels("/admin/support/s1")).toEqual(["Requests", "Request"]);
+    expect(labels("/admin/support/analytics")).toEqual(["Requests", "Analytics"]);
+    expect(labels("/admin/support/settings")).toEqual(["Requests", "Settings"]);
     expect(labels("/admin/clients/c1")).toEqual(["Clients", "Client workspace"]);
     expect(labels("/admin/clients/c1/website")).toEqual(["Clients", "Client workspace", "Website"]);
     expect(labels("/admin/clients/c1/offboarding")).toEqual(["Clients", "Client workspace", "Offboarding"]);

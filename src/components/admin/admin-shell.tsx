@@ -27,7 +27,7 @@ const NAV = [
   // Reusable CRM configuration the agency builds once and applies to a client as an independent copy (never contacts or credentials).
   { href: "/admin/crm-blueprints", label: "CRM Blueprints", icon: Layers, group: "Operations" },
   { href: "/admin/workforce", label: "AI Workforce", icon: Sparkles, group: "Operations" },
-  { href: "/admin/support", label: "Support inbox", icon: Inbox, group: "Operations" },
+  { href: "/admin/support", label: "Requests", icon: Inbox, group: "Operations" },
   { href: "/admin/website-studio", label: "Website Studio", icon: MonitorSmartphone, group: "Client experience" },
   { href: "/admin/projects", label: "Custom projects", icon: FolderKanban, group: "Client experience" },
   { href: "/admin/maintenance", label: "Maintenance", icon: Wrench, group: "Client experience" },

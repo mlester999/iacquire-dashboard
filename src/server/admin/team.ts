@@ -51,7 +51,7 @@ export async function agencyTeamView(admin: SessionUser): Promise<AgencyTeamView
     }>(
       `select u.id,u.full_name,u.email,u.platform_role,u.status,s.scope_mode,u.last_login_at,v.revision::text as permission_revision,
        (select count(*)::int from client_setup_tasks t where t.assigned_to=u.id and t.status<>'completed' and not t.hidden and not t.service_excluded) as open_tasks,
-       (select count(*)::int from support_tickets t where t.assigned_to=u.id and t.status in ('open','in_progress','waiting_for_client')) as open_tickets
+       (select count(*)::int from support_tickets t where t.assigned_to=u.id and t.status in ('new','open','in_progress','waiting_for_client')) as open_tickets
        from users u left join agency_user_client_scopes s on s.user_id=u.id
        left join agency_team_member_versions v on v.user_id=u.id
        where u.platform_role in ('agency_super_admin','agency_manager','agency_staff')

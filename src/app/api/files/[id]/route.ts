@@ -17,6 +17,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // AQi attachment ownership is per-user; the generic file route must never bypass the
     // dedicated /api/aqi/attachments/[id] ownership check.
     if (file.bucket === "aqi-attachments") return NextResponse.json({ error: "File not found." }, { status: 404 });
+    // A support file is readable only by someone who can see the request (or staged file) it belongs to: workspace membership alone
+    // is not enough, because members see only their own requests. Row-level security on support_attachments decides.
+    if (file.bucket === "support-attachments") {
+      const visible = await withUser(user.id, async (db) => (await db.query("select 1 from support_attachments a where a.private_file_id = $1 and a.status <> 'removed'", [id])).rows[0]);
+      if (!visible) return NextResponse.json({ error: "File not found." }, { status: 404 });
+    }
     const data = await readPrivateFile({ userId: user.id, orgId: file.org_id, bucket: file.bucket, path: file.storage_key });
     return new NextResponse(new Uint8Array(data.bytes), { headers: {
       "Content-Type": data.mime_type, "Content-Disposition": `attachment; filename="${data.filename.replace(/["\\\r\n]/g, "_")}"`,

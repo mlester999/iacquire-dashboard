@@ -25,6 +25,8 @@ export interface ShellData {
   projectsAttention: number;
   /** Conversations with unread customer messages, plus escalations waiting for this person. */
   inboxAttention: number;
+  /** The person's own support requests that have a new reply from the iAcquire team or are waiting for their answer. */
+  requestsAttention: number;
   /** Which CRM the workspace runs on, so navigation shows the native CRM or the GoHighLevel views (or both while migrating). */
   crmMode: "native" | "ghl" | "hybrid" | null;
 }
@@ -33,6 +35,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const includeSetup = ctx.org.kind === "client" && ctx.can("setup.view");
   const includeProjects = ctx.can("projects.view");
   const includeInbox = ctx.can("inbox.view");
+  const includeRequests = ctx.can("support.use");
   const includeCrm = ctx.org.kind === "client" && ctx.can("crm.view");
   const setupCtes = includeSetup
     ? `, setup_instance as (
@@ -62,6 +65,10 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
     ? `((select count(*) from conversations c where c.org_id=$1 and c.status='open' and c.unread_count > 0) +
         (select count(*) from human_escalations e where e.org_id=$1 and e.status in ('awaiting_owner','open')))::int as inbox_attention`
     : `0::int as inbox_attention`;
+  const requestsProjection = includeRequests
+    ? `(select count(*)::int from support_tickets t where t.org_id=$1 and t.created_by=$2 and t.status not in ('resolved','closed') and (t.status='waiting_for_client' or exists (
+         select 1 from support_messages m where m.ticket_id=t.id and m.author_kind='agency' and not m.internal and m.created_at > coalesce(t.client_last_read_at, t.created_at)))) as requests_attention`
+    : `0::int as requests_attention`;
   const crmProjection = includeCrm
     ? `(select mode from crm_workspaces where org_id=$1 limit 1) as crm_mode`
     : `null::text as crm_mode`;
@@ -77,6 +84,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
       setup: ShellData["setup"];
       projects_attention: number;
       inbox_attention: number;
+      requests_attention: number;
       crm_mode: ShellData["crmMode"];
     }>(
       `with preferences as (
@@ -92,7 +100,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
             (coalesce(p.prefs->>'approvals','true') <> 'false' or n.kind not in ('approval_requested','approval_decided')) and
             (coalesce(p.prefs->>'leads','true') <> 'false' or n.kind <> 'lead_awaiting_approval') and
             (coalesce(p.prefs->>'workforce','true') <> 'false' or n.kind not in ('agent_status','agent_task_completed')) and
-            (coalesce(p.prefs->>'support','true') <> 'false' or n.kind <> 'support_reply') and
+            (coalesce(p.prefs->>'support','true') <> 'false' or n.kind not in ('support_reply','support_status')) and
             (coalesce(p.prefs->>'knowledge','true') <> 'false' or n.kind <> 'knowledge_update_ready') and
             (coalesce(p.prefs->>'usage','true') <> 'false' or n.kind <> 'usage_limit_approaching') and
             (coalesce(p.prefs->>'calendar','true') <> 'false' or n.kind <> 'booking_confirmed') and
@@ -102,6 +110,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
          ${setupProjection},
          ${projectsProjection},
          ${inboxProjection},
+         ${requestsProjection},
          ${crmProjection}`,
       [ctx.org.orgId, ctx.user.id],
     );
@@ -113,6 +122,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const setup = data?.setup ?? { visible: false, percent: null, needsAttention: 0 };
   const projectsAttention = data?.projects_attention ?? 0;
   const inboxAttention = data?.inbox_attention ?? 0;
+  const requestsAttention = data?.requests_attention ?? 0;
   const crmMode = data?.crm_mode ?? (includeCrm ? "native" : null);
   return {
     user: { id: ctx.user.id, name: ctx.user.fullName || ctx.user.email, email: ctx.user.email, platformRole: ctx.user.platformRole },
@@ -135,6 +145,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
     setup,
     projectsAttention,
     inboxAttention,
+    requestsAttention,
     crmMode,
   };
 }

@@ -109,8 +109,10 @@ const TABLES: TableSpec[] = [
   { file: "ai-team/configuration-versions.json", table: "agent_config_versions", order: "created_at" },
   { file: "ai-team/approvals.json", table: "approval_requests", omit: ["idempotency_key"], order: "created_at" },
   { file: "ai-team/approval-events.json", table: "approval_events", order: "created_at" },
-  { file: "support/tickets.json", table: "support_tickets", order: "created_at" },
-  { file: "support/messages.json", table: "support_messages", where: "t.internal = false", order: "created_at" },
+  { file: "support/tickets.json", table: "support_tickets", omit: ["idempotency_key", "agency_last_read_at", "priority", "assigned_to"], order: "created_at" },
+  { file: "support/messages.json", table: "support_messages", where: "t.internal = false", omit: ["client_message_id"], order: "created_at" },
+  // Only the timeline entries written for the client; the team's own history (priority, escalation, assignment names) stays internal.
+  { file: "support/timeline.json", table: "support_ticket_events", where: "t.visibility = 'client'", omit: ["seq", "actor_user_id"], order: "created_at" },
   { file: "projects/requests.json", table: "client_project_requests" },
   { file: "projects/quotes.json", table: "project_quotes", omit: ["content_hash"] },
   { file: "projects/projects.json", table: "client_projects" },

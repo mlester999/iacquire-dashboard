@@ -46,6 +46,7 @@ function shell(permissions: Permission[], over: Partial<ShellData> = {}): ShellD
     pendingApprovals: 0,
     setup: { visible: false, percent: null, needsAttention: 0 },
     projectsAttention: 0,
+    requestsAttention: 0,
     inboxAttention: 0,
     crmMode: null,
     ...over,

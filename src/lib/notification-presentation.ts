@@ -111,6 +111,7 @@ const PREFIX_CATEGORY: Array<[string, NotificationCategoryKey]> = [
   ["domain_", "website"],
   ["crm_", "crm"],
   ["booking_", "calendar"],
+  ["support_", "support"],
 ];
 
 export function notificationCategory(kind: string | null | undefined): NotificationCategoryMeta {
