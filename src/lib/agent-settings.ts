@@ -48,6 +48,10 @@ export const agentSettingsSchema = z.object({
   neverPromise: text(1000),
   escalateWhen: text(600),
   escalationContact: text(200),
+  /**
+   * Stored for compatibility only. The runtime approval gate currently reads the employee mode and
+   * platform/tool policy, not this preference. Configuration saves pin it to the applied value.
+   */
   approvalPreference: z.enum(["always", "high_impact"]).default("always"),
   roleAnswers: z.record(z.string().regex(/^[a-z_]{2,40}$/), z.string().trim().max(1000)).default({}),
   customInstruction: text(500),

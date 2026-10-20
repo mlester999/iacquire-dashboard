@@ -226,11 +226,16 @@ export async function updateProvisioningJobAction(orgId: string, jobId: string, 
   }
 }
 
-export async function decideHeldVersionAction(orgId: string, versionId: string, approve: boolean) {
+export async function decideHeldVersionAction(orgId: string, versionId: string, approve: boolean, note = "") {
   try {
     const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
-    await withSystem((db) => decideHeldVersion(db, { orgId, versionId, approve, agencyUserId: user.id }));
+    const parsedNote = z.string().max(300).safeParse(note ?? "");
+    if (!parsedNote.success) throw new AppError("invalid_input", "Keep the decision note under 300 characters.");
+    await withSystem((db) => decideHeldVersion(db, { orgId, versionId, approve, agencyUserId: user.id, decisionNote: parsedNote.data }));
     revalidatePath(`/admin/clients/${orgId}`);
+    revalidatePath("/admin/workforce/reviews");
+    revalidatePath("/admin/workforce");
+    revalidatePath("/workforce");
     return { ok: true as const };
   } catch (err) {
     return actionError(err);

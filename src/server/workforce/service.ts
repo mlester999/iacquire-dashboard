@@ -8,6 +8,14 @@ import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gatewa
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
+import {
+  classifyConfigChange,
+  decisionFromRiskFlags,
+  type ConfigActorKind,
+  type ConfigDecision,
+  type ConfigOrgKind,
+  type ConfigSource,
+} from "@/lib/config-review";
 import { getCapabilities, getToolsets, getProfileModels, HermesError, restrictedToolsIn, type HermesConnection } from "@/server/integrations/hermes/client";
 import {
   inventoryColumns,
@@ -15,8 +23,9 @@ import {
   verifyToolInventory,
   type ToolInventorySnapshot,
 } from "@/server/integrations/hermes/inventory";
-import { notifyOrgRoles } from "@/server/notifications";
+import { notifyAgency, notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
+import { buildHeldConfigReview, type HeldConfigRow } from "@/server/workforce/reviews";
 
 export interface AgentInstanceRow {
   id: string;
@@ -164,8 +173,67 @@ export async function currentSettings(db: Queryable, agentId: string, orgId: str
 }
 
 /**
- * Creates a new configuration version. Versions whose client text looks like an attempt to
- * override policy are held for agency review instead of being applied.
+ * Settings for the Configure screen. A saved version that has not been applied yet is the
+ * version the user is editing; falling back to defaults here would silently discard their draft.
+ * The approval preference is always pinned to the currently applied value (or the conservative
+ * default) because it is not wired into runtime approval decisions yet.
+ */
+export async function editableSettings(
+  db: Queryable,
+  agentId: string,
+  orgId: string,
+): Promise<{ role: AgentRoleKey; settings: AgentSettings; tools: string[]; pendingVersion: number | null; origin: "pending" | "active" | "default" }> {
+  const { rows } = await db.query<{
+    role_key: AgentRoleKey;
+    default_tools: string[];
+    ai_preferences: unknown;
+    active_settings: AgentSettings | null;
+    pending_settings: AgentSettings | null;
+    pending_version: number | null;
+  }>(
+    `select a.role_key, r.default_tools, p.ai_preferences,
+            active.settings as active_settings,
+            pending.settings as pending_settings, pending.version as pending_version
+     from agent_instances a
+     join agent_roles r on r.key = a.role_key
+     left join company_profiles p on p.org_id = a.org_id
+     left join agent_config_versions active on active.id = a.active_config_version_id
+     left join lateral (
+       select v.settings, v.version from agent_config_versions v
+       where v.agent_instance_id = a.id and v.status = 'pending_agency_review'
+       order by v.version desc limit 1
+     ) pending on true
+     where a.id = $1 and a.org_id = $2`,
+    [agentId, orgId],
+  );
+  const row = rows[0];
+  if (!row) throw new AppError("not_found", "AI employee not found.");
+  const prefs = aiPreferencesSchema.safeParse(row.ai_preferences ?? {});
+  const active = row.active_settings ? agentSettingsSchema.safeParse(row.active_settings) : null;
+  const pending = row.pending_settings ? agentSettingsSchema.safeParse(row.pending_settings) : null;
+  const fallback = defaultSettings(row.role_key, prefs.success ? prefs.data : undefined);
+  const base = pending?.success ? pending.data : active?.success ? active.data : fallback;
+  const fixedApproval = active?.success ? active.data.approvalPreference : fallback.approvalPreference;
+  const settings = agentSettingsSchema.parse({ ...base, approvalPreference: fixedApproval });
+  return {
+    role: row.role_key,
+    settings,
+    tools: row.default_tools,
+    pendingVersion: pending?.success ? Number(row.pending_version) : null,
+    origin: pending?.success ? "pending" : active?.success ? "active" : "default",
+  };
+}
+
+/**
+ * Creates a new configuration version.
+ *
+ * The decision is risk-based:
+ * - AUTO_APPLY: routine changes apply after server validation.
+ * - REVIEW_REQUIRED: sensitive changes are stored as `pending_agency_review` and need a person.
+ * - BLOCKED: privileged, cross-tenant or secret-seeking instructions never create a version.
+ *
+ * The same validator runs for clients and agency Super Admins. Actor kind only changes routing
+ * and attribution, never whether a blocked change is allowed.
  */
 export async function createConfigVersion(
   db: Queryable,
@@ -173,36 +241,89 @@ export async function createConfigVersion(
     orgId: string;
     agentId: string;
     settings: AgentSettings;
-    source: "onboarding" | "client_edit" | "change_request" | "rollback" | "agency";
+    source: ConfigSource;
+    actorKind?: ConfigActorKind;
     changeRequest?: string;
     userId: string | null;
     apply: boolean;
   },
 ) {
-  const { rows: agentRows } = await db.query<{ role_key: string; default_tools: string[] }>(
-    "select a.role_key, r.default_tools from agent_instances a join agent_roles r on r.key = a.role_key where a.id = $1 and a.org_id = $2",
+  const { rows: agentRows } = await db.query<{
+    role_key: string;
+    default_tools: string[];
+    org_kind: ConfigOrgKind;
+    active_settings: AgentSettings | null;
+  }>(
+    `select a.role_key, r.default_tools, o.kind as org_kind, active.settings as active_settings
+     from agent_instances a
+     join agent_roles r on r.key = a.role_key
+     join organizations o on o.id = a.org_id
+     left join agent_config_versions active on active.id = a.active_config_version_id
+     where a.id = $1 and a.org_id = $2`,
     [input.agentId, input.orgId],
   );
   const agent = agentRows[0];
   if (!agent || !isAgentRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found.");
+  const orgKind: ConfigOrgKind = agent.org_kind === "agency" ? "agency" : "client";
+  const previousParsed = agent.active_settings ? agentSettingsSchema.safeParse(agent.active_settings) : null;
+  const previousSettings = previousParsed?.success ? previousParsed.data : null;
+  const actorKind: ConfigActorKind = input.actorKind ?? (input.source === "agency" ? "agency" : "user");
+
+  const parsedInput = agentSettingsSchema.parse(input.settings);
+  // This preference is presented in the UI but is not consulted by the runtime approval gate.
+  // Pin it to the applied value (or the conservative default) so it cannot imply protection
+  // the platform does not currently enforce.
+  const fixedApproval = previousSettings?.approvalPreference ?? "always";
+  if (parsedInput.approvalPreference !== fixedApproval) {
+    throw new AppError("invalid_input", "The approval preference is fixed by iAcquire's platform approval policy and can't be changed here.");
+  }
   // Clients may only disable tools from their role's default set.
   const settings = agentSettingsSchema.parse({
-    ...input.settings,
-    disabledTools: input.settings.disabledTools.filter((t) => agent.default_tools.includes(t)),
+    ...parsedInput,
+    disabledTools: parsedInput.disabledTools.filter((tool) => agent.default_tools.includes(tool)),
+    approvalPreference: fixedApproval,
+  });
+  const company = await loadCompanyContext(db, input.orgId);
+  const classification = classifyConfigChange({
+    role: agent.role_key,
+    previous: previousSettings,
+    next: settings,
+    source: input.source,
+    actorKind,
+    orgKind,
+    company,
   });
   const { rows: vrows } = await db.query<{ next: number }>(
     "select coalesce(max(version), 0) + 1 as next from agent_config_versions where agent_instance_id = $1",
     [input.agentId],
   );
   const version = Number(vrows[0].next);
+  // The version number is part of the compiled prompt, so compile after allocating it.
   const compiled = compileAgentConfig({
     role: agent.role_key,
     settings,
-    company: await loadCompanyContext(db, input.orgId),
+    company,
     version,
     allowedTools: agent.default_tools,
   });
-  const held = compiled.riskFlags.length > 0;
+  const compiledDecision = decisionFromRiskFlags(compiled.riskFlags);
+  const decision: ConfigDecision =
+    classification.decision === "blocked" || compiledDecision === "blocked"
+      ? "blocked"
+      : classification.decision === "review_required" || compiledDecision === "review_required"
+        ? "review_required"
+        : "auto_apply";
+  if (decision === "blocked") {
+    const detail = classification.reasons.find((reason) => reason.severity === "block")?.detail
+      ?? "This change contains content that platform security does not allow.";
+    throw new AppError("forbidden", `This change is blocked: ${detail}`);
+  }
+
+  const riskFlags = [...new Set([...classification.riskFlags, ...compiled.riskFlags])].sort();
+  // An agency-authored draft is already a review artefact for the setup process; keep it a draft
+  // instead of putting it into the pending queue as a second review step.
+  const agencyDraft = input.source === "agency" && !input.apply;
+  const held = decision === "review_required" && !agencyDraft;
   const status = held ? "pending_agency_review" : input.apply ? "applied" : "draft";
   const { rows } = await db.query<{ id: string }>(
     `insert into agent_config_versions (org_id, agent_instance_id, version, settings, summary, compiled_instructions,
@@ -212,35 +333,86 @@ export async function createConfigVersion(
      returning id`,
     [
       input.orgId, input.agentId, version, JSON.stringify(compiled.settings), compiled.summary, compiled.instructions,
-      compiled.policyVersion, compiled.riskFlags, input.source, input.changeRequest ?? null, status, input.userId,
+      compiled.policyVersion, riskFlags, input.source, input.changeRequest ?? null, status, input.userId,
     ],
   );
   const versionId = rows[0].id;
   if (status === "applied") await activateVersion(db, input.orgId, input.agentId, versionId, compiled.settings.displayName);
+
+  const actor = input.userId
+    ? (await db.query<{ role: string | null; platform_role: string | null }>(
+        `select m.role, u.platform_role from users u
+         left join organization_memberships m on m.user_id = u.id and m.org_id = $2
+         where u.id = $1`,
+        [input.userId, input.orgId],
+      )).rows[0]
+    : undefined;
   await recordAudit(
     {
       orgId: input.orgId,
       actorUserId: input.userId,
-      actorKind: input.source === "agency" ? "agency" : "user",
+      actorKind,
       agentInstanceId: input.agentId,
       action: "agent.config_version_created",
       targetType: "agent_config_version",
       targetId: versionId,
       result: "success",
-      metadata: { version, status, source: input.source, riskFlags: compiled.riskFlags },
+      metadata: {
+        version,
+        status,
+        source: input.source,
+        riskFlags,
+        reviewDecision: decision,
+        riskFields: [...new Set(classification.reasons.map((reason) => reason.field))].slice(0, 20),
+        actorKind,
+        actorRole: actor?.role ?? null,
+        actorPlatformRole: actor?.platform_role ?? null,
+        orgKind,
+      },
     },
     db,
   );
   if (held) {
-    await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
-      kind: "agent_status",
-      severity: "warning",
-      title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
-      body: "Part of the new instructions looked like it could change safety rules, so our team will review it before it's applied.",
-      link: `/workforce/${AGENT_BY_KEY[agent.role_key].slug}`,
-    });
+    const slug = AGENT_BY_KEY[agent.role_key].slug;
+    const title = `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for review`;
+    const body = classification.reasons[0]?.label
+      ? `The change was held for review: ${classification.reasons[0].label.toLowerCase()}.`
+      : "Part of the new instructions needs a person's review before it can be applied.";
+    if (orgKind === "client") {
+      await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
+        kind: "agent_status",
+        severity: "warning",
+        title,
+        body: `${body} iAcquire will review it before it's applied.`,
+        link: `/workforce/${slug}`,
+      });
+      await notifyAgency(db, input.orgId, {
+        kind: "agent_status",
+        severity: "warning",
+        title,
+        body,
+        link: `/admin/clients/${input.orgId}?tab=reviews`,
+      });
+    } else {
+      // Internal agency edits belong in the internal review queue, never the client queue.
+      await notifyAgency(db, input.orgId, {
+        kind: "agent_status",
+        severity: "warning",
+        title,
+        body,
+        link: "/admin/workforce/reviews",
+      });
+    }
   }
-  return { versionId, version, status, summary: compiled.summary, riskFlags: compiled.riskFlags };
+  return {
+    versionId,
+    version,
+    status,
+    summary: compiled.summary,
+    riskFlags,
+    decision,
+    reasons: classification.reasons.map(({ match: _match, ...reason }) => reason),
+  };
 }
 
 async function activateVersion(db: Queryable, orgId: string, agentId: string, versionId: string, displayName: string) {
@@ -274,32 +446,103 @@ export async function applyDraftVersion(db: Queryable, orgId: string, versionId:
   await activateVersion(db, orgId, v.agent_instance_id, versionId, agentSettingsSchema.parse(v.settings).displayName);
 }
 
-/** Agency review of a held version. */
-export async function decideHeldVersion(db: Queryable, input: { orgId: string; versionId: string; approve: boolean; agencyUserId: string }) {
-  const { rows } = await db.query<{ id: string; org_id: string; agent_instance_id: string; settings: AgentSettings }>(
+/** Agency review of a held version. Blocked content can never be approved. */
+export async function decideHeldVersion(
+  db: Queryable,
+  input: { orgId: string; versionId: string; approve: boolean; agencyUserId: string; decisionNote?: string },
+) {
+  const { rows } = await db.query<HeldConfigRow>(
+    `select v.id, v.org_id, o.name as org_name, o.kind as org_kind, v.agent_instance_id,
+            a.role_key, a.display_name as agent_name, v.version, v.settings, v.summary, v.source, v.risk_flags,
+            v.change_request, v.created_at, v.created_by, u.full_name as created_by_name,
+            u.platform_role as created_by_platform_role, membership.role as created_by_org_role,
+            previous.settings as previous_settings
+     from agent_config_versions v
+     join agent_instances a on a.id = v.agent_instance_id
+     join organizations o on o.id = v.org_id
+     left join users u on u.id = v.created_by
+     left join organization_memberships membership on membership.user_id = v.created_by and membership.org_id = v.org_id
+     left join lateral (
+       select p.settings from agent_config_versions p
+       where p.agent_instance_id = v.agent_instance_id and p.version < v.version and p.status = 'applied'
+       order by p.version desc limit 1
+     ) previous on true
+     where v.id = $1 and v.org_id = $2 and v.status = 'pending_agency_review'`,
+    [input.versionId, input.orgId],
+  );
+  const version = rows[0];
+  if (!version) throw new AppError("conflict", "This version has already been reviewed.");
+  const review = buildHeldConfigReview(version);
+  if (review.decision === "blocked") {
+    throw new AppError("forbidden", "This version contains blocked content and can't be approved. Reject it and ask the submitter to revise it.");
+  }
+  if (input.approve) {
+    const { rows: current } = await db.query<{ version: number | null }>(
+      `select active.version from agent_instances a
+       left join agent_config_versions active on active.id = a.active_config_version_id
+       where a.id = $1 and a.org_id = $2`,
+      [version.agent_instance_id, input.orgId],
+    );
+    if (current[0]?.version != null && Number(current[0].version) > Number(version.version)) {
+      throw new AppError("conflict", "A newer configuration has already been applied. Reject this stale version and ask for a fresh change instead of overwriting the newer settings.");
+    }
+  }
+  const note = String(input.decisionNote ?? "").trim().slice(0, 300) || (input.approve ? "Approved after review." : "Rejected after review.");
+  const { rows: updated } = await db.query<{ id: string; agent_instance_id: string; settings: AgentSettings }>(
     `update agent_config_versions set status = $2, decided_by = $3, decided_at = now()
-     where id = $1 and org_id = $4 and status = 'pending_agency_review' returning id, org_id, agent_instance_id, settings`,
+     where id = $1 and org_id = $4 and status = 'pending_agency_review'
+     returning id, agent_instance_id, settings`,
     [input.versionId, input.approve ? "applied" : "rejected", input.agencyUserId, input.orgId],
   );
-  const v = rows[0];
-  if (!v) throw new AppError("conflict", "This version has already been reviewed.");
-  if (input.approve) await activateVersion(db, v.org_id, v.agent_instance_id, v.id, agentSettingsSchema.parse(v.settings).displayName);
+  const decided = updated[0];
+  if (!decided) throw new AppError("conflict", "This version has already been reviewed.");
+  if (input.approve) await activateVersion(db, input.orgId, decided.agent_instance_id, decided.id, agentSettingsSchema.parse(decided.settings).displayName);
   await recordAudit(
     {
-      orgId: v.org_id,
+      orgId: input.orgId,
       actorUserId: input.agencyUserId,
       actorKind: "agency",
-      agentInstanceId: v.agent_instance_id,
+      agentInstanceId: decided.agent_instance_id,
       action: input.approve ? "agent.config_review_approved" : "agent.config_review_rejected",
       targetType: "agent_config_version",
-      targetId: v.id,
+      targetId: decided.id,
       result: "success",
+      metadata: {
+        version: version.version,
+        source: version.source,
+        decision: input.approve ? "approved" : "rejected",
+        note,
+        riskFlags: version.risk_flags,
+        severity: review.severity,
+      },
     },
     db,
   );
+
+  const slug = isAgentRoleKey(version.role_key) ? AGENT_BY_KEY[version.role_key].slug : "operations-manager";
+  if (version.org_kind === "client") {
+    await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
+      kind: "agent_status",
+      severity: input.approve ? "success" : "warning",
+      title: input.approve ? "Configuration update approved and applied" : "Configuration update was not applied",
+      body: note,
+      link: `/workforce/${slug}`,
+    });
+  } else if (version.created_by && version.created_by !== input.agencyUserId) {
+    await notifyUser(db, version.created_by, input.orgId, {
+      kind: "agent_status",
+      severity: input.approve ? "success" : "warning",
+      title: input.approve ? "Your configuration update was approved" : "Your configuration update needs changes",
+      body: note,
+      link: `/workforce/${slug}?tab=history`,
+    });
+  }
 }
 
-export async function rollbackToVersion(db: Queryable, input: { orgId: string; agentId: string; versionId: string; userId: string }) {
+export async function rollbackToVersion(
+  db: Queryable,
+  input: { orgId: string; agentId: string; versionId: string; userId: string; actorKind?: ConfigActorKind },
+) {
   const { rows } = await db.query<{ settings: AgentSettings; version: number; status: string }>(
     "select settings, version, status from agent_config_versions where id = $1 and agent_instance_id = $2 and org_id = $3",
     [input.versionId, input.agentId, input.orgId],
@@ -309,11 +552,15 @@ export async function rollbackToVersion(db: Queryable, input: { orgId: string; a
   if (target.status === "rejected" || target.status === "pending_agency_review") {
     throw new AppError("invalid_input", "Only previously applied versions can be restored.");
   }
+  // Historical versions may carry the old, unenforced approval preference. Restore everything else,
+  // but keep the currently pinned value so rollback cannot reintroduce a stale policy toggle.
+  const current = await currentSettings(db, input.agentId, input.orgId);
   return createConfigVersion(db, {
     orgId: input.orgId,
     agentId: input.agentId,
-    settings: agentSettingsSchema.parse(target.settings),
+    settings: agentSettingsSchema.parse({ ...target.settings, approvalPreference: current.settings.approvalPreference }),
     source: "rollback",
+    actorKind: input.actorKind,
     changeRequest: `Restore version ${target.version}`,
     userId: input.userId,
     apply: true,

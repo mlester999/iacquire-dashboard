@@ -9,6 +9,7 @@ import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { prepareConfigPreview } from "@/server/workforce/preview";
 import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
+import { configAttribution } from "@/lib/config-review";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 
 async function resolve(role: string) {
@@ -30,8 +31,17 @@ export async function saveAgentSettingsAction(role: string, input: unknown) {
     const { ctx, agent } = await resolve(role);
     const parsed = agentSettingsSchema.safeParse(input);
     if (!parsed.success) throw new AppError("invalid_input", parsed.error.issues[0]?.message ?? "Check the form.");
+    const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
     const res = await withSystem((db) =>
-      createConfigVersion(db, { orgId: ctx.org.orgId, agentId: agent.id, settings: parsed.data, source: "client_edit", userId: ctx.user.id, apply: true }),
+      createConfigVersion(db, {
+        orgId: ctx.org.orgId,
+        agentId: agent.id,
+        settings: parsed.data,
+        source: attribution.source,
+        actorKind: attribution.actorKind,
+        userId: ctx.user.id,
+        apply: true,
+      }),
     );
     revalidateAgent(role);
     return { ok: true as const, data: res };
@@ -63,11 +73,13 @@ export async function applyChangeAction(role: string, request: string, changes: 
       if (proposal.status !== "proposed") throw new AppError("invalid_input", proposal.refusal ?? "Nothing to change.");
       const allowed = proposal.changes;
       for (const key of Object.keys(changes)) if (!(key in allowed)) throw new AppError("invalid_input", "The change no longer matches the request. Please try again.");
+      const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
       return createConfigVersion(db, {
         orgId: ctx.org.orgId,
         agentId: agent.id,
         settings: agentSettingsSchema.parse({ ...settings, ...allowed }),
         source: "change_request",
+        actorKind: attribution.actorKind,
         changeRequest: request.slice(0, 1000),
         userId: ctx.user.id,
         apply: true,
@@ -96,7 +108,8 @@ export async function previewConfigAction(role: string, draft: unknown) {
 export async function rollbackAction(role: string, versionId: string) {
   try {
     const { ctx, agent } = await resolve(role);
-    const res = await withSystem((db) => rollbackToVersion(db, { orgId: ctx.org.orgId, agentId: agent.id, versionId, userId: ctx.user.id }));
+    const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
+    const res = await withSystem((db) => rollbackToVersion(db, { orgId: ctx.org.orgId, agentId: agent.id, versionId, userId: ctx.user.id, actorKind: attribution.actorKind }));
     revalidateAgent(role);
     return { ok: true as const, data: res };
   } catch (err) {

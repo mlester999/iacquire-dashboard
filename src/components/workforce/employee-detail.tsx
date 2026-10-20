@@ -25,6 +25,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field
 import { Dialog, Segmented, Switch, Tabs, Tooltip } from "@/components/ui/overlays";
 import { applyChangeAction, proposeChangeAction, rollbackAction, saveAgentSettingsAction } from "@/app/actions/workforce";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type ReplyLength, type Tone } from "@/lib/agent-settings";
+import { configSourceLabel, describeRiskCodes } from "@/lib/config-review";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
@@ -72,6 +73,9 @@ interface Props {
   autonomousBlockedReason: string | null;
   agencyPaused: boolean;
   settings: AgentSettings | null;
+  /** Version number when the Configure screen is editing a saved but unapplied version. */
+  draftVersion: number | null;
+  isInternalWorkspace: boolean;
   versions: Version[];
   canConfigure: boolean;
   canChat: boolean;
@@ -139,7 +143,7 @@ export function EmployeeDetail(props: Props) {
           {tab === "knowledge" && props.knowledgeView && (
             <EmployeeKnowledge agentId={agent.id} agentName={agent.displayName} data={props.knowledgeView} canEdit={props.canEditKnowledge} accept={props.uploadAccept} timeZone={props.timeZone} />
           )}
-          {tab === "history" && <HistoryTab {...props} />}
+          {tab === "history" && <HistoryTab {...props} onEdit={() => setTab("configure")} />}
           {tab === "activity" && <ActivityTab {...props} />}
         </motion.div>
       </AnimatePresence>
@@ -247,7 +251,7 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
   );
 }
 
-function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: AgentSettings; onSaved: () => void }) {
+function ConfigureTab({ meta, agent, settings, draftVersion, onSaved }: Props & { settings: AgentSettings; onSaved: () => void }) {
   const router = useRouter();
   const [s, setS] = React.useState<AgentSettings>(settings);
   const [saving, setSaving] = React.useState(false);
@@ -260,14 +264,27 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
     const res = await saveAgentSettingsAction(meta.key, s);
     setSaving(false);
     if (!res.ok) return toast.error(res.error);
-    if (res.data.status === "pending_agency_review") toast.warning("Saved for review", { description: "Part of the instructions looked like it could change safety rules, so iAcquire will review it first." });
-    else toast.success(`Saved as configuration v${res.data.version}`, { description: "New conversations use it right away." });
+    if (res.data.status === "pending_agency_review") {
+      const reason = res.data.reasons?.[0];
+      toast.warning("Saved for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
+    } else {
+      toast.success(`Saved as configuration v${res.data.version}`, { description: "New conversations use it right away." });
+    }
     router.refresh();
     onSaved();
   };
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
+      {draftVersion !== null && (
+        <div className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12.5px] text-warning-ink lg:col-span-3">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>
+            You are editing saved configuration v{draftVersion}, which has not been applied yet. Saving creates a new version;
+            the current live configuration stays in place until a reviewer approves or you make a routine change.
+          </p>
+        </div>
+      )}
       <div className="space-y-6 lg:col-span-2">
         <Card>
           <CardHeader>
@@ -372,12 +389,21 @@ function ConfigureTab({ meta, agent, settings, onSaved }: Props & { settings: Ag
                 <Input id="cfg-esc-contact" maxLength={200} value={s.escalationContact} onChange={(e) => set("escalationContact", e.target.value)} placeholder="Name and email" />
               </Field>
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-line p-3.5">
-              <div>
-                <p className="text-[13.5px] font-medium">Ask before any business action</p>
-                <p className="text-[12.5px] text-muted">When off, only customer-facing and high-impact actions need approval. Customer-facing actions always do.</p>
+            <div className="rounded-xl border border-line p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[13.5px] font-medium">Ask before any business action</p>
+                  <p className="text-[12.5px] text-muted">
+                    Current setting: {s.approvalPreference === "always" ? "every business action" : "high-impact actions only"}.
+                  </p>
+                </div>
+                <Badge tone="neutral">Fixed by iAcquire policy</Badge>
               </div>
-              <Switch checked={s.approvalPreference === "always"} onCheckedChange={(v) => set("approvalPreference", v ? "always" : "high_impact")} aria-label="Ask before any business action" />
+              <p className="mt-2 text-[11.5px] leading-relaxed text-faint">
+                This preference is recorded for compatibility but is not currently read by the runtime approval gate. It can&apos;t
+                be relaxed here. The employee&apos;s operating mode and the platform&apos;s tool policy remain the enforced approval
+                boundary.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -464,8 +490,12 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
     const res = await applyChangeAction(meta.key, text, proposal.changes);
     setPending(false);
     if (!res.ok) return toast.error(res.error);
-    if (res.data.status === "pending_agency_review") toast.warning("Sent for iAcquire review");
-    else toast.success(`Applied as configuration v${res.data.version}`);
+    if (res.data.status === "pending_agency_review") {
+      const reason = res.data.reasons?.[0];
+      toast.warning("Sent for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
+    } else {
+      toast.success(`Applied as configuration v${res.data.version}`);
+    }
     setText("");
     setProposal(null);
     router.refresh();
@@ -534,7 +564,7 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
   );
 }
 
-function HistoryTab({ meta, versions, timeZone }: Props) {
+function HistoryTab({ meta, versions, timeZone, isInternalWorkspace, onEdit }: Props & { onEdit: () => void }) {
   const router = useRouter();
   const [confirm, setConfirm] = React.useState<Version | null>(null);
   const [pending, setPending] = React.useState(false);
@@ -557,14 +587,24 @@ function HistoryTab({ meta, versions, timeZone }: Props) {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[14px] font-semibold">v{v.version}</span>
                 <Badge tone={v.status === "applied" ? "success" : v.status === "pending_agency_review" ? "warning" : v.status === "rejected" ? "danger" : "neutral"}>
-                  {v.status === "applied" ? "Active" : v.status === "pending_agency_review" ? "Awaiting iAcquire review" : sentenceCase(v.status)}
+                  {v.status === "applied" ? "Active" : v.status === "pending_agency_review" ? (isInternalWorkspace ? "Awaiting internal review" : "Awaiting iAcquire review") : sentenceCase(v.status)}
                 </Badge>
                 <span className="text-[12px] text-muted">
-                  {sentenceCase(v.source)} · {v.created_by_name ?? "System"} · {formatDateTime(v.created_at, timeZone)}
+                  {configSourceLabel(v.source, isInternalWorkspace ? "agency" : "client")} · {v.created_by_name ?? "System"} · {formatDateTime(v.created_at, timeZone)}
                 </span>
               </div>
               {v.change_request && <p className="mt-1 text-[13px] italic text-ink-2">“{v.change_request}”</p>}
               <p className="mt-1 text-[13px] leading-relaxed text-muted">{v.summary}</p>
+              {v.risk_flags.length > 0 && (
+                <p className="mt-1 text-[12px] text-warning-ink">
+                  {describeRiskCodes(v.risk_flags).map((reason) => reason.label).join(" · ")}
+                </p>
+              )}
+              {v.status === "pending_agency_review" && (
+                <Button size="sm" variant="ghost" className="mt-1 -ml-2" onClick={onEdit}>
+                  <History className="size-3.5" /> Continue editing v{v.version}
+                </Button>
+              )}
               {v.status === "superseded" && (
                 <Tooltip content="Creates a new version with these settings">
                   <Button size="sm" variant="ghost" className="mt-1 -ml-2" onClick={() => setConfirm(v)}>

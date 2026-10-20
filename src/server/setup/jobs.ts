@@ -179,7 +179,7 @@ async function prepare(job: PreparationJob, admin: SessionUser, leaseToken: stri
         const existing = await db.query<{ id: string }>("select id from agent_config_versions where agent_instance_id = $1 and org_id = $2 and change_request = $3", [agent.id, job.org_id, marker]);
         if (existing.rows[0]) { versionIds.push(existing.rows[0].id); continue; }
         const current = await currentSettings(db, agent.id, job.org_id);
-        const version = await createConfigVersion(db, { orgId: job.org_id, agentId: agent.id, settings: current.settings, source: "agency", changeRequest: marker, userId: actorId, apply: false });
+        const version = await createConfigVersion(db, { orgId: job.org_id, agentId: agent.id, settings: current.settings, source: "agency", actorKind: "agency", changeRequest: marker, userId: actorId, apply: false });
         versionIds.push(version.versionId);
       }
       return { status: "succeeded", resourceIds: { configurationVersionIds: versionIds }, configuration: { purpose: "Agency review drafts; no remote profile created or activated", count: versionIds.length } };

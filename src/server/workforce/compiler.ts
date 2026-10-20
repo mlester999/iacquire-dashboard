@@ -11,21 +11,13 @@ import {
   type Tone,
 } from "@/lib/agent-settings";
 import { immutablePolicy, POLICY_VERSION, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
+import { detectRiskFlags } from "@/lib/instruction-risk";
 
 // ---------------------------------------------------------------------------
 // Sanitisation and risk detection for client-provided text
 // ---------------------------------------------------------------------------
 
-const RISK_PATTERNS: Array<[string, RegExp]> = [
-  ["override_attempt", /\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(instructions?|rules?|polic(y|ies)|guardrails?|prompt)\b/i],
-  ["prompt_probe", /\b(system|developer|hidden)\s+(prompt|message|instructions?)\b/i],
-  ["role_hijack", /\b(you are now|act as (an? )?(admin|administrator|developer|root|superuser)|pretend (to be|you are))\b/i],
-  ["permission_grant", /\b(grant|give|enable|unlock|allow)\b[^.\n]{0,30}\b(yourself|full access|admin|permissions?|tools?|access to)\b/i],
-  ["secret_request", /\b(api[\s_-]?keys?|passwords?|access tokens?|credentials?|secret keys?)\b/i],
-  ["cross_tenant", /\b(other|another|all)\s+(clients?|tenants?|customers'? (data|accounts?)|companies'? data)\b/i],
-  ["approval_bypass", /\b(without (asking|approval|permission)|skip (the )?approvals?|disable (safety|approvals?|guardrails?)|send (it )?automatically)\b/i],
-  ["markup_injection", /<\/?\s*(system|instructions?|assistant|im_start|im_end)\b|<\|/i],
-];
+export { detectRiskFlags } from "@/lib/instruction-risk";
 
 export function sanitizeClientText(value: string | undefined | null, max = 2000): string {
   if (!value) return "";
@@ -36,15 +28,6 @@ export function sanitizeClientText(value: string | undefined | null, max = 2000)
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, max);
-}
-
-export function detectRiskFlags(...values: Array<string | undefined | null>): string[] {
-  const flags = new Set<string>();
-  for (const value of values) {
-    if (!value) continue;
-    for (const [flag, re] of RISK_PATTERNS) if (re.test(value)) flags.add(flag);
-  }
-  return [...flags].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -195,10 +178,17 @@ export function compileAgentConfig(input: {
     settings.companyRules,
     settings.neverPromise,
     settings.escalateWhen,
+    settings.escalationContact,
     settings.responsibilities,
     settings.goals,
     settings.targetCustomers,
     ...Object.values(settings.roleAnswers),
+    companyName,
+    c.description,
+    c.services,
+    c.idealCustomers,
+    c.operatingArea,
+    (c.goals ?? []).join("\n"),
   );
 
   const tools = input.allowedTools.filter((t) => !settings.disabledTools.includes(t));

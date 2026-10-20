@@ -1,5 +1,6 @@
 import type { AgentSettingsChange } from "@/lib/agent-settings";
 import type { AgentRoleKey } from "@/lib/agents";
+import type { ConfigDecision } from "@/lib/config-review";
 
 export interface PreviewMessage {
   role: "user" | "assistant";
@@ -11,6 +12,7 @@ export interface ConfigPreviewSummary {
   version: number;
   summary: string;
   riskFlags: string[];
+  decision: ConfigDecision;
   changed: AgentSettingsChange[];
   warnings: string[];
   knowledge: {
