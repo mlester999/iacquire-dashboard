@@ -1,6 +1,6 @@
 # Version History and Notification Centre
 
-Status: merged into `master` and deployed as part of `5c93fc1`; the access-revocation fix and migration `0067` are integrated locally on `release/ai-workforce-notif-security` and are **not** applied to production.
+Status: merged into `master` and deployed through `47098f1`; the access-revocation fix and migration `0067` are integrated locally on `release/ai-workforce-notif-security` and are **not** applied to production.
 
 ## 1. Root cause: why Super Admin had no notifications
 
