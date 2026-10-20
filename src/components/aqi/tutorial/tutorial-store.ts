@@ -389,6 +389,11 @@ function optimisticStep(action: TutorialAction): number | null {
 type TutorialAction = "next" | "previous" | "pause" | "resume" | "exit" | "complete" | "skip" | "target_missing" | "route_verified" | "restart" | "viewed";
 
 let progressSequence = 0;
+/**
+ * Bumped whenever a progress save returns (or fails). A reconcile that was requested before that
+ * moment describes the server as it was, not as it is, and must not be applied.
+ */
+let progressVersion = 0;
 let lastFailedAction: { action: TutorialAction; extra: { step?: number; pathname?: string | null } } | null = null;
 
 let inflight: Promise<unknown> | null = null;
@@ -440,6 +445,9 @@ async function runProgressAction(action: TutorialAction, extra: { step?: number;
   const silent = action === "route_verified" || action === "complete";
   if (snapshot.busy && !silent) return null;
   const sequence = ++progressSequence;
+  // The step this press leaves. Captured before the optimistic update below changes stepIndex: the
+  // server computes "previous" from it, so reading it later would send the new step and skip one.
+  const requestStep = extra.step ?? snapshot.stepIndex;
   lastFailedAction = { action, extra };
   // Moving between steps is shown at once; the server remains the record. If it cannot save, the
   // view returns to the last confirmed step with a retry, so the screen never claims saved progress.
@@ -463,11 +471,12 @@ async function runProgressAction(action: TutorialAction, extra: { step?: number;
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action,
-        step: extra.step ?? snapshot.stepIndex,
+        step: requestStep,
         pathname: extra.pathname ?? (typeof window !== "undefined" ? window.location.pathname : null),
         eventId: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null,
       }),
     });
+    progressVersion += 1;
     const status = result.status;
     const phase: GuidancePhase = status === "completed" ? "completed" : status === "exited" ? "exited" : status === "paused" ? "paused" : status === "unavailable" ? "unavailable" : "active";
     // A slower, older response must never overwrite a completion or a newer step.
@@ -487,6 +496,7 @@ async function runProgressAction(action: TutorialAction, extra: { step?: number;
     });
     return result;
   } catch (err) {
+    progressVersion += 1;
     if (sequence !== progressSequence) return null;
     emit({
       busy: false,
@@ -558,10 +568,15 @@ export function setTargetState(state: TargetState): void {
 export async function syncGuidanceProgress(pathname: string | null): Promise<void> {
   if (!snapshot.open || !snapshot.tutorial || snapshot.preview) return;
   const tutorial = snapshot.tutorial;
+  const requestedAtVersion = progressVersion;
   try {
     const data = await requestJson<{
       state: { active: Array<AqiTutorialProgressView & { tutorialStatus: string }>; completed: AqiTutorialProgressView[] };
     }>(`/api/aqi/tutorials?path=${encodeURIComponent(pathname ?? "/")}`);
+    // This is a safety net for a lost response, not a second source of truth. On a slow connection it
+    // can return after a save that finished later than it was asked for, carrying the step as it was
+    // before that save; applying it would snap the screen back to a step the person already left.
+    if (progressVersion !== requestedAtVersion || snapshot.busy || inflight) return;
     const completed = data.state?.completed?.find((entry) => entry.slug === tutorial.slug);
     if (completed) {
       emit({

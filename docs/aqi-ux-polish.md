@@ -334,3 +334,70 @@ PLAYWRIGHT_MODULE=<playwright/index.mjs> node scripts/aqi-guidance-browser-qa.mj
 ```
 
 Output goes to `.data/aqi-ux-qa/<label>/` (git-ignored): `metrics.json`, `report.md`, `screens/`.
+
+## 10. Production check (2026-10-20) and follow-up fixes
+
+The owner signed in on the Browser pane and the checks from section 8 were run against the deployed
+production build, read-only where possible. The pane stayed hidden, so timings and screenshots from it
+are unreliable; state was read from the DOM. The build tested was `master` at that time, which
+included other sessions' later commits on top of this work.
+
+**Passed (live DeepSeek, real account):**
+
+* "hey": one short sentence, no links, no Sources block.
+* "Where do I manage integrations?": two short sentences; **Integrations** is a real link to
+  `/settings/integrations`; a "Show me how" walkthrough offer; no raw `[Label]` or `(Settings → …)`.
+* "How do I add a contact?": numbered steps with bold labels, a real **Contacts** link, an honest
+  "I cannot create the contact for you", a walkthrough offer.
+* "Explain the complete CRM": a complete, structured answer (229 words, seven bold-labelled items)
+  with six real links (Contacts, Pipelines, CRM Tasks, Workflows, Calendar, CRM); no `[K1]`, no em
+  dash, no horizontal overflow.
+* The paused-walkthrough prompt hid while the chat was open and sat 16 px above the launcher without
+  overlap after a full reload (it restored "Step 2 of 4" from the server).
+* Starting a walkthrough from the chat closed the panel; the card appeared beside the highlighted
+  target (right side, 14 px gap, inside the viewport, not covering it); a cross-page click showed
+  "Let's open Settings"; Resume continued at the saved step with the highlight aligned to the real
+  **Integrations** item; Escape paused and returned focus to the AQi launcher; Exit ended with
+  "Nothing was marked complete".
+* A control that could not be found (the navigation sits in a drawer on a 686 px layout) produced the
+  friendly "I couldn't find that control" message with Retry and Exit, no technical detail.
+
+**Defects found and fixed in the follow-up commit (each has a test that fails without the fix):**
+
+1. *The saved step was overwritten by a stale reconcile.* After a cross-page navigation the screen
+   went back to step 1 while the server had saved step 2. Production's AQi calls were taking 2.6 to
+   5.4 s, so the guidance reconcile (asked for at navigation time) came back after the Next save and
+   still described the server before it. The reconcile is now ignored if a save returned, or is still
+   running, since it was requested (`tests/aqi-tutorial-store.test.ts`). The pre-existing race was
+   made visible by the high latency; Pause correctly re-synced the screen.
+2. *"I couldn't find that control" stayed after the control appeared* (and Next stayed disabled until
+   Retry). The earlier code cleared it when the target was found; the rewrite did not. Fixed and covered
+   by a jsdom component test (`tests/aqi-tutorial-stage.test.tsx`).
+3. *Back would have moved the saved progress back two steps.* Found by reading the server while
+   fixing the above, never observed live. The server computes "previous" from the step it is sent;
+   the optimistic update changed the step before the request body was built, so it sent the *new*
+   step. The step being left is now captured first (tested).
+
+**Observations, not changed:**
+
+* **Production latency dominates.** Each AQi API call measured 2.6 to 5.4 s in the browser's resource
+  timings (tutorial list 4.9 to 5.4 s, bootstrap 3.1 s, health 4.7 s, a progress save 2.6 to 5 s).
+  `docs/performance-ux-pass-20261020.md` attributes this to the database being in Tokyo while the
+  functions run in `iad1` (about 150 ms per round trip, many round trips per request). The
+  round-trip reductions in this change help, but co-locating the function region with the database is
+  the larger lever and is outside this work. Later commits by another session (`6c3ce07`, migration
+  `0064`) also cut round trips and were not re-measured here.
+* A "Sources" card appeared under the integrations answer for this account. In the code it is shown
+  to every user whenever approved knowledge was used (`docs/aqi.md`: "numbered Sources cards below the
+  answer"), which differs from the brief's wish to hide automatic Sources from ordinary clients. This
+  needs a product decision; it was not changed.
+* On a layout narrower than about 1024 px the navigation is a drawer, so walkthrough steps that point
+  at a navigation item cannot find it and fall back to the friendly message. That is the existing
+  design of those steps, not part of this change.
+
+**Not run:** a member-level account (no second account was available), reloading older saved
+conversations (this account had none; covered by the server test), creating a real contact through
+the walkthrough (skipped on purpose: it would write to the production CRM), a real phone, and a
+screen reader. Test data left in production: one temporary, unsaved chat conversation holding the
+four questions above (not saved, not deleted) and a `find-integrations` walkthrough progress row that was
+exited; the account's earlier paused "Getting started" progress was not touched.

@@ -2,11 +2,18 @@
 
 Status (2026-10-19, updated): the duplicate migration numbers are fixed and the hosted database is fully
 migrated. CRM files `0035`–`0039` became `0054`–`0058`, the Hermes inventory became `0059` and the RLS
-rewrite became `0060` (a later `0061` adds the manager Blueprint grants). The nine CRM migrations,
-`0059_hermes_tool_inventory`, `0060_rls_initplan` and `0061_agency_manager_blueprint_permissions` were
-applied after `pg_dump` backups, and the hosted ledger rows for the CRM files were renamed in the same
-pass. The hosted project now records **60 migrations** and **251 public tables** (was 213), every public
-table has row level security enabled, and **no migration is pending**.
+rewrite became `0060` (the manager Blueprint grants are `0062_agency_manager_blueprint_permissions`).
+The nine CRM migrations, `0059_hermes_tool_inventory`, `0060_rls_initplan` and the manager Blueprint
+grants were applied after `pg_dump` backups, and the hosted ledger rows for the CRM files were renamed
+in the same pass. That pass left the hosted project with **60 migrations** and **251 public tables**
+(was 213), every public table with row level security enabled, and **no migration pending**.
+
+Later numbering: the manager Blueprint grants were first written as `0061`, but AQi Phase 3 took
+`0061_aqi_phase3_guidance` and `0063_aqi_phase3_hardening` (`0063` declares `0061` as its prerequisite
+in `src/server/db/index.ts`), so the grants file is `0062`. The hosted ledger now records **62
+migrations (`0001`–`0063`)** and matches the repository exactly; `0059_hermes_tool_inventory` was
+applied on 2026-10-18T22:52Z (2026-10-19 local time). It is `0059`, not `0047`: `0047` is
+`0047_aqi_assistant`.
 
 This plan covers the workforce-owned migrations. The CRM migration chain was reconciled and applied
 after the earlier preflight, as recorded below. The workforce write gates are now satisfied for the
@@ -48,8 +55,8 @@ The divergent CRM/workforce numbering was resolved by applying the CRM files wit
   rows renamed in place (`update schema_migrations set version = …`), so nothing was applied twice.
 - Applied after the renumber: `0059_hermes_tool_inventory`, `0060_rls_initplan` (its guard checks
   passed; it rewrote every SELECT policy it proves, and 13 per-row policies remain by design) and
-  `0061_agency_manager_blueprint_permissions` (a real authorization fix: the permission matrix grants
-  agency managers `crm.blueprints.view`/`design`, but no migration had ever inserted those rows).
+  the manager Blueprint grants (written as `0061`, now `0062_agency_manager_blueprint_permissions`; a
+  real authorization fix: the permission matrix grants agency managers `crm.blueprints.view`/`design`, but no migration had ever inserted those rows).
 - Verified afterwards: 251 public tables, 60 recorded migrations, 0 public tables without row level
   security, `app.permitted_orgs`/`app.accessible_orgs` present, and the `crm_*` tables (including
   `crm_blueprints`, `crm_provider_switches`, `crm_workflows` and `crm_forms`) present. No pending

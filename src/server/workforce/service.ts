@@ -36,6 +36,9 @@ export interface AgentInstanceRow {
   config_applied_at: Date | null;
   hermes_profile: string | null;
   hermes_base_url: string | null;
+  tool_inventory_digest: string | null;
+  tool_inventory_tool_count: number | null;
+  tool_inventory_verified_at: Date | null;
 }
 
 const RESERVED_PROFILES = new Set([
@@ -69,7 +72,8 @@ export async function ensureAgentInstances(orgId: string, db: Queryable) {
 
 const AGENT_SELECT = `
   select a.id, a.org_id, a.role_key, a.display_name, a.enabled, a.status, a.mode, a.active_config_version_id,
-         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_base_url, r.default_tools,
+         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_base_url,
+         a.tool_inventory_digest, a.tool_inventory_tool_count, a.tool_inventory_verified_at, r.default_tools,
          v.summary, v.version as config_version, v.applied_at as config_applied_at
   from agent_instances a
   join agent_roles r on r.key = a.role_key
@@ -419,7 +423,7 @@ async function loadPersistedInventoryDigest(db: Queryable, agentId: string): Pro
     await db.query("release savepoint tool_inventory_digest_lookup");
     return rows[0]?.tool_inventory_digest ?? null;
   } catch {
-    // Migration 0047 may not be applied yet. Roll back only this lookup so the caller's
+    // Migration 0059 may not be applied yet. Roll back only this lookup so the caller's
     // transaction stays usable; no persisted digest is fail-closed.
     try {
       await db.query("rollback to savepoint tool_inventory_digest_lookup");
@@ -430,7 +434,7 @@ async function loadPersistedInventoryDigest(db: Queryable, agentId: string): Pro
   }
 }
 
-/** Whether the additive inventory-attestation columns from migration 0047 are present. */
+/** Whether the additive inventory-attestation columns from migration 0059 are present. */
 export async function toolInventorySchemaReady(db: Queryable): Promise<boolean> {
   try {
     const { rows } = await db.query(
@@ -581,6 +585,40 @@ const HEALTH_DETAIL: Record<string, string> = {
   upstream: "Hermes reported a server error.",
 };
 
+/**
+ * Refreshes an AI employee's connection status when the last check is stale. Called from the chat
+ * page after its response, so the first message does not pay the provider round trips itself.
+ */
+export async function refreshAgentHealthIfStale(agentId: string, userId: string): Promise<void> {
+  const { rows } = await withSystem((db) =>
+    db.query<{ last_health_check_at: Date | null }>("select last_health_check_at from agent_instances where id = $1", [agentId]),
+  );
+  const checkedAt = rows[0]?.last_health_check_at ? new Date(rows[0].last_health_check_at).getTime() : 0;
+  if (Date.now() - checkedAt <= 10 * 60 * 1000) return;
+  await runHealthCheck(agentId, { userId, kind: "system" }).catch(() => undefined);
+}
+
+/**
+ * A health check rewrites the employee's status, inventory attestation and integration status, so an
+ * agency actor needs the same management permission and client scope as every other workforce write.
+ * The check runs before the credential is resolved (which itself appends an audit row) and before any
+ * gateway request. `system` calls are internal refresh paths; a client user may not drive this action.
+ */
+async function assertCanRunHealthCheck(db: Queryable, agentOrgId: string, actor: { userId: string | null; kind: "agency" | "system" | "user" }) {
+  if (actor.kind === "system") return;
+  if (actor.kind === "user") {
+    throw new AppError("forbidden", "Only an agency manager or Super Admin can run a health check.");
+  }
+  if (!actor.userId) throw new AppError("forbidden", "An agency identity is required to run a health check.");
+  const { rows } = await db.query<{ allowed: boolean }>(
+    "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,'agency.workforce.manage') as allowed",
+    [actor.userId, agentOrgId],
+  );
+  if (rows[0]?.allowed !== true) {
+    throw new AppError("forbidden", "Your agency role or client scope does not allow running a health check.");
+  }
+}
+
 /** Performs a real authenticated capabilities check and records the outcome. */
 export async function runHealthCheck(
   agentId: string,
@@ -593,6 +631,7 @@ export async function runHealthCheck(
       [agentId],
     );
     if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
+    await assertCanRunHealthCheck(db, rows[0].org_id, actor);
     return {
       conn: await loadConnection(db, agentId),
       orgId: rows[0].org_id,
@@ -646,7 +685,11 @@ export async function runHealthCheck(
             detail: `Complete runtime inventory verified: ${snapshot.toolCount} tool${snapshot.toolCount === 1 ? "" : "s"} across ${snapshot.enabledToolsets.length} reviewed toolsets (digest ${snapshot.digest.slice(0, 12)}…).`,
           };
           if (!hasConfig) {
-            result = { ok: false, status: "setup_required", detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online.` };
+            result = {
+              ok: false,
+              status: "setup_required",
+              detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online. A Super Admin needs to save an initial configuration for this employee in its own workspace (AI Workforce, open the employee, save its settings), then run the health check again.`,
+            };
           } else {
             result = {
               ok: true,
@@ -691,7 +734,7 @@ export async function runHealthCheck(
     result = {
       ok: false,
       status: "setup_required",
-      detail: `${result.detail} Migration 0047 (tool-inventory attestation) is not applied, so the verified inventory cannot be persisted; live runs stay blocked.`,
+      detail: `${result.detail} Migration 0059 (tool-inventory attestation) is not applied, so the verified inventory cannot be persisted; live runs stay blocked.`,
     };
   }
   await withSystem(async (db) => {

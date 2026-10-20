@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { withSystem, type Queryable } from "@/server/db";
+import { readSystem, withSystem, type Queryable } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { appUrl, sendEmail } from "@/server/email";
 import { hashIp, randomToken, sha256 } from "@/server/security/crypto";
@@ -62,16 +62,18 @@ async function loginDependency<T>(operation: string, run: () => Promise<T>): Pro
   }
 }
 
+// Session resolution runs on every server render, so its profile lookup is a single read on the
+// pool instead of a BEGIN/COMMIT transaction. Callers that already hold a transaction pass `db`.
 async function profileByAuthId(authUserId: string, db?: Queryable): Promise<ProfileRow | null> {
   const run = async (q: Queryable) =>
     (await q.query<ProfileRow>(`select ${PROFILE_COLUMNS} from users where auth_user_id = $1`, [authUserId])).rows[0] ?? null;
-  return db ? run(db) : withSystem(run);
+  return db ? run(db) : readSystem(run);
 }
 
 async function profileByEmail(email: string, db?: Queryable): Promise<ProfileRow | null> {
   const run = async (q: Queryable) =>
     (await q.query<ProfileRow>(`select ${PROFILE_COLUMNS} from users where email = $1`, [email])).rows[0] ?? null;
-  return db ? run(db) : withSystem(run);
+  return db ? run(db) : readSystem(run);
 }
 
 function toSessionUser(profile: ProfileRow, sessionId: string): SessionUser {

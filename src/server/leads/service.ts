@@ -9,7 +9,7 @@ import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { notifyOrgRoles } from "@/server/notifications";
 import { createApproval } from "@/server/approvals/service";
 import { buildRunInstructions, loadConnection, markAgentDegraded } from "@/server/workforce/service";
-import { HermesError, startRun, streamRunEvents } from "@/server/integrations/hermes/client";
+import { AgentRunNotReadyError, HermesError, startAgentRun, streamRunEvents } from "@/server/integrations/hermes/client";
 import { env } from "@/server/env";
 import { canChat, type AgentStatus } from "@/lib/agents";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -219,6 +219,7 @@ export async function runResearch(orgId: string, requestId: string, agentId: str
     withSystem((db) =>
       db.query("update lead_research_requests set status = 'failed', failure_reason = $3, completed_at = now() where id = $1 and org_id = $2", [requestId, orgId, reason]),
     ).catch(() => undefined);
+  let agentRunId: string | null = null;
   try {
     const setup = await withSystem(async (db) => {
       const { rows } = await db.query<{ prompt: string; criteria: unknown; campaign_type: "business" | "influencer" }>(
@@ -242,7 +243,8 @@ export async function runResearch(orgId: string, requestId: string, agentId: str
       return { conn, instructions, idempotencyKey, runId: run[0].id, input: researchPrompt(req.prompt, targeting.success ? targeting.data : targetingSchema.parse({}), req.campaign_type) };
     });
 
-    const { runId: hermesRunId } = await startRun(setup.conn, {
+    agentRunId = setup.runId;
+    const { runId: hermesRunId } = await startAgentRun(agentId, orgId, setup.conn, {
       input: setup.input,
       instructions: setup.instructions,
       idempotencyKey: setup.idempotencyKey,
@@ -321,7 +323,11 @@ export async function runResearch(orgId: string, requestId: string, agentId: str
     return inserted;
   } catch (err) {
     if (err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed")) await markAgentDegraded(agentId, err.message);
-    await fail(err instanceof AppError ? err.message : "The research couldn't be completed.");
+    // A run that never started must not stay "running": the readiness gate can refuse after the run row was written.
+    if (agentRunId && err instanceof AgentRunNotReadyError) {
+      await withSystem((db) => db.query("update agent_runs set status = 'failed', finished_at = now() where id = $1 and status = 'running'", [agentRunId])).catch(() => undefined);
+    }
+    await fail(err instanceof AppError || err instanceof AgentRunNotReadyError ? err.message : "The research couldn't be completed.");
   }
 }
 

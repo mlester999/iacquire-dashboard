@@ -96,9 +96,9 @@ export async function ensureDefaultPipeline(db: Queryable, actor: CrmActor): Pro
   return insertPipeline(db, actor, { name: "Sales pipeline", stages: DEFAULT_STAGES, isDefault: true });
 }
 
-export async function listPipelines(actor: CrmActor, opts: { ensureDefault?: boolean } = {}): Promise<PipelineView[]> {
+export async function listPipelines(actor: CrmActor, opts: { ensureDefault?: boolean } = {}, existing?: Queryable): Promise<PipelineView[]> {
   assertCan(actor, "sales.view");
-  if (opts.ensureDefault) {
+  if (opts.ensureDefault && !existing) {
     await crmWrite(actor, async (db) => {
       const ws = await db.query<{ mode: string }>("select mode from crm_workspaces where org_id = $1", [actor.orgId]);
       if (ws.rows[0]?.mode !== "ghl") {
@@ -111,7 +111,7 @@ export async function listPipelines(actor: CrmActor, opts: { ensureDefault?: boo
       }
     });
   }
-  return crmRead(actor, async (db) => {
+  const run = async (db: Queryable) => {
     const pipes = await db.query<{ id: string; name: string; description: string | null; is_default: boolean; position: number }>(
       "select id, name, description, is_default, position from crm_pipelines where org_id = $1 and provider = 'native' and archived_at is null order by is_default desc, position, lower(name)",
       [actor.orgId],
@@ -131,7 +131,8 @@ export async function listPipelines(actor: CrmActor, opts: { ensureDefault?: boo
       const st = stages.rows.filter((s) => s.pipeline_id === p.id).map((s) => ({ id: s.id, name: s.name, position: s.position, kind: s.kind, probability: s.probability, color: s.color, openCount: Number(s.open_count) }));
       return { id: p.id, name: p.name, description: p.description, isDefault: p.is_default, position: p.position, stages: st, openCount: st.reduce((n, s) => n + s.openCount, 0) };
     });
-  });
+  };
+  return existing ? run(existing) : crmRead(actor, run);
 }
 
 export async function createPipeline(actor: CrmActor, input: { name: string; description?: string | null; stages?: Array<{ name: string; kind?: StageKind; probability?: number | null; color?: string | null }>; isDefault?: boolean }): Promise<{ id: string }> {

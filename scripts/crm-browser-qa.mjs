@@ -161,7 +161,14 @@ async function waitForQaServer(base, timeoutMs = 90_000) {
 async function waitForNextRedirect(page, routePath, base, bucket) {
   const expected = EXPECTED_REDIRECTS[routePath];
   const currentUrl = page.url();
-  const content = await page.locator("meta#__next-page-redirect").getAttribute("content").catch(() => null);
+  // Most routes never stream a redirect meta tag. Locator.getAttribute() waits for the element,
+  // so checking count() first avoids a 30-second wait on every normal page.
+  let content = null;
+  if (!expected) {
+    const meta = page.locator("meta#__next-page-redirect");
+    if ((await meta.count()) === 0) return null;
+    content = await meta.getAttribute("content", { timeout: 2_000 }).catch(() => null);
+  }
   const target = expected ? new URL(expected.path, currentUrl) : parseNextRedirectMeta(content, currentUrl);
   if (!target) return null;
   if (!isLocalUrl(target.href, base)) return `Streamed redirect from ${routePath} left the isolated QA origin: ${target.origin}`;

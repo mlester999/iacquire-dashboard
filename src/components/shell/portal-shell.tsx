@@ -14,6 +14,14 @@ export function PortalShell({ data, children }: { data: ShellData; children: Rea
   const pathname = usePathname();
   const showSetup = !data.org.onboardingComplete && data.org.kind === "client" && data.permissions.includes("workspace.manage_profile") && !pathname.startsWith("/onboarding");
 
+  // A walkthrough step on the phone highlights a navigation link that lives in this drawer. Opening
+  // it is the shell's job; the tutorial only asks.
+  React.useEffect(() => {
+    const openNav = () => setMenuOpen(true);
+    window.addEventListener("iaq:open-mobile-nav", openNav);
+    return () => window.removeEventListener("iaq:open-mobile-nav", openNav);
+  }, []);
+
   return (
     <ShellProvider value={data}>
       <div className="app-backdrop grain relative min-h-dvh" style={{ "--sidebar-w": compact ? "80px" : "264px" } as React.CSSProperties}>

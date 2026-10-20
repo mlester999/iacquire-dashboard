@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { withSystem } from "@/server/db";
+import { readSystem, withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { ORG_COOKIE, getCurrentUser, requireUser, requireUserOrThrow } from "@/server/auth/session";
 import type { SessionUser } from "@/server/auth/service";
@@ -83,6 +83,63 @@ export async function loadPermissionOverrides(userId: string, orgId: string): Pr
   return out;
 }
 
+interface TenancyRow {
+  memberships: Array<{
+    org_id: string;
+    name: string;
+    slug: string;
+    kind: "agency" | "client";
+    status: Membership["status"];
+    role: OrgRole;
+    is_demo: boolean;
+    onboarding_completed_at: string | null;
+    timezone: string;
+  }>;
+  overrides: Array<{ org_id: string; permission: string; effect: "grant" | "revoke" }>;
+}
+
+/**
+ * The active tenant's memberships and every per-person override in one read. This used to run as
+ * two separate transactions (six sequential round trips) on every server render. The answer is
+ * still the authoritative, RLS-backed one: it is filtered by the user id from the verified
+ * session, and the permission rules themselves are unchanged.
+ */
+export async function loadTenancy(userId: string): Promise<{ memberships: Membership[]; overridesByOrg: Record<string, PermissionOverrides> }> {
+  const { rows } = await readSystem((db) =>
+    db.query<TenancyRow>(
+      `select
+         coalesce((select json_agg(json_build_object(
+             'org_id', o.id, 'name', o.name, 'slug', o.slug, 'kind', o.kind, 'status', o.status,
+             'role', m.role, 'is_demo', o.is_demo, 'onboarding_completed_at', o.onboarding_completed_at,
+             'timezone', o.timezone) order by o.kind desc, o.name)
+           from organization_memberships m join organizations o on o.id = m.org_id
+           where m.user_id = $1 and m.status = 'active' and o.status not in ('archived')), '[]'::json) as memberships,
+         coalesce((select json_agg(json_build_object(
+             'org_id', org_id, 'permission', permission, 'effect', effect))
+           from member_permission_overrides where user_id = $1), '[]'::json) as overrides`,
+      [userId],
+    ),
+  );
+  const row = rows[0];
+  const memberships = (row?.memberships ?? []).map((r) => ({
+    orgId: r.org_id,
+    name: r.name,
+    slug: r.slug,
+    kind: r.kind,
+    status: r.status,
+    role: r.role,
+    isDemo: r.is_demo,
+    onboardingCompletedAt: r.onboarding_completed_at ? new Date(r.onboarding_completed_at).toISOString() : null,
+    timezone: r.timezone,
+  }));
+  const overridesByOrg: Record<string, PermissionOverrides> = {};
+  for (const r of row?.overrides ?? []) {
+    if (!isDelegablePermission(r.permission)) continue;
+    (overridesByOrg[r.org_id] ??= {})[r.permission] = r.effect;
+  }
+  return { memberships, overridesByOrg };
+}
+
 /** Per-person agency action overrides. Role defaults remain in role_permissions and are resolved on every request. */
 export async function loadAgencyPermissionOverrides(userId: string): Promise<AgencyPermissionOverrides> {
   const { rows } = await withSystem((db) =>
@@ -138,13 +195,13 @@ export function buildContext(user: SessionUser, org: Membership, memberships: Me
 export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   const user = await getCurrentUser();
   if (!user) return null;
-  const memberships = await listMemberships(user.id);
+  const { memberships, overridesByOrg } = await loadTenancy(user.id);
   const usable = memberships.filter((m) => m.status !== "suspended");
   if (usable.length === 0) return null;
   const jar = await cookies();
   const preferred = jar.get(ORG_COOKIE)?.value;
   const org = usable.find((m) => m.orgId === preferred) ?? usable[0];
-  return buildContext(user, org, memberships, org.role === "owner" ? {} : await loadPermissionOverrides(user.id, org.orgId));
+  return buildContext(user, org, memberships, org.role === "owner" ? {} : overridesByOrg[org.orgId] ?? {});
 });
 
 /** Pages: redirect to the right place when there is no usable workspace. */

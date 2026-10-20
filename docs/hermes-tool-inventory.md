@@ -1,10 +1,11 @@
 # Hermes complete tool-inventory verification
 
-Status: **implemented and fail-closed; the six internal employees remain in provisioning because the
-deployed gateway does not yet expose the complete runtime tool catalog.**
+Status: **implemented and fail-closed. The patched gateway is deployed and all six profiles pass the
+VPS `verify-catalog` check (6/6), but the six internal employees are still `provisioning`: none has had a
+portal health check or an applied configuration, so none can run.**
 
-This page records the contract, the verification rules, the live evidence and the exact remaining
-infrastructure changes. It contains no API keys, profile identifiers, organization names or customer
+This page records the contract, the verification rules, the live evidence and the remaining
+activation steps. It contains no API keys, profile identifiers, organization names or customer
 data.
 
 ## The problem with `GET /v1/toolsets`
@@ -56,14 +57,16 @@ is absent or false, the portal refuses the catalog. This is deliberately stricte
 PR, which has no completeness signal and can silently omit a failed dynamic provider or an
 MCP server that never completed discovery.
 
-The deployed gateway (Hermes `0.21.5`, observed 2026-10-18) does not register this route: an
-authenticated request returns HTTP 404 (`Unknown or unconfigured profile`). Its
-`GET /v1/capabilities` also returns an empty `endpoints` object, so the portal probes
-`/v1/tools` directly instead of trusting a capability advertisement.
+The unpatched gateway (Hermes `0.21.5`, observed 2026-10-18) did not register this route: an
+authenticated request returned HTTP 404 (`Unknown or unconfigured profile`). Its
+`GET /v1/capabilities` also returned an empty `endpoints` object, so the portal probes
+`/v1/tools` directly instead of trusting a capability advertisement. The deployed gateway is now
+Hermes `0.21.5` plus the complete-catalog patch (see [Deployed gateway](#deployed-gateway-patched-hermes-0215)),
+which returns the response above.
 
-## What the running process can actually provide
+## What the running process could provide before the patch
 
-Read-only probes against the authenticated profile route on 2026-10-18:
+Read-only probes against the authenticated profile route on 2026-10-18 (the unpatched gateway):
 
 | Surface | Observed | Usable as complete-inventory proof? |
 | --- | --- | --- |
@@ -75,10 +78,10 @@ Read-only probes against the authenticated profile route on 2026-10-18:
 | `GET /health/detailed` | Hermes `0.21.5`, gateway running | Diagnostics only; unauthenticated |
 | TUI gateway `tools.list` / `tools.configure` / `mcp.*` | Not exposed by the API server | No; the portal must not invent an HTTP route for it |
 
-Because no authenticated API-server surface returns the full model-facing tool set, the portal
-cannot honestly mark an employee ready on the current deployment. The smallest compatibility
-change is the upstream `/v1/tools` endpoint; the portal already implements its client and
-verification.
+Because no authenticated API-server surface of the unpatched gateway returned the full model-facing
+tool set, the portal could not honestly mark an employee ready. The smallest compatibility change is
+the `/v1/tools` endpoint, which the patched gateway now provides; the portal's client and
+verification were written against it.
 
 ## What the portal implements
 
@@ -88,9 +91,10 @@ verification.
 | Typed `GET /v1/tools` client | `src/server/integrations/hermes/client.ts` (`getToolCatalog`) |
 | Complete-inventory verifier, digest, attestation, freshness, change detection | `src/server/integrations/hermes/inventory.ts` |
 | Persisted attestation columns | `supabase/migrations/0059_hermes_tool_inventory.sql` |
-| Health check and run gate | `src/server/workforce/service.ts`, `src/server/integrations/hermes/client.ts` (`startRun`) |
+| Health check | `src/server/workforce/service.ts` (`runHealthCheck`) |
+| Run gate shared by every run entry point | `src/server/integrations/hermes/client.ts` (`startAgentRun`, `assertAgentRunnable`) |
 | Integration inspection | `src/server/integrations/inspection.ts` |
-| Read-only live audit | `scripts/hermes-live-audit.ts` |
+| Read-only live audit | `scripts/hermes-live-audit.ts` (`npm run hermes:audit`; type-checked by `npm run typecheck:scripts`) |
 | Super Admin diagnostics | `/admin/workforce` and `/admin/workforce/[slug]` |
 
 ### Verification rules (all must hold)
@@ -106,8 +110,13 @@ verification.
    `platform_toolsets.api_server` allowlist. A denylist alone (`agent.disabled_toolsets`) is not
    accepted as an allowlist.
 5. The enabled toolsets are exactly `memory`, `session_search`, `todo`, `vision`, `web`.
-6. Every catalog entry has complete provenance, resolves to one of those toolsets, is available,
-   and is in the reviewed client tool allowlist (`REVIEWED_CLIENT_TOOLS`).
+6. Every catalog entry has complete provenance and a `parameters` schema, resolves to one of those
+   toolsets, is available, and is one of the reviewed tools. The inventory must contain **all five
+   required tools** (`memory`, `session_search`, `todo_list`, `web_extract`, `web_search`); `vision_analyze`
+   is optional because it exists only when the profile has vision credentials. Any other tool, a repeated
+   tool name or a missing required tool fails. This matches `REQUIRED_TOOLS` / `OPTIONAL_TOOLS` in
+   `docker/profiles/verify-catalog.py` of the sibling `hermes-tool-catalog-dev` repo, so the portal is at
+   least as strict as the operator's VPS check.
 7. No entry is from an MCP server (`source: "mcp"`, `source_server`, or a disconnected MCP schema).
 8. No entry was added below the explicit allowlist (`added_below_explicit_config`,
    `recently_shipped`, `default_injected`). This catches plugin and release-backfill tools.
@@ -117,17 +126,27 @@ verification.
    session tool definitions; disabling the `connections` toolset keeps hosted connectors out of
    scope. The verifier refuses the bridge anyway so a future Tool Search change cannot silently
    widen the catalog.
-10. Two consecutive reads with independent challenge nonces produce the same SHA-256 digest. If the
-    gateway echoes the challenge, it must match; a signed catalog extension is verified with
-    HMAC-SHA256 over `{contract, profile, challenge, digest}`.
+10. Two consecutive reads with independent challenge nonces produce the same SHA-256 digest. The
+    gateway **must echo** each request's challenge (`X-Hermes-Inventory-Challenge`) and report
+    `contract: "hermes.api_server.tool_catalog.v1"`; a missing, different or replayed challenge is
+    `inventory_incomplete`. A signed catalog extension is verified with HMAC-SHA256 over
+    `{contract, profile, challenge, digest}`.
 11. The digest matches the one persisted by the last health check. A mismatch records the newly
     observed safe snapshot but leaves the employee `provisioning` for one explicit confirmation
-    health check.
+    health check. A **run** additionally requires that a digest exists: with none recorded the
+    verifier refuses (`inventory_not_recorded`) before any request, so a never-health-checked
+    employee cannot run just because today's live catalog looks safe.
 12. The attestation is fresh (two-minute client TTL; a server-provided `expires_at` must also be in
     the future).
 
-Any failure closes the gate. The live adapter re-runs this verification immediately before
-`POST /v1/runs`; a caller cannot skip it, and no run is submitted when it fails.
+Any failure closes the gate. Every run starts through `startAgentRun`, the one shared entry point
+(chat, lead research, customer replies and configuration previews all use it). It requires the
+employee to be enabled, `online` (or `busy`) and to have a recorded inventory digest; for an internal
+agency employee it also applies the identity check and the current Super Admin acknowledgement. It
+then re-runs this verification, comparing the live catalog with the persisted digest (not with
+whatever the caller supplied), immediately before `POST /v1/runs`. A caller cannot skip it, and no
+run is submitted when it fails. `tests/hermes-run-gate.test.ts` also fails if any other module
+imports the low-level `startRun`.
 
 ### Persistence and diagnostics
 
@@ -152,7 +171,10 @@ Tool Search access cannot be proven. Deploy a Hermes build with the complete too
 The agency workforce pages also show the inventory contract, tool count, digest prefix, expiry and
 the stored inventory detail.
 
-## Live evidence (2026-10-18)
+## Live evidence (2026-10-18, unpatched gateway)
+
+This is the historical result against the original 0.21.5 gateway, kept as the baseline. The current
+state is in [Deployed gateway](#deployed-gateway-patched-hermes-0215).
 
 Read-only audit command:
 
@@ -177,66 +199,63 @@ Observed for all six mapped profiles:
 | Employee status | `provisioning` (correct) |
 | Live run | none started |
 
-## Development implementation (ready, not deployed)
+## Deployed gateway (patched Hermes 0.21.5)
 
-A backport for the verified Hermes `0.21.5` source is implemented in an isolated workspace:
+The gateway is Hermes `0.21.5` plus the complete-tool-catalog patch, which registers
+`GET /v1/tools?platform=api_server` with the `hermes.api_server.tool_catalog.v1` contract:
 
-- Base source: Hermes `v2026.9.24` = `0.21.5`, commit
-  `f97608f178d1ffeca59860195ab7da295f7c8e5f`.
-- Patch revision: `f6a6230` on a baseline of the same source.
-- Upstream reference: PR #92729 head
-  `6a6960cf8fc09cc3a2d3d8baed60384a8a948a20` (9 commits, base `8b09a9df…`), which does **not**
-  apply cleanly to 0.21.5 because the MCP module split and `get_tool_definitions` changed.
-- Hostinger image source: the running 0.21.5 image's `api_server.py`, `tools_config.py`,
-  `model_tools.py`, `mcp_tool.py`, `mcp_tool_registration.py`, `agent/memory_provider.py`,
-  `agent/memory_manager.py`, `toolsets.py` and `registry.py` are byte-identical to the upstream
-  0.21.5 tag. The Hostinger image only adds provider patches/plugins on top.
-- New image: `docker/Dockerfile` overlays only the eight runtime files on a **digest-pinned**
-  Hostinger base; it never copies profile data or credentials and refuses a non-0.21.5 base.
-- Tests: 23 catalog tests pass (builder, explicit allowlist, `no_mcp`, MCP retention, plugin
-  registration, plugin discovery failure, Tool Search pre-assembly, model-tools read-only snapshot,
-  auth, six-profile isolation, challenge echo, capabilities advertisement).
-- Cross-language smoke: the actual Python endpoint was started on localhost and the existing
-  iAcquireOS `verifyToolInventory` client verified it end-to-end:
-  `verified: true`, contract `hermes.api_server.tool_catalog.v1`, five toolsets, digest, and
-  `challenge_bound_authenticated_catalog`.
-- This is a development artifact. It has **not** been deployed to the VPS, the hosted database
-  migration has **not** been applied, and no run was started.
+- Base source: Hermes `v2026.9.24` = `0.21.5`, commit `f97608f178d1ffeca59860195ab7da295f7c8e5f`.
+  Upstream PR #92729 (head `6a6960cf8fc09cc3a2d3d8baed60384a8a948a20`) does **not** apply cleanly to 0.21.5
+  because the MCP module split and `get_tool_definitions` changed, so the patch is a backport.
+- Image: `docker/Dockerfile` in the `hermes-tool-catalog-dev` workspace overlays only the runtime files on a
+  **digest-pinned** Hostinger base; it never copies profile data or credentials and refuses a non-0.21.5 base.
+- The gateway **always echoes** `X-Hermes-Inventory-Challenge` and sends `generated_at` and a 120-second
+  `expires_at`. Live rows are flat, not wrapped in `function`:
+  `{name, description, parameters, provenance{source: "configurable", toolset, requested_toolsets, source_server: null, added_below_explicit_config: false}}`;
+  `available` appears on MCP rows only. The portal accepts both the flat and the `{type, function}` shape.
+- Each of the six internal profiles is configured with
+  `platform_toolsets.api_server = [memory, session_search, todo, vision, web, no_mcp]`.
+- `run-policy.sh verify-catalog` (read-only: one authenticated `GET` per profile with that profile's own key)
+  passed **6/6**. Its checks are mirrored by the portal verifier (rules above).
+- The portal verifier was cross-tested against the real gateway code on loopback: it passes a profile with the
+  policy, blocks one without (`allowlist_missing`) and blocks a wrong key (`auth_failed`).
+- Hosted migration `0059_hermes_tool_inventory` is applied (2026-10-18T22:52Z).
 
-The exact deployment/rollback procedure is in the isolated workspace (`DEPLOYMENT.md`); the
-summary is repeated below.
+This evidence comes from the operator's VPS run and the loopback cross-test. Nothing in this repository
+contacted the gateway, and no run has been started.
 
-## Remaining infrastructure changes
+### What is still not true
 
-These are **not** iAcquireOS changes and were not applied:
+The six internal employees are `provisioning`. None has had a portal health check, so none has a recorded
+inventory digest or applied configuration version, and the Super Admin profile checks (2026-10-17) and one
+acknowledgement are stale. `startAgentRun` therefore refuses every run for them, including
+configuration previews, before any request reaches the gateway.
 
-1. **Hermes server/deployment:** deploy a Hermes build that registers
-   `GET /v1/tools?platform=api_server` with the response shape above (upstream PR #92729 or an
-   equivalent, independently reviewed patch). The current 0.21.5 build does not have it.
-2. **Hermes profile configuration:** add an explicit server-enforced allowlist to each profile:
+## Activation steps (all explicit, none automatic)
 
-   ```yaml
-   platform_toolsets:
-     api_server:
-       - memory
-       - session_search
-       - todo
-       - vision
-       - web
-       - no_mcp   # server-enforced exclusion of every default MCP server
-   ```
+1. **Apply an initial configuration for each of the six employees.** `runHealthCheck` returns
+   `setup_required` for an employee with no applied configuration even when the catalog verifies
+   ("The employee configuration hasn't been applied yet…"), so it can never go online until one exists. A
+   Super Admin switches to the iAcquire (agency) workspace, opens each employee under **AI Workforce**, and
+   saves its settings once. That creates and applies version 1; a version held as
+   `pending_agency_review` does not count.
+2. **Run the employee health check** (Admin → Workforce → *Run health check*). With a configuration applied it
+   verifies identity, capabilities, toolsets and the complete inventory (two reads), records the digest, and
+   sets the employee `online`. After any later inventory change, one more health check must confirm it.
+3. **Run the agency profile check, then record the full-capabilities acknowledgement** for each internal
+   profile. The acknowledgement must be newer than the latest profile check, so a re-check invalidates it.
+4. **Re-run the read-only audit** (`npm run hermes:audit -- --live`, GET requests only). The audit changes no
+   gateway, profile, employee, configuration or inventory state, but it is not strictly zero-write: resolving each
+   stored profile credential appends one `credential.resolved` audit-log row. Acceptance requires
+   `completeInventoryVerified: true`, `restrictedCount: 0`, `unauthorizedToolsets: []` and
+   `readyForControlledRun: true` for every profile; the report also shows whether each employee has an applied
+   configuration and a recorded inventory digest.
+5. A successful audit still does not start a run. The controlled live-run acceptance in
+   [hermes-live-acceptance.md](hermes-live-acceptance.md) remains a separate, explicit step.
 
-   Keep `agent.disabled_toolsets` as defence in depth. The portal's runbook
-   (`buildConfigYaml()`) now emits both. Saving the selection with
-   `hermes -p <profile> tools` also records `known_plugin_toolsets`, which keeps installed plugin
-   toolsets out when they are not in the explicit list; if the profile was hand-edited, disable every
-   installed plugin toolset in `agent.disabled_toolsets` as well. The complete catalog is the final
-   proof: any plugin or MCP tool that still resolves is refused.
-3. **Database migration:** apply `0059_hermes_tool_inventory.sql` to the hosted database as part of
-   the release window. Until it is applied, health checks cannot persist the attestation and remain
-   fail-closed.
-
-After those three changes, re-run the live audit. Acceptance requires `completeInventoryVerified:
-true`, `restrictedCount: 0`, `unauthorizedToolsets: []` and `readyForControlledRun: true` for every
-profile. A successful audit still does not start a run; the controlled live-run acceptance in
-[hermes-live-acceptance.md](hermes-live-acceptance.md) remains a separate, explicit step.
+If a profile is ever rebuilt, the same policy block must be re-applied
+(`platform_toolsets.api_server` as above, plus `agent.disabled_toolsets` as defence in depth; the portal runbook
+`buildConfigYaml()` emits both). Saving the selection with `hermes -p <profile> tools` also records
+`known_plugin_toolsets`; if a profile was hand-edited, disable every installed plugin toolset in
+`agent.disabled_toolsets` as well. The complete catalog is the final proof: any plugin or MCP tool that still
+resolves is refused.

@@ -229,6 +229,12 @@ export function TutorialStage() {
     }
     const key = stepKey;
     setTargetState("searching");
+    // On a phone the sidebar is hidden behind the menu button. A navigation step can only
+    // highlight the real link once the drawer is open, so ask the shell to open it as the step
+    // starts (not after the 8 s missing-target timeout, when the observer has already given up).
+    if ((step.targetId ?? "").startsWith("nav.") && window.matchMedia("(max-width: 1023px)").matches) {
+      window.dispatchEvent(new CustomEvent("iaq:open-mobile-nav"));
+    }
     const slowTimer = window.setTimeout(() => setSlowKey(key), SEARCH_GRACE_MS);
     let settleTimer = 0;
     const markSettled = () => setSettledKey(key);
@@ -236,6 +242,9 @@ export function TutorialStage() {
       id: step.targetId,
       timeoutMs: 8000,
       onHit: (next, info) => {
+        // A control that shows up after the search gave up (a slow page, a dialog opened later) clears
+        // the "couldn't find it" notice and re-enables Next without needing Retry.
+        setMissingKey(null);
         setFound({ key, hit: next });
         setTargetState("found");
         if (info.first) {
@@ -483,7 +492,7 @@ export function TutorialStage() {
               {active && !isLast && canSkip && !missing && !routeMismatch && (
                 <Button type="button" size="sm" variant="ghost" onClick={() => void tutorialActions.skip()} disabled={busy}><SkipForward className="size-3.5" /> Skip</Button>
               )}
-              {active && missing && canSkip && <Button type="button" size="sm" variant="ghost" onClick={() => void tutorialActions.skip()} disabled={busy}><SkipForward className="size-3.5" /> Skip step</Button>}
+              {active && missing && <Button type="button" size="sm" variant="ghost" onClick={() => void tutorialActions.skip()} disabled={busy}><SkipForward className="size-3.5" /> Skip step</Button>}
               {active && missing && <Button type="button" size="sm" variant="ghost" onClick={() => setRetryKey((value) => value + 1)}><RotateCcw className="size-3.5" /> Retry</Button>}
             </div>
             <div className="ml-auto flex items-center gap-1.5">

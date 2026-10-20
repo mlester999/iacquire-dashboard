@@ -71,15 +71,15 @@ export function TasksWorkspace({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div data-aqi-target="crm.tasks.header" className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-ink">Tasks</h2>
           <p className="mt-1 text-[13px] text-muted">{"Follow-ups and to-dos for your team, linked to the contacts and deals they're about."}</p>
         </div>
-        {canManage && <Button onClick={() => setNewOpen(true)}><Plus className="size-4" />New task</Button>}
+        {canManage && <Button data-aqi-target="crm.tasks.new" onClick={() => setNewOpen(true)}><Plus className="size-4" />New task</Button>}
       </div>
 
-      <nav aria-label="Task views" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
+      <nav aria-label="Task views" data-aqi-target="crm.tasks.views" className="scrollbar-thin -mx-1 flex gap-1 overflow-x-auto px-1">
         {VIEWS.map((v) => {
           const active = state.view === v.value;
           const n = v.value in counts ? counts[v.value as keyof typeof counts] : null;

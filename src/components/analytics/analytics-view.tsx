@@ -106,7 +106,7 @@ export function AnalyticsView({
   return (
     <div className="module-stack space-y-6">
       <PageHero eyebrow="Performance intelligence" title="Turn recorded results into your next decision." description={`Lead research, team execution and customer relationships over ${range.days} days. Days are grouped in ${timeZoneLabel(timeZone)}; missing provider data stays unavailable.`} icon={<BarChart3 />} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface-2 p-5"><p className="text-xs font-semibold text-ink">AI employee execution</p><p className="mt-2 text-3xl font-semibold tracking-tight">{runsTotal}<span className="ml-2 text-xs font-normal text-muted">recorded runs</span></p><div className="mt-3"><CoverageBar label="Recorded run outcomes" parts={[{label:"Completed",count:completed,color:"var(--success)"},{label:"Failed",count:failed,color:"var(--danger)"},{label:"Other",count:Math.max(0,runsTotal-completed-failed),color:"var(--primary)"}]} /></div></div>} />
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <div data-aqi-target="analytics.range" className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <h2 className="text-[17px] font-semibold tracking-tight">Reporting window</h2>
           <p className="mt-1 text-[12px] text-muted">Choose a period or export the underlying records.</p>
@@ -155,7 +155,7 @@ export function AnalyticsView({
         </div>
       </div>
 
-      <Card>
+      <Card data-aqi-target="analytics.report">
         <CardHeader>
           <div>
             <CardTitle>Lead generation &amp; research quality</CardTitle>

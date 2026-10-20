@@ -21,7 +21,9 @@ export function Dialog({
   size = "md",
   trigger,
   icon,
+  iconClassName,
   ariaLabel,
+  hideBodyWhenEmpty = false,
   fullScreen = false,
 }: {
   open: boolean;
@@ -33,7 +35,9 @@ export function Dialog({
   size?: "sm" | "md" | "lg" | "xl";
   trigger?: React.ReactNode;
   icon?: React.ReactNode;
+  iconClassName?: string;
   ariaLabel?: string;
+  hideBodyWhenEmpty?: boolean;
   fullScreen?: boolean;
 }) {
   const width = { sm: "sm:max-w-md", md: "sm:max-w-lg", lg: "sm:max-w-2xl", xl: "sm:max-w-4xl" }[size];
@@ -88,7 +92,7 @@ export function Dialog({
               >
                 <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
                   <div className="flex min-w-0 items-start gap-3">
-                    {icon && <span aria-hidden className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2">{icon}</span>}
+                    {icon && <span aria-hidden className={cn("mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-2", iconClassName)}>{icon}</span>}
                     <div className="min-w-0">
                       <D.Title className="text-[16px] font-semibold tracking-tight text-ink">{title}</D.Title>
                       {description ? (
@@ -102,7 +106,9 @@ export function Dialog({
                     <X className="size-4" />
                   </D.Close>
                 </div>
-                <div tabIndex={0} role="region" aria-label={ariaLabel ?? (typeof title === "string" ? `${title} content` : "Dialog content")} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-6">{children}</div>
+                {(!hideBodyWhenEmpty || React.Children.count(children) > 0) && (
+                  <div tabIndex={0} role="region" aria-label={ariaLabel ?? (typeof title === "string" ? `${title} content` : "Dialog content")} className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-5 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-6">{children}</div>
+                )}
                 {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">{footer}</div>}
               </motion.div>
             </D.Content>

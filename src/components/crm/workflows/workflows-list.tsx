@@ -78,6 +78,7 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
 
   return (
     <div>
+      <div data-aqi-target="crm.workflows.header">
       <PageTitle
         title="Workflows"
         description="Automations that run when something happens in your CRM: a new lead, a stage change, a booking. Workflows that send messages only send after the owner approves that exact version, and only to people who agreed to be contacted."
@@ -87,7 +88,7 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
             {canManage && (
               <Menu>
                 <MenuTrigger asChild>
-                  <Button><Plus className="size-4" aria-hidden />New workflow<ChevronDown className="size-4 opacity-70" aria-hidden /></Button>
+                  <Button data-aqi-target="crm.workflows.new"><Plus className="size-4" aria-hidden />New workflow<ChevronDown className="size-4 opacity-70" aria-hidden /></Button>
                 </MenuTrigger>
                 <MenuContent>
                   <MenuItem onSelect={() => setCreating("blank")}><Pencil className="size-4" aria-hidden />Start from scratch</MenuItem>
@@ -98,6 +99,7 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
           </>
         }
       />
+      </div>
       {!canManage && <div className="mb-4"><ReadOnlyNotice>{scope.readOnly ? undefined : "You can see workflows and their activity. Changing them needs “Build and change automations”."}</ReadOnlyNotice></div>}
 
       <div role="group" aria-label="Workflows by status" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -151,7 +153,7 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
       </div>
 
       {!shown.length ? (
-        <Card>
+        <Card data-aqi-target="crm.workflows.list">
           <EmptyState
             icon={<Workflow className="size-5" />}
             title={workflows.length ? "Nothing matches these filters" : "No workflows yet"}
@@ -169,7 +171,7 @@ export function WorkflowsList({ scope, workflows, templates, templateOptions, fo
           />
         </Card>
       ) : (
-        <div className="space-y-5">
+        <div data-aqi-target="crm.workflows.list" className="space-y-5">
           {groups.map((g) => (
             <section key={g.id || "none"} aria-label={g.name || "No folder"}>
               {(groups.length > 1 || g.name) && <h3 className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-faint">{g.name || "No folder"}</h3>}

@@ -17,8 +17,10 @@ readiness are separate persisted records.
    `RESEND_API_KEY` and an `EMAIL_FROM` address on a domain verified with the provider.
 2. The client accepts the invitation, verifies their email, and completes company onboarding.
 3. The existing onboarding service saves the company profile, knowledge and selected employee
-   configurations transactionally. It creates the setup instance and queues four preparation jobs
-   with stable tenant-specific idempotency keys. Resubmitting cannot duplicate those jobs.
+   configurations transactionally. It creates the setup instance and queues preparation jobs with
+   stable tenant-specific idempotency keys: three jobs for a native CRM client, plus the manual
+   GoHighLevel mapping job only when the client keeps GoHighLevel. Resubmitting cannot duplicate
+   those jobs.
 4. Open **Client → Setup** and choose the package services. CRM, AI, automations, calendar and
    email have their own milestones. Custom websites and standard funnels are separate optional
    services. Existing client package selections and task history are retained.
@@ -33,10 +35,12 @@ attempt count, retry limit, timestamps, lease, result references and audit histo
   Re-running the same job reuses its configuration version IDs.
 - **Prepare safe automation configuration** records the timezone, approved communication
   preferences and disabled outreach/write/activation flags. It does not edit n8n or GHL.
-- **Prepare manual CRM mapping task** records an actionable administrative step. Create the GHL
-  sub-account manually using the approved Master Snapshot, then configure/test its Location ID in
-  the client's Integrations Manager. The portal never creates sub-accounts or assumes that a
-  snapshot was installed. Never assign the internal agency location to a client or access Aster Homes.
+- **Prepare manual CRM mapping task** records an actionable administrative step for a
+  **GoHighLevel** client. Create the GoHighLevel sub-account manually using the approved Master
+  Snapshot, then configure/test its Location ID in the client's Integrations Manager. The portal
+  never creates sub-accounts or assumes that a snapshot was installed. Never assign the internal
+  agency location to a client or access Aster Homes. Native clients already have their
+  `crm_workspaces` row; they do not get this job.
 - **Prepare dedicated profile runbook** produces tenant-specific suggested identities for enabled
   employees. Use the existing agency workforce runbook after separately reviewing the installed
   Hermes version and security configuration. Do not clone or reuse the six agency profiles.

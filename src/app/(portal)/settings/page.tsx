@@ -10,6 +10,7 @@ export default async function SettingsProfilePage() {
   return (
     <ProfileForms
       canEdit={ctx.can("workspace.manage_profile")}
+      walkthroughsEnabled={ctx.user.platformRole !== "agency_super_admin"}
       profile={{
         name: p?.name ?? ctx.org.name,
         industry: p?.industry ?? "",

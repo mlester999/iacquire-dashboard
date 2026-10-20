@@ -23,9 +23,9 @@ export type TagSource = "manual" | "bulk" | "import" | "workflow" | "form" | "ag
 const COLOR = /^#[0-9a-f]{6}$/;
 const cleanName = (name: string) => name.replace(/\s+/g, " ").trim();
 
-export async function listTags(actor: CrmActor, opts: { search?: string } = {}): Promise<TagView[]> {
+export async function listTags(actor: CrmActor, opts: { search?: string } = {}, existing?: Queryable): Promise<TagView[]> {
   assertCan(actor, "crm.view");
-  return crmRead(actor, async (db) => {
+  const run = async (db: Queryable) => {
     const { rows } = await db.query<{ id: string; name: string; color: string; description: string | null; folder_id: string | null; contacts: string; companies: string; created_at: Date }>(
       `select t.id, t.name::text as name, t.color, t.description, t.folder_id, t.created_at,
               (select count(*) from crm_contact_tags ct join contacts c on c.id = ct.contact_id and c.deleted_at is null where ct.tag_id = t.id)::text as contacts,
@@ -34,7 +34,8 @@ export async function listTags(actor: CrmActor, opts: { search?: string } = {}):
       [actor.orgId, opts.search?.trim().replace(/[%_\\]/g, "") || null],
     );
     return rows.map((r) => ({ id: r.id, name: r.name, color: r.color, description: r.description, folderId: r.folder_id, contactCount: Number(r.contacts), companyCount: Number(r.companies), createdAt: new Date(r.created_at).toISOString() }));
-  });
+  };
+  return existing ? run(existing) : crmRead(actor, run);
 }
 
 /** Finds tags by name, creating the missing ones. Used by forms, imports and workflows so "VIP" and "vip" are one tag. */

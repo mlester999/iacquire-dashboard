@@ -52,6 +52,7 @@ export function OverviewView({ site, pf, enquiries, timeZone, perms }: { site: W
   return (
     <div className="space-y-6">
       <PageHero
+        target="website.hero"
         eyebrow="Website" title={site.name || "Your website"} icon={<Globe className="size-4" />} tone="neutral"
         description={<>Built in the <strong className="font-semibold">{tpl ? `${tpl.family.name} · ${tpl.variation.name}` : "chosen"}</strong> style. {pub ? `Version ${pub.number} was published ${relativeTime(pub.publishedAt)}.` : "Nothing is published yet."}</>}
         action={<OverviewActions canEdit={perms.canEdit} canPublish={perms.canPublish} isLive={pub !== null} host={liveHost} />}

@@ -86,7 +86,7 @@ async function document(orgId: string, agentId: string | null, actorId: string, 
 
 async function conversation(orgId: string, agentId: string, userId: string, title: string, messages: Array<{ role: "user" | "assistant"; content: string }>) {
   return withSystem(async (db) => {
-    const { rows: existing } = await db.query("select id from chat_conversations where org_id = $1 and agent_instance_id = $2 and user_id = $3 and title = $4 and deleted_at is null limit 1", [orgId, agentId, userId, title]);
+    const { rows: existing } = await db.query<{ id: string }>("select id from chat_conversations where org_id = $1 and agent_instance_id = $2 and user_id = $3 and title = $4 and deleted_at is null limit 1", [orgId, agentId, userId, title]);
     if (existing[0]) return existing[0].id;
     const { rows } = await db.query<{ id: string }>(
       "insert into chat_conversations (org_id, agent_instance_id, user_id, title, hermes_session_id, last_message_at) values ($1, $2, $3, $4, $5, now() - interval '2 hours') returning id",

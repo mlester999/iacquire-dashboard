@@ -193,7 +193,9 @@ export async function testAllAgencyProfilesAction() {
 export async function healthCheckAction(agentId: string) {
   try {
     const orgId = await agentOrg(agentId);
-    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.view");
+    // A health check writes status, inventory attestation and integration state, so it requires the
+    // management permission (and the same assigned-client scope) rather than read-only view access.
+    const user = await requireAgencyOrgPermissionOrThrow(orgId, "agency.workforce.manage");
     const health = await runHealthCheck(agentId, { userId: user.id, kind: "agency" });
     revalidatePath(`/admin/clients/${orgId}`);
     revalidatePath("/admin/workforce");

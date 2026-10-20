@@ -22,10 +22,11 @@ export default async function WebsitePage() {
     return (
       <div className="space-y-6">
         <PageHero
+          target="website.hero"
           eyebrow="Your business, online" title="Make a space that feels like your business." icon={<Globe className="size-4" />} tone="blue"
           description="Choose a style, review a private draft built from your business details, and make it your own. You decide when it goes live. No website has been created or published yet."
           action={canCreate ? (
-            <Link href="/website/new" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl brand-gradient px-5 text-sm font-medium text-white shadow-glow transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-10">
+            <Link href="/website/new" data-aqi-target="website.start" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl brand-gradient px-5 text-sm font-medium text-white shadow-glow transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-10">
               <Palette className="size-4" aria-hidden /> Choose a style
             </Link>
           ) : undefined}

@@ -10,9 +10,9 @@ import { Activity, ArrowLeftRight, BarChart3, Boxes, Briefcase, Building2, Chevr
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
+import { LogoutTrigger } from "@/components/auth/logout-confirmation";
 import { useTheme } from "@/components/providers";
 import { aqiNavTarget } from "@/lib/aqi/targets";
-import { logoutAction } from "@/app/(auth)/actions";
 import { cn, initials } from "@/lib/utils";
 
 const NAV = [
@@ -86,7 +86,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
     <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3", small && "px-2")}><Nav superAdmin={superAdmin} compact={small} onNavigate={() => setOpen(false)} /></div>
     <div className="mt-3 space-y-2 border-t border-white/10 p-3">
       {hasWorkspace && <Link href="/overview" aria-label={small ? "Open client portal" : undefined} className={cn("workspace-nav-link flex min-h-10 items-center gap-3 rounded-xl px-3 text-[12px]", small && "justify-center px-1")}><ArrowLeftRight className="size-4 shrink-0" />{!small && "Client portal"}</Link>}
-      <div className={cn("flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2", small && "flex-col border-0 bg-transparent p-0")}><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#263456] text-[12px] font-semibold">{initials(user.name)}</span>{!small && <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-semibold">{user.name}</p><p className="mt-0.5 text-[10px] text-[#a6b3cd]">{superAdmin ? "Agency Super Admin" : "Agency Staff"}</p></div>}<form action={async () => { await logoutAction(); }}><button type="submit" className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/10 hover:text-white" aria-label="Sign out"><LogOut className="size-4" /></button></form></div>
+      <div className={cn("flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2", small && "flex-col border-0 bg-transparent p-0")}><span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-[#263456] text-[12px] font-semibold">{initials(user.name)}</span>{!small && <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-semibold">{user.name}</p><p className="mt-0.5 text-[10px] text-[#a6b3cd]">{superAdmin ? "Agency Super Admin" : "Agency Staff"}</p></div>}<LogoutTrigger className="flex size-9 items-center justify-center rounded-lg text-[#a6b3cd] hover:bg-white/10 hover:text-white" aria-label="Sign out"><LogOut className="size-4" /></LogoutTrigger></div>
       <button type="button" onClick={() => setCompact((s) => !s)} className="hidden min-h-8 w-full items-center justify-center gap-2 rounded-lg text-[11px] text-[#a6b3cd] hover:bg-white/5 lg:flex" aria-label={small ? "Expand navigation" : "Compact navigation"}>{small ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-3.5" /> Compact navigation</>}</button>
     </div>
   </div>;

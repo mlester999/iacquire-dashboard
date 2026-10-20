@@ -34,11 +34,13 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "nav.crm.contacts", label: "Contacts", description: "Contacts in the CRM navigation.", routes: ["*"], permission: "contacts.view", navigation: true },
   { id: "nav.crm.pipelines", label: "Pipelines", description: "Pipelines in the CRM navigation.", routes: ["*"], permission: "sales.view", navigation: true },
   { id: "nav.crm.calendar", label: "Calendar", description: "Calendar in the CRM navigation.", routes: ["*"], permission: "appointments.view", navigation: true },
+  { id: "nav.crm.tasks", label: "Tasks", description: "Tasks in the CRM navigation.", routes: ["*"], permission: "crm.view", navigation: true },
   { id: "nav.crm", label: "All CRM tools", description: "All CRM tools in the CRM navigation.", routes: ["*"], permission: "crm.view", navigation: true },
   { id: "nav.approvals", label: "Approvals", description: "Approvals in the main navigation.", routes: ["*"], permission: "approvals.view", navigation: true },
   { id: "nav.knowledge", label: "Knowledge Center", description: "Knowledge Center in the main navigation.", routes: ["*"], permission: "knowledge.view", navigation: true },
   { id: "nav.workforce", label: "AI Workforce", description: "AI Workforce in the main navigation.", routes: ["*"], permission: "agents.use", navigation: true },
   { id: "nav.settings", label: "Settings", description: "Settings in the main navigation.", routes: ["*"], permission: "workspace.view", navigation: true },
+  { id: "nav.website", label: "Website", description: "Website in the main navigation.", routes: ["*"], permission: "website.view", navigation: true },
   { id: "nav.support", label: "Support", description: "Support in the main navigation.", routes: ["*"], permission: "support.use", navigation: true },
   { id: "nav.analytics", label: "Analytics", description: "Analytics in the main navigation.", routes: ["*"], permission: "analytics.view", navigation: true },
   // Agency shell navigation.
@@ -67,6 +69,24 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "crm.pipelines.new-deal", label: "New deal", description: "Create a deal in this pipeline.", routes: ["/crm/pipelines"], permission: "opportunities.create" },
   { id: "crm.calendar.grid", label: "Calendar view", description: "The appointment calendar.", routes: ["/crm/calendar"], permission: "appointments.view" },
   { id: "crm.calendar.new-appointment", label: "New appointment", description: "Book an appointment.", routes: ["/crm/calendar"], permission: "appointments.book" },
+
+  // CRM tasks and workflows.
+  { id: "crm.tasks.header", label: "Task queue", description: "The Tasks page header and its actions.", routes: ["/crm/tasks"], permission: "crm.view" },
+  { id: "crm.tasks.views", label: "Task views", description: "Mine, team, overdue, upcoming and completed views.", routes: ["/crm/tasks"], permission: "crm.view" },
+  { id: "crm.tasks.new", label: "New task", description: "Open the task form.", routes: ["/crm/tasks"], permission: "tasks.manage" },
+  { id: "crm.workflows.header", label: "Workflows", description: "The Workflows page header and its actions.", routes: ["/crm/workflows"], permission: "workflows.view" },
+  { id: "crm.workflows.list", label: "Workflow list", description: "Every automation, its trigger, status and last run.", routes: ["/crm/workflows"], permission: "workflows.view" },
+  { id: "crm.workflows.new", label: "New workflow", description: "Start a workflow from a template or blank.", routes: ["/crm/workflows"], permission: "workflows.manage" },
+
+  // Website, analytics and setup.
+  { id: "website.hero", label: "Website overview", description: "The website status and starting point.", routes: ["/website"], permission: "website.view" },
+  { id: "website.edit", label: "Edit website", description: "Open the private draft editor.", routes: ["/website"], permission: "website.edit" },
+  { id: "website.start", label: "Choose a style", description: "Start a website from a design.", routes: ["/website"], permission: "website.create" },
+  { id: "analytics.range", label: "Reporting window", description: "Choose the date range and export the records.", routes: ["/analytics"], permission: "analytics.view" },
+  { id: "analytics.report", label: "Analytics report", description: "Recorded lead, execution and CRM results.", routes: ["/analytics"], permission: "analytics.view" },
+  { id: "setup.hero", label: "Setup Center", description: "Setup progress and what needs your attention.", routes: ["/setup"], permission: "setup.view" },
+  { id: "setup.journey", label: "Setup journey", description: "The three setup stages: preparation, your input and final review.", routes: ["/setup"], permission: "setup.view" },
+  { id: "aqi.launcher", label: "Open AQi", description: "The AQi assistant launcher.", routes: ["*"], navigation: true },
 
   // Legacy GoHighLevel appointment view (still used by externally owned calendars).
   { id: "appointments.hero", label: "Appointments overview", description: "The appointments page header.", routes: ["/appointments"], permission: "appointments.view" },
@@ -156,10 +176,12 @@ export function aqiNavTarget(href: string, area: "client" | "agency" = "client")
         "/crm/contacts": "nav.crm.contacts",
         "/crm/pipelines": "nav.crm.pipelines",
         "/crm/calendar": "nav.crm.calendar",
+        "/crm/tasks": "nav.crm.tasks",
         "/crm": "nav.crm",
         "/approvals": "nav.approvals",
         "/knowledge": "nav.knowledge",
         "/workforce": "nav.workforce",
+        "/website": "nav.website",
         "/settings": "nav.settings",
         "/support": "nav.support",
         "/analytics": "nav.analytics",

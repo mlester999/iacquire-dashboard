@@ -47,9 +47,9 @@ export async function loadFieldDefinitions(db: Queryable, orgId: string, entity:
   return rows.map((r) => toView(r));
 }
 
-export async function listCustomFields(actor: CrmActor, entity?: FieldEntity): Promise<CustomFieldView[]> {
+export async function listCustomFields(actor: CrmActor, entity?: FieldEntity, existing?: Queryable): Promise<CustomFieldView[]> {
   assertCan(actor, "crm.view");
-  return crmRead(actor, async (db) => {
+  const run = async (db: Queryable) => {
     const { rows } = await db.query<FieldRow & { value_count: string }>(
       `select f.id, f.entity, f.key, f.label, f.type, f.options, f.required, f.help_text, f.group_name, f.position, f.archived_at,
               (select count(*) from crm_field_values v where v.field_id = f.id)::text as value_count
@@ -57,7 +57,8 @@ export async function listCustomFields(actor: CrmActor, entity?: FieldEntity): P
       [actor.orgId, entity ?? null],
     );
     return rows.map((r) => toView(r, Number(r.value_count)));
-  });
+  };
+  return existing ? run(existing) : crmRead(actor, run);
 }
 
 export interface FieldDefinitionInput {

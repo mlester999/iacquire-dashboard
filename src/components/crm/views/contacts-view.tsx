@@ -4,7 +4,7 @@ import { listTags } from "@/server/crm/tags";
 import { listCustomFields } from "@/server/crm/fields";
 import { listAssignableMembers } from "@/server/crm/contacts";
 import { listPipelines } from "@/server/crm/pipelines";
-import { auditSupportView, type CrmActor } from "@/server/crm/actor";
+import { auditSupportView, crmRead, type CrmActor } from "@/server/crm/actor";
 import { getWorkspace } from "@/server/crm/workspace";
 import { AppError } from "@/server/errors";
 import type { CrmScope } from "@/server/crm/page";
@@ -27,22 +27,28 @@ export async function ContactsView({ actor, scope, searchParams }: { actor: CrmA
   const page = Math.max(1, Number(one(searchParams.page)) || 1);
   const q = one(searchParams.q)?.slice(0, 120) ?? "";
   const colsParam = one(searchParams.cols);
-  let error: string | null = null;
-  let data: Awaited<ReturnType<typeof listContacts>> | null = null;
-  try {
-    data = await listContacts(actor, { smartListId: list, filter: filter ?? undefined, search: q, archived, sort: sortBy ? { by: sortBy, dir } : undefined, page, pageSize: 25, columns: colsParam ? colsParam.split(",") : undefined });
-  } catch (err) {
-    if (!(err instanceof AppError)) throw err;
-    error = err.message;
-    data = await listContacts(actor, { archived, page: 1, pageSize: 25 });
-  }
-  const [lists, tags, fields, members, pipelines] = await Promise.all([
-    listSmartLists(actor, "contact"),
-    listTags(actor),
-    listCustomFields(actor, "contact"),
-    listAssignableMembers(actor),
-    actor.can("sales.view") ? listPipelines(actor) : Promise.resolve([]),
-  ]);
+  // One member transaction for the directory and its supporting menus. Six separate transactions
+  // used to mean six BEGIN/COMMIT pairs plus six identity setups on every hosted navigation.
+  const loaded = await crmRead(actor, async (db) => {
+    let error: string | null = null;
+    let data: Awaited<ReturnType<typeof listContacts>> | null = null;
+    try {
+      data = await listContacts(actor, { smartListId: list, filter: filter ?? undefined, search: q, archived, sort: sortBy ? { by: sortBy, dir } : undefined, page, pageSize: 25, columns: colsParam ? colsParam.split(",") : undefined }, db);
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      error = err.message;
+      data = await listContacts(actor, { archived, page: 1, pageSize: 25 }, db);
+    }
+    const [lists, tags, fields, members, pipelines] = await Promise.all([
+      listSmartLists(actor, "contact", db),
+      listTags(actor, {}, db),
+      listCustomFields(actor, "contact", db),
+      listAssignableMembers(actor, db),
+      actor.can("sales.view") ? listPipelines(actor, {}, db) : Promise.resolve([]),
+    ]);
+    return { error, data, lists, tags, fields, members, pipelines };
+  });
+  const { error, data, lists, tags, fields, members, pipelines } = loaded;
   if (list && !error) await touchSmartList(actor, list);
   await auditSupportView(actor, "contacts");
   const columns = colsParam ? colsParam.split(",").filter(Boolean).slice(0, 20) : data.smartList?.columns.length ? data.smartList.columns : DEFAULT_CONTACT_COLUMNS;

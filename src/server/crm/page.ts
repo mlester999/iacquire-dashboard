@@ -2,8 +2,8 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { memberActor, type CrmActor } from "@/server/crm/actor";
+import { getWorkspace } from "@/server/crm/workspace";
 import { PERMISSION_MATRIX, type Permission } from "@/lib/permissions";
-import { withSystem } from "@/server/db";
 
 /** What a client component needs to know about who is acting and where: serializable, with no secrets. */
 export interface CrmScope {
@@ -21,7 +21,9 @@ export interface CrmScope {
 export async function scopeFor(actor: CrmActor, base: string): Promise<CrmScope> {
   const can: Partial<Record<Permission, true>> = {};
   for (const p of Object.keys(PERMISSION_MATRIX) as Permission[]) if (actor.can(p)) can[p] = true;
-  const ws = await withSystem((db) => db.query<{ default_currency: string }>("select default_currency from crm_workspaces where org_id = $1", [actor.orgId]));
+  // Reuses the workspace the CRM layout already loaded in this render instead of querying the
+  // currency again. Falls back to one query for routes rendered without that layout.
+  const ws = await getWorkspace(actor);
   return {
     base,
     orgId: actor.kind === "agency" ? actor.orgId : null,
@@ -29,7 +31,7 @@ export async function scopeFor(actor: CrmActor, base: string): Promise<CrmScope>
     readOnly: actor.kind === "agency" && actor.supportMode === "read",
     userId: actor.userId,
     timezone: actor.timezone,
-    currency: ws.rows[0]?.default_currency ?? "USD",
+    currency: ws.defaultCurrency,
     can,
   };
 }

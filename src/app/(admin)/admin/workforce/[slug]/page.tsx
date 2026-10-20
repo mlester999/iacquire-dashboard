@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, BookOpen, Bot, History, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, ShieldCheck, Sparkles } from "lucide-react";
 import { requireAgency } from "@/server/tenancy/context";
 import { withSystem } from "@/server/db";
 import { ensureAgencyWorkspace } from "@/server/workforce/agency";
 import { getProvisioningBundle } from "@/server/workforce/provisioning";
-import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
-import { MetricCard, PageHero, SectionLabel } from "@/components/ui/workspace";
 import { CopyTextButton } from "@/components/ui/copy-button";
 import { AgencyWorkforceControls } from "@/components/admin/agency-workforce-controls";
+import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
+import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { AGENT_BY_SLUG, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
-import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
+import { formatDateTime, sentenceCase } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -84,7 +84,14 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
          ) as last_used`,
       [agent.id, workspace.orgId],
     );
-    return { agent, runs, pendingApprovals: approvals[0]?.n ?? 0, knowledge: knowledge[0] ?? { notes: 0, documents: 0, last_used: null } };
+    const { rows: ack } = await db.query<{ current: boolean | null }>(
+      `select (ack.acknowledged_at >= c.checked_at) as current
+         from hermes_tool_policy_acknowledgements ack
+         left join agency_hermes_profile_checks c on c.agent_instance_id = ack.agent_id
+        where ack.agent_id = $1`,
+      [agent.id],
+    );
+    return { agent, runs, pendingApprovals: approvals[0]?.n ?? 0, knowledge: knowledge[0] ?? { notes: 0, documents: 0, last_used: null }, acknowledgementCurrent: ack[0]?.current === true };
   });
   if (!data) {
     return (
@@ -94,99 +101,130 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
       </div>
     );
   }
-  const { agent, runs, pendingApprovals, knowledge } = data;
-  const online = agent.enabled && (agent.status === "online" || agent.status === "busy");
+  const { agent, runs, pendingApprovals, knowledge, acknowledgementCurrent } = data;
+  const readiness = deriveEmployeeReadiness({
+    displayName: agent.display_name,
+    enabled: agent.enabled,
+    status: agent.status,
+    configVersion: agent.config_version,
+    lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
+    lastHealthOk: agent.last_health_ok,
+    lastHealthDetail: agent.last_health_detail,
+    inventoryDigest: agent.tool_inventory_digest,
+    acknowledgementCurrent,
+    isAgencyEmployee: true,
+  });
   const bundle = await getProvisioningBundle(agent.id);
+
   return (
     <div className="module-stack space-y-6">
-      <Link href="/admin/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink"><ArrowLeft className="size-3.5" /> AI Workforce</Link>
-      <PageHero
-        tone="dark"
+      <Link href="/admin/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink"><ArrowLeft className="size-3.5" /> Internal AI Workforce</Link>
+      <EmployeeProfileHero
+        dark
+        meta={meta}
+        displayName={agent.display_name}
         eyebrow="iAcquire internal employee"
-        icon={<Bot className="size-5" />}
-        title={agent.display_name}
         description={`${meta.tagline} This employee works in iAcquire's own workspace and is never routed to a client tenant.`}
-        action={<AgencyWorkforceControls agentId={agent.id} orgId={agent.org_id} slug={meta.slug} employeeName={agent.display_name} enabled={agent.enabled} />}
-        aside={<div className="flex items-center gap-4 rounded-2xl border border-white/15 bg-white/5 p-5"><AgentAvatar role={meta} size="xl" /><div><p className="text-[11px] font-medium uppercase tracking-wider text-slate-300">Internal identity</p><p className="mt-2 text-[14px] font-semibold text-white">{meta.shortName}</p><div className="mt-2"><AgentStatusBadge status={agent.enabled ? agent.status : "disabled"} /></div></div></div>}
+        readiness={readiness}
+        actions={<AgencyWorkforceControls agentId={agent.id} orgId={agent.org_id} slug={meta.slug} employeeName={agent.display_name} enabled={agent.enabled} dark />}
+        footer={
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11.5px] text-slate-300">
+            <span className="inline-flex items-center gap-1.5"><Sparkles className="size-3.5 text-blue-200" /> {agent.config_version ? `Configuration v${agent.config_version}` : "No applied configuration"}</span>
+            <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-blue-200" /> {agent.tool_inventory_tool_count ?? 0} approved tools</span>
+            <span className="inline-flex items-center gap-1.5"><BookOpen className="size-3.5 text-blue-200" /> {knowledge.notes + knowledge.documents} usable knowledge</span>
+            <Link href="/approvals" className="inline-flex items-center gap-1.5 text-blue-200 hover:text-white">{pendingApprovals} pending approvals <ArrowUpRight className="size-3" /></Link>
+          </div>
+        }
       />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <MetricCard label="Configuration" value={agent.config_version ? `v${agent.config_version}` : "Not set"} detail={agent.config_applied_at ? `Applied ${relativeTime(agent.config_applied_at)}` : "No applied version"} icon={<Sparkles className="size-4" />} tone="blue" />
-        <MetricCard label="Pending approvals" value={pendingApprovals} detail="Customer-facing actions wait for a person." icon={<ShieldCheck className="size-4" />} tone="amber" href="/approvals" />
-        <MetricCard label="Usable knowledge" value={knowledge.notes + knowledge.documents} detail={knowledge.last_used ? `Last used ${relativeTime(knowledge.last_used)}` : "Not used in a run yet"} icon={<BookOpen className="size-4" />} tone="violet" />
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_365px]">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader><div><CardTitle>Profile and runtime</CardTitle><CardDescription>What is configured and what has actually been verified.</CardDescription></div></CardHeader>
+            <CardContent className="space-y-4">
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Role</dt><dd className="mt-1 text-[13.5px] font-medium">{meta.name}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Assigned organization</dt><dd className="mt-1 text-[13.5px] font-medium">{workspace.name}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Provider runtime</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.hermes_profile ? "Hermes Agent" : "Not connected"}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Profile identifier</dt><dd className="mt-1 break-all font-mono text-[12px]">{agent.hermes_profile ?? "Not mapped"}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Enabled</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.enabled ? "Yes" : "No"}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Operating mode</dt><dd className="mt-1 text-[13.5px] font-medium">{sentenceCase(agent.mode.replaceAll("_", " "))}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Last verified activity</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.last_health_check_at ? formatDateTime(agent.last_health_check_at, workspace.timezone) : "Never checked"}</dd></div>
+                <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Connection detail</dt><dd className="mt-1 text-[13px] text-muted">{agent.last_health_detail ?? "No connection check recorded."}</dd></div>
+              </dl>
+              <div className="rounded-xl border border-line bg-surface-2/60 p-3.5">
+                <p className="text-[12px] font-semibold text-ink-2">{agent.enabled && (agent.status === "online" || agent.status === "busy") ? "Verified online" : "Not verified online"}</p>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{agent.enabled && (agent.status === "online" || agent.status === "busy") ? "The latest authenticated health check passed. Chat is available through the internal workspace." : "A saved profile or API key alone is not treated as online. Use Check after the configuration is applied."}</p>
+              </div>
+              <div>
+                <p className="mb-2 text-[12px] font-semibold">Authorized portal tools</p>
+                <ul className="grid gap-1.5 sm:grid-cols-2">{agent.default_tools.map((tool) => <li key={tool} className="text-[12.5px] text-ink-2">• {agentToolLabel(tool)}</li>)}</ul>
+                <p className="mt-2 text-[11.5px] text-muted">Tool access is granted by iAcquire and enforced by the provider profile and connection health check.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader><div><CardTitle>Configuration summary</CardTitle><CardDescription>The active version, in plain English.</CardDescription></div></CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-[13px] leading-relaxed text-ink-2">{agent.config_summary ?? "No configuration has been applied yet."}</p>
+                <Link href={`/admin/workforce/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-primary hover:bg-surface-2">
+                  Open configuration and knowledge <ArrowUpRight className="size-3.5" />
+                </Link>
+                <p className="text-[11.5px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this employee&apos;s active configuration.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><div><CardTitle>Approved runtime inventory</CardTitle><CardDescription>Recorded by the authenticated health check, never inferred.</CardDescription></div></CardHeader>
+              <CardContent className="space-y-2 text-[12.5px]">
+                {agent.tool_inventory_contract ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Contract</span><span className="text-right font-mono text-[11px]">{agent.tool_inventory_contract}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Tools</span><span className="font-medium">{agent.tool_inventory_tool_count ?? 0}</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Digest</span><span className="font-mono text-[11px]">{agent.tool_inventory_digest?.slice(0, 12)}…</span></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted">Valid until</span><span className="text-right">{agent.tool_inventory_expires_at ? formatDateTime(agent.tool_inventory_expires_at, workspace.timezone) : "Not recorded"}</span></div>
+                    {agent.tool_inventory_detail && <p className="rounded-xl bg-surface-2 p-3 text-[11.5px] leading-relaxed text-muted">{agent.tool_inventory_detail}</p>}
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12px] leading-relaxed text-warning-ink">
+                    No approved inventory is recorded. Apply the configuration, then use <strong>Check</strong> in the header to run the authenticated connection check.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <ReadinessChecklist readiness={readiness} action={<Link href={`/admin/workforce/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12px] font-medium text-primary hover:bg-surface-2">Configure <ArrowUpRight className="size-3.5" /></Link>} />
+          <Card>
+            <CardHeader><div><CardTitle>Recorded activity</CardTitle><CardDescription>The latest saved runs. Tokens come from the provider when reported.</CardDescription></div></CardHeader>
+            <CardContent>
+              {runs.length ? (
+                <ul className="divide-y divide-line">
+                  {runs.map((run) => (
+                    <li key={run.id} className="flex flex-wrap items-center gap-2 py-2.5 text-[12.5px]">
+                      <span className="min-w-0 flex-1">{formatDateTime(run.started_at, workspace.timezone)}</span>
+                      <Badge tone={run.status === "completed" ? "success" : run.status === "cancelled" ? "neutral" : run.status === "running" ? "primary" : "danger"}>{sentenceCase(run.status)}</Badge>
+                      <span className="text-muted">{run.total_tokens ?? "—"} tokens</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="py-4 text-[13px] text-muted">No runs recorded yet.</p>}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader><div><CardTitle>Profile and runtime</CardTitle><CardDescription>What is configured, and what has actually been verified.</CardDescription></div></CardHeader>
-          <CardContent className="space-y-4">
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Role</dt><dd className="mt-1 text-[13.5px] font-medium">{meta.name}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Assigned organization</dt><dd className="mt-1 text-[13.5px] font-medium">{workspace.name}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Provider runtime</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.hermes_profile ? "Hermes Agent" : "Not connected"}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Profile identifier</dt><dd className="mt-1 break-all font-mono text-[12px]">{agent.hermes_profile ?? "Not mapped"}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Enabled</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.enabled ? "Yes" : "No"}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Operating mode</dt><dd className="mt-1 text-[13.5px] font-medium">{sentenceCase(agent.mode.replaceAll("_", " "))}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Last verified activity</dt><dd className="mt-1 text-[13.5px] font-medium">{agent.last_health_check_at ? formatDateTime(agent.last_health_check_at, workspace.timezone) : "Never checked"}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Connection detail</dt><dd className="mt-1 text-[13px] text-muted">{agent.last_health_detail ?? "No connection check recorded."}</dd></div>
-              <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Complete tool inventory</dt><dd className="mt-1 text-[13px] text-muted">{agent.tool_inventory_contract ? `${agent.tool_inventory_tool_count ?? 0} tools verified${agent.tool_inventory_expires_at ? ` · valid until ${formatDateTime(agent.tool_inventory_expires_at, workspace.timezone)}` : ""}${agent.tool_inventory_digest ? ` · ${agent.tool_inventory_digest.slice(0, 12)}…` : ""}` : "Not verified"}</dd></div>
-              {agent.tool_inventory_detail && <div className="sm:col-span-2"><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Inventory detail</dt><dd className="mt-1 text-[13px] text-muted">{agent.tool_inventory_detail}</dd></div>}
-            </dl>
-            <div className="rounded-xl border border-line bg-surface-2/60 p-3.5">
-              <p className="text-[12px] font-semibold text-ink-2">{online ? "Verified online" : "Not verified online"}</p>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-                {online
-                  ? "The latest authenticated health check passed. Chat is available through the internal workspace."
-                  : "A saved profile or API key alone is not treated as online. Use Check after the profile is mapped and the configuration is applied."}
-              </p>
-            </div>
-            <div>
-              <p className="mb-2 text-[12px] font-semibold">Authorized tools</p>
-              <ul className="grid gap-1.5 sm:grid-cols-2">
-                {agent.default_tools.map((tool) => <li key={tool} className="text-[12.5px] text-ink-2">• {agentToolLabel(tool)}</li>)}
-              </ul>
-              <p className="mt-2 text-[11.5px] text-muted">Tool access is granted by the iAcquire platform and enforced by the provider profile and connection health check.</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><div><CardTitle>Configuration summary</CardTitle><CardDescription>The active version, in plain English.</CardDescription></div></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-[13px] leading-relaxed text-ink-2">{agent.config_summary ?? "No configuration has been applied yet."}</p>
-            <Link href={`/admin/workforce/open?role=${meta.slug}&to=manage`} className="inline-flex min-h-10 w-full items-center justify-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-primary hover:bg-surface-2">
-              Open configuration and knowledge
-            </Link>
-            <p className="text-[11.5px] leading-relaxed text-muted">Configuration changes are versioned. Draft testing never edits this employee&apos;s active configuration.</p>
-          </CardContent>
-        </Card>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><div><CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> SOUL.md (managed by iAcquire)</CardTitle><CardDescription>The profile identity file used by the Hermes administrator. It is not editable from the portal and no portal save rewrites it.</CardDescription></div></CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-end"><CopyTextButton text={bundle.soul} label="Copy SOUL.md" /></div>
-            <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[11.5px] leading-relaxed text-ink-2">{bundle.soul}</pre>
-            <p className="text-[11.5px] leading-relaxed text-muted">Client-specific instructions are sent with each run beneath this identity and the protected iAcquire policy. That keeps a model or instruction change from destroying the employee&apos;s identity or history.</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><div><CardTitle className="flex items-center gap-2"><History className="size-4" /> Recorded activity</CardTitle><CardDescription>The latest saved runs. Tokens come from the provider when reported.</CardDescription></div></CardHeader>
-          <CardContent>
-            {runs.length ? (
-              <ul className="divide-y divide-line">
-                {runs.map((run) => (
-                  <li key={run.id} className="flex flex-wrap items-center gap-2 py-2.5 text-[12.5px]">
-                    <span className="min-w-0 flex-1">{formatDateTime(run.started_at, workspace.timezone)}</span>
-                    <Badge tone={run.status === "completed" ? "success" : run.status === "cancelled" ? "neutral" : run.status === "running" ? "primary" : "danger"}>{sentenceCase(run.status)}</Badge>
-                    <span className="text-muted">{run.total_tokens ?? "—"} tokens</span>
-                    <span className="text-muted">{run.tools} tools</span>
-                    {run.error_message && <span className="w-full text-danger-ink">{run.error_message}</span>}
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="py-4 text-[13px] text-muted">No runs recorded yet.</p>}
-          </CardContent>
-        </Card>
-      </div>
-      <SectionLabel title="How this page fits together" description="The internal workforce uses the same employee registry, chat backend, versioning, knowledge and approval system as client employees. Only the tenant boundary differs." />
+
+      <Card>
+        <CardHeader><div><CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> SOUL.md (managed by iAcquire)</CardTitle><CardDescription>The profile identity file used by the Hermes administrator. It is not editable from the portal and no portal save rewrites it.</CardDescription></div></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex justify-end"><CopyTextButton text={bundle.soul} label="Copy SOUL.md" /></div>
+          <pre tabIndex={0} aria-label="SOUL.md content" className="scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-surface-2 p-3 font-mono text-[11.5px] leading-relaxed text-ink-2">{bundle.soul}</pre>
+          <p className="text-[11.5px] leading-relaxed text-muted">Client-specific instructions are sent with each run beneath this identity and the protected iAcquire policy. That keeps a model or instruction change from destroying the employee&apos;s identity or history.</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

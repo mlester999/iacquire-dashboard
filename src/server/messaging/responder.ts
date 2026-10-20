@@ -4,7 +4,7 @@ import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { automationGate } from "@/server/automation/gate";
 import { chargeUsage, getBalance } from "@/server/billing/ledger";
 import { buildRunInstructions, loadConnection } from "@/server/workforce/service";
-import { HermesError, startRun, streamRunEvents } from "@/server/integrations/hermes/client";
+import { HermesError, startAgentRun, streamRunEvents } from "@/server/integrations/hermes/client";
 import { createEscalation } from "@/server/messaging/handoff";
 import { getAvailability } from "@/server/appointments/availability";
 import { requestBooking, type BookingResult } from "@/server/appointments/booking";
@@ -122,7 +122,7 @@ export const hermesReplyGenerator: ReplyGenerator = async (ctx) => {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 60_000);
   try {
-    const { runId } = await startRun(prepared.conn, {
+    const { runId } = await startAgentRun(ctx.agentId, ctx.orgId, prepared.conn, {
       input: ctx.customerMessage,
       instructions: customerInstructions(prepared.instructions, ctx),
       conversationHistory: ctx.history,

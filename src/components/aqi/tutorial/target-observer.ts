@@ -44,7 +44,7 @@ export function findVisibleTarget(id: string): TargetHit | null {
  * alignment never ends up underneath it. Returns 0 when nothing is pinned there.
  */
 export function measureTopInset(): number {
-  if (typeof document === "undefined") return 0;
+  if (typeof document === "undefined" || typeof document.elementFromPoint !== "function") return 0;
   let node: Element | null = document.elementFromPoint(Math.round(window.innerWidth / 2), 4);
   while (node && node !== document.body && node !== document.documentElement) {
     const style = window.getComputedStyle(node);
