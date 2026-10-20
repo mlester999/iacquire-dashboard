@@ -167,7 +167,7 @@ export function NotificationCenter({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold tabular-nums text-danger-on ring-2 ring-bg"
+                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b42328] px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg"
                 >
                   {unread > 9 ? "9+" : unread}
                 </motion.span>
