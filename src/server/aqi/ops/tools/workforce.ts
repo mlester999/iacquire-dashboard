@@ -4,6 +4,7 @@ import { readSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { defineReadTool } from "@/server/aqi/ops/tool";
 import { ageHours, clean, iso, metric, minutesBetween, newCardId, plural } from "@/server/aqi/ops/tools/helpers";
+import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import {
   OPS_EMPLOYEE_STATE_LABEL,
   type OpsEmployeeRow,
@@ -101,7 +102,7 @@ export const workforceStatus = defineReadTool({
   roles: SUPER,
   permission: "agency.workforce.view",
   scopes: ["platform", "tenant", "employee", "workflow", "ticket"],
-  input: z.object({ limit: z.number().int().min(1).max(20).default(12) }).strict(),
+  input: z.object({ limit: z.number().int().min(1).max(20).default(12), role: z.enum(AGENT_ROLE_KEYS).optional() }).strict(),
   idempotent: true,
   audit: { action: "aqi.ops_tool_run", sensitive: false },
   timeoutMs: 12_000,
@@ -132,10 +133,10 @@ export const workforceStatus = defineReadTool({
               count(*) filter (where q.status = 'approved' and q.execution_status = 'blocked') as blocked
             from approval_requests q where q.agent_instance_id = a.id and (q.status = 'pending' or (q.status = 'approved' and q.execution_status = 'blocked'))) ap on true
         where o.status <> 'archived' and ($1::uuid is null or a.org_id = $1) and ($2::uuid is null or a.id = $2)
-          and app.user_can_access_org($3, a.org_id)
+          and app.user_can_access_org($3, a.org_id) and ($4::text is null or a.role_key = $4)
         order by o.name, a.role_key
         limit 400`,
-      [orgId, agentId, ctx.user.id],
+      [orgId, agentId, ctx.user.id, args.role ?? null],
     ));
     const derived: Array<{ row: AgentDbRow; state: OpsEmployeeState; evidence: string }> = rows.map((row) => {
       const d = deriveEmployeeState({

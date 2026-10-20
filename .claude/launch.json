@@ -37,6 +37,22 @@
         "scripts/crm-qa.mjs"
       ],
       "port": 3230
+    },
+    {
+      "name": "ops-mock-llm",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/ops-mock-llm.mjs"
+      ],
+      "port": 3291
+    },
+    {
+      "name": "ops-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/ops-qa.mjs"
+      ],
+      "port": 3230
     }
   ]
 }

@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
-import { Providers } from "@/components/providers";
+import { Providers, type AqiMode } from "@/components/providers";
+import { getCurrentUser } from "@/server/auth/session";
 import { routeRequest, type DeploymentRole } from "@/lib/site-routing";
 import "./globals.css";
 
@@ -50,13 +51,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     pathname: "/",
     portalHosts: [appHost],
   }).kind === "portal";
+  // The role decides which AQi is drawn. getCurrentUser is cached per request, so the pages and layouts
+  // that need the user anyway do not pay for this a second time; anonymous visitors cost a cookie check.
+  let aqiMode: AqiMode = "assistant";
+  if (aqiAllowed) {
+    try {
+      if ((await getCurrentUser())?.platformRole === "agency_super_admin") aqiMode = "operations";
+    } catch {
+      // The Client assistant is the safe default when the session cannot be read.
+    }
+  }
   return (
     <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${instrument.variable}`}>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-dvh">
-        <Providers aqiAllowed={aqiAllowed}>{children}</Providers>
+        <Providers aqiAllowed={aqiAllowed} aqiMode={aqiMode}>{children}</Providers>
       </body>
     </html>
   );

@@ -9,7 +9,7 @@ describe("migration 0047 AQi schema", () => {
     ));
     expect(tables.rows.map((row) => row.name)).toEqual([
       "aqi_attachments", "aqi_budgets", "aqi_config_versions", "aqi_contextual_tips", "aqi_conversations",
-      "aqi_knowledge_documents", "aqi_knowledge_entries", "aqi_knowledge_versions", "aqi_messages", "aqi_model_prices", "aqi_suggested_questions",
+      "aqi_knowledge_documents", "aqi_knowledge_entries", "aqi_knowledge_versions", "aqi_messages", "aqi_model_prices", "aqi_ops_actions", "aqi_ops_briefing_settings", "aqi_ops_briefings", "aqi_suggested_questions",
       "aqi_tutorial_events", "aqi_tutorial_progress", "aqi_tutorial_versions", "aqi_tutorials", "aqi_usage_events",
       "aqi_user_preferences",
     ]);

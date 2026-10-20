@@ -10,6 +10,7 @@ import { INTEGRATION_TOOLS } from "@/server/aqi/ops/tools/integrations";
 import { RELEASE_TOOLS } from "@/server/aqi/ops/tools/release";
 import { PRODUCT_TOOLS } from "@/server/aqi/ops/tools/product";
 import { BRIEFING_TOOLS } from "@/server/aqi/ops/tools/briefing";
+import { TELEMETRY_TOOLS } from "@/server/aqi/ops/tools/telemetry";
 import { ACTION_TOOLS } from "@/server/aqi/ops/tools/actions";
 
 /**
@@ -28,6 +29,7 @@ export const OPS_TOOLS: readonly OpsTool[] = [
   ...RELEASE_TOOLS,
   ...PRODUCT_TOOLS,
   ...BRIEFING_TOOLS,
+  ...TELEMETRY_TOOLS,
   ...ACTION_TOOLS,
 ];
 

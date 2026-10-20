@@ -1,7 +1,9 @@
 import "server-only";
-import { withUser } from "@/server/db";
+import { withSystem, withUser } from "@/server/db";
+import { hasDbErrorCode } from "@/server/diagnostics";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
+import { loadActionCards } from "@/server/aqi/ops/actions";
 import type { OpsMessageContext, OpsScope } from "@/lib/aqi/ops/types";
 
 /**
@@ -85,6 +87,18 @@ export async function getOpsConversation(
       })),
       hasMore: messages.length > 20,
     };
+  }).then(async (result) => {
+    // Stored cards are a snapshot. Proposals are re-read so a reloaded chat shows what really happened to them.
+    const ids = result.messages.flatMap((m) => m.ops?.actionIds ?? []);
+    const actions = await loadActionCards(user.id, ids);
+    if (actions.size) {
+      for (const m of result.messages) {
+        if (!m.ops?.actionIds.length) continue;
+        const kept = m.ops.cards.filter((c) => !("actionId" in c && actions.has(c.actionId)));
+        m.ops = { ...m.ops, cards: [...kept, ...m.ops.actionIds.flatMap((id) => actions.get(id) ?? [])] };
+      }
+    }
+    return result;
   });
 }
 
@@ -100,6 +114,29 @@ export async function renameOpsConversation(user: { id: string; platformRole: st
     if (!result.rows[0]) throw new AppError("not_found", "Conversation not found.");
     return result.rows[0].title;
   });
+}
+
+/** How long an investigation is kept after its last message. Confirmed actions outlive it in aqi_ops_actions and audit_logs. */
+export const OPS_CONVERSATION_RETENTION_DAYS = 180;
+
+/**
+ * Retention for investigation history. Bounded (100 per run) and idempotent, so the scheduler can call it on every tick. The Client
+ * assistant's conversations are not touched: only `surface = 'operations'` rows. Action records keep their audit value because
+ * their conversation link is set null by the foreign key, not deleted.
+ */
+export async function purgeExpiredOpsConversations(): Promise<number> {
+  try {
+    const result = await withSystem((db) => db.query(
+      `delete from aqi_conversations where id in (
+         select id from aqi_conversations where surface = 'operations' and last_message_at < now() - make_interval(days => $1) order by last_message_at limit 100)`,
+      [OPS_CONVERSATION_RETENTION_DAYS],
+    ));
+    return result.rowCount;
+  } catch (err) {
+    // The code can be deployed before migration 0068: there is no `surface` column yet, so there is nothing to purge.
+    if (hasDbErrorCode(err, "42703")) return 0;
+    throw err;
+  }
 }
 
 export async function deleteOpsConversation(user: { id: string; platformRole: string }, conversationId: string): Promise<void> {

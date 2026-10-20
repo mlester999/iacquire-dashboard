@@ -11,6 +11,7 @@ Insights dashboard; the detailed Phase 3 record is [aqi-phase3.md](aqi-phase3.md
 | Capability | Status |
 | --- | --- |
 | Phase 3 visual guidance, tutorials, onboarding, tips, knowledge documents and Insights | **Hardening deployed and migration 0063 applied hosted 2026-10-19**; local/browser verified; staging acceptance not recorded. See [aqi-phase3.md](aqi-phase3.md) |
+| AQi Operations (Super Admin operations copilot, migration 0068) | **Committed on branch `worktree-aqi-operations`; not pushed, not deployed, migration 0068 not applied to any hosted project.** Locally and browser verified against an isolated database. See [aqi-operations.md](aqi-operations.md) |
 | AQi identity, floating launcher and chat panel | Locally verified |
 | Real provider request path + token streaming | **Live controlled probe passed** against the existing production DeepSeek credential: `deepseek-flash`, OpenAI format, `OK` response and one real SSE delta; no customer data |
 | Streaming fallback for a non-SSE JSON answer | Locally verified |
@@ -166,7 +167,10 @@ Migration 0052 adds the explicit conversation lifecycle:
   can read the metadata table.
 
 All routes resolve the person from the session; none accepts a role or organization from the
-browser. AQi never executes a model-generated tool call.
+browser. The Client and agency-staff assistant never executes a model-generated tool call. The Super
+Admin is served by a separate runtime, **AQi Operations** ([aqi-operations.md](aqi-operations.md)),
+which also never lets the model choose or run a tool: a deterministic planner picks audited read-only
+tools, and every write is a confirmed, verified action that the person approves on a separate request.
 
 ## Context and knowledge
 

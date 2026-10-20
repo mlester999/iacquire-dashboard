@@ -13,7 +13,7 @@
 -- Client AQi code paths do not reference any of this, so the Client assistant keeps working if this
 -- migration has not been applied yet. Rows in the new tables are reachable only through server code
 -- that has already authorised a Super Admin: RLS is enabled with no policy for the app role.
--- Non-destructive: one additive column with a default, three new tables, one index.
+-- Non-destructive: one additive column with a default, three new tables and their indexes, three indexes on existing tables.
 -- Rollback: supabase/rollbacks/0068_aqi_operations.down.sql. Not applied to any hosted project.
 
 alter table aqi_conversations

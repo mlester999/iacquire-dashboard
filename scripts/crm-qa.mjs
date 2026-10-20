@@ -15,7 +15,7 @@ if (args.length) {
   console.error("Usage: node scripts/crm-qa.mjs");
   process.exit(1);
 }
-const qaEnv = CRM_QA_ENV;
+const qaEnv = { ...CRM_QA_ENV };
 const nodeOptions = String(process.env.NODE_OPTIONS ?? "").trim();
 const maxOldSpaceSizeSet = /(?:^|\s)--max[-_]old[-_]space[-_]size(?:=|\s)/.test(nodeOptions);
 const qaNodeOptions = maxOldSpaceSizeSet ? nodeOptions : [nodeOptions, "--max-old-space-size=8192"].filter(Boolean).join(" ");
@@ -24,6 +24,17 @@ try {
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
+}
+// Optional, for AQi Operations QA only: point the AI provider at scripts/ops-mock-llm.mjs. It must be a loopback http URL, so the
+// server can never be handed a real provider endpoint through this switch. The key is a local constant, not a credential.
+if (process.env.OPS_QA_LLM_URL) {
+  let url;
+  try { url = new URL(process.env.OPS_QA_LLM_URL); } catch { url = null; }
+  if (!url || url.protocol !== "http:" || url.hostname !== "127.0.0.1") {
+    console.error("OPS_QA_LLM_URL must be an http://127.0.0.1:<port>/v1 address (the local mock provider).");
+    process.exit(1);
+  }
+  Object.assign(qaEnv, { HELP_LLM_PROVIDER: "openai_compatible", LLM_BASE_URL: url.toString().replace(/\/$/, ""), LLM_API_KEY: "local-ops-qa-key", LLM_MODEL: "ops-qa-model" });
 }
 if (!fs.existsSync(path.join(root, CRM_QA_DATA_DIR, "seed-summary.json"))) {
   console.warn(`[crm-qa] ${CRM_QA_DATA_DIR} has no seed yet; the app starts on an empty database. Stop it and run node scripts/run-crm-qa-seed.mjs first.`);

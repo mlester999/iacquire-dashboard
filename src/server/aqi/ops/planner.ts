@@ -11,7 +11,7 @@ import { opsScopeKey, type OpsScope } from "@/lib/aqi/ops/types";
 
 export type OpsIntent =
   | "smalltalk" | "help" | "health" | "workspace" | "workforce" | "support" | "security"
-  | "business" | "integrations" | "release" | "product" | "briefing" | "action" | "general";
+  | "business" | "integrations" | "release" | "product" | "briefing" | "telemetry" | "action" | "general";
 
 export interface PlannedCall {
   toolId: string;
@@ -54,6 +54,7 @@ const RX = {
   business: /\b(costs?|spend|spent|revenue|margin|profit\w*|usage|llm|tokens?|telephony|call minutes|billing|payments?|paid|expens\w+|retention|active clients|activations?|credits?)\b/i,
   integrations: /\b(deliver\w*|didn.?t (send|arrive|go)|not (sent|delivered)|confirmation|emails?|sms|whatsapp|webhooks?|workflows?|n8n|ghl|go ?high ?level|integrations?|calendar|reminders?|bounced?)\b/i,
   release: /\b(release|deploy\w*|versions?|migrations?|latest (change|build|commit)|ci\b|what changed|rollout)\b/i,
+  telemetry: /\b(aqi|copilot|your (own )?(tools?|checks?)|ops tools?)\b[\s\S]{0,80}\b(latency|slow|failures?|failing|performing|performance|costs?|usage|telemetry|errors?)\b/i,
   briefing: /\b(briefing|digest|summary of (today|the day|this week|yesterday)|what needs (my )?attention|morning (summary|update)|daily (summary|update)|weekly (summary|update))\b/i,
   acknowledge: /\backnowledge\b/i,
   escalate: /\bescalate\b/i,
@@ -70,6 +71,16 @@ function tidy(value: string, max: number): string {
 function afterColon(message: string): string {
   const idx = message.indexOf(":");
   return tidy(idx >= 0 ? message.slice(idx + 1) : message, 300);
+}
+
+const EMPLOYEE_ROLES: Array<[RegExp, string]> = [
+  [/lead hunter/i, "lead_hunter"], [/appointment setter/i, "appointment_setter"], [/sales assistant/i, "sales_assistant"],
+  [/crm manager/i, "crm_manager"], [/operations manager/i, "operations_manager"], [/(performance )?analyst/i, "performance_analyst"],
+];
+
+/** The AI Employee role a question names, so "Why did the Lead Hunter stop?" looks at Lead Hunters rather than everyone. */
+export function employeeRole(text: string): string | null {
+  return EMPLOYEE_ROLES.find(([pattern]) => pattern.test(text))?.[1] ?? null;
 }
 
 /** Capitalised phrases and quoted strings that could be a client's name. */
@@ -137,6 +148,8 @@ export function planOps(message: string, scope: OpsScope, available: ReadonlySet
   };
 
   if (has(text, RX.briefing)) { intents.add("briefing"); add("briefing.compose"); return empty(); }
+  // "AQi, why is the CRM slow?" addresses the assistant; it is not a question about the assistant, so a leading name is ignored.
+  if (has(text.replace(/^\s*(hey|hi|hello|ok|okay)?[\s,]*aqi\b[\s,:!-]*/i, ""), RX.telemetry)) { intents.add("telemetry"); add("aqi.telemetry"); return empty(); }
 
   if (has(text, RX.release)) { intents.add("release"); add("release.info"); }
   if (has(text, RX.security)) { intents.add("security"); add("security.events"); }
@@ -156,7 +169,8 @@ export function planOps(message: string, scope: OpsScope, available: ReadonlySet
 
   if (scope.type === "employee" || has(text, RX.workforce)) {
     intents.add("workforce");
-    add("workforce.status");
+    const role = employeeRole(text);
+    add("workforce.status", role ? { role } : {});
     if (has(text, RX.approvals)) add("workforce.approvals");
     if (scope.type === "employee" || /\b(why|stop|stopped|fail\w*|runs?|executions?|last)\b/i.test(text)) add("workforce.runs");
   } else if (has(text, RX.approvals)) {

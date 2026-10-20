@@ -297,6 +297,23 @@ export async function getOpsAction(user: SessionUser, actionId: string): Promise
   return outcomeFor(row, tool);
 }
 
+/**
+ * The current state of stored proposals, as cards, in one query. A conversation reloaded later must
+ * show whether a proposal was confirmed, cancelled or expired, not the state it had when it was made.
+ */
+export async function loadActionCards(userId: string, ids: readonly string[]): Promise<Map<string, OpsCard[]>> {
+  const out = new Map<string, OpsCard[]>();
+  const wanted = [...new Set(ids)].filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 40);
+  if (!wanted.length) return out;
+  const { rows } = await readSystem((db) => db.query<ActionRow>(`select ${COLUMNS} from aqi_ops_actions where id = any($1::uuid[]) and requested_by = $2`, [wanted, userId]));
+  for (const row of rows) {
+    const expired = row.status === "proposed" && new Date(row.expires_at).getTime() <= Date.now();
+    const current: ActionRow = expired ? { ...row, status: "expired" } : row;
+    out.set(row.id, outcomeFor(current, findActionTool(row.tool_id)).cards);
+  }
+  return out;
+}
+
 /** Recent actions for the model's operational memory. Metadata only, never arguments. */
 export async function recentOpsActions(userId: string, orgId: string | null, limit = 5): Promise<Array<{ tool: string; status: string; target: string; at: string }>> {
   const { rows } = await readSystem((db) => db.query<{ tool_id: string; status: string; preview: { target?: string }; created_at: Date }>(

@@ -83,7 +83,7 @@ describe("AQi Operations read tools against the real schema", () => {
     const platformTools: Array<[string, Record<string, unknown>]> = [
       ["platform.health", {}], ["platform.incidents", {}], ["platform.jobs", {}], ["workspace.directory", {}], ["workspace.find", { names: ["Support"] }],
       ["workforce.status", {}], ["workforce.approvals", {}], ["support.queue", {}], ["support.duplicates", {}], ["security.events", {}], ["business.summary", {}],
-      ["business.client_costs", {}], ["integrations.status", {}], ["release.info", {}], ["product.requests", {}], ["briefing.compose", {}],
+      ["business.client_costs", {}], ["integrations.status", {}], ["release.info", {}], ["product.requests", {}], ["briefing.compose", {}], ["aqi.telemetry", {}],
     ];
     for (const [id, args] of platformTools) {
       const { outcome, run } = await runTool(PLATFORM_SCOPE, id, args);
@@ -95,6 +95,24 @@ describe("AQi Operations read tools against the real schema", () => {
       await run.flushAudit();
     }
   }, 120_000);
+
+  it("narrows AI Employees to one role and refuses an unknown role", async () => {
+    const hunters = await runTool(PLATFORM_SCOPE, "workforce.status", { role: "lead_hunter" });
+    const employees = (hunters.outcome.data as { employees: Array<{ role: string }> }).employees;
+    expect(employees.length).toBeGreaterThan(0);
+    expect(employees.every((e) => e.role === "lead_hunter")).toBe(true);
+    const bad = await runTool(PLATFORM_SCOPE, "workforce.status", { role: "root" });
+    expect(bad.outcome.run.status).toBe("error");
+  });
+
+  it("reports AQi Operations' own tool runs from the audit log, not from estimates", async () => {
+    const { outcome } = await runTool(PLATFORM_SCOPE, "aqi.telemetry", { days: 7 });
+    const data = outcome.data as { tools: Array<{ tool: string; runs: number }>; model: { answers: number } };
+    expect(data.tools.length).toBeGreaterThan(0);
+    expect(data.tools.every((t) => t.runs > 0)).toBe(true);
+    expect(JSON.stringify(outcome.cards)).not.toMatch(/NaN|undefined/);
+    expect((await runTool(PLATFORM_SCOPE, "aqi.telemetry", { days: 400 })).outcome.run.status).toBe("error");
+  });
 
   it("runs every tenant-scope tool against the selected client", async () => {
     const tenant = await resolveOpsScope(w.agency.superAdmin, { type: "tenant", id: w.org.id });
