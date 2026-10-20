@@ -405,7 +405,7 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
          template_id, approval_id, followup_step_id, reservation_id, send_after, dedupe_key, purpose, queued_at)
        values ($1, $2, $3, 'outbound', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, case when $8 = 'queued' then now() end)`,
       [messageId, req.orgId, req.conversationId, author.kind, author.userId, author.agentId, req.body, status, extra.detail?.slice(0, 300) ?? null, extra.reason ?? null, req.scope,
-        req.templateId ?? null, req.approvalId ?? (req.actor.kind === "ai" ? req.actor.approvalId ?? null : null), req.followupStepId ?? null, extra.reservationId ?? null, extra.sendAfter ?? new Date(), req.dedupeKey ?? null, purpose],
+        req.templateId ?? null, req.approvalId ?? (req.actor.kind === "ai" ? req.actor.approvalId ?? null : null), req.followupStepId ?? null, extra.reservationId ?? null, extra.sendAfter ?? req.now ?? new Date(), req.dedupeKey ?? null, purpose],
     );
 
   if (!decision.allow) {
