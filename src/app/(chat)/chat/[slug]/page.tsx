@@ -46,6 +46,8 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       statusDetail={agent.last_health_detail}
       replyLength={(applied?.settings.replyLength as ReplyLength) ?? "concise"}
       canConfigure={ctx.can("agents.configure")}
+      configured={Boolean(applied)}
+      hasPendingReview={versions.some((v) => v.status === "pending_agency_review")}
       initialConversations={conversations.map((r) => ({ id: r.id, title: r.title, lastMessageAt: new Date(r.last_message_at ?? r.created_at).toISOString() }))}
       initialConversation={convo ? { id: convo.conversation.id, title: convo.conversation.title, messages, hasMore: convo.hasMore } : null}
       activeRunId={activeRunId}

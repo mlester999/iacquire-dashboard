@@ -36,6 +36,9 @@ export interface AgentInstanceRow {
   config_applied_at: Date | null;
   hermes_profile: string | null;
   hermes_base_url: string | null;
+  tool_inventory_digest: string | null;
+  tool_inventory_tool_count: number | null;
+  tool_inventory_verified_at: Date | null;
 }
 
 const RESERVED_PROFILES = new Set([
@@ -69,7 +72,8 @@ export async function ensureAgentInstances(orgId: string, db: Queryable) {
 
 const AGENT_SELECT = `
   select a.id, a.org_id, a.role_key, a.display_name, a.enabled, a.status, a.mode, a.active_config_version_id,
-         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_base_url, r.default_tools,
+         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_base_url,
+         a.tool_inventory_digest, a.tool_inventory_tool_count, a.tool_inventory_verified_at, r.default_tools,
          v.summary, v.version as config_version, v.applied_at as config_applied_at
   from agent_instances a
   join agent_roles r on r.key = a.role_key
