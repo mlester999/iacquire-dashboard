@@ -3,7 +3,7 @@
 import crypto from "node:crypto";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh() {}, push() {}, replace() {}, prefetch() {} }),
@@ -36,6 +36,16 @@ const WEEKDAYS_9_TO_5 = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute
 // Monday 19 October 2026, 08:00 in Manila (00:00 UTC).
 const NOW = new Date("2026-10-19T00:00:00Z");
 const at = (localHHMM: string, date = "2026-10-20") => new Date(`${date}T${localHHMM}:00+08:00`);
+
+// The booking scenario is fixed at NOW. Freeze JavaScript time there so the wall clock cannot outrun
+// the fixture between queueing a reminder and dispatching it.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 let ipCounter = 0;
 /** Each test talks from its own address so per-visitor limits never leak between tests. */
