@@ -1,6 +1,6 @@
 # AI employee configuration review & approval hardening
 
-Status: implemented and verified locally; merged into the local `release/ai-workforce-notif-security` integration; not pushed, deployed or applied to production.
+Status: implemented, merged and deployed to production in `10361d9` (2026-10-20). It has no migration.
 Original baseline: production commit `02a77ad`; integrated onto current `master` (`27fe4f7`).
 Implementation branch: `codex/config-review-hardening`.
 Integration branch: `release/ai-workforce-notif-security`.

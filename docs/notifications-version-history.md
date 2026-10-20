@@ -1,6 +1,6 @@
 # Version History and Notification Centre
 
-Status: merged into `master` and deployed through `47098f1`; the access-revocation fix and migration `0067` are integrated locally on `release/ai-workforce-notif-security` and are **not** applied to production.
+Status: merged into `master` and deployed through `10361d9`; the access-revocation fix and migration `0067_notification_authorization` are applied to production and verified.
 
 ## 1. Root cause: why Super Admin had no notifications
 
@@ -145,7 +145,7 @@ Checks performed: held version renders with its real status/source, details expa
 
 No schema change was needed for the bell, the inbox, the history data or the recipient notifications. The existing notification kinds and columns were sufficient.
 
-The later authorization fix adds migration `0067_notification_authorization` (audience, client association, scope-aware RLS and a conservative historical backfill). It is prepared on `release/ai-workforce-notif-security` and is **not applied** to any hosted database. See [notification-authorization.md](notification-authorization.md).
+The later authorization fix adds migration `0067_notification_authorization` (audience, client association, scope-aware RLS and a conservative historical backfill). It was applied to production on 2026-10-20 at 17:47 SGT and verified. See [notification-authorization.md](notification-authorization.md).
 
 ## 8. Commit, push and deployment
 

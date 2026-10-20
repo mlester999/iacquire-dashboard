@@ -1,8 +1,8 @@
 # Notification authorization after client-access revocation
 
-Status: implemented and verified locally on `release/ai-workforce-notif-security`; **not pushed, deployed or applied to any hosted database**.
+Status: **deployed to production in `10361d9` (2026-10-20)**; migration `0067_notification_authorization` applied to the production database at 17:47 SGT and verified. Vercel Production deployment succeeded; `/api/health` reports database `ok`.
 
-Integration base: current `master` (`47098f1`, including the AI Employees / `/employees` rename and migration `0066_rename_workforce_routes`) plus the configuration-review hardening and notification-centre integration (`b4dc4fe`, with conflicts resolved in favour of the hardened review flow and the current master support/sidebar work).
+Integration base: `master` (`47098f1`, including the AI Employees / `/employees` rename and migration `0066_rename_workforce_routes`) plus the configuration-review hardening and notification-centre integration (`b4dc4fe`, with conflicts resolved in favour of the hardened review flow and the current master support/sidebar work). The release was pushed fast-forward from `47098f1` to `10361d9`.
 
 ## 1. Root cause
 
@@ -52,7 +52,7 @@ Migration `0067_notification_authorization`:
 
 No notification row is deleted. The conservative default can hide an unresolvable historical row from Agency Manager/Staff, but it cannot leave a client-specific row visible after revocation. The production table currently contains one notification, addressed to an agency Super Admin with a non-null org; there are no null-org rows to backfill there.
 
-The migration is prepared locally and **not applied**. Production remains at `0065_support_requests`.
+The migration was applied to production on 2026-10-20 at 17:47 SGT. The ledger records `0067_notification_authorization`; the audience column, `app.notification_visible` and the two scope-aware policies are present. Both existing notification rows were backfilled to the agency audience and the support row's client organisation; no rows were lost.
 
 ## 5. Verification
 
@@ -71,9 +71,11 @@ Existing regression: `config-review-notifications`, `config-review-hardening`, `
 
 Repository-wide `npm run lint` is clean (0 errors, 0 warnings) on the merged worktree. `npx tsc --noEmit --incremental false` is clean. `next build --webpack` succeeds and emits `/employees/[slug]`, `/admin/employees/reviews` and `/admin/notifications`. The full integration suite passes: **215 files / 3,340 tests**, run on the final merged base `47098f1`.
 
+Post-deploy check on `10361d9`: `/login` returns 200; `/api/health` returns `{"status":"ok","database":"ok","scheduler":"never_ran"}`; `/admin/notifications`, `/admin/employees/reviews`, `/employees` and `/employees/operations-manager` redirect to authentication with 307; the old `/workforce` route redirects with 308.
+
 ## 6. Known limits
 
-- The migration is not applied. Production is at `47098f1` (through `0066_rename_workforce_routes`) and still has the old null-org behavior until this branch is deployed and `0067` is applied.
+- Migration `0067` is applied. The documented rollback intentionally leaves the audience column and backfilled client associations in place; rolling back restores the old broad policies and should only be used with the pre-`0067` build.
 - Historical agency rows that cannot be associated from their stored link stay agency-wide and are hidden from Manager/Staff. This is intentional and is not deletion.
 - A future producer that inserts into `notifications` directly must set `audience`/`org_id` deliberately; the `client` default will not make an agency row scope-aware.
 - The notification email path is covered by the shared predicate and the existing operations tests, not by a live email provider.
