@@ -38,7 +38,7 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "nav.crm", label: "All CRM tools", description: "All CRM tools in the CRM navigation.", routes: ["*"], permission: "crm.view", navigation: true },
   { id: "nav.approvals", label: "Approvals", description: "Approvals in the main navigation.", routes: ["*"], permission: "approvals.view", navigation: true },
   { id: "nav.knowledge", label: "Knowledge Center", description: "Knowledge Center in the main navigation.", routes: ["*"], permission: "knowledge.view", navigation: true },
-  { id: "nav.workforce", label: "AI Workforce", description: "AI Workforce in the main navigation.", routes: ["*"], permission: "agents.use", navigation: true },
+  { id: "nav.workforce", label: "AI Employees", description: "AI Employees in the main navigation.", routes: ["*"], permission: "agents.use", navigation: true },
   { id: "nav.settings", label: "Settings", description: "Settings in the main navigation.", routes: ["*"], permission: "workspace.view", navigation: true },
   { id: "nav.website", label: "Website", description: "Website in the main navigation.", routes: ["*"], permission: "website.view", navigation: true },
   { id: "nav.support", label: "Support", description: "Support in the main navigation.", routes: ["*"], permission: "support.use", navigation: true },
@@ -47,7 +47,7 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "nav.agency.dashboard", label: "Agency dashboard", description: "Agency dashboard in the agency navigation.", routes: ["*"], agency: "staff", navigation: true },
   { id: "nav.agency.aqi", label: "AQi Management", description: "AQi Management in the agency navigation.", routes: ["*"], agency: "super_admin", navigation: true },
   { id: "nav.agency.clients", label: "Clients", description: "Clients in the agency navigation.", routes: ["*"], agency: "staff", navigation: true },
-  { id: "nav.agency.workforce", label: "Internal AI Workforce", description: "Internal AI Workforce in the agency navigation.", routes: ["*"], agency: "super_admin", navigation: true },
+  { id: "nav.agency.workforce", label: "Internal AI Employees", description: "Internal AI Employees in the agency navigation.", routes: ["*"], agency: "super_admin", navigation: true },
   { id: "nav.agency.integrations", label: "Agency Integrations", description: "Agency Integrations in the agency navigation.", routes: ["*"], agency: "staff", permission: "agency.integrations.health", navigation: true },
 
   // Overview.
@@ -99,9 +99,9 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "leads.research", label: "New research request", description: "Ask the Lead Hunter for new prospects.", routes: ["/leads"], permission: "leads.research" },
 
   // Workforce.
-  { id: "workforce.hero", label: "AI Workforce", description: "The AI workforce page header.", routes: ["/workforce"], permission: "agents.use" },
-  { id: "workforce.gallery", label: "Employee gallery", description: "The AI employees in this workspace.", routes: ["/workforce"], permission: "agents.use" },
-  { id: "workforce.employee", label: "AI employee", description: "An employee card with chat and configuration actions.", routes: ["/workforce"], permission: "agents.use" },
+  { id: "workforce.hero", label: "AI Employees", description: "The AI workforce page header.", routes: ["/employees"], permission: "agents.use" },
+  { id: "workforce.gallery", label: "Employee gallery", description: "The AI employees in this workspace.", routes: ["/employees"], permission: "agents.use" },
+  { id: "workforce.employee", label: "AI employee", description: "An employee card with chat and configuration actions.", routes: ["/employees"], permission: "agents.use" },
 
   // Settings, integrations, team, knowledge, support.
   { id: "settings.integrations.list", label: "Integration status", description: "The services connected to this workspace.", routes: ["/settings/integrations"], permission: "integrations.view" },
@@ -164,7 +164,7 @@ export function aqiNavTarget(href: string, area: "client" | "agency" = "client")
         "/admin": "nav.agency.dashboard",
         "/admin/aqi": "nav.agency.aqi",
         "/admin/clients": "nav.agency.clients",
-        "/admin/workforce": "nav.agency.workforce",
+        "/admin/employees": "nav.agency.workforce",
         "/admin/integrations": "nav.agency.integrations",
       }
     : {
@@ -180,7 +180,7 @@ export function aqiNavTarget(href: string, area: "client" | "agency" = "client")
         "/crm": "nav.crm",
         "/approvals": "nav.approvals",
         "/knowledge": "nav.knowledge",
-        "/workforce": "nav.workforce",
+        "/employees": "nav.workforce",
         "/website": "nav.website",
         "/settings": "nav.settings",
         "/support": "nav.support",

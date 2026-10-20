@@ -12,7 +12,7 @@ export interface ChatNavTargets {
   /** The product home for this kind of workspace. */
   home: string;
   homeLabel: string;
-  /** The AI Workforce directory ("management mode"). */
+  /** The AI Employees directory ("management mode"). */
   workforce: string;
   /** This employee's profile (readiness, activity, knowledge, version history). */
   profile: string;
@@ -27,9 +27,9 @@ export function chatNavTargets(orgKind: string, slug: string): ChatNavTargets {
   return {
     home: agency ? "/admin" : "/overview",
     homeLabel: agency ? "Agency dashboard" : "Dashboard",
-    workforce: agency ? "/admin/workforce" : "/workforce",
-    profile: `/workforce/${slug}`,
-    manage: `/workforce/${slug}?tab=configure`,
+    workforce: agency ? "/admin/employees" : "/employees",
+    profile: `/employees/${slug}`,
+    manage: `/employees/${slug}?tab=configure`,
     chat: `/chat/${slug}`,
   };
 }

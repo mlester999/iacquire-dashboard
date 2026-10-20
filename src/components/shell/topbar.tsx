@@ -31,8 +31,8 @@ import { cn, currentTime, initials } from "@/lib/utils";
 const TITLES: Array<[RegExp, string]> = [
   [/^\/overview/, "Overview"],
   [/^\/setup/, "Setup"],
-  [/^\/workforce\/[^/]+\/configure/, "Configure employee"],
-  [/^\/workforce/, "AI Workforce"],
+  [/^\/employees\/[^/]+\/configure/, "Configure employee"],
+  [/^\/employees/, "AI Employees"],
   [/^\/leads/, "Leads"],
   [/^\/appointments/, "Appointments"],
   [/^\/sales/, "Sales Pipeline"],
@@ -188,7 +188,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </MenuContent>
         </Menu>
       </div>
-      <Dialog open={navigationOpen} onOpenChange={setNavigationOpen} title="Jump to your workspace" description="Search the modules available to your account."><Input autoFocus aria-label="Search workspace modules" placeholder="Leads, AI Workforce, Support…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && destinations[0]) { router.push(destinations[0].href); setNavigationOpen(false); } }} /><ul className="mt-3 space-y-1">{destinations.map((n) => <li key={n.href}><Link href={n.href} onClick={() => setNavigationOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" />{n.label}</Link></li>)}</ul>{!destinations.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}</Dialog>
+      <Dialog open={navigationOpen} onOpenChange={setNavigationOpen} title="Jump to your workspace" description="Search the modules available to your account."><Input autoFocus aria-label="Search workspace modules" placeholder="Leads, AI Employees, Support…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && destinations[0]) { router.push(destinations[0].href); setNavigationOpen(false); } }} /><ul className="mt-3 space-y-1">{destinations.map((n) => <li key={n.href}><Link href={n.href} onClick={() => setNavigationOpen(false)} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-ink hover:bg-primary-soft"><n.icon className="size-4 text-primary" />{n.label}</Link></li>)}</ul>{!destinations.length && <p className="py-8 text-center text-sm text-muted">No modules match your search.</p>}</Dialog>
     </header>
   );
 }

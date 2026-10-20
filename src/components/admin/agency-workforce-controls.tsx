@@ -55,13 +55,13 @@ export function AgencyWorkforceControls({
     <>
       <div className="flex flex-wrap gap-2">
         <Link
-          href={`/admin/workforce/open?role=${encodeURIComponent(slug)}`}
+          href={`/admin/employees/open?role=${encodeURIComponent(slug)}`}
           className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-[12.5px] font-medium text-white hover:bg-primary-strong"
         >
           <MessageSquare className="size-3.5" aria-hidden /> Chat
         </Link>
         <Link
-          href={`/admin/workforce/open?role=${encodeURIComponent(slug)}&to=manage`}
+          href={`/admin/employees/open?role=${encodeURIComponent(slug)}&to=manage`}
           className={dark
             ? "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 text-[12.5px] font-medium text-white hover:bg-white/15"
             : "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2"}

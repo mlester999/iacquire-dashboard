@@ -50,7 +50,7 @@ All three outcomes still pass through the existing server-side enforcement: Zod 
 | Behaviour | Client admin | Internal Super Admin |
 | --- | --- | --- |
 | Routine save | `source=client_edit`, applied immediately | `source=agency`, actor kind `agency`, applied immediately |
-| Sensitive save | `pending_agency_review`, agency reviewer decides | `pending_agency_review`, internal reviewer decides at `/admin/workforce/reviews` |
+| Sensitive save | `pending_agency_review`, agency reviewer decides | `pending_agency_review`, internal reviewer decides at `/admin/employees/reviews` |
 | Blocked save | Rejected, no version | Rejected, no version; no bypass because the actor is a Super Admin |
 | Version-history source | “Client edit” | “Internal edit” |
 | Review decision | Client cannot approve; requires `agency.workforce.manage` and tenant access | Super Admin only for the internal workspace; audited |
@@ -64,7 +64,7 @@ Attribution is derived from authenticated server context (`ctx.org.kind` and `ct
 v1 was not modified. The recovery path is:
 
 1. Deploy this branch through the normal approved release process.
-2. Sign in as an agency Super Admin and open **Admin → AI Workforce**. If internal reviews are pending, a banner links to **Configuration reviews** (`/admin/workforce/reviews`).
+2. Sign in as an agency Super Admin and open **Admin → AI Employees**. If internal reviews are pending, a banner links to **Configuration reviews** (`/admin/employees/reviews`).
 3. Open the Operations Manager v1 review. The card shows the stored `approval_bypass` reason, a legacy notice explaining that the current validator no longer flags the text, the proposed diff, the submitter and the timestamp.
 4. Either:
    - **Approve & apply** with a decision note. This activates v1 exactly as submitted; the note is recorded in `audit_logs`; or
@@ -96,7 +96,7 @@ New:
 - `src/lib/config-review.ts`
 - `src/server/workforce/reviews.ts`
 - `src/components/admin/config-review-card.tsx`
-- `src/app/(admin)/admin/workforce/reviews/page.tsx`
+- `src/app/(admin)/admin/employees/reviews/page.tsx`
 - `tests/config-review-hardening.test.ts`
 
 Modified:
@@ -111,8 +111,8 @@ Modified:
 - `src/app/actions/workforce.ts`
 - `src/app/actions/chat.ts`
 - `src/app/(admin)/admin/actions.ts`
-- `src/app/(admin)/admin/workforce/page.tsx`
-- `src/app/(portal)/workforce/[slug]/page.tsx`
+- `src/app/(admin)/admin/employees/page.tsx`
+- `src/app/(portal)/employees/[slug]/page.tsx`
 - `src/components/admin/client-detail.tsx`
 - `src/components/workforce/employee-detail.tsx`
 - `src/components/workforce/config-test-dialog.tsx`
@@ -129,7 +129,7 @@ Modified:
 - Final focused regression set (review, workforce config, onboarding v2, agency permissions): 88/88 passed.
 - Broader onboarding, knowledge, chat, approvals, agency and Hermes gate suites: 95/95 passed.
 - Full Vitest suite: 194 files, 3,124 tests passed. One Vitest worker failed to start for `tests/agency-team-ui.test.tsx` with a pool timeout (infrastructure, not a test assertion); rerunning that file alone passed 14/14.
-- `npm run build`: passed. The route table includes the new static `/admin/workforce/reviews` route. The build used local, non-resolving placeholder Supabase/Postgres values; it did not connect to or write to production.
+- `npm run build`: passed. The route table includes the new static `/admin/employees/reviews` route. The build used local, non-resolving placeholder Supabase/Postgres values; it did not connect to or write to production.
 
 ## 8. Required migrations
 

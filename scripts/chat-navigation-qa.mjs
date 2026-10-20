@@ -1,4 +1,4 @@
-// Signed-in browser QA for the AI Workforce management <-> chat navigation, against the isolated local QA app
+// Signed-in browser QA for the AI Employees management <-> chat navigation, against the isolated local QA app
 // (scripts/crm-qa.mjs; fictional records, embedded database, no provider or hosted service is contacted).
 //
 //   CRM_QA_PORT=3240 node scripts/crm-qa.mjs                       # in another terminal
@@ -24,7 +24,7 @@ if (!modulePath) {
 }
 const { chromium } = await import(pathToFileURL(modulePath).href);
 const credentials = JSON.parse(fs.readFileSync(path.join(ROOT, ".data/crm-qa/credentials.local.json"), "utf8"));
-const summary = JSON.parse(fs.readFileSync(path.join(ROOT, ".data/crm-qa/workforce-qa-summary.json"), "utf8"));
+const summary = JSON.parse(fs.readFileSync(path.join(ROOT, ".data/crm-qa/employees-qa-summary.json"), "utf8"));
 
 const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
@@ -136,9 +136,9 @@ async function runScreens() {
       if (!wants(vp)) continue;
       const context = await newContext(browser, VIEWPORTS[vp], theme);
       const page = await signIn(context, owner);
-      await visit(page, "/workforce");
+      await visit(page, "/employees");
       await shot(page, `management-gallery-${vp}-${theme}`);
-      await visit(page, "/workforce/lead-hunter");
+      await visit(page, "/employees/lead-hunter");
       await shot(page, `management-profile-${vp}-${theme}`);
       await visit(page, "/chat/lead-hunter");
       await shot(page, `chat-empty-${vp}-${theme}`);
@@ -225,11 +225,11 @@ async function runBehavior() {
     });
 
     // 1. Management click opens management.
-    await visit(page, "/workforce/lead-hunter");
+    await visit(page, "/employees/lead-hunter");
     await measureBrand(page, "management/dark");
-    await page.locator('nav[aria-label="Main"] a[href="/workforce/operations-manager"]').click();
-    await page.waitForURL(/\/workforce\/operations-manager/, { timeout: 60_000 });
-    check("management: selecting an employee opens the profile, not chat", /\/workforce\/operations-manager$/.test(page.url()), page.url());
+    await page.locator('nav[aria-label="Main"] a[href="/employees/operations-manager"]').click();
+    await page.waitForURL(/\/employees\/operations-manager/, { timeout: 60_000 });
+    check("management: selecting an employee opens the profile, not chat", /\/employees\/operations-manager$/.test(page.url()), page.url());
     check("management: profile heading is the selected employee", (await page.locator("h1").first().textContent())?.includes("Operations Manager"));
     check("management: no chat shortcut for an employee that cannot chat yet", (await page.locator('nav[aria-label="Main"] a[aria-label^="Chat with"]').count()) === 0);
     check("AQi: workforce navigation anchors are intact", (await page.locator('[data-tour="workforce"]').count()) === 1 && (await page.locator('a[data-aqi-target="nav.workforce"]').count()) === 1);
@@ -239,7 +239,7 @@ async function runBehavior() {
     await measureBrand(page, "chat/dark");
     await runAxe(page, "chat/desktop/dark");
     const rail = page.locator('nav[aria-label="Chat navigation"]:visible');
-    check("chat: rail has the brand and a way back to AI Workforce", (await rail.getByRole("link", { name: /Back to AI Workforce/ }).getAttribute("href")) === "/workforce");
+    check("chat: rail has the brand and a way back to AI Employees", (await rail.getByRole("link", { name: /Back to AI Employees/ }).getAttribute("href")) === "/employees");
     check("chat: current specialist is marked", (await rail.locator('a[href="/chat/sales-assistant"]').getAttribute("aria-current")) === "page");
     check("chat: the open conversation is marked", (await rail.locator("[data-conv-row][aria-current=true]").count()) === 1);
     check("chat: header names the open conversation", ((await page.locator("header").first().textContent()) ?? "").includes("Follow up with the HOA lead"));
@@ -258,15 +258,15 @@ async function runBehavior() {
     check("chat: selecting an employee made no model run or send request", sends.length === 0, sends.join(", "));
 
     // 4. Back / forward / deep links.
-    await page.getByRole("link", { name: /Back to AI Workforce/ }).first().click();
-    await page.waitForURL(/\/workforce$/, { timeout: 60_000 });
-    check("chat: Back to AI Workforce reaches the directory", /\/workforce$/.test(page.url()));
+    await page.getByRole("link", { name: /Back to AI Employees/ }).first().click();
+    await page.waitForURL(/\/employees$/, { timeout: 60_000 });
+    check("chat: Back to AI Employees reaches the directory", /\/employees$/.test(page.url()));
     await page.goBack();
     await page.waitForURL(/\/chat\/lead-hunter/, { timeout: 60_000 });
     check("browser back returns to the previous chat", /\/chat\/lead-hunter/.test(page.url()));
     await page.goForward();
-    await page.waitForURL(/\/workforce$/, { timeout: 60_000 });
-    check("browser forward returns to the directory", /\/workforce$/.test(page.url()));
+    await page.waitForURL(/\/employees$/, { timeout: 60_000 });
+    check("browser forward returns to the directory", /\/employees$/.test(page.url()));
     await visit(page, `/chat/lead-hunter?c=${conversationId}`);
     check("deep link: another employee's conversation id is not shown under this employee", !((await page.locator("main").textContent()) ?? "").includes("Draft a friendly follow-up"));
     await visit(page, salesAssistantConversation);
@@ -308,7 +308,7 @@ async function runBehavior() {
   if (wants("desktop-light")) {
     const context = await newContext(browser, VIEWPORTS.desktop, "light");
     const page = await signIn(context, owner);
-    await visit(page, "/workforce");
+    await visit(page, "/employees");
     await measureBrand(page, "management/light");
     await visit(page, salesAssistantConversation);
     await measureBrand(page, "chat/light");
@@ -338,9 +338,9 @@ async function runBehavior() {
     await page.getByRole("dialog").waitFor({ state: "detached", timeout: 10_000 }).catch(() => {});
     check(`mobile/${theme}: Escape closes the drawer and returns focus to the opener`, await opener.evaluate((el) => document.activeElement === el));
     await opener.click();
-    await page.getByRole("dialog").getByRole("link", { name: /Back to AI Workforce/ }).click();
-    await page.waitForURL(/\/workforce$/, { timeout: 60_000 });
-    check(`mobile/${theme}: Back to AI Workforce works from the drawer`, /\/workforce$/.test(page.url()));
+    await page.getByRole("dialog").getByRole("link", { name: /Back to AI Employees/ }).click();
+    await page.waitForURL(/\/employees$/, { timeout: 60_000 });
+    check(`mobile/${theme}: Back to AI Employees works from the drawer`, /\/employees$/.test(page.url()));
     await context.close();
   }
 
@@ -352,7 +352,7 @@ async function runBehavior() {
     const rail = page.locator('nav[aria-label="Chat navigation"]:visible');
     check("authorization: a team member sees Profile but not Manage in the rail", (await rail.getByRole("link", { name: / profile$/ }).count()) === 1 && (await rail.getByRole("link", { name: /^Manage / }).count()) === 0);
     check("authorization: the header has no Manage control for a team member", (await page.getByRole("link", { name: "Manage employee" }).count()) === 0);
-    await visit(page, "/workforce/lead-hunter?tab=configure");
+    await visit(page, "/employees/lead-hunter?tab=configure");
     check("authorization: ?tab=configure does not expose the configuration tab to a team member", (await page.getByRole("tab", { name: /Configure/ }).count()) === 0);
     await context.close();
   }
@@ -361,12 +361,12 @@ async function runBehavior() {
   if (wants("admin")) {
     const context = await newContext(browser, VIEWPORTS.desktop, "dark");
     const page = await signIn(context, credentials.users.agency_admin);
-    await page.goto(`${BASE}/admin/workforce/open?role=lead-hunter`, { waitUntil: "domcontentloaded", timeout: 180_000 });
+    await page.goto(`${BASE}/admin/employees/open?role=lead-hunter`, { waitUntil: "domcontentloaded", timeout: 180_000 });
     await settle(page);
     check("super admin: the existing open route lands in chat", /\/chat\/lead-hunter/.test(page.url()), page.url());
     const rail = page.locator('nav[aria-label="Chat navigation"]:visible');
-    check("super admin: Back goes to the agency workforce area", (await rail.getByRole("link", { name: /Back to AI Workforce/ }).getAttribute("href")) === "/admin/workforce");
-    check("super admin: Manage opens the existing configure screen", (await rail.getByRole("link", { name: /^Manage / }).getAttribute("href")) === "/workforce/lead-hunter?tab=configure");
+    check("super admin: Back goes to the agency workforce area", (await rail.getByRole("link", { name: /Back to AI Employees/ }).getAttribute("href")) === "/admin/employees");
+    check("super admin: Manage opens the existing configure screen", (await rail.getByRole("link", { name: /^Manage / }).getAttribute("href")) === "/employees/lead-hunter?tab=configure");
     await shot(page, "chat-superadmin-desktop-dark");
     await context.close();
   }

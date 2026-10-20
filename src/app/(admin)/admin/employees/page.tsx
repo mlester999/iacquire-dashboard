@@ -9,7 +9,7 @@ import { countInternalHeldConfigReviews } from "@/server/workforce/reviews";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 
-export const metadata = { title: "AI Workforce" };
+export const metadata = { title: "AI Employees" };
 
 export default async function AdminWorkforcePage() {
   const user = await requireAgency();
@@ -24,7 +24,7 @@ export default async function AdminWorkforcePage() {
   return (
     <div className="module-stack">
       {user.platformRole === "agency_super_admin" && internalReviewCount > 0 && (
-        <Link href="/admin/workforce/reviews" className="flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning-soft/40 px-4 py-3 text-[13px] text-warning-ink hover:bg-warning-soft/60">
+        <Link href="/admin/employees/reviews" className="flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning-soft/40 px-4 py-3 text-[13px] text-warning-ink hover:bg-warning-soft/60">
           <ShieldAlert className="size-4 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="font-semibold">{internalReviewCount} internal configuration {internalReviewCount === 1 ? "change needs" : "changes need"} review.</span>{" "}

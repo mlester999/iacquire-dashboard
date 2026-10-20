@@ -42,7 +42,7 @@ export async function updateAiPreferencesAction(input: z.input<typeof aiPrefsInp
     const ctx = await requireOrgContextOrThrow("agents.configure");
     const res = await updateAiPreferences(ctx, input);
     revalidatePath("/settings/ai");
-    revalidatePath("/workforce");
+    revalidatePath("/employees");
     return { ok: true as const, data: res };
   } catch (err) {
     return zodFail(err);

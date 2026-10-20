@@ -232,7 +232,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
     for (const a of agents) {
       if (!a.enabled || !isAgentRoleKey(a.role_key)) continue;
       if (a.status === "offline" || a.status === "error") {
-        alerts.push({ tone: "critical", title: `${AGENT_BY_KEY[a.role_key].shortName} is unavailable`, body: "The last connection check failed. iAcquire has been notified.", href: `/workforce/${AGENT_BY_KEY[a.role_key].slug}` });
+        alerts.push({ tone: "critical", title: `${AGENT_BY_KEY[a.role_key].shortName} is unavailable`, body: "The last connection check failed. iAcquire has been notified.", href: `/employees/${AGENT_BY_KEY[a.role_key].slug}` });
       }
     }
     for (const i of data.integration_errors ?? []) {
@@ -250,8 +250,8 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
       sources.native.opportunities
         ? { key: "crm", label: "iAcquire CRM ready", done: true, href: "/crm" }
         : { key: "crm", label: "CRM connected by iAcquire", done: sources.crm, href: "/settings/integrations" },
-      { key: "agent", label: "First AI employee online", done: online > 0, href: "/workforce" },
-      { key: "chat", label: "First conversation with your AI team", done: data.conversations > 0, href: "/workforce" },
+      { key: "agent", label: "First AI employee online", done: online > 0, href: "/employees" },
+      { key: "chat", label: "First conversation with your AI team", done: data.conversations > 0, href: "/employees" },
     ];
 
     const nextActions: DashboardData["nextActions"] = [];
@@ -260,7 +260,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
     if (data.pending_leads) nextActions.push({ title: `${data.pending_leads} lead${data.pending_leads === 1 ? "" : "s"} to review`, body: "Approve the businesses that fit before anything goes to your CRM.", href: "/leads?tab=review", cta: "Review leads" });
     if (online > 0 && data.conversations === 0) nextActions.push({ title: "Say hello to your AI team", body: "Ask your Operations Manager what needs attention today.", href: "/chat/operations-manager", cta: "Start a chat" });
     if (data.knowledge_sections < 3 && ctx.can("knowledge.edit")) nextActions.push({ title: "Teach your AI team the basics", body: "Add your FAQs, hours and policies to the Knowledge Center.", href: "/knowledge", cta: "Add knowledge" });
-    if (online === 0 && ctx.org.onboardingCompletedAt) nextActions.push({ title: "Your AI team is being set up", body: "iAcquire is preparing each employee's private environment. You'll be notified when they're online.", href: "/workforce", cta: "View status" });
+    if (online === 0 && ctx.org.onboardingCompletedAt) nextActions.push({ title: "Your AI team is being set up", body: "iAcquire is preparing each employee's private environment. You'll be notified when they're online.", href: "/employees", cta: "View status" });
 
     return {
       sources,

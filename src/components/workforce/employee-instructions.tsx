@@ -58,7 +58,7 @@ export function EmployeeInstructions({
             <Button size="sm" variant="secondary" onClick={() => setTesting(true)} disabled={!settings}>
               <FlaskConical className="size-3.5" aria-hidden /> Test active configuration
             </Button>
-            <Link href={`/workforce/${role.replaceAll("_", "-")}?tab=configure`} className="inline-flex min-h-9 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2">
+            <Link href={`/employees/${role.replaceAll("_", "-")}?tab=configure`} className="inline-flex min-h-9 items-center rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2">
               Edit in Configure
             </Link>
           </div>

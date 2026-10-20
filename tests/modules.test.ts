@@ -25,7 +25,7 @@ describe("human support", () => {
   it("creates a persistent ticket with a reference and notifies agency staff in-app", async () => {
     const admin = await createUser({ platformRole: "agency_super_admin" });
     const ctx = ctxFor(member, org, "member");
-    const t = await createTicket(ctx, { subject: "Lead Hunter offline", message: "It says setup required since Monday.", category: "ai_employees", pageContext: "/workforce" });
+    const t = await createTicket(ctx, { subject: "Lead Hunter offline", message: "It says setup required since Monday.", category: "ai_employees", pageContext: "/employees" });
     expect(t.ref).toMatch(/^IAQ-\d+$/);
     expect(t.externalNotification).toBe("not_configured");
     const { rows } = await withSystem((db) => db.query("select 1 from notifications where user_id = $1 and kind = 'support_ticket_created'", [admin.id]));

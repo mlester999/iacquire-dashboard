@@ -101,7 +101,7 @@ export function TeamGrid({ agents }: { agents: Array<{ id: string; role_key: Age
         return (
           <li key={a.id} className="min-w-0">
             <Link
-              href={a.enabled ? `/chat/${meta.slug}` : `/workforce/${meta.slug}`}
+              href={a.enabled ? `/chat/${meta.slug}` : `/employees/${meta.slug}`}
               className="group flex h-full items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 transition duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card"
             >
               <AgentAvatar role={meta} size="md" />

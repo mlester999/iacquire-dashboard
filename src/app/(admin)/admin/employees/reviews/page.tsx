@@ -13,7 +13,7 @@ export default async function InternalConfigReviewsPage() {
   return (
     <div className="module-stack space-y-6">
       <PageHero
-        eyebrow="Internal AI workforce"
+        eyebrow="Internal AI Employees"
         icon={<ShieldCheck className="size-5" />}
         title="Configuration reviews"
         description="Sensitive internal agency changes wait here. Routine changes apply after validation. Approving a version applies it to the internal employee; rejecting it keeps the current version."

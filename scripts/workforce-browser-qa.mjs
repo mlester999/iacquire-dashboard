@@ -170,18 +170,18 @@ try {
   // Agency admin: the internal workforce
   const agencyContext = await browser.newContext({ viewport: { width: 1440, height: 960 }, colorScheme: "light" });
   const agency = await signIn(agencyContext, users.agency_admin);
-  await visit(agency, "admin-workforce-desktop", "/admin/workforce");
+  await visit(agency, "admin-workforce-desktop", "/admin/employees");
   const workforceText = await agency.locator("body").innerText();
   if (!/Agency AI workforce/i.test(workforceText)) throw new Error("The agency workforce page did not render its heading.");
   if (!/Sales Assistant/i.test(workforceText)) throw new Error("The six internal employees were not listed.");
 
-  await visit(agency, "admin-employee-sales", "/admin/workforce/sales-assistant");
+  await visit(agency, "admin-employee-sales", "/admin/employees/sales-assistant");
   const profileText = await agency.locator("body").innerText();
   if (!/SOUL\.md \(managed by iAcquire\)/i.test(profileText)) throw new Error("The internal employee SOUL.md card is missing.");
   if (!/Profile and runtime/i.test(profileText)) throw new Error("The internal employee profile fields are missing.");
 
   await interaction("open internal chat from the admin employee page", async () => {
-    await agency.locator('a[href="/admin/workforce/open?role=sales-assistant"]').first().click();
+    await agency.locator('a[href="/admin/employees/open?role=sales-assistant"]').first().click();
     await agency.waitForURL((u) => u.pathname === "/chat/sales-assistant", { timeout: 120_000 });
     await agency.waitForLoadState("networkidle");
     await dismissTour(agency);
@@ -233,12 +233,12 @@ try {
   // Client owner: the isolated client workforce, knowledge and instruction test screen
   const clientContext = await browser.newContext({ viewport: { width: 1440, height: 960 }, colorScheme: "light" });
   const client = await signIn(clientContext, users.owner);
-  await visit(client, "client-workforce-desktop", "/workforce");
+  await visit(client, "client-workforce-desktop", "/employees");
   const clientText = await client.locator("body").innerText();
   if (!/Your AI team|Meet the employees|AI team/i.test(clientText)) throw new Error("The client workforce gallery did not render.");
   if (/Agency AI workforce|iAcquire internal operations/i.test(clientText)) throw new Error("A client page exposed the internal workforce heading.");
 
-  await visit(client, "client-employee-sales", "/workforce/sales-assistant");
+  await visit(client, "client-employee-sales", "/employees/sales-assistant");
   await interaction("client employee knowledge tab", async () => {
     await client.getByRole("tab", { name: /Knowledge/i }).click();
     await client.waitForTimeout(500);
@@ -278,8 +278,8 @@ try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: "light" });
     const page = await signIn(context, user);
     const routes = prefix === "admin"
-      ? [["mobile-admin-workforce", "/admin/workforce"], ["mobile-admin-employee", "/admin/workforce/sales-assistant"], ["mobile-admin-chat", "/chat/sales-assistant"]]
-      : [["mobile-client-workforce", "/workforce"], ["mobile-client-employee", "/workforce/sales-assistant"], ["mobile-client-chat", "/chat/sales-assistant"]];
+      ? [["mobile-admin-workforce", "/admin/employees"], ["mobile-admin-employee", "/admin/employees/sales-assistant"], ["mobile-admin-chat", "/chat/sales-assistant"]]
+      : [["mobile-client-workforce", "/employees"], ["mobile-client-employee", "/employees/sales-assistant"], ["mobile-client-chat", "/chat/sales-assistant"]];
     for (const [name, route] of routes) await visit(page, name, route, { fullPage: false });
     await context.close();
   }

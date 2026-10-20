@@ -21,10 +21,10 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   if (!meta) notFound();
   const ctx = await requireOrgContext();
   // The same employee screen configures an internal (agency-organization) employee for the Super Admin who
-  // opened it through /admin/workforce/open?to=manage. Client workspaces keep their existing boundary; every
+  // opened it through /admin/employees/open?to=manage. Client workspaces keep their existing boundary; every
   // other agency role is still sent back to the admin area.
   const internalEmployee = ctx.org.kind === "agency" && ctx.user.platformRole === "agency_super_admin";
-  if (ctx.org.kind !== "client" && !internalEmployee) redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/workforce" : ctx.user.platformRole === "agency_staff" ? "/admin/workforce/clients" : "/no-workspace");
+  if (ctx.org.kind !== "client" && !internalEmployee) redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
   const canConfigure = ctx.can("agents.configure");
@@ -124,7 +124,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       canChat={ctx.can("agents.use")}
       isAgencyEmployee={internalEmployee}
       acknowledgementCurrent={acknowledgementCurrent}
-      adminManageHref={internalEmployee ? `/admin/workforce/${meta.slug}` : null}
+      adminManageHref={internalEmployee ? `/admin/employees/${meta.slug}` : null}
       initialTab={tab ?? "overview"}
       timeZone={ctx.org.timezone}
       now={currentTime()}

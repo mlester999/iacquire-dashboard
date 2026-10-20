@@ -71,7 +71,7 @@ export function AqiAdmin({
   const [questionDraft, setQuestionDraft] = React.useState({ question: "", scope: "global" as "global" | "role" | "page", role: "", routePrefix: "", sortOrder: 100, enabled: true });
   const [busy, setBusy] = React.useState(false);
   const [previewQuery, setPreviewQuery] = React.useState("How do I manage my AI employees?");
-  const [previewPath, setPreviewPath] = React.useState("/workforce");
+  const [previewPath, setPreviewPath] = React.useState("/employees");
   const [previewing, setPreviewing] = React.useState(false);
   const [previewResult, setPreviewResult] = React.useState<Array<{ id: string; title: string; category: string; body: string }>>([]);
   const globalBudget = data.budgets.find((budget) => budget.orgId === null);
@@ -331,7 +331,7 @@ export function AqiAdmin({
                 <Field label="Category" htmlFor="k-cat"><Input id="k-cat" value={knowledgeDraft.category} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, category: event.target.value })} /></Field>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Route (optional)" htmlFor="k-route"><Input id="k-route" placeholder="/workforce" value={knowledgeDraft.routePrefix} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, routePrefix: event.target.value })} /></Field>
+                <Field label="Route (optional)" htmlFor="k-route"><Input id="k-route" placeholder="/employees" value={knowledgeDraft.routePrefix} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, routePrefix: event.target.value })} /></Field>
                 <Field label="Status" htmlFor="k-status"><Select id="k-status" value={knowledgeDraft.status} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, status: event.target.value as typeof knowledgeDraft.status })}><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></Select></Field>
               </div>
               <Field label="Body" htmlFor="k-body"><Textarea id="k-body" rows={8} value={knowledgeDraft.body} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, body: event.target.value })} /></Field>
@@ -351,7 +351,7 @@ export function AqiAdmin({
           <CardContent className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]">
               <Field label="Question" htmlFor="preview-query"><Input id="preview-query" value={previewQuery} onChange={(event) => setPreviewQuery(event.target.value)} /></Field>
-              <Field label="Page route" htmlFor="preview-path"><Input id="preview-path" placeholder="/workforce" value={previewPath} onChange={(event) => setPreviewPath(event.target.value)} /></Field>
+              <Field label="Page route" htmlFor="preview-path"><Input id="preview-path" placeholder="/employees" value={previewPath} onChange={(event) => setPreviewPath(event.target.value)} /></Field>
               <div className="flex items-end"><Button variant="secondary" onClick={() => void previewRetrieval()} loading={previewing}>Preview</Button></div>
             </div>
             {previewResult.length ? (
@@ -397,7 +397,7 @@ export function AqiAdmin({
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="Scope" htmlFor="q-scope"><Select id="q-scope" value={questionDraft.scope} onChange={(event) => setQuestionDraft({ ...questionDraft, scope: event.target.value as typeof questionDraft.scope })}><option value="global">Global</option><option value="role">Role</option><option value="page">Page</option></Select></Field>
                 <Field label="Role" htmlFor="q-role"><Input id="q-role" placeholder="viewer" value={questionDraft.role} onChange={(event) => setQuestionDraft({ ...questionDraft, role: event.target.value })} /></Field>
-                <Field label="Route" htmlFor="q-route"><Input id="q-route" placeholder="/workforce" value={questionDraft.routePrefix} onChange={(event) => setQuestionDraft({ ...questionDraft, routePrefix: event.target.value })} /></Field>
+                <Field label="Route" htmlFor="q-route"><Input id="q-route" placeholder="/employees" value={questionDraft.routePrefix} onChange={(event) => setQuestionDraft({ ...questionDraft, routePrefix: event.target.value })} /></Field>
               </div>
               <Button variant="brand" onClick={() => void saveQuestion()} loading={busy}><Plus className="size-4" /> Add question</Button>
             </CardContent>

@@ -479,7 +479,7 @@ export function ChatWorkspace(props: Props) {
       <aside className={cn("hidden shrink-0 border-r border-white/10 lg:block", compactRail ? "w-20" : "w-[280px]")}>
         <ChatRail {...railProps} compact={compactRail} onToggleCompact={toggleCompactRail} />
       </aside>
-      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Chat navigation" description="Switch AI specialist, open a conversation, or return to AI Workforce." hideHeader className="!bg-[#0c101b]">
+      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Chat navigation" description="Switch AI specialist, open a conversation, or return to AI Employees." hideHeader className="!bg-[#0c101b]">
         <ChatRail {...railProps} idPrefix="conv-search-drawer" onNavigate={() => setRailOpen(false)} onClose={() => setRailOpen(false)} />
       </Sheet>
 
@@ -752,8 +752,8 @@ function EmptyState({ meta, ready, status, statusDetail, configured, hasPendingR
             ))}
           </ol>
           <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-            {canConfigure && <ButtonLink size="sm" variant="brand" href={`/workforce/${meta.slug}?tab=configure`}>{configured ? "Review configuration" : "Complete setup"} <ArrowUpRight className="size-3.5" /></ButtonLink>}
-            <ButtonLink size="sm" variant="secondary" href={`/workforce/${meta.slug}`}>View employee</ButtonLink>
+            {canConfigure && <ButtonLink size="sm" variant="brand" href={`/employees/${meta.slug}?tab=configure`}>{configured ? "Review configuration" : "Complete setup"} <ArrowUpRight className="size-3.5" /></ButtonLink>}
+            <ButtonLink size="sm" variant="secondary" href={`/employees/${meta.slug}`}>View employee</ButtonLink>
             <Button size="sm" variant="ghost" onClick={() => openHelp("human")}>Contact iAcquire</Button>
           </div>
         </div>
@@ -782,8 +782,8 @@ function ChatUnavailableDock({ meta, status, statusDetail, configured, hasPendin
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {canConfigure && <ButtonLink size="sm" variant="brand" href={`/workforce/${meta.slug}?tab=configure`}>{configured ? "Review setup" : "Complete setup"}</ButtonLink>}
-          <ButtonLink size="sm" variant="secondary" href={`/workforce/${meta.slug}`}>View employee</ButtonLink>
+          {canConfigure && <ButtonLink size="sm" variant="brand" href={`/employees/${meta.slug}?tab=configure`}>{configured ? "Review setup" : "Complete setup"}</ButtonLink>}
+          <ButtonLink size="sm" variant="secondary" href={`/employees/${meta.slug}`}>View employee</ButtonLink>
         </div>
       </div>
     </div>

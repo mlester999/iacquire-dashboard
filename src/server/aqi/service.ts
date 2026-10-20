@@ -1357,7 +1357,7 @@ export async function saveAqiKnowledge(admin: SessionUser, input: { id?: string 
   const body = input.body.trim().slice(0, 12000);
   const route = input.routePrefix?.trim() || null;
   if (!title || !category || !body) throw new AppError("invalid_input", "Title, category and body are required.");
-  if (route && !/^\/[a-z0-9/_-]*$/.test(route)) throw new AppError("invalid_input", "Use an internal route such as /workforce.");
+  if (route && !/^\/[a-z0-9/_-]*$/.test(route)) throw new AppError("invalid_input", "Use an internal route such as /employees.");
   return withSystem(async (db) => {
     if (input.id) {
       const current = (await db.query<{ id: string; version: number; title: string; category: string; body: string; route_prefix: string | null; roles: string[]; status: string; source: string; created_by: string | null; updated_by: string | null }>(
@@ -1413,7 +1413,7 @@ export async function saveAqiQuestion(admin: SessionUser, input: { id?: string |
   const question = input.question.trim().slice(0, 200);
   if (question.length < 3) throw new AppError("invalid_input", "Write a question.");
   const route = input.routePrefix?.trim() || null;
-  if (route && !/^\/[a-z0-9/_-]*$/.test(route)) throw new AppError("invalid_input", "Use an internal route such as /workforce.");
+  if (route && !/^\/[a-z0-9/_-]*$/.test(route)) throw new AppError("invalid_input", "Use an internal route such as /employees.");
   await withSystem(async (db) => {
     if (input.id) {
       await db.query(

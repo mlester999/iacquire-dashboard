@@ -144,8 +144,8 @@ export function EmployeeDetail(props: Props) {
 
   return (
     <div className="space-y-6">
-      <Link href="/workforce" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink">
-        <ArrowLeft className="size-3.5" /> AI Workforce
+      <Link href="/employees" className="inline-flex items-center gap-1.5 text-[13px] text-muted transition hover:text-ink">
+        <ArrowLeft className="size-3.5" /> AI Employees
       </Link>
 
       <EmployeeProfileHero

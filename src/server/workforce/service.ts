@@ -402,7 +402,7 @@ export async function createConfigVersion(
         severity: "warning",
         title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
         body: `${reason ? `The change was held for review: ${reason.label.toLowerCase()}. ` : "Part of the new instructions needs a person's review. "}iAcquire will review it before it's applied.`,
-        link: `/workforce/${AGENT_BY_KEY[agent.role_key].slug}`,
+        link: `/employees/${AGENT_BY_KEY[agent.role_key].slug}`,
         dedupeKey: `config-review-client:${versionId}`,
       });
       await notifyAgency(db, input.orgId, {
@@ -544,7 +544,7 @@ export async function decideHeldVersion(
       body: input.approve
         ? `The change is now active. ${label} will use it from the next message.`
         : "The previous configuration stays active. You can adjust the change and submit it again.",
-      link: `/workforce/${slug}?tab=history`,
+      link: `/employees/${slug}?tab=history`,
       dedupeKey: `config-decision:${decided.id}`,
     });
   } else if (version.created_by && version.created_by !== input.agencyUserId) {
@@ -553,7 +553,7 @@ export async function decideHeldVersion(
       severity: input.approve ? "success" : "warning",
       title: input.approve ? "Your configuration update was approved" : "Your configuration update needs changes",
       body: note,
-      link: `/workforce/${slug}?tab=history`,
+      link: `/employees/${slug}?tab=history`,
       dedupeKey: `config-decision:${decided.id}`,
     });
   }
@@ -951,7 +951,7 @@ export async function runHealthCheck(
             result = {
               ok: false,
               status: "setup_required",
-              detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online. A Super Admin needs to save an initial configuration for this employee in its own workspace (AI Workforce, open the employee, save its settings), then run the health check again.`,
+              detail: `${inventory.detail} The employee configuration hasn't been applied yet, so it can't go online. A Super Admin needs to save an initial configuration for this employee in its own workspace (AI Employees, open the employee, save its settings), then run the health check again.`,
             };
           } else {
             result = {
@@ -1052,7 +1052,7 @@ export async function runHealthCheck(
           severity: result.ok ? "success" : "warning",
           title: result.ok ? `${meta.shortName} is online` : `${meta.shortName} is ${result.status === "offline" ? "offline" : "unavailable"}`,
           body: result.detail,
-          link: `/workforce/${meta.slug}`,
+          link: `/employees/${meta.slug}`,
         });
       }
     }

@@ -674,8 +674,8 @@ describe("settings screen and its emergency control", () => {
     expect(html).toContain("Always asks");
     expect(html).toContain("Asks first when it changes more than one contact.");
     expect(html).toContain('href="/approvals"');
-    expect(html).toContain('href="/workforce"');
-    expect(html).toContain('href="/workforce/sales-assistant"');
+    expect(html).toContain('href="/employees"');
+    expect(html).toContain('href="/employees/sales-assistant"');
     expect(html).toContain('aria-label="Stop tool access for Sales Assistant"');
     expect(html).toContain("Waiting for approval");
     // Nothing secret reaches the page.

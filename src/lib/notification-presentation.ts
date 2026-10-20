@@ -53,7 +53,7 @@ export interface NotificationCategoryMeta {
 
 export const NOTIFICATION_CATEGORIES: Record<NotificationCategoryKey, NotificationCategoryMeta> = {
   approvals: { key: "approvals", label: "Reviews & approvals", description: "Configuration reviews, approvals and decisions that need a person", tone: "violet" },
-  workforce: { key: "workforce", label: "AI Workforce", description: "AI employee activity and configuration", tone: "primary" },
+  workforce: { key: "workforce", label: "AI Employees", description: "AI employee activity and configuration", tone: "primary" },
   connectivity: { key: "connectivity", label: "Connectivity", description: "Connections that stopped working", tone: "warning" },
   support: { key: "support", label: "Support", description: "Replies and updates on support requests", tone: "primary" },
   onboarding: { key: "onboarding", label: "Onboarding", description: "Setup and provisioning milestones", tone: "violet" },

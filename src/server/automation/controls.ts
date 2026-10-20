@@ -81,7 +81,7 @@ export async function setAgentMode(ctx: OrgContext, input: { agentId: string; mo
         severity: input.mode === "paused" ? "warning" : "info",
         title: `${agent.display_name} is now ${input.mode === "paused" ? "paused" : "working autonomously"}`,
         body: input.mode === "paused" ? "It will not start new work or contact customers until resumed." : "It can carry out low-risk approved work without asking each time.",
-        link: "/workforce",
+        link: "/employees",
       });
     }
     return { mode: input.mode, changed: true };
@@ -138,7 +138,7 @@ export async function setClientPause(ctx: OrgContext, input: { scope: ClientPaus
       severity: input.paused ? "warning" : "info",
       title: input.paused ? (input.scope === "messaging" ? "Customer-facing AI messaging paused" : "Outbound AI actions paused") : "AI automation resumed",
       body: input.paused ? "Queued sends are blocked until it is resumed." : undefined,
-      link: "/workforce",
+      link: "/employees",
     });
     return getControlState(db, ctx.org.orgId);
   });
@@ -191,7 +191,7 @@ export async function setAgencyPause(user: Pick<SessionUser, "id" | "platformRol
         severity: input.paused ? "critical" : "info",
         title: input.paused ? "iAcquire paused automation for your workspace" : "iAcquire resumed automation for your workspace",
         body: input.paused ? "Customer messages and new autonomous work are on hold. Private chat with your employees still works. Our team will contact you." : undefined,
-        link: "/workforce",
+        link: "/employees",
       });
     }
     return { paused: input.paused };

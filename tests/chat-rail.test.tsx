@@ -115,16 +115,16 @@ function renderRail(rail: Partial<ChatRailProps> = {}, shell: Partial<ShellData>
 }
 
 describe("ChatRail navigation", () => {
-  it("shows the brand, links home, and offers a clear way back to AI Workforce", () => {
+  it("shows the brand, links home, and offers a clear way back to AI Employees", () => {
     renderRail();
     expect(screen.getByRole("link", { name: /iAcquire dashboard/i })).toHaveAttribute("href", "/overview");
-    expect(screen.getByRole("link", { name: /Back to AI Workforce/i })).toHaveAttribute("href", "/workforce");
+    expect(screen.getByRole("link", { name: /Back to AI Employees/i })).toHaveAttribute("href", "/employees");
     expect(screen.getByText("Acquire")).toBeInTheDocument();
   });
 
   it("returns an agency Super Admin to the agency workforce area, not the client directory", () => {
     renderRail({}, { org: { ...shellData().org, kind: "agency", name: "iAcquire" } });
-    expect(screen.getByRole("link", { name: /Back to AI Workforce/i })).toHaveAttribute("href", "/admin/workforce");
+    expect(screen.getByRole("link", { name: /Back to AI Employees/i })).toHaveAttribute("href", "/admin/employees");
     expect(screen.getByRole("link", { name: /iAcquire agency dashboard/i })).toHaveAttribute("href", "/admin");
   });
 
@@ -165,8 +165,8 @@ describe("ChatRail navigation", () => {
 
   it("offers the profile to everyone and Manage only to people who may configure", () => {
     const { unmount } = renderRail({ canManage: true });
-    expect(screen.getByRole("link", { name: "Lead Hunter profile" })).toHaveAttribute("href", "/workforce/lead-hunter");
-    expect(screen.getByRole("link", { name: "Manage Lead Hunter" })).toHaveAttribute("href", "/workforce/lead-hunter?tab=configure");
+    expect(screen.getByRole("link", { name: "Lead Hunter profile" })).toHaveAttribute("href", "/employees/lead-hunter");
+    expect(screen.getByRole("link", { name: "Manage Lead Hunter" })).toHaveAttribute("href", "/employees/lead-hunter?tab=configure");
     unmount();
     renderRail({ canManage: false });
     expect(screen.getByRole("link", { name: "Lead Hunter profile" })).toBeInTheDocument();
@@ -185,7 +185,7 @@ describe("ChatRail navigation", () => {
     const onNavigate = vi.fn();
     const onClose = vi.fn();
     renderRail({ onNavigate, onClose });
-    fireEvent.click(screen.getByRole("link", { name: /Back to AI Workforce/i }));
+    fireEvent.click(screen.getByRole("link", { name: /Back to AI Employees/i }));
     expect(onNavigate).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Close navigation" }));
     expect(onClose).toHaveBeenCalled();
@@ -301,7 +301,7 @@ describe("ChatRail collapsed (desktop)", () => {
   it("keeps every navigation action reachable by name when only icons are shown", () => {
     const onToggleCompact = vi.fn();
     renderRail({ compact: true, onToggleCompact });
-    expect(screen.getByRole("link", { name: "Back to AI Workforce" })).toHaveAttribute("href", "/workforce");
+    expect(screen.getByRole("link", { name: "Back to AI Employees" })).toHaveAttribute("href", "/employees");
     expect(screen.getByRole("link", { name: "Lead Hunter, Setup required" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Operations Manager, Online" })).toHaveAttribute("href", "/chat/operations-manager");
     expect(screen.getByRole("button", { name: "New conversation" })).toBeInTheDocument();

@@ -25,12 +25,12 @@ describe("AQi cost controls", () => {
     try {
       await saveAqiModelPrice(session, { model, inputUsdPerMillion: 1, outputUsdPerMillion: 2, enabled: true });
       await saveAqiBudget(session, { orgId: org.id, enabled: true, monthlyOrgUsd: 0.0015, monthlyUserUsd: 0.0015 });
-      const conversation = await createAqiConversation(viewer, "/workforce");
+      const conversation = await createAqiConversation(viewer, "/employees");
       const config = { ...DEFAULT_AQI_CONFIG, model, maxTokens: 100 };
-      const first = await reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/workforce");
+      const first = await reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/employees");
       expect(first.id).toBeTruthy();
       expect(first.estimatedCostMicros).toBe(1200);
-      await expect(reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/workforce")).rejects.toThrow(/budget/i);
+      await expect(reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/employees")).rejects.toThrow(/budget/i);
     } finally {
       await withSystem(async (db) => {
         await db.query("delete from aqi_usage_events where org_id = $1", [org.id]);
@@ -52,11 +52,11 @@ describe("AQi cost controls", () => {
     try {
       await saveAqiModelPrice(session, { model, inputUsdPerMillion: 1, outputUsdPerMillion: 2, enabled: true });
       await saveAqiBudget(session, { orgId: org.id, enabled: true, monthlyOrgUsd: 0.0015, monthlyUserUsd: 0.0015 });
-      const conversation = await createAqiConversation(viewer, "/workforce");
+      const conversation = await createAqiConversation(viewer, "/employees");
       const config = { ...DEFAULT_AQI_CONFIG, model, maxTokens: 100 };
       const results = await Promise.allSettled([
-        reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/workforce"),
-        reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/workforce"),
+        reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/employees"),
+        reserveAqiSpend(viewer, config, 1000, 100, conversation.id, null, "/employees"),
       ]);
       expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
       expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
@@ -79,9 +79,9 @@ describe("AQi cost controls", () => {
     const session = agencyUser(admin, "agency_super_admin");
     try {
       await saveAqiBudget(session, { orgId: org.id, enabled: true, monthlyOrgUsd: 1, monthlyUserUsd: 1 });
-      const conversation = await createAqiConversation(viewer, "/workforce");
+      const conversation = await createAqiConversation(viewer, "/employees");
       const config = { ...DEFAULT_AQI_CONFIG, model: `missing-${Date.now()}`, maxTokens: 100 };
-      await expect(reserveAqiSpend(viewer, config, 100, 10, conversation.id, null, "/workforce")).rejects.toThrow(/pricing/i);
+      await expect(reserveAqiSpend(viewer, config, 100, 10, conversation.id, null, "/employees")).rejects.toThrow(/pricing/i);
     } finally {
       await withSystem(async (db) => {
         await db.query("delete from aqi_conversations where org_id = $1", [org.id]);
