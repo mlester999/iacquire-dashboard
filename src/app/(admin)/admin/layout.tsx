@@ -1,4 +1,5 @@
 import { requireAgency, listMemberships } from "@/server/tenancy/context";
+import { unreadCount } from "@/server/notifications";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { ensureAgencyWorkspace } from "@/server/workforce/agency";
 
@@ -14,9 +15,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   } catch {
     if (process.env.NODE_ENV !== "test") console.error("[iacquire] could not prepare the agency workspace");
   }
-  const memberships = await listMemberships(user.id);
+  // The agency shell previously had no notification surface at all. The notifications were already being
+  // written by notifyAgency; this is the first render of them in the Super Admin / Agency Team chrome.
+  const [memberships, unread] = await Promise.all([listMemberships(user.id), unreadCount(user.id)]);
   return (
-    <AdminShell user={{ name: user.fullName || user.email, email: user.email, platformRole: user.platformRole }} hasWorkspace={memberships.length > 0} qaDemo={process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production"}>
+    <AdminShell
+      user={{ name: user.fullName || user.email, email: user.email, platformRole: user.platformRole }}
+      hasWorkspace={memberships.length > 0}
+      notifications={{ unread, timeZone: user.timezone }}
+      qaDemo={process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production"}
+    >
       {children}
     </AdminShell>
   );

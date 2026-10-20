@@ -11,9 +11,10 @@ import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { LogoutTrigger } from "@/components/auth/logout-confirmation";
+import { NotificationCenter } from "@/components/notifications/notification-center";
 import { useTheme } from "@/components/providers";
 import { aqiNavTarget } from "@/lib/aqi/targets";
-import { cn, initials } from "@/lib/utils";
+import { cn, currentTime, initials } from "@/lib/utils";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: Gauge, exact: true, group: "Operations" },
@@ -64,7 +65,7 @@ function Nav({ superAdmin, compact, onNavigate }: { superAdmin: boolean; compact
   })}</nav>;
 }
 
-export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { user: { name: string; email: string; platformRole: string }; hasWorkspace: boolean; children: React.ReactNode; qaDemo?: boolean }) {
+export function AdminShell({ user, hasWorkspace, notifications, children, qaDemo = false }: { user: { name: string; email: string; platformRole: string }; hasWorkspace: boolean; notifications: { unread: number; timeZone: string }; children: React.ReactNode; qaDemo?: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [compact, setCompact] = React.useState(false);
   const [commandOpen, setCommandOpen] = React.useState(false);
@@ -98,7 +99,7 @@ export function AdminShell({ user, hasWorkspace, children, qaDemo = false }: { u
       {qaDemo && <p className="border-b border-warning/20 bg-warning-soft px-4 py-2 text-center text-[11px] font-medium text-warning-ink">Local design review · synthetic records · external services disabled</p>}
       <header className="sticky top-0 z-20 flex h-16 min-w-0 items-center justify-between gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur-lg sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => setOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2 lg:hidden" aria-label="Open admin navigation"><MenuIcon className="size-5" /></button><nav aria-label="Breadcrumb" className="min-w-0"><ol className="flex min-w-0 items-center gap-2 text-[12px]"><li className="hidden items-center gap-2 sm:flex"><Link href="/admin" className="text-muted hover:text-ink">Agency</Link><ChevronRight className="size-3 text-faint" aria-hidden /></li>{crumbs.map((crumb, i) => { const last = i === crumbs.length - 1; return <li key={`${crumb.label}-${i}`} className={cn("min-w-0 items-center gap-2", last ? "flex" : "hidden md:flex")}>{crumb.href ? <Link href={crumb.href} className="truncate text-muted hover:text-ink">{crumb.label}</Link> : <span aria-current={last ? "page" : undefined} className="truncate font-medium text-ink">{crumb.label}</span>}{!last && <ChevronRight className="size-3 shrink-0 text-faint" aria-hidden />}</li>; })}</ol></nav></div>
-        <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => { setQuery(""); setCommandOpen(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-[12px] text-muted shadow-soft"><Search className="size-4" aria-hidden /><span className="sr-only">Search navigation</span><span className="hidden sm:block">Jump to…</span><kbd className="hidden rounded border border-line bg-surface-2 px-1.5 text-[10px] md:block">⌘ K</kbd></button><button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button><span className="hidden rounded-full border border-line bg-surface px-2.5 py-1.5 text-[10px] font-medium text-muted xl:block">{superAdmin ? "Super admin" : "Agency staff"}</span></div>
+        <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => { setQuery(""); setCommandOpen(true); }} className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-2.5 text-[12px] text-muted shadow-soft"><Search className="size-4" aria-hidden /><span className="sr-only">Search navigation</span><span className="hidden sm:block">Jump to…</span><kbd className="hidden rounded border border-line bg-surface-2 px-1.5 text-[10px] md:block">⌘ K</kbd></button><NotificationCenter initialUnread={notifications.unread} initialNow={currentTime()} timeZone={notifications.timeZone} viewAllHref="/admin/notifications" /><button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button><span className="hidden rounded-full border border-line bg-surface px-2.5 py-1.5 text-[10px] font-medium text-muted xl:block">{superAdmin ? "Super admin" : "Agency staff"}</span></div>
       </header>
       <main id="admin-main" key={pathname} className="page-in mx-auto w-full max-w-[1600px] overflow-x-clip px-4 pb-16 pt-6 sm:px-6 lg:px-8">{children}</main>
     </div>

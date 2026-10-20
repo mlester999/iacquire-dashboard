@@ -13,7 +13,6 @@ import {
   Info,
   Lock,
   MessageSquare,
-  RotateCcw,
   ShieldCheck,
   Sparkles,
   Wand2,
@@ -22,8 +21,9 @@ import {
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { Dialog, Segmented, Switch, Tabs, Tooltip } from "@/components/ui/overlays";
-import { applyChangeAction, proposeChangeAction, rollbackAction, saveAgentSettingsAction } from "@/app/actions/workforce";
+import { Segmented, Switch, Tabs } from "@/components/ui/overlays";
+import { ConfigVersionHistory, type ConfigVersion } from "@/components/workforce/config-version-history";
+import { applyChangeAction, proposeChangeAction, saveAgentSettingsAction } from "@/app/actions/workforce";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type ReplyLength, type Tone } from "@/lib/agent-settings";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
@@ -36,18 +36,7 @@ import { EmployeeKnowledge } from "@/components/workforce/employee-knowledge";
 import type { EmployeeInstructionOverview } from "@/server/workforce/instructions";
 import type { EmployeeKnowledgeView } from "@/server/workforce/knowledge";
 
-interface Version {
-  id: string;
-  version: number;
-  summary: string;
-  status: string;
-  source: string;
-  change_request: string | null;
-  risk_flags: string[];
-  created_at: string;
-  applied_at: string | null;
-  created_by_name: string | null;
-}
+type Version = ConfigVersion;
 
 interface Props {
   meta: AgentRoleMeta;
@@ -77,6 +66,8 @@ interface Props {
   canChat: boolean;
   initialTab: string;
   timeZone: string;
+  /** The server's instant, so relative timestamps hydrate deterministically and then tick. */
+  now: number;
   capabilities: string[];
   description: string;
   knowledgeAppliedAt: string | null;
@@ -534,79 +525,8 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
   );
 }
 
-function HistoryTab({ meta, versions, timeZone }: Props) {
-  const router = useRouter();
-  const [confirm, setConfirm] = React.useState<Version | null>(null);
-  const [pending, setPending] = React.useState(false);
-  if (!versions.length) return <Card><CardContent className="py-12 text-center text-[13.5px] text-muted">No configuration versions yet.</CardContent></Card>;
-  return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <History className="size-4" /> Version history
-          </CardTitle>
-          <CardDescription>Every change is kept. Restoring an older version creates a new one.</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <ol className="relative space-y-5 border-l border-line pl-5">
-          {versions.map((v) => (
-            <li key={v.id} className="relative">
-              <span className={cn("absolute -left-[26px] top-1 size-3 rounded-full ring-4 ring-surface", v.status === "applied" ? "bg-success" : v.status === "pending_agency_review" ? "bg-warning" : v.status === "rejected" ? "bg-danger" : "bg-surface-3")} />
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[14px] font-semibold">v{v.version}</span>
-                <Badge tone={v.status === "applied" ? "success" : v.status === "pending_agency_review" ? "warning" : v.status === "rejected" ? "danger" : "neutral"}>
-                  {v.status === "applied" ? "Active" : v.status === "pending_agency_review" ? "Awaiting iAcquire review" : sentenceCase(v.status)}
-                </Badge>
-                <span className="text-[12px] text-muted">
-                  {sentenceCase(v.source)} · {v.created_by_name ?? "System"} · {formatDateTime(v.created_at, timeZone)}
-                </span>
-              </div>
-              {v.change_request && <p className="mt-1 text-[13px] italic text-ink-2">“{v.change_request}”</p>}
-              <p className="mt-1 text-[13px] leading-relaxed text-muted">{v.summary}</p>
-              {v.status === "superseded" && (
-                <Tooltip content="Creates a new version with these settings">
-                  <Button size="sm" variant="ghost" className="mt-1 -ml-2" onClick={() => setConfirm(v)}>
-                    <RotateCcw className="size-3.5" /> Restore
-                  </Button>
-                </Tooltip>
-              )}
-            </li>
-          ))}
-        </ol>
-      </CardContent>
-      <Dialog
-        open={Boolean(confirm)}
-        onOpenChange={(o) => !o && setConfirm(null)}
-        title={`Restore version ${confirm?.version}?`}
-        description="The current settings stay in history, so you can switch back later."
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Cancel
-            </Button>
-            <Button
-              loading={pending}
-              onClick={async () => {
-                if (!confirm) return;
-                setPending(true);
-                const res = await rollbackAction(meta.key, confirm.id);
-                setPending(false);
-                if (!res.ok) return toast.error(res.error);
-                toast.success(`Restored as v${res.data.version}`);
-                setConfirm(null);
-                router.refresh();
-              }}
-            >
-              Restore
-            </Button>
-          </>
-        }
-      />
-    </Card>
-  );
+function HistoryTab({ meta, versions, timeZone, now }: Props) {
+  return <ConfigVersionHistory versions={versions} role={meta.key} timeZone={timeZone} initialNow={now} />;
 }
 
 function ActivityTab({ runs, timeZone,meta,agent,canChat:canUse }: Props) {

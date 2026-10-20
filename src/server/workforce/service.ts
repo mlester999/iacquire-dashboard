@@ -15,7 +15,7 @@ import {
   verifyToolInventory,
   type ToolInventorySnapshot,
 } from "@/server/integrations/hermes/inventory";
-import { notifyOrgRoles } from "@/server/notifications";
+import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
 
 export interface AgentInstanceRow {
@@ -99,18 +99,31 @@ export async function listConfigVersions(userId: string, agentId: string) {
       source: string;
       change_request: string | null;
       risk_flags: string[];
+      policy_version: string | null;
       created_at: Date;
       applied_at: Date | null;
-      settings: AgentSettings;
+      decided_at: Date | null;
+      settings: unknown;
+      created_by: string | null;
+      decided_by: string | null;
       created_by_name: string | null;
+      decided_by_name: string | null;
     }>(
-      `select v.id, v.version, v.summary, v.status, v.source, v.change_request, v.risk_flags, v.created_at,
-              v.applied_at, v.settings, u.full_name as created_by_name
-       from agent_config_versions v left join users u on u.id = v.created_by
+      `select v.id, v.version, v.summary, v.status, v.source, v.change_request, v.risk_flags, v.policy_version,
+              v.created_at, v.applied_at, v.decided_at, v.settings, v.created_by, v.decided_by,
+              u.full_name as created_by_name, d.full_name as decided_by_name
+       from agent_config_versions v
+       left join users u on u.id = v.created_by
+       left join users d on d.id = v.decided_by
        where v.agent_instance_id = $1 order by v.version desc limit 50`,
       [agentId],
     );
-    return rows;
+    // Old versions can predate a setting added to the schema. A version whose snapshot no longer parses
+    // is still shown (its metadata and summary are real), but it is never fed to the diff renderer.
+    return rows.map((row) => {
+      const parsed = agentSettingsSchema.safeParse(row.settings);
+      return { ...row, settings: parsed.success ? parsed.data : null };
+    });
   });
 }
 
@@ -232,13 +245,32 @@ export async function createConfigVersion(
     db,
   );
   if (held) {
-    await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
-      kind: "agent_status",
-      severity: "warning",
-      title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
-      body: "Part of the new instructions looked like it could change safety rules, so our team will review it before it's applied.",
-      link: `/workforce/${AGENT_BY_KEY[agent.role_key].slug}`,
-    });
+    const { rows: orgRows } = await db.query<{ name: string; kind: string }>("select name, kind from organizations where id = $1", [input.orgId]);
+    const org = orgRows[0];
+    if (org?.kind === "client") {
+      // The client gets a confirmation that their change is safe but held. The actionable review notice
+      // goes to the agency reviewers who can actually access this tenant — not back to the client, and
+      // not to every agency user regardless of scope. The existing agency review screen is the link.
+      await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
+        kind: "agent_status",
+        severity: "warning",
+        title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
+        body: "Part of the new instructions looked like it could change safety rules, so our team will review it before it's applied.",
+        link: `/workforce/${AGENT_BY_KEY[agent.role_key].slug}`,
+        dedupeKey: `config-review-client:${versionId}`,
+      });
+      await notifyAgency(db, input.orgId, {
+        kind: "approval_requested",
+        severity: "warning",
+        title: `${org.name}: ${AGENT_BY_KEY[agent.role_key].shortName} configuration v${version} needs review`,
+        body: "This version was held because part of the change may affect safety rules. Review the proposed settings before it can be applied.",
+        link: `/admin/clients/${input.orgId}?tab=reviews`,
+        dedupeKey: `config-review-agency:${versionId}`,
+      });
+    }
+    // An internal agency workspace has no separate reviewer to notify. Sending the client-facing
+    // "waiting for iAcquire review" message to the same Super Admin would be misleading; the held
+    // version remains visible in Version history and in the audit log.
   }
   return { versionId, version, status, summary: compiled.summary, riskFlags: compiled.riskFlags };
 }
@@ -276,14 +308,32 @@ export async function applyDraftVersion(db: Queryable, orgId: string, versionId:
 
 /** Agency review of a held version. */
 export async function decideHeldVersion(db: Queryable, input: { orgId: string; versionId: string; approve: boolean; agencyUserId: string }) {
-  const { rows } = await db.query<{ id: string; org_id: string; agent_instance_id: string; settings: AgentSettings }>(
+  const { rows } = await db.query<{ id: string; org_id: string; agent_instance_id: string; settings: AgentSettings; version: number }>(
     `update agent_config_versions set status = $2, decided_by = $3, decided_at = now()
-     where id = $1 and org_id = $4 and status = 'pending_agency_review' returning id, org_id, agent_instance_id, settings`,
+     where id = $1 and org_id = $4 and status = 'pending_agency_review' returning id, org_id, agent_instance_id, settings, version`,
     [input.versionId, input.approve ? "applied" : "rejected", input.agencyUserId, input.orgId],
   );
   const v = rows[0];
   if (!v) throw new AppError("conflict", "This version has already been reviewed.");
   if (input.approve) await activateVersion(db, v.org_id, v.agent_instance_id, v.id, agentSettingsSchema.parse(v.settings).displayName);
+  // Tell the client what the agency decided. The review action already changed the status; this is a
+  // notification-only follow-up, so it never changes the decision or the version state.
+  const { rows: agentRows } = await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [v.agent_instance_id, v.org_id]);
+  const { rows: orgRows } = await db.query<{ kind: string }>("select kind from organizations where id = $1", [v.org_id]);
+  const role = agentRows[0]?.role_key;
+  if (orgRows[0]?.kind === "client" && role && isAgentRoleKey(role)) {
+    const agent = AGENT_BY_KEY[role];
+    await notifyOrgRoles(db, v.org_id, ["owner", "admin"], {
+      kind: "approval_decided",
+      severity: input.approve ? "success" : "warning",
+      title: input.approve ? `${agent.shortName} configuration v${v.version} approved and applied` : `${agent.shortName} configuration v${v.version} was not approved`,
+      body: input.approve
+        ? `The change is now active. ${agent.shortName} will use it from the next message.`
+        : "The previous configuration stays active. You can adjust the change and submit it again.",
+      link: `/workforce/${agent.slug}?tab=history`,
+      dedupeKey: `config-decision:${v.id}`,
+    });
+  }
   await recordAudit(
     {
       orgId: v.org_id,

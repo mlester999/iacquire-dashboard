@@ -8,6 +8,7 @@ import { autonomousBlocker } from "@/server/automation/controls";
 import { getEmployeeInstructionOverview } from "@/server/workforce/instructions";
 import { listEmployeeKnowledge } from "@/server/workforce/knowledge";
 import { ACCEPTED_UPLOADS } from "@/server/knowledge/service";
+import { currentTime } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -94,11 +95,17 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       canViewKnowledge={canViewKnowledge}
       canEditKnowledge={ctx.can("knowledge.edit")}
       uploadAccept={ACCEPTED_UPLOADS}
-      versions={versions.map((v) => ({ ...v, created_at: new Date(v.created_at).toISOString(), applied_at: v.applied_at ? new Date(v.applied_at).toISOString() : null }))}
+      versions={versions.map((v) => ({
+        ...v,
+        created_at: new Date(v.created_at).toISOString(),
+        applied_at: v.applied_at ? new Date(v.applied_at).toISOString() : null,
+        decided_at: v.decided_at ? new Date(v.decided_at).toISOString() : null,
+      }))}
       canConfigure={canConfigure}
       canChat={ctx.can("agents.use")}
       initialTab={tab ?? "overview"}
       timeZone={ctx.org.timezone}
+      now={currentTime()}
       {...extra}
     />
   );

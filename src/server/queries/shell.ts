@@ -88,7 +88,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
           ) order by r.sort_order),'[]'::json)
           from agent_instances a join agent_roles r on r.key=a.role_key where a.org_id=$1) as agents,
          (select count(*)::int from notifications n left join preferences p on true
-          where n.read_at is null and (n.severity='critical' or (
+          where n.user_id=$2 and (n.org_id=$1 or n.org_id is null) and n.read_at is null and (n.severity='critical' or (
             (coalesce(p.prefs->>'approvals','true') <> 'false' or n.kind not in ('approval_requested','approval_decided')) and
             (coalesce(p.prefs->>'leads','true') <> 'false' or n.kind <> 'lead_awaiting_approval') and
             (coalesce(p.prefs->>'workforce','true') <> 'false' or n.kind not in ('agent_status','agent_task_completed')) and
