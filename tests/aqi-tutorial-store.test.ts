@@ -132,6 +132,77 @@ describe("guidance store progress actions", () => {
     expect(store.currentGuidance().verified).toBe(false);
   });
 
+  it("sends the step being left, so Back moves exactly one step", async () => {
+    const store = await loadStore();
+    await started(store);
+    for (const confirmed of [1, 2]) {
+      const forward = store.tutorialActions.next();
+      await flush();
+      calls.at(-1)!.respond({ progress: progress(confirmed), status: "in_progress", verified: false });
+      await forward;
+    }
+    expect(store.currentGuidance().stepIndex).toBe(2);
+    calls.length = 0;
+    const back = store.tutorialActions.previous();
+    // Shown at once...
+    expect(store.currentGuidance().stepIndex).toBe(1);
+    await flush();
+    // ...but the server is told the step being left (2), not the optimistic one (1): it computes
+    // "previous" from that number, and sending 1 would have moved the saved progress back two steps.
+    expect(calls[0].body).toMatchObject({ action: "previous", step: 2 });
+    calls[0].respond({ progress: progress(1), status: "in_progress", verified: false });
+    await back;
+    expect(store.currentGuidance().stepIndex).toBe(1);
+  });
+
+  it("ignores a reconcile that was requested before a save and returns after it", async () => {
+    const store = await loadStore();
+    await started(store);
+    const next = store.tutorialActions.next();
+    await flush();
+    // Cross-page navigation asks the server where the person is while the save is still in flight.
+    const sync = store.syncGuidanceProgress("/settings");
+    await flush();
+    expect(calls.map((call) => call.url)).toEqual(["/api/aqi/tutorials/tour", "/api/aqi/tutorials?path=%2Fsettings"]);
+    // On a slow connection the save lands first and the older answer arrives afterwards, still
+    // describing the server before that save.
+    calls[0].respond({ progress: progress(1), status: "in_progress", verified: false });
+    await next;
+    expect(store.currentGuidance().stepIndex).toBe(1);
+    calls[1].respond({ state: { active: [{ ...progress(0), tutorialStatus: "published" }], completed: [] } });
+    await sync;
+    expect(store.currentGuidance().stepIndex).toBe(1);
+    expect(store.currentGuidance().phase).toBe("active");
+  });
+
+  it("ignores a reconcile that returns while a save is still in flight", async () => {
+    const store = await loadStore();
+    await started(store);
+    const sync = store.syncGuidanceProgress("/settings");
+    await flush();
+    const next = store.tutorialActions.next();
+    expect(store.currentGuidance().stepIndex).toBe(1);
+    await flush();
+    calls[0].respond({ state: { active: [{ ...progress(0), tutorialStatus: "published" }], completed: [] } });
+    await sync;
+    // The save is still pending, so the screen keeps the step it just moved to.
+    expect(store.currentGuidance().stepIndex).toBe(1);
+    calls[1].respond({ progress: progress(1), status: "in_progress", verified: false });
+    await next;
+    expect(store.currentGuidance().stepIndex).toBe(1);
+  });
+
+  it("still reconciles with the server when nothing is in flight", async () => {
+    const store = await loadStore();
+    await started(store);
+    const sync = store.syncGuidanceProgress("/settings");
+    await flush();
+    // Another tab moved the walkthrough on while this one was away.
+    calls[0].respond({ state: { active: [{ ...progress(2), tutorialStatus: "published" }], completed: [] } });
+    await sync;
+    expect(store.currentGuidance().stepIndex).toBe(2);
+  });
+
   it("acknowledges a start immediately and hands over when the walkthrough opens", async () => {
     const store = await loadStore();
     const starting = store.startTutorial("tour", "library");

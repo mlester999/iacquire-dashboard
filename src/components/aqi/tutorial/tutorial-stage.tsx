@@ -242,6 +242,9 @@ export function TutorialStage() {
       id: step.targetId,
       timeoutMs: 8000,
       onHit: (next, info) => {
+        // A control that shows up after the search gave up (a slow page, a dialog opened later) clears
+        // the "couldn't find it" notice and re-enables Next without needing Retry.
+        setMissingKey(null);
         setFound({ key, hit: next });
         setTargetState("found");
         if (info.first) {
