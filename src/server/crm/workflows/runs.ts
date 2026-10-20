@@ -5,12 +5,14 @@ import { recordAudit } from "@/server/audit";
 import { assertCan, auditActor, crmRead, type CrmActor } from "@/server/crm/actor";
 import { executeStep, stepLabel, type StepContext, type StepOutcome } from "@/server/crm/workflows/executors";
 import {
-  LIVE_RUN_STATUSES, RUN_COLUMNS, VERSION_COLUMNS, iso, loadApprovalState, publicMessage, versionAuthorized, workflowActor,
+  LIVE_RUN_STATUSES, RUN_COLUMNS, VERSION_COLUMNS, draftSteps, isPremiumVersion, iso, loadApprovalState, publicMessage, versionAuthorized, workflowActor,
   type RunContextData, type RunRow, type RunStatus, type StartedVia, type VersionRow, type WorkflowRow,
 } from "@/server/crm/workflows/engine";
 import { createRun } from "@/server/crm/workflows/triggers";
 import { validateForPublish } from "@/server/crm/workflows/context";
-import { TRIGGERS, WORKFLOW_LIMITS, hasErrors, type ValidationIssue, type WorkflowStep } from "@/lib/crm/workflow/spec";
+import { assertStudioEntitled } from "@/server/automation-studio/entitlement";
+import { addStudioUsage } from "@/server/automation-studio/usage";
+import { TRIGGERS, WORKFLOW_LIMITS, derivePremiumFeatures, hasErrors, type ValidationIssue, type WorkflowStep } from "@/lib/crm/workflow/spec";
 
 /** Run history, test runs, starting a run by hand, and a person's controls over a run (cancel, retry, skip). */
 
@@ -281,6 +283,17 @@ export async function startTestRun(actor: CrmActor, workflowId: string, input: {
     const w = (await db.query<WorkflowRow>("select * from crm_workflows where id = $1 and org_id = $2", [workflowId, actor.orgId])).rows[0];
     if (!w) throw new AppError("not_found", "Workflow not found.");
     const org = (await db.query<{ id: string; name: string; timezone: string }>("select id, name, timezone from organizations where id = $1", [actor.orgId])).rows[0];
+    // Testing an Automation Studio workflow is part of the plan, like building and running it.
+    const draftPremium = derivePremiumFeatures(draftSteps(w.draft), w.origin).length > 0;
+    let versionPremium = false;
+    if (source === "published" && w.published_version_id) {
+      versionPremium = Boolean((await db.query<{ p: boolean }>("select cardinality(premium_features) > 0 as p from crm_workflow_versions where id = $1 and org_id = $2", [w.published_version_id, actor.orgId])).rows[0]?.p);
+    }
+    const premiumTest = source === "draft" ? draftPremium : versionPremium;
+    if (premiumTest) {
+      await assertStudioEntitled(db, actor.orgId, "Testing this workflow");
+      await addStudioUsage(db, actor.orgId, "test_runs", 1, { at: now });
+    }
     let contact: { id: string; name: string } | null = null;
     if (input.contactId) {
       if (!UUID.test(input.contactId)) throw new AppError("not_found", "Contact not found.");
@@ -347,6 +360,8 @@ export async function startManualRun(actor: CrmActor, workflowId: string, input:
     if (w.status !== "active" || !w.published_version_id) throw new AppError("conflict", "Turn the workflow on before starting it.");
     const v = (await db.query<VersionRow>(`select ${VERSION_COLUMNS} from crm_workflow_versions v where v.id = $1 and v.org_id = $2`, [w.published_version_id, actor.orgId])).rows[0];
     if (!versionAuthorized(v, await loadApprovalState(db, actor.orgId, v.approval_id), now)) throw new AppError("conflict", "An owner must approve this version before it runs.");
+    const premium = isPremiumVersion(v);
+    if (premium) await assertStudioEntitled(db, actor.orgId, "Starting this workflow", now);
     const carries = TRIGGERS[v.trigger_config.type]?.carries.contact ?? "never";
     let contactId: string | null = null;
     if (carries === "never") {
@@ -366,7 +381,7 @@ export async function startManualRun(actor: CrmActor, workflowId: string, input:
     }
     const r = await createRun(db, {
       orgId: actor.orgId, workflowId: w.id, workflowName: w.name, hourlyRunLimit: w.hourly_run_limit, versionId: v.id, steps: v.steps, startedVia: "manual", contactId, opportunityId,
-      reentry: v.trigger_config.reentry, now, context: { trigger: { type: "manual", payload: { by: actor.userId } } },
+      reentry: v.trigger_config.reentry, premium, now, context: { trigger: { type: "manual", payload: { by: actor.userId } } },
     });
     if (r.status !== "created") throw new AppError("conflict", `${r.reason}`);
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_run_started", targetType: "crm_workflow_run", targetId: r.runId, result: "success", metadata: { workflowId: w.id, contactId } }, db);

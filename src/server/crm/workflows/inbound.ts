@@ -6,8 +6,9 @@ import { env } from "@/server/env";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, type RateLimitRule } from "@/server/security/rate-limit";
 import { createContactInTx, findByIdentities, normalizeContactInput } from "@/server/crm/contacts";
-import { loadApprovalState, trimJson, versionAuthorized, workflowActor } from "@/server/crm/workflows/engine";
+import { isPremiumVersion, loadApprovalState, trimJson, versionAuthorized, workflowActor } from "@/server/crm/workflows/engine";
 import { createRun } from "@/server/crm/workflows/triggers";
+import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import type { TriggerConfig, WorkflowStep } from "@/lib/crm/workflow/spec";
 
 /**
@@ -139,19 +140,25 @@ export async function handleInboundWebhook(input: { token: string; body: unknown
       [workflowId],
     )).rows[0];
     if (!w || !w.published_version_id) return NOT_FOUND;
-    const v = (await db.query<{ id: string; trigger_config: TriggerConfig; steps: WorkflowStep[]; effects: string[]; content_hash: string; approved_hash: string | null; approval_id: string | null }>(
-      "select id, trigger_config, steps, effects, content_hash, approved_hash, approval_id from crm_workflow_versions where id = $1 and org_id = $2",
+    const v = (await db.query<{ id: string; trigger_config: TriggerConfig; steps: WorkflowStep[]; effects: string[]; premium_features: string[]; content_hash: string; approved_hash: string | null; approval_id: string | null }>(
+      "select id, trigger_config, steps, effects, premium_features, content_hash, approved_hash, approval_id from crm_workflow_versions where id = $1 and org_id = $2",
       [w.published_version_id, w.org_id],
     )).rows[0];
     // The URL belongs to the version that is published now: generating a new one and publishing retires the old URL.
     if (!v || v.trigger_config.type !== "inbound_webhook" || v.trigger_config.inbound?.nonce !== nonce) return NOT_FOUND;
     if (w.status !== "active") return result(409, { status: "not_started", detail: "This workflow is switched off, so nothing was started." });
     if (!versionAuthorized(v, await loadApprovalState(db, w.org_id, v.approval_id), now)) return result(409, { status: "not_started", detail: "This workflow is waiting for an owner's approval, so nothing was started." });
+    // Checked before the body is matched to a contact, which can create one: a workspace without the plan gets nothing done for its call.
+    const premium = isPremiumVersion(v);
+    if (premium) {
+      const plan = await studioEntitlement(db, w.org_id, now);
+      if (!plan.entitled) return result(409, { status: "not_started", detail: `This workflow is part of Automation Studio, which isn't active for this workspace, so nothing was started. ${plan.reason}` });
+    }
     if (idem) {
-      // A call the hourly limit refused started nothing, so the caller's retry with the same key is a new attempt, not a duplicate.
+      // A call the hourly limit (or a plan limit) refused started nothing, so the caller's retry with the same key is a new attempt, not a duplicate.
       const dup = await db.query<{ id: string }>(
         `select id from crm_workflow_runs where workflow_id = $1 and org_id = $2 and started_via = 'webhook' and context->>'idempotencyKey' = $3
-           and coalesce(context->>'outcome', '') <> 'rate_limited' limit 1`,
+           and coalesce(context->>'outcome', '') not in ('rate_limited', 'quota_exceeded') limit 1`,
         [w.id, w.org_id, idem],
       );
       if (dup.rows[0]) return result(200, { status: "duplicate", runId: dup.rows[0].id, detail: "Already received; nothing new was started." });
@@ -161,7 +168,7 @@ export async function handleInboundWebhook(input: { token: string; body: unknown
     const match = inbound.match === "email_or_phone" ? await matchContact(db, org, w.name, body, inbound.createContact) : { contactId: null, created: false };
     const r = await createRun(db, {
       orgId: w.org_id, workflowId: w.id, workflowName: w.name, hourlyRunLimit: w.hourly_run_limit, versionId: v.id, steps: v.steps, startedVia: "webhook",
-      contactId: match.contactId, reentry: v.trigger_config.reentry, now,
+      contactId: match.contactId, reentry: v.trigger_config.reentry, premium, now,
       context: { trigger: { type: "inbound_webhook", payload: { contactCreated: match.created } }, inbound: trimJson(body, 6000), ...(idem ? { idempotencyKey: idem } : {}) },
     });
     await recordAudit({

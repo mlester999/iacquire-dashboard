@@ -247,6 +247,17 @@ export const EFFECT_LABELS: Record<WorkflowEffect, string> = {
   hermes: "Asks an AI employee to do work",
 };
 
+/**
+ * Premium capabilities of the optional Automation Studio plan. A version that uses any of them runs only while the workspace is entitled
+ * (starting, advancing, publishing and switching on are all checked on the server). "studio_workflow" marks a workflow built in Automation
+ * Studio; step kinds that only the plan includes (HTTP request, loops, connectors…) list their own feature on their spec as they are added.
+ * Workflows built in the CRM workflow screens, and every step kind listed above, need no plan.
+ */
+export const PREMIUM_FEATURES = ["studio_workflow"] as const;
+export type PremiumFeature = (typeof PREMIUM_FEATURES)[number];
+export const PREMIUM_FEATURE_LABELS: Record<PremiumFeature, string> = { studio_workflow: "Built in Automation Studio" };
+export type WorkflowOrigin = "crm" | "studio";
+
 const durationUnit = z.enum(["minutes", "hours", "days"]);
 const UNIT_MINUTES = { minutes: 1, hours: 60, days: 1440 } as const;
 export const durationMinutes = (d: { amount: number; unit: keyof typeof UNIT_MINUTES }) => d.amount * UNIT_MINUTES[d.unit];
@@ -454,6 +465,8 @@ export interface StepSpec<K extends StepKind = StepKind> {
   emitsEvents: boolean;
   /** The step can be set to wait for a person's approval each time it runs ("Ask before doing this"). */
   approvable: boolean;
+  /** Set when only the Automation Studio plan includes this kind of step. No kind needs the plan today. */
+  premium?: PremiumFeature;
   /** What it acts on. "required": skipped when the run has none. */
   needs: (config: StepConfigMap[K]) => { contact: Need; opportunity: Need };
   effects: (config: StepConfigMap[K]) => WorkflowEffect[];
@@ -1050,6 +1063,24 @@ export function deriveEffects(def: WorkflowDefinition): WorkflowEffect[] {
 
 /** A version that messages customers or calls outside systems runs only once an owner approved its exact content. */
 export const needsOwnerApproval = (effects: readonly string[]) => effects.length > 0;
+
+/**
+ * The premium capabilities a definition uses, in a fixed order: "studio_workflow" when it was built in Automation Studio, plus the feature
+ * of every step kind that only the plan includes. Empty means the workflow needs no plan. `specs` is a parameter so a test can add a kind.
+ */
+export function derivePremiumFeatures(
+  def: Pick<WorkflowDefinition, "steps">,
+  origin: WorkflowOrigin = "crm",
+  specs: Readonly<Record<string, { premium?: PremiumFeature } | undefined>> = STEP_KINDS,
+): PremiumFeature[] {
+  const found = new Set<PremiumFeature>();
+  if (origin === "studio") found.add("studio_workflow");
+  for (const s of Array.isArray(def.steps) ? def.steps : []) {
+    const feature = specs[s.kind]?.premium;
+    if (feature) found.add(feature);
+  }
+  return PREMIUM_FEATURES.filter((f) => found.has(f));
+}
 
 /** JSON with object keys sorted and undefined dropped, so equal content always serializes identically. */
 export function canonicalJson(value: unknown): string {

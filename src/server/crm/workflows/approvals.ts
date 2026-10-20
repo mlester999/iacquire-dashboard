@@ -4,6 +4,9 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { loadValidationContext } from "@/server/crm/workflows/context";
+import { isPremiumVersion } from "@/server/crm/workflows/engine";
+import { studioEntitlement } from "@/server/automation-studio/entitlement";
+import { admitActiveWorkflow } from "@/server/automation-studio/usage";
 import { hasErrors, validateDefinition } from "@/lib/crm/workflow/spec";
 
 /**
@@ -33,8 +36,8 @@ export async function executeWorkflowActivation(orgId: string, approvalId: strin
       [workflowId, orgId],
     )).rows[0];
     if (!w) return { status: "blocked", detail: "The workflow no longer exists, so nothing was switched on." };
-    const v = (await db.query<{ id: string; version: number; content_hash: string; trigger_config: unknown; steps: unknown }>(
-      "select id, version, content_hash, trigger_config, steps from crm_workflow_versions where id = $1 and workflow_id = $2 and org_id = $3 for update",
+    const v = (await db.query<{ id: string; version: number; content_hash: string; trigger_config: unknown; steps: unknown; premium_features: string[] }>(
+      "select id, version, content_hash, trigger_config, steps, premium_features from crm_workflow_versions where id = $1 and workflow_id = $2 and org_id = $3 for update",
       [versionId, workflowId, orgId],
     )).rows[0];
     if (!v) return { status: "blocked", detail: "That workflow version no longer exists, so nothing was switched on." };
@@ -61,10 +64,22 @@ export async function executeWorkflowActivation(orgId: string, approvalId: strin
           if (!(err instanceof AppError)) throw err;
           providerProblem = err.message;
         }
+        // An approval can be decided after the plan lapsed (or when the workspace is at its limit of workflows switched on): the version is
+        // approved, but it isn't switched on.
+        let planProblem: string | null = null;
+        if (isPremiumVersion(v)) {
+          const plan = await studioEntitlement(db, orgId);
+          if (!plan.entitled) planProblem = plan.reason;
+          else {
+            const room = await admitActiveWorkflow(db, orgId);
+            if (!room.allowed) planProblem = room.detail;
+          }
+        }
         if (providerProblem) detail += ` It wasn't switched on: ${providerProblem}`;
+        else if (planProblem) detail += ` It wasn't switched on: ${planProblem}`;
         else if (hasErrors(problems)) detail += ` It wasn't switched on because something it uses changed: ${problems[0].message} Edit and publish it again.`;
         else {
-          await db.query("update crm_workflows set status = 'active', archived_at = null where id = $1", [w.id]);
+          await db.query("update crm_workflows set status = 'active', archived_at = null, entitlement_paused_at = null where id = $1", [w.id]);
           switchedOn = true;
           detail += " The workflow is on and starts for new matching events from now.";
         }

@@ -9,9 +9,11 @@ import { MAX_EVENT_DEPTH } from "@/server/crm/events";
 import { callN8nWorkflow, type N8nCallResult } from "@/server/integrations/n8n-actions";
 import { executeStep, stepLabel, type StepContext, type StepOutcome } from "@/server/crm/workflows/executors";
 import {
-  RUN_COLUMNS, StepFailure, VERSION_COLUMNS, attemptKeyFor, backoffMs, effectKeyFor, iso, isRetryable, loadApprovalState, notifyWorkflowProblem, publicMessage, versionAuthorized,
+  RUN_COLUMNS, StepFailure, VERSION_COLUMNS, attemptKeyFor, backoffMs, effectKeyFor, iso, isPremiumVersion, isRetryable, loadApprovalState, notifyWorkflowProblem, publicMessage, versionAuthorized,
   workflowActor, type RunContextData, type RunRow, type VersionRow,
 } from "@/server/crm/workflows/engine";
+import { studioEntitlement } from "@/server/automation-studio/entitlement";
+import { addStudioUsage } from "@/server/automation-studio/usage";
 import { createRun } from "@/server/crm/workflows/triggers";
 import { latestScheduleSlot } from "@/lib/crm/workflow/time";
 import { STEP_KINDS, WORKFLOW_LIMITS, type WorkflowStep } from "@/lib/crm/workflow/spec";
@@ -34,6 +36,8 @@ const MAX_STEPS_PER_CLAIM = 10;
 const HOLD_PAUSED_MS = 15 * 60_000;
 const HOLD_SWITCHING_MS = 10 * 60_000;
 const HOLD_PROVIDER_MS = 60 * 60_000;
+/** A run of an Automation Studio workflow whose workspace has no active plan: held (never failed), looked at again every hour. */
+const HOLD_PLAN_MS = 60 * 60_000;
 const SCHEDULE_CATCH_UP_MS = 12 * 3_600_000;
 /** How long one claim keeps working through steps before giving the run back (well inside the two-minute lease). */
 const CLAIM_WORK_MS = 60_000;
@@ -202,6 +206,13 @@ async function advance(runId: string, token: string, now: Date): Promise<Advance
       const ctx: RunContextData = { ...run.context };
 
       if (workflow.status !== "active") return hold(db, run, ctx, new Date(run.next_run_at), "the workflow is paused.");
+      // Automation Studio workflows advance only while the workspace has the plan. A lapse pauses the workflows (so this normally never
+      // fires), and this is the second layer for the minutes between a lapse and that pause. Held, not failed: nothing is lost.
+      const premium = isPremiumVersion(version);
+      if (premium) {
+        const plan = await studioEntitlement(db, org.id, now);
+        if (!plan.entitled) return hold(db, run, ctx, new Date(now.getTime() + HOLD_PLAN_MS), `Automation Studio isn't active for this workspace. ${plan.reason}`);
+      }
       if (run.contact_id) {
         const c = await db.query("select 1 from contacts where id = $1 and org_id = $2 and deleted_at is null and archived_at is null", [run.contact_id, org.id]);
         if (!c.rows[0]) return cancelInTx(db, st, ctx, "The contact was archived or deleted, so the workflow stopped for them.", now);
@@ -316,6 +327,12 @@ async function advance(runId: string, token: string, now: Date): Promise<Advance
       };
       const out = await executeStep(sc, step);
       ctx.executed = (ctx.executed ?? 0) + 1;
+      if (premium) {
+        // Counted in the step's own transaction, so a step that rolls back is not counted.
+        await addStudioUsage(db, org.id, "steps_executed", 1, { at: now });
+        if (step.kind === "ai_task" && out.type === "done" && out.result.status === "queued") await addStudioUsage(db, org.id, "employee_invocations", 1, { at: now });
+        if (out.type === "external" || (step.kind === "webhook" && out.type === "done" && out.result.deliveryId)) await addStudioUsage(db, org.id, "integration_calls", 1, { at: now });
+      }
       if (out.type === "external") {
         // Phase one: the claim. The step row says "running" until the answer is recorded.
         const rowId = approvalRowId ?? (await insertStepRow(db, run, step, { attempt, effectKey, status: "running", result: out.result, finished: false, now }));
@@ -362,11 +379,14 @@ async function recordFailure(runId: string, token: string, now: Date, err: unkno
       if (awaiting) await settleStepRow(db, pendingApprovalRow!, { status: "failed", error: message, now });
       else await insertStepRow(db, run, step, { attempt, effectKey, status: "failed", error: message, result: { retryable }, finished: true, now });
     }
+    const premium = isPremiumVersion(version);
+    if (premium) await addStudioUsage(db, run.org_id, "step_failures", 1, { at: now });
     if (!retryable || attempt >= WORKFLOW_LIMITS.maxAttempts) {
       await db.query("update crm_workflow_runs set attempts = $2 where id = $1", [run.id, Math.min(50, attempt)]);
       const label = stepLabel(step);
       return endRun(db, st, ctx, retryable ? "dead" : "failed", retryable ? `"${label}" failed ${attempt} times and was given up: ${message}` : `"${label}" failed: ${message}`, now, 0, true);
     }
+    if (premium) await addStudioUsage(db, run.org_id, "step_retries", 1, { at: now });
     await db.query(
       "update crm_workflow_runs set status = 'queued', attempts = $2, next_run_at = $3, claimed_at = null, last_error = $4, context = $5 where id = $1",
       [run.id, attempt, new Date(now.getTime() + backoffMs(attempt)).toISOString(), message.slice(0, 500), ctxJson(ctx)],
@@ -443,6 +463,7 @@ interface ScheduledWorkflow {
   published_at: Date;
   approved_at: Date | null;
   effects: string[];
+  premium_features: string[];
   content_hash: string;
   approved_hash: string | null;
   approval_id: string | null;
@@ -457,7 +478,7 @@ interface ScheduledWorkflow {
 export async function fireSchedules(now = new Date(), limit = 50): Promise<number> {
   const all = await withSystem((db) =>
     db.query<ScheduledWorkflow>(
-      `select w.id, w.org_id, w.name, w.hourly_run_limit, v.id as version_id, v.trigger_config, v.steps, v.published_at, v.approved_at, v.effects, v.content_hash, v.approved_hash, v.approval_id, o.timezone
+      `select w.id, w.org_id, w.name, w.hourly_run_limit, v.id as version_id, v.trigger_config, v.steps, v.published_at, v.approved_at, v.effects, v.premium_features, v.content_hash, v.approved_hash, v.approval_id, o.timezone
        from crm_workflows w join crm_workflow_versions v on v.id = w.published_version_id and v.org_id = w.org_id join organizations o on o.id = w.org_id
        where w.status = 'active' and v.trigger_config->>'type' = 'schedule' and o.status not in ('suspended', 'archived') order by w.id limit 5000`,
     ),
@@ -491,7 +512,7 @@ export async function fireSchedules(now = new Date(), limit = 50): Promise<numbe
       // Checked again under the workflow's lock, so two ticks can't both start the same slot.
       const exists = await db.query("select 1 from crm_workflow_runs where org_id = $1 and workflow_id = $2 and started_via = 'schedule' and context->>'slot' = $3", [w.org_id, w.id, slot.toISOString()]);
       if (exists.rows[0]) return 0;
-      const r = await createRun(db, { orgId: w.org_id, workflowId: w.id, workflowName: w.name, hourlyRunLimit: w.hourly_run_limit, versionId: w.version_id, steps: w.steps, startedVia: "schedule", now, context: { slot: slot.toISOString(), trigger: { type: "schedule", payload: { slot: slot.toISOString() } } } });
+      const r = await createRun(db, { orgId: w.org_id, workflowId: w.id, workflowName: w.name, hourlyRunLimit: w.hourly_run_limit, versionId: w.version_id, steps: w.steps, startedVia: "schedule", premium: isPremiumVersion(w), now, context: { slot: slot.toISOString(), trigger: { type: "schedule", payload: { slot: slot.toISOString() } } } });
       return r.status === "created" ? 1 : 0;
     });
   }

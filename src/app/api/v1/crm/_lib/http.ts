@@ -41,7 +41,7 @@ export interface ApiResult {
 
 const APP_ERROR_CODES: Record<string, string> = {
   unauthenticated: "unauthorized", forbidden: "forbidden", not_found: "not_found", invalid_input: "invalid_request", conflict: "conflict", rate_limited: "rate_limited",
-  usage_limit: "rate_limited", integration_unavailable: "unavailable", agent_unavailable: "unavailable", upstream_error: "unavailable", internal: "internal_error",
+  usage_limit: "rate_limited", plan_required: "forbidden", integration_unavailable: "unavailable", agent_unavailable: "unavailable", upstream_error: "unavailable", internal: "internal_error",
 };
 
 function baseHeaders(requestId: string): Record<string, string> {

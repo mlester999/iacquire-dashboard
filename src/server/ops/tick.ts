@@ -31,6 +31,7 @@ import { processCampaigns } from "@/server/crm/campaigns/job";
 import { processFormSubmissions } from "@/server/crm/forms/process";
 import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
+import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 
 export interface ScheduledJob {
@@ -107,6 +108,10 @@ export const JOBS: ScheduledJob[] = [
   { name: "offboardingReminders", run: async () => ((await withinInterval("offboardingReminders", 360)) ? 0 : await sendDeletionReminders()) },
   // Workflow runs a stopped worker left behind go back to the queue, and runs whose step approval lapsed are cancelled.
   { name: "crmWorkflowRecovery", run: async () => { if (await withinInterval("crmWorkflowRecovery", 5)) return 0; const r = await recoverAbandonedRuns(); return r.recovered + r.lapsed; } },
+  // Automation Studio plan (after the workflow housekeeping above): a plan past due whose grace period ended expires, and workflows built in Automation Studio are paused while the
+  // plan isn't active (nothing is deleted or failed; core CRM workflows and AI employees are never selected). Two indexed queries when
+  // nothing in the portal uses the plan, so it runs on every tick.
+  { name: "studioEntitlementSweep", run: async () => { const r = await sweepStudioEntitlements(); return r.expired + r.workflowsPaused; } },
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
   { name: "whatsappTemplateSync", run: async () => ((await withinInterval("whatsappTemplateSync", 180)) ? 0 : (await syncAllWhatsappTemplates()).synced) },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the

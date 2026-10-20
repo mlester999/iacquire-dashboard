@@ -28,7 +28,7 @@ export interface RunContextData {
   approval?: { key: string; rowId: number; approvalId: string };
   /** An external call that was claimed; if a worker finds it still running, the outcome is unknown and it is never repeated blindly. */
   inflight?: { key: string; rowId: number };
-  /** Why a run ended without running (rate_limited) or stopped early (loop_limit, step_limit). */
+  /** Why a run ended without running (rate_limited, quota_exceeded) or stopped early (loop_limit, step_limit). */
   outcome?: string;
   /** Schedule runs: the slot they are for. */
   slot?: string;
@@ -65,11 +65,22 @@ export interface VersionRow {
   trigger_config: TriggerConfig;
   steps: WorkflowStep[];
   effects: string[];
+  /** Premium capabilities the version uses (empty: it needs no plan). Frozen with the version. */
+  premium_features: string[];
   content_hash: string;
   approval_id: string | null;
   approved_hash: string | null;
   approved_at: Date | null;
   published_at: Date;
+}
+
+/** Whether a version belongs to the Automation Studio plan: it is checked against the workspace's plan and limits, and metered. */
+export const isPremiumVersion = (v: { premium_features?: readonly string[] | null }) => (v.premium_features?.length ?? 0) > 0;
+
+/** The steps of a stored (possibly unreadable or half-finished) draft, for checks that only need their kinds. Anything unreadable has none. */
+export function draftSteps(raw: unknown): { steps: WorkflowStep[] } {
+  const steps = raw && typeof raw === "object" ? (raw as { steps?: unknown }).steps : null;
+  return { steps: Array.isArray(steps) ? (steps.filter((s) => s && typeof s === "object" && typeof (s as { kind?: unknown }).kind === "string") as WorkflowStep[]) : [] };
 }
 
 export interface WorkflowRow {
@@ -84,6 +95,10 @@ export interface WorkflowRow {
   published_version_id: string | null;
   hourly_run_limit: number;
   folder_id: string | null;
+  /** Where it was built: the CRM workflow screens ("crm") or Automation Studio ("studio"). */
+  origin: "crm" | "studio";
+  /** Set while it is paused because the plan lapsed (and only then). */
+  entitlement_paused_at: Date | null;
   created_at: Date;
   updated_at: Date;
   archived_at: Date | null;
@@ -91,7 +106,7 @@ export interface WorkflowRow {
 
 export const RUN_COLUMNS = `r.id, r.org_id, r.workflow_id, r.version_id, r.trigger_event_id, r.started_via, r.contact_id, r.opportunity_id, r.status, r.current_step,
   r.next_run_at, r.attempts, r.claimed_at, r.depth, r.context, r.last_error, r.created_at, r.finished_at`;
-export const VERSION_COLUMNS = "v.id, v.workflow_id, v.version, v.trigger_config, v.steps, v.effects, v.content_hash, v.approval_id, v.approved_hash, v.approved_at, v.published_at";
+export const VERSION_COLUMNS = "v.id, v.workflow_id, v.version, v.trigger_config, v.steps, v.effects, v.premium_features, v.content_hash, v.approval_id, v.approved_hash, v.approved_at, v.published_at";
 
 /**
  * Whether a version may run: it has no effects outside the CRM, or an owner approved exactly its content and that approval still stands.

@@ -112,19 +112,19 @@ export async function getMaintenanceOverview(ctx: OrgContext): Promise<Maintenan
     getMaintenancePlan(ctx.user.id),
     maintenanceEligibility(ctx.org.orgId),
     withUser(ctx.user.id, async (db) => {
-      const sub = (await db.query<SubRow>(`select ${SUB_COLUMNS} from maintenance_subscriptions where org_id = $1 order by (status in ('requested','active','cancel_requested')) desc, created_at desc limit 1`, [ctx.org.orgId])).rows[0];
+      const sub = (await db.query<SubRow>(`select ${SUB_COLUMNS} from maintenance_subscriptions where org_id = $1 order by (status in ('requested','active','past_due','cancel_requested')) desc, created_at desc limit 1`, [ctx.org.orgId])).rows[0];
       const reqs = (await db.query<{ id: string; ref: string; kind: "core_defect" | "managed_change"; title: string; description: string; status: string; ticket_id: string | null; counts_against_allowance: boolean; resolution_note: string | null; created_at: Date; closed_at: Date | null }>(
         "select id, ref, kind, title, description, status, ticket_id, counts_against_allowance, resolution_note, created_at, closed_at from maintenance_requests where org_id = $1 order by created_at desc limit 100",
         [ctx.org.orgId],
       )).rows;
-      const used = sub && ["active", "cancel_requested"].includes(sub.status)
+      const used = sub && ["active", "past_due", "cancel_requested"].includes(sub.status)
         ? (await db.query<{ n: number }>("select count(*)::int as n from maintenance_requests where subscription_id = $1 and kind = 'managed_change' and counts_against_allowance and status <> 'declined' and period_month = date_trunc('month', now())::date", [sub.id])).rows[0]?.n ?? 0
         : 0;
       return { sub, reqs, used };
     }),
   ]);
   const sub = data.sub ? toSub(data.sub) : null;
-  const active = sub && ["active", "cancel_requested"].includes(sub.status);
+  const active = sub && ["active", "past_due", "cancel_requested"].includes(sub.status);
   return {
     eligible: elig.eligible,
     eligibilityNote: elig.note,
@@ -148,7 +148,7 @@ export async function requestMaintenanceEnrollment(ctx: OrgContext, input: { acc
   const currency = plan.price.currency;
   const allowance = plan.monthlyRequestAllowance;
   await withSystem(async (db) => {
-    const open = await db.query("select 1 from maintenance_subscriptions where org_id = $1 and status in ('requested','active','cancel_requested')", [ctx.org.orgId]);
+    const open = await db.query("select 1 from maintenance_subscriptions where org_id = $1 and status in ('requested','active','past_due','cancel_requested')", [ctx.org.orgId]);
     if (open.rows[0]) throw new AppError("conflict", "You already have a maintenance request or plan.");
     await db.query(
       `insert into maintenance_subscriptions (org_id, plan_service_id, status, monthly_price_cents, currency, monthly_request_allowance, terms_version, accepted_by, request_note)
@@ -164,10 +164,10 @@ export async function requestMaintenanceCancellation(ctx: OrgContext, note?: str
   if (!ctx.can("maintenance.manage_plan")) throw new AppError("forbidden", "Only a workspace owner can change the maintenance plan.");
   const clean = (note ?? "").trim().slice(0, 1000) || null;
   await withSystem(async (db) => {
-    const s = (await db.query<{ id: string; status: string }>("select id, status from maintenance_subscriptions where org_id = $1 and status in ('requested','active') for update", [ctx.org.orgId])).rows[0];
+    const s = (await db.query<{ id: string; status: string }>("select id, status from maintenance_subscriptions where org_id = $1 and status in ('requested','active','past_due') for update", [ctx.org.orgId])).rows[0];
     if (!s) throw new AppError("not_found", "There's no plan to cancel.");
-    if (s.status === "requested") {
-      // Never activated, so nothing was ever billed: withdraw it outright.
+    if (s.status === "requested" || s.status === "past_due") {
+      // Never activated, or already unpaid (it would expire when its grace period ends): nothing more will be billed, so end it outright.
       await db.query("update maintenance_subscriptions set status = 'cancelled', cancelled_at = now(), cancel_note = $2, cancel_requested_by = $3, cancel_requested_at = now() where id = $1", [s.id, clean, ctx.user.id]);
     } else {
       await db.query("update maintenance_subscriptions set status = 'cancel_requested', cancel_note = $2, cancel_requested_by = $3, cancel_requested_at = now() where id = $1", [s.id, clean, ctx.user.id]);
@@ -195,7 +195,7 @@ export async function createMaintenanceRequest(ctx: OrgContext, input: z.input<t
   let subscriptionId: string | null = null;
   if (d.kind === "managed_change") {
     const sub = await withSystem(async (db) => {
-      const s = (await db.query<{ id: string; monthly_request_allowance: number }>("select id, monthly_request_allowance from maintenance_subscriptions where org_id = $1 and status in ('active','cancel_requested')", [ctx.org.orgId])).rows[0];
+      const s = (await db.query<{ id: string; monthly_request_allowance: number }>("select id, monthly_request_allowance from maintenance_subscriptions where org_id = $1 and status in ('active','past_due','cancel_requested')", [ctx.org.orgId])).rows[0];
       if (!s) return null;
       const n = (await db.query<{ n: number }>("select count(*)::int as n from maintenance_requests where subscription_id = $1 and kind = 'managed_change' and counts_against_allowance and status <> 'declined' and period_month = date_trunc('month', now())::date", [s.id])).rows[0]?.n ?? 0;
       return { id: s.id, full: n >= s.monthly_request_allowance, total: s.monthly_request_allowance };
@@ -224,7 +224,7 @@ export async function createMaintenanceRequest(ctx: OrgContext, input: z.input<t
 // Agency
 // ---------------------------------------------------------------------------
 
-function assertManage(user: SessionUser) {
+export function assertManage(user: SessionUser) {
   if (user.platformRole === "none" || !roleHasPermission(user.platformRole, "maintenance.manage")) throw new AppError("forbidden", "Agency access is required.");
 }
 
@@ -242,8 +242,8 @@ export async function listAgencyMaintenance(user: SessionUser) {
          (select i.state from client_setup_instances i where i.org_id = s.org_id) as state,
          (select count(*)::int from maintenance_requests m where m.subscription_id = s.id and m.kind = 'managed_change' and m.counts_against_allowance and m.status <> 'declined' and m.period_month = date_trunc('month', now())::date) as used
        from maintenance_subscriptions s join organizations o on o.id = s.org_id
-       where s.status in ('requested','active','cancel_requested') and app.user_can_access_org($1,s.org_id)
-       order by case s.status when 'requested' then 0 when 'cancel_requested' then 1 else 2 end, o.name`,
+       where s.status in ('requested','active','past_due','cancel_requested') and app.user_can_access_org($1,s.org_id)
+       order by case s.status when 'requested' then 0 when 'past_due' then 1 when 'cancel_requested' then 2 else 3 end, o.name`,
       [user.id],
     )).rows;
     const reqs = (await db.query<{ id: string; ref: string; kind: string; title: string; description: string; status: string; counts_against_allowance: boolean; org_id: string; org_name: string; ticket_id: string | null; created_at: Date; internal_notes: string | null }>(
@@ -260,7 +260,7 @@ export async function listAgencyMaintenance(user: SessionUser) {
   });
 }
 
-async function subscriptionForAgency(db: Parameters<Parameters<typeof withSystem>[0]>[0], user: SessionUser, id: string) {
+export async function subscriptionForAgency(db: Parameters<Parameters<typeof withSystem>[0]>[0], user: SessionUser, id: string) {
   const s = (await db.query<{ id: string; org_id: string; status: string }>("select id, org_id, status from maintenance_subscriptions where id = $1 for update", [id])).rows[0];
   const ok = s && (await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, s.org_id])).rows[0]?.allowed === true;
   if (!s || !ok) throw new AppError("not_found", "Maintenance plan not found.");

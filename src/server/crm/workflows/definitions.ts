@@ -11,11 +11,13 @@ import { assertNativeOwner, isSwitching } from "@/server/crm/workspace";
 import { loadBuilderOptions, loadValidationContext, validateForPublish, type WorkflowBuilderOptions } from "@/server/crm/workflows/context";
 import { inboundUrlFor } from "@/server/crm/workflows/inbound";
 import { assertMayRunDefinition } from "@/server/crm/workflows/permissions";
-import { LIVE_RUN_STATUSES, VERSION_COLUMNS, iso, type VersionRow, type WorkflowRow } from "@/server/crm/workflows/engine";
+import { LIVE_RUN_STATUSES, VERSION_COLUMNS, draftSteps, isPremiumVersion, iso, type VersionRow, type WorkflowRow } from "@/server/crm/workflows/engine";
+import { assertStudioEntitled } from "@/server/automation-studio/entitlement";
+import { admitActiveWorkflow } from "@/server/automation-studio/usage";
 import {
-  EFFECT_LABELS, TRIGGERS, WORKFLOW_LIMITS, definitionHash, deriveEffects, emptyDefinition, isTriggerType, needsOwnerApproval, parseDefinition,
+  EFFECT_LABELS, TRIGGERS, WORKFLOW_LIMITS, definitionHash, derivePremiumFeatures, deriveEffects, emptyDefinition, isTriggerType, needsOwnerApproval, parseDefinition,
   validateDefinition, validationContextFrom,
-  type SendMessageConfig, type TriggerType, type ValidationIssue, type WorkflowDefinition, type WorkflowEffect, type WorkflowStep,
+  type PremiumFeature, type SendMessageConfig, type TriggerConfig, type TriggerType, type ValidationIssue, type WorkflowDefinition, type WorkflowEffect, type WorkflowOrigin, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { WORKFLOW_TEMPLATES, workflowTemplate, type MessageChoice, type StageChoice, type TemplateInputSpec, type TemplateInputs } from "@/lib/crm/workflow/templates";
 
@@ -43,6 +45,12 @@ export interface WorkflowSummary {
   status: WorkflowStatus;
   folderId: string | null;
   folderName: string | null;
+  /** Where it was built: the CRM workflow screens or Automation Studio. */
+  origin: WorkflowOrigin;
+  /** Premium capabilities the published version uses (empty: it needs no plan). */
+  premiumFeatures: PremiumFeature[];
+  /** Paused because the plan lapsed. It stays off until someone checks it and turns it on again. */
+  pausedForPlan: boolean;
   /** The draft's trigger (what the editor shows). */
   triggerType: TriggerType | null;
   /** The published version's trigger (what actually runs). */
@@ -104,6 +112,8 @@ interface ListRow {
   status: WorkflowStatus;
   folder_id: string | null;
   folder_name: string | null;
+  origin: WorkflowOrigin;
+  entitlement_paused_at: Date | null;
   draft: unknown;
   draft_revision: number;
   published_version_id: string | null;
@@ -115,6 +125,7 @@ interface ListRow {
   version: number | null;
   trigger_config: { type?: string } | null;
   effects: string[] | null;
+  premium_features: string[] | null;
   content_hash: string | null;
   approved_hash: string | null;
   approval_id: string | null;
@@ -127,12 +138,12 @@ interface ListRow {
 }
 
 const LIST_SQL = `
-  select w.id, w.key, w.name, w.description, w.status, w.folder_id, f.name as folder_name, w.draft, w.draft_revision, w.published_version_id, w.hourly_run_limit,
+  select w.id, w.key, w.name, w.description, w.status, w.folder_id, f.name as folder_name, w.origin, w.entitlement_paused_at, w.draft, w.draft_revision, w.published_version_id, w.hourly_run_limit,
          w.created_at, w.updated_at, cu.full_name as created_by_name, uu.full_name as updated_by_name,
-         v.version, v.trigger_config, v.effects, v.content_hash, v.approved_hash, v.approval_id, a.status as approval_status, a.expires_at as approval_expires_at,
+         v.version, v.trigger_config, v.effects, v.premium_features, v.content_hash, v.approved_hash, v.approval_id, a.status as approval_status, a.expires_at as approval_expires_at,
          (select max(r.created_at) from crm_workflow_runs r where r.workflow_id = w.id and r.org_id = w.org_id and r.started_via <> 'test') as last_run_at,
          (select count(*)::int from crm_workflow_runs r where r.workflow_id = w.id and r.org_id = w.org_id and r.started_via <> 'test'
-            and r.created_at >= now() - interval '24 hours' and coalesce(r.context->>'outcome', '') <> 'rate_limited') as runs_today,
+            and r.created_at >= now() - interval '24 hours' and coalesce(r.context->>'outcome', '') not in ('rate_limited', 'quota_exceeded')) as runs_today,
          (select count(*)::int from crm_workflow_runs r where r.workflow_id = w.id and r.org_id = w.org_id and r.status in ('failed', 'dead')
             and coalesce(r.finished_at, r.created_at) >= now() - interval '24 hours') as failures_today,
          (select count(*)::int from crm_workflow_runs r where r.workflow_id = w.id and r.org_id = w.org_id and r.status in ('queued', 'running', 'waiting', 'awaiting_approval')) as live_runs
@@ -180,6 +191,7 @@ function toSummary(r: ListRow, now: Date): WorkflowSummary {
   const published = r.trigger_config?.type;
   return {
     id: r.id, key: r.key, name: r.name, description: r.description, status: r.status, folderId: r.folder_id, folderName: r.folder_name,
+    origin: r.origin, premiumFeatures: (r.premium_features ?? []) as PremiumFeature[], pausedForPlan: r.entitlement_paused_at !== null,
     triggerType, publishedTriggerType: isTriggerType(published) ? published : null, stepCount: Array.isArray(draft.steps) ? draft.steps.length : 0,
     publishedVersion: r.version, publishedVersionId: r.published_version_id,
     unpublishedChanges: !r.published_version_id || !draftHash || draftHash !== r.content_hash,
@@ -364,22 +376,29 @@ function storableDraft(raw: unknown): WorkflowDefinition {
   return draft;
 }
 
-export async function createWorkflow(actor: CrmActor, input: { name: string; description?: string | null; folderId?: string | null; triggerType?: string | null; definition?: unknown }): Promise<{ id: string; key: string }> {
+/**
+ * Creates a workflow draft. `origin` says where it is built: the CRM workflow screens ("crm", the default, needs no plan) or Automation
+ * Studio ("studio", which needs the plan: it is checked here, on the server, whatever the interface showed).
+ */
+export async function createWorkflow(actor: CrmActor, input: { name: string; description?: string | null; folderId?: string | null; triggerType?: string | null; definition?: unknown; origin?: WorkflowOrigin }): Promise<{ id: string; key: string }> {
   assertCan(actor, "workflows.manage", "Building automations needs the automations permission.");
   const name = cleanName(input.name);
   const description = cleanDescription(input.description);
+  const origin: WorkflowOrigin = input.origin === "studio" ? "studio" : "crm";
   if (input.triggerType && !isTriggerType(input.triggerType)) throw new AppError("invalid_input", "Choose what starts this workflow.");
   const draft = input.definition !== undefined ? storableDraft(input.definition) : emptyDefinition((input.triggerType as TriggerType | null) ?? "contact.created");
+  const premium = derivePremiumFeatures(draftSteps(draft), origin);
   return withSystem(async (db) => {
+    if (premium.length) await assertStudioEntitled(db, actor.orgId, origin === "studio" ? "Building in Automation Studio" : "A workflow with Automation Studio steps");
     await assertFolder(db, actor.orgId, input.folderId);
     const count = await db.query<{ n: number }>("select count(*)::int as n from crm_workflows where org_id = $1 and archived_at is null", [actor.orgId]);
     if (count.rows[0].n >= 500) throw new AppError("conflict", "This workspace has 500 workflows. Archive some before adding more.");
     const key = await uniqueKey(db, actor.orgId, name);
     const { rows } = await db.query<{ id: string }>(
-      "insert into crm_workflows (org_id, key, name, description, folder_id, draft, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $7) returning id",
-      [actor.orgId, key, name, description, input.folderId || null, JSON.stringify(draft), actor.userId],
+      "insert into crm_workflows (org_id, key, name, description, folder_id, draft, origin, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $8) returning id",
+      [actor.orgId, key, name, description, input.folderId || null, JSON.stringify(draft), origin, actor.userId],
     );
-    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_created", targetType: "crm_workflow", targetId: rows[0].id, result: "success", metadata: { key, trigger: draft.trigger.type } }, db);
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_created", targetType: "crm_workflow", targetId: rows[0].id, result: "success", metadata: { key, trigger: draft.trigger.type, origin } }, db);
     return { id: rows[0].id, key };
   });
 }
@@ -394,6 +413,11 @@ export async function saveWorkflowDraft(actor: CrmActor, id: string, input: { de
   if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) throw new AppError("invalid_input", "Reload the workflow and try again.");
   const draft = storableDraft(input.definition);
   return withSystem(async (db) => {
+    // A workflow built in Automation Studio (or one that gains a step only the plan includes) can't be changed without the plan.
+    // Reading, pausing and archiving never need it.
+    const current = (await db.query<{ origin: WorkflowOrigin }>("select origin from crm_workflows where id = $1 and org_id = $2", [id, actor.orgId])).rows[0];
+    if (!current) throw notFound();
+    if (derivePremiumFeatures(draftSteps(draft), current.origin).length) await assertStudioEntitled(db, actor.orgId, "Changing this workflow");
     const { rows } = await db.query<{ draft_revision: number }>(
       "update crm_workflows set draft = $3, draft_revision = draft_revision + 1, updated_by = $4 where id = $1 and org_id = $2 and draft_revision = $5 and status <> 'archived' returning draft_revision",
       [id, actor.orgId, JSON.stringify(draft), actor.userId, input.expectedRevision],
@@ -405,6 +429,39 @@ export async function saveWorkflowDraft(actor: CrmActor, id: string, input: { de
       throw new AppError("conflict", "Someone else saved this workflow since you opened it. Reload to see their changes before saving yours.");
     }
     return { revision: rows[0].draft_revision, issues: validateDefinition(draft, await loadValidationContext(db, actor.orgId)), draftHash: draftHashOf(draft) };
+  });
+}
+
+/**
+ * Rolls the working copy back to what an earlier version contained (the editor's "restore this version"). Nothing published changes: the
+ * restored draft becomes a new version only when someone publishes it, so a running workflow stays exactly as it was until then. An inbound
+ * webhook URL gets a new nonce, because restoring must not bring a retired URL back to life. Like saving, it is refused when someone else
+ * saved since `expectedRevision`.
+ */
+export async function restoreVersionAsDraft(actor: CrmActor, id: string, versionId: string, input: { expectedRevision?: number } = {}): Promise<{ revision: number; issues: ValidationIssue[]; version: number }> {
+  assertCan(actor, "workflows.manage", "Changing automations needs the automations permission.");
+  if (!UUID.test(id) || !UUID.test(versionId)) throw notFound();
+  return withSystem(async (db) => {
+    const w = (await db.query<WorkflowRow>("select * from crm_workflows where id = $1 and org_id = $2 for update", [id, actor.orgId])).rows[0];
+    if (!w) throw notFound();
+    if (w.status === "archived") throw new AppError("conflict", "This workflow is archived. Restore it to edit it.");
+    if (input.expectedRevision !== undefined && input.expectedRevision !== w.draft_revision) {
+      throw new AppError("conflict", "Someone else saved this workflow since you opened it. Reload to see their changes before restoring a version.");
+    }
+    const v = (await db.query<{ version: number; trigger_config: TriggerConfig; steps: WorkflowStep[] }>(
+      "select version, trigger_config, steps from crm_workflow_versions where id = $1 and workflow_id = $2 and org_id = $3",
+      [versionId, id, actor.orgId],
+    )).rows[0];
+    if (!v) throw new AppError("not_found", "That version doesn't exist.");
+    const restored: WorkflowDefinition = JSON.parse(JSON.stringify({ trigger: v.trigger_config, steps: v.steps }));
+    if (restored.trigger.inbound) restored.trigger.inbound = { ...restored.trigger.inbound, nonce: newNonce() };
+    if (derivePremiumFeatures(restored, w.origin).length) await assertStudioEntitled(db, actor.orgId, "Restoring this version");
+    const { rows } = await db.query<{ draft_revision: number }>(
+      "update crm_workflows set draft = $3, draft_revision = draft_revision + 1, updated_by = $4 where id = $1 and org_id = $2 returning draft_revision",
+      [id, actor.orgId, JSON.stringify(restored), actor.userId],
+    );
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_version_restored", targetType: "crm_workflow", targetId: id, result: "success", metadata: { versionId, version: v.version } }, db);
+    return { revision: rows[0].draft_revision, issues: validateDefinition(restored, await loadValidationContext(db, actor.orgId)), version: v.version };
   });
 }
 
@@ -447,10 +504,12 @@ export async function cloneWorkflow(actor: CrmActor, id: string, input: { name?:
     const draft = storedDraft(w.draft);
     const copy: WorkflowDefinition = JSON.parse(JSON.stringify(draft));
     if (copy.trigger?.inbound) copy.trigger.inbound = { ...copy.trigger.inbound, nonce: newNonce() };
+    // A copy is built where the original was, so copying an Automation Studio workflow needs the plan too.
+    if (derivePremiumFeatures(draftSteps(copy), w.origin).length) await assertStudioEntitled(db, actor.orgId, "Copying this workflow");
     const key = await uniqueKey(db, actor.orgId, name);
     const { rows } = await db.query<{ id: string }>(
-      "insert into crm_workflows (org_id, key, name, description, folder_id, draft, hourly_run_limit, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $8) returning id",
-      [actor.orgId, key, name, w.description, w.folder_id, JSON.stringify(copy), w.hourly_run_limit, actor.userId],
+      "insert into crm_workflows (org_id, key, name, description, folder_id, draft, hourly_run_limit, origin, created_by, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) returning id",
+      [actor.orgId, key, name, w.description, w.folder_id, JSON.stringify(copy), w.hourly_run_limit, w.origin, actor.userId],
     );
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_cloned", targetType: "crm_workflow", targetId: rows[0].id, result: "success", metadata: { from: id } }, db);
     return { id: rows[0].id, key };
@@ -517,6 +576,9 @@ export async function publishWorkflow(actor: CrmActor, id: string, input: { expe
     assertMayRunDefinition(actor, definition, "Publishing");
     const hash = definitionHash(definition);
     const effects = deriveEffects(definition);
+    const premiumFeatures = derivePremiumFeatures(definition, w.origin);
+    // Publishing is where a premium workflow becomes something that can run, so the plan is checked here too.
+    if (premiumFeatures.length) await assertStudioEntitled(db, actor.orgId, "Publishing this workflow");
     const now = new Date();
     if (w.published_version_id) {
       const cur = (await db.query<VersionRow & { approval_status: string | null; approval_expires_at: Date | null }>(
@@ -524,7 +586,9 @@ export async function publishWorkflow(actor: CrmActor, id: string, input: { expe
          left join approval_requests a on a.id = v.approval_id and a.org_id = v.org_id where v.id = $1 and v.org_id = $2`,
         [w.published_version_id, actor.orgId],
       )).rows[0];
-      if (cur && cur.content_hash === hash) {
+      // Same content and the same premium features: nothing new to freeze. (The features can differ for the same content when a workflow
+      // moved between the CRM screens and Automation Studio, and then the published version has to be replaced to carry them.)
+      if (cur && cur.content_hash === hash && cur.premium_features.join(",") === premiumFeatures.join(",")) {
         const approval = approvalStateOf(cur, cur.approval_status ? { status: cur.approval_status, expires_at: cur.approval_expires_at } : null, now);
         return {
           versionId: cur.id, version: cur.version, created: false, effects: cur.effects as WorkflowEffect[], contentHash: hash, needsApproval: approval !== "approved" && approval !== "not_needed",
@@ -534,9 +598,9 @@ export async function publishWorkflow(actor: CrmActor, id: string, input: { expe
     }
     const next = (await db.query<{ n: number }>("select coalesce(max(version), 0) + 1 as n from crm_workflow_versions where workflow_id = $1 and org_id = $2", [id, actor.orgId])).rows[0].n;
     const { rows } = await db.query<{ id: string }>(
-      `insert into crm_workflow_versions (org_id, workflow_id, version, trigger_config, steps, effects, content_hash, published_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-      [actor.orgId, id, next, JSON.stringify(definition.trigger), JSON.stringify(definition.steps), effects, hash, actor.userId],
+      `insert into crm_workflow_versions (org_id, workflow_id, version, trigger_config, steps, effects, premium_features, content_hash, published_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+      [actor.orgId, id, next, JSON.stringify(definition.trigger), JSON.stringify(definition.steps), effects, premiumFeatures, hash, actor.userId],
     );
     const versionId = rows[0].id;
     const needsApproval = needsOwnerApproval(effects);
@@ -546,7 +610,7 @@ export async function publishWorkflow(actor: CrmActor, id: string, input: { expe
     await withdrawStaleActivationRequests(db, actor.orgId, id, versionId, actor.userId, `Version ${next} was published, so this request no longer applies.`);
     await recordAudit({
       orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_published", targetType: "crm_workflow", targetId: id, result: "success",
-      metadata: { versionId, version: next, contentHash: hash, effects, needsApproval, pausedForApproval },
+      metadata: { versionId, version: next, contentHash: hash, effects, premiumFeatures, needsApproval, pausedForApproval },
     }, db);
     return {
       versionId, version: next, created: true, effects, contentHash: hash, needsApproval, approval: needsApproval ? "needed" : "not_needed", status, pausedForApproval,
@@ -608,6 +672,8 @@ export async function requestWorkflowApproval(actor: CrmActor, workflowId: strin
     if (state === "pending") return { status: "pending", approvalId: v.approval_id };
     // The owner is shown the version's outside effects; what it does inside the CRM must already be within the requester's own access.
     assertMayRunDefinition(actor, { trigger: v.trigger_config, steps: v.steps }, "Asking for approval of");
+    // Nobody should be asked to approve a version that can't run: without the plan it couldn't be switched on afterwards.
+    if (isPremiumVersion(v)) await assertStudioEntitled(db, actor.orgId, "Asking for approval of this workflow");
     const prior = (await db.query<{ n: number }>("select count(*)::int as n from approval_requests where org_id = $1 and target_type = 'crm_workflow_version' and target_id = $2", [actor.orgId, v.id])).rows[0].n;
     const trigger = TRIGGERS[v.trigger_config.type]?.label ?? v.trigger_config.type;
     const lines = await describeEffects(db, actor.orgId, v.steps);
@@ -693,6 +759,12 @@ export async function setWorkflowStatus(actor: CrmActor, id: string, status: Wor
       const problems = validateDefinition({ trigger: v.trigger_config, steps: v.steps }, await loadValidationContext(db, actor.orgId)).filter((i) => i.level === "error");
       if (problems.length) throw new AppError("conflict", `Something this workflow uses changed since it was published: ${problems[0].message} Edit and publish it again.`);
       assertMayRunDefinition(actor, { trigger: v.trigger_config, steps: v.steps }, "Turning on");
+      // Turning on a workflow of the plan needs the plan, and room under the limit on workflows switched on at once. Turning one off never does.
+      if (isPremiumVersion(v)) {
+        await assertStudioEntitled(db, actor.orgId, "Turning on this workflow");
+        const room = await admitActiveWorkflow(db, actor.orgId);
+        if (!room.allowed) throw new AppError("usage_limit", room.detail);
+      }
     } else if (status === "paused") {
       if (w.status !== "active") throw new AppError("conflict", "Only a workflow that is on can be paused.");
     } else if (status === "draft") {
@@ -704,8 +776,10 @@ export async function setWorkflowStatus(actor: CrmActor, id: string, status: Wor
       cancelledRuns = await cancelLiveRuns(db, actor.orgId, id, "The workflow was archived.", actor.kind === "member" || actor.kind === "agency" ? actor.userId : null);
       await withdrawStaleActivationRequests(db, actor.orgId, id, null, actor.userId, "The workflow was archived.");
     }
+    // Whoever changes the status takes over: a workflow the plan's lapse paused is no longer "paused for the plan" once a person has
+    // decided what it should be.
     await db.query(
-      "update crm_workflows set status = $3, archived_at = case when $3 = 'archived' then now() else null end, updated_by = $4 where id = $1 and org_id = $2",
+      "update crm_workflows set status = $3, archived_at = case when $3 = 'archived' then now() else null end, entitlement_paused_at = null, updated_by = $4 where id = $1 and org_id = $2",
       [id, actor.orgId, status, actor.userId],
     );
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_status_changed", targetType: "crm_workflow", targetId: id, result: "success", metadata: { from: w.status, to: status, cancelledRuns } }, db);

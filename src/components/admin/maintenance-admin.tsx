@@ -19,7 +19,7 @@ type Data = Awaited<ReturnType<typeof listAgencyMaintenance>>;
 
 export function MaintenanceAdmin({ subscriptions, requests }: Data) {
   const [planFilter,setPlanFilter]=React.useState("all");const [requestFilter,setRequestFilter]=React.useState("all");
-  const active=subscriptions.filter(s=>["active","cancel_requested"].includes(s.status));const pending=subscriptions.filter(s=>s.status==="requested");const defects=requests.filter(r=>r.kind==="core_defect");
+  const active=subscriptions.filter(s=>["active","past_due","cancel_requested"].includes(s.status));const pending=subscriptions.filter(s=>s.status==="requested");const defects=requests.filter(r=>r.kind==="core_defect");
   const plans=subscriptions.filter(s=>planFilter==="all"||planFilter==="active"&&active.includes(s)||planFilter==="requested"&&s.status==="requested"||planFilter==="cancel_requested"&&s.status==="cancel_requested");
   const shownRequests=requests.filter(r=>requestFilter==="all"||r.kind===requestFilter);
   return (
@@ -79,7 +79,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
             <p className="mt-0.5 text-[12px] text-muted">Accepted {formatDate(s.acceptedAt)} · terms {s.termsVersion}</p>
           </div>
         </div>
-        <StatusPill tone={s.status === "active" ? "success" : s.status === "cancel_requested" ? "danger" : "warning"}>{MAINTENANCE_STATUS_LABEL[s.status]}</StatusPill>
+        <StatusPill tone={s.status === "active" ? "success" : s.status === "cancel_requested" || s.status === "past_due" ? "danger" : "warning"}>{MAINTENANCE_STATUS_LABEL[s.status]}</StatusPill>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-1.5">
@@ -87,7 +87,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
           <InfoChip icon={<Gauge />} className="tabular-nums">{s.monthlyRequestAllowance} requests/month</InfoChip>
         </div>
         {s.requestNote && <p className="rounded-xl bg-surface-2 p-3 text-[13px] text-ink-2">“{s.requestNote}”</p>}
-        {s.status === "active" || s.status === "cancel_requested" ? (
+        {s.status === "active" || s.status === "past_due" || s.status === "cancel_requested" ? (
           <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-3">
             {[
               { label: "Billing started", value: s.billingStartOn ? formatDate(s.billingStartOn) : "—" },

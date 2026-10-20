@@ -8,6 +8,7 @@ export type ErrorCode =
   | "conflict"
   | "rate_limited"
   | "usage_limit"
+  | "plan_required"
   | "budget_exhausted"
   | "billing_unavailable"
   | "agent_unavailable"
@@ -23,6 +24,8 @@ const STATUS: Record<ErrorCode, number> = {
   conflict: 409,
   rate_limited: 429,
   usage_limit: 429,
+  // The action belongs to an optional plan the workspace doesn't have (Automation Studio); the interface shows the upgrade page.
+  plan_required: 403,
   budget_exhausted: 429,
   billing_unavailable: 503,
   agent_unavailable: 503,

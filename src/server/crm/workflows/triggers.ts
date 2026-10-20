@@ -4,7 +4,9 @@ import { AppError } from "@/server/errors";
 import { notifyOrgRoles } from "@/server/notifications";
 import type { CrmEventRow } from "@/server/crm/events";
 import { contactMatches } from "@/server/crm/workflows/conditions";
-import { LIVE_RUN_STATUSES, isRetryable, iso, notifyWorkflowProblem, trimJson, versionAuthorized, type RunContextData, type StartedVia } from "@/server/crm/workflows/engine";
+import { LIVE_RUN_STATUSES, isPremiumVersion, isRetryable, iso, notifyWorkflowProblem, trimJson, versionAuthorized, type RunContextData, type StartedVia } from "@/server/crm/workflows/engine";
+import { studioEntitlement } from "@/server/automation-studio/entitlement";
+import { addStudioUsage, admitStudioRun } from "@/server/automation-studio/usage";
 import { FilterError, countConditions } from "@/lib/crm/filters";
 import { isEventTrigger, type TriggerConfig, type WorkflowStep } from "@/lib/crm/workflow/spec";
 
@@ -23,6 +25,7 @@ export interface ActiveVersion {
   trigger_config: TriggerConfig;
   steps: WorkflowStep[];
   effects: string[];
+  premium_features: string[];
   content_hash: string;
   approved_hash: string | null;
   approval_id: string | null;
@@ -33,7 +36,7 @@ export interface ActiveVersion {
 }
 
 const ACTIVE_VERSIONS = `
-  select w.id as workflow_id, w.name as workflow_name, w.hourly_run_limit, v.id as version_id, v.trigger_config, v.steps, v.effects, v.content_hash,
+  select w.id as workflow_id, w.name as workflow_name, w.hourly_run_limit, v.id as version_id, v.trigger_config, v.steps, v.effects, v.premium_features, v.content_hash,
          v.approved_hash, v.approval_id, a.status as approval_status, a.expires_at as approval_expires_at, v.published_at, v.approved_at
   from crm_workflows w
   join crm_workflow_versions v on v.id = w.published_version_id and v.org_id = w.org_id
@@ -62,6 +65,8 @@ export interface CreateRunInput {
   depth?: number;
   context?: RunContextData;
   reentry?: TriggerConfig["reentry"];
+  /** The version belongs to the Automation Studio plan: the workspace's plan and limits are checked, and the run is metered. */
+  premium?: boolean;
   now: Date;
 }
 
@@ -81,31 +86,47 @@ export async function createRun(db: Queryable, input: CreateRunInput): Promise<C
     const statuses = input.reentry === "once" ? null : LIVE_RUN_STATUSES;
     const { rows } = await db.query(
       `select 1 from crm_workflow_runs where org_id = $1 and workflow_id = $2 and contact_id = $3 and started_via <> 'test'
-         and coalesce(context->>'outcome', '') <> 'rate_limited' and ($4::text[] is null or status = any($4::text[])) limit 1`,
+         and coalesce(context->>'outcome', '') not in ('rate_limited', 'quota_exceeded') and ($4::text[] is null or status = any($4::text[])) limit 1`,
       [input.orgId, input.workflowId, input.contactId, statuses],
     );
     if (rows[0]) return { status: "skipped", runId: null, reason: input.reentry === "once" ? "This contact already went through this workflow." : "This contact is already in this workflow." };
   }
   const base: RunContextData = { ...(input.context ?? {}), visit: { key: entry, n: 1 }, visits: { [entry]: 1 }, executed: 0 };
+  /** A run that wasn't started, recorded as cancelled with why, so it shows in the log (and a redelivered event doesn't try again). */
+  const recordRefused = async (outcome: "rate_limited" | "quota_exceeded", reason: string) =>
+    (await db.query<{ id: string }>(
+      `insert into crm_workflow_runs (org_id, workflow_id, version_id, trigger_event_id, started_via, contact_id, opportunity_id, status, current_step, depth, context, last_error, finished_at, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, 'cancelled', null, $8, $9, $10, $11, $11)
+       on conflict (workflow_id, trigger_event_id) where trigger_event_id is not null do nothing returning id`,
+      [input.orgId, input.workflowId, input.versionId, input.triggerEventId ?? null, input.startedVia, input.contactId ?? null, input.opportunityId ?? null, Math.min(20, input.depth ?? 0),
+        JSON.stringify({ ...base, outcome }), reason, input.now.toISOString()],
+    )).rows[0]?.id ?? null;
+  if (input.premium && input.startedVia !== "test") {
+    // Automation Studio workflows run only while the workspace has the plan, and within its fair-use limits. Workflows from the CRM screens never get here.
+    const ent = await studioEntitlement(db, input.orgId, input.now);
+    if (!ent.entitled) {
+      await addStudioUsage(db, input.orgId, "runs_refused", 1, { at: input.now });
+      return { status: "skipped", runId: null, reason: `Not started: ${ent.reason}` };
+    }
+    const admission = await admitStudioRun(db, input.orgId, input.now);
+    if (!admission.allowed) {
+      await addStudioUsage(db, input.orgId, "runs_refused", 1, { at: input.now });
+      return { status: "limited", runId: await recordRefused("quota_exceeded", admission.detail), reason: admission.detail };
+    }
+  }
   if (input.startedVia !== "test") {
     const { rows } = await db.query<{ n: string }>(
       `select count(*)::text as n from crm_workflow_runs where workflow_id = $1 and org_id = $2 and created_at > $3::timestamptz - interval '1 hour'
-         and started_via <> 'test' and coalesce(context->>'outcome', '') <> 'rate_limited'`,
+         and started_via <> 'test' and coalesce(context->>'outcome', '') not in ('rate_limited', 'quota_exceeded')`,
       [input.workflowId, input.orgId, input.now.toISOString()],
     );
     if (Number(rows[0].n) >= input.hourlyRunLimit) {
       const reason = `Not started: this workflow reached its limit of ${input.hourlyRunLimit} runs an hour.`;
-      const limited = await db.query<{ id: string }>(
-        `insert into crm_workflow_runs (org_id, workflow_id, version_id, trigger_event_id, started_via, contact_id, opportunity_id, status, current_step, depth, context, last_error, finished_at, created_at)
-         values ($1, $2, $3, $4, $5, $6, $7, 'cancelled', null, $8, $9, $10, $11, $11)
-         on conflict (workflow_id, trigger_event_id) where trigger_event_id is not null do nothing returning id`,
-        [input.orgId, input.workflowId, input.versionId, input.triggerEventId ?? null, input.startedVia, input.contactId ?? null, input.opportunityId ?? null, Math.min(20, input.depth ?? 0),
-          JSON.stringify({ ...base, outcome: "rate_limited" }), reason, input.now.toISOString()],
-      );
-      if (limited.rows[0]) {
-        await notifyWorkflowProblem(db, { orgId: input.orgId, workflowId: input.workflowId, workflowName: input.workflowName, runId: limited.rows[0].id, title: `Workflow "${input.workflowName}" reached its hourly limit`, body: `${reason} Check what is starting it so often, or raise the limit in the workflow's settings.`, now: input.now });
+      const limitedId = await recordRefused("rate_limited", reason);
+      if (limitedId) {
+        await notifyWorkflowProblem(db, { orgId: input.orgId, workflowId: input.workflowId, workflowName: input.workflowName, runId: limitedId, title: `Workflow "${input.workflowName}" reached its hourly limit`, body: `${reason} Check what is starting it so often, or raise the limit in the workflow's settings.`, now: input.now });
       }
-      return { status: "limited", runId: limited.rows[0]?.id ?? null, reason };
+      return { status: "limited", runId: limitedId, reason };
     }
   }
   const created = await db.query<{ id: string }>(
@@ -116,6 +137,7 @@ export async function createRun(db: Queryable, input: CreateRunInput): Promise<C
       Math.min(20, input.depth ?? 0), JSON.stringify(base)],
   );
   if (!created.rows[0]) return { status: "duplicate", runId: null, reason: "This event already started this workflow." };
+  if (input.premium && input.startedVia !== "test") await addStudioUsage(db, input.orgId, "runs_started", 1, { at: input.now });
   return { status: "created", runId: created.rows[0].id };
 }
 
@@ -247,7 +269,7 @@ export async function startRunsForEvent(db: Queryable, e: CrmEventRow, now = new
       if (await triggerMatches(db, e, t, records, org?.timezone ?? "UTC")) {
         r = await createRun(db, {
           orgId: e.orgId, workflowId: v.workflow_id, workflowName: v.workflow_name, hourlyRunLimit: v.hourly_run_limit, versionId: v.version_id, steps: v.steps, startedVia: "event",
-          triggerEventId: e.id, contactId: records.contactId, opportunityId: records.opportunityId, depth: e.depth, reentry: t.reentry, now,
+          triggerEventId: e.id, contactId: records.contactId, opportunityId: records.opportunityId, depth: e.depth, reentry: t.reentry, premium: isPremiumVersion(v), now,
           context: {
             trigger: { type: e.type, eventId: e.id, payload: trimJson(e.payload, 4000) },
             appointmentId: records.appointmentId, taskId: records.taskId, conversationId: records.conversationId ?? str(e.payload?.conversationId),

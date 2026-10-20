@@ -20,8 +20,8 @@ export function MaintenancePanel({ overview: o, timeZone, canManagePlan, canRequ
   const router = useRouter();
   const { run, isPending } = useRunner();
   const sub = o.subscription;
-  const open = sub && ["requested", "active", "cancel_requested"].includes(sub.status);
-  const active = sub && ["active", "cancel_requested"].includes(sub.status);
+  const open = sub && ["requested", "active", "past_due", "cancel_requested"].includes(sub.status);
+  const active = sub && ["active", "past_due", "cancel_requested"].includes(sub.status);
   const [enroll, setEnroll] = React.useState(false);
   const [cancel, setCancel] = React.useState(false);
   const [accept, setAccept] = React.useState(false);

@@ -13,6 +13,7 @@ import type { RunFilter } from "@/components/crm/workflows/summaries";
 /** Why a run ended early or did nothing, in words. */
 export const RUN_OUTCOMES: Record<string, string> = {
   rate_limited: "Not started: the workflow reached its hourly run limit.",
+  quota_exceeded: "Not started: the workspace reached a monthly Automation Studio limit.",
   loop_limit: "Stopped by the loop limit: workflows kept triggering each other.",
   visit_limit: "Stopped: the run came back to the same step too many times.",
   step_limit: "Stopped: the run took too many steps.",

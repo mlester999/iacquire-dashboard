@@ -268,14 +268,16 @@ export const MAINTENANCE_LANES = [
     body: "New automations, AI agents, websites and software are scoped and quoted separately, even if you have a maintenance plan.",
   },
 ] as const;
-export type MaintenanceStatus = "requested" | "active" | "cancel_requested" | "cancelled" | "declined";
+export type MaintenanceStatus = "requested" | "active" | "past_due" | "cancel_requested" | "cancelled" | "declined" | "expired";
 export const MAINTENANCE_STATUS_LABEL: Record<MaintenanceStatus | "not_enrolled", string> = {
   not_enrolled: "Not enrolled",
   requested: "Awaiting activation",
   active: "Active",
+  past_due: "Payment past due",
   cancel_requested: "Cancellation requested",
   cancelled: "Cancelled",
   declined: "Declined",
+  expired: "Expired",
 };
 
 // ---------------------------------------------------------------------------

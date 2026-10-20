@@ -18,6 +18,9 @@ const CRM_MIGRATION_NAMES = [
   // Newer than all of the above and built on 0060's statement-level policy helpers (app.permitted_orgs), which the 0060 rollback drops:
   // rolling back "newest first" means this one goes first.
   "0065_support_requests.sql",
+  // Automation Studio extends crm_workflows / crm_workflow_versions / crm_workflow_runs and its policies also use app.permitted_orgs, so it
+  // is rolled back before everything above (its own rollback refuses while Studio data exists; none does here).
+  "0069_automation_studio_foundation.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");
