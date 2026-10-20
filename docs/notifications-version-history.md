@@ -142,6 +142,8 @@ Checks performed: held version renders with its real status/source, details expa
 
 None. No schema change was needed for the bell, the inbox, the history data or the recipient notifications. The existing `notifications` kinds and columns were sufficient.
 
-## 8. Local commit
+## 8. Commit and push
 
-The commit SHA is reported in the final response after the local commit is created. Nothing was pushed or deployed.
+The branch was pushed to `origin/master` on 2026-10-20. Its history is the feature commit `c84874e`, the merge of the premium AI Workforce redesign (`6ce1a7c`), the merge of Support & Requests (`b196d96`), and the sidebar AI Employees label commit (`d5ea48a`). The final `master` SHA, including this documentation follow-up, is reported in the final response.
+
+No migration was authored or applied by this work. The only newer migration now in `master` is `0065_support_requests` from the pre-existing Support & Requests merge; it remains unapplied and still requires its documented staging acceptance and separate approval. No manual deployment, email, AI provider or production data write was made by this work.
