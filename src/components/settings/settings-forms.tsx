@@ -74,10 +74,13 @@ export function ProfileForms({
   profile,
   user,
   canEdit,
+  walkthroughsEnabled = true,
 }: {
   profile: { name: string; industry: string; website: string; region: string; timezone: string; description: string; services: string; idealCustomers: string; brandColor: string };
   user: { fullName: string; email: string; timezone: string };
   canEdit: boolean;
+  /** Super Admins get no guided walkthrough, so the restart control would only fail for them. */
+  walkthroughsEnabled?: boolean;
 }) {
   const router = useRouter();
   const [p, setP] = React.useState(profile);
@@ -169,12 +172,14 @@ export function ProfileForms({
             <InfoChip icon={<Mail aria-hidden />} className="max-w-[16rem]">
               {user.email}
             </InfoChip>
-            <Button variant="secondary" size="sm" onClick={async () => {
-              const started = await startTutorial("getting-started", "library");
-              if (!started) toast.error("This walkthrough isn't available for your role right now.");
-            }}>
-              <RotateCcw className="size-3.5" /> Restart tour
-            </Button>
+            {walkthroughsEnabled ? (
+              <Button variant="secondary" size="sm" onClick={async () => {
+                const started = await startTutorial("getting-started", "library");
+                if (!started) toast.error("This walkthrough isn't available for your role right now.");
+              }}>
+                <RotateCcw className="size-3.5" /> Restart tour
+              </Button>
+            ) : null}
           </>
         }
         footer={

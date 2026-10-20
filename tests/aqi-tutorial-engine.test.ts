@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
-import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 import type { AqiViewer } from "@/server/aqi/access";
 import {
   getAqiTutorialForViewer,
@@ -10,6 +10,7 @@ import {
   startAqiTutorial,
   updateAqiTutorialProgress,
 } from "@/server/aqi/tutorials";
+import { getAqiOnboarding } from "@/server/aqi/onboarding";
 import { matchAqiTutorialIntent, STARTER_TUTORIALS, validateTutorialDefinition, type AqiTutorialSummary } from "@/lib/aqi/tutorials";
 import { AQI_TARGETS } from "@/lib/aqi/targets";
 
@@ -21,6 +22,29 @@ function viewerFor(org: { id: string; name: string }, user: { id: string; email:
     permissions: ctx.permissions,
     can: ctx.can,
     agencyRole: null,
+  };
+}
+
+/** A Super Admin who also holds a membership in the workspace named by `org`. */
+function superAdminViewerFor(org: { id: string; name: string }, user: { id: string; email: string }, kind: "agency" | "client" = "agency"): AqiViewer {
+  const ctx = ctxFor(user, { ...org, slug: "x" }, "owner");
+  return {
+    user: agencyUser(user, "agency_super_admin"),
+    org: { orgId: org.id, name: org.name, kind, role: "owner" },
+    permissions: ctx.permissions,
+    can: ctx.can,
+    agencyRole: "agency_super_admin",
+  };
+}
+
+function agencyStaffViewerFor(org: { id: string; name: string }, user: { id: string; email: string }): AqiViewer {
+  const ctx = ctxFor(user, { ...org, slug: "x" }, "owner");
+  return {
+    user: agencyUser(user, "agency_staff"),
+    org: { orgId: org.id, name: org.name, kind: "agency", role: "owner" },
+    permissions: ctx.permissions,
+    can: ctx.can,
+    agencyRole: "agency_staff",
   };
 }
 
@@ -85,6 +109,50 @@ describe("AQi starter tutorial library", () => {
 });
 
 describe("AQi tutorial eligibility and progress", () => {
+  it("withholds every walkthrough from a Super Admin, even inside a client workspace", async () => {
+    const org = await createOrg({ name: `Super admin ${Math.random().toString(16).slice(2)}` });
+    const user = await createUser({ platformRole: "agency_super_admin" });
+    await addMember(org.id, user.id, "owner");
+    const superAdmin = superAdminViewerFor(org, user, "client");
+
+    expect(await listAqiTutorialsForViewer(superAdmin)).toEqual([]);
+    expect(await getAqiTutorialForViewer(superAdmin, "getting-started")).toBeNull();
+    await expect(startAqiTutorial(superAdmin, "getting-started", "onboarding")).rejects.toThrow(/available/i);
+    expect(await matchAqiTutorialOffer(superAdmin, "Show me how to add a contact", "/overview")).toBeNull();
+
+    const onboarding = await getAqiOnboarding(superAdmin, "/admin/workforce");
+    expect(onboarding.shouldOffer).toBe(false);
+    expect(onboarding.reason).toBe("no_tutorial");
+  });
+
+  it("does not resurface a paused client tour for a Super Admin", async () => {
+    const org = await createOrg({ name: `Paused tour ${Math.random().toString(16).slice(2)}` });
+    const user = await createUser({ platformRole: "agency_super_admin" });
+    await addMember(org.id, user.id, "owner");
+    // The person ran the client tour before the role gating existed, then paused it.
+    const clientView = viewerFor(org, user, "owner");
+    await startAqiTutorial(clientView, "getting-started", "onboarding");
+    await updateAqiTutorialProgress(clientView, "getting-started", { action: "pause", pathname: "/overview" });
+
+    const superAdmin = superAdminViewerFor(org, user);
+    const state = await getAqiTutorialState(superAdmin);
+    expect(state.active).toEqual([]);
+    expect(state.completed).toEqual([]);
+  });
+
+  it("offers agency tours but no client-portal tours inside the internal agency workspace", async () => {
+    const org = await createOrg({ name: `Agency workspace ${Math.random().toString(16).slice(2)}`, kind: "agency" });
+    const user = await createUser({ platformRole: "agency_staff" });
+    await addMember(org.id, user.id, "owner");
+    const staff = agencyStaffViewerFor(org, user);
+
+    const slugs = (await listAqiTutorialsForViewer(staff)).map((tutorial) => tutorial.slug);
+    expect(slugs).toContain("agency-tools");
+    for (const slug of ["getting-started", "navigate-dashboard", "create-contact", "view-ai-employees"]) {
+      expect(slugs, slug).not.toContain(slug);
+    }
+  });
+
   it("offers only walkthroughs the signed-in role can actually use", async () => {
     const owner = await fixture("owner");
     const ownerTutorials = await listAqiTutorialsForViewer(owner.viewer);

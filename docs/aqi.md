@@ -331,6 +331,10 @@ health, Budgets & pricing and Messaging & attachments.
   invoices.
 - Budgets & pricing configures a global monthly organization budget, a per-user budget, and model
   input/output prices. A budgeted call with no configured price is rejected.
+- Guided walkthroughs are never offered to a Super Admin, in the internal agency workspace or in a
+  client workspace: every starter tour follows client-portal routes, so starting one from the admin
+  area replaced the interface with the client portal shell. AQi chat and the AQi Management browser
+  preview of a draft still work, and stale paused progress for a withheld tour is not surfaced.
 
 ## Attachments and composer
 

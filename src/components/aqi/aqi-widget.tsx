@@ -1306,7 +1306,7 @@ export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
                               ))}
                             </div>
                           ) : null}
-                                  {message.guide && message.status !== "streaming" && (
+                                  {message.guide && message.status !== "streaming" && guidanceTutorials.some((tutorial) => tutorial.slug === message.guide!.slug) && (
                                     <div className="mt-2 rounded-xl border border-primary/25 bg-primary-soft/60 px-2.5 py-2">
                                       <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary-ink"><Sparkles className="size-3" /> Guided walkthrough</p>
                                       <p className="mt-1 text-[11.5px] leading-snug text-ink-2">I can show you “{message.guide.title}” in {message.guide.stepCount} steps.</p>

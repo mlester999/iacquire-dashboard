@@ -175,6 +175,16 @@ function viewerCanOpenTutorialRoute(viewer: AqiViewer, path: string): boolean {
   return Boolean(route && canOpenAqiRoute(route, { can: viewer.can, agencyRole: viewer.agencyRole }));
 }
 
+/**
+ * Guided walkthroughs are an end-user onboarding surface: every client tour follows client routes,
+ * which loads the client portal shell. A Super Admin works in the agency admin area, so offering one
+ * would replace the interface they are in with a different product surface. They keep AQi chat and
+ * the browser preview in AQi Management; the guided offers are withheld.
+ */
+function walkthroughsWithheld(viewer: AqiViewer): boolean {
+  return viewer.agencyRole === "agency_super_admin";
+}
+
 async function isEligible(
   viewer: AqiViewer,
   tutorial: LoadedTutorial,
@@ -186,6 +196,9 @@ async function isEligible(
     if (!viewer.agencyRole || !def.roles.includes(viewer.agencyRole)) return false;
   } else {
     if (!viewer.org) return false;
+    // The internal agency workspace is not a client tenant: a client tour started there would leave
+    // the admin shell for the client portal. Agency-scoped tours remain available in it.
+    if (viewer.org.kind === "agency") return false;
     if (def.roles.length && !def.roles.includes(viewer.org.role)) return false;
   }
   if (!viewerCanOpenTutorialRoute(viewer, def.routePrefix)) return false;
@@ -204,6 +217,7 @@ async function isEligible(
 }
 
 export async function listAqiTutorialsForViewer(viewer: AqiViewer): Promise<AqiTutorialSummary[]> {
+  if (walkthroughsWithheld(viewer)) return [];
   const tutorials = await loadPublishedTutorials();
   const providers = tutorials.some((tutorial) => tutorial.definition.requiresCrm) ? await viewerCrmProviders(viewer) : null;
   const eligible: AqiTutorialSummary[] = [];
@@ -214,6 +228,7 @@ export async function listAqiTutorialsForViewer(viewer: AqiViewer): Promise<AqiT
 }
 
 export async function getAqiTutorialForViewer(viewer: AqiViewer, slug: string): Promise<AqiTutorialView | null> {
+  if (walkthroughsWithheld(viewer)) return null;
   const tutorials = await loadPublishedTutorials();
   const tutorial = tutorials.find((row) => row.slug === slug);
   if (!tutorial) return null;
@@ -311,7 +326,10 @@ export async function getAqiTutorialState(viewer: AqiViewer, available?: AqiTuto
   const completed: AqiTutorialProgressView[] = [];
   for (const row of rows) {
     const summary = bySlug.get(row.slug);
-    const view = progressView(row, summary?.stepCount ?? 1);
+    // A tutorial this person can no longer use (withheld audience, archived version, narrowed
+    // permissions) must not resurface as a Resume card: the server would refuse to continue it.
+    if (!summary) continue;
+    const view = progressView(row, summary.stepCount);
     const entry = { ...view, tutorialStatus: row.tutorial_status };
     if (row.status === "completed") completed.push(view);
     else if (row.status !== "exited") active.push(entry);
