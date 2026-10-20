@@ -4,7 +4,7 @@ import { AgentAvatar } from "@/components/brand";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
 import { StatusPill, toneDotClass } from "@/components/ui/status";
-import type { AgentRoleMeta } from "@/lib/agents";
+import { agentIdentityLabel, type AgentRoleMeta } from "@/lib/agents";
 import type { EmployeeReadiness, ReadinessStep } from "@/lib/workforce-readiness";
 import { cn } from "@/lib/utils";
 
@@ -139,7 +139,7 @@ export function EmployeeProfileHero({
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className={cn("text-balance text-[25px] font-semibold leading-[1.12] tracking-[-.045em] sm:text-[31px]", dark ? "text-white" : "text-ink")}>{displayName}</h1>
+              <h1 className={cn("text-balance text-[25px] font-semibold leading-[1.12] tracking-[-.045em] sm:text-[31px]", dark ? "text-white" : "text-ink")} title={agentIdentityLabel(displayName, meta)}>{agentIdentityLabel(displayName, meta)}</h1>
               <p className={cn("mt-1 text-[13px] font-medium", dark ? "text-blue-200" : "text-primary-ink")}>{meta.tagline}</p>
               <div className={cn("mt-2 max-w-2xl text-[13.5px] leading-[1.7]", dark ? "text-slate-300" : "text-muted")}>{description}</div>
               <div className="mt-4 flex flex-wrap items-center gap-2.5">

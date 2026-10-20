@@ -6,7 +6,7 @@ import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { HermesProfileMapper } from "@/components/admin/hermes-profile-mapper";
 import { AgencyWorkforceControls } from "@/components/admin/agency-workforce-controls";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import type { listAgencyAgents } from "@/server/admin/queries";
 import type { WizardGateway } from "@/components/admin/integration-wizard";
@@ -49,7 +49,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
                 <div className="flex items-start gap-3">
                   <AgentAvatar role={role} size="md" />
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-[15px] font-semibold text-ink">{agent.display_name || role.name}</h2>
+                    <h2 className="truncate text-[15px] font-semibold text-ink" title={agentIdentityLabel(agent.display_name, role)}>{agentIdentityLabel(agent.display_name, role)}</h2>
                     <p className="mt-0.5 text-xs text-muted">{role.tagline}</p>
                   </div>
                 </div>

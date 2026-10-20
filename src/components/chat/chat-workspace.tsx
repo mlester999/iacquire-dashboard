@@ -37,7 +37,7 @@ import {
   searchConversationsAction,
   setReplyLengthAction,
 } from "@/app/actions/chat";
-import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
+import { agentIdentityLabel, canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { chatNavTargets } from "@/lib/chat-navigation";
 import type { ReplyLength } from "@/lib/agent-settings";
 import { cn, formatTime } from "@/lib/utils";
@@ -499,7 +499,7 @@ export function ChatWorkspace(props: Props) {
           <AgentAvatar role={meta} size="md" thinking={Boolean(streaming)} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-[17px] font-semibold tracking-tight text-ink">{props.agentName}</h1>
+              <h1 className="truncate text-[17px] font-semibold tracking-tight text-ink" title={agentIdentityLabel(props.agentName, meta)}>{agentIdentityLabel(props.agentName, meta)}</h1>
               <span className="hidden rounded-md bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted xl:inline">Private workspace</span>
             </div>
             <div className="mt-0.5 flex min-w-0 items-center gap-x-2">

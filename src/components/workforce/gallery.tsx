@@ -9,7 +9,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { RequestSetupButton } from "@/components/workforce/request-setup";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
-import { AGENT_BY_KEY, AGENT_ROLES, canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLES, agentIdentityLabel, canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +96,7 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
                 </div>
                 <div className="flex flex-1 flex-col p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <h2 className="min-w-0 text-[18px] font-semibold tracking-tight">{a.display_name}</h2>
+                    <h2 className="min-w-0 text-[18px] font-semibold tracking-tight" title={agentIdentityLabel(a.display_name, role)}>{agentIdentityLabel(a.display_name, role)}</h2>
                     <ArrowUpRight className="mt-1 size-4 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
                   </div>
                   <p className="mt-2 min-h-12 text-[13px] leading-relaxed text-muted" title={a.summary ?? undefined}>{a.summary?.split(/(?<=[.!?])\s/)[0] ?? role.tagline}</p>
