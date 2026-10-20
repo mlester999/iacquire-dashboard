@@ -256,7 +256,7 @@ Defects found by this testing and fixed: a role marker (`system:`) surviving def
 * **Message retry is not executed.** Retrying inside a client's CRM would need an audited support session, which AQi does not hold; the integration debugger previews and explains only.
 * **No model-driven tool planning.** The planner is deterministic keyword/scope routing; questions it does not recognise get a list of what can be investigated, not a guess. An optional LLM planner constrained to the registered tools could be added, but it was not needed to satisfy the safety model and was not built.
 * **Operating costs are not revenue.** There is no subscription revenue or retention model and voice-call minutes are not a metered unit, so the business tools report only what the billing report and `metered_usage_events` contain.
-* **Scheduler** is not configured in production, so scheduled briefings, retention and every slow-rhythm job do nothing there until it is. The `withinInterval` defect that would have made the slow jobs run only once is fixed on this branch (section 13); **another session fixed the same defect on a different branch** (see section 16), so the two must be reconciled before either is merged.
+* **Scheduler** is not configured in production, so scheduled briefings, retention and every slow-rhythm job do nothing there until it is. The `withinInterval` defect that would have made the slow jobs run only once is fixed on this branch (section 13). A second fix on another branch was set aside; what a merge into a newer master must handle is listed in section 16.
 * **Performance numbers are local.** Hosted latency was not measured and is not claimed.
 * **The Client history endpoints** are unchanged (section 7).
 * **Agency Manager and Staff have no Operations access.** A proposed matrix for limited access later is in section 15; none of it is implemented.
@@ -373,9 +373,21 @@ Changes to existing (non-AQi-Operations) behaviour in this pass: `src/server/ops
 | Accessibility of the pages scanned, in light, dark and 390 px | A real AI provider's narrative quality and cost; a real Super Admin session through Supabase Auth's fresh-session check |
 | One read-only hosted fact: `audit_logs` is about 449 rows (a single `supabase inspect db table-stats --linked`; a further production read was blocked by the environment and not pursued) | Everything else about the hosted project |
 
-### Two scheduler fixes exist
+### Scheduler fix: decision and what the merge into a newer master must handle
 
-A separate session, started from a proposal in this one, fixed the same defect in worktree `confident-moser-b13a2b` (branch `claude/confident-moser-b13a2b`, cut from a newer master; **uncommitted**, per its own note). It gates inside `runScheduledJobs` with the existing `withinInterval` helper and also has `everyMinutes` and a `tests/scheduler-intervals.test.ts` **with the same file name as this branch's**. This branch's version additionally claims the slot atomically, anchors on the run's start, retries failures after 15 minutes, detects abandoned runs and survives overlapping ticks. Merging both would conflict in `tick.ts`, `jobs.ts` and that test. **Choose one** before merging either; the newer master also changed the `setupEvidence` job (it has its own lease there), which this branch does not have, so that entry needs a manual merge whichever is chosen.
+A separate session fixed the same defect in worktree `confident-moser-b13a2b` (branch `claude/confident-moser-b13a2b`, cut from master `7a4301e`, uncommitted). **Decision (user, 2026-10-20): keep this branch's fix** (the atomic claim in `runJob`); that session was told to stop and its work stays uncommitted and unmerged. It gated inside `runScheduledJobs` with the existing `withinInterval` helper; this branch's version also claims the slot atomically, anchors on the run's start, retries failures after 15 minutes, detects abandoned runs and survives overlapping ticks.
+
+This branch was cut from `03de0bf`; master has moved on (`7a4301e` at least). What the merge still has to take from master, from that session's note and a read of its worktree (not a merge or a test of the combination):
+
+| Item | What to do when merging master into this branch |
+| --- | --- |
+| `setupEvidence` | On master it is `runSetupMaintenance()` (returns created + updated) under its own fleet-wide lease: `SETUP_EVIDENCE_LEASE = "setup_evidence_reconcile"`, `claimSetupEvidenceReconcile` and `finishSetupEvidenceReconcile` in `src/server/ops/jobs.ts`, used by server boot as well as the tick. It writes its own row and never had the defect. **Take master's job line and remove `everyMinutes` from it** (this branch gates it at 15 minutes around `reconcileAllSetupInstances()`, which master replaced); otherwise two gates would stack. Then drop `setupEvidence` from the nine-job table in `tests/scheduler-intervals.test.ts` (`EXPECTED_SLOW`, the real-list expectations at +5 and +60 minutes) and from the cadence table in section 13 and in `docs/operations-and-incidents.md`. The slow jobs become eight. |
+| `jobs.ts` | Keep master's lease functions and this branch's `runJob` (they use different rows). The lease's own SQL does not use `runJob`, so they do not interact. |
+| `tick.ts` imports | Master imports `runSetupMaintenance`; this branch still imports `reconcileAllSetupInstances`. Resolve in master's favour. Keep this branch's `everyMinutes` entries for the other eight jobs and the two AQi jobs after `aqiTutorialEventRetention`. |
+| `tests/scheduler-intervals.test.ts` | Same file name on both branches: keep this branch's (19 tests); the other session's six tests (a faked `Date`, 25 hours of five-minute ticks, only the gated jobs with their services mocked) are covered by the simulated-clock tests here. |
+| Docs | Keep this branch's `operations-and-incidents.md` paragraph about `everyMinutes`; the other branch's version of that paragraph is dropped. |
+| Migrations | The other session's worktree (cut from master `7a4301e`) also tops out at `0067`, so `0068` is still free there. Re-check at merge time. |
+| Retest | After the merge rerun `tests/scheduler-intervals.test.ts`, `tests/aqi-ops-registration.test.ts` (it lists the shipped jobs by name and order) and the full suite. |
 
 ### Remaining gaps
 
