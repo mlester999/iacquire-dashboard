@@ -126,6 +126,9 @@ const hermesEmployees: SetupConnector = {
     let agents = await load();
     if (!agents.length) return { status: "unverified", detail: "No AI employees are enabled for this client." };
     if (live) {
+      // A live refresh is a workforce write; runHealthCheck enforces agency.workforce.manage plus the
+      // assigned-client scope. Setup staff without that permission keep the stored result (the rejected
+      // promises are settled here and are never reported as a fresh verification).
       await Promise.allSettled(
         agents.filter((a) => a.has_credential).map((a) => runHealthCheck(a.id, { userId: actorUserId, kind: actorUserId ? "agency" : "system" }, { skipSetupSync: true })),
       );

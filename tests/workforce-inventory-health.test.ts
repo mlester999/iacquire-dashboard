@@ -53,7 +53,8 @@ describe("health check and persisted inventory attestation", () => {
   });
 
   it("requires one confirmation health check after the inventory changes", async () => {
-    mock.setInventory(PROFILE, { tools: [...SAFE_TOOLS, { name: "clarify", toolset: "web" }] });
+    // vision_analyze is optional (it needs vision credentials), so losing it is a safe change that still has to be confirmed.
+    mock.setInventory(PROFILE, { tools: SAFE_TOOLS.filter((tool) => tool.name !== "vision_analyze") });
     const changed = await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
     expect(changed).toMatchObject({ ok: false, status: "provisioning" });
     expect(changed.detail).toMatch(/no longer matches the last verified check/);
@@ -78,6 +79,40 @@ describe("health check and persisted inventory attestation", () => {
     expect(rows[0].tool_inventory_contract).toBeNull();
     expect(rows[0].tool_inventory_digest).toBeNull();
     expect(rows[0].tool_inventory_detail).toMatch(/unreviewed toolsets/);
+  });
+
+  it("does not go online when a required reviewed tool is missing or the challenge is not echoed", async () => {
+    mock.setInventory(PROFILE, { tools: SAFE_TOOLS.filter((tool) => tool.name !== "web_search") });
+    let result = await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+    expect(result).toMatchObject({ ok: false, status: "error" });
+    expect(result.detail).toMatch(/missing required reviewed tool: web_search/);
+
+    mock.setInventory(PROFILE, { echoChallenge: false });
+    result = await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+    expect(result).toMatchObject({ ok: false, status: "error" });
+    expect(result.detail).toMatch(/did not echo the inventory challenge/);
+    const { rows } = await withSystem((db) => db.query<{ tool_inventory_digest: string | null }>("select tool_inventory_digest from agent_instances where id = $1", [sales]));
+    expect(rows[0].tool_inventory_digest).toBeNull();
+  });
+
+  it("tells an admin how to unblock an employee that has no applied configuration", async () => {
+    mock.setInventory(PROFILE, null);
+    const noConfigOrg = await createOrg({ name: "Inventory Health No Config Co" });
+    const unconfigured = await agentId(noConfigOrg.id, "sales_assistant");
+    const profile = "c-health-inventory-no-config";
+    const other = await startMockHermes({ [profile]: { key: KEY } });
+    try {
+      await connectHermesProfile({ agentId: unconfigured, baseUrl: other.url, profile, apiKey: KEY, agencyUserId: admin.id });
+      const result = await runHealthCheck(unconfigured, { userId: admin.id, kind: "agency" });
+      expect(result).toMatchObject({ ok: false, status: "setup_required" });
+      expect(result.detail).toMatch(/configuration hasn't been applied yet/);
+      expect(result.detail).toMatch(/Super Admin needs to save an initial configuration/);
+      const { rows } = await withSystem((db) => db.query<{ tool_inventory_digest: string | null }>("select tool_inventory_digest from agent_instances where id = $1", [unconfigured]));
+      // The inventory itself verified and was recorded; only the missing configuration keeps the employee offline.
+      expect(rows[0].tool_inventory_digest).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      await other.close();
+    }
   });
 
   it("reports an unavailable inventory service without claiming readiness", async () => {

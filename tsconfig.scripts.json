@@ -1,0 +1,17 @@
+{
+  // The main tsconfig excludes scripts/, so a bad import in a script (like the one that broke `npm run hermes:audit`)
+  // is invisible to `npm run typecheck`. This checks the TypeScript scripts; `npm run typecheck:scripts` runs it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./tsconfig.scripts.tsbuildinfo",
+    "plugins": []
+  },
+  "include": [
+    "next-env.d.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".data"
+  ]
+}

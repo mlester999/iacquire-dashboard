@@ -115,7 +115,7 @@ The CRM Blueprints & Snapshots rows (`/admin/crm-blueprints/*`, `/api/admin/crm-
 | /api/admin/setup/[orgId]/documents | src/app/api/admin/setup/[orgId]/documents/route.ts |
 | /api/admin/setup/[orgId] | src/app/api/admin/setup/[orgId]/route.ts |
 | /api/admin/setup/[orgId]/stream | src/app/api/admin/setup/[orgId]/stream/route.ts |
-| /admin/workforce/open | src/app/(admin)/admin/workforce/open/route.ts (super-admin-only switch to the agency workspace, then the normal chat or employee screen) |
+| /admin/workforce/open | src/app/(admin)/admin/workforce/open/route.ts (super-admin-only switch to the agency workspace, then the normal chat screen, or the employee configuration screen at `/workforce/<slug>?tab=configure` when `to=manage`) |
 | /api/analytics/export | src/app/api/analytics/export/route.ts |
 | /api/assets/[id] | src/app/api/assets/[id]/route.ts |
 | /api/assets/upload | src/app/api/assets/upload/route.ts |

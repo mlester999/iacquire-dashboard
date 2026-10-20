@@ -147,7 +147,7 @@ describe("PDF and DOCX knowledge extraction", () => {
     });
     try {
       await connectHermesProfile({ agentId: sales, baseUrl: mock.url, profile: "c-extraction-sales-assistant", apiKey: HERMES_KEY, agencyUserId: admin.id });
-      const health = await runHealthCheck(sales, { userId: owner.id, kind: "agency" });
+      const health = await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
       expect(health).toMatchObject({ ok: true, status: "online" });
       const sent = await sendChatMessage(ctx, { agentRole: "sales_assistant", content: "What warranty applies?", clientMessageId: crypto.randomUUID() });
       const start = Date.now();

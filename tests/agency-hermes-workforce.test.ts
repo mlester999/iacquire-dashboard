@@ -12,10 +12,11 @@ import {
 } from "@/server/workforce/agency";
 import { ensureAgencyWorkforceRegistry, listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
 import { listIntegrationManager, saveIntegrationConnection, testIntegrationConnection } from "@/server/integrations/manager";
-import { connectHermesProfile } from "@/server/workforce/service";
+import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
+import { defaultSettings } from "@/server/workforce/compiler";
 import { listHermesGateways } from "@/server/integrations/hermes/gateways";
 import { acknowledgeInternalFullCapabilities, getHermesToolPolicyView } from "@/server/workforce/tool-policies";
-import { startAgentRun } from "@/server/integrations/hermes/client";
+import { AgentRunNotReadyError, startAgentRun } from "@/server/integrations/hermes/client";
 import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
@@ -311,6 +312,15 @@ describe("agency Hermes workforce isolation", () => {
       idempotencyKey: `acknowledged-${crypto.randomUUID()}`,
     });
 
+    // Mapped, identity-checked and even acknowledged, but never health-checked: still `provisioning`, so no run starts and
+    // nothing reaches the gateway.
+    const provisioningRequestStart = mock.requests.length;
+    await expect(startRequest()).rejects.toBeInstanceOf(AgentRunNotReadyError);
+    expect(mock.requests).toHaveLength(provisioningRequestStart);
+    // What a Super Admin does to bring it live: apply an initial configuration in the agency workspace, then run the health check.
+    await withSystem((db) => createConfigVersion(db, { orgId: agencyOrgId, agentId: selectedAgent.id, settings: defaultSettings("sales_assistant"), source: "agency", userId: admin.id, apply: true }));
+    expect(await runHealthCheck(selectedAgent.id, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
+
     const wrongKeyRequestStart = mock.requests.length;
     await expect(startAgentRun(selectedAgent.id, agencyOrgId, { ...connection, apiKey: "rotated-but-unsaved-synthetic-key-012345" }, {
       input: "synthetic stale credential run",
@@ -365,19 +375,23 @@ describe("agency Hermes workforce isolation", () => {
       [clientOrg.id],
     ));
     const requestsStart = mock.requests.length;
+    const clientConnection = { baseUrl: mock.url, profile: CLIENT_TEST_PROFILE, apiKey: CLIENT_TEST_KEY };
+    const clientRequest = () => startAgentRun(rows[0].id, clientOrg.id, clientConnection, { input: "synthetic client request", idempotencyKey: `blocked-client-${crypto.randomUUID()}` });
+    // A client employee that never passed a health check is refused by the readiness gate before any gateway request.
+    await expect(clientRequest()).rejects.toBeInstanceOf(AgentRunNotReadyError);
+    expect(mock.requests).toHaveLength(requestsStart);
+    // Online and configured with a recorded digest, the only thing left to stop it is the gateway's inventory contract.
+    await withSystem((db) => createConfigVersion(db, { orgId: clientOrg.id, agentId: rows[0].id, settings: defaultSettings(rows[0].role_key), source: "onboarding", userId: admin.id, apply: true }));
+    await withSystem((db) => db.query("update agent_instances set status='online', last_health_ok=true, tool_inventory_digest=$2 where id=$1", [rows[0].id, "a".repeat(64)]));
     mock.setInventory(CLIENT_TEST_PROFILE, { advertised: false });
     try {
-      await expect(startAgentRun(rows[0].id, clientOrg.id, {
-        baseUrl: mock.url,
-        profile: CLIENT_TEST_PROFILE,
-        apiKey: CLIENT_TEST_KEY,
-      }, { input: "synthetic client request", idempotencyKey: `blocked-client-${crypto.randomUUID()}` }))
-        .rejects.toMatchObject({ kind: "bad_response" });
+      await expect(clientRequest()).rejects.toMatchObject({ kind: "bad_response" });
       const requests = mock.requests.slice(requestsStart);
       expect(requests.map(({ method, path }) => [method, path])).toEqual([["GET", "/v1/capabilities"], ["GET", "/v1/tools"]]);
       expect(requests.some(({ path }) => path === "/v1/runs")).toBe(false);
     } finally {
       mock.setInventory(CLIENT_TEST_PROFILE, null);
+      await withSystem((db) => db.query("update agent_instances set status='setup_required', last_health_ok=null, tool_inventory_digest=null where id=$1", [rows[0].id]));
     }
   });
 

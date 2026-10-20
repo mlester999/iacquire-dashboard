@@ -20,10 +20,16 @@ const SAFE_TOOLS: MockInventoryTool[] = [
   { name: "web_search", toolset: "web" },
   { name: "web_extract", toolset: "web" },
 ];
+const WITHOUT_VISION = SAFE_TOOLS.filter((tool) => tool.name !== "vision_analyze");
 const SAFE_TOOLSETS = ["memory", "session_search", "todo", "vision", "web"];
 
 let mock: MockHermes;
 const conn = () => ({ baseUrl: mock.url, profile: PROFILE, apiKey: KEY });
+/** A connection as a health-checked employee has it: the digest the last health check recorded. */
+async function recordedConn() {
+  const { digest } = await verifyToolInventory(conn(), { stabilityReads: 2 });
+  return { ...conn(), expectedToolInventoryDigest: digest };
+}
 
 async function failure(promise: Promise<unknown>): Promise<ToolInventoryError> {
   try {
@@ -57,12 +63,48 @@ describe("complete runtime tool inventory", () => {
     expect(snapshot.attestation).toBe("challenge_bound_authenticated_catalog");
   });
 
+  it("accepts a profile without vision credentials, because vision_analyze is optional", async () => {
+    mock.setInventory(PROFILE, { tools: WITHOUT_VISION });
+    const snapshot = await verifyToolInventory(conn(), { stabilityReads: 2 });
+    expect(snapshot.tools.map((tool) => tool.name)).toEqual(["memory", "session_search", "todo_list", "web_extract", "web_search"]);
+  });
+
+  it("accepts both the flat live row shape and a function-wrapped row", async () => {
+    const flat = await verifyToolInventory(conn(), { stabilityReads: 2 });
+    mock.setInventory(PROFILE, { functionWrapped: true });
+    const wrapped = await verifyToolInventory(conn(), { stabilityReads: 2 });
+    expect(wrapped.digest).toBe(flat.digest);
+  });
+
   it("allows a run only after the fresh inventory passes, and never before", async () => {
+    const recorded = await recordedConn();
     const before = mock.requests.filter((request) => request.path === "/v1/runs").length;
-    const started = await startRun(conn(), { input: "READY", idempotencyKey: "inventory-approved" });
+    const toolReadsBefore = mock.requests.filter((request) => request.path === "/v1/tools").length;
+    const started = await startRun(recorded, { input: "READY", idempotencyKey: "inventory-approved" });
     expect(started.runId).toMatch(/^run_/);
     expect(mock.requests.filter((request) => request.path === "/v1/runs").length).toBe(before + 1);
-    expect(mock.requests.filter((request) => request.path === "/v1/tools").length).toBeGreaterThanOrEqual(2);
+    expect(mock.requests.filter((request) => request.path === "/v1/tools").length - toolReadsBefore).toBe(2);
+  });
+
+  it("refuses a run when no health check ever recorded a digest, before any gateway request", async () => {
+    const requestsBefore = mock.requests.length;
+    const err = await failure(startRun(conn(), { input: "never checked", idempotencyKey: "inventory-not-recorded" }));
+    expect(err.detail.code).toBe("inventory_not_recorded");
+    expect(err.message).toMatch(/health check first/);
+    expect(mock.requests).toHaveLength(requestsBefore);
+    // The live catalog would pass, so the digest is the only thing standing between this connection and a run.
+    await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).resolves.toMatchObject({ toolCount: 6 });
+    await failure(verifyToolInventory(conn(), { purpose: "run", expectedDigest: null }));
+    await failure(verifyToolInventory(conn(), { purpose: "run", expectedDigest: "" }));
+  });
+
+  it("refuses a run whose live inventory no longer matches the recorded digest, before /v1/runs", async () => {
+    const recorded = await recordedConn();
+    mock.setInventory(PROFILE, { tools: WITHOUT_VISION });
+    const runsBefore = mock.requests.filter((request) => request.path === "/v1/runs").length;
+    const err = await failure(startRun(recorded, { input: "changed", idempotencyKey: "inventory-run-changed" }));
+    expect(err.detail.code).toBe("inventory_changed");
+    expect(mock.requests.filter((request) => request.path === "/v1/runs").length).toBe(runsBefore);
   });
 
   it("rejects an undeclared plugin/release-backfill tool", async () => {
@@ -147,6 +189,56 @@ describe("complete runtime tool inventory", () => {
     expect(err.message).toMatch(/echoed a different inventory challenge/);
   });
 
+  it("requires the gateway to echo the challenge, so a response cannot be replayed or served stale", async () => {
+    mock.setInventory(PROFILE, { echoChallenge: false });
+    const err = await failure(verifyToolInventory(conn()));
+    expect(err.detail.code).toBe("inventory_incomplete");
+    expect(err.message).toMatch(/did not echo the inventory challenge/);
+    const runsBefore = mock.requests.filter((request) => request.path === "/v1/runs").length;
+    await failure(startRun({ ...conn(), expectedToolInventoryDigest: "a".repeat(64) }, { input: "no echo", idempotencyKey: "inventory-no-echo" }));
+    expect(mock.requests.filter((request) => request.path === "/v1/runs").length).toBe(runsBefore);
+  });
+
+  it("requires the gateway to name the tool-catalog contract", async () => {
+    mock.setInventory(PROFILE, { contract: null });
+    let err = await failure(verifyToolInventory(conn()));
+    expect(err.detail.code).toBe("inventory_incomplete");
+    expect(err.message).toMatch(/did not identify the supported tool-catalog contract/);
+
+    mock.setInventory(PROFILE, { contract: "hermes.api_server.tool_catalog.v0" });
+    err = await failure(verifyToolInventory(conn()));
+    expect(err.message).toMatch(/did not identify the supported tool-catalog contract/);
+  });
+
+  it("requires all five reviewed tools and names the missing ones", async () => {
+    for (const required of ["memory", "session_search", "todo_list", "web_extract", "web_search"]) {
+      mock.setInventory(PROFILE, { tools: SAFE_TOOLS.filter((tool) => tool.name !== required) });
+      const err = await failure(verifyToolInventory(conn()));
+      expect(err.detail.code).toBe("inventory_incomplete");
+      expect(err.message).toMatch(/missing required reviewed tool/);
+      expect(err.detail.tools).toEqual([required]);
+    }
+  });
+
+  it("rejects a reviewed-looking extra tool that is not one of the five required tools or vision_analyze", async () => {
+    mock.setInventory(PROFILE, { tools: [...SAFE_TOOLS, { name: "clarify", toolset: "web" }] });
+    const err = await failure(verifyToolInventory(conn()));
+    expect(err.detail.code).toBe("inventory_unsafe");
+    expect(err.message).toMatch(/outside the reviewed client allowlist: clarify/);
+  });
+
+  it("rejects a repeated tool name and a row without its parameters schema", async () => {
+    mock.setInventory(PROFILE, { tools: [...SAFE_TOOLS, { name: "memory", toolset: "memory" }] });
+    let err = await failure(verifyToolInventory(conn()));
+    expect(err.detail.code).toBe("inventory_incomplete");
+    expect(err.message).toMatch(/invalid or duplicate tool name/);
+
+    mock.setInventory(PROFILE, { tools: SAFE_TOOLS.map((tool) => (tool.name === "memory" ? { ...tool, omitParameters: true } : tool)) });
+    err = await failure(verifyToolInventory(conn()));
+    expect(err.detail.code).toBe("inventory_incomplete");
+    expect(err.message).toMatch(/parameters schema/);
+  });
+
   it("rejects an expired inventory attestation", async () => {
     mock.setInventory(PROFILE, { expiresAt: new Date(Date.now() - 60_000).toISOString() });
     const err = await failure(verifyToolInventory(conn()));
@@ -154,7 +246,7 @@ describe("complete runtime tool inventory", () => {
   });
 
   it("detects an inventory change between two reads", async () => {
-    mock.setInventory(PROFILE, { changeAfterFirstRead: SAFE_TOOLS.slice(0, 5) });
+    mock.setInventory(PROFILE, { changeAfterFirstRead: WITHOUT_VISION });
     const err = await failure(verifyToolInventory(conn(), { stabilityReads: 2 }));
     expect(err.detail.code).toBe("inventory_changed");
     expect(err.message).toMatch(/between two consecutive reads/);
@@ -171,7 +263,7 @@ describe("complete runtime tool inventory", () => {
     const err = await failure(verifyToolInventory(conn()));
     expect(err.detail.code).toBe("inventory_unavailable");
     const runsBefore = mock.requests.filter((request) => request.path === "/v1/runs").length;
-    await expect(startRun(conn(), { input: "blocked", idempotencyKey: "inventory-unavailable" })).rejects.toBeInstanceOf(ToolInventoryError);
+    await expect(startRun({ ...conn(), expectedToolInventoryDigest: "a".repeat(64) }, { input: "blocked", idempotencyKey: "inventory-unavailable" })).rejects.toBeInstanceOf(ToolInventoryError);
     expect(mock.requests.filter((request) => request.path === "/v1/runs").length).toBe(runsBefore);
   });
 
@@ -181,7 +273,7 @@ describe("complete runtime tool inventory", () => {
     expect(err.detail.code).toBe("contract_unavailable");
     expect(err.message).toMatch(/does not expose GET \/v1\/tools/);
     const runsBefore = mock.requests.filter((request) => request.path === "/v1/runs").length;
-    await expect(startRun(conn(), { input: "blocked", idempotencyKey: "inventory-contract-missing" })).rejects.toBeInstanceOf(ToolInventoryError);
+    await expect(startRun({ ...conn(), expectedToolInventoryDigest: "a".repeat(64) }, { input: "blocked", idempotencyKey: "inventory-contract-missing" })).rejects.toBeInstanceOf(ToolInventoryError);
     expect(mock.requests.filter((request) => request.path === "/v1/runs").length).toBe(runsBefore);
   });
 });

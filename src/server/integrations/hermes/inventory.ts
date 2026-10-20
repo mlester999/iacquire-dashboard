@@ -4,7 +4,6 @@ import {
   getCapabilities,
   getToolCatalog,
   HermesError,
-  REVIEWED_CLIENT_TOOLS,
   type HermesCapabilities,
   type HermesConnection,
   type HermesToolCatalog,
@@ -25,19 +24,29 @@ import {
  * construct an agent and includes plugin, MCP, runtime-provider and Tool Search deferrable tools.
  *
  * The catalog is a *snapshot*. An employee may run only when:
+ *   - the gateway echoes this request's challenge and names the catalog contract;
  *   - the profile publishes an explicit `platform_toolsets.api_server` allowlist;
  *   - the enabled toolsets are exactly the reviewed set;
- *   - every callable tool is in the reviewed client allowlist;
+ *   - the callable tools are exactly the five required reviewed tools, plus `vision_analyze` when
+ *     the profile has vision credentials, each listed once;
  *   - no plugin/release backfill, MCP, connector or Tool Search bridge tool is present;
  *   - two consecutive reads agree (no unstable/changing inventory);
- *   - the digest matches the one persisted by the last health check.
+ *   - the digest matches the one persisted by the last health check, and a run needs one to exist.
  *
- * Absence of the contract, a malformed response, an incomplete catalog, an unexpected tool, a
- * changed digest or an unavailable inventory service all fail closed. Nothing here starts a run.
+ * This is at least as strict as docker/profiles/verify-catalog.py in the hermes-tool-catalog-dev
+ * repo (REQUIRED_TOOLS / OPTIONAL_TOOLS), which operators run on the VPS after applying the policy.
+ *
+ * Absence of the contract, a malformed response, an incomplete catalog, an unexpected or missing
+ * tool, a changed digest or an unavailable inventory service all fail closed. Nothing here starts a run.
  */
 
 export const TOOL_INVENTORY_CONTRACT = "hermes.api_server.tool_catalog.v1";
 export const TOOL_INVENTORY_TTL_MS = 2 * 60 * 1000;
+
+/** Every employee profile must expose all of these (the web toolset contributes two tools). */
+export const REQUIRED_INVENTORY_TOOLS: readonly string[] = ["memory", "session_search", "todo_list", "web_extract", "web_search"];
+/** Exists only when the profile has vision credentials, so its absence is not an error. */
+export const OPTIONAL_INVENTORY_TOOLS: readonly string[] = ["vision_analyze"];
 
 export type ToolInventoryFailureCode =
   | "contract_unavailable"
@@ -46,6 +55,7 @@ export type ToolInventoryFailureCode =
   | "allowlist_missing"
   | "inventory_unsafe"
   | "inventory_changed"
+  | "inventory_not_recorded"
   | "inventory_expired";
 
 export interface ToolInventoryTool {
@@ -94,7 +104,10 @@ export class ToolInventoryError extends HermesError {
 }
 
 export interface VerifyToolInventoryOptions {
-  /** Persisted digest from the last verified health check. A mismatch blocks the operation. */
+  /**
+   * Persisted digest from the last verified health check. A mismatch blocks the operation, and a `run`
+   * with no digest is refused because there would be nothing to compare the live catalog against.
+   */
   expectedDigest?: string | null;
   /** Read the catalog twice and require an identical digest. Runs use two reads. */
   stabilityReads?: number;
@@ -236,7 +249,10 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string): void 
     );
   }
 
-  const unreviewedTools = catalog.tools.filter((tool) => !REVIEWED_CLIENT_TOOLS.has(tool.name));
+  // getToolCatalog already rejects a repeated tool name, so each reviewed name appears at most once here.
+  const names = catalog.tools.map((tool) => tool.name);
+  const reviewed = new Set([...REQUIRED_INVENTORY_TOOLS, ...OPTIONAL_INVENTORY_TOOLS]);
+  const unreviewedTools = catalog.tools.filter((tool) => !reviewed.has(tool.name));
   if (unreviewedTools.length) {
     failure(
       "inventory_unsafe",
@@ -245,12 +261,22 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string): void 
       { tools: unreviewedTools.map((t) => t.name) },
     );
   }
+
+  const missingTools = REQUIRED_INVENTORY_TOOLS.filter((name) => !names.includes(name));
+  if (missingTools.length) {
+    failure(
+      "inventory_incomplete",
+      profile,
+      `The effective inventory is missing required reviewed tool${missingTools.length === 1 ? "" : "s"}: ${missingTools.join(", ")}. Every employee profile must expose ${REQUIRED_INVENTORY_TOOLS.join(", ")} (vision_analyze is optional). Live runs stay blocked.`,
+      { tools: missingTools },
+    );
+  }
 }
 
 function buildSnapshot(catalog: HermesToolCatalog, profile: string, challenge: string, now: Date, serverContract: string): ToolInventorySnapshot {
   const digest = toolCatalogDigest(catalog, profile);
-  let attestation: ToolInventorySnapshot["attestation"] =
-    catalog.challenge === challenge ? "challenge_bound_authenticated_catalog" : "authenticated_runtime_catalog";
+  // The challenge echo is already required by the read loop, so every snapshot is at least challenge-bound.
+  let attestation: ToolInventorySnapshot["attestation"] = "challenge_bound_authenticated_catalog";
   if (catalog.attestation) {
     if (!catalog.challenge || catalog.challenge !== challenge) {
       failure("inventory_incomplete", profile, "The gateway returned a signed inventory without binding it to this request's challenge, so it cannot be trusted as fresh.");
@@ -301,6 +327,13 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
     failure("inventory_incomplete", null, "The connection is not bound to a Hermes profile, so a profile-specific inventory cannot be verified.");
   }
   const profile = conn.profile;
+  if (options.purpose === "run" && !options.expectedDigest) {
+    failure(
+      "inventory_not_recorded",
+      profile,
+      "No verified tool inventory has been recorded for this employee, so a run cannot be compared against a reviewed baseline. Run the employee health check first.",
+    );
+  }
   const caps: HermesCapabilities = await getCapabilities(conn);
   if (caps.contract !== "hermes.api_server.capabilities" || !caps.authenticated) {
     failure("inventory_incomplete", profile, "The gateway did not verify its authenticated Hermes API contract, so the inventory cannot be trusted.");
@@ -322,6 +355,10 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
         );
       }
       if (err instanceof HermesError && err.kind === "auth_failed") throw err;
+      if (err instanceof HermesError && err.kind === "bad_response") {
+        // The gateway answered, but not with a catalog this verifier can certify (malformed, repeated or schema-less rows).
+        failure("inventory_incomplete", profile, `The tool catalog could not be certified: ${err.message}`);
+      }
       if (err instanceof HermesError) {
         failure("inventory_unavailable", profile, `The complete tool inventory could not be read: ${err.message}`);
       }
@@ -333,8 +370,14 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
         failure("inventory_expired", profile, "The gateway returned an expired tool inventory attestation.");
       }
     }
-    if (catalog.challenge !== null && catalog.challenge !== challenge) {
+    if (catalog.challenge === null) {
+      failure("inventory_incomplete", profile, "The gateway did not echo the inventory challenge, so this response cannot be proven fresh and bound to the current request. Deploy the gateway with the complete tool-catalog patch.");
+    }
+    if (catalog.challenge !== challenge) {
       failure("inventory_incomplete", profile, "The gateway echoed a different inventory challenge, so this response cannot be bound to the current request.");
+    }
+    if (catalog.contract !== TOOL_INVENTORY_CONTRACT) {
+      failure("inventory_incomplete", profile, `The gateway did not identify the supported tool-catalog contract (${TOOL_INVENTORY_CONTRACT}).`);
     }
     assertCatalogPolicy(catalog, profile);
     const digest = toolCatalogDigest(catalog, profile);
