@@ -331,10 +331,39 @@ a.metric-card:hover { transform: translateY(-3px); border-color: var(--line-stro
 .module-stack > :nth-child(4) { animation-delay: 135ms; }
 .management-row { transition: background var(--motion-fast), border-color var(--motion-fast); }
 .management-row:hover { background: var(--surface-2); }
-.workspace-nav { background: radial-gradient(ellipse at 0% 0%, #18233e, transparent 50%), #0c101b; }
-.workspace-nav-section { color: #91a0ba; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .16em; }
-.workspace-nav-link { color: #b6c1d4; }
-.workspace-nav-link:hover { background: rgb(255 255 255 / .05); color: #fff; }
+/* The sidebars (management shell, agency shell, chat rail) are dark navy in both themes. These tokens are the single source for
+   that chrome so a surface and its text can never disagree: every foreground below clears 7:1 on the navy and 4.5:1 on the
+   top-left glow. Colours used on that chrome come from here, not from the light/dark theme tokens. */
+.workspace-nav {
+  --nav-bg: #0c101b;
+  --nav-glow: #18233e;
+  --nav-ink: #ffffff;
+  --nav-ink-2: #b6c1d4;
+  --nav-muted: #91a0ba;
+  --nav-line: rgb(255 255 255 / .1);
+  --nav-hover: rgb(255 255 255 / .06);
+  --nav-selected: rgb(66 104 198 / .15);
+  --nav-selected-line: rgb(85 130 255 / .25);
+  --nav-accent: #8ab4ff;
+  --nav-action: #305ecb;
+  --dot-ring: var(--nav-bg);
+  background: radial-gradient(ellipse at 0% 0%, var(--nav-glow), transparent 50%), var(--nav-bg);
+  color: var(--nav-ink);
+}
+.logo-word { color: var(--ink); }
+.logo-accent { background: linear-gradient(100deg, var(--primary) 10%, var(--violet) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.logo[data-tone="inverse"] .logo-word, .workspace-nav .logo-word { color: #fff; }
+.logo[data-tone="inverse"] .logo-accent, .workspace-nav .logo-accent { background-image: linear-gradient(100deg, #a8c0ff 8%, #cdbcff 92%); }
+.workspace-nav :focus-visible { outline: 2px solid var(--nav-accent); outline-offset: 2px; }
+/* One row primitive for dark navigation (chat rail): same hover, selected and focus treatment as the management links. */
+.nav-row { display: flex; align-items: center; gap: .625rem; border-radius: 12px; color: var(--nav-ink-2); transition: background var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast); }
+.nav-row:hover { background: var(--nav-hover); color: var(--nav-ink); }
+.nav-row[aria-current="page"], .nav-row[aria-current="true"] { background: var(--nav-selected); box-shadow: inset 0 0 0 1px var(--nav-selected-line); color: var(--nav-ink); }
+.workspace-nav-brand { border-radius: 14px; outline-offset: 4px; transition: background var(--motion-fast); }
+.workspace-nav-brand:hover { background: var(--nav-hover); }
+.workspace-nav-section { color: var(--nav-muted, #91a0ba); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .16em; }
+.workspace-nav-link { color: var(--nav-ink-2, #b6c1d4); }
+.workspace-nav-link:hover { background: var(--nav-hover, rgb(255 255 255 / .06)); color: #fff; }
 .workspace-nav-link[aria-current="page"] { color: #fff; }
 .nav-icon-box { display: inline-flex; height: 28px; width: 28px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 8px; color: #99a9c5; transition: background var(--motion-fast), color var(--motion-fast); }
 [aria-current="page"] .nav-icon-box { background: rgb(101 142 255 / .2); color: #a9c2ff; }

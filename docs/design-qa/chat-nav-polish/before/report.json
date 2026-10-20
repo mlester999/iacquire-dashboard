@@ -1,0 +1,102 @@
+{
+  "base": "http://127.0.0.1:3240",
+  "label": "before",
+  "startedAt": "2026-10-20T06:02:15.519Z",
+  "checks": [],
+  "measurements": [],
+  "consoleErrors": [
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/workforce/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/chat/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/workforce/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/chat/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/workforce/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/chat/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/workforce/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/chat/lead-hunter",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    },
+    {
+      "url": "http://127.0.0.1:3240/login",
+      "text": "A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:\n\n- A server/client branch `if (typeof window !== 'undefined')`.\n- Variable input such as `Date.now()` or `Math.random()` wh"
+    }
+  ],
+  "pageErrors": [],
+  "screens": [
+    "management-gallery-desktop-light.png",
+    "management-profile-desktop-light.png",
+    "chat-empty-desktop-light.png",
+    "chat-conversation-desktop-light.png",
+    "management-gallery-laptop-light.png",
+    "management-profile-laptop-light.png",
+    "chat-empty-laptop-light.png",
+    "chat-conversation-laptop-light.png",
+    "chat-conversation-mobile-light.png",
+    "chat-drawer-mobile-light.png",
+    "chat-conversation-tablet-light.png",
+    "chat-drawer-tablet-light.png",
+    "management-gallery-desktop-dark.png",
+    "management-profile-desktop-dark.png",
+    "chat-empty-desktop-dark.png",
+    "chat-conversation-desktop-dark.png",
+    "management-gallery-laptop-dark.png",
+    "management-profile-laptop-dark.png",
+    "chat-empty-laptop-dark.png",
+    "chat-conversation-laptop-dark.png",
+    "chat-conversation-mobile-dark.png",
+    "chat-drawer-mobile-dark.png",
+    "chat-conversation-tablet-dark.png",
+    "chat-drawer-tablet-dark.png"
+  ],
+  "finishedAt": "2026-10-20T06:06:18.485Z",
+  "luminanceSelfTest": 21
+}
