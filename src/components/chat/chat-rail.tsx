@@ -122,7 +122,7 @@ export function ChatRail(props: ChatRailProps) {
 
   if (compact) {
     return (
-      <nav aria-label="Chat navigation" className="workspace-nav flex h-full min-h-0 flex-col items-center">
+      <nav aria-label="Chat navigation" data-aqi-target="chat.rail" className="workspace-nav flex h-full min-h-0 flex-col items-center">
         <div className="flex h-[76px] shrink-0 items-center justify-center">
           <Tooltip content={targets.homeLabel} side="right">
             <Link href={targets.home} aria-label={`iAcquire ${targets.homeLabel.toLowerCase()}`} className="workspace-nav-brand p-1.5">
@@ -204,7 +204,7 @@ export function ChatRail(props: ChatRailProps) {
   }
 
   return (
-    <nav aria-label="Chat navigation" className="workspace-nav flex h-full min-h-0 flex-col pt-[env(safe-area-inset-top)]">
+    <nav aria-label="Chat navigation" data-aqi-target="chat.rail" className="workspace-nav flex h-full min-h-0 flex-col pt-[env(safe-area-inset-top)]">
       {/* A. Workspace identity */}
       <div className="flex h-[76px] shrink-0 items-center justify-between gap-2 px-5 [@media(max-height:700px)]:h-16">
         <Link href={targets.home} onClick={props.onNavigate} aria-label={`iAcquire ${targets.homeLabel.toLowerCase()}`} className="workspace-nav-brand -ml-1.5 inline-flex p-1.5">

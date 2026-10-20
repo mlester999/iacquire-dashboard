@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
-import { createConfigVersion, currentSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
+import { createConfigVersion, editableSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
 import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { prepareConfigPreview } from "@/server/workforce/preview";
@@ -55,7 +55,9 @@ export async function proposeChangeAction(role: string, request: string) {
   try {
     const { ctx, agent } = await resolve(role);
     if (!request.trim()) throw new AppError("invalid_input", "Describe the change you'd like.");
-    const { settings } = await withSystem((db) => currentSettings(db, agent.id, ctx.org.orgId));
+    // Interpret against the draft the person is already editing, so a routine request cannot erase a
+    // pending sensitive change. If the draft is sensitive, the combined change is held for review.
+    const { settings } = await withSystem((db) => editableSettings(db, agent.id, ctx.org.orgId));
     const proposal = interpretChangeRequest(request, settings);
     return { ok: true as const, data: proposal };
   } catch (err) {
@@ -67,7 +69,7 @@ export async function applyChangeAction(role: string, request: string, changes: 
   try {
     const { ctx, agent } = await resolve(role);
     const res = await withSystem(async (db) => {
-      const { settings } = await currentSettings(db, agent.id, ctx.org.orgId);
+      const { settings } = await editableSettings(db, agent.id, ctx.org.orgId);
       // Re-interpret server-side; never trust a client-supplied diff beyond what the interpreter allows.
       const proposal = interpretChangeRequest(request, settings);
       if (proposal.status !== "proposed") throw new AppError("invalid_input", proposal.refusal ?? "Nothing to change.");

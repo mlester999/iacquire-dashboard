@@ -19,7 +19,9 @@ import {
 } from "lucide-react";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Textarea } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
+import { GuidedField } from "@/components/ui/guided-field";
 import { Dialog } from "@/components/ui/overlays";
+import { KNOWLEDGE_GUIDANCE } from "@/lib/employee-field-guidance";
 import {
   archiveEmployeeKnowledgeEntryAction,
   assignKnowledgeDocumentAction,
@@ -167,6 +169,7 @@ export function EmployeeKnowledge({
                 <input
                   type="file"
                   className="sr-only"
+                  aria-label="Upload a knowledge document"
                   accept={accept}
                   onChange={async (event) => {
                     const file = event.target.files?.[0];
@@ -200,6 +203,9 @@ export function EmployeeKnowledge({
             )}
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="rounded-xl border border-line bg-surface-2/60 p-3 text-[12px] leading-relaxed text-muted">
+              {KNOWLEDGE_GUIDANCE.upload.description}
+            </p>
             {fileError && (
               <p className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[12.5px] text-danger-ink" role="alert">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {fileError}
@@ -397,21 +403,18 @@ function NoteDialog({
         </>
       }
     >
-      <div className="space-y-3">
-        {error && <p className="rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[12.5px] text-danger-ink" role="alert">{error}</p>}
-        <div>
-          <label htmlFor="knowledge-title" className="text-[12px] font-medium text-ink-2">Title</label>
-          <Input id="knowledge-title" maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Approved service areas" autoFocus />
+        <div className="space-y-3">
+          {error && <p className="rounded-xl border border-danger/25 bg-danger-soft/40 p-3 text-[12.5px] text-danger-ink" role="alert">{error}</p>}
+          <GuidedField id="knowledge-title" label="Title" guidance={KNOWLEDGE_GUIDANCE.title} required charLimit={160} valueLength={title.length}>
+            <Input maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
+          </GuidedField>
+          <GuidedField id="knowledge-content" label="What should the employee know?" guidance={KNOWLEDGE_GUIDANCE.content} required charLimit={40000} valueLength={content.length}>
+            <Textarea rows={7} maxLength={40000} value={content} onChange={(event) => setContent(event.target.value)} />
+          </GuidedField>
+          <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted">
+            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden /> This knowledge is scoped to this employee in this workspace. It is never shared with another client.
+          </p>
         </div>
-        <div>
-          <label htmlFor="knowledge-content" className="text-[12px] font-medium text-ink-2">What should the employee know?</label>
-          <Textarea id="knowledge-content" rows={7} maxLength={40000} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Write short, factual notes. The employee treats this as reference information, never as instructions that can override safety rules." />
-          <p className="mt-1 text-[11.5px] text-faint">{content.length.toLocaleString()} of 40,000 characters</p>
-        </div>
-        <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted">
-          <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden /> This knowledge is scoped to this employee in this workspace. It is never shared with another client.
-        </p>
-      </div>
     </Dialog>
   );
 }

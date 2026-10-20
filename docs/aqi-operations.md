@@ -263,7 +263,7 @@ Defects found by this testing and fixed: a role marker (`system:`) surviving def
 
 ## 13. Scheduler: how slow-rhythm jobs run
 
-**The defect.** Nine jobs were meant to run on a slow rhythm (`supportAutoClose`, `supportAttachmentCleanup`, `fairUseChecks`, `inactivityReview`, `offboardingReminders`, `crmWorkflowRecovery`, `whatsappTemplateSync`, `setupEvidence`, `aqiTutorialEventRetention`). Each tested `withinInterval(name, minutes)` inside its own body and returned `0` when not due. `runJob` recorded that `0` as a success and moved `last_success_at` forward, which is what `withinInterval` reads, so after its first run every gated job was "within interval" on every later tick, forever. It was reproduced with a throwaway test (0 executions over 24 further five-minute ticks) and is unobserved in production only because the scheduler is not configured there.
+**The defect.** Eight jobs (nine on the branch's original base, before master moved `setupEvidence` onto its own lease) were meant to run on a slow rhythm: `supportAutoClose`, `supportAttachmentCleanup`, `fairUseChecks`, `inactivityReview`, `offboardingReminders`, `crmWorkflowRecovery`, `whatsappTemplateSync` and `aqiTutorialEventRetention`. Each tested `withinInterval(name, minutes)` inside its own body and returned `0` when not due. `runJob` recorded that `0` as a success and moved `last_success_at` forward, which is what `withinInterval` reads, so after its first run every gated job was "within interval" on every later tick, forever. It was reproduced with a throwaway test (0 executions over 24 further five-minute ticks) and is unobserved in production only because the scheduler is not configured there.
 
 **The fix** (`src/server/ops/jobs.ts`, `src/server/ops/tick.ts`). A job now declares `everyMinutes` on its `JOBS` entry and its body contains no gating. `runJob(name, fn, summarize, { everyMinutes, now })` decides and claims in one statement (`insert … on conflict do update … where <due> returning`):
 
@@ -281,14 +281,14 @@ Intervals are elapsed time, not calendar slots. A daily job runs 24 hours after 
 | Job | Cadence |
 | --- | --- |
 | `crmWorkflowRecovery` | 5 min |
-| `setupEvidence` | 15 min |
 | `supportAutoClose`, `supportAttachmentCleanup`, `fairUseChecks` | 60 min |
 | `whatsappTemplateSync` | 180 min |
 | `inactivityReview`, `offboardingReminders` | 360 min |
 | `aqiTutorialEventRetention` | 1,440 min |
+| `setupEvidence` | each tick, but guarded by its own fleet-wide lease (15 min), so it does not also declare `everyMinutes` |
 | every other job, including `aqiOperationsBriefings` and `aqiOperationsRetention` | each tick |
 
-**Evidence** (`tests/scheduler-intervals.test.ts`, 19 tests, simulated clock through the real `runScheduledJobs`): hourly runs 48 times in two days exactly 60 minutes apart; daily runs once per 24 hours for a week across the 8 March 2026 US clock change; weekly runs on days 0, 7, 14 and 21; a 15-minute job with one-minute ticks runs every 15; a late tick neither runs early nor twice; two jobs on different cadences do not disturb each other; a skipped tick leaves the heartbeat row byte-for-byte unchanged; failures retry after 15 minutes and recover to the normal interval; overlapping ticks execute once; a crashed run is recovered; the registry holds exactly the nine slow jobs with the cadences above and the two AQi jobs run every tick; and the real job list, run at the same instant twice, executes every slow job once and then skips all nine. The real list is also run at +5 min (only `crmWorkflowRecovery` due), +60 min and +24 h.
+**Evidence** (`tests/scheduler-intervals.test.ts`, 19 tests, simulated clock through the real `runScheduledJobs`): hourly runs 48 times in two days exactly 60 minutes apart; daily runs once per 24 hours for a week across the 8 March 2026 US clock change; weekly runs on days 0, 7, 14 and 21; a 15-minute job with one-minute ticks runs every 15; a late tick neither runs early nor twice; two jobs on different cadences do not disturb each other; a skipped tick leaves the heartbeat row byte-for-byte unchanged; failures retry after 15 minutes and recover to the normal interval; overlapping ticks execute once; a crashed run is recovered; the registry holds exactly the eight slow jobs with the cadences above, `setupEvidence` carries no interval and the two AQi jobs run every tick; and the real job list, run at the same instant twice, executes every slow job once and then skips all eight. The real list is also run at +5 min (only `crmWorkflowRecovery` due), +60 min and +24 h.
 
 ## 14. Migration 0068 audit
 
@@ -342,7 +342,7 @@ Prerequisites before any role is switched on (summary of the matrix above): (1) 
 
 | Request | Outcome |
 | --- | --- |
-| Scheduler defect | Fixed with an atomic, interval-aware claim in `runJob` (section 13). 19 regression tests on a simulated clock: hourly, daily, weekly, 5- and 15-minute cadences, daylight saving, late and overlapping ticks, failure retry, abandoned runs, and the real job list. No job outside the nine slow ones changed behaviour (asserted by name and order). |
+| Scheduler defect | Fixed with an atomic, interval-aware claim in `runJob` (section 13). 19 regression tests on a simulated clock: hourly, daily, weekly, 5- and 15-minute cadences, daylight saving, late and overlapping ticks, failure retry, abandoned runs, and the real job list. No job outside the eight slow ones changed behaviour (asserted by name and order). |
 | Briefing delivery, quiet hours, deduplication, retention | Reviewed and tested for New York, London, Kolkata and Auckland (spring-forward, fall-back, half-hour offset, local weekday that differs from UTC's), quiet windows across midnight, equal start and end, critical alerts through quiet hours, overlapping ticks, 14 days of 15-minute ticks, seven administrators, deactivated accounts and retention. **Defects fixed:** a failed notification was never retried (the slot was marked done first); administrators beyond the fifth were never handled; stored briefings were never purged. |
 | Notification bell accessibility | Fixed in `notification-center.tsx`: the accessible name now contains the badge text (`Notifications, 9+ unread`), the badge is white on the dark red in light mode (6.5:1) and the dark ink on the brighter red in dark mode (5.5:1), and its entrance no longer fades the text. Unit tests assert the label and the contrast from the real tokens; the browser scans run with nothing excluded and the badge on screen. Notification behaviour is unchanged (the existing notification tests pass). |
 | Migration 0068 | Audited (section 14). Added fail-fast locking, a retention index, foreign-key indexes, a one-executing-per-target guard, and a documented concurrent-index path for `audit_logs`. A separate concurrent-index migration is not possible with the repository's runner and was not made. |
@@ -359,7 +359,7 @@ Changes to existing (non-AQi-Operations) behaviour in this pass: `src/server/ops
 3. **Backup** per `docs/deployment.md`.
 4. **Staging first**: `npm run db:migrate`, then check: the nine objects exist; a Client conversation still inserts (`surface = 'assistant'`); a client owner still gets the Client assistant; every `/api/aqi/ops/*` answers 403 to non-Super Admins; the Super Admin console loads with every tile either measured or "not measured". Rehearse the rollback on staging with data present and absent.
 5. **Production**: apply 0068, then deploy the code. Do not enable the scheduler in the same step.
-6. **Enable the scheduler later and separately** (`CRON_SECRET`, `SCHEDULER_ENABLED`, `docs/production-scheduler.md`), after deciding between the two scheduler fixes (below). Watch `/admin/health`: the nine slow jobs should show a last run that advances only at their cadence.
+6. **Enable the scheduler later and separately** (`CRON_SECRET`, `SCHEDULER_ENABLED`, `docs/production-scheduler.md`), (the scheduler fix is decided and merged, see below). Watch `/admin/health`: the eight slow jobs should show a last run that advances only at their cadence.
 7. **Rollback**: redeploy the previous build (the Client assistant never depended on 0068); run the down migration only if the objects must go and only after archiving what it refuses to delete.
 
 ### Local versus hosted verification
@@ -377,17 +377,17 @@ Changes to existing (non-AQi-Operations) behaviour in this pass: `src/server/ops
 
 A separate session fixed the same defect in worktree `confident-moser-b13a2b` (branch `claude/confident-moser-b13a2b`, cut from master `7a4301e`, uncommitted). **Decision (user, 2026-10-20): keep this branch's fix** (the atomic claim in `runJob`); that session was told to stop and its work stays uncommitted and unmerged. It gated inside `runScheduledJobs` with the existing `withinInterval` helper; this branch's version also claims the slot atomically, anchors on the run's start, retries failures after 15 minutes, detects abandoned runs and survives overlapping ticks.
 
-This branch was cut from `03de0bf`; master has moved on (`7a4301e` at least). What the merge still has to take from master, from that session's note and a read of its worktree (not a merge or a test of the combination):
+This branch was cut from `03de0bf`. On 2026-10-20 `origin/master` (then `8058d5b`, four commits ahead) was merged into it, with these conflicts resolved:
 
-| Item | What to do when merging master into this branch |
+| Item | Resolution |
 | --- | --- |
-| `setupEvidence` | On master it is `runSetupMaintenance()` (returns created + updated) under its own fleet-wide lease: `SETUP_EVIDENCE_LEASE = "setup_evidence_reconcile"`, `claimSetupEvidenceReconcile` and `finishSetupEvidenceReconcile` in `src/server/ops/jobs.ts`, used by server boot as well as the tick. It writes its own row and never had the defect. **Take master's job line and remove `everyMinutes` from it** (this branch gates it at 15 minutes around `reconcileAllSetupInstances()`, which master replaced); otherwise two gates would stack. Then drop `setupEvidence` from the nine-job table in `tests/scheduler-intervals.test.ts` (`EXPECTED_SLOW`, the real-list expectations at +5 and +60 minutes) and from the cadence table in section 13 and in `docs/operations-and-incidents.md`. The slow jobs become eight. |
-| `jobs.ts` | Keep master's lease functions and this branch's `runJob` (they use different rows). The lease's own SQL does not use `runJob`, so they do not interact. |
-| `tick.ts` imports | Master imports `runSetupMaintenance`; this branch still imports `reconcileAllSetupInstances`. Resolve in master's favour. Keep this branch's `everyMinutes` entries for the other eight jobs and the two AQi jobs after `aqiTutorialEventRetention`. |
-| `tests/scheduler-intervals.test.ts` | Same file name on both branches: keep this branch's (19 tests); the other session's six tests (a faked `Date`, 25 hours of five-minute ticks, only the gated jobs with their services mocked) are covered by the simulated-clock tests here. |
-| Docs | Keep this branch's `operations-and-incidents.md` paragraph about `everyMinutes`; the other branch's version of that paragraph is dropped. |
-| Migrations | The other session's worktree (cut from master `7a4301e`) also tops out at `0067`, so `0068` is still free there. Re-check at merge time. |
-| Retest | After the merge rerun `tests/scheduler-intervals.test.ts`, `tests/aqi-ops-registration.test.ts` (it lists the shipped jobs by name and order) and the full suite. |
+| `setupEvidence` | On master it is `runSetupMaintenance()` under its own fleet-wide lease (`SETUP_EVIDENCE_LEASE = "setup_evidence_reconcile"`, `claimSetupEvidenceReconcile` / `finishSetupEvidenceReconcile` in `src/server/ops/jobs.ts`, used by server boot as well as the tick); it never had the defect. Master's job line was taken and it does **not** also declare `everyMinutes` (a test asserts that). The slow jobs are therefore eight. |
+| `jobs.ts` | Master's lease functions kept next to this branch's `runJob`; they use different rows and do not interact. `withinInterval` (no longer used anywhere) is removed. |
+| `tick.ts` | Master's `runSetupMaintenance` import and job line; this branch's `everyMinutes` entries for the other eight and the two AQi jobs. |
+| Notification bell | Master had meanwhile changed the badge to white on `#b42328` in both themes ("Improve notification badge contrast"). That colour was kept; this branch's label fix (the accessible name contains the badge text) and its no-fade entrance were kept; the unit test now asserts the pair actually used. |
+| `docs/production-scheduler.md` | Master's setup-evidence lease paragraph kept, and the slow-rhythm paragraph rewritten for `everyMinutes`. |
+| Migrations | `origin/master` still tops out at `0067`, so `0068` is free. |
+| Not carried over | The other session's own `tests/scheduler-intervals.test.ts` (six tests) and its `runScheduledJobs`-level gate: this branch's version covers the same cases plus overlap, failure retry and abandoned runs. That session's worktree is untouched. |
 
 ### Remaining gaps
 

@@ -54,8 +54,18 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
     ink: "#4A5872",
     mascot: "/mascots/operations-manager",
     questions: [
-      { id: "priorities", label: "What daily tasks should your AI team prioritise?", placeholder: "e.g. Respond to new inquiries first, then follow up on open quotes" },
-      { id: "approval_rules", label: "Which decisions require your approval?", placeholder: "e.g. Anything that contacts a customer or changes a price" },
+      {
+        id: "priorities",
+        label: "What daily tasks should your AI team prioritise?",
+        placeholder: "e.g. Respond to new inquiries first, then follow up on open quotes",
+        help: "Describe the internal work that should come first each day. Focus on outcomes, not step-by-step instructions.",
+      },
+      {
+        id: "approval_rules",
+        label: "Which decisions require your approval?",
+        placeholder: "e.g. Anything that contacts a customer or changes a price",
+        help: "Name the decisions that must involve a person. This cannot relax iAcquire's mandatory approvals.",
+      },
     ],
     suggestedPrompts: [
       "Summarise what needs my attention today",
@@ -74,8 +84,18 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
     ink: "#2F7A12",
     mascot: "/mascots/lead-hunter",
     questions: [
-      { id: "targets", label: "What businesses or people should we target?", placeholder: "e.g. Independent dental clinics with 2–10 dentists" },
-      { id: "qualification", label: "What locations, industries and qualification rules matter?", placeholder: "e.g. Texas and Florida only; must have an online booking page" },
+      {
+        id: "targets",
+        label: "What businesses or people should we target?",
+        placeholder: "e.g. Independent dental clinics with 2–10 dentists",
+        help: "Describe the type of business or person that fits your ideal customer profile. This is used to decide what to research.",
+      },
+      {
+        id: "qualification",
+        label: "What locations, industries and qualification rules matter?",
+        placeholder: "e.g. Texas and Florida only; must have an online booking page",
+        help: "Add the locations, industries and must-have signals that make a lead worth pursuing. The employee cannot contact leads from this setting.",
+      },
     ],
     suggestedPrompts: [
       "What makes a lead a good fit for us?",
@@ -94,8 +114,18 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
     ink: "#A35A00",
     mascot: "/mascots/appointment-setter",
     questions: [
-      { id: "meeting_types", label: "What type of meetings do you offer?", placeholder: "e.g. 30-minute discovery call over video" },
-      { id: "hours", label: "What are your approved appointment hours?", placeholder: "e.g. Weekdays 9am–5pm Eastern, no Fridays after 3pm" },
+      {
+        id: "meeting_types",
+        label: "What type of meetings do you offer?",
+        placeholder: "e.g. 30-minute discovery call over video",
+        help: "List each meeting type and how long it lasts. The employee only offers the types you list here.",
+      },
+      {
+        id: "hours",
+        label: "What are your approved appointment hours?",
+        placeholder: "e.g. Weekdays 9am–5pm Eastern, no Fridays after 3pm",
+        help: "State when appointments may be offered. Real availability still comes from your connected calendar.",
+      },
     ],
     suggestedPrompts: [
       "What appointments do I have this week?",
@@ -114,8 +144,18 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
     ink: "#B0125F",
     mascot: "/mascots/sales-assistant",
     questions: [
-      { id: "offers", label: "What are your main offers?", placeholder: "e.g. Website redesign from $3,000; monthly SEO from $800" },
-      { id: "approach", label: "What sales approach and follow-up style do you prefer?", placeholder: "e.g. Consultative and patient; follow up after 2 days, then weekly" },
+      {
+        id: "offers",
+        label: "What are your main offers?",
+        placeholder: "e.g. Website redesign from $3,000; monthly SEO from $800",
+        help: "Summarise what you sell and any approved prices or limits. The employee must not invent figures you have not provided.",
+      },
+      {
+        id: "approach",
+        label: "What sales approach and follow-up style do you prefer?",
+        placeholder: "e.g. Consultative and patient; follow up after 2 days, then weekly",
+        help: "Describe the tone and cadence for follow-ups, and when a person should take over the conversation.",
+      },
     ],
     suggestedPrompts: [
       "Draft a friendly follow-up for a quiet prospect",
@@ -134,8 +174,18 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
     ink: "#0558B0",
     mascot: "/mascots/crm-manager",
     questions: [
-      { id: "important_info", label: "What customer information is most important?", placeholder: "e.g. Budget, decision maker, preferred contact time" },
-      { id: "stages", label: "What sales stages does your business use?", placeholder: "e.g. New inquiry → Qualified → Proposal → Won/Lost" },
+      {
+        id: "important_info",
+        label: "What customer information is most important?",
+        placeholder: "e.g. Budget, decision maker, preferred contact time",
+        help: "List the fields your team needs on every record. Keep it to information your workspace already collects.",
+      },
+      {
+        id: "stages",
+        label: "What sales stages does your business use?",
+        placeholder: "e.g. New inquiry → Qualified → Proposal → Won/Lost",
+        help: "Name your pipeline stages in order, from first contact to closed. The employee uses this to organise records consistently.",
+      },
     ],
     suggestedPrompts: [
       "How should we organise our pipeline stages?",
@@ -154,8 +204,18 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
     ink: "#0B7A64",
     mascot: "/mascots/performance-analyst",
     questions: [
-      { id: "results", label: "Which results matter most to you?", placeholder: "e.g. Booked calls per week and close rate" },
-      { id: "metrics", label: "What metrics should we prioritise?", placeholder: "e.g. Response time, cost per lead, show-up rate" },
+      {
+        id: "results",
+        label: "Which results matter most to you?",
+        placeholder: "e.g. Booked calls per week and close rate",
+        help: "Describe the outcomes you want to improve. Clear business results help the employee choose what to report on.",
+      },
+      {
+        id: "metrics",
+        label: "What metrics should we prioritise?",
+        placeholder: "e.g. Response time, cost per lead, show-up rate",
+        help: "Name the measures the employee should watch. It can only analyse data it is authorised to access.",
+      },
     ],
     suggestedPrompts: [
       "Which metrics should I watch weekly?",

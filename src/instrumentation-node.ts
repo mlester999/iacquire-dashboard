@@ -17,21 +17,21 @@ export async function registerNode() {
   // Setup-checklist backfill and evidence reconciliation walk every unfinished client workspace.
   // On a serverless function that work ran *before* the first request: a cold start measured 25
   // database transactions (~100 round trips, ~15 s from iad1 to Tokyo), which is why `/api/health`
-  // took 17-18 s cold while a warm call took ~500 ms. Every one of these jobs is idempotent and the
-  // scheduler repeats the reconciliation every 15 minutes, so they run after the response instead
-  // of blocking the instance. A serverless pause can defer them further; the next instance or tick
-  // retries, and no user-facing request depends on them.
+  // took 17-18 s cold while a warm call took ~500 ms. They now run after the response instead of
+  // blocking it. They are also claimed under a fleet-wide lease (the same one the scheduled
+  // `setupEvidence` job uses): every Vercel function runs this instrumentation, so without the lease
+  // one deployment multiplied the same 25 transactions by the number of cold functions, and that
+  // burst competed with real requests for the Supavisor pool. One runner per fifteen minutes is
+  // enough — the walks are idempotent and the next boot or tick retries anything missed.
   void reconcileSetupEvidence(logSafeServerDiagnostic);
 }
 
 async function reconcileSetupEvidence(logSafeServerDiagnostic: (message: string, error: unknown, stage: string) => void) {
   try {
-    const { backfillSetupInstances } = await import("@/server/setup/core");
-    const { reconcileAllSetupInstances } = await import("@/server/setup/automation");
-    const created = await backfillSetupInstances();
-    const updated = await reconcileAllSetupInstances();
-    if (created.length || updated) {
-      console.info(`[iacquire] setup checklists: ${created.length} created, ${updated} updated from recorded evidence`);
+    const { runSetupMaintenance } = await import("@/server/setup/startup");
+    const result = await runSetupMaintenance();
+    if (result.created || result.updated) {
+      console.info(`[iacquire] setup checklists: ${result.created} created, ${result.updated} updated from recorded evidence`);
     }
   } catch (error) {
     logSafeServerDiagnostic("setup checklist startup skipped", error, "startup.setup_checklist");

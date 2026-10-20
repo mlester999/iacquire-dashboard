@@ -1,0 +1,302 @@
+{
+  "base": "http://127.0.0.1:3255",
+  "startedAt": "2026-10-20T09:33:26.214Z",
+  "checks": [
+    {
+      "name": "client sign-in",
+      "ok": true,
+      "detail": "http://127.0.0.1:3255/"
+    },
+    {
+      "name": "guided field present cfg-name",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-tone",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-length",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-language",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-q-priorities",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-q-approval_rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-resp",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-goals",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-target",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-rules",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-never",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-esc",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-esc-contact",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "guided field present cfg-custom",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every guided field has visible guidance",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "Approval policy is read-only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "role-specific Operations Manager example",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "info popover exposes deeper guidance",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review preview explains that nothing is active yet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "review action label",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "blocked change cannot be submitted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "blocked guidance is shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "axe client configure light",
+      "ok": true,
+      "detail": "no WCAG A/AA violations"
+    },
+    {
+      "name": "Lead Hunter helper text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Lead Hunter question help",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "routine change applied and confirmed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Appointment Setter helper text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pending version is visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rejected version is visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pending keeps active configuration",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pending revision entry point",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "older rejected revision is blocked while a newer version needs review",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "axe client version history light",
+      "ok": true,
+      "detail": "no WCAG A/AA violations"
+    },
+    {
+      "name": "chat sidebar branding",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Chat composer",
+      "ok": true,
+      "detail": "The isolated fixture is in the honest connection-required state, so the composer is not rendered. The ready-state composer is covered by tests/chat.test.ts.",
+      "info": true
+    },
+    {
+      "name": "chat workspace identity",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat back to AI Workforce",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat manage employee action",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat sidebar wordmark contrast",
+      "ok": true,
+      "detail": "{\"ratio\":21,\"color\":\"rgb(255, 255, 255)\",\"background\":\"rgba(0, 0, 0, 0)\"}"
+    },
+    {
+      "name": "no horizontal overflow chat mobile",
+      "ok": true,
+      "detail": "390 > 390"
+    },
+    {
+      "name": "AQi configure anchor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AQi notification bell anchor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AQi overlay opens over the guided form",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal overflow configure 1024",
+      "ok": true,
+      "detail": "1024 > 1024"
+    },
+    {
+      "name": "no horizontal overflow configure 768",
+      "ok": true,
+      "detail": "768 > 768"
+    },
+    {
+      "name": "no horizontal overflow configure mobile",
+      "ok": true,
+      "detail": "390 > 390"
+    },
+    {
+      "name": "mobile sticky save action",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal overflow history mobile",
+      "ok": true,
+      "detail": "390 > 390"
+    },
+    {
+      "name": "dark theme applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AQi history anchor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AQi chat rail anchor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Screenshots",
+      "ok": true,
+      "detail": "23 captured",
+      "info": true
+    }
+  ],
+  "screenshots": [
+    "docs\\design-qa\\workforce-guided\\client-configure-operations-manager-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-info-popover-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-review-required-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-blocked-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-lead-hunter-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-safe-applied-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-appointment-setter-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-version-history-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-version-history-viewport-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-notifications-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-notification-bell-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-chat-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-chat-mobile-rail-390.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-aqi-overlay-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-operations-manager-light-1024.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-operations-manager-light-768.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-operations-manager-light-390.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-info-popover-light-390.png",
+    "docs\\design-qa\\workforce-guided\\client-version-history-light-390.png",
+    "docs\\design-qa\\workforce-guided\\client-configure-operations-manager-dark-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-version-history-dark-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-notifications-dark-1440.png",
+    "docs\\design-qa\\workforce-guided\\client-chat-dark-1440.png"
+  ],
+  "consoleErrors": [],
+  "failures": [],
+  "finishedAt": "2026-10-20T09:35:51.794Z",
+  "ok": true
+}

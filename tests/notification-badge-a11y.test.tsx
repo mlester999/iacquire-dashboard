@@ -42,14 +42,6 @@ describe("notification bell badge: label in name", () => {
 });
 
 describe("notification bell badge: colour contrast", () => {
-  const css = fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "utf8");
-  const light = css.slice(css.indexOf(":root {"), css.indexOf('[data-theme="dark"] {'));
-  const dark = css.slice(css.indexOf('[data-theme="dark"] {'));
-  const token = (block: string, name: string) => {
-    const hit = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(block);
-    if (!hit) throw new Error(`token --${name} not found`);
-    return hit[1];
-  };
   const luminance = (hex: string) => {
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -62,13 +54,12 @@ describe("notification bell badge: colour contrast", () => {
   it("meets 4.5:1 for the 10px badge text in both themes, with the classes the component uses", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "src/components/notifications/notification-center.tsx"), "utf8");
     const badge = /className="(absolute right-1\.5 top-1\.5[^"]+)"/.exec(source)?.[1] ?? "";
-    // Light theme: the badge uses --danger-ink with white text; dark theme: --danger with --danger-on text.
-    expect(badge).toContain("bg-danger-ink");
+    // One background and white text in both themes, so there is one pair to check: no theme variant may change either colour.
+    const background = /\bbg-\[(#[0-9a-fA-F]{6})\]/.exec(badge)?.[1];
+    expect(background, badge).toBeDefined();
     expect(badge).toContain("text-white");
-    expect(badge).toContain("dark:bg-danger");
-    expect(badge).toContain("dark:text-danger-on");
-    expect(contrast("#ffffff", token(light, "danger-ink"))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(token(dark, "danger-on"), token(dark, "danger"))).toBeGreaterThanOrEqual(4.5);
+    expect(badge).not.toMatch(/dark:(bg|text)-/);
+    expect(contrast("#ffffff", background!)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("the entrance animation does not fade the text, so contrast cannot dip while it plays", () => {

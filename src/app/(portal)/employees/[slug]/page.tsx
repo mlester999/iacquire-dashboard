@@ -15,8 +15,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: AGENT_BY_SLUG[slug]?.name ?? "AI employee" };
 }
 
-export default async function EmployeePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ tab?: string }> }) {
-  const [{ slug }, { tab }] = await Promise.all([params, searchParams]);
+export default async function EmployeePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ tab?: string; version?: string }> }) {
+  const [{ slug }, { tab, version }] = await Promise.all([params, searchParams]);
   const meta = AGENT_BY_SLUG[slug];
   if (!meta) notFound();
   const ctx = await requireOrgContext();
@@ -29,6 +29,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   if (!agent) notFound();
   const canConfigure = ctx.can("agents.configure");
   const canViewKnowledge = ctx.can("knowledge.view");
+  const requestedVersion = typeof version === "string" && /^[0-9a-f-]{36}$/i.test(version) ? version : null;
 
   const [controls, versions, settings, knowledgeView, instructionOverview, extra, acknowledgementCurrent] = await Promise.all([
     withSystem(async (db) => {
@@ -38,7 +39,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       return { autonomousBlockedReason: blocker, agencyPaused: pause.rows.length > 0 };
     }),
     canConfigure ? listConfigVersions(ctx.user.id, agent.id) : Promise.resolve([]),
-    canConfigure ? withSystem((db) => editableSettings(db, agent.id, ctx.org.orgId)) : Promise.resolve(null),
+    canConfigure ? withSystem((db) => editableSettings(db, agent.id, ctx.org.orgId, requestedVersion)) : Promise.resolve(null),
     canViewKnowledge ? listEmployeeKnowledge(ctx, agent.id).catch(() => null) : Promise.resolve(null),
     canConfigure
       ? getEmployeeInstructionOverview({ orgId: ctx.org.orgId, agentId: agent.id, role: meta.key, companyName: ctx.org.name })
@@ -108,6 +109,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       agencyPaused={controls.agencyPaused}
       settings={settings?.settings ?? null}
       draftVersion={settings?.pendingVersion ?? null}
+      draftStatus={settings?.draftStatus ?? null}
       isInternalWorkspace={ctx.org.kind === "agency"}
       knowledgeView={knowledgeView}
       instructionOverview={instructionOverview}

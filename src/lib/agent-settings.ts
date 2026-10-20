@@ -9,11 +9,11 @@ export const LANGUAGES = [
 export type Tone = (typeof TONES)[number];
 export type ReplyLength = (typeof REPLY_LENGTHS)[number];
 
-export const TONE_COPY: Record<Tone, { label: string; example: string }> = {
-  friendly: { label: "Friendly", example: "Happy to help! Here's what I found…" },
-  professional: { label: "Professional", example: "Here is a summary of the requested information." },
-  casual: { label: "Casual", example: "Sure thing — quick rundown below." },
-  premium: { label: "Premium", example: "Certainly. Here's a considered overview for you." },
+export const TONE_COPY: Record<Tone, { label: string; description: string; example: string }> = {
+  friendly: { label: "Friendly", description: "Warm and approachable, in plain language.", example: "Happy to help! Here's what I found…" },
+  professional: { label: "Professional", description: "Clear, formal and businesslike.", example: "Here is a summary of the requested information." },
+  casual: { label: "Casual", description: "Relaxed and conversational.", example: "Sure thing — quick rundown below." },
+  premium: { label: "Premium", description: "Polished and considered, with a white-glove feel.", example: "Certainly. Here's a considered overview for you." },
 };
 
 export const LENGTH_COPY: Record<ReplyLength, { label: string; description: string }> = {

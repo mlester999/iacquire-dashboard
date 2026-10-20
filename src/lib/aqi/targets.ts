@@ -99,9 +99,20 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "leads.research", label: "New research request", description: "Ask the Lead Hunter for new prospects.", routes: ["/leads"], permission: "leads.research" },
 
   // Workforce.
-  { id: "workforce.hero", label: "AI Employees", description: "The AI workforce page header.", routes: ["/employees"], permission: "agents.use" },
+  { id: "workforce.hero", label: "AI Employees", description: "The AI employees page header.", routes: ["/employees"], permission: "agents.use" },
   { id: "workforce.gallery", label: "Employee gallery", description: "The AI employees in this workspace.", routes: ["/employees"], permission: "agents.use" },
   { id: "workforce.employee", label: "AI employee", description: "An employee card with chat and configuration actions.", routes: ["/employees"], permission: "agents.use" },
+  { id: "workforce.employee.hero", label: "Employee profile", description: "The selected AI employee's identity, readiness and primary actions.", routes: ["/employees"], permission: "agents.use" },
+  { id: "workforce.employee.configure", label: "Guided configuration", description: "The employee's grouped, guided configuration form.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.employee.history", label: "Version history", description: "Saved configuration versions, decisions and review status.", routes: ["/employees"], permission: "agents.configure" },
+
+  // Chat.
+  { id: "chat.rail", label: "Chat sidebar", description: "The iAcquire chat sidebar with specialists and conversation history.", routes: ["/chat"], permission: "agents.use" },
+  { id: "chat.employee", label: "Selected employee", description: "The AI employee selected for this conversation.", routes: ["/chat"], permission: "agents.use" },
+  { id: "chat.composer", label: "Message box", description: "Where the person writes a message to the AI employee.", routes: ["/chat"], permission: "agents.use" },
+
+  // Notifications.
+  { id: "notifications.bell", label: "Notification bell", description: "The saved notification feed for the signed-in person.", routes: ["*"], navigation: true },
 
   // Settings, integrations, team, knowledge, support.
   { id: "settings.integrations.list", label: "Integration status", description: "The services connected to this workspace.", routes: ["/settings/integrations"], permission: "integrations.view" },

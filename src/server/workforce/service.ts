@@ -121,13 +121,19 @@ export async function listConfigVersions(userId: string, agentId: string) {
       decided_by: string | null;
       created_by_name: string | null;
       decided_by_name: string | null;
+      created_by_role: string | null;
+      decided_by_role: string | null;
     }>(
       `select v.id, v.version, v.summary, v.status, v.source, v.change_request, v.risk_flags, v.policy_version,
               v.created_at, v.applied_at, v.decided_at, v.settings, v.created_by, v.decided_by,
-              u.full_name as created_by_name, d.full_name as decided_by_name
+              u.full_name as created_by_name, d.full_name as decided_by_name,
+              case when u.platform_role is not null and u.platform_role <> 'none' then u.platform_role else um.role end as created_by_role,
+              case when d.platform_role is not null and d.platform_role <> 'none' then d.platform_role else dm.role end as decided_by_role
        from agent_config_versions v
        left join users u on u.id = v.created_by
        left join users d on d.id = v.decided_by
+       left join organization_memberships um on um.user_id = v.created_by and um.org_id = v.org_id
+       left join organization_memberships dm on dm.user_id = v.decided_by and dm.org_id = v.org_id
        where v.agent_instance_id = $1 order by v.version desc limit 50`,
       [agentId],
     );
@@ -192,6 +198,9 @@ export async function currentSettings(db: Queryable, agentId: string, orgId: str
 /**
  * Settings for the Configure screen. A saved version that has not been applied yet is the
  * version the user is editing; falling back to defaults here would silently discard their draft.
+ * An explicit `versionId` lets Version History reopen a held or rejected draft safely. Only the
+ * employee's own unapplied versions are eligible; applied versions are restored through the
+ * audited rollback path instead.
  * The approval preference is always pinned to the currently applied value (or the conservative
  * default) because it is not wired into runtime approval decisions yet.
  */
@@ -199,7 +208,15 @@ export async function editableSettings(
   db: Queryable,
   agentId: string,
   orgId: string,
-): Promise<{ role: AgentRoleKey; settings: AgentSettings; tools: string[]; pendingVersion: number | null; origin: "pending" | "active" | "default" }> {
+  versionId?: string | null,
+): Promise<{
+  role: AgentRoleKey;
+  settings: AgentSettings;
+  tools: string[];
+  pendingVersion: number | null;
+  draftStatus: string | null;
+  origin: "selected" | "pending" | "active" | "default";
+}> {
   const { rows } = await db.query<{
     role_key: AgentRoleKey;
     default_tools: string[];
@@ -229,15 +246,31 @@ export async function editableSettings(
   const active = row.active_settings ? agentSettingsSchema.safeParse(row.active_settings) : null;
   const pending = row.pending_settings ? agentSettingsSchema.safeParse(row.pending_settings) : null;
   const fallback = defaultSettings(row.role_key, prefs.success ? prefs.data : undefined);
-  const base = pending?.success ? pending.data : active?.success ? active.data : fallback;
+
+  let selected: { settings: AgentSettings; version: number; status: string } | null = null;
+  if (versionId) {
+    const { rows: selectedRows } = await db.query<{ settings: AgentSettings; version: number; status: string }>(
+      `select settings, version, status from agent_config_versions
+       where id = $1 and agent_instance_id = $2 and org_id = $3
+         and status in ('pending_agency_review', 'rejected', 'draft')`,
+      [versionId, agentId, orgId],
+    );
+    const parsed = selectedRows[0]?.settings ? agentSettingsSchema.safeParse(selectedRows[0].settings) : null;
+    if (selectedRows[0] && parsed?.success) {
+      selected = { settings: parsed.data, version: Number(selectedRows[0].version), status: selectedRows[0].status };
+    }
+  }
+
+  const base = selected?.settings ?? (pending?.success ? pending.data : active?.success ? active.data : fallback);
   const fixedApproval = active?.success ? active.data.approvalPreference : fallback.approvalPreference;
   const settings = agentSettingsSchema.parse({ ...base, approvalPreference: fixedApproval });
   return {
     role: row.role_key,
     settings,
     tools: row.default_tools,
-    pendingVersion: pending?.success ? Number(row.pending_version) : null,
-    origin: pending?.success ? "pending" : active?.success ? "active" : "default",
+    pendingVersion: selected ? selected.version : pending?.success ? Number(row.pending_version) : null,
+    draftStatus: selected ? selected.status : pending?.success ? "pending_agency_review" : null,
+    origin: selected ? "selected" : pending?.success ? "pending" : active?.success ? "active" : "default",
   };
 }
 
@@ -276,7 +309,8 @@ export async function createConfigVersion(
      join agent_roles r on r.key = a.role_key
      join organizations o on o.id = a.org_id
      left join agent_config_versions active on active.id = a.active_config_version_id
-     where a.id = $1 and a.org_id = $2`,
+     where a.id = $1 and a.org_id = $2
+     for update of a`,
     [input.agentId, input.orgId],
   );
   const agent = agentRows[0];
@@ -356,6 +390,20 @@ export async function createConfigVersion(
   const versionId = rows[0].id;
   if (status === "applied") await activateVersion(db, input.orgId, input.agentId, versionId, compiled.settings.displayName);
 
+  // A newer submission replaces any earlier version that is still waiting for review. The earlier
+  // row stays in history with its original settings and flags, but it can no longer be approved in
+  // parallel with the newer submission. A saved draft (not submitted) does not replace a pending one.
+  let supersededPendingVersions: number[] = [];
+  if (status !== "draft") {
+    const { rows: superseded } = await db.query<{ version: number }>(
+      `update agent_config_versions set status = 'superseded'
+       where agent_instance_id = $1 and status = 'pending_agency_review' and id <> $2
+       returning version`,
+      [input.agentId, versionId],
+    );
+    supersededPendingVersions = superseded.map((row) => Number(row.version));
+  }
+
   const actor = input.userId
     ? (await db.query<{ role: string | null; platform_role: string | null }>(
         `select m.role, u.platform_role from users u
@@ -385,6 +433,7 @@ export async function createConfigVersion(
         actorRole: actor?.role ?? null,
         actorPlatformRole: actor?.platform_role ?? null,
         orgKind,
+        supersededPendingVersions,
       },
     },
     db,
@@ -402,7 +451,7 @@ export async function createConfigVersion(
         severity: "warning",
         title: `${AGENT_BY_KEY[agent.role_key].shortName} update is waiting for iAcquire review`,
         body: `${reason ? `The change was held for review: ${reason.label.toLowerCase()}. ` : "Part of the new instructions needs a person's review. "}iAcquire will review it before it's applied.`,
-        link: `/employees/${AGENT_BY_KEY[agent.role_key].slug}`,
+        link: `/employees/${AGENT_BY_KEY[agent.role_key].slug}?tab=history`,
         dedupeKey: `config-review-client:${versionId}`,
       });
       await notifyAgency(db, input.orgId, {
@@ -426,6 +475,7 @@ export async function createConfigVersion(
     riskFlags,
     decision,
     reasons: classification.reasons.map(({ match: _match, ...reason }) => reason),
+    supersededPendingVersions,
   };
 }
 
@@ -486,6 +536,9 @@ export async function decideHeldVersion(
   );
   const version = rows[0];
   if (!version) throw new AppError("conflict", "This version has already been reviewed.");
+  // Serialize decisions with configuration saves for the same employee. Without this lock a save
+  // could read the old active version while a review is applying a newer one and then overwrite it.
+  await db.query("select id from agent_instances where id = $1 and org_id = $2 for update", [version.agent_instance_id, input.orgId]);
   const review = buildHeldConfigReview(version);
   if (review.decision === "blocked") {
     throw new AppError("forbidden", "This version contains blocked content and can't be approved. Reject it and ask the submitter to revise it.");
@@ -511,6 +564,14 @@ export async function decideHeldVersion(
   const decided = updated[0];
   if (!decided) throw new AppError("conflict", "This version has already been reviewed.");
   if (input.approve) await activateVersion(db, input.orgId, decided.agent_instance_id, decided.id, agentSettingsSchema.parse(decided.settings).displayName);
+
+  // The review request is no longer actionable once a decision exists. Mark the original request
+  // read for every recipient so an old "needs review" item cannot linger as unread; the decision
+  // notification below is the new, accurate event.
+  await db.query(
+    "update notifications set read_at = coalesce(read_at, now()) where dedupe_key = any($1::text[]) and read_at is null",
+    [[`config-review-agency:${decided.id}`, `config-review-client:${decided.id}`]],
+  );
 
   await recordAudit(
     {

@@ -152,6 +152,7 @@ export function NotificationCenter({
         <PopoverTrigger asChild>
           <button
             type="button"
+            data-aqi-target="notifications.bell"
             className={cn(
               "relative flex size-10 items-center justify-center rounded-xl text-ink-2 transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
               open && "bg-surface-2 text-ink",
@@ -166,13 +167,13 @@ export function NotificationCenter({
             <AnimatePresence>
               {unread > 0 && (
                 // Scale only: the badge text is never partly transparent, so its contrast is the same at every moment of the entrance.
-                // Colours: white on the dark red in light mode (6.5:1) and the dark ink on the brighter red in dark mode (5.5:1).
+                // Colours: white on #b42328 in both themes (6.5:1).
                 <motion.span
                   initial={{ scale: 0.6 }}
                   animate={{ scale: 1 }}
                   exit={{ scale: 0.6 }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-ink px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg dark:bg-danger dark:text-danger-on"
+                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b42328] px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg"
                 >
                   {unreadLabel}
                 </motion.span>

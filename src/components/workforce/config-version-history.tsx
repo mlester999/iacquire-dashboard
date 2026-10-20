@@ -8,6 +8,7 @@ import {
   ChevronDown,
   History,
   Info,
+  Pencil,
   RotateCcw,
   ShieldCheck,
   UserRound,
@@ -45,6 +46,10 @@ export interface ConfigVersion {
   decided_by: string | null;
   created_by_name: string | null;
   decided_by_name: string | null;
+  /** Stored membership/platform role of the author, when it can be resolved. */
+  created_by_role?: string | null;
+  /** Stored membership/platform role of the reviewer, when it can be resolved. */
+  decided_by_role?: string | null;
   settings: AgentSettings | null;
 }
 
@@ -68,6 +73,30 @@ function historySourceLabel(source: string, isInternalWorkspace: boolean): strin
   return configVersionSourceLabel(source);
 }
 
+/** A verified stored role, worded safely for clients. Agency roles are not disguised as clients. */
+function actorRoleLabel(role: string | null | undefined, isInternalWorkspace: boolean): string | null {
+  if (!role) return null;
+  if (role === "owner" || role === "admin" || role === "member") return role.slice(0, 1).toUpperCase() + role.slice(1);
+  if (role === "agency_super_admin") return "Super Admin";
+  if (role === "agency_manager") return "Agency Manager";
+  if (role === "agency_staff") return isInternalWorkspace ? "Agency Staff" : "iAcquire team";
+  return role.replaceAll("_", " ");
+}
+
+function statusLabel(status: string, isInternalWorkspace: boolean): string {
+  if (status === "pending_agency_review") return isInternalWorkspace ? "Awaiting internal review" : "Awaiting review";
+  return configVersionStatus(status).label;
+}
+
+function decisionLabel(status: string): string {
+  if (status === "applied") return "Approved and applied";
+  if (status === "rejected") return "Not approved";
+  if (status === "pending_agency_review") return "Waiting for a reviewer";
+  if (status === "superseded") return "Replaced by a newer version";
+  if (status === "draft") return "Saved draft, not submitted";
+  return "No decision recorded";
+}
+
 function versionCardTone(status: string): string {
   if (status === "applied") return "border-success/30";
   if (status === "pending_agency_review" || status === "pending_approval") return "border-warning/35";
@@ -77,8 +106,7 @@ function versionCardTone(status: string): string {
 }
 
 /** Show the same human words the configuration form uses, not the stored enum value. */
-function diffValue(change: AgentSettingsChange, raw: string): string {
-  if (change.key === "tone") return TONE_COPY[raw as keyof typeof TONE_COPY]?.label ?? raw;
+function diffValue(change: AgentSettingsChange, raw: string): string {  if (change.key === "tone") return TONE_COPY[raw as keyof typeof TONE_COPY]?.label ?? raw;
   if (change.key === "replyLength") return LENGTH_COPY[raw as keyof typeof LENGTH_COPY]?.label ?? raw;
   if (change.key === "disabledTools" && raw !== "None") {
     return raw
@@ -114,6 +142,9 @@ export function ConfigVersionHistory({
   timeZone,
   initialNow,
   isInternalWorkspace = false,
+  draftVersion = null,
+  canEdit = false,
+  onEdit,
 }: {
   versions: ConfigVersion[];
   role: string;
@@ -121,6 +152,10 @@ export function ConfigVersionHistory({
   initialNow: number;
   /** Legacy internal saves were persisted as client_edit; label them from authenticated workspace context. */
   isInternalWorkspace?: boolean;
+  /** The unapplied version currently open in Configure, if any. */
+  draftVersion?: number | null;
+  canEdit?: boolean;
+  onEdit?: (versionId: string) => void;
 }) {
   const router = useRouter();
   const reduced = useReducedMotion();
@@ -149,6 +184,7 @@ export function ConfigVersionHistory({
   const active = versions.find((version) => version.status === "applied") ?? null;
   const pendingCount = versions.filter((version) => version.status === "pending_agency_review").length;
   const rejectedCount = versions.filter((version) => version.status === "rejected").length;
+  const latestPendingVersion = versions.reduce((max, version) => (version.status === "pending_agency_review" ? Math.max(max, version.version) : max), 0);
   const visible = versions.filter((version) => filter === "all" || version.status === filter);
 
   if (!versions.length) {
@@ -167,7 +203,7 @@ export function ConfigVersionHistory({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-aqi-target="workforce.employee.history">
       <CardHeader>
         <div className="min-w-0">
           <CardTitle className="flex items-center gap-2">
@@ -258,11 +294,16 @@ export function ConfigVersionHistory({
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <h3 className="text-[13.5px] font-semibold tracking-tight text-ink">Configuration version {version.version}</h3>
                             <StatusPill tone={status.tone} size="sm">
-                              {status.label}
+                              {statusLabel(version.status, isInternalWorkspace)}
                             </StatusPill>
                             <Badge tone="outline" className="h-5 px-2 text-[11px]">
                               {historySourceLabel(version.source, isInternalWorkspace)}
                             </Badge>
+                            {version.version === draftVersion && (
+                              <Badge tone="primary" className="h-5 px-2 text-[11px]">
+                                Editing now
+                              </Badge>
+                            )}
                           </div>
                           <NotificationTimestamp value={version.created_at} timeZone={timeZone} now={now} />
                         </div>
@@ -277,6 +318,12 @@ export function ConfigVersionHistory({
                             <span>Saved by a teammate whose profile isn&apos;t visible in this workspace</span>
                           ) : (
                             <span>Saved automatically</span>
+                          )}
+                          {actorRoleLabel(version.created_by_role, isInternalWorkspace) && (
+                            <>
+                              <span aria-hidden className="text-faint">·</span>
+                              <span>{actorRoleLabel(version.created_by_role, isInternalWorkspace)}</span>
+                            </>
                           )}
                           <span aria-hidden className="text-faint">·</span>
                           <span>{status.description}</span>
@@ -347,6 +394,20 @@ export function ConfigVersionHistory({
                                 <RotateCcw className="size-3.5" aria-hidden /> Restore this version
                               </Button>
                             )}
+                            {canEdit && onEdit && ["pending_agency_review", "rejected", "draft"].includes(version.status) && (
+                              latestPendingVersion > version.version && version.status !== "pending_agency_review" ? (
+                                <span className="text-[11px] text-muted">A newer version is awaiting review. Revise that version instead.</span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant={version.status === "rejected" ? "secondary" : "brand"}
+                                  onClick={() => onEdit(version.id)}
+                                >
+                                  <Pencil className="size-3.5" aria-hidden />
+                                  {version.status === "rejected" ? `Revise v${version.version}` : `Continue editing v${version.version}`}
+                                </Button>
+                              )
+                            )}
                           </div>
                         </div>
                       </div>
@@ -374,10 +435,16 @@ export function ConfigVersionHistory({
                                   <Meta
                                     label="Decision recorded by"
                                     value={
-                                      version.decided_by_name ??
-                                      (version.decided_by ? "A reviewer whose profile isn't visible in this workspace" : "No decision recorded")
+                                      <>
+                                        {version.decided_by_name ??
+                                          (version.decided_by ? "A reviewer whose profile isn't visible in this workspace" : "No decision recorded")}
+                                        {actorRoleLabel(version.decided_by_role, isInternalWorkspace) && (
+                                          <span className="text-muted"> · {actorRoleLabel(version.decided_by_role, isInternalWorkspace)}</span>
+                                        )}
+                                      </>
                                     }
                                   />
+                                  <Meta label="Decision" value={decisionLabel(version.status)} />
                                   <Meta label="Decision time" value={version.decided_at ? formatDateTime(version.decided_at, timeZone) : "No decision recorded"} />
                                   <Meta
                                     label="Recorded source"
@@ -420,7 +487,9 @@ export function ConfigVersionHistory({
                                   <p>No safety flags were recorded when this version was saved.</p>
                                 )}
                                 {version.status === "pending_agency_review" && (
-                                  <p className="mt-1.5 text-[12px]">It cannot be applied until an iAcquire reviewer approves it.</p>
+                                  <p className="mt-1.5 text-[12px]">
+                                    It cannot be applied until {isInternalWorkspace ? "an authorized internal reviewer" : "an iAcquire reviewer"} approves it.
+                                  </p>
                                 )}
                                 {version.status === "rejected" && (
                                   <p className="mt-1.5 text-[12px]">It was reviewed and not applied. The previous configuration stayed active.</p>
@@ -503,7 +572,11 @@ export function ConfigVersionHistory({
         open={Boolean(confirm)}
         onOpenChange={(open) => !open && setConfirm(null)}
         title={`Restore version ${confirm?.version}?`}
-        description="The current settings stay in history, so you can switch back later. The restore is saved as a new version."
+        description={
+          pendingCount > 0
+            ? "Restoring creates a new version and supersedes the change that is waiting for review. The row stays in history with its proposed settings preserved."
+            : "The current settings stay in history, so you can switch back later. The restore is saved as a new version."
+        }
         size="sm"
         footer={
           <>

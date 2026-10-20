@@ -219,9 +219,12 @@ describe("the registered jobs", () => {
     offboardingReminders: 360,
     crmWorkflowRecovery: 5,
     whatsappTemplateSync: 180,
-    setupEvidence: 15,
     aqiTutorialEventRetention: 1440,
   };
+
+  it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {
+    expect(JOBS.find((job) => job.name === "setupEvidence")?.everyMinutes).toBeUndefined();
+  });
 
   it("keeps every job's name unique and only the intended jobs on a slow rhythm", () => {
     const names = JOBS.map((job) => job.name);

@@ -14,10 +14,10 @@ import { extractDocumentText } from "@/server/knowledge/extract";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export const KNOWLEDGE_SECTIONS = [
-  { key: "business_description", label: "Business description", hint: "What you do, who you serve and what makes you different." },
-  { key: "products_services", label: "Products and services", hint: "What you sell, with short descriptions." },
-  { key: "faq", label: "Frequently asked questions", hint: "Common customer questions and your preferred answers." },
-  { key: "approved_pricing", label: "Approved prices", hint: "Only prices your AI team may quote. Leave empty to never quote prices." },
+  { key: "business_description", label: "Business description", hint: "Explain what your business does, who it serves, and what makes it different. Your authorized AI employees may use this as business context." },
+  { key: "products_services", label: "Products and services", hint: "List the products or services you provide. Include important limitations or conditions." },
+  { key: "faq", label: "Frequently asked questions", hint: "Add questions customers commonly ask, along with the answers your employees are allowed to provide." },
+  { key: "approved_pricing", label: "Approved prices", hint: "Only prices your AI team may quote. Leave empty if no AI employee should quote prices." },
   { key: "business_hours", label: "Business hours", hint: "Opening hours, holidays and response times." },
   { key: "policies", label: "Policies", hint: "Refunds, cancellations, guarantees and terms customers ask about." },
   { key: "customer_service", label: "Customer service procedures", hint: "How you handle complaints, follow-ups and special requests." },

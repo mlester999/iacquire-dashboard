@@ -1,6 +1,6 @@
 import type { AgentSettingsChange } from "@/lib/agent-settings";
 import type { AgentRoleKey } from "@/lib/agents";
-import type { ConfigDecision } from "@/lib/config-review";
+import type { ConfigDecision, ReviewReasonView } from "@/lib/config-review";
 
 export interface PreviewMessage {
   role: "user" | "assistant";
@@ -13,6 +13,11 @@ export interface ConfigPreviewSummary {
   summary: string;
   riskFlags: string[];
   decision: ConfigDecision;
+  /**
+   * The same authoritative review reasons the save path produces, so the form can warn before
+   * submission. Optional for callers that build a summary without a prior configuration.
+   */
+  reasons?: ReviewReasonView[];
   changed: AgentSettingsChange[];
   warnings: string[];
   knowledge: {

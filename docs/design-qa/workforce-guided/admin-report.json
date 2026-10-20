@@ -1,0 +1,73 @@
+{
+  "base": "http://127.0.0.1:3255",
+  "startedAt": "2026-10-20T09:10:07.588Z",
+  "checks": [
+    {
+      "name": "Super Admin sign-in",
+      "ok": true,
+      "detail": "http://127.0.0.1:3255/"
+    },
+    {
+      "name": "Super Admin notification bell in shell",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "agency notification inbox exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "agency review shows client and employee",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "agency review shows current applied version",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "compiled instruction evidence is available",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "axe admin client reviews light",
+      "ok": true,
+      "detail": "no WCAG A/AA violations"
+    },
+    {
+      "name": "decision dialog requires a note",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "decision dialog explains the audit trail",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "internal review queue is discoverable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "axe admin internal reviews light",
+      "ok": true,
+      "detail": "no WCAG A/AA violations"
+    }
+  ],
+  "screenshots": [
+    "docs\\design-qa\\workforce-guided\\admin-workforce-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\admin-notifications-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\admin-notification-bell-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\admin-client-reviews-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\admin-review-decision-dialog-light-1440.png",
+    "docs\\design-qa\\workforce-guided\\admin-internal-reviews-light-1440.png"
+  ],
+  "consoleErrors": [],
+  "failures": [],
+  "finishedAt": "2026-10-20T09:11:48.409Z",
+  "ok": true
+}

@@ -6,7 +6,15 @@ import { withSystem } from "@/server/db";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { agentSettingsSchema, diffAgentSettings, type AgentSettings } from "@/lib/agent-settings";
 import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
-import { decisionFromRiskFlags } from "@/lib/config-review";
+import {
+  classifyConfigChange,
+  configAttribution,
+  decisionFromRiskFlags,
+  describeRiskCodes,
+  redactReviewText,
+  type ConfigDecision,
+  type ReviewReasonView,
+} from "@/lib/config-review";
 import type { ConfigPreviewEvent, ConfigPreviewSummary, PreviewMessage } from "@/lib/workforce-types";
 import { AgentRunNotReadyError, getCapabilities, getRunStatus, HermesError, startAgentRun, stopRun, streamRunEvents, toolActivityLabel } from "@/server/integrations/hermes/client";
 import {
@@ -14,6 +22,7 @@ import {
   composeRunInstructions,
   currentSettings,
   getAgentByRole,
+  loadCompanyContext,
   loadConnection,
 } from "@/server/workforce/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -71,11 +80,57 @@ async function prepare(ctx: OrgContext, role: string, draft: unknown): Promise<P
   if (!agent) throw new AppError("not_found", "AI employee not found.");
   return withSystem(async (db) => {
     const { settings: active } = await currentSettings(db, agent.id, ctx.org.orgId);
+    const company = await loadCompanyContext(db, ctx.org.orgId);
     const { compiled, version } = await compileDraftConfig(db, ctx.org.orgId, agent.id, parsed.data);
     const run = await composeRunInstructions(db, ctx.org.orgId, agent.id, compiled.instructions, null);
     const conn = await loadConnection(db, agent.id);
     const warnings: string[] = [];
-    const decision = decisionFromRiskFlags(compiled.riskFlags);
+    const orgKind = ctx.org.kind === "agency" ? "agency" : "client";
+    const attribution = configAttribution({ orgKind, platformRole: ctx.user.platformRole });
+    // The preview uses the same classifier and the same previous applied settings as the save path,
+    // so the form can classify a change before submitting without inventing a second rules engine.
+    const classification = classifyConfigChange({
+      role,
+      previous: active,
+      next: parsed.data,
+      source: attribution.source,
+      actorKind: attribution.actorKind,
+      orgKind,
+      company,
+    });
+    const compiledDecision = decisionFromRiskFlags(compiled.riskFlags);
+    const decision: ConfigDecision =
+      classification.decision === "blocked" || compiledDecision === "blocked"
+        ? "blocked"
+        : classification.decision === "review_required" || compiledDecision === "review_required"
+          ? "review_required"
+          : "auto_apply";
+    const reasons: ReviewReasonView[] = [];
+    const seen = new Set<string>();
+    const classifiedCodes = new Set<string>();
+    for (const reason of classification.reasons) {
+      const key = `${reason.code}:${reason.field}`;
+      classifiedCodes.add(reason.code);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      reasons.push({
+        code: reason.code,
+        label: reason.label,
+        detail: reason.detail,
+        severity: reason.severity,
+        field: reason.field,
+        match: reason.match ? redactReviewText(reason.match) : undefined,
+      });
+    }
+    for (const reason of describeRiskCodes(compiled.riskFlags)) {
+      // The classifier already reported this code against the exact field. The compiled list repeats
+      // it without field context, which would show the same warning three times in the form.
+      if (classifiedCodes.has(reason.code)) continue;
+      if (seen.has(reason.code)) continue;
+      seen.add(reason.code);
+      reasons.push(reason);
+    }
+    const riskFlags = [...new Set([...classification.riskFlags, ...compiled.riskFlags])].sort();
     if (decision === "blocked") {
       warnings.push("Saving this draft would be blocked because it contains content platform security does not allow.");
     } else if (decision === "review_required") {
@@ -97,8 +152,9 @@ async function prepare(ctx: OrgContext, role: string, draft: unknown): Promise<P
         role,
         version,
         summary: compiled.summary,
-        riskFlags: compiled.riskFlags,
+        riskFlags,
         decision,
+        reasons,
         changed: diffAgentSettings(active, parsed.data),
         warnings,
         knowledge: {

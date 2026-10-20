@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
+import { GuidedField } from "@/components/ui/guided-field";
 import { Dialog, Menu, MenuContent, MenuItem, MenuTrigger, Segmented, Switch } from "@/components/ui/overlays";
 import { AvatarTile, InfoChip, RelativeTime, StatusPill } from "@/components/ui/status";
 import { IconTile, Notice, OptionCard, Panel, SaveBar, SettingRow } from "@/components/settings/panel";
@@ -57,6 +58,7 @@ import {
   updateUserProfileAction,
 } from "@/app/actions/settings";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AiPreferences, type ReplyLength } from "@/lib/agent-settings";
+import { COMPANY_FIELD_GUIDANCE, SHARED_EMPLOYEE_GUIDANCE } from "@/lib/employee-field-guidance";
 import { grantableRoles, ROLE_DESCRIPTIONS, ROLE_LABELS, type OrgRole } from "@/lib/permissions";
 import type { EmailPreference } from "@/lib/ops";
 import type { NotificationPrefsView } from "@/lib/notification-groups";
@@ -122,19 +124,19 @@ export function ProfileForms({
         bodyClassName="space-y-4"
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Company name" htmlFor="p-name">
-            <Input id="p-name" value={p.name} disabled={!canEdit} maxLength={120} onChange={(e) => setP({ ...p, name: e.target.value })} />
-          </Field>
-          <Field label="Industry" htmlFor="p-ind" optional>
-            <Input id="p-ind" value={p.industry} disabled={!canEdit} maxLength={120} onChange={(e) => setP({ ...p, industry: e.target.value })} />
-          </Field>
-          <Field label="Website" htmlFor="p-web" optional>
-            <Input id="p-web" value={p.website} disabled={!canEdit} maxLength={300} onChange={(e) => setP({ ...p, website: e.target.value })} />
-          </Field>
-          <Field label="Where you operate" htmlFor="p-region" optional>
-            <Input id="p-region" value={p.region} disabled={!canEdit} maxLength={200} onChange={(e) => setP({ ...p, region: e.target.value })} />
-          </Field>
-          <Field label="Workspace time zone" htmlFor="p-tz" hint="Used for appointments, analytics and timestamps.">
+          <GuidedField id="p-name" label="Company name" guidance={COMPANY_FIELD_GUIDANCE.companyName} required charLimit={120} valueLength={p.name.length}>
+            <Input value={p.name} disabled={!canEdit} maxLength={120} onChange={(e) => setP({ ...p, name: e.target.value })} />
+          </GuidedField>
+          <GuidedField id="p-ind" label="Industry" guidance={COMPANY_FIELD_GUIDANCE.industry} optional charLimit={120} valueLength={p.industry.length}>
+            <Input value={p.industry} disabled={!canEdit} maxLength={120} onChange={(e) => setP({ ...p, industry: e.target.value })} />
+          </GuidedField>
+          <GuidedField id="p-web" label="Website" guidance={COMPANY_FIELD_GUIDANCE.website} optional charLimit={300} valueLength={p.website.length}>
+            <Input value={p.website} disabled={!canEdit} maxLength={300} onChange={(e) => setP({ ...p, website: e.target.value })} />
+          </GuidedField>
+          <GuidedField id="p-region" label="Where you operate" guidance={COMPANY_FIELD_GUIDANCE.operatingArea} optional charLimit={200} valueLength={p.region.length}>
+            <Input value={p.region} disabled={!canEdit} maxLength={200} onChange={(e) => setP({ ...p, region: e.target.value })} />
+          </GuidedField>
+          <Field label="Workspace time zone" htmlFor="p-tz" hint="Used for appointments, analytics and timestamps. Changing it does not move existing appointments.">
             <Select id="p-tz" value={p.timezone} disabled={!canEdit} onChange={(e) => setP({ ...p, timezone: e.target.value })}>
               {zones.map((z) => (
                 <option key={z} value={z}>
@@ -143,23 +145,23 @@ export function ProfileForms({
               ))}
             </Select>
           </Field>
-          <Field label="Brand color" htmlFor="p-color" optional>
+          <Field label="Brand color" htmlFor="p-color" optional hint="Used for accents in customer-facing pages. Choose a colour with strong contrast against white.">
             <div className="flex gap-2">
               <input type="color" aria-label="Pick brand color" value={p.brandColor || "#2c5bff"} disabled={!canEdit} onChange={(e) => setP({ ...p, brandColor: e.target.value })} className="h-11 w-12 shrink-0 cursor-pointer rounded-xl border border-line-strong bg-surface p-1 shadow-soft disabled:opacity-60 sm:h-10" />
-              <Input id="p-color" value={p.brandColor} disabled={!canEdit} placeholder="#2C5BFF" maxLength={7} onChange={(e) => setP({ ...p, brandColor: e.target.value })} />
+              <Input id="p-color" value={p.brandColor} disabled={!canEdit} placeholder={COMPANY_FIELD_GUIDANCE.brandColor.example} maxLength={7} onChange={(e) => setP({ ...p, brandColor: e.target.value })} />
             </div>
           </Field>
         </div>
-        <Field label="What your business does" htmlFor="p-desc" optional>
-          <Textarea id="p-desc" rows={3} value={p.description} disabled={!canEdit} maxLength={4000} onChange={(e) => setP({ ...p, description: e.target.value })} />
-        </Field>
+        <GuidedField id="p-desc" label="What your business does" guidance={COMPANY_FIELD_GUIDANCE.description} optional charLimit={4000} valueLength={p.description.length}>
+          <Textarea rows={3} value={p.description} disabled={!canEdit} maxLength={4000} onChange={(e) => setP({ ...p, description: e.target.value })} />
+        </GuidedField>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Products & services" htmlFor="p-services" optional>
-            <Textarea id="p-services" rows={3} value={p.services} disabled={!canEdit} maxLength={4000} onChange={(e) => setP({ ...p, services: e.target.value })} />
-          </Field>
-          <Field label="Ideal customers" htmlFor="p-ideal" optional>
-            <Textarea id="p-ideal" rows={3} value={p.idealCustomers} disabled={!canEdit} maxLength={4000} onChange={(e) => setP({ ...p, idealCustomers: e.target.value })} />
-          </Field>
+          <GuidedField id="p-services" label="Products & services" guidance={COMPANY_FIELD_GUIDANCE.services} optional charLimit={4000} valueLength={p.services.length}>
+            <Textarea rows={3} value={p.services} disabled={!canEdit} maxLength={4000} onChange={(e) => setP({ ...p, services: e.target.value })} />
+          </GuidedField>
+          <GuidedField id="p-ideal" label="Ideal customers" guidance={COMPANY_FIELD_GUIDANCE.idealCustomers} optional charLimit={4000} valueLength={p.idealCustomers.length}>
+            <Textarea rows={3} value={p.idealCustomers} disabled={!canEdit} maxLength={4000} onChange={(e) => setP({ ...p, idealCustomers: e.target.value })} />
+          </GuidedField>
         </div>
       </Panel>
       <Panel
@@ -458,7 +460,19 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
           </p>
           <div role="radiogroup" aria-labelledby="pref-tone-label" className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
             {TONES.map((t) => (
-              <OptionCard key={t} selected={p.tone === t} disabled={!canEdit} onSelect={() => setP({ ...p, tone: t })} title={TONE_COPY[t].label} description={<>&ldquo;{TONE_COPY[t].example}&rdquo;</>} />
+              <OptionCard
+                key={t}
+                selected={p.tone === t}
+                disabled={!canEdit}
+                onSelect={() => setP({ ...p, tone: t })}
+                title={TONE_COPY[t].label}
+                description={
+                  <>
+                    <span className="block">{TONE_COPY[t].description}</span>
+                    <span className="mt-1 block italic">&ldquo;{TONE_COPY[t].example}&rdquo;</span>
+                  </>
+                }
+              />
             ))}
           </div>
         </div>
@@ -466,14 +480,14 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
           <Segmented id="pref-len" ariaLabel="Reply length" value={p.replyLength} onChange={(v: ReplyLength) => canEdit && setP({ ...p, replyLength: v })} options={(["concise", "balanced", "detailed"] as const).map((v) => ({ value: v, label: LENGTH_COPY[v].label }))} />
         </SettingRow>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Language" htmlFor="pref-lang">
-            <Select id="pref-lang" disabled={!canEdit} value={p.language} onChange={(e) => setP({ ...p, language: e.target.value as AiPreferences["language"] })}>
+          <GuidedField id="pref-lang" label="Language" guidance={SHARED_EMPLOYEE_GUIDANCE.language} optional>
+            <Select disabled={!canEdit} value={p.language} onChange={(e) => setP({ ...p, language: e.target.value as AiPreferences["language"] })}>
               {LANGUAGES.map((l) => (
                 <option key={l}>{l}</option>
               ))}
             </Select>
-          </Field>
-          <Field label="Conversation history retention" htmlFor="pref-ret" hint="Older conversations are deleted automatically.">
+          </GuidedField>
+          <Field label="Conversation history retention" htmlFor="pref-ret" hint="Older conversations are deleted automatically. This does not change the employee's long-term memory scope.">
             <Select id="pref-ret" disabled={!canEdit} value={r} onChange={(e) => setR(e.target.value)}>
               <option value="forever">Keep until deleted</option>
               <option value="365">1 year</option>
@@ -482,16 +496,16 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
             </Select>
           </Field>
         </div>
-        <Field label="Company rules" htmlFor="pref-rules" optional>
-          <Textarea id="pref-rules" rows={2} maxLength={1500} disabled={!canEdit} value={p.companyRules} onChange={(e) => setP({ ...p, companyRules: e.target.value })} />
-        </Field>
+        <GuidedField id="pref-rules" label="Company rules" guidance={SHARED_EMPLOYEE_GUIDANCE.companyRules} optional charLimit={1500} valueLength={p.companyRules.length}>
+          <Textarea rows={2} maxLength={1500} disabled={!canEdit} value={p.companyRules} onChange={(e) => setP({ ...p, companyRules: e.target.value })} />
+        </GuidedField>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Never promise" htmlFor="pref-never" optional>
-            <Textarea id="pref-never" rows={2} maxLength={1000} disabled={!canEdit} value={p.neverPromise} onChange={(e) => setP({ ...p, neverPromise: e.target.value })} />
-          </Field>
-          <Field label="Ask a human when…" htmlFor="pref-esc" optional>
-            <Textarea id="pref-esc" rows={2} maxLength={600} disabled={!canEdit} value={p.escalateWhen} onChange={(e) => setP({ ...p, escalateWhen: e.target.value })} />
-          </Field>
+          <GuidedField id="pref-never" label="Never promise" guidance={SHARED_EMPLOYEE_GUIDANCE.neverPromise} optional charLimit={1000} valueLength={p.neverPromise.length}>
+            <Textarea rows={2} maxLength={1000} disabled={!canEdit} value={p.neverPromise} onChange={(e) => setP({ ...p, neverPromise: e.target.value })} />
+          </GuidedField>
+          <GuidedField id="pref-esc" label="When to ask a human" guidance={SHARED_EMPLOYEE_GUIDANCE.escalateWhen} optional charLimit={600} valueLength={p.escalateWhen.length}>
+            <Textarea rows={2} maxLength={600} disabled={!canEdit} value={p.escalateWhen} onChange={(e) => setP({ ...p, escalateWhen: e.target.value })} />
+          </GuidedField>
         </div>
         {canEdit && (
           <SettingRow as="label" icon={<RefreshCw />} tone="primary" title="Apply to all configured employees now" description="Creates a new configuration version for each employee.">
