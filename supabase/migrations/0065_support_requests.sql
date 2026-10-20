@@ -17,7 +17,7 @@
 -- Internal notes, escalation details, response clocks and AI summaries live in rows no client policy can reach.
 --
 -- Non-destructive: nothing is dropped except check constraints that are re-created with a superset of values. All new columns are
--- nullable or defaulted, and existing rows keep working. Rollback: supabase/rollbacks/0064_support_requests.down.sql.
+-- nullable or defaulted, and existing rows keep working. Rollback: supabase/rollbacks/0065_support_requests.down.sql.
 
 -- ---------------------------------------------------------------------------
 -- Tickets

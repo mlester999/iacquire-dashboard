@@ -149,7 +149,7 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
             <div className="mt-3.5 flex flex-wrap items-center gap-2">
               <InfoChip icon={<CalendarClock aria-hidden />}>Sent {formatDateTime(t.createdAt, timeZone)}</InfoChip>
               {t.createdByName && <InfoChip icon={<UserRound aria-hidden />}>By {t.createdByName}</InfoChip>}
-              <InfoChip icon={<Clock3 aria-hidden />}>Updated {relativeTime(t.lastActivityAt)}</InfoChip>
+              <InfoChip icon={<Clock3 aria-hidden />}><span suppressHydrationWarning>Updated {relativeTime(t.lastActivityAt)}</span></InfoChip>
             </div>
           </div>
         </div>

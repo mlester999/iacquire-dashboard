@@ -1,6 +1,6 @@
 import { requireAgency } from "@/server/tenancy/context";
 import { loadAgencySupportCaps } from "@/server/support/access";
-import { loadSupportSettings, listNotificationRules } from "@/server/support/settings";
+import { loadSupportSettingsFresh, listNotificationRules } from "@/server/support/settings";
 import { SupportSubnav } from "@/components/admin/support/subnav";
 import { SettingsForm } from "@/components/admin/support/settings-form";
 import { env } from "@/server/env";
@@ -9,7 +9,8 @@ export const metadata = { title: "Request settings" };
 
 export default async function SupportSettingsPage() {
   const user = await requireAgency();
-  const [caps, settings, rules] = await Promise.all([loadAgencySupportCaps(user.id), loadSupportSettings(), listNotificationRules(user)]);
+  const [caps, settings, rules] = await Promise.all([loadAgencySupportCaps(user.id), loadSupportSettingsFresh(), listNotificationRules(user)]);
+  // loadSupportSettingsFresh above, not the cached read: the form must show, and carry the revision of, what is saved right now.
   return (
     <div className="module-stack">
       <div className="min-w-0">

@@ -169,7 +169,7 @@ export const PERMISSION_MATRIX = {
   "agency.crm.manage": row("agency_manager", "agency_super_admin"),
   "agency.support.view": row(...STAFF),
   "agency.support.manage": row(...STAFF),
-  // Granular support actions (migration 0064). Reading the broader queue, internal notes and resolving default on for every agency role;
+  // Granular support actions (migration 0065). Reading the broader queue, internal notes and resolving default on for every agency role;
   // assigning others, changing priority and viewing analytics default to Managers and Super Admins; settings are Super Admin only.
   "agency.support.queue": row(...STAFF),
   "agency.support.notes": row(...STAFF),

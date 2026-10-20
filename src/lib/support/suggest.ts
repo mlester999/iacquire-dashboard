@@ -99,10 +99,15 @@ export function suggestRequestKind(subject: string, text: string): KindSuggestio
 // Keeping secrets out of AI prompts
 // ---------------------------------------------------------------------------
 
-/** Removes only credentials: URLs with embedded passwords, API keys, JWTs and long token-like strings. Used wherever text is shared, not just sent to an AI. */
+/**
+ * Removes only credentials: URLs with embedded passwords, API keys, JWTs, long token-like strings and the value in a plain statement
+ * such as "my password is …" or "api key: …". Used wherever text is shared, not just sent to an AI. A value that merely follows the word
+ * ("the password is incorrect") is removed too: losing a word from a draft costs nothing, a leaked password does.
+ */
 export function redactSecrets(text: string): string {
   return text
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s/@]+:[^\s/@]+@[^\s]+/gi, "[link removed]")
+    .replace(/\b(password|passcode|passwd|pwd|api[ _-]?key|secret key|access token|auth token)(\s*(?:is|was|=|:)\s*)(["'`]?)[^\s"'`,;]{4,}\3/gi, "$1$2[secret removed]")
     .replace(/\b(?:sk|pk|rk|whsec|xox[bap]|ghp|gho)[-_][A-Za-z0-9_-]{8,}\b/g, "[secret removed]")
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/g, "[secret removed]")
     .replace(/\b[A-Za-z0-9+/_-]{32,}={0,2}\b/g, "[secret removed]");

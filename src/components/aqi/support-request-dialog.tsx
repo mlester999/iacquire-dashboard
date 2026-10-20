@@ -73,6 +73,18 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
     if (phase === "edit") subjectRef.current?.focus();
   }, [phase]);
 
+  // Escape closes the dialog, except while a send is in flight (closing then would hide whether the request was made).
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || phase === "sending") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [phase, onClose]);
+
   const categories = CATEGORIES_BY_TYPE[requestType];
   const changeType = (t: RequestType) => {
     setRequestType(t);
@@ -162,7 +174,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                         <ul className="mt-1.5 max-h-44 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-surface p-2.5 text-[12.5px] leading-relaxed" aria-label="Messages that would be shared">
                           {draft.excerpt.map((m, i) => <li key={i} className={cn("whitespace-pre-wrap break-words", m.role === "user" ? "text-ink" : "text-muted")}><strong className="font-medium">{m.role === "user" ? "Me" : "AQi"}:</strong> {m.text}</li>)}
                         </ul>
-                        <p className="mt-1.5 text-[11.5px] text-muted">Plus the page you were on: <code className="rounded bg-surface-3 px-1">{draft.pageContext}</code>. Passwords and keys are removed.</p>
+                        <p className="mt-1.5 text-[11.5px] text-muted">Plus the page you were on: <code className="rounded bg-surface-3 px-1 text-ink-2">{draft.pageContext}</code>. Passwords and keys are removed.</p>
                       </div>
                       <label className="flex items-start gap-2.5 text-[12.5px] leading-relaxed text-ink-2"><input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I agree to share these messages and this page with iAcquire support.</label>
                     </div>

@@ -127,7 +127,7 @@ export function AttachmentPicker({
   const full = items.length >= maxFiles;
   return (
     <div className="space-y-3">
-      <input ref={inputRef} id={inputId} type="file" multiple accept={ATTACHMENT_ACCEPT} className="sr-only" tabIndex={-1} disabled={disabled || full} onChange={(e) => { if (e.target.files) add(e.target.files); e.target.value = ""; }} />
+      <input ref={inputRef} id={inputId} type="file" multiple accept={ATTACHMENT_ACCEPT} aria-label={label} className="sr-only" tabIndex={-1} disabled={disabled || full} onChange={(e) => { if (e.target.files) add(e.target.files); e.target.value = ""; }} />
       <div
         onDragOver={(e) => { if (disabled || full) return; e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}

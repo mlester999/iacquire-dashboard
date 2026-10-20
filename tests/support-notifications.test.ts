@@ -3,7 +3,7 @@ import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { getRequestDetail, submitRequest, postClientMessage } from "@/server/support/service";
 import { agencyPostMessage, changePriority, changeRequestStatus, getAgencyRequest, listAgencyRequests } from "@/server/support/agency";
-import { loadSupportSettings, setNotificationRule, updateSupportSettings, listNotificationRules, type SupportSettingsPatch } from "@/server/support/settings";
+import { loadSupportSettings, loadSupportSettingsFresh, setNotificationRule, updateSupportSettings, listNotificationRules, type SupportSettingsPatch } from "@/server/support/settings";
 import { dispatchSupportNotice, flushSupportEmails } from "@/server/support/notify";
 import { checkResponseTargets } from "@/server/support/response-clock";
 import { autoCloseResolvedRequests, runResponseTargetCheck } from "@/server/support/jobs";
@@ -200,6 +200,18 @@ describe("response targets", () => {
     await expect(updateSupportSettings(w.agency.superAdmin, { approachingPercent: 80 }, rev)).rejects.toThrow(/Someone else changed/);
     expect((await loadSupportSettings()).approachingPercent).toBe(70);
     expect(await countRows("select 1 from audit_logs where action = 'support.settings_updated'")).toBeGreaterThanOrEqual(1);
+    await reset();
+  });
+
+  it("reads the saved row for the Settings page even when this process holds an older cached copy", async () => {
+    const before = await loadSupportSettings(); // warms the in-process cache
+    // Another server instance (or another bundle of this one) saves a change: only the row changes, this cache is not told.
+    await withSystem((db) => db.query("update support_settings set reopen_window_days = $1, revision = revision + 1 where id", [before.reopenWindowDays === 21 ? 14 : 21]));
+    expect((await loadSupportSettings()).reopenWindowDays).toBe(before.reopenWindowDays);
+    const fresh = await loadSupportSettingsFresh();
+    expect(fresh.reopenWindowDays).not.toBe(before.reopenWindowDays);
+    expect(fresh.revision).toBe(before.revision + 1);
+    expect((await loadSupportSettings()).revision).toBe(fresh.revision);
     await reset();
   });
 

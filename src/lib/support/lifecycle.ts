@@ -1,5 +1,5 @@
 // Support & Requests vocabulary shared by the server, the database tests and the interface. Pure data and functions only:
-// nothing here reads the database or the environment. supabase/migrations/0064_support_requests.sql mirrors the status
+// nothing here reads the database or the environment. supabase/migrations/0065_support_requests.sql mirrors the status
 // transition table and the category lists, and tests/support-lifecycle.test.ts fails if the two drift apart.
 
 export const REQUEST_TYPES = ["support", "issue", "feedback"] as const;

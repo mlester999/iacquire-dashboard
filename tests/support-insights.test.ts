@@ -44,6 +44,14 @@ describe("similar wording", () => {
     expect(redactForAi("Please fix my contacts page")).toBe("Please fix my contacts page");
   });
 
+  it("removes the value in a plain statement of a password or key, and leaves ordinary sentences alone", () => {
+    expect(redactSecrets("my password is hunter2-QA-ONLY, thanks")).toBe("my password is [secret removed], thanks");
+    expect(redactSecrets("Password: Tr0ub4dor&3")).toBe("Password: [secret removed]");
+    expect(redactSecrets('the api key = "abcd1234efgh"')).toBe('the api key = [secret removed]');
+    expect(redactSecrets("I forgot my password and need a reset")).toBe("I forgot my password and need a reset");
+    expect(redactSecrets("Please reset the passcode for Sam")).toBe("Please reset the passcode for Sam");
+  });
+
   it("flags risky wording in a drafted reply and explains the signals behind an escalation", () => {
     expect(draftWarnings("We will refund you within 2 days, guaranteed. Please send your password.")).toHaveLength(4);
     expect(draftWarnings("Thanks for the details. Could you tell me which calendar you use?")).toEqual([]);

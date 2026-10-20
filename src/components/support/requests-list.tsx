@@ -134,11 +134,11 @@ export function RequestsList({ data, counts, query, seesAll, timeZone }: {
                         <InfoChip>{REQUEST_TYPE_LABELS[r.requestType].label}</InfoChip>
                         {r.hasUnreadReply && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-white"><MessageSquarePlus className="size-3" aria-hidden /> New reply</span>}
                       </div>
-                      <h3 className="mt-2 line-clamp-2 break-words text-[15px] font-semibold leading-snug tracking-tight text-ink group-hover:text-primary-ink" title={r.subject}>{r.subject}</h3>
+                      <h2 className="mt-2 line-clamp-2 break-words text-[15px] font-semibold leading-snug tracking-tight text-ink group-hover:text-primary-ink" title={r.subject}>{r.subject}</h2>
                       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted">
                         <span>{categoryLabel(r.category)}</span>
                         <span className="inline-flex items-center gap-1"><CalendarClock className="size-3.5" aria-hidden /> Sent {formatDate(r.createdAt, timeZone)}</span>
-                        <span>Updated {relativeTime(r.lastActivityAt)}</span>
+                        <span suppressHydrationWarning>Updated {relativeTime(r.lastActivityAt)}</span>
                         {r.isAssigned && <span className="inline-flex items-center gap-1"><UserCheck className="size-3.5" aria-hidden /> With the iAcquire team</span>}
                         {seesAll && r.createdByName && <span>By {r.createdByName}</span>}
                       </div>

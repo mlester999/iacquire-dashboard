@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { AlertTriangle, BarChart3, CheckCircle2, Clock3, Flame, Inbox, RotateCcw, Timer, UserCheck, UserRound, Users } from "lucide-react";
 import { Card, EmptyState } from "@/components/ui/primitives";
-import { AreaChart, Columns, HBarList, StatTile } from "@/components/charts";
+import { Columns, HBarList, StatTile } from "@/components/charts";
+import { DayAreaChart } from "@/components/admin/support/day-chart";
 import { SectionLabel } from "@/components/ui/workspace";
 import { FEEDBACK_STAGE_LABELS, REQUEST_TYPE_LABELS, categoryLabel, featureLabel, statusLabelForAgency, type FeedbackStage, type RequestType } from "@/lib/support/lifecycle";
 import { sentenceCase } from "@/lib/utils";
@@ -15,6 +16,7 @@ const q = (params: Record<string, string | undefined>) => {
 
 function minutes(m: number | null): string {
   if (m === null) return "No data";
+  if (m < 1) return "Under 1 min";
   if (m < 90) return `${Math.round(m)} min`;
   if (m < 60 * 36) return `${(m / 60).toFixed(1).replace(/\.0$/, "")} hours`;
   return `${(m / 1440).toFixed(1).replace(/\.0$/, "")} days`;
@@ -87,7 +89,7 @@ export function AnalyticsView({ data, filterQuery }: { data: SupportAnalytics; f
         </Card>
         <Card className="p-5">
           <SectionLabel title="Resolved" description={`Resolved per ${data.range.bucket}`} />
-          {data.series.length && t.resolvedInRange > 0 ? <AreaChart data={data.series.map((b) => ({ x: b.bucket, y: b.resolved }))} formatX={dayLabel} unit="resolved" label="Requests resolved over time" /> : <EmptyState compact icon={<CheckCircle2 className="size-5" />} title="Nothing resolved in this period" description="Resolved requests appear here as they're closed out." />}
+          {data.series.length && t.resolvedInRange > 0 ? <DayAreaChart data={data.series.map((b) => ({ x: b.bucket, y: b.resolved }))} unit="resolved" label="Requests resolved over time" /> : <EmptyState compact icon={<CheckCircle2 className="size-5" />} title="Nothing resolved in this period" description="Resolved requests appear here as they're closed out." />}
         </Card>
       </section>
 

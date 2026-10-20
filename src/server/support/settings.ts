@@ -124,6 +124,16 @@ export async function loadSupportSettings(db?: Queryable): Promise<SupportSettin
   return value;
 }
 
+/**
+ * Reads the row and ignores the cache (refreshing it). For the Settings page and for edits: another server instance, or another bundle
+ * of this one, may have saved a change that the cached copy here has not seen, and a form built from it would show old values and
+ * carry an old revision.
+ */
+export async function loadSupportSettingsFresh(): Promise<SupportSettings> {
+  invalidateSupportSettings();
+  return loadSupportSettings();
+}
+
 export function scheduleOf(s: SupportSettings): ScheduleConfig {
   return { timezone: s.timezone, hours: s.businessHours, holidays: s.holidays, businessHoursOnly: s.businessHoursOnly };
 }
@@ -211,7 +221,7 @@ export async function updateSupportSettings(user: SessionUser, patch: SupportSet
         out[type] = v;
       }
     }
-    const current = await loadSupportSettings();
+    const current = await loadSupportSettingsFresh();
     add("default_priority", JSON.stringify({ ...current.defaultPriority, ...out }), "::jsonb");
   }
   const simple: Array<[keyof typeof p, string]> = [
@@ -221,7 +231,7 @@ export async function updateSupportSettings(user: SessionUser, patch: SupportSet
     ["stagedUploadTtlHours", "staged_upload_ttl_hours"], ["attachmentRetentionDays", "attachment_retention_days"], ["aiAssistEnabled", "ai_assist_enabled"],
   ];
   for (const [key, column] of simple) if (p[key] !== undefined) add(column, p[key]);
-  if (!sets.length) return loadSupportSettings();
+  if (!sets.length) return loadSupportSettingsFresh();
   const changed = [...simple.filter(([k]) => p[k] !== undefined).map(([k]) => k), ...(["timezone", "businessHours", "holidays", "firstResponseMinutes", "followUpMinutes", "defaultPriority"] as const).filter((k) => p[k] !== undefined)];
 
   const next = await withSystem(async (db) => {

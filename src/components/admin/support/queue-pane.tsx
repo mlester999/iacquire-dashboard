@@ -145,7 +145,7 @@ export function QueuePane({ items, total, page, pageSize, counts, query, options
                       {t.escalated && <Flame className="size-3.5 text-danger" aria-label="Escalated" />}
                       {t.clientWaiting && <span className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-white"><MessageSquarePlus className="size-2.5" aria-hidden /> Reply</span>}
                     </span>
-                    <span className="text-[11px] text-muted">{relativeTime(t.lastActivityAt)}</span>
+                    <span className="text-[11px] text-muted" suppressHydrationWarning>{relativeTime(t.lastActivityAt)}</span>
                   </div>
                   <div className="flex items-start gap-3">
                     <AvatarTile name={t.orgName} size="sm" className="mt-0.5" />

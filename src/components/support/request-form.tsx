@@ -134,14 +134,21 @@ export function RequestForm({
     }
   }
 
-  const hasContent = Boolean(values.subject || values.message || values.happened || values.expected || values.steps);
+  // The saved draft is only written after it has been read back, and only emptied once the person has actually edited the form, so the
+  // first render (which has nothing in it yet) can never wipe the draft that is about to be restored.
+  const edited = React.useRef(false);
+  const contentOf = (v: Values) => Boolean(v.subject || v.message || v.happened || v.expected || v.steps);
   const debouncedValues = useDebounced(values, 500);
   React.useEffect(() => {
-    if (sent) return;
-    store.write(storageKey, hasContent ? debouncedValues : null);
-  }, [debouncedValues, hasContent, sent, storageKey]);
+    if (sent || !draftChecked) return;
+    if (contentOf(debouncedValues)) store.write(storageKey, debouncedValues);
+    else if (edited.current) store.write(storageKey, null);
+  }, [debouncedValues, draftChecked, sent, storageKey]);
 
-  const set = <K extends keyof Values>(key: K, value: Values[K]) => setValues((v) => ({ ...v, [key]: value }));
+  const set = <K extends keyof Values>(key: K, value: Values[K]) => {
+    edited.current = true;
+    setValues((v) => ({ ...v, [key]: value }));
+  };
   const body = kind === "issue" ? values.happened : values.message;
 
   // Requests the person already has that read alike.
