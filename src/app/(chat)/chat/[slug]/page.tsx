@@ -47,7 +47,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       agentName={agent.display_name}
       status={agent.enabled ? agent.status : "disabled"}
       statusDetail={agent.last_health_detail}
-      replyLength={(applied?.settings.replyLength as ReplyLength) ?? "concise"}
+      replyLength={(applied?.settings?.replyLength as ReplyLength) ?? "concise"}
       canConfigure={ctx.can("agents.configure")}
       configured={Boolean(applied)}
       hasPendingReview={versions.some((v) => v.status === "pending_agency_review")}

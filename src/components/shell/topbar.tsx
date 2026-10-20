@@ -3,16 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
 import {
-  AlertTriangle,
-  Bell,
   ChevronRight,
   Search,
   Building2,
-  CheckCheck,
-  CheckCircle2,
-  Info,
   LogOut,
   Menu as MenuIcon,
   Monitor,
@@ -21,18 +15,18 @@ import {
   Sparkles,
   Sun,
   UserRound,
-  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
-import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
+import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from "@/components/ui/overlays";
 import { CLIENT_NAV } from "@/components/shell/sidebar";
 import { useLogoutConfirmation } from "@/components/auth/logout-confirmation";
 import { useTheme } from "@/components/providers";
 import { useShell } from "@/components/shell/shell-context";
-import { fetchNotificationsAction, markNotificationsReadAction, switchOrgAction } from "@/app/actions/shell";
-import { cn, initials, relativeTime } from "@/lib/utils";
+import { NotificationCenter } from "@/components/notifications/notification-center";
+import { switchOrgAction } from "@/app/actions/shell";
+import { cn, currentTime, initials } from "@/lib/utils";
 
 const TITLES: Array<[RegExp, string]> = [
   [/^\/overview/, "Overview"],
@@ -66,128 +60,6 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/our-work/, "Selected Work"],
   [/^\/maintenance/, "Maintenance"],
 ];
-
-type NotificationItem = Awaited<ReturnType<typeof fetchNotificationsAction>>["items"][number];
-
-const SEVERITY_ICON = {
-  info: <Info className="size-4 text-primary" />,
-  success: <CheckCircle2 className="size-4 text-success" />,
-  warning: <AlertTriangle className="size-4 text-warning" />,
-  critical: <XCircle className="size-4 text-danger" />,
-} as Record<string, React.ReactNode>;
-
-function NotificationsButton() {
-  const shell = useShell();
-  const router = useRouter();
-  const [open, setOpen] = React.useState(false);
-  const [items, setItems] = React.useState<NotificationItem[] | null>(null);
-  const [unread, setUnread] = React.useState(shell.unreadNotifications);
-
-  const load = React.useCallback(async () => {
-    try {
-      const res = await fetchNotificationsAction();
-      setItems(res.items);
-      setUnread(res.unread);
-    } catch {
-      /* keep previous state */
-    }
-  }, []);
-
-  React.useEffect(() => {
-    const t = setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 60000);
-    return () => clearInterval(t);
-  }, [load]);
-
-  const markAll = async () => {
-    await markNotificationsReadAction("all");
-    setUnread(0);
-    setItems((prev) => prev?.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })) ?? null);
-  };
-
-  const openItem = async (n: NotificationItem) => {
-    if (!n.read_at) {
-      void markNotificationsReadAction([n.id]);
-      setUnread((u) => Math.max(0, u - 1));
-    }
-    setOpen(false);
-    if (n.link) router.push(n.link);
-  };
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (o) void load();
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="relative flex size-10 items-center justify-center rounded-xl text-ink-2 transition hover:bg-surface-2 hover:text-ink"
-          aria-label={unread ? `Notifications, ${unread > 9 ? "9+" : unread} unread` : "Notifications"}
-        >
-          <Bell className="size-[19px]" />
-          <AnimatePresence>
-            {unread > 0 && (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-                className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-ink px-1 text-[10px] font-bold text-white dark:text-danger-on ring-2 ring-bg"
-              >
-                {unread > 9 ? "9+" : unread}
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(380px,calc(100vw-24px))] p-0">
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <p className="text-[14px] font-semibold">Notifications</p>
-          <button type="button" onClick={markAll} disabled={!unread} className="flex items-center gap-1.5 text-[12.5px] font-medium text-primary disabled:text-faint">
-            <CheckCheck className="size-3.5" /> Mark all read
-          </button>
-        </div>
-        <div className="scrollbar-thin max-h-[420px] overflow-y-auto p-1.5">
-          {items === null ? (
-            <div className="space-y-2 p-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="skeleton h-14 rounded-xl" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="px-6 py-10 text-center text-[13px] text-muted">You&apos;re all caught up.</div>
-          ) : (
-            items.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => openItem(n)}
-                className={cn("flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-surface-2", !n.read_at && "bg-primary-soft/50")}
-              >
-                <span className="mt-0.5">{SEVERITY_ICON[n.severity] ?? SEVERITY_ICON.info}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium leading-snug text-ink">{n.title}</span>
-                  {n.body && <span className="mt-0.5 line-clamp-2 block text-[12.5px] text-muted">{n.body}</span>}
-                  <span className="mt-1 block text-[11.5px] text-faint">{relativeTime(n.created_at)}</span>
-                </span>
-                {!n.read_at && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
-              </button>
-            ))
-          )}
-        </div>
-        <div className="border-t border-line p-2">
-          <Link href="/notifications" onClick={() => setOpen(false)} className="block rounded-lg py-2 text-center text-[13px] font-medium text-primary hover:bg-surface-2">
-            View all activity
-          </Link>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 function ThemeMenuItems() {
   const { theme, setTheme } = useTheme();
@@ -263,7 +135,13 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
             <Sparkles className="size-[18px] text-primary" />
           </Link>
         </Tooltip>
-        <NotificationsButton />
+        <NotificationCenter
+          initialUnread={shell.unreadNotifications}
+          initialNow={currentTime()}
+          timeZone={shell.org.timezone}
+          viewAllHref="/notifications"
+          settingsHref="/settings/notifications"
+        />
 
         <Menu>
           <MenuTrigger asChild>

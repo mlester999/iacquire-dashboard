@@ -2,109 +2,170 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Activity, AlertTriangle, ArrowUpRight, Bell, BookOpen, Bot, CalendarClock, CheckCheck, CheckCircle2, ClipboardCheck, CreditCard, FolderKanban, Gauge, Globe, Info, LifeBuoy, MessageSquareWarning, Plug, Radar, Search, ShieldCheck, Siren, Workflow, Wrench, X, XCircle, UserRound, Settings2 } from "lucide-react";
+import { AlertTriangle, Bell, RefreshCw, Search, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, EmptyState, Input } from "@/components/ui/primitives";
-import { InfoChip, StatusPill } from "@/components/ui/status";
-import { FilterTabs, IconTile, type PanelTone } from "@/components/settings/panel";
-import { markNotificationsReadAction } from "@/app/actions/shell";
-import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
-
-interface Item {
-  id: string;
-  kind: string;
-  severity: string;
-  title: string;
-  body: string | null;
-  link: string | null;
-  read_at: string | null;
-  created_at: string;
-}
-
-const SEVERITY: Record<string, { tone: PanelTone; icon: React.ReactNode; label: string | null }> = {
-  info: { tone: "primary", icon: <Info />, label: null },
-  success: { tone: "success", icon: <CheckCircle2 />, label: null },
-  warning: { tone: "warning", icon: <AlertTriangle />, label: "Needs attention" },
-  critical: { tone: "danger", icon: <XCircle />, label: "Critical" },
-};
-
-/** The first word of a notification kind says which part of the product it came from. */
-const KIND_ICON: Record<string, React.ReactNode> = {
-  booking: <CalendarClock />,
-  setup: <ClipboardCheck />,
-  message: <MessageSquareWarning />,
-  agent: <Bot />,
-  lead: <Radar />,
-  escalation: <Siren />,
-  workflow: <Workflow />,
-  knowledge: <BookOpen />,
-  support: <LifeBuoy />,
-  integration: <Plug />,
-  approval: <ShieldCheck />,
-  project: <FolderKanban />,
-  maintenance: <Wrench />,
-  billing: <CreditCard />,
-  website: <Globe />,
-  domain: <Globe />,
-  incident: <Activity />,
-  retention: <UserRound />,
-  account: <UserRound />,
-  fair: <Gauge />,
-  usage: <Gauge />,
-  system: <Settings2 />,
-};
+import { Card, EmptyState, Input, Select } from "@/components/ui/primitives";
+import { FilterTabs } from "@/components/settings/panel";
+import { NotificationRow } from "@/components/notifications/notification-row";
+import { fetchNotificationsAction, markNotificationsReadAction } from "@/app/actions/shell";
+import {
+  notificationCategory,
+  notificationGroupLabel,
+  presentNotificationCategories,
+  type NotificationListItem,
+} from "@/lib/notification-presentation";
 
 type Filter = "all" | "unread" | "attention";
 
-const needsAttention = (n: Item) => n.severity === "warning" || n.severity === "critical";
+const needsAttention = (item: NotificationListItem) => item.severity === "warning" || item.severity === "critical";
 
-function dayKey(value: string | number, timeZone: string) {
-  try {
-    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
-  } catch {
-    return new Date(value).toISOString().slice(0, 10);
-  }
+function uniqueById(items: NotificationListItem[]): NotificationListItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
-/** Today, Yesterday, the last week, then one group per month, so a long inbox reads as a timeline. */
-function groupLabel(iso: string, timeZone: string, now: number) {
-  const key = dayKey(iso, timeZone);
-  if (key === dayKey(now, timeZone)) return "Today";
-  if (key === dayKey(now - 86_400_000, timeZone)) return "Yesterday";
-  if (new Date(iso).getTime() > now - 7 * 86_400_000) return "Last 7 days";
-  try {
-    return new Intl.DateTimeFormat("en-US", { timeZone, month: "long", year: "numeric" }).format(new Date(iso));
-  } catch {
-    return "Earlier";
-  }
-}
-
-export function NotificationList({ items, timeZone }: { items: Item[]; timeZone: string }) {
+/**
+ * The full notification inbox. It shares the row, category and timestamp vocabulary with the bell,
+ * and pages older updates with a keyset cursor supplied by the server action.
+ */
+export function NotificationList({
+  items,
+  timeZone,
+  initialNow,
+  hasMore,
+  nextBefore,
+  nextBeforeId,
+  description,
+}: {
+  items: NotificationListItem[];
+  timeZone: string;
+  initialNow: number;
+  hasMore: boolean;
+  nextBefore: string | null;
+  nextBeforeId: string | null;
+  description?: string;
+}) {
   const router = useRouter();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
-  const [pending, start] = React.useTransition();
-  const [now] = React.useState(() => Date.now());
-  const unread = items.filter((i) => !i.read_at).length;
-  const attention = items.filter(needsAttention).length;
+  const [category, setCategory] = React.useState("all");
+  const [readIds, setReadIds] = React.useState<Set<string>>(() => new Set());
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [markingAll, setMarkingAll] = React.useState(false);
+  const [extra, setExtra] = React.useState<NotificationListItem[]>([]);
+  const [cursor, setCursor] = React.useState({ hasMore, before: nextBefore, beforeId: nextBeforeId });
+  const [loadingOlder, setLoadingOlder] = React.useState(false);
+  const [olderError, setOlderError] = React.useState<string | null>(null);
+  const [now, setNow] = React.useState(initialNow);
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const all = React.useMemo(() => uniqueById([...items, ...extra]), [items, extra]);
+  const isRead = React.useCallback((item: NotificationListItem) => Boolean(item.read_at) || readIds.has(item.id), [readIds]);
+  const unread = all.filter((item) => !isRead(item)).length;
+  const attention = all.filter(needsAttention).length;
+  const categories = React.useMemo(() => presentNotificationCategories(all.map((item) => item.kind)), [all]);
   const needle = query.trim().toLowerCase();
-  const list = items.filter((i) => (filter === "all" || (filter === "unread" && !i.read_at) || (filter === "attention" && needsAttention(i))) && `${i.title} ${i.body ?? ""} ${i.kind.replaceAll("_", " ")}`.toLowerCase().includes(needle));
-  const groups: Array<{ label: string; items: Item[] }> = [];
-  for (const n of list) {
-    const label = groupLabel(n.created_at, timeZone, now);
+
+  const list = all.filter((item) => {
+    if (filter === "unread" && isRead(item)) return false;
+    if (filter === "attention" && !needsAttention(item)) return false;
+    if (category !== "all" && notificationCategory(item.kind).key !== category) return false;
+    if (!needle) return true;
+    const haystack = `${item.title} ${item.body ?? ""} ${item.kind.replaceAll("_", " ")} ${notificationCategory(item.kind).label}`.toLowerCase();
+    return haystack.includes(needle);
+  });
+
+  const groups: Array<{ label: string; items: NotificationListItem[] }> = [];
+  for (const item of list) {
+    const label = notificationGroupLabel(item.created_at, timeZone, now);
     const last = groups[groups.length - 1];
-    if (last && last.label === label) last.items.push(n);
-    else groups.push({ label, items: [n] });
+    if (last && last.label === label) last.items.push(item);
+    else groups.push({ label, items: [item] });
   }
+
+  const markAll = async () => {
+    if (!unread || markingAll) return;
+    const previousReadIds = readIds;
+    setMarkingAll(true);
+    // Mark the rows already on screen; rows that arrive later keep the read_at value the server gives
+    // them, so a notification received after "mark all" is correctly unread.
+    setReadIds(new Set(all.map((item) => item.id)));
+    try {
+      const res = await markNotificationsReadAction("all");
+      if (!res.ok) throw new Error(res.error);
+      toast.success("All notifications marked as read.");
+      router.refresh();
+    } catch {
+      setReadIds(previousReadIds);
+      toast.error("Couldn't mark notifications as read. Please try again.");
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  const openItem = async (item: NotificationListItem) => {
+    if (!isRead(item) && !busyId) {
+      setBusyId(item.id);
+      setReadIds((current) => new Set(current).add(item.id));
+      try {
+        const res = await markNotificationsReadAction([item.id]);
+        if (!res.ok) throw new Error(res.error);
+      } catch {
+        setReadIds((current) => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
+        setBusyId(null);
+        toast.error("Couldn't open that notification. Please try again.");
+        return;
+      }
+      setBusyId(null);
+    }
+    if (item.link) router.push(item.link);
+    else router.refresh();
+  };
+
+  const loadOlder = async () => {
+    if (!cursor.hasMore || !cursor.before || loadingOlder) return;
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const res = await fetchNotificationsAction({ limit: 30, before: cursor.before, beforeId: cursor.beforeId });
+      if (!res.ok) throw new Error(res.error);
+      setExtra((current) => uniqueById([...current, ...res.items]));
+      setCursor({ hasMore: res.hasMore, before: res.nextBefore, beforeId: res.nextBeforeId });
+    } catch {
+      setOlderError("Couldn't load older notifications.");
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setFilter("all");
+    setQuery("");
+    setCategory("all");
+  };
+
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line bg-surface-2/40 p-3 sm:p-4">
         <FilterTabs
-          label="Filter updates"
+          label="Filter notifications"
           value={filter}
           onChange={setFilter}
           options={[
-            { value: "all", label: "All", count: items.length },
+            { value: "all", label: "All", count: all.length },
             { value: "unread", label: "Unread", count: unread },
             { value: "attention", label: "Needs attention", count: attention },
           ]}
@@ -112,99 +173,125 @@ export function NotificationList({ items, timeZone }: { items: Item[]; timeZone:
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
           <div className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-            <Input aria-label="Search notifications" placeholder="Find an update…" className="rounded-full pl-10 pr-9" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <Input
+              aria-label="Search notifications"
+              placeholder="Find an update…"
+              className="rounded-full pl-10 pr-9"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
             {query && (
-              <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full text-muted hover:bg-surface-3 hover:text-ink">
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setQuery("")}
+                className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full text-muted hover:bg-surface-3 hover:text-ink"
+              >
                 <X className="size-3.5" />
               </button>
             )}
           </div>
+          {categories.length > 1 && (
+            <div className="w-full sm:w-44">
+              <Select
+                aria-label="Filter by notification type"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                className="h-10 rounded-xl text-[13px]"
+              >
+                <option value="all">All types</option>
+                {categories.map((entry) => (
+                  <option key={entry.key} value={entry.key}>
+                    {entry.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <Button
             size="sm"
             variant="secondary"
-            loading={pending}
+            loading={markingAll}
             disabled={unread === 0}
-            onClick={() =>
-              start(async () => {
-                await markNotificationsReadAction("all");
-                router.refresh();
-              })
-            }
+            onClick={() => void markAll()}
+            aria-label="Mark all notifications as read"
           >
-            <CheckCheck className="size-4" aria-hidden /> Mark all read
+            Mark all read
           </Button>
         </div>
       </div>
+
+      {description && (
+        <p className="border-b border-line bg-surface px-4 py-2.5 text-[12px] leading-relaxed text-muted sm:px-5">{description}</p>
+      )}
+
       {list.length === 0 ? (
         <EmptyState
           icon={<Bell className="size-5" />}
-          title={query ? "No matching updates" : filter === "unread" ? "You’re all caught up" : filter === "attention" ? "Nothing needs attention" : "Your updates will appear here"}
-          description={query ? "Try another word or clear the search." : "Setup milestones, support replies and decisions stay together in this activity inbox."}
-          action={(query || filter !== "all") && <Button size="sm" variant="soft" onClick={() => { setQuery(""); setFilter("all"); }}>Show all updates</Button>}
+          title={query || category !== "all" || filter !== "all" ? "No matching updates" : "Your notifications will appear here"}
+          description={
+            query || category !== "all" || filter !== "all"
+              ? "Try a different filter, or clear your search to see everything."
+              : "Configuration reviews, support replies, onboarding milestones and operational alerts stay together in this inbox."
+          }
+          action={
+            (query || category !== "all" || filter !== "all") && (
+              <Button size="sm" variant="soft" onClick={clearFilters}>
+                Show all notifications
+              </Button>
+            )
+          }
           compact
         />
       ) : (
         <div>
-          {groups.map((g) => (
-            <section key={g.label} aria-label={g.label} className="[&:not(:first-child)>h3]:border-t">
+          {groups.map((group) => (
+            <section key={group.label} aria-label={group.label} className="[&:not(:first-child)>h3]:border-t">
               <h3 className="flex items-center gap-2 border-b border-line bg-surface-2/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted sm:px-5">
-                {g.label}
-                <span className="rounded-md bg-surface px-1.5 py-0.5 text-[11px] font-semibold tabular-nums tracking-normal text-ink-2 ring-1 ring-inset ring-line">{g.items.length}</span>
+                {group.label}
+                <span className="rounded-md bg-surface px-1.5 py-0.5 text-[11px] font-semibold tabular-nums tracking-normal text-ink-2 ring-1 ring-inset ring-line">
+                  {group.items.length}
+                </span>
               </h3>
               <ul className="divide-y divide-line">
-                {g.items.map((n) => (
-                  <li key={n.id}>
+                {group.items.map((item) => (
+                  <li key={item.id}>
                     <NotificationRow
-                      n={n}
+                      item={item}
                       timeZone={timeZone}
                       now={now}
-                      onOpen={async () => {
-                        if (!n.read_at) await markNotificationsReadAction([n.id]);
-                        if (n.link) router.push(n.link);
-                        else router.refresh();
-                      }}
+                      unread={!isRead(item)}
+                      busy={busyId === item.id}
+                      variant="full"
+                      onOpen={() => void openItem(item)}
                     />
                   </li>
                 ))}
               </ul>
             </section>
           ))}
+
+          <div className="flex flex-col items-center gap-2 border-t border-line bg-surface-2/30 px-4 py-4">
+            {olderError && (
+              <p className="flex items-center gap-1.5 text-[12px] text-danger-ink" role="alert">
+                <AlertTriangle className="size-3.5" aria-hidden /> {olderError}
+              </p>
+            )}
+            {cursor.hasMore ? (
+              <Button size="sm" variant="secondary" loading={loadingOlder} onClick={() => void loadOlder()}>
+                {loadingOlder ? "Loading…" : "Load older notifications"}
+              </Button>
+            ) : (
+              <p className="flex items-center gap-1.5 text-[11.5px] text-faint">
+                <RefreshCw className="size-3" aria-hidden /> You&apos;re at the beginning of your notification history.
+              </p>
+            )}
+            <p className="sr-only" aria-live="polite">
+              {list.length} notifications shown, {unread} unread
+            </p>
+          </div>
         </div>
       )}
     </Card>
-  );
-}
-
-function NotificationRow({ n, timeZone, now, onOpen }: { n: Item; timeZone: string; now: number; onOpen: () => void }) {
-  const sev = SEVERITY[n.severity] ?? SEVERITY.info;
-  const isUnread = !n.read_at;
-  const kindIcon = KIND_ICON[n.kind.split("_")[0]] ?? <Bell />;
-  return (
-    <button type="button" onClick={onOpen} className={cn("management-row group relative flex w-full items-start gap-3.5 px-4 py-3.5 text-left sm:px-5", isUnread && "bg-primary-soft/30")}>
-      {isUnread && <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-primary" />}
-      <IconTile icon={sev.icon} tone={sev.tone} />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-start justify-between gap-3">
-          <span className={cn("block min-w-0 text-[14px] leading-snug text-ink", isUnread ? "font-semibold" : "font-medium")}>
-            {isUnread && <span className="sr-only">Unread: </span>}
-            {n.title}
-          </span>
-          <span className="hidden shrink-0 items-center gap-2 pt-0.5 sm:flex">
-            <time dateTime={n.created_at} title={formatDateTime(n.created_at, timeZone)} className="whitespace-nowrap text-[12px] tabular-nums text-muted">
-              {relativeTime(n.created_at, now)}
-            </time>
-            {n.link ? <ArrowUpRight className="size-4 text-faint transition group-hover:text-ink" aria-hidden /> : <span className="size-4" aria-hidden />}
-          </span>
-        </span>
-        {n.body && <span className="mt-1 line-clamp-2 block text-[13px] leading-relaxed text-muted">{n.body}</span>}
-        <span className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <InfoChip icon={kindIcon}>{sentenceCase(n.kind)}</InfoChip>
-          {sev.label && <StatusPill size="sm" tone={sev.tone}>{sev.label}</StatusPill>}
-          <time dateTime={n.created_at} className="ml-auto text-[12px] tabular-nums text-muted sm:hidden">
-            {relativeTime(n.created_at, now)}
-          </time>
-        </span>
-      </span>
-    </button>
   );
 }

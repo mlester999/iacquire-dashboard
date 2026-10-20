@@ -5,6 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * A request-stable "now" for server components and render-time props.
+ *
+ * Relative timestamps need one instant shared by the server render and hydration. Reading it through
+ * this helper keeps that explicit and gives the React purity lint a single, intentional boundary.
+ */
+export function currentTime() {
+  return Date.now();
+}
+
 export function initials(name: string | null | undefined, fallback = "?") {
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return fallback;
