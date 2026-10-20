@@ -6,6 +6,7 @@ import { env } from "@/server/env";
 import { SupabaseConfigError, supabaseConfigStatus } from "@/server/supabase/config";
 import { loadDatabaseCa, planPostgresTls } from "@/server/db/tls";
 import { OperationFailure } from "@/server/diagnostics";
+import { attachPoolErrorHandlers } from "@/server/db/pool-errors";
 
 export interface QueryResult<T> {
   rows: T[];
@@ -83,6 +84,8 @@ async function createPostgresDriver(connectionString: string): Promise<Driver> {
   }
   if (tls.warning) console.warn(`[iacquire] ${tls.warning}`);
   const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: Math.max(1, Number(process.env.DATABASE_POOL_MAX) || 4), idleTimeoutMillis: 10000 });
+  // A dropped connection must be an error for the query that was using it, never an uncaught exception that ends the process.
+  attachPoolErrorHandlers(pool);
   const query = async <T>(operation: string, run: () => Promise<T>): Promise<T> => {
     try {
       return await run();
