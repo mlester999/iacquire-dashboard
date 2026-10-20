@@ -19,5 +19,6 @@ drop index if exists audit_logs_action_created_idx;
 drop table if exists aqi_ops_briefings;
 drop table if exists aqi_ops_briefing_settings;
 drop table if exists aqi_ops_actions;
+drop index if exists aqi_conversations_ops_retention_idx;
 drop index if exists aqi_conversations_surface_idx;
 alter table aqi_conversations drop column if exists surface;

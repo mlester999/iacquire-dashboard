@@ -11,7 +11,7 @@ import { checkLivePublications } from "@/server/websites/health";
 import { runAllCollectors } from "@/server/ops/collectors";
 import { escalateUnacknowledged } from "@/server/ops/incidents";
 import { deliverNotificationEmails } from "@/server/ops/notification-email";
-import { runJob, withinInterval } from "@/server/ops/jobs";
+import { runJob } from "@/server/ops/jobs";
 import { sendDueReminders } from "@/server/appointments/reminders";
 import { expireBookingHolds } from "@/server/appointments/holds";
 import { expireAllStaleApprovals } from "@/server/approvals/service";
@@ -31,13 +31,18 @@ import { processCampaigns } from "@/server/crm/campaigns/job";
 import { processFormSubmissions } from "@/server/crm/forms/process";
 import { reconcileAllSetupInstances } from "@/server/setup/automation";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
-import { runDueBriefings } from "@/server/aqi/ops/briefings";
+import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 
 export interface ScheduledJob {
   name: string;
   run: () => Promise<number>;
+  /**
+   * A slow rhythm: the job runs on a tick only if this many minutes have passed since its previous run started (see runJob). Absent
+   * means it runs on every tick. The interval is an elapsed time, not a calendar slot, so it does not depend on a time zone.
+   */
+  everyMinutes?: number;
 }
 
 /**
@@ -101,28 +106,30 @@ export const JOBS: ScheduledJob[] = [
   // and removing files nobody sent. Targets, auto-close and retention do nothing until the Super Admin turns them on.
   { name: "supportResponseTargets", run: () => runResponseTargetCheck() },
   { name: "supportEmails", run: () => runSupportEmails() },
-  { name: "supportAutoClose", run: async () => ((await withinInterval("supportAutoClose", 60)) ? 0 : await autoCloseResolvedRequests()) },
-  { name: "supportAttachmentCleanup", run: async () => ((await withinInterval("supportAttachmentCleanup", 60)) ? 0 : await runAttachmentCleanup()) },
-  // Slower rhythms: each is skipped (returning 0) until enough time has passed since its last successful run.
-  { name: "fairUseChecks", run: async () => ((await withinInterval("fairUseChecks", 60)) ? 0 : (await runFairUseChecks()).checked) },
-  { name: "inactivityReview", run: async () => ((await withinInterval("inactivityReview", 360)) ? 0 : (await runInactivityReview()).notified) },
-  { name: "offboardingReminders", run: async () => ((await withinInterval("offboardingReminders", 360)) ? 0 : await sendDeletionReminders()) },
+  { name: "supportAutoClose", everyMinutes: 60, run: () => autoCloseResolvedRequests() },
+  { name: "supportAttachmentCleanup", everyMinutes: 60, run: () => runAttachmentCleanup() },
+  // Slower rhythms: each runs only when `everyMinutes` have passed since its previous run started; the ticks in between record nothing.
+  { name: "fairUseChecks", everyMinutes: 60, run: async () => (await runFairUseChecks()).checked },
+  { name: "inactivityReview", everyMinutes: 360, run: async () => (await runInactivityReview()).notified },
+  { name: "offboardingReminders", everyMinutes: 360, run: () => sendDeletionReminders() },
   // Workflow runs a stopped worker left behind go back to the queue, and runs whose step approval lapsed are cancelled.
-  { name: "crmWorkflowRecovery", run: async () => { if (await withinInterval("crmWorkflowRecovery", 5)) return 0; const r = await recoverAbandonedRuns(); return r.recovered + r.lapsed; } },
+  { name: "crmWorkflowRecovery", everyMinutes: 5, run: async () => { const r = await recoverAbandonedRuns(); return r.recovered + r.lapsed; } },
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
-  { name: "whatsappTemplateSync", run: async () => ((await withinInterval("whatsappTemplateSync", 180)) ? 0 : (await syncAllWhatsappTemplates()).synced) },
+  { name: "whatsappTemplateSync", everyMinutes: 180, run: async () => (await syncAllWhatsappTemplates()).synced },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
   // matching setup steps within fifteen minutes. Recorded evidence only: no provider is contacted.
-  { name: "setupEvidence", run: async () => ((await withinInterval("setupEvidence", 15)) ? 0 : await reconcileAllSetupInstances()) },
+  { name: "setupEvidence", everyMinutes: 15, run: () => reconcileAllSetupInstances() },
   // AQi tutorial analytics retention: bounded to 500 events per run, never deletes progress, and
   // keeps events for people still in progress. It runs only when an external scheduler calls the
   // tick endpoint; registering the job does not create a cron.
-  { name: "aqiTutorialEventRetention", run: async () => ((await withinInterval("aqiTutorialEventRetention", 1440)) ? 0 : (await purgeExpiredAqiTutorialEvents()).deleted) },
+  { name: "aqiTutorialEventRetention", everyMinutes: 1440, run: async () => (await purgeExpiredAqiTutorialEvents()).deleted },
   // AQi Operations briefings and critical alerts. Nothing is generated for an administrator who has not opted in; each briefing is keyed
-  // per person and local day (or incident), so running on every tick is cheap and can never duplicate. Not gated by withinInterval.
+  // per person and local day (or incident), so running on every tick is cheap and can never duplicate. Not interval-gated: the daily
+  // and weekly slots are decided per person, in their own time zone, inside the job.
   { name: "aqiOperationsBriefings", run: async () => { const r = await runDueBriefings(); return r.generated + r.suppressed + r.alerts; } },
-  // Investigation history older than 180 days is removed, 100 at a time. Confirmed actions stay in aqi_ops_actions and the audit log.
-  { name: "aqiOperationsRetention", run: () => purgeExpiredOpsConversations() },
+  // Investigation history and stored briefings older than 180 days are removed, 100 of each at a time. Confirmed actions stay in
+  // aqi_ops_actions and the audit log.
+  { name: "aqiOperationsRetention", run: async () => (await purgeExpiredOpsConversations()) + (await purgeExpiredBriefings()) },
 ];
 
 /**
@@ -160,15 +167,19 @@ export async function finishSchedulerTick(ok: boolean, error: string | null = nu
   ).catch(() => undefined);
 }
 
-export async function runScheduledJobs(): Promise<Record<string, number | string>> {
+/**
+ * One pass over the jobs. `now` and `jobs` exist for tests (a simulated clock and a controlled job list); the endpoint passes neither.
+ * A job that was not due is reported as "skipped" (running: another tick holds it) and leaves no trace in its heartbeat.
+ */
+export async function runScheduledJobs(now?: Date, jobs: readonly ScheduledJob[] = JOBS): Promise<Record<string, number | string>> {
   const ran: Record<string, number | string> = {};
   const outcome = await runJob("tick", async () => {
-    for (const job of JOBS) {
-      const r = await runJob(job.name, job.run, (n) => ({ processed: n }));
-      ran[job.name] = r.ok ? r.value : "failed";
+    for (const job of jobs) {
+      const r = await runJob(job.name, job.run, (n) => ({ processed: n }), { everyMinutes: job.everyMinutes, now });
+      ran[job.name] = !r.ok ? "failed" : "skipped" in r ? "skipped" : r.value;
     }
     return ran;
-  });
+  }, undefined, { now });
   if (!outcome.ok) ran.tick = "failed";
   return ran;
 }

@@ -89,8 +89,10 @@ a URL query string.
   `worker_job_runs`. A failure in one job never stops the others.
 - **Job-level idempotency:** each job claims the rows it acts on and is safe to run twice. The suite covers duplicate sends, campaign
   recipients, workflow runs, imports, provider switches and webhook deliveries.
-- **Slow rhythms:** `withinInterval()` skips jobs such as fair-use checks, inactivity review, WhatsApp template sync and setup evidence
-  until their interval has elapsed.
+- **Slow rhythms:** jobs such as fair-use checks, inactivity review, WhatsApp template sync and setup evidence declare `everyMinutes`; `runJob`
+  claims the slot atomically and skips the job (writing nothing) until that much time has passed since its previous run started. A failed run is
+  retried sooner, and a run that never finished is presumed dead after 15 minutes. Intervals are elapsed time, not calendar slots, so they do not
+  depend on a time zone or daylight saving.
 
 ## Failure handling
 

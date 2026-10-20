@@ -125,12 +125,16 @@ async function store(userId: string, briefing: Briefing, kind: "daily" | "weekly
   return rows[0] ?? null;
 }
 
-async function deliver(userId: string, id: string, briefing: Briefing, severity: "info" | "warning" | "critical", dedupeKey: string): Promise<void> {
+/** The notification and the `delivered` status are written together, so a failure leaves the briefing `generated` and retryable. */
+async function deliver(userId: string, id: string, briefing: { title: string; summary: string }, severity: "info" | "warning" | "critical", dedupeKey: string): Promise<void> {
   await withSystem(async (db) => {
     await notifyUser(db, userId, null, { kind: "system", severity, title: briefing.title, body: briefing.summary, link: `/admin/operations?briefing=${id}`, dedupeKey });
     await db.query("update aqi_ops_briefings set status = 'delivered', delivered_at = now() where id = $1", [id]);
   });
 }
+
+const storedBriefing = async (dedupeKey: string) =>
+  (await readSystem((db) => db.query<{ id: string; status: string; title: string; summary: string }>("select id, status, title, summary from aqi_ops_briefings where dedupe_key = $1", [dedupeKey]))).rows[0] ?? null;
 
 /** On demand: composed and stored for the requesting administrator, never announced by notification. */
 export async function generateBriefingNow(user: { id: string; platformRole: string }, hours = 24): Promise<{ id: string; briefing: Briefing }> {
@@ -153,18 +157,65 @@ const pad = (n: number) => `${String(n).padStart(2, "0")}:00`;
 
 export interface BriefingRunResult { generated: number; suppressed: number; alerts: number; deferred: number; failed: number }
 
+/** How long a stored briefing is kept. The notification it produced follows the notification centre's own retention. */
+export const BRIEFING_RETENTION_DAYS = 180;
+
+/** Retention for stored briefings: bounded (100 per run) and idempotent, so the scheduler can call it on every tick. */
+export async function purgeExpiredBriefings(now = new Date()): Promise<number> {
+  try {
+    const result = await withSystem((db) => db.query(
+      `delete from aqi_ops_briefings where id in (
+         select id from aqi_ops_briefings where created_at < $1::timestamptz - make_interval(days => $2) order by created_at limit 100)`,
+      [now.toISOString(), BRIEFING_RETENTION_DAYS],
+    ));
+    return result.rowCount;
+  } catch (err) {
+    // The code can be deployed before migration 0068 is applied; there is no table yet, so there is nothing to purge.
+    if (hasDbErrorCode(err, "42P01")) return 0;
+    throw err;
+  }
+}
+
+/** Administrators handled per run. Super Admins are few; the cap exists so a mistake elsewhere cannot make one tick unbounded. */
+export const BRIEFING_ADMINS_PER_RUN = 25;
+
 /**
- * The scheduler entry point. Bounded: at most five administrators per run, and each briefing is
- * composed once per person per local day (or ISO week) through a unique key, so overlapping ticks or
- * a retry can never send twice.
+ * One daily or weekly slot for one administrator. The briefing for a local date is stored under a unique key before anything is
+ * announced, and the slot is marked done only after the announcement succeeded (or there was nothing to announce). So:
+ *  - a repeated or overlapping tick finds the stored briefing and does nothing more;
+ *  - a failed announcement leaves the stored briefing `generated`, and the next tick announces that one without composing another.
+ */
+async function runSlot(s: SettingsRow, kind: "daily" | "weekly", localDate: string, now: Date, result: BriefingRunResult): Promise<void> {
+  const key = `${kind}:${s.user_id}:${localDate}`;
+  const existing = await storedBriefing(key);
+  if (existing) {
+    if (existing.status === "generated") { await deliver(s.user_id, existing.id, existing, kind === "daily" ? "warning" : "info", key); result.generated += 1; }
+  } else {
+    const briefing = await composeBriefing({ userId: s.user_id, now, hours: kind === "daily" ? 24 : 168, kind });
+    // A quiet day is stored but not announced; the weekly summary is always announced.
+    const announce = kind === "weekly" || briefing.noteworthy;
+    const stored = await store(s.user_id, briefing, kind, key, announce ? "generated" : "suppressed", announce ? null : "nothing_noteworthy");
+    if (stored && announce) { await deliver(s.user_id, stored.id, briefing, briefing.noteworthy ? "warning" : "info", key); result.generated += 1; }
+    else if (stored) result.suppressed += 1;
+  }
+  await withSystem((db) => db.query(`update aqi_ops_briefing_settings set ${kind === "daily" ? "last_daily_for" : "last_weekly_for"} = $2 where user_id = $1`, [s.user_id, localDate]));
+}
+
+/**
+ * The scheduler entry point. Each briefing is composed once per person per local day (or week) through a unique key, so overlapping
+ * ticks or a retry can never send twice, and it runs on every tick without cost: once a slot is done, a tick only reads the settings.
  */
 export async function runDueBriefings(now = new Date()): Promise<BriefingRunResult> {
   const result: BriefingRunResult = { generated: 0, suppressed: 0, alerts: 0, deferred: 0, failed: 0 };
   let rows: SettingsRow[];
   try {
+    // The slot dates are read as text so the comparison with the local date string does not depend on how a driver parses `date`
+    // (node-postgres returns a JavaScript Date, which would never equal the string). runSlot also checks the stored briefing itself.
     rows = (await readSystem((db) => db.query<SettingsRow>(
-      `select s.* from aqi_ops_briefing_settings s join users u on u.id = s.user_id and u.status = 'active' and u.platform_role = 'agency_super_admin'
-        where s.daily_enabled or s.weekly_enabled or s.critical_alerts_enabled order by s.user_id limit 5`,
+      `select s.user_id, s.daily_enabled, s.weekly_enabled, s.critical_alerts_enabled, s.timezone, s.daily_hour, s.weekly_day, s.quiet_start, s.quiet_end,
+              to_char(s.last_daily_for, 'YYYY-MM-DD') as last_daily_for, to_char(s.last_weekly_for, 'YYYY-MM-DD') as last_weekly_for
+         from aqi_ops_briefing_settings s join users u on u.id = s.user_id and u.status = 'active' and u.platform_role = 'agency_super_admin'
+        where s.daily_enabled or s.weekly_enabled or s.critical_alerts_enabled order by s.user_id limit ${BRIEFING_ADMINS_PER_RUN}`,
     ))).rows;
   } catch (err) {
     // The code can be deployed before migration 0068 is applied; until then there is nothing to run, and that is not a job failure.
@@ -178,12 +229,16 @@ export async function runDueBriefings(now = new Date()): Promise<BriefingRunResu
 
       if (s.critical_alerts_enabled) {
         const { rows: crit } = await readSystem((db) => db.query<{ id: string; title: string }>(
-          "select id, title from incidents where status = 'open' and severity = 'critical' and detected_at > now() - interval '24 hours' order by detected_at desc limit 3",
+          "select id, title from incidents where status = 'open' and severity = 'critical' and detected_at > $1::timestamptz - interval '24 hours' order by detected_at desc limit 3",
+          [now.toISOString()],
         ));
         for (const incident of crit) {
           const key = `critical:${s.user_id}:${incident.id}`;
-          const exists = await readSystem((db) => db.query("select 1 from aqi_ops_briefings where dedupe_key = $1", [key]));
-          if (exists.rows[0]) continue;
+          const existing = await storedBriefing(key);
+          if (existing) {
+            if (existing.status === "generated") { await deliver(s.user_id, existing.id, existing, "critical", key); result.alerts += 1; }
+            continue;
+          }
           const briefing = await composeBriefing({ userId: s.user_id, now, hours: 6, kind: "critical" });
           briefing.title = `Critical alert: ${incident.title.slice(0, 120)}`;
           const stored = await store(s.user_id, briefing, "critical", key, "generated", null);
@@ -192,26 +247,13 @@ export async function runDueBriefings(now = new Date()): Promise<BriefingRunResu
       }
 
       if (s.daily_enabled && local.hour >= s.daily_hour && s.last_daily_for !== local.date) {
-        if (quiet) { result.deferred += 1; }
-        else {
-          const key = `daily:${s.user_id}:${local.date}`;
-          const briefing = await composeBriefing({ userId: s.user_id, now, hours: 24, kind: "daily" });
-          const stored = await store(s.user_id, briefing, "daily", key, briefing.noteworthy ? "generated" : "suppressed", briefing.noteworthy ? null : "nothing_noteworthy");
-          await withSystem((db) => db.query("update aqi_ops_briefing_settings set last_daily_for = $2 where user_id = $1", [s.user_id, local.date]));
-          if (stored && briefing.noteworthy) { await deliver(s.user_id, stored.id, briefing, "warning", key); result.generated += 1; }
-          else if (stored) result.suppressed += 1;
-        }
+        if (quiet) result.deferred += 1;
+        else await runSlot(s, "daily", local.date, now, result);
       }
 
       if (s.weekly_enabled && local.weekday === s.weekly_day && local.hour >= s.daily_hour && s.last_weekly_for !== local.date) {
-        if (quiet) { result.deferred += 1; }
-        else {
-          const key = `weekly:${s.user_id}:${local.date}`;
-          const briefing = await composeBriefing({ userId: s.user_id, now, hours: 168, kind: "weekly" });
-          const stored = await store(s.user_id, briefing, "weekly", key, "generated", null);
-          await withSystem((db) => db.query("update aqi_ops_briefing_settings set last_weekly_for = $2 where user_id = $1", [s.user_id, local.date]));
-          if (stored) { await deliver(s.user_id, stored.id, briefing, briefing.noteworthy ? "warning" : "info", key); result.generated += 1; }
-        }
+        if (quiet) result.deferred += 1;
+        else await runSlot(s, "weekly", local.date, now, result);
       }
     } catch (err) {
       result.failed += 1;

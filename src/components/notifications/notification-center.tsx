@@ -133,6 +133,8 @@ export function NotificationCenter({
 
   const visible = items === null ? [] : filter === "unread" ? items.filter((item) => !item.read_at) : items;
   const unreadInFeed = items?.filter((item) => !item.read_at).length ?? 0;
+  /** What the badge shows, and therefore what the button's accessible name must contain. */
+  const unreadLabel = unread > 9 ? "9+" : String(unread);
 
   return (
     <>
@@ -155,20 +157,24 @@ export function NotificationCenter({
               open && "bg-surface-2 text-ink",
               className,
             )}
-            aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+            // The visible badge text ("3", "9+") must be part of the accessible name, or a voice-control user who says what they see
+            // cannot activate the button (WCAG 2.5.3 Label in Name).
+            aria-label={unread ? `Notifications, ${unreadLabel} unread` : "Notifications"}
             aria-haspopup="dialog"
           >
             <Bell className="size-[19px]" aria-hidden />
             <AnimatePresence>
               {unread > 0 && (
+                // Scale only: the badge text is never partly transparent, so its contrast is the same at every moment of the entrance.
+                // Colours: white on the dark red in light mode (6.5:1) and the dark ink on the brighter red in dark mode (5.5:1).
                 <motion.span
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.6, opacity: 0 }}
+                  initial={{ scale: 0.6 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.6 }}
                   transition={{ type: "spring", stiffness: 520, damping: 28 }}
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg dark:text-danger-on"
+                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-ink px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-bg dark:bg-danger dark:text-danger-on"
                 >
-                  {unread > 9 ? "9+" : unread}
+                  {unreadLabel}
                 </motion.span>
               )}
             </AnimatePresence>

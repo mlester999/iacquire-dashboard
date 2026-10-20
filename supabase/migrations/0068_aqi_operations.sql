@@ -13,8 +13,21 @@
 -- Client AQi code paths do not reference any of this, so the Client assistant keeps working if this
 -- migration has not been applied yet. Rows in the new tables are reachable only through server code
 -- that has already authorised a Super Admin: RLS is enabled with no policy for the app role.
--- Non-destructive: one additive column with a default, three new tables and their indexes, three indexes on existing tables.
+-- Non-destructive: one additive column with a default, three new tables and their indexes, five indexes on existing tables.
 -- Rollback: supabase/rollbacks/0068_aqi_operations.down.sql. Not applied to any hosted project.
+--
+-- Production notes (see docs/aqi-operations.md, "Migration 0068 audit"):
+--   * The application's runner (npm run db:migrate) applies each file inside one transaction, which forbids CREATE INDEX CONCURRENTLY,
+--     so every index here is a plain one. lock_timeout makes the migration fail fast, and roll back whole, instead of queueing behind a
+--     long-running transaction and blocking every query that arrives after it.
+--   * The only index on a table that grows is audit_logs (action, created_at). A plain build blocks inserts into audit_logs for as long as
+--     it takes. If that table is large when this is applied (check pg_class.reltuples first), create the index by hand beforehand, outside a
+--     transaction:  create index concurrently if not exists audit_logs_action_created_idx on audit_logs (action, created_at desc);
+--     The statement below is `if not exists`, so it then does nothing. A failed concurrent build leaves an INVALID index: drop it and retry.
+--   * Adding aqi_conversations.surface with a constant default does not rewrite the table (PostgreSQL 11+); the CHECK is validated by one
+--     scan of that (small) table while the lock is held.
+
+set local lock_timeout = '5s';
 
 alter table aqi_conversations
   add column if not exists surface text not null default 'assistant'
@@ -22,6 +35,11 @@ alter table aqi_conversations
 
 create index if not exists aqi_conversations_surface_idx
   on aqi_conversations (user_id, surface, last_message_at desc);
+
+-- The retention job removes old investigations across all administrators, 100 at a time, on every scheduler tick. Without this it would
+-- scan every Client conversation each time.
+create index if not exists aqi_conversations_ops_retention_idx
+  on aqi_conversations (last_message_at) where surface = 'operations';
 
 comment on column aqi_conversations.surface is
   'assistant = the Client/agency-staff AQi assistant; operations = a Super Admin AQi Operations investigation.';
@@ -67,6 +85,14 @@ create unique index if not exists aqi_ops_actions_idempotency_idx on aqi_ops_act
 create index if not exists aqi_ops_actions_user_idx on aqi_ops_actions (requested_by, created_at desc);
 create index if not exists aqi_ops_actions_org_idx on aqi_ops_actions (org_id, created_at desc) where org_id is not null;
 create index if not exists aqi_ops_actions_open_idx on aqi_ops_actions (status, expires_at) where status in ('proposed', 'executing');
+-- At most one confirmed action per tool and target is executing at a time. A second confirmation for the same incident, ticket or client
+-- cannot claim its proposal until the first has finished, and then re-checks the target, so a race cannot apply a change twice.
+create unique index if not exists aqi_ops_actions_one_executing_idx
+  on aqi_ops_actions (tool_id, (coalesce(args->>'incidentId', args->>'ticketId', args->>'orgId', 'platform'))) where status = 'executing';
+-- Foreign keys that are set null when a conversation, message or confirming user is deleted: without an index each such delete scans this table.
+create index if not exists aqi_ops_actions_conversation_idx on aqi_ops_actions (conversation_id) where conversation_id is not null;
+create index if not exists aqi_ops_actions_message_idx on aqi_ops_actions (message_id) where message_id is not null;
+create index if not exists aqi_ops_actions_confirmed_by_idx on aqi_ops_actions (confirmed_by) where confirmed_by is not null;
 create trigger aqi_ops_actions_touch before update on aqi_ops_actions for each row execute function app.touch_updated_at();
 
 -- ---------------------------------------------------------------------------
@@ -109,6 +135,8 @@ create table if not exists aqi_ops_briefings (
 );
 create unique index if not exists aqi_ops_briefings_dedupe_idx on aqi_ops_briefings (dedupe_key);
 create index if not exists aqi_ops_briefings_recipient_idx on aqi_ops_briefings (recipient_user_id, created_at desc);
+-- Retention removes the oldest briefings first.
+create index if not exists aqi_ops_briefings_created_idx on aqi_ops_briefings (created_at);
 
 alter table aqi_ops_actions enable row level security;
 alter table aqi_ops_briefing_settings enable row level security;

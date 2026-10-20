@@ -66,15 +66,20 @@ export interface OpsRun {
   record(entry: OpsAuditEntry): void;
 }
 
-/** Loads exactly the agency permissions the planned tools need, in one statement. */
-async function loadPermissions(userId: string, wanted: readonly string[]): Promise<Set<Permission>> {
-  if (!wanted.length) return new Set();
-  const { rows } = await readSystem((db) => db.query<{ permission: string }>(
-    `select p.permission from unnest($2::text[]) as p(permission)
-     where coalesce(app.user_has_agency_permission($1, p.permission), false)`,
+/**
+ * Loads exactly the agency permissions the planned tools need, together with the account's present role and status, in one statement.
+ * The caller's session object says who the person was when the request began; this says who they are now, so a role that was removed
+ * or an account that was disabled in the meantime cannot keep acting on a stale object.
+ */
+async function loadAccess(userId: string, wanted: readonly string[]): Promise<{ role: string; active: boolean; permissions: Set<Permission> } | null> {
+  const { rows } = await readSystem((db) => db.query<{ platform_role: string; status: string; permissions: string[] }>(
+    `select u.platform_role, u.status,
+            array(select p.permission from unnest($2::text[]) as p(permission) where coalesce(app.user_has_agency_permission(u.id, p.permission), false)) as permissions
+       from users u where u.id = $1`,
     [userId, [...wanted]],
   ));
-  return new Set(rows.map((r) => r.permission as Permission));
+  const row = rows[0];
+  return row ? { role: row.platform_role, active: row.status === "active", permissions: new Set(row.permissions as Permission[]) } : null;
 }
 
 export interface CreateOpsRunInput {
@@ -97,7 +102,9 @@ export async function createOpsRun(input: CreateOpsRunInput): Promise<OpsRun> {
   const orgChecks = new Map<string, Promise<void>>();
   const planned = input.plannedToolIds.map((id) => findOpsTool(id)).filter((t): t is OpsTool => Boolean(t));
   const wanted = [...new Set(planned.map((t) => t.permission).filter((p): p is Permission => Boolean(p)))];
-  const permissions = await loadPermissions(user.id, wanted);
+  const access = await loadAccess(user.id, wanted);
+  if (!access || !access.active || access.role !== user.platformRole) throw new AppError("forbidden", "Your access has changed. Sign in again to continue.");
+  const permissions = access.permissions;
 
   const ctx: OpsContext = {
     user,

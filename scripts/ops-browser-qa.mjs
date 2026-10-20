@@ -46,6 +46,8 @@ async function newUser(key, viewport = { width: 1280, height: 860 }, theme = "li
   // The negative probes below deliberately call endpoints that must answer 401/403; the browser logs those as "Failed to load resource".
   page.on("console", (m) => {
     if (m.type() !== "error" || new URL(page.url()).pathname.startsWith("/login")) return;
+    // The same warning can arrive just after the sign-in redirect has already moved the page on; it names the sign-in page's showcase.
+    if (/AuthShowcase|pathname="\/login"/.test(m.text())) return;
     if (key !== "superAdmin" && /status of 40[13]/.test(m.text())) return;
     consoleErrors.push({ user: key, text: m.text().slice(0, 300) });
   });
@@ -77,10 +79,8 @@ const shot = async (page, name) => { await settle(page); await page.screenshot({
 const axe = async (page, label) => {
   await page.addScriptTag({ path: AXE });
   const result = await page.evaluate(async () => {
-    // The notification bell's unread badge (src/components/notifications/notification-center.tsx, not part of this work) is
-    // animated and reports a contrast and label-mismatch finding whenever the account has unread notifications; it is left out
-    // so this suite measures the Operations surfaces. It is listed as a follow-up in docs/aqi-operations.md.
-    const r = await window.axe.run({ exclude: [['button[aria-label^="Notifications"]']] }, { resultTypes: ["violations"] });
+    // The whole page, including the notification bell and its unread badge: nothing is excluded.
+    const r = await window.axe.run(document, { resultTypes: ["violations"] });
     return r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, target: v.nodes[0]?.target?.join(" ").slice(0, 120) }));
   });
   const bad = result.filter((v) => v.impact === "serious" || v.impact === "critical");
@@ -120,6 +120,10 @@ try {
   check("nav has the AQi Operations entry", (await page.getByRole("link", { name: "AQi Operations" }).count()) > 0);
   check("no Client AQi launcher for a Super Admin", (await page.locator("[data-aqi-launcher]").count()) === 0);
   await shot(page, "console-desktop");
+  // The bell must be showing its unread badge for the scan below to mean anything (the seed leaves this account twelve unread notices).
+  const bellLabel = await page.locator('button[aria-label^="Notifications"]').first().getAttribute("aria-label");
+  const bellBadge = (await page.locator('button[aria-label^="Notifications"]').first().innerText()).trim();
+  check("the notification bell shows an unread badge while the console is scanned, and its name contains the badge text", bellBadge === "9+" && Boolean(bellLabel?.includes("9+")), `${bellLabel} / ${bellBadge}`);
   await axe(page, "console desktop");
 
   // Quick action -> a real answer with a health card and the mock narrative
@@ -295,6 +299,13 @@ try {
   check("an agency manager cannot open the console", !new URL(maya.page.url()).pathname.startsWith("/admin/operations") && (await maya.page.getByRole("heading", { level: 1, name: "AQi Operations" }).count()) === 0, maya.page.url());
   check("an agency manager gets the assistant, not the Operations launcher", (await maya.page.locator('button[aria-controls="ops-launcher-panel"]').count()) === 0);
   void redirected;
+  // A single-digit badge on a different page, scanned in full.
+  const mayaBell = maya.page.locator('button[aria-label^="Notifications"]').first();
+  await mayaBell.waitFor({ timeout: 60_000 });
+  const mayaLabel = await mayaBell.getAttribute("aria-label");
+  const mayaBadge = (await mayaBell.innerText()).trim();
+  check("the manager's bell shows a single-digit badge whose number is in its accessible name", /^\d$/.test(mayaBadge) && Boolean(mayaLabel?.includes(mayaBadge)), `${mayaLabel} / ${mayaBadge}`);
+  await axe(maya.page, "agency manager page with unread badge");
   const apiAsManager = await maya.page.evaluate(async () => {
     const out = {};
     for (const p of ["/api/aqi/ops/overview", "/api/aqi/ops/conversations", "/api/aqi/ops/briefings"]) out[p] = (await fetch(p)).status;

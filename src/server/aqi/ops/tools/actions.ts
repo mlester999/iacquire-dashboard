@@ -35,6 +35,8 @@ export const incidentAcknowledge = defineActionTool({
   audit: { action: "aqi.ops_action", sensitive: false },
   timeoutMs: 10_000,
   async preview(ctx, args) {
+    // The target is the record selected as the context: arguments never choose a different one.
+    if (ctx.scope.type !== "incident" || ctx.scope.id !== args.incidentId) throw new AppError("forbidden", "The incident must be the one selected as the context.");
     const { rows } = await readSystem((db) => db.query<{ id: string; status: string; severity: string; title: string; org_id: string | null; org: string | null }>(
       "select i.id, i.status, i.severity, i.title, i.org_id, o.name as org from incidents i left join organizations o on o.id = i.org_id where i.id = $1", [args.incidentId],
     ));
@@ -81,6 +83,7 @@ export const supportEscalate = defineActionTool({
   audit: { action: "aqi.ops_action", sensitive: false },
   timeoutMs: 12_000,
   async preview(ctx, args) {
+    if (ctx.scope.type !== "ticket" || ctx.scope.id !== args.ticketId) throw new AppError("forbidden", "The request must be the one selected as the context.");
     const { rows } = await readSystem((db) => db.query<{ id: string; ref: string; subject: string; status: string; org_id: string; org: string; escalated_at: Date | null }>(
       `select t.id, t.ref, t.subject, t.status, t.org_id, o.name as org, p.escalated_at
          from support_tickets t join organizations o on o.id = t.org_id left join support_ticket_ops p on p.ticket_id = t.id where t.id = $1`, [args.ticketId],
@@ -127,6 +130,7 @@ export const supportSetPriority = defineActionTool({
   audit: { action: "aqi.ops_action", sensitive: false },
   timeoutMs: 12_000,
   async preview(ctx, args) {
+    if (ctx.scope.type !== "ticket" || ctx.scope.id !== args.ticketId) throw new AppError("forbidden", "The request must be the one selected as the context.");
     const { rows } = await readSystem((db) => db.query<{ ref: string; subject: string; priority: string; status: string; org_id: string; org: string }>(
       "select t.ref, t.subject, t.priority, t.status, t.org_id, o.name as org from support_tickets t join organizations o on o.id = t.org_id where t.id = $1", [args.ticketId],
     ));

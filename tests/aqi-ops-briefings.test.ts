@@ -18,7 +18,7 @@ const notificationsFor = async (userId: string) =>
   (await withSystem((db) => db.query<{ severity: string; title: string; audience: string; link: string }>("select severity, title, audience, link from notifications where user_id = $1", [userId]))).rows;
 
 beforeEach(async () => {
-  // Other administrators from earlier tests must not take part in this run (the job handles five per tick).
+  // Other administrators from earlier tests must not take part in this run.
   await withSystem((db) => db.query("delete from aqi_ops_briefing_settings"));
 });
 

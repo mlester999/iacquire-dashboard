@@ -8,7 +8,8 @@ import { logSafeServerDiagnostic } from "@/server/diagnostics";
 import { createOpsRun, type OpsRun } from "@/server/aqi/ops/executor";
 import { findActionTool } from "@/server/aqi/ops/registry";
 import { resolveOpsScope } from "@/server/aqi/ops/scope";
-import { neutralizeUntrusted } from "@/server/aqi/ops/redact";
+import { hasDbErrorCode } from "@/server/diagnostics";
+import { neutralizeUntrusted, redactSecrets } from "@/server/aqi/ops/redact";
 import type { OpsActionPreview, OpsActionTool } from "@/server/aqi/ops/tool";
 import type { PlannedAction } from "@/server/aqi/ops/planner";
 import type { OpsActionPreviewCard, OpsActionResultCard, OpsCard, OpsNoticeCard, OpsScope, OpsScopeType } from "@/lib/aqi/ops/types";
@@ -193,6 +194,15 @@ async function reconcileStuck(user: SessionUser, row: ActionRow, tool: OpsAction
   return rows[0] ?? row;
 }
 
+/** Settles executions of this tool that stopped answering (the worker died mid-run), so they cannot hold the target forever. */
+async function settleAbandoned(user: SessionUser, tool: OpsActionTool): Promise<void> {
+  const { rows } = await readSystem((db) => db.query<ActionRow>(
+    `select ${COLUMNS} from aqi_ops_actions where tool_id = $1 and status = 'executing' and executed_at < now() - make_interval(secs => $2) order by executed_at limit 5`,
+    [tool.id, STUCK_AFTER_MS / 1000],
+  ));
+  for (const stuck of rows) await reconcileStuck(user, stuck, tool).catch((err: unknown) => logSafeServerDiagnostic("aqi.ops_reconcile_failed", err, `aqi.ops.reconcile.${tool.id}`));
+}
+
 export async function confirmOpsAction(user: SessionUser, actionId: string, rawInput: unknown): Promise<ActionOutcome> {
   if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "AQi Operations actions are available to Super Admins only.");
   const input = confirmSchema.safeParse(rawInput ?? {});
@@ -214,8 +224,11 @@ export async function confirmOpsAction(user: SessionUser, actionId: string, rawI
     throw new AppError("conflict", "This proposal expired. Ask AQi to prepare it again so you review the current state.");
   }
 
-  const reason = (input.data.reason ?? "").trim();
-  if (row.approval !== "confirm" && reason.length < 8) throw new AppError("invalid_input", "Give a short reason (at least 8 characters) for the record.");
+  // The reason is stored, passed to the domain function and shown in the target's history. A credential pasted into it by mistake is
+  // removed before any of that; the length rule is applied to what the person typed.
+  const typedReason = (input.data.reason ?? "").trim();
+  const reason = redactSecrets(typedReason);
+  if (row.approval !== "confirm" && typedReason.length < 8) throw new AppError("invalid_input", "Give a short reason (at least 8 characters) for the record.");
   if (row.approval === "typed_confirmation") {
     const expected = row.preview.confirmPhrase ?? "";
     if (!expected || norm(input.data.phrase ?? "") !== norm(expected)) throw new AppError("invalid_input", `Type “${expected}” exactly to confirm.`);
@@ -228,13 +241,30 @@ export async function confirmOpsAction(user: SessionUser, actionId: string, rawI
   const args = tool.input.parse(row.args);
   await tool.preview(run.ctx, args);
 
-  const claimed = await withSystem((db) => db.query<ActionRow>(
+  // Claiming is one conditional update, so two confirmations of the same proposal cannot both win. A partial unique index also allows only
+  // one action per tool and target to be executing at a time: a second proposal for the same target waits its turn instead of racing.
+  const claim = async (): Promise<ActionRow | null> => (await withSystem((db) => db.query<ActionRow>(
     `update aqi_ops_actions set status = 'executing', confirmed_at = now(), confirmed_by = $2, reason = $3, executed_at = now()
      where id = $1 and status = 'proposed' and expires_at > now() returning ${COLUMNS}`,
     [actionId, user.id, reason || null],
-  ));
-  if (!claimed.rows[0]) return outcomeFor(await loadOwned(user.id, actionId), tool);
-  row = claimed.rows[0];
+  ))).rows[0] ?? null;
+  let claimed: ActionRow | null;
+  try {
+    claimed = await claim();
+  } catch (err) {
+    if (!hasDbErrorCode(err, "23505")) throw err;
+    // Either another confirmation for the same target is mid-flight, or one was abandoned. Settle abandoned ones from the real state
+    // (never by running them again) and try once more; if it is genuinely in flight, say so.
+    await settleAbandoned(user, tool);
+    try {
+      claimed = await claim();
+    } catch (again) {
+      if (hasDbErrorCode(again, "23505")) throw new AppError("conflict", "Another change to the same target is being applied right now. Wait a moment and confirm again.");
+      throw again;
+    }
+  }
+  if (!claimed) return outcomeFor(await loadOwned(user.id, actionId), tool);
+  row = claimed;
   run.record({ action: "aqi.ops_action_confirmed", result: "success", orgId: row.org_id, targetType: "aqi_ops_action", targetId: row.id, metadata: { tool: tool.id, risk: row.risk, approval: row.approval, requestId: run.ctx.requestId } });
 
   let status: ActionRow["status"] = "failed";
@@ -243,6 +273,9 @@ export async function confirmOpsAction(user: SessionUser, actionId: string, rawI
   let errorCode: string | null = null;
   let errorMessage: string | null = null;
   try {
+    // The target is checked once more now that this confirmation holds it: another confirmation may have finished since the check above,
+    // and then there is nothing left to do. That is reported as not applied, not run a second time.
+    await tool.preview(run.ctx, args);
     executed = await tool.execute(run.ctx, args, { actionId: row.id, reason: reason || null });
     try {
       verification = await tool.verify(run.ctx, args, executed);
