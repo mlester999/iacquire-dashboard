@@ -194,7 +194,8 @@ Inventory confirmed from the seed SQL, not from documentation:
 - `0063_aqi_phase3_hardening.sql` republishes `create-contact` v2.
 - `supabase/migrations/0064_aqi_feature_tours.sql` adds 6 tours / 14 steps (setup, AQi usage, CRM
   tasks, workflows, Website Studio, analytics).
-- **Repository total: 22 tours / 74 steps. Live total until 0064 is applied: 16 / 60.**
+- **Repository total: 22 tours / 74 steps. Production now serves all 22 / 74 after 0064 was applied
+  on 2026-10-20 (verified: 22 published, 74 steps, 12 tips; prior 16 / 60).**
 
 Role gating is server-side in `src/server/aqi/tutorials.ts` (`isEligible`): role list, every route's
 permission, every target's permission/agency scope, and CRM capability ownership. Hidden slugs 404.
@@ -215,8 +216,8 @@ Browser QA on the final build:
   dead end.
 
 Remaining walkthrough work: there is no user-facing guide **library** (tours are reachable from
-contextual tips, the AQi assistant, the onboarding nudge and the Settings replay button); migration
-0064 remains approval-gated.
+contextual tips, the AQi assistant, the onboarding nudge and the Settings replay button). 0064 was
+applied to production on 2026-10-20 with a pre-migration backup.
 
 ## 6. Verification
 
@@ -236,46 +237,56 @@ contextual tips, the AQi assistant, the onboarding nudge and the Settings replay
 
 ## 7. Release boundary
 
-- Committed locally on `master` (17 files; the final report records the commit SHA). **Not pushed
-  and not deployed:** this workstation has no cached git credential for `origin` (Git Credential
-  Manager required an interactive prompt, which this session cannot show). Pushing is the remaining
-  release step.
-- No migration was added or applied. **0064 remains unapplied in production and needs approval.**
+- **Pushed to `origin/master`** as `6c3ce07` on 2026-10-20. GitHub reports the Vercel status
+  **success** for that commit
+  (https://vercel.com/mlester999s-projects/iacquire-dashboard/B5674oFfMAXQrNytLNh1EBd4KSEm), so the
+  code is deployed.
+- **Migration `0064_aqi_feature_tours` applied to production** on 2026-10-20 after a pre-migration
+  backup of `aqi_tutorials`, `aqi_tutorial_versions`, `aqi_contextual_tips`,
+  `aqi_tutorial_progress` and `aqi_tutorial_events`
+  (`.data/backups/pre-0064-aqi-tutorials-2026-10-20T00-54-32-530Z.json`). Verification after the
+  migration: 22 tutorials / 22 published / **74 steps** / **12 tips**; all six new tours published
+  with the expected step counts (1-4); the 3 progress rows and 22 event rows are unchanged; no
+  migration remains pending.
+- No other migration is pending. No schema, policy or RLS statement was executed.
 - A function-region change (for example moving functions nearer Tokyo) is a deployment change and
-  needs approval; it was not made.
-- The hosted cold start remains 9-27 s on the deployed build. The boot-path fix is in this commit
-  and is validated locally (25 → 1 awaited transaction), but **it has not been deployed or measured
-  on Vercel**, so no hosted cold-start improvement is claimed yet.
-- Hosted authenticated QA and hosted AQi provider timing were not available; local production-build
-  evidence is labelled as such.
+  was not made.
+- **Post-deploy cold-start evidence:** `/api/health` measured **1.9 s** on a fresh instance after
+  deployment (previously 17.4 / 18.5 s) and 4.5 s in a later cold sample; `/login` measured 1.1 s
+  and 1.7 s cold; public `/api/public/portfolio` 6.1 s, `/book` 5.5 s, `/api/public/services`
+  2.4 s on their first post-deploy requests. Warm samples: `/login` 471-926 ms, `/api/health`
+  540-621 ms. Cold starts are materially better but remain variable and above the 3 s target on
+  some routes.
+- Hosted authenticated QA and hosted AQi provider timing were still not available; local
+  production-build evidence is labelled as such.
 
 ## 8. Remaining issues, ranked by impact
 
-1. **Verify the cold-start fix on Vercel.** The boot path now awaits only the orphaned-run
-   reconciliation (25 → 1 transaction locally). Once deployed, `/api/health` cold should be measured
-   again; if it is still slow, function region `iad1` vs database `ap-northeast-1` and the Supabase
-   connection path are the next suspects (a region change needs approval). Setup evidence
-   reconciliation is now best-effort background work on serverless; enabling the scheduler in
-   production would make it deterministic (approval-gated).
+1. **Cold starts are improved but not eliminated.** The boot path now awaits only the orphaned-run
+   reconciliation (25 → 1 transaction locally), and the first post-deploy health sample was 1.9 s
+   instead of 17-18 s. Some route functions still cold-start in 4.5-6.1 s, so function region `iad1`
+   vs database `ap-northeast-1`, per-route bundle boot and the Supabase connection path remain
+   suspects (a region change needs approval). Setup evidence reconciliation is now best-effort
+   background work on serverless; enabling the scheduler in production would make it deterministic
+   (approval-gated).
 2. **Hosted verification gap.** No production account or provider authorization was available, so
-   hosted navigation p50/p95 and hosted AQi TTFT are unmeasured. The local production build proves
-   compilation, rendering, streaming and the client; it does not prove Tokyo network latency.
-3. **Migration 0064 is still unapplied.** Six feature tours (tasks, workflows, Website Studio,
-   analytics, setup, AQi usage) and their contextual tips do not exist in production until it runs.
-4. **22 content/topbar prefetches remain per landing.** The sidebar no longer fans out, but page
+   hosted authenticated navigation p50/p95 and hosted AQi TTFT are unmeasured. The local production
+   build proves compilation, rendering, streaming and the client; it does not prove Tokyo network
+   latency.
+3. **22 content/topbar prefetches remain per landing.** The sidebar no longer fans out, but page
    cards and topbar links still viewport-prefetch dynamic routes. A shared intent-only link
    component for content cards is the next step.
-5. **AQi first message still pre-creates the conversation** with a separate request, resolving auth
+4. **AQi first message still pre-creates the conversation** with a separate request, resolving auth
    twice. Removing it would make the chat appear in history before "Save", so it needs product
    sign-off on the temporary-chat lifecycle.
-6. **AQi retry can insert a second user message** after a lost response; `aqi_messages` has no
+5. **AQi retry can insert a second user message** after a lost response; `aqi_messages` has no
    client idempotency key. Fixing it needs a migration (approval).
-7. **AI employee first run still verifies the Hermes tool inventory with 4 sequential provider
+6. **AI employee first run still verifies the Hermes tool inventory with 4 sequential provider
    calls** before `POST /v1/runs`. Sharing the verification snapshot with the run-start call would
    remove them.
-8. **No user-facing walkthrough library.** Tours are reachable from contextual tips, AQi, the
+7. **No user-facing walkthrough library.** Tours are reachable from contextual tips, AQi, the
    onboarding nudge and the Settings replay button, but there is no Help → Guides list.
-9. **AI-chat skeleton still sits under the chat layout.** Auth is now two round trips instead of
+8. **AI-chat skeleton still sits under the chat layout.** Auth is now two round trips instead of
    seven to ten, but the skeleton cannot paint before the layout resolves.
 
 
