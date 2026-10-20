@@ -8,14 +8,37 @@ import { AgencyWorkforceControls } from "@/components/admin/agency-workforce-con
 import { ReadinessInline } from "@/components/workforce/employee-summary";
 import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { currentTime } from "@/lib/utils";
 import type { listAgencyAgents } from "@/server/admin/queries";
 import type { WizardGateway } from "@/components/admin/integration-wizard";
 
 type AgencyAgent = Awaited<ReturnType<typeof listAgencyAgents>>[number];
 
 export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone = "UTC" }: { agents: AgencyAgent[]; gateways: WizardGateway[]; canManage: boolean; timeZone?: string }) {
+  const evaluatedAt = currentTime();
+  const readinessFor = (agent: AgencyAgent) => deriveEmployeeReadiness({
+    displayName: agent.display_name,
+    enabled: agent.enabled,
+    status: agent.status,
+    configVersion: agent.config_version,
+    configured: agent.has_config,
+    lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
+    lastHealthOk: agent.last_health_ok,
+    credentialCurrent: agent.has_credential,
+    lastHealthDetail: agent.last_health_detail,
+    inventoryContract: agent.tool_inventory_contract,
+    inventoryDigest: agent.tool_inventory_digest,
+    inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
+    inventoryExpiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
+    inventoryToolCount: agent.tool_inventory_tool_count,
+    identityCurrent: agent.identity_current,
+    acknowledgementCurrent: agent.full_capabilities_acknowledged,
+    isAgencyEmployee: true,
+    taskExecuting: agent.active_run,
+    evaluatedAt,
+  });
   const mapped = agents.filter((agent) => agent.hermes_profile).length;
-  const verified = agents.filter((agent) => agent.status === "online" || agent.status === "busy").length;
+  const verified = agents.filter((agent) => readinessFor(agent).chatAvailable).length;
   return (
     <section className="module-stack" aria-labelledby="agency-workforce-heading">
       <PageHero
@@ -31,19 +54,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {agents.map((agent) => {
             const role = AGENT_BY_KEY[agent.role_key];
-            const readiness = deriveEmployeeReadiness({
-              displayName: agent.display_name,
-              enabled: agent.enabled,
-              status: agent.status,
-              configVersion: null,
-              configured: agent.has_config,
-              lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
-              lastHealthOk: agent.last_health_ok,
-              lastHealthDetail: agent.last_health_detail,
-              inventoryDigest: agent.tool_inventory_digest,
-              acknowledgementCurrent: null,
-              isAgencyEmployee: true,
-            });
+            const readiness = readinessFor(agent);
             return (
               <Card key={agent.id} className="min-w-0 space-y-4 rounded-[22px] p-4 sm:p-5">
                 <div className="flex items-start gap-3">
@@ -61,7 +72,9 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
                   <p className="mt-2 leading-relaxed text-muted">{agent.last_health_detail || "No profile health check recorded."}</p>
                   <div className="mt-2 border-t border-line pt-2">
                     <p className="font-medium text-ink-2">Approved runtime inventory</p>
-                    <p className="mt-1 leading-relaxed text-muted">{agent.tool_inventory_contract ? `${agent.tool_inventory_tool_count ?? 0} reviewed tools · digest ${agent.tool_inventory_digest?.slice(0, 12) ?? "unknown"}…` : "Not verified"}</p>
+                  <p className="mt-1 leading-relaxed text-muted">{agent.tool_inventory_contract ? `${agent.tool_inventory_tool_count ?? 0} reviewed tools · digest ${agent.tool_inventory_digest?.slice(0, 12) ?? "unknown"}…` : "Not verified"}</p>
+                  <p className="mt-1 leading-relaxed text-muted">{readiness.steps.find((step) => step.key === "inventory")?.description}</p>
+                  <p className="mt-1 leading-relaxed text-muted">{agent.full_capabilities_acknowledged ? "Super Admin acknowledgement current" : "Super Admin acknowledgement required"}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">

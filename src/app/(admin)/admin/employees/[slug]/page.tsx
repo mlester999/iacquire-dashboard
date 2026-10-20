@@ -9,8 +9,8 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from
 import { CopyTextButton } from "@/components/ui/copy-button";
 import { AgencyWorkforceControls } from "@/components/admin/agency-workforce-controls";
 import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
-import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
-import { AGENT_BY_SLUG, type AgentStatus } from "@/lib/agents";
+import { deriveEmployeeReadiness, internalAcknowledgementIsCurrent, internalIdentityIsCurrent, readinessClockNow } from "@/lib/workforce-readiness";
+import { AGENT_BY_SLUG, AGENCY_HERMES_PROFILE_IDS, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { formatDateTime, sentenceCase } from "@/lib/utils";
 
@@ -34,6 +34,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
       status: AgentStatus;
       mode: string;
       hermes_profile: string | null;
+      hermes_gateway_id: string | null;
       last_health_check_at: Date | null;
       last_health_ok: boolean | null;
       last_health_detail: string | null;
@@ -43,19 +44,26 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
       tool_inventory_expires_at: Date | null;
       tool_inventory_tool_count: number | null;
       tool_inventory_detail: string | null;
+      credential_ready: boolean;
       active_config_version_id: string | null;
       default_tools: string[];
       config_version: number | null;
       config_summary: string | null;
       config_applied_at: Date | null;
+      active_run: boolean;
     }>(
       `select a.id, a.org_id, a.display_name, a.enabled, a.status, a.mode, a.hermes_profile, a.last_health_check_at,
-              a.last_health_ok, a.last_health_detail, a.active_config_version_id, r.default_tools,
+              a.last_health_ok, a.last_health_detail, a.active_config_version_id, a.hermes_gateway_id, r.default_tools,
               a.tool_inventory_contract, a.tool_inventory_digest, a.tool_inventory_verified_at, a.tool_inventory_expires_at,
               a.tool_inventory_tool_count, a.tool_inventory_detail,
+              (cred.id is not null and cred.revoked_at is null and
+               (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
+              exists(select 1 from agent_runs running where running.agent_instance_id=a.id and running.status='running') as active_run,
               v.version as config_version, v.summary as config_summary, v.applied_at as config_applied_at
        from agent_instances a join agent_roles r on r.key = a.role_key
        left join agent_config_versions v on v.id = a.active_config_version_id
+       left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
        where a.org_id = $1 and a.role_key = $2`,
       [workspace.orgId, meta.key],
     );
@@ -84,14 +92,61 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
          ) as last_used`,
       [agent.id, workspace.orgId],
     );
-    const { rows: ack } = await db.query<{ current: boolean | null }>(
-      `select (ack.acknowledged_at >= c.checked_at) as current
-         from hermes_tool_policy_acknowledgements ack
-         left join agency_hermes_profile_checks c on c.agent_instance_id = ack.agent_id
-        where ack.agent_id = $1`,
+    const { rows: check } = await db.query<{
+      profile_check_status: string | null; profile_check_profile_id: string | null; profile_check_gateway_id: string | null;
+      identity_verified: boolean | null; api_contract_verified: boolean | null; tool_permissions_status: string | null; checked_at: Date | null;
+      acknowledged_at: Date | null; acknowledged_profile: string | null; acknowledged_policy_id: string | null; internal_policy_id: string | null;
+      acknowledged_config_version_id: string | null; acknowledged_inventory_digest: string | null; agent_policy_override_id: string | null;
+    }>(
+      `select c.status as profile_check_status,c.profile_id as profile_check_profile_id,c.gateway_id as profile_check_gateway_id,
+              c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
+              ack.acknowledged_at,ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
+              ack_policy.id as internal_policy_id,
+              ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+              ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
+              agent_policy.id as agent_policy_override_id
+         from agent_instances a
+         left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+         left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+         left join hermes_tool_policies ack_policy on ack_policy.id=ack.policy_id and ack_policy.scope_kind='internal_agency' and ack_policy.name='Full Hermes Capabilities'
+         left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+         left join lateral (
+           select h.policy_snapshot from hermes_tool_policy_history h
+           where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+           order by h.occurred_at desc,h.id desc limit 1
+         ) ack_history on true
+        where a.id=$1`,
       [agent.id],
     );
-    return { agent, runs, pendingApprovals: approvals[0]?.n ?? 0, knowledge: knowledge[0] ?? { notes: 0, documents: 0, last_used: null }, acknowledgementCurrent: ack[0]?.current === true };
+    const verification = check[0];
+    const identityEvidence = {
+      expectedProfile: AGENCY_HERMES_PROFILE_IDS[meta.key],
+      savedProfile: agent.hermes_profile,
+      savedGatewayId: agent.hermes_gateway_id,
+      checkedProfile: verification?.profile_check_profile_id ?? null,
+      checkedGatewayId: verification?.profile_check_gateway_id ?? null,
+      checkStatus: verification?.profile_check_status ?? null,
+      identityVerified: verification?.identity_verified ?? null,
+      apiContractVerified: verification?.api_contract_verified ?? null,
+      toolPermissionsStatus: verification?.tool_permissions_status ?? null,
+      checkedAt: verification?.checked_at ?? null,
+      configAppliedAt: agent.config_applied_at,
+    };
+    const identityCurrent = internalIdentityIsCurrent(identityEvidence);
+    const acknowledgementCurrent = internalAcknowledgementIsCurrent({
+      ...identityEvidence,
+      acknowledgedAt: verification?.acknowledged_at ?? null,
+      acknowledgedProfile: verification?.acknowledged_profile ?? null,
+      acknowledgedPolicyId: verification?.acknowledged_policy_id ?? null,
+      expectedPolicyId: verification?.internal_policy_id ?? null,
+      activeConfigVersionId: agent.active_config_version_id,
+      acknowledgedConfigVersionId: verification?.acknowledged_config_version_id ?? null,
+      inventoryDigest: agent.tool_inventory_digest,
+      acknowledgedInventoryDigest: verification?.acknowledged_inventory_digest ?? null,
+      credentialReady: agent.credential_ready,
+      hasAgentPolicyOverride: Boolean(verification?.agent_policy_override_id),
+    });
+    return { agent, runs, pendingApprovals: approvals[0]?.n ?? 0, knowledge: knowledge[0] ?? { notes: 0, documents: 0, last_used: null }, identityCurrent, acknowledgementCurrent };
   });
   if (!data) {
     return (
@@ -101,7 +156,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
       </div>
     );
   }
-  const { agent, runs, pendingApprovals, knowledge, acknowledgementCurrent } = data;
+  const { agent, runs, pendingApprovals, knowledge, identityCurrent, acknowledgementCurrent } = data;
   const readiness = deriveEmployeeReadiness({
     displayName: agent.display_name,
     enabled: agent.enabled,
@@ -110,9 +165,17 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
     lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
     lastHealthOk: agent.last_health_ok,
     lastHealthDetail: agent.last_health_detail,
+    inventoryContract: agent.tool_inventory_contract,
     inventoryDigest: agent.tool_inventory_digest,
+    inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
+    inventoryExpiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
+    inventoryToolCount: agent.tool_inventory_tool_count,
+    credentialCurrent: agent.credential_ready,
+    identityCurrent,
     acknowledgementCurrent,
     isAgencyEmployee: true,
+    taskExecuting: agent.active_run,
+    evaluatedAt: readinessClockNow(),
   });
   const bundle = await getProvisioningBundle(agent.id);
 
@@ -153,8 +216,8 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
                 <div><dt className="text-[11px] font-medium uppercase tracking-wide text-muted">Connection detail</dt><dd className="mt-1 text-[13px] text-muted">{agent.last_health_detail ?? "No connection check recorded."}</dd></div>
               </dl>
               <div className="rounded-xl border border-line bg-surface-2/60 p-3.5">
-                <p className="text-[12px] font-semibold text-ink-2">{agent.enabled && (agent.status === "online" || agent.status === "busy") ? "Verified online" : "Not verified online"}</p>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{agent.enabled && (agent.status === "online" || agent.status === "busy") ? "The latest authenticated health check passed. Chat is available through the internal workspace." : "A saved profile or API key alone is not treated as online. Use Check after the configuration is applied."}</p>
+                <p className="text-[12px] font-semibold text-ink-2">{agent.last_health_ok ? "Hermes connection verified" : "Hermes connection not verified"}</p>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{readiness.description}</p>
               </div>
               <div>
                 <p className="mb-2 text-[12px] font-semibold">Authorized portal tools</p>

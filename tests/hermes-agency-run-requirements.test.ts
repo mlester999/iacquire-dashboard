@@ -44,7 +44,8 @@ const attempt = async (orgId = agencyOrgId) => {
 };
 const acknowledge = async () => {
   await testAgencyHermesProfile(admin, agentId);
-  await acknowledgeInternalFullCapabilities(admin, [agentId]);
+  const activeConfigVersionId = (await sql("select active_config_version_id from agent_instances where id=$1", [agentId])).rows[0].active_config_version_id as string;
+  await acknowledgeInternalFullCapabilities(admin, [{ agentId, expectedActiveConfigVersionId: activeConfigVersionId }]);
 };
 
 /** Removes one requirement, proves the run is refused with nothing sent to /v1/runs, then restores it. */
@@ -136,7 +137,7 @@ describe("a fully activated internal employee", () => {
     without(
       async () => void (await sql("delete from hermes_tool_policy_acknowledgements where agent_id=$1", [agentId])),
       acknowledge,
-      /identity check and Super Admin full-capabilities acknowledgement/,
+      /Super Admin acknowledgement for its current identity/,
       { gatewayUntouched: true },
     ));
 
@@ -144,7 +145,7 @@ describe("a fully activated internal employee", () => {
     without(
       async () => void (await sql("update agency_hermes_profile_checks set status='identity_mismatch', identity_verified=false, api_contract_verified=false, verified_at=null where agent_instance_id=$1", [agentId])),
       acknowledge,
-      /identity check and Super Admin full-capabilities acknowledgement/,
+      /current Hermes identity, API contract and permission verification/,
       { gatewayUntouched: true },
     ));
 
@@ -159,7 +160,7 @@ describe("a fully activated internal employee", () => {
         heldConnection = null;
         await sql("update integration_credentials set revoked_at=null where id=(select credential_id from agent_instances where id=$1)", [agentId]);
       },
-      /identity check and Super Admin full-capabilities acknowledgement/,
+      /saved Hermes credential is missing or revoked/,
       { gatewayUntouched: true },
     ));
 
@@ -169,7 +170,7 @@ describe("a fully activated internal employee", () => {
         heldConnection = { ...(await withSystem((db) => loadConnection(db, agentId)))!, apiKey: "rotated-but-unsaved-synthetic-key-012345" };
       },
       async () => void (heldConnection = null),
-      /identity check and Super Admin full-capabilities acknowledgement/,
+      /current identity check and Super Admin full-capabilities acknowledgement/,
       { gatewayUntouched: true },
     ));
 

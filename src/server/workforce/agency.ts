@@ -446,6 +446,15 @@ export async function testAgencyHermesProfile(admin: SessionUser, agentId: strin
   return verifyAgencyProfile(admin, agentId);
 }
 
+/** Refreshes one existing internal identity check without repairing or creating any other employee record. */
+export async function refreshExistingAgencyProfileEvidence(admin: SessionUser, agentId: string): Promise<AgencyProfileVerification> {
+  requireSuperAdmin(admin);
+  const agencyId = await getExistingAgencyWorkforceId();
+  const agent = await getAgencyAgent(agentId);
+  if (agent.org_id !== agencyId) throw new AppError("not_found", "Internal employee not found.");
+  return verifyAgencyProfile(admin, agentId);
+}
+
 export async function testAllAgencyHermesProfiles(admin: SessionUser): Promise<{
   mapped: number;
   checked: number;

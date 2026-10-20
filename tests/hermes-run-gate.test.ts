@@ -25,7 +25,7 @@ const DIGEST = "a".repeat(64);
 const CONFIG = "11111111-1111-4111-8111-111111111111";
 
 describe("the readiness rules", () => {
-  const ready = { enabled: true, status: "online", active_config_version_id: CONFIG, tool_inventory_digest: DIGEST };
+  const ready = { enabled: true, status: "online", credential_ready: true, active_config_version_id: CONFIG, tool_inventory_digest: DIGEST };
 
   it("accepts an enabled, online, configured employee with a recorded digest, and returns the digest to compare against", () => {
     expect(assertAgentRunnable(ready)).toBe(DIGEST);
@@ -44,10 +44,14 @@ describe("the readiness rules", () => {
     expect(() => assertAgentRunnable({ ...ready, tool_inventory_digest: "not-a-sha256" })).toThrow(INVENTORY_REQUIRED);
   });
 
+  it("refuses an employee whose saved Hermes credential is missing or revoked", () => {
+    expect(() => assertAgentRunnable({ ...ready, credential_ready: false })).toThrow(/saved Hermes credential is missing or revoked/);
+  });
+
   it("checks status, then configuration, then inventory so the activation sequence is unambiguous", () => {
-    expect(() => assertAgentRunnable({ enabled: true, status: "provisioning", active_config_version_id: null, tool_inventory_digest: null })).toThrow(HEALTH_CHECK_REQUIRED);
-    expect(() => assertAgentRunnable({ enabled: true, status: "online", active_config_version_id: null, tool_inventory_digest: null })).toThrow(CONFIG_REQUIRED);
-    expect(() => assertAgentRunnable({ enabled: true, status: "online", active_config_version_id: CONFIG, tool_inventory_digest: null })).toThrow(INVENTORY_REQUIRED);
+    expect(() => assertAgentRunnable({ enabled: true, status: "provisioning", credential_ready: true, active_config_version_id: null, tool_inventory_digest: null })).toThrow(HEALTH_CHECK_REQUIRED);
+    expect(() => assertAgentRunnable({ enabled: true, status: "online", credential_ready: true, active_config_version_id: null, tool_inventory_digest: null })).toThrow(CONFIG_REQUIRED);
+    expect(() => assertAgentRunnable({ enabled: true, status: "online", credential_ready: true, active_config_version_id: CONFIG, tool_inventory_digest: null })).toThrow(INVENTORY_REQUIRED);
   });
 });
 

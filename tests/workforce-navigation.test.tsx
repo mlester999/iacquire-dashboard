@@ -80,8 +80,8 @@ describe("management navigation (main iAcquire sidebar)", () => {
 
   it("offers an explicit 'Chat with' shortcut only for employees that can actually chat", () => {
     renderSidebar();
-    expect(screen.getByRole("link", { name: "Chat with Operations Manager" }).getAttribute("href")).toBe("/chat/operations-manager");
-    expect(screen.getByRole("link", { name: "Chat with Appointment Setter" }).getAttribute("href")).toBe("/chat/appointment-setter");
+    expect(screen.getByRole("link", { name: "Chat with Operations Manager · Operations Manager" }).getAttribute("href")).toBe("/chat/operations-manager");
+    expect(screen.getByRole("link", { name: "Chat with Appointment Setter · Appointment Setter" }).getAttribute("href")).toBe("/chat/appointment-setter");
     // Setup required: no chat shortcut, so a management click can never land on a blocked chat by accident.
     expect(screen.queryByRole("link", { name: "Chat with Lead Hunter" })).toBeNull();
     // Not enabled for this workspace: not listed at all.

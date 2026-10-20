@@ -44,10 +44,15 @@ export interface AgentInstanceRow {
   config_version: number | null;
   config_applied_at: Date | null;
   hermes_profile: string | null;
+  hermes_gateway_id: string | null;
   hermes_base_url: string | null;
   tool_inventory_digest: string | null;
+  tool_inventory_contract: string | null;
   tool_inventory_tool_count: number | null;
   tool_inventory_verified_at: Date | null;
+  tool_inventory_expires_at: Date | null;
+  active_run: boolean;
+  credential_ready: boolean;
 }
 
 const RESERVED_PROFILES = new Set([
@@ -81,25 +86,46 @@ export async function ensureAgentInstances(orgId: string, db: Queryable) {
 
 const AGENT_SELECT = `
   select a.id, a.org_id, a.role_key, a.display_name, a.enabled, a.status, a.mode, a.active_config_version_id,
-         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_base_url,
-         a.tool_inventory_digest, a.tool_inventory_tool_count, a.tool_inventory_verified_at, r.default_tools,
+         a.last_health_check_at, a.last_health_ok, a.last_health_detail, a.hermes_profile, a.hermes_gateway_id, a.hermes_base_url,
+         a.tool_inventory_contract, a.tool_inventory_digest, a.tool_inventory_tool_count, a.tool_inventory_verified_at,
+         a.tool_inventory_expires_at, exists(select 1 from agent_runs ar where ar.agent_instance_id=a.id and ar.status='running') as active_run,
+         false::boolean as credential_ready,
+         r.default_tools,
          v.summary, v.version as config_version, v.applied_at as config_applied_at
   from agent_instances a
   join agent_roles r on r.key = a.role_key
   left join agent_config_versions v on v.id = a.active_config_version_id`;
 
+async function attachCredentialReadiness(agents: AgentInstanceRow[]): Promise<AgentInstanceRow[]> {
+  if (!agents.length) return agents;
+  const { rows } = await withServiceRole((db) => db.query<{ agent_id: string; credential_ready: boolean }>(
+    `select a.id as agent_id,
+            (cred.id is not null and cred.revoked_at is null and
+             (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready
+       from agent_instances a
+       left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
+       where a.id=any($1::uuid[])`,
+    [agents.map((agent) => agent.id)],
+  ));
+  const stateById = new Map(rows.map((row) => [row.agent_id, row.credential_ready]));
+  return agents.map((agent) => ({ ...agent, credential_ready: stateById.get(agent.id) === true }));
+}
+
 export async function listAgents(userId: string, orgId: string): Promise<AgentInstanceRow[]> {
-  return withUser(userId, async (db) => {
+  const agents = await withUser(userId, async (db) => {
     const { rows } = await db.query<AgentInstanceRow>(`${AGENT_SELECT} where a.org_id = $1 order by r.sort_order`, [orgId]);
     return rows;
   });
+  return attachCredentialReadiness(agents);
 }
 
 export async function getAgentByRole(userId: string, orgId: string, role: AgentRoleKey): Promise<AgentInstanceRow | null> {
-  return withUser(userId, async (db) => {
+  const agent = await withUser(userId, async (db) => {
     const { rows } = await db.query<AgentInstanceRow>(`${AGENT_SELECT} where a.org_id = $1 and a.role_key = $2`, [orgId, role]);
     return rows[0] ?? null;
   });
+  return agent ? (await attachCredentialReadiness([agent]))[0] : null;
 }
 
 export async function listConfigVersions(userId: string, agentId: string) {

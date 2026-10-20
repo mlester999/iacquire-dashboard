@@ -4,7 +4,8 @@ import { AppError } from "@/server/errors";
 import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import { usageSummary, type UsageSummary } from "@/server/usage";
 import type { SessionUser } from "@/server/auth/service";
-import type { AgentRoleKey, AgentStatus } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { redactReviewText, type ReviewVersionView } from "@/lib/config-review";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 import { listHeldConfigReviewsForOrg } from "@/server/workforce/reviews";
@@ -298,10 +299,13 @@ export async function listAgencyAgents(user: SessionUser) {
       last_health_ok: boolean | null; hermes_gateway_id: string | null; gateway_status: string | null;
       credential_id: string | null; has_config: boolean; pending_approvals: number; runs_30d: number;
       last_activity_at: Date | null;
+      active_run: boolean; active_config_version_id: string | null; config_version: number | null; config_applied_at: Date | null;
       profile_check_status: string | null; profile_check_profile_id: string | null; profile_check_gateway_id: string | null;
       profile_check_detail: string | null; profile_check_at: Date | null;
       profile_verified_at: Date | null; profile_identity_verified: boolean | null; tool_permissions_status: string | null;
-      full_capabilities_acknowledged: boolean;
+      api_contract_verified: boolean | null; acknowledged_profile: string | null; acknowledged_policy_id: string | null;
+      acknowledged_at: Date | null; internal_policy_id: string | null; acknowledged_config_version_id: string | null;
+      acknowledged_inventory_digest: string | null; agent_policy_override_id: string | null;
       tool_inventory_contract: string | null; tool_inventory_digest: string | null;
       tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null;
       tool_inventory_tool_count: number | null; tool_inventory_detail: string | null;
@@ -309,36 +313,81 @@ export async function listAgencyAgents(user: SessionUser) {
       `select a.id,a.org_id,o.name as org_name,a.role_key,a.display_name,a.enabled,a.status,a.hermes_profile,
               a.last_health_check_at,a.last_health_detail,a.last_health_ok,a.hermes_gateway_id,g.status as gateway_status,
               a.credential_id,
-              (a.active_config_version_id is not null) as has_config,
+              (a.active_config_version_id is not null) as has_config,a.active_config_version_id,v.version as config_version,v.applied_at as config_applied_at,
               (select count(*)::int from approval_requests p where p.agent_instance_id=a.id and p.status='pending') as pending_approvals,
               (select count(*)::int from agent_runs r where r.agent_instance_id=a.id and r.started_at > now() - interval '30 days') as runs_30d,
               (select max(r.started_at) from agent_runs r where r.agent_instance_id=a.id) as last_activity_at,
+              exists(select 1 from agent_runs running where running.agent_instance_id=a.id and running.status='running') as active_run,
               pc.status as profile_check_status,pc.profile_id as profile_check_profile_id,pc.gateway_id as profile_check_gateway_id,
               pc.detail as profile_check_detail,pc.checked_at as profile_check_at,
               pc.verified_at as profile_verified_at,pc.identity_verified as profile_identity_verified,
-              pc.tool_permissions_status,
-              coalesce(ack_policy.id is not null and ack.verified_profile=a.hermes_profile and agent_policy.id is null,false) as full_capabilities_acknowledged,
+              pc.api_contract_verified,pc.tool_permissions_status,ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
+              ack.acknowledged_at,ack_policy.id as internal_policy_id,
+              ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+              ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
+              agent_policy.id as agent_policy_override_id,
               a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,
               a.tool_inventory_tool_count,a.tool_inventory_detail
        from agent_instances a join organizations o on o.id=a.org_id join agent_roles ro on ro.key=a.role_key
+       left join agent_config_versions v on v.id=a.active_config_version_id
        left join hermes_gateways g on g.id=a.hermes_gateway_id
        left join agency_hermes_profile_checks pc on pc.agent_instance_id=a.id and pc.org_id=a.org_id
        left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
        left join hermes_tool_policies ack_policy on ack_policy.id=ack.policy_id and ack_policy.scope_kind='internal_agency' and ack_policy.name='Full Hermes Capabilities'
        left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+       left join lateral (
+         select h.policy_snapshot from hermes_tool_policy_history h
+         where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+         order by h.occurred_at desc,h.id desc limit 1
+       ) ack_history on true
        where o.kind='agency' and o.id=$1 order by ro.sort_order`,
       [agencyId],
     );
   });
   const credentialIds = rows.flatMap((agent) => agent.credential_id ? [agent.credential_id] : []);
   const activeCredentialIds = new Set((await withServiceRole((db) => db.query<{ id: string }>(
-    `select id from integration_credentials where id = any($1::uuid[]) and revoked_at is null`,
+    `select c.id from integration_credentials c
+      left join credential_references r on r.id=c.credential_reference_id and r.org_id=c.org_id and r.provider='hermes'
+      where c.id = any($1::uuid[]) and c.revoked_at is null
+        and (c.credential_reference_id is null or (r.id is not null and r.revoked_at is null))`,
     [credentialIds],
   ))).rows.map((credential) => credential.id));
-  return rows.map(({ credential_id, ...agent }) => ({
-    ...agent,
-    has_credential: credential_id !== null && activeCredentialIds.has(credential_id),
-  }));
+  return rows.map(({ credential_id, ...agent }) => {
+    const credentialReady = credential_id !== null && activeCredentialIds.has(credential_id);
+    const identityEvidence = {
+      expectedProfile: AGENCY_HERMES_PROFILE_IDS[agent.role_key],
+      savedProfile: agent.hermes_profile,
+      savedGatewayId: agent.hermes_gateway_id,
+      checkedProfile: agent.profile_check_profile_id,
+      checkedGatewayId: agent.profile_check_gateway_id,
+      checkStatus: agent.profile_check_status,
+      identityVerified: agent.profile_identity_verified,
+      apiContractVerified: agent.api_contract_verified,
+      toolPermissionsStatus: agent.tool_permissions_status,
+      checkedAt: agent.profile_check_at,
+      configAppliedAt: agent.config_applied_at,
+    };
+    const identity_current = internalIdentityIsCurrent(identityEvidence);
+    const full_capabilities_acknowledged = internalAcknowledgementIsCurrent({
+      ...identityEvidence,
+      acknowledgedAt: agent.acknowledged_at,
+      acknowledgedProfile: agent.acknowledged_profile,
+      acknowledgedPolicyId: agent.acknowledged_policy_id,
+      expectedPolicyId: agent.internal_policy_id,
+      activeConfigVersionId: agent.active_config_version_id,
+      acknowledgedConfigVersionId: agent.acknowledged_config_version_id,
+      inventoryDigest: agent.tool_inventory_digest,
+      acknowledgedInventoryDigest: agent.acknowledged_inventory_digest,
+      credentialReady,
+      hasAgentPolicyOverride: Boolean(agent.agent_policy_override_id),
+    });
+    return {
+      ...agent,
+      identity_current,
+      full_capabilities_acknowledged,
+      has_credential: credentialReady,
+    };
+  });
 }
 
 export async function listUsageByTenant(user: SessionUser) {

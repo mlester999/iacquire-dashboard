@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
+import { permissionsFor, roleHasPermission } from "@/lib/permissions";
 import { withServiceRole, withSystem } from "@/server/db";
 import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
 import { updateAgencyUserPermission } from "@/server/admin/team";
@@ -17,7 +18,9 @@ import { defaultSettings } from "@/server/workforce/compiler";
 import { listHermesGateways } from "@/server/integrations/hermes/gateways";
 import { acknowledgeInternalFullCapabilities, getHermesToolPolicyView } from "@/server/workforce/tool-policies";
 import { AgentRunNotReadyError, startAgentRun } from "@/server/integrations/hermes/client";
-import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
+import { sendChatMessage } from "@/server/chat/service";
+import type { OrgContext } from "@/server/tenancy/context";
+import { addMember, agencyUser, agentId, createOrg, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const PROFILE_KEYS = Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [AGENCY_HERMES_PROFILE_IDS[role], `synthetic-${role}-profile-key-0123456789`])) as Record<string, string>;
@@ -31,6 +34,16 @@ let clientOrg: Awaited<ReturnType<typeof createOrg>>;
 let otherClientOrg: Awaited<ReturnType<typeof createOrg>>;
 let salesAgentId: string;
 let gatewayId: string;
+
+async function acknowledgementTargets(agentIds: string[]) {
+  const { rows } = await withSystem((db) => db.query<{ agent_id: string; active_config_version_id: string | null }>(
+    "select id as agent_id,active_config_version_id from agent_instances where id=any($1::uuid[])",
+    [agentIds],
+  ));
+  return rows.flatMap((row) => row.active_config_version_id
+    ? [{ agentId: row.agent_id, expectedActiveConfigVersionId: row.active_config_version_id }]
+    : []);
+}
 
 beforeAll(async () => {
   const profiles = Object.fromEntries(Object.entries(PROFILE_KEYS).map(([key, apiKey]) => [key, { key: apiKey }])) as Record<string, { key: string }>;
@@ -47,6 +60,10 @@ beforeAll(async () => {
     return rows[0];
   });
   agencyOrgId = agency.id;
+  await withSystem((db) => db.query(
+    "insert into organization_memberships (org_id,user_id,role) values ($1,$2,'owner') on conflict (org_id,user_id) do update set role='owner'",
+    [agencyOrgId, admin.id],
+  ));
   clientOrg = await createOrg({ name: "Separated client workforce" });
   otherClientOrg = await createOrg({ name: "Unassigned client workforce" });
   await withSystem((db) => db.query("insert into staff_assignments (org_id,user_id) values ($1,$2)", [clientOrg.id, staff.id]));
@@ -275,22 +292,150 @@ describe("agency Hermes workforce isolation", () => {
     }
 
     const agentIds = agents.map((agent) => agent.id);
-    await expect(acknowledgeInternalFullCapabilities(staff, agentIds)).rejects.toMatchObject({ code: "forbidden" });
+    const unconfiguredTargets = agentIds.map((agentId) => ({ agentId, expectedActiveConfigVersionId: crypto.randomUUID() }));
+    await expect(acknowledgeInternalFullCapabilities(staff, unconfiguredTargets)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(acknowledgeInternalFullCapabilities(admin, unconfiguredTargets)).rejects.toMatchObject({ code: "conflict" });
+    const clientEmployeeId = await agentId(clientOrg.id, "sales_assistant");
+    await expect(acknowledgeInternalFullCapabilities(admin, [{ agentId: clientEmployeeId, expectedActiveConfigVersionId: crypto.randomUUID() }]))
+      .rejects.toMatchObject({ code: "not_found" });
+
+    for (const agent of agents) {
+      await withSystem((db) => createConfigVersion(db, {
+        orgId: agencyOrgId,
+        agentId: agent.id,
+        settings: defaultSettings(agent.role_key),
+        source: "agency",
+        userId: admin.id,
+        apply: true,
+      }));
+      expect(await runHealthCheck(agent.id, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
+    }
+
+    const initialView = await getHermesToolPolicyView(admin);
+    expect(initialView.agents.find((agent) => agent.id === agentIds[0])).toMatchObject({
+      identityMapped: false,
+      canAcknowledgeFullCapabilities: true,
+      inventoryCurrent: true,
+    });
+    const currentTargets = await acknowledgementTargets(agentIds);
     await withSystem((db) => db.query(
       "update integration_credentials set revoked_at=now() where id=(select credential_id from agent_instances where id=$1)",
       [agentIds[0]],
     ));
     const ineligiblePolicyProfile = (await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === agentIds[0]);
-    expect(ineligiblePolicyProfile).toMatchObject({ identityMapped: true, canAcknowledgeFullCapabilities: false });
-    await expect(acknowledgeInternalFullCapabilities(admin, agentIds)).rejects.toMatchObject({ code: "conflict" });
+    expect(ineligiblePolicyProfile).toMatchObject({ identityMapped: false, canAcknowledgeFullCapabilities: false });
+    await expect(acknowledgeInternalFullCapabilities(admin, currentTargets)).rejects.toMatchObject({ code: "conflict" });
     await withSystem((db) => db.query(
       "update integration_credentials set revoked_at=null where id=(select credential_id from agent_instances where id=$1)",
       [agentIds[0]],
     ));
     await withSystem((db) => db.query("update agent_instances set enabled=false where id=$1", [agentIds[0]]));
-    await expect(acknowledgeInternalFullCapabilities(admin, agentIds)).rejects.toMatchObject({ code: "conflict" });
+    await expect(acknowledgeInternalFullCapabilities(admin, currentTargets)).rejects.toMatchObject({ code: "conflict" });
     await withSystem((db) => db.query("update agent_instances set enabled=true where id=$1", [agentIds[0]]));
-    await acknowledgeInternalFullCapabilities(admin, agentIds);
+
+    const selectedAgent = agents.find((agent) => agent.role_key === "sales_assistant")!;
+    const selectedProfile = AGENCY_HERMES_PROFILE_IDS.sales_assistant;
+    const initialAckAuditCount = (await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from audit_logs where action='workforce.full_capabilities_acknowledged' and agent_instance_id=$1",
+      [selectedAgent.id],
+    ))).rows[0].count;
+    // Vision is optional. Removing it creates a different, still reviewed digest; the first health check must
+    // record the change and keep the acknowledgement blocked until a second explicit check confirms it.
+    mock.setInventory(selectedProfile, { tools: [
+      { name: "memory", toolset: "memory" },
+      { name: "session_search", toolset: "session_search" },
+      { name: "todo_list", toolset: "todo" },
+      { name: "web_search", toolset: "web" },
+      { name: "web_extract", toolset: "web" },
+    ] });
+    const selectedTarget = currentTargets.find((target) => target.agentId === selectedAgent.id)!;
+    await expect(acknowledgeInternalFullCapabilities(admin, [selectedTarget])).rejects.toMatchObject({ code: "conflict" });
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from audit_logs where action='workforce.full_capabilities_acknowledged' and agent_instance_id=$1",
+      [selectedAgent.id],
+    ))).rows[0].count).toBe(initialAckAuditCount);
+    expect((await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === selectedAgent.id)).toMatchObject({
+      fullCapabilitiesAcknowledged: false,
+      canAcknowledgeFullCapabilities: false,
+      inventoryCurrent: false,
+    });
+    expect(await runHealthCheck(selectedAgent.id, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
+
+    const fiveToolInventory = [
+      { name: "memory", toolset: "memory" },
+      { name: "session_search", toolset: "session_search" },
+      { name: "todo_list", toolset: "todo" },
+      { name: "web_search", toolset: "web" },
+      { name: "web_extract", toolset: "web" },
+    ];
+    mock.setInventory(selectedProfile, { tools: fiveToolInventory, delayMs: 250 });
+    const raceRequestStart = mock.requests.length;
+    const raceAcknowledgement = acknowledgeInternalFullCapabilities(admin, [selectedTarget]);
+    let enteredDiagnostic = false;
+    for (let attempt = 0; attempt < 100 && !enteredDiagnostic; attempt += 1) {
+      enteredDiagnostic = mock.requests.slice(raceRequestStart).some((request) => request.method === "GET" && request.path === "/v1/tools");
+      if (!enteredDiagnostic) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(enteredDiagnostic).toBe(true);
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: agencyOrgId,
+      agentId: selectedAgent.id,
+      settings: defaultSettings("sales_assistant"),
+      source: "agency",
+      userId: admin.id,
+      apply: true,
+    }));
+    await expect(raceAcknowledgement).rejects.toMatchObject({ code: "conflict" });
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from audit_logs where action='workforce.full_capabilities_acknowledged' and agent_instance_id=$1",
+      [selectedAgent.id],
+    ))).rows[0].count).toBe(initialAckAuditCount);
+    mock.setInventory(selectedProfile, { tools: fiveToolInventory });
+    expect(await runHealthCheck(selectedAgent.id, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
+    const currentTargetsAfterRace = await acknowledgementTargets(agentIds);
+
+    await withSystem((db) => db.query("update agent_instances set tool_inventory_expires_at=now()-interval '1 second' where id=$1", [selectedAgent.id]));
+    const acknowledgementRequestStart = mock.requests.length;
+    const policyBeforeAck = (await withSystem((db) => db.query<{ allowed_capabilities: string[]; blocked_toolsets: string[]; approval_mode: string }>(
+      "select allowed_capabilities,blocked_toolsets,approval_mode from hermes_tool_policies where scope_kind='internal_agency' and name='Full Hermes Capabilities'",
+    ))).rows[0];
+    await acknowledgeInternalFullCapabilities(admin, currentTargetsAfterRace);
+    expect(mock.requests.slice(acknowledgementRequestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    const policyAfterAck = (await withSystem((db) => db.query<{ allowed_capabilities: string[]; blocked_toolsets: string[]; approval_mode: string }>(
+      "select allowed_capabilities,blocked_toolsets,approval_mode from hermes_tool_policies where scope_kind='internal_agency' and name='Full Hermes Capabilities'",
+    ))).rows[0];
+    expect(policyAfterAck).toEqual(policyBeforeAck);
+
+    const evidence = await withSystem(async (db) => {
+      const { rows } = await db.query<{ policy_snapshot: Record<string, unknown>; active_config_version_id: string; tool_inventory_digest: string }>(
+        `select h.policy_snapshot,a.active_config_version_id,a.tool_inventory_digest
+           from hermes_tool_policy_history h join agent_instances a on a.id=h.agent_id
+          where h.agent_id=$1 and h.action='full_capabilities_acknowledged'
+          order by h.occurred_at desc,h.id desc limit 1`,
+        [selectedAgent.id],
+      );
+      return rows[0];
+    });
+    expect(evidence.policy_snapshot).toMatchObject({
+      activeConfigVersionId: evidence.active_config_version_id,
+      inventoryDigest: evidence.tool_inventory_digest,
+      inventoryContract: "hermes.api_server.tool_catalog.v1",
+      inventoryToolCount: 5,
+      identityCheckedAt: expect.any(String),
+      inventoryVerifiedAt: expect.any(String),
+    });
+    expect(evidence.policy_snapshot).not.toHaveProperty("inventoryCompleteness", "unverified");
+    const auditEvidence = await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+      `select metadata from audit_logs
+        where action='workforce.full_capabilities_acknowledged' and target_id=$1
+        order by created_at desc limit 1`,
+      [selectedAgent.id],
+    ));
+    expect(auditEvidence.rows[0]?.metadata).toMatchObject({
+      activeConfigVersionId: evidence.active_config_version_id,
+      inventoryDigest: evidence.tool_inventory_digest,
+      modelRunSubmitted: false,
+    });
 
     const view = await getHermesToolPolicyView(admin);
     const internalProfiles = view.agents.filter((agent) => agent.orgKind === "agency");
@@ -301,7 +446,6 @@ describe("agency Hermes workforce isolation", () => {
     expect(workforceCards).toHaveLength(AGENT_ROLE_KEYS.length);
     expect(workforceCards.every((agent) => agent.full_capabilities_acknowledged)).toBe(true);
 
-    const selectedAgent = agents.find((agent) => agent.role_key === "sales_assistant")!;
     const connection = {
       baseUrl: mock.url,
       profile: AGENCY_HERMES_PROFILE_IDS.sales_assistant,
@@ -311,15 +455,6 @@ describe("agency Hermes workforce isolation", () => {
       input: "synthetic acknowledged internal run",
       idempotencyKey: `acknowledged-${crypto.randomUUID()}`,
     });
-
-    // Mapped, identity-checked and even acknowledged, but never health-checked: still `provisioning`, so no run starts and
-    // nothing reaches the gateway.
-    const provisioningRequestStart = mock.requests.length;
-    await expect(startRequest()).rejects.toBeInstanceOf(AgentRunNotReadyError);
-    expect(mock.requests).toHaveLength(provisioningRequestStart);
-    // What a Super Admin does to bring it live: apply an initial configuration in the agency workspace, then run the health check.
-    await withSystem((db) => createConfigVersion(db, { orgId: agencyOrgId, agentId: selectedAgent.id, settings: defaultSettings("sales_assistant"), source: "agency", userId: admin.id, apply: true }));
-    expect(await runHealthCheck(selectedAgent.id, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
 
     const wrongKeyRequestStart = mock.requests.length;
     await expect(startAgentRun(selectedAgent.id, agencyOrgId, { ...connection, apiKey: "rotated-but-unsaved-synthetic-key-012345" }, {
@@ -337,10 +472,56 @@ describe("agency Hermes workforce isolation", () => {
     });
     expect(staleAcknowledgementView.internalDefault.acknowledgedFullCapabilities).toBe(false);
     const staleCheckRequestStart = mock.requests.length;
-    await expect(startRequest()).rejects.toMatchObject({ kind: "bad_response" });
+    await expect(startRequest()).rejects.toMatchObject({ reason: "acknowledgement_required" });
     expect(mock.requests).toHaveLength(staleCheckRequestStart);
 
-    await acknowledgeInternalFullCapabilities(admin, [selectedAgent.id]);
+    const internalMembership = {
+      orgId: agencyOrgId,
+      name: "iAcquire test agency",
+      slug: "iacquire-test-agency",
+      kind: "agency" as const,
+      status: "active" as const,
+      role: "owner" as const,
+      isDemo: false,
+      onboardingCompletedAt: null,
+      timezone: "UTC",
+    };
+    const internalCtx: OrgContext = {
+      user: admin,
+      org: internalMembership,
+      role: "owner",
+      permissions: permissionsFor("owner"),
+      can: (permission) => roleHasPermission("owner", permission),
+      memberships: [internalMembership],
+    };
+    const beforeChatQueue = await withSystem(async (db) => {
+      const { rows } = await db.query<{ messages: number; runs: number }>(
+        `select
+           (select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=$1) as messages,
+           (select count(*)::int from agent_runs where agent_instance_id=$1) as runs`,
+        [selectedAgent.id],
+      );
+      return rows[0];
+    });
+    const noProviderRequestStart = mock.requests.length;
+    await expect(sendChatMessage(internalCtx, {
+      agentRole: "sales_assistant",
+      content: "This must not queue while the acknowledgement is stale.",
+      clientMessageId: crypto.randomUUID(),
+    })).rejects.toMatchObject({ code: "agent_unavailable" });
+    expect(mock.requests).toHaveLength(noProviderRequestStart);
+    const afterChatQueue = await withSystem(async (db) => {
+      const { rows } = await db.query<{ messages: number; runs: number }>(
+        `select
+           (select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=$1) as messages,
+           (select count(*)::int from agent_runs where agent_instance_id=$1) as runs`,
+        [selectedAgent.id],
+      );
+      return rows[0];
+    });
+    expect(afterChatQueue).toEqual(beforeChatQueue);
+
+    await acknowledgeInternalFullCapabilities(admin, await acknowledgementTargets([selectedAgent.id]));
     expect((await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === selectedAgent.id)?.fullCapabilitiesAcknowledged).toBe(true);
 
     const runStart = mock.requests.length;
@@ -374,15 +555,15 @@ describe("agency Hermes workforce isolation", () => {
       "select id,role_key from agent_instances where org_id=$1 order by role_key limit 1",
       [clientOrg.id],
     ));
-    const requestsStart = mock.requests.length;
     const clientConnection = { baseUrl: mock.url, profile: CLIENT_TEST_PROFILE, apiKey: CLIENT_TEST_KEY };
     const clientRequest = () => startAgentRun(rows[0].id, clientOrg.id, clientConnection, { input: "synthetic client request", idempotencyKey: `blocked-client-${crypto.randomUUID()}` });
     // A client employee that never passed a health check is refused by the readiness gate before any gateway request.
     await expect(clientRequest()).rejects.toBeInstanceOf(AgentRunNotReadyError);
-    expect(mock.requests).toHaveLength(requestsStart);
+    await connectHermesProfile({ agentId: rows[0].id, baseUrl: mock.url, profile: CLIENT_TEST_PROFILE, apiKey: CLIENT_TEST_KEY, agencyUserId: admin.id });
     // Online and configured with a recorded digest, the only thing left to stop it is the gateway's inventory contract.
     await withSystem((db) => createConfigVersion(db, { orgId: clientOrg.id, agentId: rows[0].id, settings: defaultSettings(rows[0].role_key), source: "onboarding", userId: admin.id, apply: true }));
     await withSystem((db) => db.query("update agent_instances set status='online', last_health_ok=true, tool_inventory_digest=$2 where id=$1", [rows[0].id, "a".repeat(64)]));
+    const requestsStart = mock.requests.length;
     mock.setInventory(CLIENT_TEST_PROFILE, { advertised: false });
     try {
       await expect(clientRequest()).rejects.toMatchObject({ kind: "bad_response" });

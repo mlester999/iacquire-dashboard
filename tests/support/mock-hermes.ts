@@ -38,6 +38,8 @@ export interface MockInventory {
   challengeOverride?: string;
   generatedAt?: string;
   expiresAt?: string;
+  /** Delay catalog replies so tests can change database state during an acknowledgement workflow. */
+  delayMs?: number;
   /** Return these tools from the second read onward, proving a changing inventory is detected. */
   changeAfterFirstRead?: MockInventoryTool[];
 }
@@ -165,6 +167,7 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
       const inventory = p.inventory ?? {};
       if (inventory.advertised === false) return send(404, { error: { message: "Unknown or unconfigured profile", type: "not_found" } });
       if (inventory.status) return send(inventory.status, { error: { message: "The complete tool inventory is unavailable.", type: "server_error" } });
+      if (inventory.delayMs) await sleep(inventory.delayMs);
       const read = (inventoryReads.get(profile!) ?? 0) + 1;
       inventoryReads.set(profile!, read);
       const tools: MockInventoryTool[] = read > 1 && inventory.changeAfterFirstRead ? inventory.changeAfterFirstRead : inventory.tools ?? SAFE_INVENTORY_TOOLS;

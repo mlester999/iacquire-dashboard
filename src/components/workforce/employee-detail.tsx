@@ -69,9 +69,13 @@ interface Props {
     providerRuntime: string;
     assignedOrganization: string;
     lastActivityAt: string | null;
+    inventoryContract: string | null;
     inventoryDigest: string | null;
     inventoryVerifiedAt: string | null;
+    inventoryExpiresAt: string | null;
     inventoryToolCount: number | null;
+    credentialReady: boolean;
+    taskExecuting: boolean;
   };
   canPause: boolean;
   canGoAutonomous: boolean;
@@ -89,6 +93,7 @@ interface Props {
   canViewKnowledge: boolean;
   canEditKnowledge: boolean;
   acknowledgementCurrent: boolean | null;
+  identityCurrent: boolean | null;
   isAgencyEmployee: boolean;
   adminManageHref: string | null;
   initialTab: string;
@@ -120,9 +125,17 @@ export function EmployeeDetail(props: Props) {
     lastHealthCheckAt: agent.lastHealthCheckAt,
     lastHealthOk: agent.lastHealthOk,
     lastHealthDetail: agent.lastHealthDetail,
+    inventoryContract: agent.inventoryContract,
     inventoryDigest: agent.inventoryDigest,
+    inventoryVerifiedAt: agent.inventoryVerifiedAt,
+    inventoryExpiresAt: agent.inventoryExpiresAt,
+    inventoryToolCount: agent.inventoryToolCount,
+    credentialCurrent: agent.credentialReady,
+    identityCurrent: props.identityCurrent,
     acknowledgementCurrent: props.acknowledgementCurrent,
     isAgencyEmployee: props.isAgencyEmployee,
+    taskExecuting: agent.taskExecuting,
+    evaluatedAt: props.now,
   });
   const goConfigure = () => setTab("configure");
   const showRequirements = () => {
@@ -166,7 +179,7 @@ export function EmployeeDetail(props: Props) {
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <InfoChip icon={<Sparkles />}>{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured"}</InfoChip>
-            <InfoChip icon={<ShieldCheck />}>{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools approved` : "Inventory not recorded"}</InfoChip>
+            <InfoChip icon={<ShieldCheck />}>{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools${readiness.stage === "inventory" ? " · refresh required" : " · attested"}` : "Inventory not recorded"}</InfoChip>
             <InfoChip icon={<History />}><span suppressHydrationWarning>{agent.lastHealthCheckAt ? `Checked ${relativeTime(agent.lastHealthCheckAt)}` : "Never checked"}</span></InfoChip>
             <span className="text-[11.5px] text-muted">{agent.assignedOrganization}</span>
           </div>

@@ -13,6 +13,8 @@ import {
   getRunStatus,
   HermesError,
   startAgentRun,
+  assertAgentRunPreflight,
+  AgentRunNotReadyError,
   stopRun,
   streamRunEvents,
   toolActivityLabel,
@@ -21,6 +23,7 @@ import {
 } from "@/server/integrations/hermes/client";
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
+import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
 
@@ -172,23 +175,49 @@ export interface SendResult {
 
 async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
   const agent = await withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<{ id: string; org_id: string; status: AgentStatus; enabled: boolean; last_health_check_at: Date | null }>(
-      "select id, org_id, status, enabled, last_health_check_at from agent_instances where org_id = $1 and role_key = $2",
+    const { rows } = await db.query<{
+      id: string; org_id: string; status: AgentStatus; enabled: boolean; active_config_version_id: string | null;
+      last_health_check_at: Date | null; last_health_ok: boolean | null; tool_inventory_contract: string | null;
+      tool_inventory_digest: string | null; tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null;
+      tool_inventory_tool_count: number | null;
+    }>(
+      `select id,org_id,status,enabled,active_config_version_id,last_health_check_at,last_health_ok,
+              tool_inventory_contract,tool_inventory_digest,tool_inventory_verified_at,tool_inventory_expires_at,tool_inventory_tool_count
+         from agent_instances where org_id=$1 and role_key=$2`,
       [ctx.org.orgId, role],
     );
     return rows[0];
   });
   if (!agent || agent.org_id !== ctx.org.orgId) throw new AppError("not_found", "AI employee not found.");
   if (!agent.enabled) throw new AppError("agent_unavailable", `${AGENT_BY_KEY[role].shortName} isn't enabled for your workspace.`);
+  try {
+    // Check non-refreshable run authorization first. A stale internal acknowledgement or identity
+    // must not trigger a provider diagnostic as a side effect of an ineligible chat request.
+    await assertAgentRunPreflight(agent.id, ctx.org.orgId, { allowMissingInventory: true });
+  } catch (err) {
+    if (err instanceof AgentRunNotReadyError) throw new AppError("agent_unavailable", err.message);
+    throw err;
+  }
   let status = agent.status;
-  const stale = !agent.last_health_check_at || Date.now() - new Date(agent.last_health_check_at).getTime() > HEALTH_MAX_AGE_MS;
-  if (canChat(status) && stale) status = (await runHealthCheck(agent.id, { userId: ctx.user.id, kind: "system" })).status;
+  const healthStale = !agent.last_health_check_at || Date.now() - new Date(agent.last_health_check_at).getTime() > HEALTH_MAX_AGE_MS;
+  const inventoryStale = !toolInventoryReady(agent);
+  if (canChat(status) && (healthStale || inventoryStale)) {
+    const check = await runHealthCheck(agent.id, { userId: ctx.user.id, kind: "system" }, { skipSetupSync: true });
+    status = check.status;
+    if (!check.ok) throw new AppError("agent_unavailable", check.detail);
+  }
   if (!canChat(status)) {
     const msg =
       status === "setup_required" || status === "provisioning"
         ? `${AGENT_BY_KEY[role].shortName} is still being set up by the iAcquire team. You'll be notified when it's ready.`
         : `${AGENT_BY_KEY[role].shortName} is offline right now. Please try again shortly.`;
     throw new AppError("agent_unavailable", msg);
+  }
+  try {
+    await assertAgentRunPreflight(agent.id, ctx.org.orgId, { requireFreshInventory: true });
+  } catch (err) {
+    if (err instanceof AgentRunNotReadyError) throw new AppError("agent_unavailable", err.message);
+    throw err;
   }
   return agent;
 }
@@ -199,6 +228,14 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   if (!limit.allowed) throw new AppError("rate_limited", "You're sending messages quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
   await assertWithinLimits(ctx.org.orgId, "agent_message");
   const agent = await ensureAgentReady(ctx, input.agentRole);
+  try {
+    // Recheck immediately before persisting the turn/run so stale state cannot be accepted based
+    // only on the earlier health check or UI status.
+    await assertAgentRunPreflight(agent.id, ctx.org.orgId, { requireFreshInventory: true });
+  } catch (err) {
+    if (err instanceof AgentRunNotReadyError) throw new AppError("agent_unavailable", err.message);
+    throw err;
+  }
 
   // 1. Persist the user's turn under row-level security.
   const prepared = await withUser(ctx.user.id, async (db) => {

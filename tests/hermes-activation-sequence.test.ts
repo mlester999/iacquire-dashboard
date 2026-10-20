@@ -101,11 +101,15 @@ describe("the documented activation sequence", () => {
 
   it("still refuses a run until the profile check and Super Admin acknowledgement are current", async () => {
     const runsBefore = runsSent();
-    await expect(runAttempt()).rejects.toThrow(/identity check and Super Admin full-capabilities acknowledgement/);
+    await expect(runAttempt()).rejects.toThrow(/current Hermes identity, API contract and permission verification/);
     expect(runsSent()).toBe(runsBefore);
 
     await testAgencyHermesProfile(admin, agentId);
-    await acknowledgeInternalFullCapabilities(admin, [agentId]);
+    const activeConfigVersionId = (await withSystem((db) => db.query<{ active_config_version_id: string }>(
+      "select active_config_version_id from agent_instances where id=$1",
+      [agentId],
+    ))).rows[0].active_config_version_id;
+    await acknowledgeInternalFullCapabilities(admin, [{ agentId, expectedActiveConfigVersionId: activeConfigVersionId }]);
     await expect(runAttempt()).resolves.toMatchObject({ runId: expect.stringMatching(/^run_/) });
     expect(runsSent()).toBe(runsBefore + 1);
   });
@@ -113,7 +117,7 @@ describe("the documented activation sequence", () => {
   it("invalidates the acknowledgement after a new profile check and blocks the next run", async () => {
     await testAgencyHermesProfile(admin, agentId);
     const runsBefore = runsSent();
-    await expect(runAttempt()).rejects.toThrow(/identity check and Super Admin full-capabilities acknowledgement/);
+    await expect(runAttempt()).rejects.toThrow(/Super Admin acknowledgement for its current identity/);
     expect(runsSent()).toBe(runsBefore);
   });
 });

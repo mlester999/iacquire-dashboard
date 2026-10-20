@@ -69,7 +69,15 @@ export function HermesToolPolicies({ data, timeZone }: { data: HermesToolPolicyV
   const internalProfiles = data.agents.filter((agent) => agent.orgKind === "agency");
 
   const acknowledge = () => start(async () => {
-    const res = await acknowledgeInternalHermesCapabilitiesAction(selectedProfiles);
+    const targets = selectedProfiles.flatMap((agentId) => {
+      const profile = internalProfiles.find((candidate) => candidate.id === agentId);
+      return profile?.activeConfigVersionId ? [{ agentId, expectedActiveConfigVersionId: profile.activeConfigVersionId }] : [];
+    });
+    if (targets.length !== selectedProfiles.length) {
+      toast.error("Reload the page; one selected employee no longer has the same applied configuration.");
+      return;
+    }
+    const res = await acknowledgeInternalHermesCapabilitiesAction(targets);
     if (!res.ok) toast.error(res.error);
     else { toast.success("Acknowledgement recorded for the selected existing profiles."); setConfirmAck(false); setSelectedProfiles([]); router.refresh(); }
   });
@@ -79,7 +87,7 @@ export function HermesToolPolicies({ data, timeZone }: { data: HermesToolPolicyV
       <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><p className="text-[12px] text-white/70">Client default</p><p className="mt-1 text-lg font-semibold text-white">{data.clientDefault.name}</p><p className="mt-1 text-[11px] text-white/55">Applies as the desired default for new client policies</p></div><div className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><p className="text-[12px] text-white/70">Internal workforce</p><p className="mt-1 text-lg font-semibold text-white">Full Hermes Capabilities</p><p className="mt-1 text-[11px] text-white/55">Existing profiles require per-profile owner acknowledgement</p></div><div className="rounded-xl bg-white/[.05] p-4 ring-1 ring-inset ring-white/10"><p className="text-[12px] text-white/70">Gateway controls</p><p className="mt-1 text-lg font-semibold text-white">Read-only API</p><p className="mt-1 text-[11px] text-white/55">Remote policy writes and complete inventory are unavailable</p></div></div>
     </PageHero>
 
-    <div role="alert" className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-warning-soft p-4 text-[13px] leading-relaxed text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p><strong>The portal&apos;s validated Hermes v0.21.5 API contract has read-only, incomplete tool discovery and no supported policy-write endpoint.</strong> The installed gateway version and configuration have not been verified. Client AI runs remain fail-closed, and saved policies are desired settings only.</p></div>
+    <div role="alert" className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-warning-soft p-4 text-[13px] leading-relaxed text-warning-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p><strong>{data.inventoryComplete ? "The complete runtime catalog is currently verified for every internal profile." : "At least one internal profile needs a fresh or complete runtime inventory check."}</strong> Inventory checks use the read-only Hermes catalog. The gateway does not expose a supported policy-write endpoint, so saved tool policies remain desired settings and do not change profile capabilities.</p></div>
 
     {data.editable && <InternalAcknowledgement profiles={internalProfiles} timeZone={timeZone} selected={selectedProfiles} setSelected={setSelectedProfiles} onConfirm={() => setConfirmAck(true)} />}
 
@@ -96,8 +104,8 @@ export function HermesToolPolicies({ data, timeZone }: { data: HermesToolPolicyV
 
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 size-4 text-primary" /><p className="text-[12px] leading-relaxed text-muted">Client employees stay blocked from live runs while Hermes cannot prove complete permissions. Existing internal profiles can run only after a current identity check and owner acknowledgement. Policy edits never start tasks or campaigns.</p></div><Link href="/admin/employees" className="flex items-center gap-1 text-[12px] font-medium text-primary hover:underline">Open Internal Workforce <ArrowUpRight className="size-3.5" /></Link></div>
 
-    <Dialog open={confirmAck} onOpenChange={setConfirmAck} title="Acknowledge Full Hermes Capabilities" description="This records owner approval for the selected existing profile identities." footer={<><Button variant="secondary" disabled={pending} onClick={() => setConfirmAck(false)}>Cancel</Button><Button variant="brand" loading={pending} onClick={acknowledge}>Acknowledge selected profiles</Button></>}>
-      <div className="space-y-3 text-[13px] leading-relaxed text-muted"><p>You are authorizing these existing iAcquire employees to use the tools already enabled for their Hermes profiles even though the inventory completeness is unverified.</p><p>This does not change profile configuration, bypass authentication, enable new tools, start a workload or launch an outbound campaign. It records your identity and the selected profile IDs.</p></div>
+    <Dialog open={confirmAck} onOpenChange={setConfirmAck} title="Acknowledge Full Hermes Capabilities" description="Record approval only after the current profile and inventory pass server checks." footer={<><Button variant="secondary" disabled={pending} onClick={() => setConfirmAck(false)}>Cancel</Button><Button variant="brand" loading={pending} onClick={acknowledge}>Verify and acknowledge selected profiles</Button></>}>
+      <div className="space-y-3 text-[13px] leading-relaxed text-muted"><p>For each selected internal employee, the server will confirm the saved Hermes identity and read the complete runtime tool inventory through the existing read-only diagnostic endpoints. It will record the acknowledgement only if the applied configuration, identity, credentials and approved inventory remain unchanged and current.</p><p>This does not change Hermes profile configuration or permissions, submit a model run, start a chat, or launch a background job. If a tool inventory differs from the recorded baseline or any state changes during verification, the acknowledgement stops without being saved.</p></div>
     </Dialog>
   </div>;
 }
@@ -182,11 +190,13 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
           <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold text-ink">{AGENT_BY_KEY[profile.roleKey].shortName}</p>
             <p className="mt-1 break-all font-mono text-[10px] text-muted">{profile.profile ?? "Not mapped"}</p>
-            <p className="mt-1 text-[10px] text-muted">Identity: {profile.lastProfileCheck ?? "not checked"} · Tool inventory: {profile.toolPermissionsStatus ?? "unverified"}</p>
+            <p className="mt-1 text-[10px] text-muted">Configuration: {profile.configVersion ? `v${profile.configVersion}` : "not applied"} · Identity: {profile.identityMapped ? "current" : profile.lastProfileCheck ?? "check required"}</p>
+            <p className="mt-1 text-[10px] text-muted">Tool permissions: {profile.toolPermissionsStatus ?? "unverified"} · Inventory: {profile.inventoryCurrent ? "current" : profile.inventoryDigest ? "expired / refresh required" : "not recorded"}{profile.inventoryToolCount ? ` · ${profile.inventoryToolCount} tools` : ""}{profile.inventoryExpiresAt ? ` · expires ${formatDate(profile.inventoryExpiresAt, timeZone)}` : ""}</p>
+            {profile.inventoryDigest && <p className="mt-1 break-all font-mono text-[9px] text-muted">Digest {profile.inventoryDigest.slice(0, 16)}…</p>}
             {acknowledged && <p className="mt-1 text-[10px] text-violet">Acknowledged by {profile.acknowledgedBy ?? "Super Admin"}{profile.acknowledgedAt ? ` · ${formatDate(profile.acknowledgedAt, timeZone)}` : ""}</p>}
           </div>
-          <StatusPill tone={profile.identityMapped ? acknowledged ? "violet" : "success" : "warning"}>
-            {acknowledged ? "Profile authorized" : profile.identityMapped ? "Verified · Not acknowledged" : "Identity check needed"}
+          <StatusPill tone={acknowledged ? "violet" : profile.canAcknowledgeFullCapabilities ? profile.identityMapped ? "success" : "warning" : "warning"}>
+            {acknowledged ? "Acknowledged · current" : profile.canAcknowledgeFullCapabilities ? profile.identityMapped ? "Verified · not acknowledged" : "Identity refresh required" : "Prerequisite required"}
           </StatusPill>
           <Switch
             id={`agency-ack-${profile.id}`}
@@ -201,9 +211,9 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
       {!profiles.length && <p className="rounded-xl bg-surface-2 p-3 text-[12px] text-muted">No existing internal employee records were found. Connect or verify them from Internal Workforce first.</p>}
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-      <p className="text-[11px] text-muted">Unverified inventory stays visible after acknowledgement.</p>
+      <p className="text-[11px] text-muted">Expired inventory is refreshed during acknowledgement; the inventory digest must match its previously verified baseline.</p>
       <Button variant="secondary" disabled={!selectable.length || !selected.length} onClick={onConfirm}><CheckCircle2 className="size-4" /> Acknowledge {selected.length} selected</Button>
     </div>
-    {profiles.some((profile) => !profile.fullCapabilitiesAcknowledged && !profile.canAcknowledgeFullCapabilities) && <p className="text-[11px] text-warning-ink">One or more profiles need an enabled profile, active credential, and current authenticated identity/API check for the saved gateway. Review them in Internal Workforce before acknowledgement.</p>}
+    {profiles.some((profile) => !profile.fullCapabilitiesAcknowledged && !profile.canAcknowledgeFullCapabilities) && <p className="text-[11px] text-warning-ink">A profile must be enabled, have an applied configuration, pass its latest health check, have a saved approved identity and credential, and have a previously verified inventory before acknowledgement. Resolve these prerequisites in Internal Workforce first.</p>}
   </Card>;
 }

@@ -4,6 +4,11 @@ import { type SessionUser } from "@/server/auth/service";
 import { withSystem } from "@/server/db";
 import { recordAudit } from "@/server/audit";
 import { AppError } from "@/server/errors";
+import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
+import { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
+import { refreshExistingAgencyProfileEvidence } from "@/server/workforce/agency";
+import { runHealthCheck } from "@/server/workforce/service";
+import type { ToolInventorySnapshot } from "@/server/integrations/hermes/inventory";
 
 export const HERMES_POLICY_CAPABILITIES = [
   { key: "web_search", label: "Web search" },
@@ -95,7 +100,9 @@ export interface HermesToolPolicyView {
   clients: Array<{ id: string; name: string; policy: HermesPolicyRecord | null; agentIds: string[] }>;
   agents: Array<{
     id: string; orgId: string; orgName: string; orgKind: string; roleKey: AgentRoleKey; displayName: string; enabled: boolean;
-    profile: string | null; expectedProfile: string | null; identityMapped: boolean; canAcknowledgeFullCapabilities: boolean; lastProfileCheck: string | null;
+    profile: string | null; expectedProfile: string | null; activeConfigVersionId: string | null; configVersion: number | null;
+    identityMapped: boolean; inventoryCurrent: boolean; inventoryDigest: string | null; inventoryExpiresAt: string | null; inventoryToolCount: number | null;
+    canAcknowledgeFullCapabilities: boolean; lastProfileCheck: string | null;
     lastProfileCheckAt: string | null; toolPermissionsStatus: string | null; fullCapabilitiesAcknowledged: boolean;
     acknowledgedBy: string | null; acknowledgedAt: string | null; policy: HermesPolicyRecord | null;
   }>;
@@ -103,7 +110,7 @@ export interface HermesToolPolicyView {
   capabilityOptions: typeof HERMES_POLICY_CAPABILITIES;
   blockableToolsets: typeof HERMES_BLOCKABLE_TOOLSETS;
   roleMatrix: typeof CLIENT_ROLE_CAPABILITY_MATRIX;
-  inventoryComplete: false;
+  inventoryComplete: boolean;
   gatewayPolicyWriteSupported: false;
 }
 
@@ -158,23 +165,39 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
     const clientIds = clients.map((client) => client.id);
     const { rows: agents } = await db.query<{
       id: string; org_id: string; org_name: string; org_kind: string; role_key: AgentRoleKey; display_name: string; enabled: boolean;
+      status: string; active_run: boolean; last_health_ok: boolean | null; active_config_version_id: string | null; config_version: number | null; config_applied_at: Date | null;
+      tool_inventory_contract: string | null; tool_inventory_digest: string | null; tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null;
+      tool_inventory_tool_count: number | null;
       hermes_profile: string | null; hermes_gateway_id: string | null; check_status: string | null; check_profile: string | null; check_gateway_id: string | null;
       identity_verified: boolean | null; api_contract_verified: boolean | null; credential_ready: boolean; tool_permissions_status: string | null; checked_at: Date | null;
       acknowledged_profile: string | null; acknowledged_policy_id: string | null; acknowledged_by_name: string | null; acknowledged_at: Date | null;
-      acknowledgement_is_current: boolean;
+      acknowledged_config_version_id: string | null; acknowledged_inventory_digest: string | null; has_agent_policy_override: boolean;
     }>(
-      `select a.id,a.org_id,o.name as org_name,o.kind as org_kind,a.role_key,a.display_name,a.enabled,a.hermes_profile,a.hermes_gateway_id,
+      `select a.id,a.org_id,o.name as org_name,o.kind as org_kind,a.role_key,a.display_name,a.enabled,a.status,a.last_health_ok,
+         exists(select 1 from agent_runs r where r.agent_instance_id=a.id and r.status in ('queued','running')) as active_run,
+         a.active_config_version_id,v.version as config_version,v.applied_at as config_applied_at,
+         a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count,
+         a.hermes_profile,a.hermes_gateway_id,
          c.status as check_status,c.profile_id as check_profile,c.gateway_id as check_gateway_id,c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
          (a.credential_id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready,
          ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
          coalesce(nullif(ack_user.full_name,''),ack_user.email::text) as acknowledged_by_name,ack.acknowledged_at,
-         (ack.acknowledged_at >= c.checked_at) as acknowledgement_is_current
+         ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+         ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
+         (agent_policy.id is not null) as has_agent_policy_override
        from agent_instances a join organizations o on o.id=a.org_id
-       left join agency_hermes_profile_checks c on c.agent_instance_id=a.id
+       left join agent_config_versions v on v.id=a.active_config_version_id
+       left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
        left join integration_credentials cred on cred.id=a.credential_id
-       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
        left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
        left join users ack_user on ack_user.id=ack.acknowledged_by
+       left join lateral (
+         select h.policy_snapshot from hermes_tool_policy_history h
+         where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+         order by h.occurred_at desc,h.id desc limit 1
+       ) ack_history on true
+       left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
        where (o.kind='agency' and $2::boolean) or (o.kind='client' and a.org_id=any($1::uuid[]))
        order by o.name,a.role_key`,
       [clientIds, user.platformRole === "agency_super_admin"],
@@ -191,24 +214,49 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
     if (!internalDefault || !clientDefault) throw new AppError("internal", "Hermes policy defaults are unavailable. Apply the agency tool-policy migration before opening this page.");
     const clientOverrides = new Map(records.filter((policy) => policy.scopeKind === "client").map((policy) => [policy.orgId!, policy]));
     const agentOverrides = new Map(records.filter((policy) => policy.scopeKind === "agent").map((policy) => [policy.agentId!, policy]));
+    const now = new Date();
     const agentView = agents.map((agent) => {
       const expectedProfile = agent.org_kind === "agency" ? AGENCY_HERMES_PROFILE_IDS[agent.role_key] : null;
       const agentPolicy = agentOverrides.get(agent.id) ?? null;
-      const identityMapped = Boolean(expectedProfile
-        && agent.hermes_profile === expectedProfile
-        && agent.check_profile === expectedProfile
-        && agent.hermes_gateway_id
-        && agent.check_gateway_id === agent.hermes_gateway_id
-        && agent.check_status === "verified"
-        && agent.identity_verified === true
-        && agent.api_contract_verified === true);
-      const acknowledgementIsCurrent = Boolean(expectedProfile
+      const identityEvidence = {
+        expectedProfile,
+        savedProfile: agent.hermes_profile,
+        savedGatewayId: agent.hermes_gateway_id,
+        checkedProfile: agent.check_profile,
+        checkedGatewayId: agent.check_gateway_id,
+        checkStatus: agent.check_status,
+        identityVerified: agent.identity_verified,
+        apiContractVerified: agent.api_contract_verified,
+        toolPermissionsStatus: agent.tool_permissions_status,
+        checkedAt: agent.checked_at,
+        configAppliedAt: agent.config_applied_at,
+      };
+      const identityMapped = Boolean(expectedProfile && internalIdentityIsCurrent(identityEvidence));
+      const inventoryCurrent = toolInventoryReady(agent, now);
+      const acknowledgementIsCurrent = Boolean(expectedProfile && internalAcknowledgementIsCurrent({
+        ...identityEvidence,
+        acknowledgedAt: agent.acknowledged_at,
+        acknowledgedProfile: agent.acknowledged_profile,
+        acknowledgedPolicyId: agent.acknowledged_policy_id,
+        expectedPolicyId: internalDefault.id,
+        activeConfigVersionId: agent.active_config_version_id,
+        acknowledgedConfigVersionId: agent.acknowledged_config_version_id,
+        inventoryDigest: agent.tool_inventory_digest,
+        acknowledgedInventoryDigest: agent.acknowledged_inventory_digest,
+        credentialReady: agent.credential_ready,
+        hasAgentPolicyOverride: Boolean(agentPolicy),
+      }));
+      const canAcknowledge = Boolean(expectedProfile
         && agent.enabled
+        && agent.status === "online"
+        && !agent.active_run
+        && agent.last_health_ok === true
+        && agent.active_config_version_id
+        && agent.hermes_profile === expectedProfile
+        && agent.hermes_gateway_id
         && agent.credential_ready
-        && identityMapped
-        && agent.acknowledged_profile === expectedProfile
-        && agent.acknowledged_policy_id === internalDefault.id
-        && agent.acknowledgement_is_current
+        && agent.tool_inventory_digest
+        && /^[0-9a-f]{64}$/.test(agent.tool_inventory_digest)
         && !agentPolicy);
       return {
         id: agent.id,
@@ -220,8 +268,14 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
         enabled: agent.enabled,
         profile: agent.hermes_profile,
         expectedProfile,
+        activeConfigVersionId: agent.active_config_version_id,
+        configVersion: agent.config_version,
         identityMapped,
-        canAcknowledgeFullCapabilities: identityMapped && agent.enabled && agent.credential_ready && !agentPolicy,
+        inventoryCurrent,
+        inventoryDigest: agent.tool_inventory_digest,
+        inventoryExpiresAt: agent.tool_inventory_expires_at ? new Date(agent.tool_inventory_expires_at).toISOString() : null,
+        inventoryToolCount: agent.tool_inventory_tool_count,
+        canAcknowledgeFullCapabilities: canAcknowledge,
         lastProfileCheck: agent.check_status,
         lastProfileCheckAt: agent.checked_at ? new Date(agent.checked_at).toISOString() : null,
         toolPermissionsStatus: agent.tool_permissions_status,
@@ -232,6 +286,7 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
       };
     });
     const currentInternalAcknowledgements = agentView.filter((agent) => agent.orgKind === "agency");
+    const inventoryComplete = currentInternalAcknowledgements.length > 0 && currentInternalAcknowledgements.every((agent) => agent.inventoryCurrent);
     const currentInternalDefault = {
       ...internalDefault,
       acknowledgedFullCapabilities: currentInternalAcknowledgements.length === AGENT_ROLE_KEYS.length
@@ -264,8 +319,7 @@ export async function getHermesToolPolicyView(user: SessionUser): Promise<Hermes
       capabilityOptions: HERMES_POLICY_CAPABILITIES,
       blockableToolsets: HERMES_BLOCKABLE_TOOLSETS,
       roleMatrix: CLIENT_ROLE_CAPABILITY_MATRIX,
-      // The validated v0.21.5 contract is read-only and cannot prove a complete tool inventory.
-      inventoryComplete: false,
+      inventoryComplete,
       gatewayPolicyWriteSupported: false,
     };
   });
@@ -295,6 +349,7 @@ export async function saveHermesToolPolicy(
       if (target.rows[0]?.kind !== "client") throw new AppError("not_found", "Client workspace not found.");
       orgId = input.orgId!;
     } else if (input.scopeKind === "agent") {
+      await db.query("select id from agent_instances where id=$1 for update", [input.agentId]);
       const target = await db.query<{ org_id: string; org_kind: string }>("select a.org_id,o.kind as org_kind from agent_instances a join organizations o on o.id=a.org_id where a.id=$1", [input.agentId]);
       if (!target.rows[0]) throw new AppError("not_found", "AI employee not found.");
       orgId = target.rows[0].org_id;
@@ -344,6 +399,7 @@ export async function resetHermesToolPolicy(admin: SessionUser, target: { scopeK
   requireSuperAdmin(admin);
   if ((target.scopeKind === "client" && !target.orgId) || (target.scopeKind === "agent" && !target.agentId)) throw new AppError("invalid_input", "Choose the client or employee whose policy should reset.");
   await withSystem(async (db) => {
+    if (target.scopeKind === "agent") await db.query("select id from agent_instances where id=$1 for update", [target.agentId]);
     const select = target.scopeKind === "client"
       ? await db.query<PolicyRow>("select * from hermes_tool_policies where scope_kind='client' and org_id=$1 for update", [target.orgId])
       : await db.query<PolicyRow>("select * from hermes_tool_policies where scope_kind='agent' and agent_id=$1 for update", [target.agentId]);
@@ -359,68 +415,309 @@ export async function resetHermesToolPolicy(admin: SessionUser, target: { scopeK
   });
 }
 
-export async function acknowledgeInternalFullCapabilities(admin: SessionUser, agentIds: string[]) {
+export interface InternalCapabilitiesAcknowledgementTarget {
+  agentId: string;
+  expectedActiveConfigVersionId: string;
+}
+
+interface InternalAcknowledgementSnapshot {
+  id: string;
+  org_id: string;
+  role_key: AgentRoleKey;
+  enabled: boolean;
+  status: string;
+  active_run: boolean;
+  last_health_ok: boolean | null;
+  active_config_version_id: string | null;
+  config_version: number | null;
+  hermes_profile: string | null;
+  hermes_gateway_id: string | null;
+  credential_id: string;
+  credential_fingerprint: string;
+  credential_reference_id: string;
+  credential_reference_fingerprint: string;
+  credential_reference_version: number;
+  credential_ready: boolean;
+  gateway_revision: number | null;
+  tool_inventory_contract: string | null;
+  tool_inventory_digest: string | null;
+  tool_inventory_verified_at: Date | null;
+  tool_inventory_expires_at: Date | null;
+  tool_inventory_tool_count: number | null;
+  agent_policy_override_id: string | null;
+}
+
+function parseInventorySnapshot(value: ToolInventorySnapshot | string | null): ToolInventorySnapshot | null {
+  if (!value) return null;
+  try {
+    return typeof value === "string" ? JSON.parse(value) as ToolInventorySnapshot : value;
+  } catch {
+    return null;
+  }
+}
+
+function baselineIsAcknowledgementEligible(agent: InternalAcknowledgementSnapshot, target: InternalCapabilitiesAcknowledgementTarget): boolean {
+  return Boolean(
+    agent.enabled
+    && agent.status === "online"
+    && !agent.active_run
+    && agent.last_health_ok === true
+    && agent.active_config_version_id === target.expectedActiveConfigVersionId
+    && agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key]
+    && agent.hermes_gateway_id
+    && agent.credential_ready
+    && agent.tool_inventory_contract === TOOL_INVENTORY_CONTRACT
+    && agent.tool_inventory_digest
+    && /^[0-9a-f]{64}$/.test(agent.tool_inventory_digest)
+    && agent.tool_inventory_verified_at
+    && agent.tool_inventory_expires_at
+    && (agent.tool_inventory_tool_count ?? 0) > 0
+    && !agent.agent_policy_override_id,
+  );
+}
+
+/**
+ * Acknowledge only after refreshing one existing saved-profile identity check and the persisted complete
+ * inventory for every selected internal employee. These diagnostics use read-only Hermes endpoints and never
+ * submit a run. The final transaction binds the acknowledgement to the exact config, identity and inventory.
+ */
+export async function acknowledgeInternalFullCapabilities(admin: SessionUser, targets: InternalCapabilitiesAcknowledgementTarget[]) {
   requireSuperAdmin(admin);
-  const ids = [...new Set(agentIds)];
-  if (!ids.length || ids.length > AGENT_ROLE_KEYS.length) throw new AppError("invalid_input", "Select at least one internal profile to acknowledge.");
-  await withSystem(async (db) => {
-    const policy = await db.query<{ id: string }>("select id from hermes_tool_policies where scope_kind='internal_agency' and name='Full Hermes Capabilities' for update");
-    if (!policy.rows[0]) throw new AppError("internal", "The internal Full Hermes Capabilities policy is unavailable.");
-    const { rows } = await db.query<{
-      id: string; org_id: string; role_key: AgentRoleKey; enabled: boolean; hermes_profile: string | null; hermes_gateway_id: string | null;
-      check_profile: string | null; check_gateway_id: string | null; check_status: string | null;
-      identity_verified: boolean; api_contract_verified: boolean; credential_ready: boolean;
-    }>(
-      `select a.id,a.org_id,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,c.profile_id as check_profile,c.gateway_id as check_gateway_id,
-         c.status as check_status,c.identity_verified,c.api_contract_verified,
-         (a.credential_id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready
+  const targetById = new Map(targets.map((target) => [target.agentId, target]));
+  if (!targets.length || targets.length > AGENT_ROLE_KEYS.length || targetById.size !== targets.length) {
+    throw new AppError("invalid_input", "Select one or more distinct internal profiles to acknowledge.");
+  }
+  if (targets.some((target) => !target.expectedActiveConfigVersionId)) {
+    throw new AppError("invalid_input", "Reload the page and select an employee with an applied configuration.");
+  }
+
+  const baseline = await withSystem(async (db) => {
+    const { rows: agencyRows } = await db.query<{ id: string }>("select id from organizations where kind='agency' order by created_at limit 1");
+    const agencyOrgId = agencyRows[0]?.id;
+    if (!agencyOrgId) throw new AppError("not_found", "The iAcquire internal workforce is unavailable.");
+    const { rows } = await db.query<InternalAcknowledgementSnapshot>(
+      `select a.id,a.org_id,a.role_key,a.enabled,a.status,a.last_health_ok,
+         exists(select 1 from agent_runs r where r.agent_instance_id=a.id and r.status in ('queued','running')) as active_run,
+         a.active_config_version_id,v.version as config_version,a.hermes_profile,a.hermes_gateway_id,
+         a.credential_id,cred.fingerprint as credential_fingerprint,cred_ref.id as credential_reference_id,
+         cred_ref.fingerprint as credential_reference_fingerprint,cred_ref.version as credential_reference_version,
+         (cred.id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready,
+         g.revision as gateway_revision,a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,
+         a.tool_inventory_tool_count,agent_policy.id as agent_policy_override_id
        from agent_instances a join organizations o on o.id=a.org_id and o.kind='agency'
-       left join integration_credentials cred on cred.id=a.credential_id
-       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
-       left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
-       where a.id=any($1::uuid[])`,
-      [ids],
+       left join agent_config_versions v on v.id=a.active_config_version_id
+       left join hermes_gateways g on g.id=a.hermes_gateway_id
+       left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+       left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
+       left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+       where a.id=any($1::uuid[]) and a.org_id=$2`,
+      [[...targetById.keys()], agencyOrgId],
     );
-    if (rows.length !== ids.length || rows.some((agent) =>
-      !agent.enabled
-      || agent.hermes_profile !== AGENCY_HERMES_PROFILE_IDS[agent.role_key]
-      || agent.check_profile !== AGENCY_HERMES_PROFILE_IDS[agent.role_key]
-      || agent.hermes_gateway_id !== agent.check_gateway_id
-      || agent.check_status !== "verified" || !agent.identity_verified || !agent.api_contract_verified || !agent.credential_ready
-    )) {
-      throw new AppError("conflict", "Enable each profile and complete a verified, authenticated identity check before acknowledging Full Hermes Capabilities.");
+    if (rows.length !== targets.length) throw new AppError("not_found", "One or more selected employees are not in the internal iAcquire workforce.");
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const ordered = targets.map((target) => byId.get(target.agentId)!);
+    if (ordered.some((row, index) => !baselineIsAcknowledgementEligible(row, targets[index]))) {
+      throw new AppError("conflict", "The selected employee must be enabled with an applied configuration, a passing health check, an existing verified inventory, an active saved profile credential, and no employee-specific override.");
     }
-    const agencyOrgId = rows[0].org_id;
-    if (rows.some((agent) => agent.org_id !== agencyOrgId) || new Set(rows.map((agent) => agent.role_key)).size !== rows.length) {
+    if (new Set(ordered.map((row) => row.role_key)).size !== ordered.length) {
       throw new AppError("invalid_input", "Select each internal employee only once from the same iAcquire workforce.");
     }
-    for (const agent of rows) {
+    return { agencyOrgId, agents: ordered };
+  });
+
+  const refreshed = new Map<string, { identityCheckedAt: string }>();
+  for (const agent of baseline.agents) {
+    const identity = await refreshExistingAgencyProfileEvidence(admin, agent.id);
+    if (!identity.ok || identity.status !== "verified" || !identity.identityVerified || !identity.apiContractVerified || identity.toolPermissionsStatus !== "verified") {
+      throw new AppError("conflict", `${AGENT_BY_KEY[agent.role_key].shortName} identity or tool-permission verification failed: ${identity.detail}`);
+    }
+    const health = await runHealthCheck(agent.id, { userId: admin.id, kind: "agency" }, { skipSetupSync: true });
+    if (!health.ok || health.status !== "online") {
+      throw new AppError("conflict", `${AGENT_BY_KEY[agent.role_key].shortName} inventory refresh did not pass: ${health.detail}`);
+    }
+    refreshed.set(agent.id, { identityCheckedAt: identity.checkedAt! });
+  }
+
+  await withSystem(async (db) => {
+    const policy = await db.query<{ id: string }>(
+      "select id from hermes_tool_policies where scope_kind='internal_agency' and name='Full Hermes Capabilities' for update",
+    );
+    const policyId = policy.rows[0]?.id;
+    if (!policyId) throw new AppError("internal", "The internal Full Hermes Capabilities policy is unavailable.");
+
+    const finalRows: Array<{
+      agent: InternalAcknowledgementSnapshot & {
+        checked_profile: string | null; checked_gateway_id: string | null; check_status: string | null;
+        identity_verified: boolean | null; api_contract_verified: boolean | null; tool_permissions_status: string | null; checked_at: Date;
+        config_applied_at: Date; tool_inventory_snapshot: ToolInventorySnapshot | string | null;
+      };
+      target: InternalCapabilitiesAcknowledgementTarget;
+      evidence: { identityCheckedAt: string };
+      inventorySnapshot: ToolInventorySnapshot;
+    }> = [];
+
+    for (let index = 0; index < baseline.agents.length; index += 1) {
+      const before = baseline.agents[index];
+      const target = targets[index];
+      const evidence = refreshed.get(before.id)!;
+      const locked = await db.query<InternalAcknowledgementSnapshot & {
+        checked_profile: string | null; checked_gateway_id: string | null; check_status: string | null;
+        identity_verified: boolean | null; api_contract_verified: boolean | null; tool_permissions_status: string | null; checked_at: Date;
+        config_applied_at: Date; tool_inventory_snapshot: ToolInventorySnapshot | string | null;
+      }>(
+        `select a.id,a.org_id,a.role_key,a.enabled,a.status,a.last_health_ok,
+           exists(select 1 from agent_runs r where r.agent_instance_id=a.id and r.status in ('queued','running')) as active_run,
+           a.active_config_version_id,v.version as config_version,a.hermes_profile,a.hermes_gateway_id,
+           a.credential_id,cred.fingerprint as credential_fingerprint,cred_ref.id as credential_reference_id,
+           cred_ref.fingerprint as credential_reference_fingerprint,cred_ref.version as credential_reference_version,
+           (cred.id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready,
+           g.revision as gateway_revision,a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,
+           a.tool_inventory_tool_count,agent_policy.id as agent_policy_override_id,
+           c.profile_id as checked_profile,c.gateway_id as checked_gateway_id,c.status as check_status,c.identity_verified,c.api_contract_verified,
+           c.tool_permissions_status,c.checked_at,v.applied_at as config_applied_at,a.tool_inventory_snapshot
+         from agent_instances a join organizations o on o.id=a.org_id and o.kind='agency'
+         join hermes_gateways g on g.id=a.hermes_gateway_id
+         join agent_config_versions v on v.id=a.active_config_version_id
+         join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+         join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+         join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
+         left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+         where a.id=$1 and a.org_id=$2
+         for update of a,c,cred,cred_ref,g`,
+        [before.id, baseline.agencyOrgId],
+      );
+      const current = locked.rows[0];
+      const override = await db.query<{ id: string }>("select id from hermes_tool_policies where scope_kind='agent' and agent_id=$1", [before.id]);
+      const inventorySnapshot = parseInventorySnapshot(current?.tool_inventory_snapshot ?? null);
+      const expectedProfile = current ? AGENCY_HERMES_PROFILE_IDS[current.role_key] : null;
+      const inventorySnapshotCurrent = Boolean(inventorySnapshot
+        && expectedProfile
+        && inventorySnapshot.contract === TOOL_INVENTORY_CONTRACT
+        && inventorySnapshot.profile === expectedProfile
+        && inventorySnapshot.digest === current?.tool_inventory_digest
+        && inventorySnapshot.toolCount === current?.tool_inventory_tool_count
+        && Array.isArray(inventorySnapshot.tools)
+        && inventorySnapshot.tools.length === current?.tool_inventory_tool_count
+        && Array.isArray(inventorySnapshot.enabledToolsets));
+      if (!current
+        || !baselineIsAcknowledgementEligible(current, target)
+        || current.org_id !== before.org_id
+        || current.role_key !== before.role_key
+        || current.active_config_version_id !== before.active_config_version_id
+        || current.hermes_profile !== before.hermes_profile
+        || current.hermes_gateway_id !== before.hermes_gateway_id
+        || current.credential_id !== before.credential_id
+        || current.credential_fingerprint !== before.credential_fingerprint
+        || current.credential_reference_id !== before.credential_reference_id
+        || current.credential_reference_fingerprint !== before.credential_reference_fingerprint
+        || current.credential_reference_version !== before.credential_reference_version
+        || current.gateway_revision !== before.gateway_revision
+        || current.tool_inventory_digest !== before.tool_inventory_digest
+        || current.agent_policy_override_id
+        || override.rows.length
+        || !internalIdentityIsCurrent({
+          expectedProfile: AGENCY_HERMES_PROFILE_IDS[current.role_key],
+          savedProfile: current.hermes_profile,
+          savedGatewayId: current.hermes_gateway_id,
+          checkedProfile: current.checked_profile,
+          checkedGatewayId: current.checked_gateway_id,
+          checkStatus: current.check_status,
+          identityVerified: current.identity_verified,
+          apiContractVerified: current.api_contract_verified,
+          toolPermissionsStatus: current.tool_permissions_status,
+          checkedAt: current.checked_at,
+          configAppliedAt: current.config_applied_at,
+        })
+        || current.checked_at.toISOString() !== evidence.identityCheckedAt
+        || !toolInventoryReady(current)
+        || !inventorySnapshotCurrent
+        || current.last_health_ok !== true
+        || current.status !== "online") {
+        throw new AppError("conflict", `${AGENT_BY_KEY[before.role_key].shortName} changed during verification or no longer has a current, approved configuration, identity, credential and inventory. No acknowledgement was recorded.`);
+      }
+      finalRows.push({ agent: current, target, evidence, inventorySnapshot: inventorySnapshot! });
+    }
+
+    for (const { agent, evidence, inventorySnapshot } of finalRows) {
       const profile = AGENCY_HERMES_PROFILE_IDS[agent.role_key];
+      const policySnapshot = {
+        name: "Full Hermes Capabilities",
+        profile,
+        acknowledgedBy: admin.id,
+        enforcementStatus: "not_enforced",
+        activeConfigVersionId: agent.active_config_version_id,
+        configVersion: agent.config_version,
+        configAppliedAt: agent.config_applied_at.toISOString(),
+        inventoryContract: agent.tool_inventory_contract,
+        inventoryDigest: agent.tool_inventory_digest,
+        inventoryToolCount: agent.tool_inventory_tool_count,
+        inventoryToolsets: inventorySnapshot.enabledToolsets,
+        inventoryTools: inventorySnapshot.tools.map((tool) => ({ name: tool.name, toolset: tool.toolset, source: tool.source, sourceServer: tool.sourceServer, available: tool.available })),
+        inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
+        inventoryExpiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
+        identityCheckedAt: evidence.identityCheckedAt,
+        inventoryCheckedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
+      };
       await db.query(
         `insert into hermes_tool_policy_acknowledgements(agent_id,policy_id,verified_profile,acknowledged_by)
          values($1,$2,$3,$4) on conflict(agent_id) do update
          set policy_id=excluded.policy_id,verified_profile=excluded.verified_profile,acknowledged_by=excluded.acknowledged_by,acknowledged_at=now()`,
-        [agent.id, policy.rows[0].id, profile, admin.id],
+        [agent.id, policyId, profile, admin.id],
       );
-      const snapshot = { name: "Full Hermes Capabilities", profile, acknowledgedBy: admin.id, enforcementStatus: "not_enforced", inventoryCompleteness: "unverified" };
       await db.query(
         `insert into hermes_tool_policy_history(policy_id,scope_kind,org_id,agent_id,action,policy_snapshot,actor_user_id)
-         select $1,'internal_agency',a.org_id,a.id,'full_capabilities_acknowledged',$2::jsonb,$3 from agent_instances a where a.id=$4`,
-        [policy.rows[0].id, JSON.stringify(snapshot), admin.id, agent.id],
+         values($1,'internal_agency',$2,$3,'full_capabilities_acknowledged',$4::jsonb,$5)`,
+        [policyId, agent.org_id, agent.id, JSON.stringify(policySnapshot), admin.id],
       );
-      await recordAudit({ actorUserId: admin.id, actorKind: "agency", agentInstanceId: agent.id, action: "workforce.full_capabilities_acknowledged", targetType: "agent_instance", targetId: agent.id, result: "success", metadata: { roleKey: agent.role_key, profile, inventoryCompleteness: "unverified", enforcement: "existing_profile_capabilities_only" } }, db);
+      await recordAudit({
+        orgId: agent.org_id,
+        actorUserId: admin.id,
+        actorKind: "agency",
+        agentInstanceId: agent.id,
+        action: "workforce.full_capabilities_acknowledged",
+        targetType: "agent_instance",
+        targetId: agent.id,
+        result: "success",
+        metadata: {
+          roleKey: agent.role_key,
+          profile,
+          activeConfigVersionId: agent.active_config_version_id,
+          inventoryDigest: agent.tool_inventory_digest,
+          inventoryToolCount: agent.tool_inventory_tool_count,
+          inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
+          identityCheckedAt: evidence.identityCheckedAt,
+          enforcement: "existing_profile_capabilities_only",
+          modelRunSubmitted: false,
+        },
+      }, db);
     }
-    const allProfilesAck = await db.query<{ count: number }>(
-      `select count(*)::int as count from agent_instances a join organizations o on o.id=a.org_id and o.kind='agency'
+
+    const currentAcknowledgements = await db.query<{ count: number }>(
+      `select count(*)::int as count
+       from agent_instances a join organizations o on o.id=a.org_id and o.kind='agency'
+       join agent_config_versions v on v.id=a.active_config_version_id
+       join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
        join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
-       where a.org_id=$2 and a.role_key=any($1::text[])`,
-      [AGENT_ROLE_KEYS, agencyOrgId],
+       join lateral (
+         select h.policy_snapshot from hermes_tool_policy_history h
+         where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+         order by h.occurred_at desc,h.id desc limit 1
+       ) h on true
+       where a.org_id=$1 and a.role_key=any($2::text[]) and a.enabled
+         and ack.policy_id=$3 and ack.verified_profile=a.hermes_profile
+         and ack.acknowledged_at>=c.checked_at and c.status='verified' and c.identity_verified and c.api_contract_verified and c.tool_permissions_status='verified'
+         and c.profile_id=a.hermes_profile and c.gateway_id=a.hermes_gateway_id and c.checked_at>=v.applied_at
+         and h.policy_snapshot->>'activeConfigVersionId'=a.active_config_version_id::text
+         and h.policy_snapshot->>'inventoryDigest'=a.tool_inventory_digest
+         and a.last_health_ok and a.tool_inventory_contract=$4 and a.tool_inventory_digest ~ '^[0-9a-f]{64}$'
+         and not exists(select 1 from hermes_tool_policies p where p.scope_kind='agent' and p.agent_id=a.id)`,
+      [baseline.agencyOrgId, AGENT_ROLE_KEYS, policyId, TOOL_INVENTORY_CONTRACT],
     );
-    const complete = allProfilesAck.rows[0]?.count === AGENT_ROLE_KEYS.length;
+    const complete = currentAcknowledgements.rows[0]?.count === AGENT_ROLE_KEYS.length;
     await db.query(
-      `update hermes_tool_policies set acknowledged_full_capabilities=$2,acknowledged_by=$3,acknowledged_at=case when $2 then now() else null end,updated_by=$3
-       where id=$1`,
-      [policy.rows[0].id, complete, admin.id],
+      `update hermes_tool_policies set acknowledged_full_capabilities=$2,acknowledged_by=$3,
+         acknowledged_at=case when $2 then now() else null end,updated_by=$3 where id=$1`,
+      [policyId, complete, complete ? admin.id : null],
     );
   });
 }

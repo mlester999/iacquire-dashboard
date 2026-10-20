@@ -292,13 +292,21 @@ describe("super admin internal workforce", () => {
     const health = await runHealthCheck(internalSales, { userId: admin.id, kind: "agency" });
     expect(health).toMatchObject({ ok: true, status: "online" });
     const ctx = ctxFor(superAdmin, { ...org, id: agencyId, name: "iAcquire Agency", slug: "iacquire" }, "owner");
-    const sent = await sendChatMessage(ctx, { agentRole: "sales_assistant", content: "Give me today's internal priorities", clientMessageId: crypto.randomUUID() });
-    const message = await waitForMessage(sent.assistantMessageId);
-    expect(message).toMatchObject({ status: "failed", content: "" });
-    const run = await withSystem((db) => db.query<{ status: string; error_code: string | null }>("select status, error_code from agent_runs where id = $1", [sent.runId]));
-    expect(run.rows[0]).toMatchObject({ status: "failed", error_code: "start_failed" });
-    const convo = await withSystem((db) => db.query<{ org_id: string }>("select org_id from chat_conversations where id = $1", [sent.conversationId]));
-    expect(convo.rows[0].org_id).toBe(agencyId);
+    const before = await withSystem(async (db) => ({
+      conversations: (await db.query<{ n: number }>("select count(*)::int as n from chat_conversations where org_id=$1 and agent_instance_id=$2", [agencyId, internalSales])).rows[0].n,
+      messages: (await db.query<{ n: number }>("select count(*)::int as n from chat_messages where org_id=$1 and conversation_id in (select id from chat_conversations where agent_instance_id=$2)", [agencyId, internalSales])).rows[0].n,
+      runs: (await db.query<{ n: number }>("select count(*)::int as n from agent_runs where org_id=$1 and agent_instance_id=$2", [agencyId, internalSales])).rows[0].n,
+    }));
+    const providerRequests = mock.requests.length;
+    await expect(sendChatMessage(ctx, { agentRole: "sales_assistant", content: "Give me today's internal priorities", clientMessageId: crypto.randomUUID() }))
+      .rejects.toMatchObject({ code: "agent_unavailable" });
+    expect(mock.requests).toHaveLength(providerRequests);
+    const after = await withSystem(async (db) => ({
+      conversations: (await db.query<{ n: number }>("select count(*)::int as n from chat_conversations where org_id=$1 and agent_instance_id=$2", [agencyId, internalSales])).rows[0].n,
+      messages: (await db.query<{ n: number }>("select count(*)::int as n from chat_messages where org_id=$1 and conversation_id in (select id from chat_conversations where agent_instance_id=$2)", [agencyId, internalSales])).rows[0].n,
+      runs: (await db.query<{ n: number }>("select count(*)::int as n from agent_runs where org_id=$1 and agent_instance_id=$2", [agencyId, internalSales])).rows[0].n,
+    }));
+    expect(after).toEqual(before);
   });
 });
 

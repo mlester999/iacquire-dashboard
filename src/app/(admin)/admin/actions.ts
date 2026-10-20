@@ -536,17 +536,17 @@ export async function resetHermesToolPolicyAction(input: { scopeKind: "client" |
   }
 }
 
-export async function acknowledgeInternalHermesCapabilitiesAction(agentIds: string[]) {
+export async function acknowledgeInternalHermesCapabilitiesAction(targets: Array<{ agentId: string; expectedActiveConfigVersionId: string }>) {
   try {
     const admin = await requireAgencyPermissionOrThrow("agency.workforce.full_capabilities.acknowledge");
-    const parsed = z.array(z.string().uuid()).min(1).max(6).parse(agentIds);
-    if (new Set(parsed).size !== parsed.length) throw new AppError("invalid_input", "Select each internal employee only once.");
+    const parsed = z.array(z.object({ agentId: z.string().uuid(), expectedActiveConfigVersionId: z.string().uuid() }).strict()).min(1).max(6).parse(targets);
+    if (new Set(parsed.map((target) => target.agentId)).size !== parsed.length) throw new AppError("invalid_input", "Select each internal employee only once.");
     await acknowledgeInternalFullCapabilities(admin, parsed);
     revalidatePath("/admin/employees/policies");
     revalidatePath("/admin/employees");
     return { ok: true as const };
   } catch (err) {
-    if (err instanceof z.ZodError) return { ok: false as const, error: "Select one or more verified internal profiles." };
+    if (err instanceof z.ZodError) return { ok: false as const, error: "Select one or more internal profiles with an applied configuration." };
     return actionError(err);
   }
 }

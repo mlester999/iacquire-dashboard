@@ -1,7 +1,9 @@
 import "server-only";
 import { validateIntegrationEndpoint } from "@/server/integrations/safety";
-import { withSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 import { AGENCY_HERMES_PROFILE_IDS, canChat, type AgentStatus } from "@/lib/agents";
+import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
+import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gateways";
 import { secretFingerprint } from "@/server/security/crypto";
 
@@ -377,27 +379,39 @@ async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesC
   const { profile, currentAccess } = await withSystem(async (db) => {
     const { rows } = await db.query<{
       org_kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; enabled: boolean;
+      active_config_version_id: string | null; config_applied_at: Date | null; tool_inventory_digest: string | null;
       hermes_profile: string | null; hermes_base_url: string | null; hermes_gateway_id: string | null; gateway_base_url: string | null;
       gateway_access_credential_id: string | null;
       checked_profile: string | null; check_status: string | null; identity_verified: boolean | null; api_contract_verified: boolean | null;
-      check_gateway_id: string | null; acknowledged_profile: string | null; acknowledged_policy_id: string | null;
-      agent_policy_override_id: string | null; acknowledgement_is_current: boolean;
+      tool_permissions_status: string | null; check_gateway_id: string | null; checked_at: Date | null;
+      acknowledged_profile: string | null; acknowledged_policy_id: string | null; expected_policy_id: string | null; acknowledged_at: Date | null;
+      acknowledged_config_version_id: string | null; acknowledged_inventory_digest: string | null;
+      agent_policy_override_id: string | null;
       credential_fingerprint: string | null; credential_revoked_at: Date | null;
       credential_reference_id: string | null; credential_reference_revoked_at: Date | null;
     }>(
-      `select o.kind as org_kind,a.role_key,a.enabled,a.hermes_profile,a.hermes_gateway_id,
+      `select o.kind as org_kind,a.role_key,a.enabled,a.active_config_version_id,v.applied_at as config_applied_at,a.tool_inventory_digest,
+         a.hermes_profile,a.hermes_gateway_id,
          a.hermes_base_url,g.base_url as gateway_base_url,g.access_credential_id as gateway_access_credential_id,
-         c.profile_id as checked_profile,c.status as check_status,c.identity_verified,c.api_contract_verified,c.gateway_id as check_gateway_id,
-         ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
-         (ack.acknowledged_at >= c.checked_at) as acknowledgement_is_current,
+         c.profile_id as checked_profile,c.status as check_status,c.identity_verified,c.api_contract_verified,c.tool_permissions_status,
+         c.gateway_id as check_gateway_id,c.checked_at,
+         ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,p.id as expected_policy_id,ack.acknowledged_at,
+         ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+         ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
          agent_policy.id as agent_policy_override_id,cred.fingerprint as credential_fingerprint,cred.revoked_at as credential_revoked_at,
          cred.credential_reference_id,cred_ref.revoked_at as credential_reference_revoked_at
        from agent_instances a join organizations o on o.id=a.org_id
+       left join agent_config_versions v on v.id=a.active_config_version_id
        left join hermes_gateways g on g.id=a.hermes_gateway_id
        left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
        left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
        left join hermes_tool_policies p on p.id=ack.policy_id and p.scope_kind='internal_agency' and p.name='Full Hermes Capabilities'
        left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+       left join lateral (
+         select h.policy_snapshot from hermes_tool_policy_history h
+         where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+         order by h.occurred_at desc,h.id desc limit 1
+       ) ack_history on true
        left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
        left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
        where a.id=$1 and (ack.policy_id is null or p.id is not null)`,
@@ -417,11 +431,36 @@ async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesC
   const accessIsCurrent = profile?.gateway_access_credential_id
     ? Boolean(currentAccess && conn.accessClientId === currentAccess.accessClientId && conn.accessClientSecret === currentAccess.accessClientSecret)
     : !currentAccess && !conn.accessClientId && !conn.accessClientSecret;
+  const identityEvidence = profile ? {
+    expectedProfile: expected,
+    savedProfile: profile.hermes_profile,
+    savedGatewayId: profile.hermes_gateway_id,
+    checkedProfile: profile.checked_profile,
+    checkedGatewayId: profile.check_gateway_id,
+    checkStatus: profile.check_status,
+    identityVerified: profile.identity_verified,
+    apiContractVerified: profile.api_contract_verified,
+    toolPermissionsStatus: profile.tool_permissions_status,
+    checkedAt: profile.checked_at,
+    configAppliedAt: profile.config_applied_at,
+  } : null;
+  const identityCurrent = Boolean(identityEvidence && internalIdentityIsCurrent(identityEvidence));
+  const acknowledgementCurrent = Boolean(profile && identityEvidence && internalAcknowledgementIsCurrent({
+    ...identityEvidence,
+    acknowledgedAt: profile.acknowledged_at,
+    acknowledgedProfile: profile.acknowledged_profile,
+    acknowledgedPolicyId: profile.acknowledged_policy_id,
+    expectedPolicyId: profile.expected_policy_id,
+    activeConfigVersionId: profile.active_config_version_id,
+    acknowledgedConfigVersionId: profile.acknowledged_config_version_id,
+    inventoryDigest: profile.tool_inventory_digest,
+    acknowledgedInventoryDigest: profile.acknowledged_inventory_digest,
+    credentialReady: credentialIsCurrent,
+    hasAgentPolicyOverride: Boolean(profile.agent_policy_override_id),
+  }));
   if (!profile || profile.org_kind !== "agency" || !profile.enabled || !expected
       || profile.hermes_profile !== expected || conn.profile !== expected
-      || profile.checked_profile !== expected || profile.acknowledged_profile !== expected
-      || profile.check_status !== "verified" || !profile.identity_verified || !profile.api_contract_verified
-      || profile.hermes_gateway_id !== profile.check_gateway_id || !profile.acknowledgement_is_current
+      || !identityCurrent || !acknowledgementCurrent
       || profile.hermes_base_url !== profile.gateway_base_url || conn.baseUrl !== profile.gateway_base_url
       || !credentialIsCurrent || !accessIsCurrent || profile.agent_policy_override_id) {
     throw new HermesError("bad_response", "This internal profile needs a current identity check and Super Admin full-capabilities acknowledgement before it can run.");
@@ -436,7 +475,17 @@ async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesC
   return startRun(conn, input);
 }
 
-export type AgentRunBlockReason = "disabled" | "not_ready" | "not_configured" | "inventory_not_recorded" | "readiness_unknown";
+export type AgentRunBlockReason =
+  | "disabled"
+  | "not_ready"
+  | "not_configured"
+  | "inventory_not_recorded"
+  | "inventory_expired"
+  | "identity_unverified"
+  | "acknowledgement_required"
+  | "credential_unavailable"
+  | "permission_mismatch"
+  | "readiness_unknown";
 
 /** The employee has not passed the checks that unlock live runs. The message is safe to show to workspace users. */
 export class AgentRunNotReadyError extends HermesError {
@@ -446,12 +495,28 @@ export class AgentRunNotReadyError extends HermesError {
   }
 }
 
+function connectionNotReadyMessage(status: string): string {
+  if (status === "setup_required" || status === "provisioning") {
+    return "This AI employee is still being set up and hasn't passed its connection and tool-inventory check yet.";
+  }
+  if (status === "offline" || status === "error") {
+    return "This AI employee is offline right now; it hasn't passed its connection and tool-inventory check. Please try again shortly.";
+  }
+  return "This AI employee hasn't passed its connection and tool-inventory check yet, so it can't run.";
+}
+
 interface AgentRunGateRow {
   kind: string;
   enabled: boolean;
   status: string;
+  credential_ready: boolean;
   active_config_version_id: string | null;
   tool_inventory_digest: string | null;
+  last_health_ok: boolean | null;
+  tool_inventory_contract: string | null;
+  tool_inventory_verified_at: Date | null;
+  tool_inventory_expires_at: Date | null;
+  tool_inventory_tool_count: number | null;
 }
 
 /**
@@ -462,13 +527,16 @@ interface AgentRunGateRow {
  * a recorded digest the live catalog would have nothing to be compared against, so a never-health-checked employee
  * could run on a catalog that merely looks safe today.
  */
-export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "tool_inventory_digest">): string {
+export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "tool_inventory_digest" | "credential_ready">): string {
   if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
   if (!canChat(row.status as AgentStatus)) {
-    throw new AgentRunNotReadyError("not_ready", "This AI employee hasn't passed its connection and tool-inventory check yet, so it can't run.");
+    throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status));
   }
   if (!row.active_config_version_id) {
     throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
+  }
+  if (!row.credential_ready) {
+    throw new AgentRunNotReadyError("credential_unavailable", "This AI employee's saved Hermes credential is missing or revoked, so it can't run.");
   }
   if (!row.tool_inventory_digest || !/^[0-9a-f]{64}$/.test(row.tool_inventory_digest)) {
     throw new AgentRunNotReadyError("inventory_not_recorded", "This AI employee has no verified tool inventory on record yet, so it can't run. Run its health check first.");
@@ -476,15 +544,150 @@ export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "stat
   return row.tool_inventory_digest;
 }
 
+export interface AgentRunPreflightOptions {
+  /** Chat uses this before refreshing an expired inventory, after the non-refreshable identity gates pass. */
+  allowMissingInventory?: boolean;
+  /** Chat queues only while a fresh saved attestation is present; actual run submission still re-reads Hermes live. */
+  requireFreshInventory?: boolean;
+}
+
+function assertRunGateState(row: AgentRunGateRow, options: AgentRunPreflightOptions = {}) {
+  if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
+  if (!canChat(row.status as AgentStatus)) {
+    throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status));
+  }
+  if (!row.active_config_version_id) {
+    throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
+  }
+  if (row.last_health_ok === false) {
+    throw new AgentRunNotReadyError("not_ready", "This AI employee's latest connection and permission check did not pass.");
+  }
+  if (!options.allowMissingInventory) {
+    assertAgentRunnable(row);
+  }
+  if (options.requireFreshInventory && !toolInventoryReady(row)) {
+    throw new AgentRunNotReadyError("inventory_expired", "This AI employee's verified tool inventory has expired or is incomplete. Refresh the connection and inventory check before starting a new conversation.");
+  }
+}
+
+async function assertInternalProfileRunAuthorization(db: Queryable, agentId: string, orgId: string): Promise<void> {
+  const { rows } = await db.query<{
+    kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; active_config_version_id: string | null; config_applied_at: Date | null;
+    hermes_profile: string | null; hermes_gateway_id: string | null;
+    checked_profile: string | null; check_status: string | null; identity_verified: boolean | null; api_contract_verified: boolean | null;
+    tool_permissions_status: string | null; check_gateway_id: string | null; checked_at: Date | null;
+    acknowledged_profile: string | null; acknowledged_policy_id: string | null; expected_policy_id: string | null; acknowledged_at: Date | null;
+    acknowledged_config_version_id: string | null; acknowledged_inventory_digest: string | null;
+    tool_inventory_digest: string | null; agent_policy_override_id: string | null;
+    credential_ready: boolean;
+  }>(
+    `select o.kind as kind,a.role_key,a.active_config_version_id,v.applied_at as config_applied_at,
+       a.hermes_profile,a.hermes_gateway_id,c.profile_id as checked_profile,c.status as check_status,
+       c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.gateway_id as check_gateway_id,c.checked_at,
+       ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,ack_policy.id as expected_policy_id,
+       ack.acknowledged_at,ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+       ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
+       a.tool_inventory_digest,agent_policy.id as agent_policy_override_id,
+       (cred.id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready
+     from agent_instances a join organizations o on o.id=a.org_id
+     left join agent_config_versions v on v.id=a.active_config_version_id
+     left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+     left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+     left join hermes_tool_policies ack_policy on ack_policy.id=ack.policy_id and ack_policy.scope_kind='internal_agency' and ack_policy.name='Full Hermes Capabilities'
+     left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+     left join lateral (
+       select h.policy_snapshot from hermes_tool_policy_history h
+       where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+       order by h.occurred_at desc,h.id desc limit 1
+     ) ack_history on true
+     left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+     left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
+     where a.id=$1 and a.org_id=$2`,
+    [agentId, orgId],
+  );
+  const row = rows[0];
+  if (!row || row.kind !== "agency") throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's internal authorization could not be verified.");
+  const identityEvidence = {
+    expectedProfile: AGENCY_HERMES_PROFILE_IDS[row.role_key],
+    savedProfile: row.hermes_profile,
+    savedGatewayId: row.hermes_gateway_id,
+    checkedProfile: row.checked_profile,
+    checkedGatewayId: row.check_gateway_id,
+    checkStatus: row.check_status,
+    identityVerified: row.identity_verified,
+    apiContractVerified: row.api_contract_verified,
+    toolPermissionsStatus: row.tool_permissions_status,
+    checkedAt: row.checked_at,
+    configAppliedAt: row.config_applied_at,
+  };
+  if (!internalIdentityIsCurrent(identityEvidence)) {
+    throw new AgentRunNotReadyError("identity_unverified", "This internal profile needs a current Hermes identity, API contract and permission verification for its applied configuration.");
+  }
+  if (!row.credential_ready) {
+    throw new AgentRunNotReadyError("identity_unverified", "This internal profile's saved Hermes credential is unavailable or revoked.");
+  }
+  if (row.agent_policy_override_id) {
+    throw new AgentRunNotReadyError("permission_mismatch", "This internal profile has an employee-specific tool policy that has not been applied and verified.");
+  }
+  const acknowledged = internalAcknowledgementIsCurrent({
+    ...identityEvidence,
+    acknowledgedAt: row.acknowledged_at,
+    acknowledgedProfile: row.acknowledged_profile,
+    acknowledgedPolicyId: row.acknowledged_policy_id,
+    expectedPolicyId: row.expected_policy_id,
+    activeConfigVersionId: row.active_config_version_id,
+    acknowledgedConfigVersionId: row.acknowledged_config_version_id,
+    inventoryDigest: row.tool_inventory_digest,
+    acknowledgedInventoryDigest: row.acknowledged_inventory_digest,
+    credentialReady: row.credential_ready,
+    hasAgentPolicyOverride: false,
+  });
+  if (!acknowledged) {
+    throw new AgentRunNotReadyError("acknowledgement_required", "This internal profile needs a Super Admin acknowledgement for its current identity, applied configuration and tool inventory.");
+  }
+}
+
+export async function assertAgentRunPreflight(agentId: string, orgId: string, options: AgentRunPreflightOptions = {}): Promise<void> {
+  try {
+    await withSystem(async (db) => {
+      const { rows } = await db.query<AgentRunGateRow>(
+        `select o.kind,a.enabled,a.status,a.active_config_version_id,a.last_health_ok,
+                (cred.id is not null and cred.revoked_at is null and
+                 (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
+                a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
+           from agent_instances a join organizations o on o.id=a.org_id
+           left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+           left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
+          where a.id=$1 and a.org_id=$2`,
+        [agentId, orgId],
+      );
+      const row = rows[0];
+      if (!row) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+      assertRunGateState(row, options);
+      if (row.kind === "agency") await assertInternalProfileRunAuthorization(db, agentId, orgId);
+    });
+  } catch (error) {
+    if (error instanceof AgentRunNotReadyError || error instanceof HermesError) throw error;
+    // The inventory columns come from migration 0059; without them no digest can have been recorded.
+    throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's readiness could not be verified, so it can't run.");
+  }
+}
+
 async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRunGateRow | null> {
   try {
     const { rows } = await withSystem((db) => db.query<AgentRunGateRow>(
-      "select o.kind, a.enabled, a.status, a.active_config_version_id, a.tool_inventory_digest from agent_instances a join organizations o on o.id=a.org_id where a.id=$1 and a.org_id=$2",
+      `select o.kind,a.enabled,a.status,a.active_config_version_id,a.last_health_ok,
+              (cred.id is not null and cred.revoked_at is null and
+               (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
+              a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
+         from agent_instances a join organizations o on o.id=a.org_id
+         left join integration_credentials cred on cred.id=a.credential_id and cred.org_id=a.org_id and cred.provider='hermes'
+         left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
+        where a.id=$1 and a.org_id=$2`,
       [agentId, orgId],
     ));
     return rows[0] ?? null;
   } catch {
-    // The inventory columns come from migration 0059; without them no digest can have been recorded.
     throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's readiness could not be verified, so it can't run.");
   }
 }
@@ -496,6 +699,7 @@ async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRu
  * with the digest persisted by the last health check rather than with whatever the caller put on the connection.
  */
 export async function startAgentRun(agentId: string, orgId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+  await assertAgentRunPreflight(agentId, orgId);
   const gate = await loadAgentRunGate(agentId, orgId);
   if (!gate) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
   const digest = assertAgentRunnable(gate);

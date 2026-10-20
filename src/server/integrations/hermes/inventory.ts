@@ -13,6 +13,8 @@ import {
   isToolSearchOrConnectorName,
   PORTAL_SAFE_TOOLSETS,
 } from "@/server/integrations/hermes/tool-policy";
+import { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
+export { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-inventory";
 
 /**
  * Complete runtime tool-inventory verification.
@@ -40,7 +42,6 @@ import {
  * tool, a changed digest or an unavailable inventory service all fail closed. Nothing here starts a run.
  */
 
-export const TOOL_INVENTORY_CONTRACT = "hermes.api_server.tool_catalog.v1";
 export const TOOL_INVENTORY_TTL_MS = 2 * 60 * 1000;
 
 /** Every employee profile must expose all of these (the web toolset contributes two tools). */
@@ -430,26 +431,7 @@ export function inventoryColumns(snapshot: ToolInventorySnapshot | null, detail:
   };
 }
 
-export interface ToolInventoryRow {
-  last_health_ok?: boolean | null;
-  tool_inventory_contract: string | null;
-  tool_inventory_digest: string | null;
-  tool_inventory_verified_at: Date | string | null;
-  tool_inventory_expires_at: Date | string | null;
-  tool_inventory_tool_count: number | null;
-}
-
-/** Whether a persisted attestation is the supported contract, non-empty and still fresh. */
-export function toolInventoryReady(row: ToolInventoryRow, now = new Date()): boolean {
-  if (row.last_health_ok !== undefined && row.last_health_ok !== true) return false;
-  if (row.tool_inventory_contract !== TOOL_INVENTORY_CONTRACT) return false;
-  if (!row.tool_inventory_digest || !/^[0-9a-f]{64}$/.test(row.tool_inventory_digest)) return false;
-  if (!row.tool_inventory_verified_at) return false;
-  if (!row.tool_inventory_expires_at) return false;
-  const expires = new Date(row.tool_inventory_expires_at);
-  if (!Number.isFinite(expires.getTime()) || expires.getTime() <= now.getTime()) return false;
-  return Number(row.tool_inventory_tool_count ?? 0) > 0;
-}
+export type ToolInventoryRow = Parameters<typeof toolInventoryReady>[0];
 
 /** Human-readable reason for a persisted inventory state, for admin diagnostics. */
 export function toolInventoryDiagnostic(row: ToolInventoryRow & { tool_inventory_detail?: string | null }, now = new Date()): string {

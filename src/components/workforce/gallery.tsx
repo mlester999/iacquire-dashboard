@@ -9,7 +9,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { RequestSetupButton } from "@/components/workforce/request-setup";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
-import { AGENT_BY_KEY, AGENT_ROLES, agentIdentityLabel, canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLES, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { cn } from "@/lib/utils";
 
@@ -24,20 +24,42 @@ type Employee = {
   config_version?: number | null;
   last_health_check_at?: string | Date | null;
   last_health_ok?: boolean | null;
+  credential_ready?: boolean;
+  tool_inventory_contract?: string | null;
   tool_inventory_digest?: string | null;
+  tool_inventory_verified_at?: string | Date | null;
+  tool_inventory_expires_at?: string | Date | null;
+  tool_inventory_tool_count?: number | null;
+  active_run?: boolean;
 };
 
 const MODE_LABEL = { autonomous: "Autonomous", approval_required: "Approval required", paused: "Paused" } as const;
 const GROUPS = [{ key: "all", label: "Entire team" }, { key: "ready", label: "Ready to work" }, { key: "setup", label: "Needs attention" }, { key: "disabled", label: "Not included" }] as const;
 const ROLE_HEADLINE = { operations_manager: "Coordination", lead_hunter: "Lead research", appointment_setter: "Appointments", sales_assistant: "Sales support", crm_manager: "Customer records", performance_analyst: "Performance" } as const;
 
-export function WorkforceGallery({ agents, capabilities, companyName, canConfigure, canUse }: { agents: Employee[]; capabilities: Record<string, string[]>; companyName: string; canConfigure: boolean; canUse: boolean }) {
+export function WorkforceGallery({ agents, capabilities, companyName, canConfigure, canUse, evaluatedAt }: { agents: Employee[]; capabilities: Record<string, string[]>; companyName: string; canConfigure: boolean; canUse: boolean; evaluatedAt: number }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = React.useState<string>("all");
   const [query, setQuery] = React.useState("");
-  const ready = agents.filter((a) => a.enabled && canChat(a.status));
-  const preparing = agents.filter((a) => a.enabled && (a.status === "setup_required" || a.status === "provisioning"));
-  const visible = agents.filter((a) => (filter === "all" || filter === "ready" && a.enabled && canChat(a.status) || filter === "setup" && a.enabled && !canChat(a.status) || filter === "disabled" && !a.enabled) && `${a.display_name} ${AGENT_BY_KEY[a.role_key].name}`.toLowerCase().includes(query.toLowerCase()));
+  const readinessFor = (a: Employee) => deriveEmployeeReadiness({
+    displayName: a.display_name,
+    enabled: a.enabled,
+    status: a.status,
+    configVersion: a.config_version ?? null,
+    lastHealthCheckAt: a.last_health_check_at ? new Date(a.last_health_check_at).toISOString() : null,
+    lastHealthOk: a.last_health_ok ?? null,
+    credentialCurrent: a.credential_ready,
+    inventoryContract: a.tool_inventory_contract ?? null,
+    inventoryDigest: a.tool_inventory_digest ?? null,
+    inventoryVerifiedAt: a.tool_inventory_verified_at ? new Date(a.tool_inventory_verified_at).toISOString() : null,
+    inventoryExpiresAt: a.tool_inventory_expires_at ? new Date(a.tool_inventory_expires_at).toISOString() : null,
+    inventoryToolCount: a.tool_inventory_tool_count ?? null,
+    taskExecuting: a.active_run ?? false,
+    evaluatedAt,
+  });
+  const ready = agents.filter((a) => readinessFor(a).chatAvailable);
+  const preparing = agents.filter((a) => a.enabled && !readinessFor(a).chatAvailable);
+  const visible = agents.filter((a) => (filter === "all" || filter === "ready" && readinessFor(a).chatAvailable || filter === "setup" && a.enabled && !readinessFor(a).chatAvailable || filter === "disabled" && !a.enabled) && `${a.display_name} ${AGENT_BY_KEY[a.role_key].name}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="space-y-6">
@@ -63,7 +85,7 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
       </section>
 
       <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-        <div role="group" aria-label="Filter employees" className="flex max-w-full flex-wrap gap-1.5">{GROUPS.map((group) => <button key={group.key} onClick={() => setFilter(group.key)} aria-pressed={filter === group.key} className={cn("min-h-11 rounded-xl px-3.5 text-[13px] font-medium transition", filter === group.key ? "bg-ink text-bg shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}>{group.label}<span className="ml-2 opacity-65">{group.key === "all" ? agents.length : group.key === "ready" ? ready.length : group.key === "disabled" ? agents.filter((a) => !a.enabled).length : agents.filter((a) => a.enabled && !canChat(a.status)).length}</span></button>)}</div>
+        <div role="group" aria-label="Filter employees" className="flex max-w-full flex-wrap gap-1.5">{GROUPS.map((group) => <button key={group.key} onClick={() => setFilter(group.key)} aria-pressed={filter === group.key} className={cn("min-h-11 rounded-xl px-3.5 text-[13px] font-medium transition", filter === group.key ? "bg-ink text-bg shadow-soft" : "text-muted hover:bg-surface-2 hover:text-ink")}>{group.label}<span className="ml-2 opacity-65">{group.key === "all" ? agents.length : group.key === "ready" ? ready.length : group.key === "disabled" ? agents.filter((a) => !a.enabled).length : agents.filter((a) => a.enabled && !readinessFor(a).chatAvailable).length}</span></button>)}</div>
         <label className="relative w-full lg:w-64"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" /><span className="sr-only">Search your AI team</span><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an employee…" className="pl-9" /></label>
       </div>
 
@@ -71,17 +93,8 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
         <AnimatePresence initial={false}>
           {visible.map((a, index) => {
             const role = AGENT_BY_KEY[a.role_key];
-            const readiness = deriveEmployeeReadiness({
-              displayName: a.display_name,
-              enabled: a.enabled,
-              status: a.status,
-              configVersion: a.config_version ?? null,
-              lastHealthCheckAt: a.last_health_check_at ? new Date(a.last_health_check_at).toISOString() : null,
-              lastHealthOk: a.last_health_ok ?? null,
-              inventoryDigest: a.tool_inventory_digest ?? null,
-              isAgencyEmployee: false,
-            });
-            const connected = a.enabled && canChat(a.status);
+            const readiness = readinessFor(a);
+            const connected = readiness.chatAvailable;
             return (
               <motion.article key={a.id} data-aqi-target="workforce.employee" initial={reduced ? false : { opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: reduced ? 1 : .97 }} transition={{ duration: reduced ? 0 : .3, delay: reduced ? 0 : index * .035 }} whileHover={reduced ? undefined : { y: -4 }} className={cn("group flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-soft transition hover:border-line-strong", !a.enabled && "opacity-80")}>
                 <div className="relative flex h-32 items-center justify-between overflow-hidden border-b border-line px-5" style={{ background: `radial-gradient(ellipse at 85% 20%,${role.accent}30,transparent 72%),var(--surface-2)` }}>

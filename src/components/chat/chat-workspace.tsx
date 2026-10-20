@@ -37,7 +37,8 @@ import {
   searchConversationsAction,
   setReplyLengthAction,
 } from "@/app/actions/chat";
-import { agentIdentityLabel, canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
+import { agentIdentityLabel, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
+import { deriveEmployeeReadiness, type EmployeeReadiness } from "@/lib/workforce-readiness";
 import { chatNavTargets } from "@/lib/chat-navigation";
 import type { ReplyLength } from "@/lib/agent-settings";
 import { cn, formatTime } from "@/lib/utils";
@@ -57,6 +58,19 @@ interface Props {
   agentName: string;
   status: AgentStatus;
   statusDetail: string | null;
+  configVersion: number | null;
+  lastHealthCheckAt: string | null;
+  lastHealthOk: boolean | null;
+  inventoryContract: string | null;
+  inventoryDigest: string | null;
+  inventoryVerifiedAt: string | null;
+  inventoryExpiresAt: string | null;
+  inventoryToolCount: number | null;
+  credentialReady: boolean;
+  isAgencyEmployee: boolean;
+  identityCurrent: boolean | null;
+  acknowledgementCurrent: boolean | null;
+  taskExecuting: boolean;
   replyLength: ReplyLength;
   canConfigure: boolean;
   configured: boolean;
@@ -112,13 +126,8 @@ async function* readEvents(res: Response): AsyncGenerator<StreamEvent> {
 
 type ChatStatusTone = "success" | "primary" | "warning" | "violet" | "neutral" | "danger";
 
-function chatStatusMeta(ready: boolean, configured: boolean, hasPendingReview: boolean, status: AgentStatus): { label: string; tone: ChatStatusTone } {
-  if (ready) return status === "busy" ? { label: "Working now", tone: "primary" } : { label: "Online and ready", tone: "success" };
-  if (status === "disabled") return { label: "Paused", tone: "neutral" };
-  if (hasPendingReview) return { label: "Awaiting review", tone: "violet" };
-  if (!configured) return { label: "Setup required", tone: "warning" };
-  if (status === "error" || status === "offline") return { label: "Connection needs attention", tone: "danger" };
-  return { label: "Connection check required", tone: "warning" };
+function chatStatusMeta(readiness: EmployeeReadiness): { label: string; tone: ChatStatusTone } {
+  return { label: readiness.label, tone: readiness.tone };
 }
 
 const ERROR_TEXT: Record<string, string> = {
@@ -175,8 +184,30 @@ function useNow(initialIso: string) {
 export function ChatWorkspace(props: Props) {
   const { meta } = props;
   const reduce = useReducedMotion();
-  const ready = canChat(props.status);
-  const statusMeta = chatStatusMeta(ready, props.configured, props.hasPendingReview, props.status);
+  const now = useNow(props.nowIso);
+  const readiness = deriveEmployeeReadiness({
+    displayName: props.agentName,
+    enabled: props.status !== "disabled",
+    status: props.status,
+    configVersion: props.configVersion,
+    hasPendingReview: props.hasPendingReview,
+    lastHealthCheckAt: props.lastHealthCheckAt,
+    lastHealthOk: props.lastHealthOk,
+    lastHealthDetail: props.statusDetail,
+    inventoryContract: props.inventoryContract,
+    inventoryDigest: props.inventoryDigest,
+    inventoryVerifiedAt: props.inventoryVerifiedAt,
+    inventoryExpiresAt: props.inventoryExpiresAt,
+    inventoryToolCount: props.inventoryToolCount,
+    credentialCurrent: props.credentialReady,
+    isAgencyEmployee: props.isAgencyEmployee,
+    identityCurrent: props.identityCurrent,
+    acknowledgementCurrent: props.acknowledgementCurrent,
+    taskExecuting: props.taskExecuting,
+    evaluatedAt: now,
+  });
+  const ready = readiness.chatAvailable;
+  const statusMeta = chatStatusMeta(readiness);
   const [conversations, setConversations] = React.useState(props.initialConversations);
   const [conversationId, setConversationId] = React.useState<string | null>(props.initialConversation?.id ?? null);
   const [messages, setMessages] = React.useState<ChatMessage[]>(props.initialConversation?.messages ?? []);
@@ -192,7 +223,6 @@ export function ChatWorkspace(props: Props) {
   const [railOpen, setRailOpen] = React.useState(false);
   const [listState, setListState] = React.useState<ListState>("idle");
   const [compactRail, toggleCompactRail] = useCompactRail();
-  const now = useNow(props.nowIso);
   const targets = chatNavTargets(props.orgKind, meta.slug);
   const [replyLength, setReplyLength] = React.useState<ReplyLength>(props.replyLength);
   const [renaming, setRenaming] = React.useState<{ id: string; title: string } | null>(null);
@@ -551,7 +581,7 @@ export function ChatWorkspace(props: Props) {
         <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text" aria-busy={Boolean(streaming)}>
           <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-8 sm:px-6">
             {messages.length === 0 ? (
-              <EmptyState meta={meta} ready={ready} status={props.status} statusDetail={props.statusDetail} configured={props.configured} hasPendingReview={props.hasPendingReview} canConfigure={props.canConfigure} onPick={(p) => send(p)} />
+              <EmptyState meta={meta} readiness={readiness} ready={ready} configured={props.configured} canConfigure={props.canConfigure} onPick={(p) => send(p)} />
             ) : (
               <ol className="space-y-6">
                 {hasMore && (
@@ -636,7 +666,7 @@ export function ChatWorkspace(props: Props) {
             awaitingFirstToken={awaitingFirstToken}
           />
         ) : messages.length > 0 ? (
-          <ChatUnavailableDock meta={meta} status={props.status} statusDetail={props.statusDetail} configured={props.configured} hasPendingReview={props.hasPendingReview} canConfigure={props.canConfigure} />
+          <ChatUnavailableDock meta={meta} readiness={readiness} configured={props.configured} canConfigure={props.canConfigure} />
         ) : null}
       </main>
 
@@ -703,16 +733,12 @@ export function ChatWorkspace(props: Props) {
   );
 }
 
-function EmptyState({ meta, ready, status, statusDetail, configured, hasPendingReview, canConfigure, onPick }: { meta: AgentRoleMeta; ready: boolean; status: AgentStatus; statusDetail: string | null; configured: boolean; hasPendingReview: boolean; canConfigure: boolean; onPick: (p: string) => void }) {
+function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }: { meta: AgentRoleMeta; readiness: EmployeeReadiness; ready: boolean; configured: boolean; canConfigure: boolean; onPick: (p: string) => void }) {
   const reduce = useReducedMotion();
-  const statusMeta = chatStatusMeta(ready, configured, hasPendingReview, status);
+  const statusMeta = chatStatusMeta(readiness);
   const headline = { operations_manager: ["Turn priorities", "into a clear plan."], lead_hunter: ["Start with the right", "next customer."], appointment_setter: ["Make room for", "better conversations."], sales_assistant: ["Keep opportunities", "moving forward."], crm_manager: ["Give every customer", "a clearer story."], performance_analyst: ["See the signal", "behind the numbers."] }[meta.key];
-  const title = ready ? null : hasPendingReview ? "This employee is awaiting review" : !configured ? "Finish setting up this employee" : status === "disabled" ? "This employee is paused" : "This employee needs a connection check";
-  const explanation = ready ? null : hasPendingReview
-    ? "A requested configuration change is held for iAcquire review. Chat opens only after the change is approved and the employee passes its connection check."
-    : !configured
-      ? "Each AI employee has its own configuration and private runtime. Apply the initial configuration, then verify the Hermes connection before starting a conversation."
-      : statusDetail?.trim() || "The configuration is applied, but the latest authenticated connection check has not made this employee available for chat.";
+  const title = ready ? null : readiness.title;
+  const explanation = ready ? null : readiness.description;
   return (
     <div className="flex min-h-[52dvh] flex-col items-start justify-center py-6 text-left sm:py-10">
       <p className="mb-5 text-[10px] font-semibold uppercase tracking-[.18em] text-muted">Your dedicated {meta.shortName}</p>
@@ -753,13 +779,9 @@ function EmptyState({ meta, ready, status, statusDetail, configured, hasPendingR
             <span className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Setup path</span>
           </div>
           <ol className="mt-4 space-y-2.5">
-            {[
-              { label: "Configuration applied", done: configured, description: hasPendingReview ? "Waiting for iAcquire review" : configured ? "An active version is saved" : "Describe the role and save it" },
-              { label: "Hermes connection verified", done: ready, description: ready ? "Authenticated health check passed" : "Run the connection check in the employee profile" },
-              { label: "Chat available", done: ready, description: ready ? "Ready for an authorized conversation" : "Opens automatically when the checks pass" },
-            ].map((step) => (
+            {readiness.steps.map((step) => (
               <li key={step.label} className="flex items-start gap-3 rounded-xl border border-transparent px-2.5 py-2">
-                {step.done ? <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />}
+                {step.state === "done" ? <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />}
                 <div><p className="text-[13px] font-medium text-ink">{step.label}</p><p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{step.description}</p></div>
               </li>
             ))}
@@ -775,15 +797,9 @@ function EmptyState({ meta, ready, status, statusDetail, configured, hasPendingR
   );
 }
 
-function ChatUnavailableDock({ meta, status, statusDetail, configured, hasPendingReview, canConfigure }: { meta: AgentRoleMeta; status: AgentStatus; statusDetail: string | null; configured: boolean; hasPendingReview: boolean; canConfigure: boolean }) {
-  const title = chatStatusMeta(false, configured, hasPendingReview, status).label;
-  const detail = hasPendingReview
-    ? "A configuration change is waiting for iAcquire review. Chat will reopen once it is approved and verified."
-    : status === "disabled"
-      ? "Its configuration and history are preserved. Ask an owner or iAcquire to re-enable it."
-      : !configured
-        ? "Apply the initial configuration before this employee can accept messages."
-        : statusDetail?.trim() || "The latest connection check did not make this employee available for chat.";
+function ChatUnavailableDock({ meta, readiness, configured, canConfigure }: { meta: AgentRoleMeta; readiness: EmployeeReadiness; configured: boolean; canConfigure: boolean }) {
+  const title = chatStatusMeta(readiness).label;
+  const detail = readiness.description;
   return (
     <div className="shrink-0 bg-gradient-to-t from-surface via-surface to-transparent px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-2xl border border-line bg-surface-2/80 p-4 shadow-soft sm:flex-row sm:items-center">

@@ -4,6 +4,8 @@ import { editableSettings, getAgentByRole, listConfigVersions } from "@/server/w
 import { withSystem, withUser } from "@/server/db";
 import { EmployeeDetail } from "@/components/workforce/employee-detail";
 import { AGENT_BY_SLUG } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
+import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { autonomousBlocker } from "@/server/automation/controls";
 import { getEmployeeInstructionOverview } from "@/server/workforce/instructions";
 import { listEmployeeKnowledge } from "@/server/workforce/knowledge";
@@ -31,7 +33,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const canViewKnowledge = ctx.can("knowledge.view");
   const requestedVersion = typeof version === "string" && /^[0-9a-f-]{36}$/i.test(version) ? version : null;
 
-  const [controls, versions, settings, knowledgeView, instructionOverview, extra, acknowledgementCurrent] = await Promise.all([
+  const [controls, versions, settings, knowledgeView, instructionOverview, extra, internalVerification] = await Promise.all([
     withSystem(async (db) => {
       const { rows } = await db.query<{ last_health_ok: boolean | null }>("select last_health_ok from agent_instances where id = $1 and org_id = $2", [agent.id, ctx.org.orgId]);
       const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name });
@@ -67,17 +69,63 @@ export default async function EmployeePage({ params, searchParams }: { params: P
     }),
     internalEmployee
       ? withSystem(async (db) => {
-          const { rows } = await db.query<{ current: boolean | null }>(
-            `select (ack.acknowledged_at >= c.checked_at) as current
-               from hermes_tool_policy_acknowledgements ack
-               left join agency_hermes_profile_checks c on c.agent_instance_id = ack.agent_id
-              where ack.agent_id = $1`,
-            [agent.id],
+          const { rows } = await db.query<{
+            profile_check_status: string | null; profile_check_profile_id: string | null; profile_check_gateway_id: string | null;
+            identity_verified: boolean | null; api_contract_verified: boolean | null; tool_permissions_status: string | null; checked_at: Date | null;
+            acknowledged_at: Date | null; acknowledged_profile: string | null; acknowledged_policy_id: string | null; internal_policy_id: string | null;
+            acknowledged_config_version_id: string | null; acknowledged_inventory_digest: string | null; agent_policy_override_id: string | null;
+          }>(
+            `select c.status as profile_check_status,c.profile_id as profile_check_profile_id,c.gateway_id as profile_check_gateway_id,
+                    c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
+                    ack.acknowledged_at,ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,
+                    ack_policy.id as internal_policy_id,
+                    ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+                    ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
+                    agent_policy.id as agent_policy_override_id
+               from agent_instances a
+               left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+               left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+               left join hermes_tool_policies ack_policy on ack_policy.id=ack.policy_id and ack_policy.scope_kind='internal_agency' and ack_policy.name='Full Hermes Capabilities'
+               left join hermes_tool_policies agent_policy on agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id
+               left join lateral (
+                 select h.policy_snapshot from hermes_tool_policy_history h
+                 where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+                 order by h.occurred_at desc,h.id desc limit 1
+               ) ack_history on true
+              where a.id=$1 and a.org_id=$2`,
+            [agent.id, ctx.org.orgId],
           );
-          // An internal employee without a recorded acknowledgement is not approved.
-          return rows[0]?.current === true;
+          const row = rows[0];
+          const identityEvidence = {
+            expectedProfile: AGENCY_HERMES_PROFILE_IDS[meta.key],
+            savedProfile: agent.hermes_profile,
+            savedGatewayId: agent.hermes_gateway_id,
+            checkedProfile: row?.profile_check_profile_id ?? null,
+            checkedGatewayId: row?.profile_check_gateway_id ?? null,
+            checkStatus: row?.profile_check_status ?? null,
+            identityVerified: row?.identity_verified ?? null,
+            apiContractVerified: row?.api_contract_verified ?? null,
+            toolPermissionsStatus: row?.tool_permissions_status ?? null,
+            checkedAt: row?.checked_at ?? null,
+            configAppliedAt: agent.config_applied_at,
+          };
+          const identityCurrent = internalIdentityIsCurrent(identityEvidence);
+          const acknowledgementCurrent = internalAcknowledgementIsCurrent({
+            ...identityEvidence,
+            acknowledgedAt: row?.acknowledged_at ?? null,
+            acknowledgedProfile: row?.acknowledged_profile ?? null,
+            acknowledgedPolicyId: row?.acknowledged_policy_id ?? null,
+            expectedPolicyId: row?.internal_policy_id ?? null,
+            activeConfigVersionId: agent.active_config_version_id,
+            acknowledgedConfigVersionId: row?.acknowledged_config_version_id ?? null,
+            inventoryDigest: agent.tool_inventory_digest,
+            acknowledgedInventoryDigest: row?.acknowledged_inventory_digest ?? null,
+            credentialReady: agent.credential_ready,
+            hasAgentPolicyOverride: Boolean(row?.agent_policy_override_id),
+          });
+          return { identityCurrent, acknowledgementCurrent };
         })
-      : Promise.resolve(null),
+      : Promise.resolve({ identityCurrent: null, acknowledgementCurrent: null }),
   ]);
 
   return (
@@ -99,9 +147,13 @@ export default async function EmployeePage({ params, searchParams }: { params: P
         providerRuntime: agent.hermes_profile ? "Hermes Agent" : "Not connected",
         assignedOrganization: ctx.org.name,
         lastActivityAt: extra.runs[0]?.started_at ?? null,
+        inventoryContract: agent.tool_inventory_contract,
         inventoryDigest: agent.tool_inventory_digest,
         inventoryVerifiedAt: agent.tool_inventory_verified_at ? new Date(agent.tool_inventory_verified_at).toISOString() : null,
+        inventoryExpiresAt: agent.tool_inventory_expires_at ? new Date(agent.tool_inventory_expires_at).toISOString() : null,
         inventoryToolCount: agent.tool_inventory_tool_count,
+        credentialReady: agent.credential_ready,
+        taskExecuting: agent.active_run,
       }}
       canPause={ctx.can("automation.pause")}
       canGoAutonomous={ctx.can("automation.go_autonomous")}
@@ -125,7 +177,8 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       canConfigure={canConfigure}
       canChat={ctx.can("agents.use")}
       isAgencyEmployee={internalEmployee}
-      acknowledgementCurrent={acknowledgementCurrent}
+      acknowledgementCurrent={internalVerification.acknowledgementCurrent}
+      identityCurrent={internalVerification.identityCurrent}
       adminManageHref={internalEmployee ? `/admin/employees/${meta.slug}` : null}
       initialTab={tab ?? "overview"}
       timeZone={ctx.org.timezone}
