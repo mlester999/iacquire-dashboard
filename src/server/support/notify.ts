@@ -132,9 +132,9 @@ export async function dispatchSupportNotice(db: Queryable, notice: SupportNotice
       if (!logId) result.duplicates += 1;
       else {
         const n = await db.query<{ id: string }>(
-          `insert into notifications (org_id, user_id, kind, severity, title, body, link, dedupe_key) values ($1, $2, $3, $4, $5, $6, $7, $8)
+          `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            on conflict (user_id, dedupe_key) where dedupe_key is not null do update set dedupe_key = notifications.dedupe_key returning id`,
-          [r.audience === "client" ? notice.ticket.org_id : null, r.userId, kind, notice.severity ?? "info", clip(notice.title, 200), notice.body ? clip(notice.body, 1000) : null, link, `support:${notice.eventKey}`],
+          [r.audience, notice.ticket.org_id, r.userId, kind, notice.severity ?? "info", clip(notice.title, 200), notice.body ? clip(notice.body, 1000) : null, link, `support:${notice.eventKey}`],
         );
         await db.query("update support_notification_log set notification_id = $2 where id = $1", [logId, n.rows[0]?.id ?? null]);
         result.delivered += 1;

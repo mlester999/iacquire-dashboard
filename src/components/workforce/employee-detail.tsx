@@ -74,6 +74,9 @@ interface Props {
   autonomousBlockedReason: string | null;
   agencyPaused: boolean;
   settings: AgentSettings | null;
+  /** Version number when the Configure screen is editing a saved but unapplied version. */
+  draftVersion: number | null;
+  isInternalWorkspace: boolean;
   versions: Version[];
   canConfigure: boolean;
   canChat: boolean;
@@ -305,7 +308,7 @@ function ConfigSection({ id, step, title, description, children }: { id: string;
   );
 }
 
-function ConfigureTab({ meta, agent, settings, hasPendingReview, onSaved, onOpenHistory }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
+function ConfigureTab({ meta, agent, settings, draftVersion, hasPendingReview, onSaved, onOpenHistory }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
   const router = useRouter();
   const [s, setS] = React.useState<AgentSettings>(settings);
   const [saving, setSaving] = React.useState(false);
@@ -323,8 +326,9 @@ function ConfigureTab({ meta, agent, settings, hasPendingReview, onSaved, onOpen
     setSaving(false);
     if (!res.ok) return toast.error(res.error);
     if (res.data.status === "pending_agency_review") {
-      setSaveState("Saved for review. Nothing is applied until iAcquire approves it.");
-      toast.warning("Saved for review", { description: "Part of the instructions looked like it could change safety rules, so iAcquire will review it first." });
+      const reason = res.data.reasons?.[0];
+      setSaveState("Saved for review. Your current configuration stays active until a reviewer approves it.");
+      toast.warning("Submitted for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
     } else {
       setSaveState(`Configuration v${res.data.version} applied.`);
       toast.success(`Saved as configuration v${res.data.version}`, { description: "New conversations use it right away." });
@@ -335,6 +339,15 @@ function ConfigureTab({ meta, agent, settings, hasPendingReview, onSaved, onOpen
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      {draftVersion !== null && (
+        <div className="flex items-start gap-2 rounded-2xl border border-warning/25 bg-warning-soft/40 p-3.5 text-[12.5px] leading-relaxed text-warning-ink xl:col-span-2">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>
+            You are editing saved configuration v{draftVersion}, which has not been applied yet. Saving creates a new version. Your
+            current live configuration stays in place until a reviewer approves the change.
+          </p>
+        </div>
+      )}
       <div className="space-y-5">
         <nav aria-label="Configuration sections" className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface-2/60 p-2">
           {[
@@ -393,9 +406,18 @@ function ConfigureTab({ meta, agent, settings, hasPendingReview, onSaved, onOpen
             <Field label="Ask a human when…" htmlFor="cfg-esc" optional><Input id="cfg-esc" maxLength={600} value={s.escalateWhen} onChange={(e) => set("escalateWhen", e.target.value)} placeholder="a customer is upset" /></Field>
             <Field label="Escalation contact" htmlFor="cfg-esc-contact" optional><Input id="cfg-esc-contact" maxLength={200} value={s.escalationContact} onChange={(e) => set("escalationContact", e.target.value)} placeholder="Name and email" /></Field>
           </div>
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
-            <div><p className="text-[13px] font-medium">Ask before any business action</p><p className="mt-1 text-[12px] leading-relaxed text-muted">Customer-facing actions always need approval. With this on, every business action does too.</p></div>
-            <Switch checked={s.approvalPreference === "always"} onCheckedChange={(v) => set("approvalPreference", v ? "always" : "high_impact")} aria-label="Ask before any business action" />
+          <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-[13px] font-medium"><Lock className="size-3.5 text-faint" aria-hidden /> Ask before any business action</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">Fixed by iAcquire policy. Customer-facing actions always need approval, and this setting cannot be changed here.</p>
+              </div>
+              <Badge tone="neutral">Read-only</Badge>
+            </div>
+            <p className="mt-2.5 border-t border-line pt-2.5 text-[11.5px] leading-relaxed text-faint">
+              This preference is recorded for compatibility but is not currently read by the runtime approval gate. Your employee&apos;s
+              operating mode and the platform&apos;s tool policy remain the enforced approval boundary.
+            </p>
           </div>
         </ConfigSection>
 
@@ -465,8 +487,12 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
     const res = await applyChangeAction(meta.key, text, proposal.changes);
     setPending(false);
     if (!res.ok) return toast.error(res.error);
-    if (res.data.status === "pending_agency_review") toast.warning("Sent for iAcquire review");
-    else toast.success(`Applied as configuration v${res.data.version}`);
+    if (res.data.status === "pending_agency_review") {
+      const reason = res.data.reasons?.[0];
+      toast.warning("Sent for review", { description: reason ? `${reason.label}: ${reason.detail}` : "A reviewer will check this change before it is applied." });
+    } else {
+      toast.success(`Applied as configuration v${res.data.version}`);
+    }
     setText("");
     setProposal(null);
     router.refresh();
@@ -509,8 +535,8 @@ function ChangeTab({ meta, agent, onApplied }: Props & { onApplied: () => void }
   );
 }
 
-function HistoryTab({ meta, versions, timeZone, now }: Props) {
-  return <ConfigVersionHistory versions={versions} role={meta.key} timeZone={timeZone} initialNow={now} />;
+function HistoryTab({ meta, versions, timeZone, now, isInternalWorkspace }: Props) {
+  return <ConfigVersionHistory versions={versions} role={meta.key} timeZone={timeZone} initialNow={now} isInternalWorkspace={isInternalWorkspace} />;
 }
 
 function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse }: Props) {

@@ -21,11 +21,11 @@ import { NotificationTimestamp } from "@/components/notifications/notification-v
 import { rollbackAction } from "@/app/actions/workforce";
 import {
   configRiskLabel,
-  configVersionSourceLabel,
   configVersionStatus,
   type NotificationTone,
 } from "@/lib/notification-presentation";
 import { diffAgentSettings, LENGTH_COPY, TONE_COPY, type AgentSettings, type AgentSettingsChange } from "@/lib/agent-settings";
+import { configSourceLabel } from "@/lib/config-review";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime } from "@/lib/utils";
 
@@ -104,11 +104,14 @@ export function ConfigVersionHistory({
   role,
   timeZone,
   initialNow,
+  isInternalWorkspace = false,
 }: {
   versions: ConfigVersion[];
   role: string;
   timeZone: string;
   initialNow: number;
+  /** Legacy internal saves were persisted as client_edit; label them from authenticated workspace context. */
+  isInternalWorkspace?: boolean;
 }) {
   const router = useRouter();
   const reduced = useReducedMotion();
@@ -249,7 +252,7 @@ export function ConfigVersionHistory({
                               {status.label}
                             </StatusPill>
                             <Badge tone="outline" className="h-5 px-2 text-[11px]">
-                              {configVersionSourceLabel(version.source)}
+                              {configSourceLabel(version.source, isInternalWorkspace ? "agency" : "client")}
                             </Badge>
                           </div>
                           <NotificationTimestamp value={version.created_at} timeZone={timeZone} now={now} />
@@ -371,7 +374,7 @@ export function ConfigVersionHistory({
                                     label="Recorded source"
                                     value={
                                       <>
-                                        {configVersionSourceLabel(version.source)}
+                                        {configSourceLabel(version.source, isInternalWorkspace ? "agency" : "client")}
                                         {version.source && (
                                           <code className="ml-1.5 rounded bg-surface-3 px-1 py-0.5 font-mono text-[10.5px] text-muted">{version.source}</code>
                                         )}

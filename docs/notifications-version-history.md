@@ -1,6 +1,6 @@
 # Version History and Notification Centre
 
-Status: implemented locally on `design/version-history-notifications`; not deployed.
+Status: merged into `master` and deployed as part of `5c93fc1`; the access-revocation fix and migration `0066` are integrated locally on `release/ai-workforce-notif-security` and are **not** applied to production.
 
 ## 1. Root cause: why Super Admin had no notifications
 
@@ -68,18 +68,23 @@ An internal agency workspace no longer sends the client-facing "waiting for iAcq
 
 ## 3. Permission and tenant boundaries
 
-- `listNotifications()` now has an explicit `user_id = $n` predicate in addition to RLS, and the shell unread count does too.
-- `markNotificationsRead()` has the same explicit user predicate for both single and "all" operations, and a client's read action is scoped to the active workspace so it cannot silently clear another workspace's badge. Agency read actions remain cross-client because the admin feed is intentionally agency-wide.
-- A client account's feed is also filtered to the active workspace (unscoped account-level notices remain visible). The shell unread count uses the same workspace predicate. An agency feed remains cross-client by design because the reviewer's scope is enforced by the client-access helper, not by hiding their assigned work.
+- Every notification now records an explicit audience: `client`, `agency` or `direct`. This is what makes the read rule unambiguous instead of treating every `org_id = null` row as account-level mail.
+- `notifyAgency()` stores the client organisation on the row as well as selecting only recipients who can currently access it. `notifyUser()`, `notifyOrgRoles()` and the Support & Requests producer set the same audience/organisation contract.
+- `app.notification_visible(user, audience, org)` is the single authorization predicate used by the RLS policies, the feed, the unread count, mark-read, the email delivery query and the agency inbox. An agency row with a client organisation is visible only while `app.user_can_access_org` is true; an agency-wide row requires `agency.security.manage`; a direct row is visible only to its recipient.
+- `listNotifications()` and the shell unread count keep an explicit `user_id` predicate in addition to RLS. The feed mode is derived from the authenticated account's current platform role, so a role change moves the same person between the agency and client models instead of leaving a stale feed mode open.
+- `markNotificationsRead()` uses the same predicate for single and "all" operations. A hidden row cannot be marked read through a guessed id, and "mark all" cannot clear another workspace's badge.
+- A client account's feed is filtered to the active workspace (unscoped account-level notices remain visible). An agency feed spans the clients in the person's current scope by design, but each row is checked individually.
 - Cursor pagination is ordered by `(created_at desc, id desc)` and uses both values, so repeated timestamps cannot skip or repeat rows.
 - The browser sends only a limit and an opaque cursor; it never sends a user or organisation id.
 - Notification links are still internal paths sanitised by `safeLink()` on write. Destinations re-check access: client pages use `requireOrgContext`, and `/admin/clients/[id]` uses `getTenantDetail`, which enforces agency client scope.
-- The bell is rendered in the agency shell only for authenticated agency users; the full agency page uses `requireAgency()`.
+- The bell and the full inbox are separate presentations of the same `listNotifications()`/`unreadCount()` model, not two different authorization paths.
 - The shared component is data-agnostic: client space, agency space and Super Admin space each pass only their own already-authorised feed.
 
-### Known pre-existing limitation
+### Access revocation and historical backfill
 
-`notifyAgency()` still stores agency notifications with `org_id = null`. The row is user-scoped, but if an agency user later loses that client assignment, an older client-specific notification can remain visible in their inbox. Fixing this properly means persisting the client org on agency rows and adding a scope-aware read policy/backfill. That is a backend/migration decision outside this UI task and should be coordinated with the configuration-review hardening work; no migration was added here.
+Migration `0066_notification_authorization` adds the audience column, associates historical agency rows with a client only where the stored destination proves it (a client id, project id or support ticket id), and installs the scope-aware RLS and helper function. Rows that cannot be associated reliably remain agency-wide and therefore require `agency.security.manage`; they are **not deleted**. This is deliberately conservative: an unresolved historical row may become invisible to an Agency Manager/Staff member, but it cannot remain visible to someone who has lost that client.
+
+The migration is prepared locally in this worktree and has **not** been applied to staging or production. The production ledger currently ends at `0065_support_requests`, and the production notification table has no `audience` column yet.
 
 ## 4. Provenance dependency (configuration-review hardening)
 
@@ -94,9 +99,7 @@ This UI deliberately does **not** guess an actor type. It renders the persisted 
 - `rollback` → "Restored version"
 - unknown/null → "Source not recorded"
 
-The details panel also shows the raw persisted source key for auditability. Until the hardening branch lands, legacy internal edits will therefore still read "Client edit"; that is faithful to the stored data and is preferable to masking it. After the hardening change, new internal saves persist `agency` and render as "Internal agency edit".
-
-The hardening branch also adds review reasons, blocked-content handling, decision notes and a dedicated internal review queue. Its `createConfigVersion`/`decideHeldVersion` rewrites own the same notification block touched here. See "Merge coordination" below.
+The details panel also shows the raw persisted source key for auditability. The hardening branch is now merged into this integration: new internal saves persist `agency` and render as "Internal agency edit". Historical rows keep their stored `client_edit` value and are labelled from authenticated context as an internal edit with a legacy notice; the stored audit record is not rewritten. That distinction is intentional and is covered by the configuration-review tests.
 
 ## 5. Merge coordination
 
@@ -140,10 +143,12 @@ Checks performed: held version renders with its real status/source, details expa
 
 ## 7. Migrations
 
-None. No schema change was needed for the bell, the inbox, the history data or the recipient notifications. The existing `notifications` kinds and columns were sufficient.
+No schema change was needed for the bell, the inbox, the history data or the recipient notifications. The existing notification kinds and columns were sufficient.
 
-## 8. Commit and push
+The later authorization fix adds migration `0066_notification_authorization` (audience, client association, scope-aware RLS and a conservative historical backfill). It is prepared on `release/ai-workforce-notif-security` and is **not applied** to any hosted database. See [notification-authorization.md](notification-authorization.md).
 
-The branch was pushed to `origin/master` on 2026-10-20. Its history is the feature commit `c84874e`, the merge of the premium AI Workforce redesign (`6ce1a7c`), the merge of Support & Requests (`b196d96`), and the sidebar AI Employees label commit (`d5ea48a`). The final `master` SHA, including this documentation follow-up, is reported in the final response.
+## 8. Commit, push and deployment
 
-No migration was authored or applied by this work. The only newer migration now in `master` is `0065_support_requests` from the pre-existing Support & Requests merge; it remains unapplied and still requires its documented staging acceptance and separate approval. No manual deployment, email, AI provider or production data write was made by this work.
+The branch was pushed to `origin/master` on 2026-10-20. Its history is the feature commit `c84874e`, the merge of the premium AI Workforce redesign (`6ce1a7c`), the merge of Support & Requests (`b196d96`), and the sidebar AI Employees label commit (`d5ea48a`).
+
+The push was automatically deployed by Vercel to Production as `5c93fc1` (successful), followed by the documentation-only `27fe4f7` (successful). This was not a manual deployment. Migration `0065_support_requests` was applied to the production database at 15:30 SGT on 2026-10-20 and its tables exist; the earlier statement that it remained unapplied was incorrect. No email, AI provider or production data write was made by this work.

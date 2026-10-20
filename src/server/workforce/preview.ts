@@ -6,6 +6,7 @@ import { withSystem } from "@/server/db";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { agentSettingsSchema, diffAgentSettings, type AgentSettings } from "@/lib/agent-settings";
 import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { decisionFromRiskFlags } from "@/lib/config-review";
 import type { ConfigPreviewEvent, ConfigPreviewSummary, PreviewMessage } from "@/lib/workforce-types";
 import { AgentRunNotReadyError, getCapabilities, getRunStatus, HermesError, startAgentRun, stopRun, streamRunEvents, toolActivityLabel } from "@/server/integrations/hermes/client";
 import {
@@ -74,8 +75,11 @@ async function prepare(ctx: OrgContext, role: string, draft: unknown): Promise<P
     const run = await composeRunInstructions(db, ctx.org.orgId, agent.id, compiled.instructions, null);
     const conn = await loadConnection(db, agent.id);
     const warnings: string[] = [];
-    if (compiled.riskFlags.length) {
-      warnings.push("Saving this draft would hold it for iAcquire review before it can be applied.");
+    const decision = decisionFromRiskFlags(compiled.riskFlags);
+    if (decision === "blocked") {
+      warnings.push("Saving this draft would be blocked because it contains content platform security does not allow.");
+    } else if (decision === "review_required") {
+      warnings.push("Saving this draft would hold it for review before it can be applied.");
     }
     if (!conn) warnings.push("This employee isn't connected to a provider, so a test message can't run yet.");
     if (run.knowledgeTruncated) warnings.push("Some company knowledge was left out by the knowledge size budget.");
@@ -94,6 +98,7 @@ async function prepare(ctx: OrgContext, role: string, draft: unknown): Promise<P
         version,
         summary: compiled.summary,
         riskFlags: compiled.riskFlags,
+        decision,
         changed: diffAgentSettings(active, parsed.data),
         warnings,
         knowledge: {

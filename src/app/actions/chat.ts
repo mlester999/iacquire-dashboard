@@ -8,6 +8,7 @@ import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 import { REPLY_LENGTHS, type ReplyLength } from "@/lib/agent-settings";
+import { configAttribution } from "@/lib/config-review";
 
 export async function searchConversationsAction(role: string, query: string) {
   try {
@@ -90,11 +91,13 @@ export async function setReplyLengthAction(role: string, length: string) {
     const result = await withSystem(async (db) => {
       const { settings } = await currentSettings(db, agent.id, ctx.org.orgId);
       if (settings.replyLength === length) return null;
+      const attribution = configAttribution({ orgKind: ctx.org.kind, platformRole: ctx.user.platformRole });
       return createConfigVersion(db, {
         orgId: ctx.org.orgId,
         agentId: agent.id,
         settings: { ...settings, replyLength: length as ReplyLength },
-        source: "client_edit",
+        source: attribution.source,
+        actorKind: attribution.actorKind,
         changeRequest: `Reply length set to ${length}`,
         userId: ctx.user.id,
         apply: true,

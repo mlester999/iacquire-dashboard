@@ -56,6 +56,7 @@ export async function deliverNotificationEmails(opts: { now?: Date; limit?: numb
        from notifications n join users u on u.id = n.user_id and u.status = 'active'
        left join notification_preferences p on p.user_id = n.user_id and p.org_id = n.org_id
        where n.created_at > $1::timestamptz - make_interval(hours => $2)
+         and app.notification_visible(n.user_id, n.audience, n.org_id)
          and not exists (select 1 from notification_deliveries d where d.notification_id = n.id and d.channel = 'email')
        order by n.created_at limit $3`,
       [now.toISOString(), MAX_AGE_HOURS, Math.min(200, opts.limit ?? 100)],

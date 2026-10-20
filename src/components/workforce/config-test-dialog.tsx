@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/primitives";
 import { previewConfigAction } from "@/app/actions/workforce";
 import type { AgentSettings } from "@/lib/agent-settings";
 import type { AgentRoleKey } from "@/lib/agents";
+import { describeRiskCodes } from "@/lib/config-review";
 import type { ConfigPreviewEvent, ConfigPreviewSummary, PreviewMessage } from "@/lib/workforce-types";
 import { cn } from "@/lib/utils";
 
@@ -311,7 +312,9 @@ export function ConfigTestDialog({
             )}
             {summary.riskFlags.length > 0 && (
               <p className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft/40 p-3 text-[12.5px] text-warning-ink">
-                <Info className="mt-0.5 size-4 shrink-0" aria-hidden /> Risk review flags: {summary.riskFlags.join(", ")}. This draft was not applied.
+                <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+                {summary.decision === "blocked" ? "This draft would be blocked: " : "This draft would need review: "}
+                {describeRiskCodes(summary.riskFlags).map((reason) => reason.label).join(", ")}. This draft was not applied.
               </p>
             )}
           </>
