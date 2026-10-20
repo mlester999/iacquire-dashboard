@@ -10,7 +10,7 @@ export function AuthShowcase() {
   return <aside className="relative hidden overflow-hidden bg-[#0d1426] text-white lg:flex lg:flex-col">
     <div aria-hidden className="pointer-events-none absolute inset-0" style={{background:"radial-gradient(ellipse at 0% 0%,#2c5bff40,transparent 65%),radial-gradient(ellipse at 100% 100%,#7658d528,transparent 60%)"}}/>
     <div aria-hidden className="pointer-events-none absolute inset-0 opacity-15 [background-image:radial-gradient(#c3cfff_1px,transparent_1px)] [background-size:24px_24px]"/>
-    <div className="relative flex items-center justify-between gap-4 px-8 pb-7 pt-9 xl:px-12"><span className="[&_span]:!text-white"><Logo/></span><span className="rounded-full border border-white/20 px-3 py-1 text-[11px] text-slate-300">Client Portal</span></div>
+    <div className="relative flex items-center justify-between gap-4 px-8 pb-7 pt-9 xl:px-12"><Logo tone="inverse" /><span className="rounded-full border border-white/20 px-3 py-1 text-[11px] text-slate-300">Client Portal</span></div>
     <div className="relative flex flex-1 flex-col justify-center gap-8 px-8 pb-10 xl:gap-10 xl:px-12">
       <motion.div initial={reduce?false:{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{duration:.4}}>
         <p className="text-[11px] font-semibold uppercase tracking-[.2em] text-blue-200">Built around your business</p>

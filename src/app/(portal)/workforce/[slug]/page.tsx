@@ -30,7 +30,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const canConfigure = ctx.can("agents.configure");
   const canViewKnowledge = ctx.can("knowledge.view");
 
-  const [controls, versions, settings, knowledgeView, instructionOverview, extra] = await Promise.all([
+  const [controls, versions, settings, knowledgeView, instructionOverview, extra, acknowledgementCurrent] = await Promise.all([
     withSystem(async (db) => {
       const { rows } = await db.query<{ last_health_ok: boolean | null }>("select last_health_ok from agent_instances where id = $1 and org_id = $2", [agent.id, ctx.org.orgId]);
       const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name });
@@ -64,6 +64,19 @@ export default async function EmployeePage({ params, searchParams }: { params: P
         pendingApprovals: approvals.rows[0]?.n ?? 0,
       };
     }),
+    internalEmployee
+      ? withSystem(async (db) => {
+          const { rows } = await db.query<{ current: boolean | null }>(
+            `select (ack.acknowledged_at >= c.checked_at) as current
+               from hermes_tool_policy_acknowledgements ack
+               left join agency_hermes_profile_checks c on c.agent_instance_id = ack.agent_id
+              where ack.agent_id = $1`,
+            [agent.id],
+          );
+          // An internal employee without a recorded acknowledgement is not approved.
+          return rows[0]?.current === true;
+        })
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -75,6 +88,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
         enabled: agent.enabled,
         status: agent.enabled ? agent.status : "disabled",
         lastHealthCheckAt: agent.last_health_check_at ? new Date(agent.last_health_check_at).toISOString() : null,
+        lastHealthOk: agent.last_health_ok,
         lastHealthDetail: agent.last_health_detail,
         summary: agent.summary,
         configVersion: agent.config_version,
@@ -84,6 +98,9 @@ export default async function EmployeePage({ params, searchParams }: { params: P
         providerRuntime: agent.hermes_profile ? "Hermes Agent" : "Not connected",
         assignedOrganization: ctx.org.name,
         lastActivityAt: extra.runs[0]?.started_at ?? null,
+        inventoryDigest: agent.tool_inventory_digest,
+        inventoryVerifiedAt: agent.tool_inventory_verified_at ? new Date(agent.tool_inventory_verified_at).toISOString() : null,
+        inventoryToolCount: agent.tool_inventory_tool_count,
       }}
       canPause={ctx.can("automation.pause")}
       canGoAutonomous={ctx.can("automation.go_autonomous")}
@@ -103,6 +120,9 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       }))}
       canConfigure={canConfigure}
       canChat={ctx.can("agents.use")}
+      isAgencyEmployee={internalEmployee}
+      acknowledgementCurrent={acknowledgementCurrent}
+      adminManageHref={internalEmployee ? `/admin/workforce/${meta.slug}` : null}
       initialTab={tab ?? "overview"}
       timeZone={ctx.org.timezone}
       now={currentTime()}

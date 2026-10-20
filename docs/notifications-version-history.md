@@ -114,7 +114,7 @@ Expected conflicts:
 - `src/app/(portal)/workforce/[slug]/page.tsx` — both the premium and hardening worktrees change this page. Keep the extra `now` prop and the `decided_at` serialisation from this branch.
 - `src/app/(chat)/chat/[slug]/page.tsx` — the premium branch edits it; our one-line null-safe `settings?.replyLength` change is compatible.
 
-No branch was merged and no worktree was touched.
+The final branch was merged forward onto the latest `master` (`6ce1a7c`, the premium AI Workforce redesign) before release. The one content conflict, `employee-detail.tsx`, was resolved by keeping the premium screen and replacing only its `HistoryTab` body with `ConfigVersionHistory`, plus the `now` prop through the page. The hardening worktree was not merged or touched.
 
 ## 6. Verification evidence
 
@@ -126,9 +126,9 @@ Automated:
 - `tests/config-review-notifications.test.ts` — client confirmation, scoped agency reviewer, out-of-scope exclusion, decision notification, internal-workspace suppression, settings/decision metadata.
 - `tests/workforce-config.test.ts` and `tests/shell-query.test.ts` — existing versioning and shell behaviour, plus a new check that a two-workspace client sees only the active workspace's notifications while an unscoped agency-style feed still sees both.
 
-Full suite at the final code state: **198 test files / 3135 tests passed** (`npx vitest run --testTimeout=60000`). A prior default-timeout run hit one 30-second timeout in `setup-center` while the machine was saturated by parallel work; that file then passed 37/37 in isolation and in the final full run.
+Full suite after merging the latest premium AI Workforce master: **202 test files / 3185 tests passed** (`npx vitest run --testTimeout=60000`). An earlier default-timeout run hit one 30-second timeout in `setup-center` while the machine was saturated by parallel work; that file passed 37/37 in isolation and in both later full runs.
 
-Production build: `IAQ_DIST_DIR=.next-notif npm run build` completed successfully, including the new `/admin/notifications` route. TypeScript (`npm run typecheck`) and targeted ESLint over every changed source/test file pass. The repository-wide `npm run lint` still reports the pre-existing generated/untracked artefacts in this checkout (`tmp/`, build output and similar); it is not a clean-tree invocation and none of its findings are in the changed files.
+Production build after the merge: `IAQ_DIST_DIR=.next-notif npm run build` completed successfully, including the new `/admin/notifications` route. TypeScript (`npm run typecheck`) and targeted ESLint over every changed source/test file pass. The repository-wide `npm run lint` still reports the pre-existing generated/untracked artefacts in this checkout (`tmp/`, build output and similar); it is not a clean-tree invocation and none of its findings are in the changed files.
 
 Browser QA (real Chromium against an isolated local PGlite database; screenshots in `docs/design-qa/notifications-version-history/`):
 

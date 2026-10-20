@@ -15,12 +15,14 @@ export function AgencyWorkforceControls({
   slug,
   employeeName,
   enabled,
+  dark = false,
 }: {
   agentId: string;
   orgId: string;
   slug: string;
   employeeName: string;
   enabled: boolean;
+  dark?: boolean;
 }) {
   const router = useRouter();
   const [checking, setChecking] = React.useState(false);
@@ -60,14 +62,16 @@ export function AgencyWorkforceControls({
         </Link>
         <Link
           href={`/admin/workforce/open?role=${encodeURIComponent(slug)}&to=manage`}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2"
+          className={dark
+            ? "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 text-[12.5px] font-medium text-white hover:bg-white/15"
+            : "inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2"}
         >
           <Settings2 className="size-3.5" aria-hidden /> Manage
         </Link>
-        <Button size="sm" variant="secondary" onClick={check} loading={checking} aria-label={`Check connection for ${employeeName}`}>
+        <Button size="sm" variant="secondary" onClick={check} loading={checking} className={dark ? "!border-white/20 !bg-white/10 !text-white hover:!bg-white/15" : undefined} aria-label={`Check connection for ${employeeName}`}>
           {!checking && <RefreshCw className="size-3.5" aria-hidden />} Check
         </Button>
-        <Button size="sm" variant={enabled ? "ghost" : "secondary"} onClick={() => setConfirming(true)} aria-label={enabled ? `Pause ${employeeName}` : `Enable ${employeeName}`}>
+        <Button size="sm" variant={enabled ? "ghost" : "secondary"} onClick={() => setConfirming(true)} className={dark ? "!text-white/75 hover:!bg-white/10 hover:!text-white" : undefined} aria-label={enabled ? `Pause ${employeeName}` : `Enable ${employeeName}`}>
           <Power className="size-3.5" aria-hidden /> {enabled ? "Pause" : "Enable"}
         </Button>
       </div>

@@ -1,0 +1,605 @@
+{
+  "base": "http://localhost:3240",
+  "label": "after",
+  "startedAt": "2026-10-20T06:57:59.915Z",
+  "checks": [
+    {
+      "name": "management/dark: \"i\" wordmark contrast >= 7:1",
+      "ok": true,
+      "detail": "19.0:1"
+    },
+    {
+      "name": "management/dark: \"Acquire\" wordmark gradient contrast >= 7:1",
+      "ok": true,
+      "detail": "10.5, 11.1"
+    },
+    {
+      "name": "management/dark: section label contrast >= 7:1",
+      "ok": true,
+      "detail": "7.2:1"
+    },
+    {
+      "name": "management: selecting an employee opens the profile, not chat",
+      "ok": true,
+      "detail": "http://localhost:3240/workforce/operations-manager"
+    },
+    {
+      "name": "management: profile heading is the selected employee",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "management: no chat shortcut for an employee that cannot chat yet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AQi: workforce navigation anchors are intact",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat/dark: \"i\" wordmark contrast >= 7:1",
+      "ok": true,
+      "detail": "19.0:1"
+    },
+    {
+      "name": "chat/dark: \"Acquire\" wordmark gradient contrast >= 7:1",
+      "ok": true,
+      "detail": "10.5, 11.1"
+    },
+    {
+      "name": "chat/dark: section label contrast >= 7:1",
+      "ok": true,
+      "detail": "7.2:1"
+    },
+    {
+      "name": "chat/desktop/dark: axe (WCAG 2.1 AA) finds no violations in the sidebar",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "chat: rail has the brand and a way back to AI Workforce",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: current specialist is marked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: the open conversation is marked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: header names the open conversation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: Manage and Profile are offered to the owner",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: re-selecting the current employee keeps the open conversation URL",
+      "ok": true,
+      "detail": "http://localhost:3240/chat/sales-assistant?c=f8f52388-54c4-412d-a549-8e745137c3ee"
+    },
+    {
+      "name": "chat: choosing another specialist loads that employee",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: histories are not mixed (the other employee's chat is not listed)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: an unconfigured employee shows the readiness state and no composer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: selecting an employee made no model run or send request",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat: Back to AI Workforce reaches the directory",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "browser back returns to the previous chat",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "browser forward returns to the directory",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "deep link: another employee's conversation id is not shown under this employee",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "deep link: the owning employee shows the conversation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search: a query with no match explains itself",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search: finds the persisted conversation by its title",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search: Escape clears the query",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "keyboard: ArrowDown from search focuses the first conversation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rail: collapses to an icon rail",
+      "ok": true,
+      "detail": "80px"
+    },
+    {
+      "name": "rail: collapsed state is remembered after reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rail: collapsed state survives switching employee",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "rail: expands again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no real conversation was started during navigation checks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "management/light: \"i\" wordmark contrast >= 7:1",
+      "ok": true,
+      "detail": "19.0:1"
+    },
+    {
+      "name": "management/light: \"Acquire\" wordmark gradient contrast >= 7:1",
+      "ok": true,
+      "detail": "10.5, 11.1"
+    },
+    {
+      "name": "management/light: section label contrast >= 7:1",
+      "ok": true,
+      "detail": "7.2:1"
+    },
+    {
+      "name": "chat/light: \"i\" wordmark contrast >= 7:1",
+      "ok": true,
+      "detail": "19.0:1"
+    },
+    {
+      "name": "chat/light: \"Acquire\" wordmark gradient contrast >= 7:1",
+      "ok": true,
+      "detail": "10.5, 11.1"
+    },
+    {
+      "name": "chat/light: section label contrast >= 7:1",
+      "ok": true,
+      "detail": "7.2:1"
+    },
+    {
+      "name": "chat/desktop/light: axe (WCAG 2.1 AA) finds no violations in the sidebar",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "mobile/light: no horizontal scroll in chat",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "mobile/light: rail is not permanently on screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/light: header shows the specialist and the open conversation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/light: drawer opens as a dialog with the rail inside",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile-drawer/light: \"i\" wordmark contrast >= 7:1",
+      "ok": true,
+      "detail": "19.0:1"
+    },
+    {
+      "name": "mobile-drawer/light: \"Acquire\" wordmark gradient contrast >= 7:1",
+      "ok": true,
+      "detail": "10.5, 11.1"
+    },
+    {
+      "name": "mobile-drawer/light: section label contrast >= 7:1",
+      "ok": true,
+      "detail": "7.2:1"
+    },
+    {
+      "name": "mobile/light: drawer has no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "mobile-drawer/light: axe (WCAG 2.1 AA) finds no violations in the sidebar",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "mobile/light: Escape closes the drawer and returns focus to the opener",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/light: Back to AI Workforce works from the drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/dark: no horizontal scroll in chat",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "mobile/dark: rail is not permanently on screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/dark: header shows the specialist and the open conversation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/dark: drawer opens as a dialog with the rail inside",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile-drawer/dark: \"i\" wordmark contrast >= 7:1",
+      "ok": true,
+      "detail": "19.0:1"
+    },
+    {
+      "name": "mobile-drawer/dark: \"Acquire\" wordmark gradient contrast >= 7:1",
+      "ok": true,
+      "detail": "10.5, 11.1"
+    },
+    {
+      "name": "mobile-drawer/dark: section label contrast >= 7:1",
+      "ok": true,
+      "detail": "7.2:1"
+    },
+    {
+      "name": "mobile/dark: drawer has no horizontal scroll",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "mobile-drawer/dark: axe (WCAG 2.1 AA) finds no violations in the sidebar",
+      "ok": true,
+      "detail": "[]"
+    },
+    {
+      "name": "mobile/dark: Escape closes the drawer and returns focus to the opener",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mobile/dark: Back to AI Workforce works from the drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "authorization: a team member sees Profile but not Manage in the rail",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "authorization: the header has no Manage control for a team member",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "authorization: ?tab=configure does not expose the configuration tab to a team member",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "super admin: the existing open route lands in chat",
+      "ok": true,
+      "detail": "http://localhost:3240/chat/lead-hunter"
+    },
+    {
+      "name": "super admin: Back goes to the agency workforce area",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "super admin: Manage opens the existing configure screen",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "measurements": [
+    {
+      "label": "management/dark",
+      "bg": [
+        12,
+        16,
+        27
+      ],
+      "word": [
+        255,
+        255,
+        255
+      ],
+      "accentStops": [
+        [
+          168,
+          192,
+          255
+        ],
+        [
+          205,
+          188,
+          255
+        ]
+      ],
+      "accentFill": "rgba(0, 0, 0, 0)",
+      "section": [
+        145,
+        160,
+        186
+      ],
+      "wordBox": {
+        "w": 64,
+        "h": 17
+      },
+      "wordRatio": 18.99,
+      "accentRatios": [
+        10.54,
+        11.06
+      ]
+    },
+    {
+      "label": "chat/dark",
+      "bg": [
+        12,
+        16,
+        27
+      ],
+      "word": [
+        255,
+        255,
+        255
+      ],
+      "accentStops": [
+        [
+          168,
+          192,
+          255
+        ],
+        [
+          205,
+          188,
+          255
+        ]
+      ],
+      "accentFill": "rgba(0, 0, 0, 0)",
+      "section": [
+        145,
+        160,
+        186
+      ],
+      "wordBox": {
+        "w": 64,
+        "h": 17
+      },
+      "wordRatio": 18.99,
+      "accentRatios": [
+        10.54,
+        11.06
+      ]
+    },
+    {
+      "label": "management/light",
+      "bg": [
+        12,
+        16,
+        27
+      ],
+      "word": [
+        255,
+        255,
+        255
+      ],
+      "accentStops": [
+        [
+          168,
+          192,
+          255
+        ],
+        [
+          205,
+          188,
+          255
+        ]
+      ],
+      "accentFill": "rgba(0, 0, 0, 0)",
+      "section": [
+        145,
+        160,
+        186
+      ],
+      "wordBox": {
+        "w": 64,
+        "h": 17
+      },
+      "wordRatio": 18.99,
+      "accentRatios": [
+        10.54,
+        11.06
+      ]
+    },
+    {
+      "label": "chat/light",
+      "bg": [
+        12,
+        16,
+        27
+      ],
+      "word": [
+        255,
+        255,
+        255
+      ],
+      "accentStops": [
+        [
+          168,
+          192,
+          255
+        ],
+        [
+          205,
+          188,
+          255
+        ]
+      ],
+      "accentFill": "rgba(0, 0, 0, 0)",
+      "section": [
+        145,
+        160,
+        186
+      ],
+      "wordBox": {
+        "w": 64,
+        "h": 17
+      },
+      "wordRatio": 18.99,
+      "accentRatios": [
+        10.54,
+        11.06
+      ]
+    },
+    {
+      "label": "mobile-drawer/light",
+      "bg": [
+        12,
+        16,
+        27
+      ],
+      "word": [
+        255,
+        255,
+        255
+      ],
+      "accentStops": [
+        [
+          168,
+          192,
+          255
+        ],
+        [
+          205,
+          188,
+          255
+        ]
+      ],
+      "accentFill": "rgba(0, 0, 0, 0)",
+      "section": [
+        145,
+        160,
+        186
+      ],
+      "wordBox": {
+        "w": 64,
+        "h": 17
+      },
+      "wordRatio": 18.99,
+      "accentRatios": [
+        10.54,
+        11.06
+      ]
+    },
+    {
+      "label": "mobile-drawer/dark",
+      "bg": [
+        12,
+        16,
+        27
+      ],
+      "word": [
+        255,
+        255,
+        255
+      ],
+      "accentStops": [
+        [
+          168,
+          192,
+          255
+        ],
+        [
+          205,
+          188,
+          255
+        ]
+      ],
+      "accentFill": "rgba(0, 0, 0, 0)",
+      "section": [
+        145,
+        160,
+        186
+      ],
+      "wordBox": {
+        "w": 64,
+        "h": 17
+      },
+      "wordRatio": 18.99,
+      "accentRatios": [
+        10.54,
+        11.06
+      ]
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "screens": [
+    "chat-superadmin-desktop-dark.jpg"
+  ],
+  "finishedAt": "2026-10-20T07:00:11.640Z"
+}

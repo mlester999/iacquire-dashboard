@@ -11,20 +11,23 @@ import {
   Check,
   Copy,
   Menu as MenuIcon,
+  Circle,
   Paperclip,
   Plus,
   RefreshCw,
   Settings2,
   ShieldCheck,
   Square,
+  UserRound,
   Wrench,
 } from "lucide-react";
-import { AgentAvatar, AgentStatusBadge, ThinkingDots } from "@/components/brand";
+import { AgentAvatar, ThinkingDots } from "@/components/brand";
+import { StatusPill } from "@/components/ui/status";
 import { Markdown } from "@/components/markdown";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Dialog, Segmented, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
-import { ChatRail, type ConversationItem } from "@/components/chat/chat-rail";
+import { ChatRail, type ConversationItem, type ListState } from "@/components/chat/chat-rail";
 import { openHelp } from "@/components/help/help-widget";
 import {
   deleteConversationAction,
@@ -35,6 +38,7 @@ import {
   setReplyLengthAction,
 } from "@/app/actions/chat";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
+import { chatNavTargets } from "@/lib/chat-navigation";
 import type { ReplyLength } from "@/lib/agent-settings";
 import { cn, formatTime } from "@/lib/utils";
 
@@ -55,10 +59,16 @@ interface Props {
   statusDetail: string | null;
   replyLength: ReplyLength;
   canConfigure: boolean;
+  configured: boolean;
+  hasPendingReview: boolean;
   initialConversations: ConversationItem[];
   initialConversation: { id: string; title: string; messages: ChatMessage[]; hasMore?: boolean } | null;
   activeRunId: string | null;
   timeZone: string;
+  /** The kind of workspace the viewer is in (client or agency), so "back" and "home" go to the right place. */
+  orgKind: string;
+  /** The server's clock at render time, so grouped dates and relative times hydrate identically. */
+  nowIso: string;
   /** Pre-filled composer text (e.g. from "Ask Performance Analyst"). Never auto-sent. */
   initialInput?: string;
 }
@@ -100,6 +110,17 @@ async function* readEvents(res: Response): AsyncGenerator<StreamEvent> {
   }
 }
 
+type ChatStatusTone = "success" | "primary" | "warning" | "violet" | "neutral" | "danger";
+
+function chatStatusMeta(ready: boolean, configured: boolean, hasPendingReview: boolean, status: AgentStatus): { label: string; tone: ChatStatusTone } {
+  if (ready) return status === "busy" ? { label: "Working now", tone: "primary" } : { label: "Online and ready", tone: "success" };
+  if (status === "disabled") return { label: "Paused", tone: "neutral" };
+  if (hasPendingReview) return { label: "Awaiting review", tone: "violet" };
+  if (!configured) return { label: "Setup required", tone: "warning" };
+  if (status === "error" || status === "offline") return { label: "Connection needs attention", tone: "danger" };
+  return { label: "Connection check required", tone: "warning" };
+}
+
 const ERROR_TEXT: Record<string, string> = {
   start_failed: "Couldn't reach your AI employee.",
   connection_lost: "The connection dropped before the answer finished.",
@@ -109,10 +130,53 @@ const ERROR_TEXT: Record<string, string> = {
   stream_ended: "The response ended unexpectedly.",
 };
 
+const RAIL_KEY = "iaq-chat-rail";
+let memoryCompact = false;
+const railListeners = new Set<() => void>();
+function readCompactRail() {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "compact";
+  } catch {
+    return memoryCompact;
+  }
+}
+function subscribeRail(callback: () => void) {
+  railListeners.add(callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    railListeners.delete(callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+/** The desktop rail's collapsed state, remembered per browser so switching employee does not reset it. */
+function useCompactRail() {
+  const compact = React.useSyncExternalStore(subscribeRail, readCompactRail, () => false);
+  const toggle = React.useCallback(() => {
+    memoryCompact = !readCompactRail();
+    try {
+      localStorage.setItem(RAIL_KEY, memoryCompact ? "compact" : "full");
+    } catch {
+      /* storage blocked: the in-memory value still applies for this page */
+    }
+    railListeners.forEach((listener) => listener());
+  }, []);
+  return [compact, toggle] as const;
+}
+
+function useNow(initialIso: string) {
+  const [now, setNow] = React.useState(() => new Date(initialIso));
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
 export function ChatWorkspace(props: Props) {
   const { meta } = props;
   const reduce = useReducedMotion();
   const ready = canChat(props.status);
+  const statusMeta = chatStatusMeta(ready, props.configured, props.hasPendingReview, props.status);
   const [conversations, setConversations] = React.useState(props.initialConversations);
   const [conversationId, setConversationId] = React.useState<string | null>(props.initialConversation?.id ?? null);
   const [messages, setMessages] = React.useState<ChatMessage[]>(props.initialConversation?.messages ?? []);
@@ -126,6 +190,10 @@ export function ChatWorkspace(props: Props) {
   const [input, setInput] = React.useState(props.initialInput ?? "");
   const [search, setSearch] = React.useState("");
   const [railOpen, setRailOpen] = React.useState(false);
+  const [listState, setListState] = React.useState<ListState>("idle");
+  const [compactRail, toggleCompactRail] = useCompactRail();
+  const now = useNow(props.nowIso);
+  const targets = chatNavTargets(props.orgKind, meta.slug);
   const [replyLength, setReplyLength] = React.useState<ReplyLength>(props.replyLength);
   const [renaming, setRenaming] = React.useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = React.useState<string | null>(null);
@@ -154,24 +222,43 @@ export function ChatWorkspace(props: Props) {
   // --- conversation list ----------------------------------------------------
   // The first list is rendered by the server page. Re-fetching it on mount cost another five
   // transactions (viewer resolution + agent + list) before the chat was usable, so only a changed
-  // search term triggers a request now.
+  // search term triggers a request now. A response that a newer request has overtaken is dropped,
+  // so typing "ab" can never be overwritten by the slower answer for "a".
+  const listSeq = React.useRef(0);
+  const loadList = React.useCallback(
+    async (query: string, quiet: boolean) => {
+      const seq = ++listSeq.current;
+      const res = await searchConversationsAction(meta.key, query);
+      if (seq !== listSeq.current) return;
+      if (res.ok) {
+        setConversations(res.data);
+        setListState("idle");
+      } else {
+        // A failed background refresh keeps the list the person is already reading.
+        setListState((s) => (quiet ? (s === "loading" ? "idle" : s) : "error"));
+      }
+    },
+    [meta.key],
+  );
   const skipInitialList = React.useRef(true);
   React.useEffect(() => {
     if (skipInitialList.current) {
       skipInitialList.current = false;
       if (!search) return;
     }
-    const t = setTimeout(async () => {
-      const res = await searchConversationsAction(meta.key, search);
-      if (res.ok) setConversations(res.data);
-    }, search ? 250 : 0);
+    const t = setTimeout(() => void loadList(search, false), search ? 250 : 0);
     return () => clearTimeout(t);
-  }, [search, meta.key]);
+  }, [search, loadList]);
 
-  const refreshList = React.useCallback(async () => {
-    const res = await searchConversationsAction(meta.key, search);
-    if (res.ok) setConversations(res.data);
-  }, [meta.key, search]);
+  const refreshList = React.useCallback(() => loadList(search, true), [loadList, search]);
+  const changeSearch = (q: string) => {
+    setSearch(q);
+    setListState("loading");
+  };
+  const retryList = () => {
+    setListState("loading");
+    void loadList(search, false);
+  };
 
   const setUrl = (id: string | null) => {
     const url = id ? `/chat/${meta.slug}?c=${id}` : `/chat/${meta.slug}`;
@@ -365,32 +452,41 @@ export function ChatWorkspace(props: Props) {
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
   const awaitingFirstToken = Boolean(streaming) && !messages.some((m) => m.id === streaming?.assistantId && m.content);
 
-  const rail = (
-    <ChatRail
-      role={meta.key}
-      conversations={conversations}
-      activeId={conversationId}
-      search={search}
-      onSearch={setSearch}
-      onSelect={selectConversation}
-      onNew={newChat}
-      onRename={(id) => setRenaming({ id, title: conversations.find((c) => c.id === id)?.title ?? "" })}
-      onDelete={(id) => setDeleting(id)}
-      onNavigate={() => setRailOpen(false)}
-    />
-  );
+  const activeTitle = conversationId
+    ? (conversations.find((c) => c.id === conversationId)?.title ?? (props.initialConversation?.id === conversationId ? props.initialConversation.title : null))
+    : null;
+  const railProps = {
+    role: meta.key,
+    agentName: props.agentName,
+    currentStatus: props.status,
+    conversations,
+    activeId: conversationId,
+    search,
+    listState,
+    onSearch: changeSearch,
+    onRetry: retryList,
+    onSelect: selectConversation,
+    onNew: newChat,
+    onRename: (id: string) => setRenaming({ id, title: conversations.find((c) => c.id === id)?.title ?? "" }),
+    onDelete: (id: string) => setDeleting(id),
+    canManage: props.canConfigure,
+    now,
+    timeZone: props.timeZone,
+  };
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface">
-      <aside className="hidden w-[280px] shrink-0 border-r border-line bg-surface-2 lg:block">{rail}</aside>
-      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Conversations" hideHeader>
-        {rail}
+      <aside className={cn("hidden shrink-0 border-r border-white/10 lg:block", compactRail ? "w-20" : "w-[280px]")}>
+        <ChatRail {...railProps} compact={compactRail} onToggleCompact={toggleCompactRail} />
+      </aside>
+      <Sheet open={railOpen} onOpenChange={setRailOpen} side="left" title="Chat navigation" description="Switch AI specialist, open a conversation, or return to AI Workforce." hideHeader className="!bg-[#0c101b]">
+        <ChatRail {...railProps} idPrefix="conv-search-drawer" onNavigate={() => setRailOpen(false)} onClose={() => setRailOpen(false)} />
       </Sheet>
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-3 sm:px-6">
-          <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open conversations">
+        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6">
+          <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 shrink-0 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open chat navigation" aria-haspopup="dialog" aria-expanded={railOpen}>
             <MenuIcon className="size-5" />
           </button>
           <AgentAvatar role={meta} size="md" thinking={Boolean(streaming)} />
@@ -399,9 +495,9 @@ export function ChatWorkspace(props: Props) {
               <h1 className="truncate text-[17px] font-semibold tracking-tight text-ink">{props.agentName}</h1>
               <span className="hidden rounded-md bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted xl:inline">Private workspace</span>
             </div>
-            <div className="flex items-center gap-2">
-              <AgentStatusBadge status={props.status} />
-              <span className="hidden truncate text-[12px] text-muted md:inline">{meta.tagline}</span>
+            <div className="mt-0.5 flex min-w-0 items-center gap-x-2">
+              <StatusPill tone={statusMeta.tone} size="sm" className="shrink-0">{statusMeta.label}</StatusPill>
+              <span className="min-w-0 truncate text-[12px] text-muted" title={activeTitle ?? undefined}>{activeTitle ?? "New conversation"}</span>
             </div>
           </div>
           {props.canConfigure && ready && (
@@ -425,9 +521,14 @@ export function ChatWorkspace(props: Props) {
               <Plus className="size-4" />
             </Button>
           </Tooltip>
+          <Tooltip content={`${props.agentName} profile`}>
+            <ButtonLink href={targets.profile} prefetch={false} variant="ghost" size="icon" aria-label={`Open ${props.agentName} profile`} className="hidden sm:inline-flex">
+              <UserRound className="size-4" />
+            </ButtonLink>
+          </Tooltip>
           {props.canConfigure && (
-            <Tooltip content="Configure employee">
-              <ButtonLink href={`/workforce/${meta.slug}`} variant="ghost" size="icon" aria-label="Configure employee">
+            <Tooltip content="Manage employee">
+              <ButtonLink href={targets.manage} prefetch={false} variant="ghost" size="icon" aria-label="Manage employee" className="hidden sm:inline-flex">
                 <Settings2 className="size-4" />
               </ButtonLink>
             </Tooltip>
@@ -438,7 +539,7 @@ export function ChatWorkspace(props: Props) {
         <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text" aria-busy={Boolean(streaming)}>
           <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-8 sm:px-6">
             {messages.length === 0 ? (
-              <EmptyState meta={meta} ready={ready} status={props.status} statusDetail={props.statusDetail} onPick={(p) => send(p)} />
+              <EmptyState meta={meta} ready={ready} status={props.status} statusDetail={props.statusDetail} configured={props.configured} hasPendingReview={props.hasPendingReview} canConfigure={props.canConfigure} onPick={(p) => send(p)} />
             ) : (
               <ol className="space-y-6">
                 {hasMore && (
@@ -509,19 +610,22 @@ export function ChatWorkspace(props: Props) {
           )}
         </AnimatePresence>
 
-        <Composer
-          value={input}
-          onChange={setInput}
-          onSend={() => send(input)}
-          onStop={stop}
-          streaming={Boolean(streaming)}
-          canStop={Boolean(streaming?.runId)}
-          disabled={!ready}
-          disabledReason={!ready ? (props.status === "setup_required" || props.status === "provisioning" ? `${meta.shortName} is being set up` : `${meta.shortName} is ${props.status === "disabled" ? "not in your plan" : "offline"}`) : undefined}
-          textareaRef={textareaRef}
-          placeholder={`Message ${props.agentName}…`}
-          awaitingFirstToken={awaitingFirstToken}
-        />
+        {ready ? (
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSend={() => send(input)}
+            onStop={stop}
+            streaming={Boolean(streaming)}
+            canStop={Boolean(streaming?.runId)}
+            disabled={false}
+            textareaRef={textareaRef}
+            placeholder={`Message ${props.agentName}…`}
+            awaitingFirstToken={awaitingFirstToken}
+          />
+        ) : messages.length > 0 ? (
+          <ChatUnavailableDock meta={meta} status={props.status} statusDetail={props.statusDetail} configured={props.configured} hasPendingReview={props.hasPendingReview} canConfigure={props.canConfigure} />
+        ) : null}
       </main>
 
       <Dialog
@@ -586,19 +690,32 @@ export function ChatWorkspace(props: Props) {
   );
 }
 
-function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: AgentRoleMeta; ready: boolean; status: AgentStatus; statusDetail: string | null; onPick: (p: string) => void }) {
+function EmptyState({ meta, ready, status, statusDetail, configured, hasPendingReview, canConfigure, onPick }: { meta: AgentRoleMeta; ready: boolean; status: AgentStatus; statusDetail: string | null; configured: boolean; hasPendingReview: boolean; canConfigure: boolean; onPick: (p: string) => void }) {
   const reduce = useReducedMotion();
-  const headline={operations_manager:["Turn priorities","into a clear plan."],lead_hunter:["Start with the right","next customer."],appointment_setter:["Make room for","better conversations."],sales_assistant:["Keep opportunities","moving forward."],crm_manager:["Give every customer","a clearer story."],performance_analyst:["See the signal","behind the numbers."]}[meta.key];
+  const statusMeta = chatStatusMeta(ready, configured, hasPendingReview, status);
+  const headline = { operations_manager: ["Turn priorities", "into a clear plan."], lead_hunter: ["Start with the right", "next customer."], appointment_setter: ["Make room for", "better conversations."], sales_assistant: ["Keep opportunities", "moving forward."], crm_manager: ["Give every customer", "a clearer story."], performance_analyst: ["See the signal", "behind the numbers."] }[meta.key];
+  const title = ready ? null : hasPendingReview ? "This employee is awaiting review" : !configured ? "Finish setting up this employee" : status === "disabled" ? "This employee is paused" : "This employee needs a connection check";
+  const explanation = ready ? null : hasPendingReview
+    ? "A requested configuration change is held for iAcquire review. Chat opens only after the change is approved and the employee passes its connection check."
+    : !configured
+      ? "Each AI employee has its own configuration and private runtime. Apply the initial configuration, then verify the Hermes connection before starting a conversation."
+      : statusDetail?.trim() || "The configuration is applied, but the latest authenticated connection check has not made this employee available for chat.";
   return (
-    <div className="flex min-h-[48dvh] flex-col items-start justify-center py-6 text-left sm:py-10">
+    <div className="flex min-h-[52dvh] flex-col items-start justify-center py-6 text-left sm:py-10">
       <p className="mb-5 text-[10px] font-semibold uppercase tracking-[.18em] text-muted">Your dedicated {meta.shortName}</p>
       <div className="flex w-full items-center justify-between gap-5">
-        <div className="min-w-0"><h2 className="max-w-md text-[28px] font-semibold leading-[1.1] tracking-[-.035em] text-ink sm:text-[38px]">{headline[0]}<br/><span className="text-primary">{headline[1]}</span></h2><p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{meta.tagline} This conversation stays in your private company workspace.</p></div>
-      <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
-        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
-        <AgentAvatar role={meta} size="xl" className="relative" />
-      </motion.div>
+        <div className="min-w-0">
+          <h2 className="max-w-md text-[28px] font-semibold leading-[1.08] tracking-[-.035em] text-ink sm:text-[38px]">
+            {ready ? <>{headline[0]}<br /><span className="text-primary">{headline[1]}</span></> : title}
+          </h2>
+          <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{ready ? `${meta.tagline} This conversation stays in your private company workspace.` : explanation}</p>
+        </div>
+        <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
+          <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
+          <AgentAvatar role={meta} size="xl" className="relative" />
+        </motion.div>
       </div>
+
       {ready ? (
         <div className="mt-8 grid w-full gap-2.5">
           {meta.suggestedPrompts.map((p, i) => (
@@ -612,31 +729,63 @@ function EmptyState({ meta, ready, status, statusDetail, onPick }: { meta: Agent
               whileHover={reduce ? undefined : { y: -2 }}
               className="flex items-center justify-between gap-4 rounded-xl border border-line bg-surface-2/60 p-4 text-left text-[14px] leading-snug text-ink-2 transition-colors hover:border-primary/30 hover:bg-primary-soft/30 hover:text-ink"
             >
-              <span className="flex items-center gap-3"><span className="font-mono text-[10px] text-muted">0{i+1}</span>{p}</span><ArrowUpRight className="size-4 shrink-0 text-muted"/>
+              <span className="flex items-center gap-3"><span className="font-mono text-[10px] text-muted">0{i + 1}</span>{p}</span><ArrowUpRight className="size-4 shrink-0 text-muted" />
             </motion.button>
           ))}
         </div>
       ) : (
-        <div className="mt-8 w-full rounded-2xl border border-line bg-surface-2/70 p-5 text-left">
-          <AgentStatusBadge status={status} />
-          <p className="mt-2 text-[14px] font-semibold text-ink">
-            {status === "setup_required" || status === "provisioning" ? "Your iAcquire team is preparing this employee" : status === "disabled" ? "Not included in your plan" : "This employee is unavailable right now"}
-          </p>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">
-            {status === "setup_required" || status === "provisioning"
-              ? "Each AI employee gets its own private environment. Chat becomes available after a successful connection check. Follow its progress in Setup Center."
-              : statusDetail ?? "Check the latest setup status or contact iAcquire for help."}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={() => openHelp("human")}>
-              Contact iAcquire
-            </Button>
-            <ButtonLink size="sm" variant="ghost" href={`/workforce/${meta.slug}`}>
-              View employee
-            </ButtonLink>
+        <div className="mt-8 w-full max-w-2xl rounded-3xl border border-line bg-surface-2/70 p-5 text-left shadow-soft">
+          <div className="flex items-center justify-between gap-3">
+            <StatusPill tone={statusMeta.tone} size="sm">{statusMeta.label}</StatusPill>
+            <span className="text-[10px] font-semibold uppercase tracking-[.14em] text-muted">Setup path</span>
+          </div>
+          <ol className="mt-4 space-y-2.5">
+            {[
+              { label: "Configuration applied", done: configured, description: hasPendingReview ? "Waiting for iAcquire review" : configured ? "An active version is saved" : "Describe the role and save it" },
+              { label: "Hermes connection verified", done: ready, description: ready ? "Authenticated health check passed" : "Run the connection check in the employee profile" },
+              { label: "Chat available", done: ready, description: ready ? "Ready for an authorized conversation" : "Opens automatically when the checks pass" },
+            ].map((step) => (
+              <li key={step.label} className="flex items-start gap-3 rounded-xl border border-transparent px-2.5 py-2">
+                {step.done ? <Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> : <Circle className="mt-0.5 size-4 shrink-0 text-faint" aria-hidden />}
+                <div><p className="text-[13px] font-medium text-ink">{step.label}</p><p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{step.description}</p></div>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+            {canConfigure && <ButtonLink size="sm" variant="brand" href={`/workforce/${meta.slug}?tab=configure`}>{configured ? "Review configuration" : "Complete setup"} <ArrowUpRight className="size-3.5" /></ButtonLink>}
+            <ButtonLink size="sm" variant="secondary" href={`/workforce/${meta.slug}`}>View employee</ButtonLink>
+            <Button size="sm" variant="ghost" onClick={() => openHelp("human")}>Contact iAcquire</Button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ChatUnavailableDock({ meta, status, statusDetail, configured, hasPendingReview, canConfigure }: { meta: AgentRoleMeta; status: AgentStatus; statusDetail: string | null; configured: boolean; hasPendingReview: boolean; canConfigure: boolean }) {
+  const title = chatStatusMeta(false, configured, hasPendingReview, status).label;
+  const detail = hasPendingReview
+    ? "A configuration change is waiting for iAcquire review. Chat will reopen once it is approved and verified."
+    : status === "disabled"
+      ? "Its configuration and history are preserved. Ask an owner or iAcquire to re-enable it."
+      : !configured
+        ? "Apply the initial configuration before this employee can accept messages."
+        : statusDetail?.trim() || "The latest connection check did not make this employee available for chat.";
+  return (
+    <div className="shrink-0 bg-gradient-to-t from-surface via-surface to-transparent px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-2xl border border-line bg-surface-2/80 p-4 shadow-soft sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <AgentAvatar role={meta} size="sm" />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-ink">{title}</p>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{detail}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {canConfigure && <ButtonLink size="sm" variant="brand" href={`/workforce/${meta.slug}?tab=configure`}>{configured ? "Review setup" : "Complete setup"}</ButtonLink>}
+          <ButtonLink size="sm" variant="secondary" href={`/workforce/${meta.slug}`}>View employee</ButtonLink>
+        </div>
+      </div>
     </div>
   );
 }

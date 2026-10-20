@@ -27,11 +27,14 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
     after(() => refreshAgentHealthIfStale(agent.id, ctx.user.id));
   }
 
-  const [conversations, convo, versions] = await Promise.all([
+  const [conversations, requestedConvo, versions] = await Promise.all([
     listConversations(ctx, agent.id),
     c && /^[0-9a-f-]{36}$/i.test(c) ? getConversation(ctx, c) : Promise.resolve(null),
     ctx.can("agents.configure") ? listConfigVersions(ctx.user.id, agent.id) : Promise.resolve([]),
   ]);
+  // A conversation id in the URL is honoured only for the employee that owns it. Without this check a link such as
+  // /chat/lead-hunter?c=<a Sales Assistant conversation> would show that history under the wrong employee.
+  const convo = requestedConvo && requestedConvo.conversation.agent_instance_id === agent.id ? requestedConvo : null;
   const applied = versions.find((v) => v.status === "applied");
   const messages: ChatMessage[] = (convo?.messages ?? []).map((m) => ({ ...m, created_at: new Date(m.created_at).toISOString() }));
   const streamingMsg = messages.find((m) => m.status === "streaming" && m.run_id);
@@ -46,10 +49,14 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       statusDetail={agent.last_health_detail}
       replyLength={(applied?.settings?.replyLength as ReplyLength) ?? "concise"}
       canConfigure={ctx.can("agents.configure")}
+      configured={Boolean(applied)}
+      hasPendingReview={versions.some((v) => v.status === "pending_agency_review")}
       initialConversations={conversations.map((r) => ({ id: r.id, title: r.title, lastMessageAt: new Date(r.last_message_at ?? r.created_at).toISOString() }))}
       initialConversation={convo ? { id: convo.conversation.id, title: convo.conversation.title, messages, hasMore: convo.hasMore } : null}
       activeRunId={activeRunId}
       timeZone={ctx.org.timezone}
+      orgKind={ctx.org.kind}
+      nowIso={new Date().toISOString()}
       initialInput={typeof q === "string" ? q.slice(0, 2000) : undefined}
     />
   );
