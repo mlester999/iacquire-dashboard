@@ -30,13 +30,18 @@ export function LogoMark({ className, title = "iAcquire" }: { className?: string
   );
 }
 
-export function Logo({ className, compact }: { className?: string; compact?: boolean }) {
+/**
+ * The iAcquire lockup. `tone="auto"` follows the theme tokens (--ink and the primary/violet gradient). The sidebars are
+ * dark navy in BOTH themes, so inside `.workspace-nav` (and wherever `tone="inverse"` is set) the wordmark uses fixed
+ * on-dark colours from globals.css instead. Callers never need to override the text colour.
+ */
+export function Logo({ className, compact, tone = "auto" }: { className?: string; compact?: boolean; tone?: "auto" | "inverse" }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
+    <span data-tone={tone} className={cn("logo inline-flex items-center gap-2.5", className)}>
       <LogoMark className="size-8 shrink-0 drop-shadow-[0_6px_16px_rgba(44,91,255,0.35)]" />
       {!compact && (
-        <span className="text-[17px] font-semibold tracking-tight text-ink">
-          i<span className="text-gradient">Acquire</span>
+        <span className="logo-word text-[17px] font-semibold leading-none tracking-tight">
+          i<span className="logo-accent">Acquire</span>
         </span>
       )}
     </span>
@@ -51,12 +56,15 @@ export function AgentAvatar({
   thinking,
   className,
   decorative = true,
+  eager = false,
 }: {
   role: Pick<AgentRoleMeta, "mascot" | "accent" | "shortName">;
   size?: keyof typeof SIZES;
   thinking?: boolean;
   className?: string;
   decorative?: boolean;
+  /** Load the image immediately. For avatars in a hidden-until-opened panel, where lazy loading would show an empty tile. */
+  eager?: boolean;
 }) {
   const px = SIZES[size];
   const reduce = useReducedMotion();
@@ -94,7 +102,7 @@ export function AgentAvatar({
           height={px}
           className="size-[82%] object-contain"
           draggable={false}
-          loading="lazy"
+          loading={eager ? "eager" : "lazy"}
           decoding="async"
         />
       </motion.span>
@@ -118,7 +126,7 @@ export function StatusDot({ status, className, label }: { status: AgentStatus; c
   return (
     <span className={cn("relative inline-flex size-2", className)} title={text}>
       {s.pulse && <span aria-hidden className={cn("absolute inset-0 rounded-full animate-pulse-ring", s.dot)} />}
-      <span aria-hidden className={cn("relative inline-flex size-2 rounded-full ring-2 ring-surface", s.dot)} />
+      <span aria-hidden className={cn("relative inline-flex size-2 rounded-full ring-2 ring-[color:var(--dot-ring,var(--surface))]", s.dot)} />
       <span className="sr-only">{text}</span>
     </span>
   );
