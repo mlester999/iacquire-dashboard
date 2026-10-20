@@ -2,7 +2,7 @@
 
 Status: implemented and verified locally on `release/ai-workforce-notif-security`; **not pushed, deployed or applied to any hosted database**.
 
-Integration base: current `master` (`332dea1`, including the AI Employees / `/employees` rename and migration `0066_rename_workforce_routes`) plus the configuration-review hardening and notification-centre integration (`b4dc4fe`, with conflicts resolved in favour of the hardened review flow and the current master support/sidebar work).
+Integration base: current `master` (`47098f1`, including the AI Employees / `/employees` rename and migration `0066_rename_workforce_routes`) plus the configuration-review hardening and notification-centre integration (`b4dc4fe`, with conflicts resolved in favour of the hardened review flow and the current master support/sidebar work).
 
 ## 1. Root cause
 
@@ -69,11 +69,11 @@ Focused authorization suite (`tests/notification-authorization.test.ts`, 4 tests
 
 Existing regression: `config-review-notifications`, `config-review-hardening`, `config-version-history`, `workforce-config`, `agency-team-permissions`, `shell-query`, `support-notifications`, `support-lifecycle`, `notification-center`, `operations` (email delivery) and `tenant-isolation` all pass.
 
-Repository-wide `npm run lint` is clean (0 errors, 0 warnings) on the merged worktree. `npx tsc --noEmit --incremental false` is clean. The full integration suite is recorded in the final release report.
+Repository-wide `npm run lint` is clean (0 errors, 0 warnings) on the merged worktree. `npx tsc --noEmit --incremental false` is clean. `next build --webpack` succeeds and emits `/employees/[slug]`, `/admin/employees/reviews` and `/admin/notifications`. The full integration suite passes: **215 files / 3,340 tests**, run on the final merged base `47098f1`.
 
 ## 6. Known limits
 
-- The migration is not applied. Production is at `332dea1` (through `0066_rename_workforce_routes`) and still has the old null-org behavior until this branch is deployed and `0067` is applied.
+- The migration is not applied. Production is at `47098f1` (through `0066_rename_workforce_routes`) and still has the old null-org behavior until this branch is deployed and `0067` is applied.
 - Historical agency rows that cannot be associated from their stored link stay agency-wide and are hidden from Manager/Staff. This is intentional and is not deletion.
 - A future producer that inserts into `notifications` directly must set `audience`/`org_id` deliberately; the `client` default will not make an agency row scope-aware.
 - The notification email path is covered by the shared predicate and the existing operations tests, not by a live email provider.
