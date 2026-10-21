@@ -202,6 +202,8 @@ async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
   const healthStale = !agent.last_health_check_at || Date.now() - new Date(agent.last_health_check_at).getTime() > HEALTH_MAX_AGE_MS;
   const inventoryStale = !toolInventoryReady(agent);
   if (canChat(status) && (healthStale || inventoryStale)) {
+    // Refresh the short-lived saved attestation before this request persists a message or run.
+    // runHealthCheck compares against the saved digest and fails closed if runtime tools changed.
     const check = await runHealthCheck(agent.id, { userId: ctx.user.id, kind: "system" }, { skipSetupSync: true });
     status = check.status;
     if (!check.ok) throw new AppError("agent_unavailable", check.detail);
@@ -339,7 +341,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     await db.query("update chat_messages set run_id = $2 where id = $1", [msg[0].id, run[0].id]);
     await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
     await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
-    return { assistantMessageId: msg[0].id, runId: run[0].id, instructions, conn, idempotencyKey, knowledgeEntryIds, knowledgeDocumentIds };
+    return { assistantMessageId: msg[0].id, runId: run[0].id, instructions, conn, idempotencyKey, versionId, knowledgeEntryIds, knowledgeDocumentIds };
   });
 
   const abort = new AbortController();
@@ -357,6 +359,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     runId: setup.runId,
     orgId: ctx.org.orgId,
     agentId: agent.id,
+    configVersionId: setup.versionId,
     agentRole: input.agentRole,
     userId: ctx.user.id,
     assistantMessageId: setup.assistantMessageId,
@@ -387,6 +390,7 @@ interface ExecuteRunInput {
   runId: string;
   orgId: string;
   agentId: string;
+  configVersionId: string | null;
   agentRole: AgentRoleKey;
   userId: string;
   assistantMessageId: string;
@@ -520,7 +524,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
   try {
     let startedRunId = "";
     try {
-      const started = await startAgentRun(r.agentId, r.orgId, r.conn, r.request);
+      const started = await startAgentRun(r.agentId, r.orgId, r.conn, r.request, { expectedConfigVersionId: r.configVersionId });
       startedRunId = started.runId;
       hermesRunId = startedRunId;
     } catch (err) {

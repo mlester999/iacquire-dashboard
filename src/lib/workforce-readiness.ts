@@ -1,5 +1,5 @@
 import type { AgentStatus } from "@/lib/agents";
-import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
+import { toolInventoryReady, toolInventoryRecorded } from "@/lib/hermes-tool-inventory";
 
 export type ReadinessStage =
   | "disabled"
@@ -35,6 +35,8 @@ export interface EmployeeReadiness {
   completed: number;
   total: number;
   chatAvailable: boolean;
+  /** The persisted short-lived attestation is still within its TTL. */
+  inventoryAttestationCurrent: boolean;
   executing: boolean;
 }
 
@@ -175,23 +177,26 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
   const configured = configVersion !== null || configuredOverride === true;
   const checked = Boolean(lastHealthCheckAt);
   const healthOk = lastHealthOk === true;
-  const inventoryRecorded = Boolean(inventoryDigest);
   const evaluatedAt = input.evaluatedAt ? new Date(input.evaluatedAt) : new Date();
-  const inventoryCurrent = toolInventoryReady({
+  const inventoryEvidence = {
     last_health_ok: lastHealthOk,
     tool_inventory_contract: inventoryContract,
     tool_inventory_digest: inventoryDigest,
     tool_inventory_verified_at: inventoryVerifiedAt,
     tool_inventory_expires_at: inventoryExpiresAt,
     tool_inventory_tool_count: inventoryToolCount ?? null,
-  }, evaluatedAt);
+  };
+  const inventoryRecorded = toolInventoryRecorded(inventoryEvidence);
+  const inventoryCurrent = toolInventoryReady(inventoryEvidence, evaluatedAt);
   const identityApplies = isAgencyEmployee;
   const identityOk = !identityApplies || identityCurrent === true;
   const credentialOk = credentialCurrent !== false;
   const acknowledgementApplies = isAgencyEmployee;
   const acknowledgementOk = !acknowledgementApplies || acknowledgementCurrent === true;
   const online = enabled && (status === "online" || status === "busy");
-  const authorized = enabled && configured && healthOk && inventoryCurrent && credentialOk && identityOk && acknowledgementOk && online;
+  // Readiness means a user may enter the authorized chat flow. Chat refreshes an expired
+  // attestation before persistence, and Hermes verifies the live inventory again before submit.
+  const authorized = enabled && configured && healthOk && inventoryRecorded && credentialOk && identityOk && acknowledgementOk && online;
   const executing = taskExecuting === true;
 
   let stage: ReadinessStage;
@@ -243,13 +248,13 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
     title = "The saved Hermes credential is unavailable";
     description = "The credential used for the last connection check is revoked or missing. Restore the authorized credential and recheck the connection before starting work.";
     cta = "connection";
-  } else if (!inventoryCurrent) {
+  } else if (!inventoryRecorded) {
     stage = "inventory";
     tone = "warning";
-    label = inventoryRecorded ? "Inventory expired / needs verification" : "Inventory verification required";
-    title = inventoryRecorded ? "Refresh the runtime tool inventory" : "Record the approved tool inventory";
-    description = inventoryRecorded
-      ? "The stored tool inventory attestation has expired or is incomplete. Run the authorized health check to refresh it before new work is queued."
+    label = "Inventory verification required";
+    title = inventoryDigest ? "Verify the runtime tool inventory" : "Record the approved tool inventory";
+    description = inventoryDigest
+      ? "The saved inventory evidence is incomplete or failed validation. Run the authorized health check before starting new work."
       : "A successful health check must record the complete, reviewed runtime inventory before new work can be queued.";
     cta = "connection";
   } else if (identityApplies && !identityOk) {
@@ -285,7 +290,9 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
     tone = "success";
     label = "Ready for authorized work";
     title = "Ready for authorized work";
-    description = "The applied configuration, connection, current inventory and applicable identity and acknowledgement checks are satisfied.";
+    description = inventoryCurrent
+      ? "The applied configuration, connection, current inventory and applicable identity and acknowledgement checks are satisfied."
+      : "The saved inventory baseline and applicable identity and acknowledgement checks are in place. The server refreshes the short-lived attestation before saving a new chat message; any material change blocks work for review.";
     cta = "chat";
   }
 
@@ -312,13 +319,13 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
   };
   const inventory: ReadinessStep = {
     key: "inventory",
-    label: "Runtime tool inventory current",
+    label: "Verified runtime tool inventory",
     description: inventoryCurrent
-      ? `The approved inventory is recorded${inventoryToolCount ? ` (${inventoryToolCount} tools)` : ""} and current.`
+      ? `The verified inventory is recorded${inventoryToolCount ? ` (${inventoryToolCount} tools)` : ""} with a current short-lived attestation.`
       : inventoryRecorded
-        ? "The stored inventory attestation expired or failed validation; refresh it through the health check."
+        ? `The verified inventory remains recorded${inventoryToolCount ? ` (${inventoryToolCount} tools)` : ""}. Its short-lived attestation is refreshed server-side before a new chat is saved; a changed inventory blocks work for review.`
         : "A passing health check records the complete reviewed tool inventory.",
-    state: inventoryCurrent ? "done" : inventoryRecorded ? "blocked" : healthOk ? "current" : "upcoming",
+    state: inventoryRecorded ? "done" : healthOk ? "current" : "upcoming",
   };
 
   const steps: ReadinessStep[] = [configuration, connection, inventory];
@@ -331,7 +338,7 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
         : identityOk
         ? "The saved profile, gateway, API contract and reviewed permissions match the applied configuration."
         : "Verify the expected saved profile and API contract after applying the current configuration.",
-      state: identityOk && credentialOk ? "done" : inventoryCurrent ? "current" : "upcoming",
+      state: identityOk && credentialOk ? "done" : inventoryRecorded ? "current" : "upcoming",
     });
   }
   if (acknowledgementApplies) {
@@ -341,18 +348,25 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
       description: acknowledgementOk
         ? "The acknowledgement matches the current internal profile, configuration and tool inventory digest."
         : "A Super Admin must acknowledge the verified identity and the currently reviewed inventory.",
-      state: acknowledgementOk ? "done" : identityOk && inventoryCurrent ? "current" : "upcoming",
+      state: acknowledgementOk ? "done" : identityOk && inventoryRecorded ? "current" : "upcoming",
     });
   }
   steps.push({
     key: "ready",
     label: "Ready for authorized work",
-    description: authorized ? "All recorded requirements are current." : "This becomes available when every requirement above is satisfied.",
+    description: !authorized
+      ? "This becomes available when every requirement above is satisfied."
+      : inventoryCurrent
+        ? "All recorded requirements are current."
+        : "A fresh inventory check runs before a new chat is saved. Changes to tools or approval evidence block work.",
     state: authorized ? "done" : "upcoming",
   });
 
   const completed = steps.filter((step) => step.state === "done").length;
-  return { stage, tone, label, title, description, cta, steps, completed, total: steps.length, chatAvailable: authorized, executing };
+  return {
+    stage, tone, label, title, description, cta, steps, completed, total: steps.length,
+    chatAvailable: authorized, inventoryAttestationCurrent: inventoryCurrent, executing,
+  };
 }
 
 /** Short factual line for cards and compact headers. Never invents a reason. */

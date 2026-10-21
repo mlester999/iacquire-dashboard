@@ -28,6 +28,15 @@ async function waitForMessage(id: string, timeoutMs = 6000) {
   throw new Error("message did not settle");
 }
 
+async function waitForMockRequest(startIndex: number, method: string, path: string, timeoutMs = 6000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (mock.requests.slice(startIndex).some((request) => request.method === method && request.path === path)) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error("mock Hermes did not receive " + method + " " + path);
+}
+
 beforeAll(async () => {
   mock = await startMockHermes({
     "c-chat-sales-assistant": { key: KEY, respond: (input) => (script ? script(input) : { steps: [{ tool: "crm_lookup" }, { delta: "Hello " }, { delta: "from Hermes." }], output: "Hello from Hermes." }) },
@@ -88,6 +97,176 @@ describe("agent readiness", () => {
 
 describe("conversation persistence", () => {
   let conversationId: string;
+
+  it("refreshes an expired inventory before persisting an authorized chat message", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const before = (await withSystem((db) => db.query<{ digest: string; expires_at: Date }>(
+      "select tool_inventory_digest as digest,tool_inventory_expires_at as expires_at from agent_instances where id=$1",
+      [sales],
+    ))).rows[0];
+    expect(before.digest).toMatch(/^[0-9a-f]{64}$/);
+    await withSystem((db) => db.query("update agent_instances set tool_inventory_expires_at=now()-interval '1 second' where id=$1", [sales]));
+
+    const clientMessageId = crypto.randomUUID();
+    const requestStart = mock.requests.length;
+    mock.setInventory("c-chat-sales-assistant", { delayMs: 200 });
+    try {
+      const sending = sendChatMessage(ctx, { agentRole: "sales_assistant", content: "Refresh before saving this chat", clientMessageId });
+      await waitForMockRequest(requestStart, "GET", "/v1/tools");
+      const duringPreflight = await withSystem(async (db) => {
+        const { rows } = await db.query<{ messages: number; runs: number }>(
+          "select (select count(*)::int from chat_messages where client_message_id=$2 and role='user') as messages, (select count(*)::int from agent_runs where agent_instance_id=$1) as runs",
+          [sales, clientMessageId],
+        );
+        return rows[0];
+      });
+      expect(duringPreflight).toEqual({ messages: 0, runs: 0 });
+
+      const sent = await sending;
+      expect(await waitForMessage(sent.assistantMessageId)).toMatchObject({ status: "complete" });
+      const after = (await withSystem((db) => db.query<{ digest: string; verified_at: Date; expires_at: Date; message_at: Date }>(
+        "select a.tool_inventory_digest as digest,a.tool_inventory_verified_at as verified_at,a.tool_inventory_expires_at as expires_at,m.created_at as message_at from agent_instances a join chat_conversations c on c.agent_instance_id=a.id join chat_messages m on m.conversation_id=c.id where a.id=$1 and m.client_message_id=$2 and m.role='user'",
+        [sales, clientMessageId],
+      ))).rows[0];
+      expect(after.digest).toBe(before.digest);
+      expect(new Date(after.expires_at).getTime()).toBeGreaterThan(Date.now());
+      expect(new Date(after.message_at).getTime()).toBeGreaterThanOrEqual(new Date(after.verified_at).getTime());
+
+      const requests = mock.requests.slice(requestStart);
+      const runSubmission = requests.findIndex((request) => request.method === "POST" && request.path === "/v1/runs");
+      expect(runSubmission).toBeGreaterThan(-1);
+      expect(requests.slice(0, runSubmission).filter((request) => request.method === "GET" && request.path === "/v1/tools")).toHaveLength(4);
+      expect(requests.some((request) => request.method === "GET" && request.path === "/v1/models" && request.profile === "c-chat-sales-assistant")).toBe(true);
+    } finally {
+      mock.setInventory("c-chat-sales-assistant", null);
+    }
+  });
+
+  it("rejects changed inventory before chat persistence or queueing", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const before = (await withSystem((db) => db.query<{ digest: string }>(
+      "select tool_inventory_digest as digest from agent_instances where id=$1",
+      [sales],
+    ))).rows[0];
+    const countsBefore = (await withSystem((db) => db.query<{ messages: number; runs: number }>(
+      "select (select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=$1 and m.role='user') as messages, (select count(*)::int from agent_runs where agent_instance_id=$1) as runs",
+      [sales],
+    ))).rows[0];
+    const clientMessageId = crypto.randomUUID();
+    const requestStart = mock.requests.length;
+    mock.setInventory("c-chat-sales-assistant", { tools: [
+      { name: "memory", toolset: "memory" },
+      { name: "session_search", toolset: "session_search" },
+      { name: "todo_list", toolset: "todo" },
+      { name: "web_search", toolset: "web" },
+      { name: "web_extract", toolset: "web" },
+    ] });
+    await withSystem((db) => db.query("update agent_instances set tool_inventory_expires_at=now()-interval '1 second' where id=$1", [sales]));
+    try {
+      await expect(sendChatMessage(ctx, {
+        agentRole: "sales_assistant",
+        content: "Do not save this after inventory drift",
+        clientMessageId,
+      })).rejects.toMatchObject({ code: "agent_unavailable" });
+
+      const requests = mock.requests.slice(requestStart);
+      expect(requests.some((request) => request.method === "GET" && request.path === "/v1/tools")).toBe(true);
+      expect(requests.some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+      const countsAfter = (await withSystem((db) => db.query<{ messages: number; runs: number }>(
+        "select (select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=$1 and m.role='user') as messages, (select count(*)::int from agent_runs where agent_instance_id=$1) as runs",
+        [sales],
+      ))).rows[0];
+      expect(countsAfter).toEqual(countsBefore);
+      const changed = (await withSystem((db) => db.query<{ digest: string; status: string; last_health_ok: boolean }>(
+        "select tool_inventory_digest as digest,status,last_health_ok from agent_instances where id=$1",
+        [sales],
+      ))).rows[0];
+      expect(changed.digest).not.toBe(before.digest);
+      expect(changed).toMatchObject({ status: "provisioning", last_health_ok: false });
+      expect(requests.some((request) => request.profile === "c-chat-sales-assistant" && request.path === "/v1/models")).toBe(true);
+    } finally {
+      mock.setInventory("c-chat-sales-assistant", null);
+      const restoredBaseline = await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+      if (!restoredBaseline.ok) await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+    }
+  });
+
+  it("blocks a live inventory change discovered between chat preflight and Hermes submission", async () => {
+    await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+    const ctx = ctxFor(owner, org, "owner");
+    const clientMessageId = crypto.randomUUID();
+    const requestStart = mock.requests.length;
+    mock.setInventory("c-chat-sales-assistant", {
+      delayMs: 100,
+      tools: [
+        { name: "memory", toolset: "memory" },
+        { name: "session_search", toolset: "session_search" },
+        { name: "todo_list", toolset: "todo" },
+        { name: "web_search", toolset: "web" },
+        { name: "web_extract", toolset: "web" },
+      ],
+    });
+    try {
+      const sent = await sendChatMessage(ctx, {
+        agentRole: "sales_assistant",
+        content: "Block this if the live inventory changed before submission",
+        clientMessageId,
+      });
+      expect(await waitForMessage(sent.assistantMessageId)).toMatchObject({ status: "failed", error_code: "start_failed" });
+
+      const requests = mock.requests.slice(requestStart);
+      expect(requests.some((request) => request.method === "GET" && request.path === "/v1/tools")).toBe(true);
+      expect(requests.some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+      const { rows } = await withSystem((db) => db.query<{ config_version_id: string | null }>(
+        "select config_version_id from agent_runs where assistant_message_id=$1",
+        [sent.assistantMessageId],
+      ));
+      expect(rows[0]?.config_version_id).toBeTruthy();
+    } finally {
+      mock.setInventory("c-chat-sales-assistant", null);
+      const restoredBaseline = await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+      if (!restoredBaseline.ok) await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+    }
+  });
+
+  it("blocks a configuration change made during final live inventory verification", async () => {
+    await runHealthCheck(sales, { userId: admin.id, kind: "agency" });
+    const ctx = ctxFor(owner, org, "owner");
+    const requestStart = mock.requests.length;
+    mock.setInventory("c-chat-sales-assistant", { delayMs: 1_000 });
+    try {
+      const sent = await sendChatMessage(ctx, {
+        agentRole: "sales_assistant",
+        content: "Use only the configuration that was queued for this chat",
+        clientMessageId: crypto.randomUUID(),
+      });
+      await waitForMockRequest(requestStart, "GET", "/v1/tools");
+
+      const queuedConfig = (await withSystem((db) => db.query<{ config_version_id: string }>(
+        "select config_version_id from agent_runs where id=$1",
+        [sent.runId],
+      ))).rows[0].config_version_id;
+      await withSystem((db) => createConfigVersion(db, {
+        orgId: org.id,
+        agentId: sales,
+        settings: { ...defaultSettings("sales_assistant"), displayName: "Updated during run preparation" },
+        source: "onboarding",
+        userId: owner.id,
+        apply: true,
+      }));
+
+      expect(await waitForMessage(sent.assistantMessageId)).toMatchObject({ status: "failed", error_code: "start_failed" });
+      const activeConfig = (await withSystem((db) => db.query<{ id: string }>(
+        "select active_config_version_id as id from agent_instances where id=$1",
+        [sales],
+      ))).rows[0].id;
+      expect(activeConfig).not.toBe(queuedConfig);
+      const requests = mock.requests.slice(requestStart);
+      expect(requests.some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    } finally {
+      mock.setInventory("c-chat-sales-assistant", null);
+    }
+  });
 
   it("streams, persists the authoritative output, records tools, usage and tokens", async () => {
     const ctx = ctxFor(owner, org, "owner");

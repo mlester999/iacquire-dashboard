@@ -536,6 +536,9 @@ export function ChatWorkspace(props: Props) {
               <StatusPill tone={statusMeta.tone} size="sm" className="shrink-0">{statusMeta.label}</StatusPill>
               <span className="min-w-0 truncate text-[12px] text-muted" title={activeTitle ?? undefined}>{activeTitle ?? "New conversation"}</span>
             </div>
+            {ready && !readiness.inventoryAttestationCurrent && (
+              <p className="mt-1 text-[10.5px] leading-tight text-muted">Runtime tools are reverified before a new message is saved.</p>
+            )}
           </div>
           {props.canConfigure && ready && !props.hasPendingReview && (
             <Tooltip content="How much detail new replies use. Saved as a configuration change.">
@@ -747,7 +750,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
           <h2 className="max-w-md text-[28px] font-semibold leading-[1.08] tracking-[-.035em] text-ink sm:text-[38px]">
             {ready ? <>{headline[0]}<br /><span className="text-primary">{headline[1]}</span></> : title}
           </h2>
-          <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{ready ? `${meta.tagline} This conversation stays in your private company workspace.` : explanation}</p>
+          <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{ready ? `${meta.tagline} This conversation stays in your private company workspace.${readiness.inventoryAttestationCurrent ? "" : " The server rechecks runtime tools before saving your message."}` : explanation}</p>
         </div>
         <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
           <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />

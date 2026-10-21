@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent, deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 
 const NOW = "2026-10-20T00:00:00.000Z";
 const base = {
@@ -89,11 +90,15 @@ describe("employee readiness hierarchy", () => {
     expect(readiness.steps.find((step) => step.key === "connection")?.state).toBe("blocked");
   });
 
-  it("requires a complete fresh inventory before ready or chat", () => {
+  it("keeps expired inventory available for server preflight while blocking incomplete evidence", () => {
     const expired = deriveEmployeeReadiness({ ...base, ...currentInventory, inventoryExpiresAt: "2026-10-19T23:59:59.000Z" });
-    expect(expired.stage).toBe("inventory");
-    expect(expired.label).toMatch(/expired/);
-    expect(expired.chatAvailable).toBe(false);
+    expect(expired.stage).toBe("ready");
+    expect(expired.label).toBe("Ready for authorized work");
+    expect(expired.chatAvailable).toBe(true);
+    expect(expired.inventoryAttestationCurrent).toBe(false);
+    expect(expired.completed).toBe(expired.total);
+    expect(expired.steps.find((step) => step.key === "inventory")?.state).toBe("done");
+    expect(expired.steps.find((step) => step.key === "inventory")?.description).toMatch(/refreshed server-side before a new chat is saved/);
 
     const incomplete = deriveEmployeeReadiness({ ...base, ...currentInventory, inventoryDigest: null });
     expect(incomplete.stage).toBe("inventory");
@@ -182,5 +187,31 @@ describe("internal identity and acknowledgement evidence", () => {
     expect(internalAcknowledgementIsCurrent({ ...currentAcknowledgement, acknowledgedPolicyId: "other-policy" })).toBe(false);
     expect(internalAcknowledgementIsCurrent({ ...currentAcknowledgement, credentialReady: false })).toBe(false);
     expect(internalAcknowledgementIsCurrent({ ...currentAcknowledgement, hasAgentPolicyOverride: true })).toBe(false);
+  });
+
+  it("keeps internal Super Admin acknowledgement valid after the short-lived inventory attestation expires", () => {
+    const expiredAt = "2026-10-19T23:59:59.000Z";
+    const stillApproved = internalAcknowledgementIsCurrent(currentAcknowledgement);
+    expect(toolInventoryReady({
+      last_health_ok: true,
+      tool_inventory_contract: currentInventory.inventoryContract,
+      tool_inventory_digest: currentInventory.inventoryDigest,
+      tool_inventory_verified_at: currentInventory.inventoryVerifiedAt,
+      tool_inventory_expires_at: expiredAt,
+      tool_inventory_tool_count: currentInventory.inventoryToolCount,
+    }, new Date(NOW))).toBe(false);
+    expect(stillApproved).toBe(true);
+
+    const readiness = deriveEmployeeReadiness({
+      ...base,
+      ...currentInventory,
+      inventoryExpiresAt: expiredAt,
+      isAgencyEmployee: true,
+      identityCurrent: true,
+      acknowledgementCurrent: stillApproved,
+    });
+    expect(readiness.stage).toBe("ready");
+    expect(readiness.chatAvailable).toBe(true);
+    expect(readiness.completed).toBe(6);
   });
 });

@@ -348,7 +348,11 @@ export async function getToolCatalog(conn: HermesConnection, challenge?: string,
  * Low-level adapter call. Application code must not call it directly: `startAgentRun` is the one entry point
  * that checks the employee's readiness (and the agency gate) before the live inventory check below.
  */
-export async function startRun(conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+export async function startRun(
+  conn: HermesConnection,
+  input: StartRunInput,
+  options: { beforeSubmit?: () => Promise<void> } = {},
+): Promise<{ runId: string }> {
   // This gate is intentionally inside the adapter, not only in the caller: no code path can create
   // a live run without a fresh, complete and stable runtime inventory that matches the reviewed
   // allowlist and a digest recorded by a previous health check (`purpose: "run"` refuses a connection
@@ -356,6 +360,9 @@ export async function startRun(conn: HermesConnection, input: StartRunInput): Pr
   // evaluation cycle.
   const { verifyToolInventory } = await import("./inventory");
   await verifyToolInventory(conn, { stabilityReads: 2, expectedDigest: conn.expectedToolInventoryDigest, purpose: "run" });
+  // Re-read application-side gates after live inventory verification and immediately before
+  // Hermes submission. Configuration, identity or inventory state can change during that check.
+  await options.beforeSubmit?.();
   const body: Record<string, unknown> = { input: input.input };
   if (input.instructions) body.instructions = input.instructions;
   if (input.sessionId) body.session_id = input.sessionId;
@@ -375,7 +382,12 @@ export async function startRun(conn: HermesConnection, input: StartRunInput): Pr
  * identity and authenticated API contract were verified, and which its Super Admin explicitly
  * acknowledged. Client profiles can never use this path.
  */
-async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+async function startAcknowledgedInternalAgencyRun(
+  agentId: string,
+  conn: HermesConnection,
+  input: StartRunInput,
+  beforeSubmit: () => Promise<void>,
+): Promise<{ runId: string }> {
   const { profile, currentAccess } = await withSystem(async (db) => {
     const { rows } = await db.query<{
       org_kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; enabled: boolean;
@@ -472,7 +484,7 @@ async function startAcknowledgedInternalAgencyRun(agentId: string, conn: HermesC
       || !capabilities.supportsRuns || !capabilities.supportsEvents || !identities.includes(expected)) {
     throw new HermesError("bad_response", "The authenticated Hermes API no longer verifies this internal profile.");
   }
-  return startRun(conn, input);
+  return startRun(conn, input, { beforeSubmit });
 }
 
 export type AgentRunBlockReason =
@@ -549,6 +561,8 @@ export interface AgentRunPreflightOptions {
   allowMissingInventory?: boolean;
   /** Chat queues only while a fresh saved attestation is present; actual run submission still re-reads Hermes live. */
   requireFreshInventory?: boolean;
+  /** Final submission checks also ensure the connection still uses current internal Hermes credentials. */
+  connection?: HermesConnection;
 }
 
 function assertRunGateState(row: AgentRunGateRow, options: AgentRunPreflightOptions = {}) {
@@ -570,10 +584,11 @@ function assertRunGateState(row: AgentRunGateRow, options: AgentRunPreflightOpti
   }
 }
 
-async function assertInternalProfileRunAuthorization(db: Queryable, agentId: string, orgId: string): Promise<void> {
+async function assertInternalProfileRunAuthorization(db: Queryable, agentId: string, orgId: string, connection?: HermesConnection): Promise<void> {
   const { rows } = await db.query<{
     kind: string; role_key: keyof typeof AGENCY_HERMES_PROFILE_IDS; active_config_version_id: string | null; config_applied_at: Date | null;
-    hermes_profile: string | null; hermes_gateway_id: string | null;
+    hermes_profile: string | null; hermes_gateway_id: string | null; hermes_base_url: string | null; gateway_base_url: string | null;
+    gateway_access_credential_id: string | null; credential_fingerprint: string | null;
     checked_profile: string | null; check_status: string | null; identity_verified: boolean | null; api_contract_verified: boolean | null;
     tool_permissions_status: string | null; check_gateway_id: string | null; checked_at: Date | null;
     acknowledged_profile: string | null; acknowledged_policy_id: string | null; expected_policy_id: string | null; acknowledged_at: Date | null;
@@ -582,7 +597,9 @@ async function assertInternalProfileRunAuthorization(db: Queryable, agentId: str
     credential_ready: boolean;
   }>(
     `select o.kind as kind,a.role_key,a.active_config_version_id,v.applied_at as config_applied_at,
-       a.hermes_profile,a.hermes_gateway_id,c.profile_id as checked_profile,c.status as check_status,
+       a.hermes_profile,a.hermes_gateway_id,a.hermes_base_url,g.base_url as gateway_base_url,
+       g.access_credential_id as gateway_access_credential_id,cred.fingerprint as credential_fingerprint,
+       c.profile_id as checked_profile,c.status as check_status,
        c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.gateway_id as check_gateway_id,c.checked_at,
        ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,ack_policy.id as expected_policy_id,
        ack.acknowledged_at,ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
@@ -591,6 +608,7 @@ async function assertInternalProfileRunAuthorization(db: Queryable, agentId: str
        (cred.id is not null and cred.revoked_at is null and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready
      from agent_instances a join organizations o on o.id=a.org_id
      left join agent_config_versions v on v.id=a.active_config_version_id
+     left join hermes_gateways g on g.id=a.hermes_gateway_id
      left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
      left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
      left join hermes_tool_policies ack_policy on ack_policy.id=ack.policy_id and ack_policy.scope_kind='internal_agency' and ack_policy.name='Full Hermes Capabilities'
@@ -625,6 +643,21 @@ async function assertInternalProfileRunAuthorization(db: Queryable, agentId: str
   }
   if (!row.credential_ready) {
     throw new AgentRunNotReadyError("identity_unverified", "This internal profile's saved Hermes credential is unavailable or revoked.");
+  }
+  if (connection) {
+    const currentAccess = await loadHermesAccessCredentials(db, row.hermes_gateway_id);
+    const accessIsCurrent = row.gateway_access_credential_id
+      ? Boolean(currentAccess && connection.accessClientId === currentAccess.accessClientId && connection.accessClientSecret === currentAccess.accessClientSecret)
+      : !currentAccess && !connection.accessClientId && !connection.accessClientSecret;
+    if (row.hermes_profile !== connection.profile
+        || !row.gateway_base_url
+        || row.hermes_base_url !== row.gateway_base_url
+        || connection.baseUrl !== row.gateway_base_url
+        || !row.credential_fingerprint
+        || row.credential_fingerprint !== secretFingerprint(connection.apiKey)
+        || !accessIsCurrent) {
+      throw new AgentRunNotReadyError("identity_unverified", "This internal profile's identity or saved Hermes credential changed during run preparation.");
+    }
   }
   if (row.agent_policy_override_id) {
     throw new AgentRunNotReadyError("permission_mismatch", "This internal profile has an employee-specific tool policy that has not been applied and verified.");
@@ -664,7 +697,7 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
       const row = rows[0];
       if (!row) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
       assertRunGateState(row, options);
-      if (row.kind === "agency") await assertInternalProfileRunAuthorization(db, agentId, orgId);
+      if (row.kind === "agency") await assertInternalProfileRunAuthorization(db, agentId, orgId, options.connection);
     });
   } catch (error) {
     if (error instanceof AgentRunNotReadyError || error instanceof HermesError) throw error;
@@ -698,14 +731,37 @@ async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRu
  * internal-agency identity and acknowledgement gate for agency employees, and always compares the live inventory
  * with the digest persisted by the last health check rather than with whatever the caller put on the connection.
  */
-export async function startAgentRun(agentId: string, orgId: string, conn: HermesConnection, input: StartRunInput): Promise<{ runId: string }> {
+export async function startAgentRun(
+  agentId: string,
+  orgId: string,
+  conn: HermesConnection,
+  input: StartRunInput,
+  requirements: { expectedConfigVersionId?: string | null } = {},
+): Promise<{ runId: string }> {
   await assertAgentRunPreflight(agentId, orgId);
   const gate = await loadAgentRunGate(agentId, orgId);
   if (!gate) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+  const expectedConfigProvided = Object.prototype.hasOwnProperty.call(requirements, "expectedConfigVersionId");
+  if (expectedConfigProvided && gate.active_config_version_id !== requirements.expectedConfigVersionId) {
+    throw new AgentRunNotReadyError("not_ready", "The employee configuration changed while this chat was being prepared. Start a new chat after readiness is verified.");
+  }
   const digest = assertAgentRunnable(gate);
   const bound: HermesConnection = { ...conn, expectedToolInventoryDigest: digest };
-  if (gate.kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, bound, input);
-  return startRun(bound, input);
+  const beforeSubmit = async () => {
+    await assertAgentRunPreflight(agentId, orgId, { connection: bound });
+    const current = await loadAgentRunGate(agentId, orgId);
+    if (!current) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+    const currentDigest = assertAgentRunnable(current);
+    if (current.active_config_version_id !== gate.active_config_version_id
+        || (expectedConfigProvided && current.active_config_version_id !== requirements.expectedConfigVersionId)) {
+      throw new AgentRunNotReadyError("not_ready", "The employee configuration changed while the run was being prepared. Verify readiness before trying again.");
+    }
+    if (currentDigest !== digest) {
+      throw new AgentRunNotReadyError("not_ready", "The employee's verified tool inventory changed while the run was being prepared. Review the current inventory before trying again.");
+    }
+  };
+  if (gate.kind === "agency") return startAcknowledgedInternalAgencyRun(agentId, bound, input, beforeSubmit);
+  return startRun(bound, input, { beforeSubmit });
 }
 
 

@@ -179,7 +179,7 @@ export function EmployeeDetail(props: Props) {
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <InfoChip icon={<Sparkles />}>{agent.configVersion ? `Configuration v${agent.configVersion}` : "Not configured"}</InfoChip>
-            <InfoChip icon={<ShieldCheck />}>{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools${readiness.stage === "inventory" ? " · refresh required" : " · attested"}` : "Inventory not recorded"}</InfoChip>
+            <InfoChip icon={<ShieldCheck />}>{agent.inventoryDigest ? `${agent.inventoryToolCount ?? 0} tools${readiness.inventoryAttestationCurrent ? " · attested" : readiness.chatAvailable ? " · refresh before chat" : " · verification needed"}` : "Inventory not recorded"}</InfoChip>
             <InfoChip icon={<History />}><span suppressHydrationWarning>{agent.lastHealthCheckAt ? `Checked ${relativeTime(agent.lastHealthCheckAt)}` : "Never checked"}</span></InfoChip>
             <span className="text-[11.5px] text-muted">{agent.assignedOrganization}</span>
           </div>

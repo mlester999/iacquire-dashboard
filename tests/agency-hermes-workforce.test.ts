@@ -45,6 +45,49 @@ async function acknowledgementTargets(agentIds: string[]) {
     : []);
 }
 
+function internalContextForAdmin(): OrgContext {
+  const membership = {
+    orgId: agencyOrgId,
+    name: "iAcquire test agency",
+    slug: "iacquire-test-agency",
+    kind: "agency" as const,
+    status: "active" as const,
+    role: "owner" as const,
+    isDemo: false,
+    onboardingCompletedAt: null,
+    timezone: "UTC",
+  };
+  return {
+    user: admin,
+    org: membership,
+    role: "owner",
+    permissions: permissionsFor("owner"),
+    can: (permission) => roleHasPermission("owner", permission),
+    memberships: [membership],
+  };
+}
+
+async function waitForMockRequest(startIndex: number, method: string, path: string, timeoutMs = 6000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (mock.requests.slice(startIndex).some((request) => request.method === method && request.path === path)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Mock Hermes did not receive " + method + " " + path);
+}
+
+async function waitForAssistantMessage(messageId: string, timeoutMs = 6000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const { rows } = await withSystem((db) =>
+      db.query<{ status: string }>("select status from chat_messages where id=$1", [messageId]),
+    );
+    if (rows[0] && rows[0].status !== "streaming") return rows[0].status;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("assistant message did not settle");
+}
+
 beforeAll(async () => {
   const profiles = Object.fromEntries(Object.entries(PROFILE_KEYS).map(([key, apiKey]) => [key, { key: apiKey }])) as Record<string, { key: string }>;
   profiles[CLIENT_TEST_PROFILE] = { key: CLIENT_TEST_KEY };
@@ -548,6 +591,101 @@ describe("agency Hermes workforce isolation", () => {
       await db.query("update credential_references set revoked_at=null where id=(select credential_reference_id from integration_credentials where id=(select credential_id from agent_instances where id=$1))", [selectedAgent.id]);
       await db.query("update integration_credentials set revoked_at=null where id=(select credential_id from agent_instances where id=$1)", [selectedAgent.id]);
     });
+  });
+
+  it("refreshes an expired internal inventory before chat persistence without repeating acknowledgement", async () => {
+    const profile = AGENCY_HERMES_PROFILE_IDS.sales_assistant;
+    const tools = [
+      { name: "memory", toolset: "memory" },
+      { name: "session_search", toolset: "session_search" },
+      { name: "todo_list", toolset: "todo" },
+      { name: "web_search", toolset: "web" },
+      { name: "web_extract", toolset: "web" },
+    ];
+    const before = (await withSystem((db) => db.query<{
+      digest: string; expires_at: Date; acknowledged_at: Date; acknowledgements: number; messages: number; runs: number;
+    }>(
+      "select a.tool_inventory_digest as digest,a.tool_inventory_expires_at as expires_at,ack.acknowledged_at,(select count(*)::int from hermes_tool_policy_history h where h.agent_id=a.id and h.action='full_capabilities_acknowledged') as acknowledgements,(select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=a.id and m.role='user') as messages,(select count(*)::int from agent_runs r where r.agent_instance_id=a.id) as runs from agent_instances a join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id where a.id=$1",
+      [salesAgentId],
+    ))).rows[0];
+    expect(before.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect((await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === salesAgentId)?.fullCapabilitiesAcknowledged).toBe(true);
+    await withSystem((db) => db.query("update agent_instances set tool_inventory_expires_at=now()-interval '1 second' where id=$1", [salesAgentId]));
+    mock.setInventory(profile, { tools, delayMs: 150 });
+    const clientMessageId = crypto.randomUUID();
+    const requestStart = mock.requests.length;
+    try {
+      const sending = sendChatMessage(internalContextForAdmin(), {
+        agentRole: "sales_assistant",
+        content: "Synthetic chat verifies the internal inventory refresh path",
+        clientMessageId,
+      });
+      await waitForMockRequest(requestStart, "GET", "/v1/tools");
+      const duringPreflight = (await withSystem((db) => db.query<{ message_exists: boolean; run_count: number }>(
+        "select exists(select 1 from chat_messages where client_message_id=$1 and role='user') as message_exists,(select count(*)::int from agent_runs where agent_instance_id=$2) as run_count",
+        [clientMessageId, salesAgentId],
+      ))).rows[0];
+      expect(duringPreflight).toEqual({ message_exists: false, run_count: before.runs });
+
+      const sent = await sending;
+      expect(await waitForAssistantMessage(sent.assistantMessageId)).toBe("complete");
+      const after = (await withSystem((db) => db.query<{
+        digest: string; expires_at: Date; acknowledged_at: Date; acknowledgements: number; status: string; last_health_ok: boolean;
+      }>(
+        "select a.tool_inventory_digest as digest,a.tool_inventory_expires_at as expires_at,ack.acknowledged_at,(select count(*)::int from hermes_tool_policy_history h where h.agent_id=a.id and h.action='full_capabilities_acknowledged') as acknowledgements,a.status,a.last_health_ok from agent_instances a join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id where a.id=$1",
+        [salesAgentId],
+      ))).rows[0];
+      expect(after).toMatchObject({
+        digest: before.digest,
+        acknowledged_at: before.acknowledged_at,
+        acknowledgements: before.acknowledgements,
+        status: "online",
+        last_health_ok: true,
+      });
+      expect(new Date(after.expires_at).getTime()).toBeGreaterThan(Date.now());
+      const requests = mock.requests.slice(requestStart);
+      const runSubmission = requests.findIndex((request) => request.method === "POST" && request.path === "/v1/runs");
+      expect(runSubmission).toBeGreaterThan(-1);
+      expect(requests.slice(0, runSubmission).filter((request) => request.method === "GET" && request.path === "/v1/tools").length).toBeGreaterThanOrEqual(4);
+      expect(requests.some((request) => request.method === "GET" && request.path === "/v1/models" && request.profile === profile)).toBe(true);
+    } finally {
+      mock.setInventory(profile, { tools });
+    }
+  });
+
+  it("rejects changed internal inventory before chat persistence and invalidates the old acknowledgement", async () => {
+    const profile = AGENCY_HERMES_PROFILE_IDS.sales_assistant;
+    const before = (await withSystem((db) => db.query<{ digest: string; messages: number; runs: number }>(
+      "select a.tool_inventory_digest as digest,(select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=a.id and m.role='user') as messages,(select count(*)::int from agent_runs r where r.agent_instance_id=a.id) as runs from agent_instances a where a.id=$1",
+      [salesAgentId],
+    ))).rows[0];
+    const clientMessageId = crypto.randomUUID();
+    const requestStart = mock.requests.length;
+    mock.setInventory(profile, { tools: [
+      { name: "memory", toolset: "memory" },
+      { name: "session_search", toolset: "session_search" },
+      { name: "todo_list", toolset: "todo" },
+      { name: "vision_analyze", toolset: "vision" },
+      { name: "web_search", toolset: "web" },
+      { name: "web_extract", toolset: "web" },
+    ] });
+    await withSystem((db) => db.query("update agent_instances set tool_inventory_expires_at=now()-interval '1 second' where id=$1", [salesAgentId]));
+    await expect(sendChatMessage(internalContextForAdmin(), {
+      agentRole: "sales_assistant",
+      content: "This must not persist after inventory drift",
+      clientMessageId,
+    })).rejects.toMatchObject({ code: "agent_unavailable" });
+
+    const requests = mock.requests.slice(requestStart);
+    expect(requests.some((request) => request.method === "GET" && request.path === "/v1/tools" && request.profile === profile)).toBe(true);
+    expect(requests.some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    const after = (await withSystem((db) => db.query<{ digest: string; status: string; last_health_ok: boolean; messages: number; runs: number }>(
+      "select a.tool_inventory_digest as digest,a.status,a.last_health_ok,(select count(*)::int from chat_messages m join chat_conversations c on c.id=m.conversation_id where c.agent_instance_id=a.id and m.role='user') as messages,(select count(*)::int from agent_runs r where r.agent_instance_id=a.id) as runs from agent_instances a where a.id=$1",
+      [salesAgentId],
+    ))).rows[0];
+    expect(after).toMatchObject({ status: "provisioning", last_health_ok: false, messages: before.messages, runs: before.runs });
+    expect(after.digest).not.toBe(before.digest);
+    expect((await getHermesToolPolicyView(admin)).agents.find((agent) => agent.id === salesAgentId)?.fullCapabilitiesAcknowledged).toBe(false);
   });
 
   it("keeps client live runs blocked when the gateway cannot prove a complete tool inventory", async () => {

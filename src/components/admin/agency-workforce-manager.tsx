@@ -48,7 +48,7 @@ export function AgencyWorkforceManager({ agents, gateways, canManage, timeZone =
         title="Agency AI workforce"
         description="The six existing iAcquire Hermes employees mapped to the shared protected gateway. Each keeps its own profile identity and API key; nothing here creates or overwrites a profile."
         action={<Link href="/admin/employees/open" className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 text-[12.5px] font-medium text-white hover:bg-white/15">Open internal workspace <ArrowRight className="size-3.5" aria-hidden /></Link>}
-        aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Profiles mapped" value={`${mapped}/${agents.length || 6}`} detail="Existing identities only" icon={<Bot className="size-4" />} /><MetricCard label="Verified online" value={verified} detail="Latest saved health checks" tone="green" icon={<ShieldCheck className="size-4" />} /></div>}
+        aside={<div className="grid grid-cols-2 gap-3"><MetricCard label="Profiles mapped" value={`${mapped}/${agents.length || 6}`} detail="Existing identities only" icon={<Bot className="size-4" />} /><MetricCard label="Ready for authorized work" value={verified} detail="Expired inventory refreshes before chat" tone="green" icon={<ShieldCheck className="size-4" />} /></div>}
       />
       {agents.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
