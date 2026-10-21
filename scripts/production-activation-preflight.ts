@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { closeDb, readSystem } from "../src/server/db";
+import { auditRoleConfiguration, recommendedSettings } from "../src/lib/role-playbooks";
 
 if (!process.argv.includes("--live")) {
   console.error("This reads the hosted database. Re-run with --live when that read is intended.");
@@ -181,6 +182,14 @@ async function main() {
 
   const targetVersions = new Set(TARGETS.map((target) => target.version));
   const pendingTargets = migrations.filter((migration) => !migration.applied).map((migration) => migration.version);
+  const companyFacts = {
+    description: data.companyProfile?.description ?? "",
+    services: data.companyProfile?.services ?? "",
+    idealCustomers: data.companyProfile?.ideal_customers ?? "",
+    operatingArea: data.companyProfile?.operating_area ?? "",
+  };
+  const configPreview = auditRoleConfiguration("lead_hunter", recommendedSettings("lead_hunter"), companyFacts);
+
   const prefixCollisions = TARGETS.flatMap((target) => {
     const prefix = target.version.slice(0, 4);
     return data.appLedger
@@ -212,6 +221,16 @@ async function main() {
           complete: [data.companyProfile.description, data.companyProfile.services, data.companyProfile.ideal_customers, data.companyProfile.operating_area].every((value) => value.trim().length > 0),
         }
       : null,
+    configurationPreview: {
+      role: "lead_hunter",
+      employeeFieldsComplete: configPreview.employeeComplete,
+      employeeFieldsTotal: configPreview.employeeTotal,
+      companyFactsComplete: configPreview.companyComplete,
+      companyFactsTotal: configPreview.companyTotal,
+      missingCompanyFacts: configPreview.missingCompanyFacts,
+      readyToApplyWithoutInventingFacts: configPreview.ready,
+      note: "Built from recommendedSettings(lead_hunter) and the current saved company facts; nothing was saved.",
+    },
     leadHunter: data.leadHunter
       ? {
           displayName: data.leadHunter.display_name,
