@@ -43,6 +43,14 @@ export interface ReviewMetric {
   period: string;
   definition: string;
   source: string;
+  /** The measured value in the immediately preceding equal-length period, when a comparison exists. */
+  previous?: number | null;
+  change?: number | null;
+  changePct?: number | null;
+  trend?: "up" | "down" | "flat";
+  comparisonPeriod?: string;
+  /** Used by the UI to colour a trend without assuming every increase is good. */
+  higherIsBetter?: boolean;
 }
 
 export interface ReadOnlyReviewSpec {

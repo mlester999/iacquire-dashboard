@@ -142,6 +142,31 @@ describe("WorkJobPanel", () => {
     expect(screen.getByText(/Nothing has been held or booked/i)).toBeTruthy();
   });
 
+  it("shows a measured comparison period without treating every increase as good", async () => {
+    stubJob(job({
+      status: "completed",
+      statusLabel: "Completed",
+      stage: "completed",
+      stageLabel: "Completed",
+      resultSummary: "Performance review completed.",
+      canCancel: false,
+      result: {
+        metrics: [
+          { key: "leads_created", label: "Leads created", value: 3, previous: 2, change: 1, changePct: 50, trend: "up", comparisonPeriod: "Previous 30 days", higherIsBetter: true, period: "Last 30 days", definition: "Lead rows", source: "leads" },
+          { key: "ai_runs_failed", label: "AI runs failed", value: 3, previous: 2, change: 1, changePct: 50, trend: "up", comparisonPeriod: "Previous 30 days", higherIsBetter: false, period: "Last 30 days", definition: "Failed runs", source: "agent_runs" },
+        ],
+        findings: [],
+      },
+      events: [],
+    }));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText(/Leads created/)).toBeTruthy();
+    const trends = screen.getAllByText(/↑ 50% vs previous 30 days/);
+    expect(trends).toHaveLength(2);
+    expect(trends.some((element) => element.className.includes("text-success-ink"))).toBe(true);
+    expect(trends.some((element) => element.className.includes("text-warning-ink"))).toBe(true);
+  });
+
   it("does not invent progress when only a queued state is persisted", async () => {
     stubJob(job({
       status: "queued",

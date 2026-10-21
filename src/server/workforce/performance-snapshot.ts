@@ -101,60 +101,89 @@ const noConfirmedAppointments: ReviewCheck = async (db, job) => {
   });
 };
 
+const PERIOD = "Last 30 days";
+const PREVIOUS_PERIOD = "Previous 30 days";
+
+function comparison(value: number, previous: number, higherIsBetter: boolean): Pick<ReviewMetric, "previous" | "change" | "changePct" | "trend" | "comparisonPeriod" | "higherIsBetter"> {
+  const change = value - previous;
+  return {
+    previous,
+    change,
+    changePct: previous > 0 ? Math.round((change / previous) * 100) : null,
+    trend: change > 0 ? "up" : change < 0 ? "down" : "flat",
+    comparisonPeriod: PREVIOUS_PERIOD,
+    higherIsBetter,
+  };
+}
+
 async function metrics(db: Queryable, job: WorkJobRow): Promise<ReviewMetric[]> {
-  const leadRows = await db.query<{ created: number; approved: number; pending: number; rejected: number }>(
+  const leadRows = await db.query<{
+    created: number; created_previous: number; approved: number; approved_previous: number;
+    pending: number; rejected: number; rejected_previous: number;
+  }>(
     `select
        count(*) filter (where created_at >= now() - interval '30 days')::int as created,
+       count(*) filter (where created_at >= now() - interval '60 days' and created_at < now() - interval '30 days')::int as created_previous,
        count(*) filter (where review_status = 'approved' and reviewed_at >= now() - interval '30 days')::int as approved,
+       count(*) filter (where review_status = 'approved' and reviewed_at >= now() - interval '60 days' and reviewed_at < now() - interval '30 days')::int as approved_previous,
        count(*) filter (where review_status = 'pending')::int as pending,
-       count(*) filter (where review_status = 'rejected' and reviewed_at >= now() - interval '30 days')::int as rejected
+       count(*) filter (where review_status = 'rejected' and reviewed_at >= now() - interval '30 days')::int as rejected,
+       count(*) filter (where review_status = 'rejected' and reviewed_at >= now() - interval '60 days' and reviewed_at < now() - interval '30 days')::int as rejected_previous
      from leads where org_id = $1`,
     [job.org_id],
   );
-  const contactRows = await db.query<{ count: number }>(
-    "select count(*)::int as count from contacts where org_id = $1 and deleted_at is null and created_at >= now() - interval '30 days'",
+  const contactRows = await db.query<{ count: number; previous: number }>(
+    `select
+       count(*) filter (where created_at >= now() - interval '30 days')::int as count,
+       count(*) filter (where created_at >= now() - interval '60 days' and created_at < now() - interval '30 days')::int as previous
+     from contacts where org_id = $1 and deleted_at is null`,
     [job.org_id],
   );
-  const appointmentRows = await db.query<{ booked: number; upcoming: number }>(
+  const appointmentRows = await db.query<{ booked: number; booked_previous: number; upcoming: number }>(
     `select
        count(*) filter (where status = 'booked' and booked_at >= now() - interval '30 days')::int as booked,
+       count(*) filter (where status = 'booked' and booked_at >= now() - interval '60 days' and booked_at < now() - interval '30 days')::int as booked_previous,
        count(*) filter (where status = 'booked' and start_at between now() and now() + interval '7 days')::int as upcoming
      from appointment_bookings where org_id = $1`,
     [job.org_id],
   );
-  const dealRows = await db.query<{ open: number; won: number; lost: number }>(
+  const dealRows = await db.query<{ open: number; won: number; won_previous: number; lost: number; lost_previous: number }>(
     `select
        count(*) filter (where status = 'open' and archived_at is null)::int as open,
        count(*) filter (where status = 'won' and closed_at >= now() - interval '30 days')::int as won,
-       count(*) filter (where status = 'lost' and closed_at >= now() - interval '30 days')::int as lost
+       count(*) filter (where status = 'won' and closed_at >= now() - interval '60 days' and closed_at < now() - interval '30 days')::int as won_previous,
+       count(*) filter (where status = 'lost' and closed_at >= now() - interval '30 days')::int as lost,
+       count(*) filter (where status = 'lost' and closed_at >= now() - interval '60 days' and closed_at < now() - interval '30 days')::int as lost_previous
      from crm_opportunities where org_id = $1`,
     [job.org_id],
   );
-  const runRows = await db.query<{ completed: number; failed: number }>(
+  const runRows = await db.query<{ completed: number; completed_previous: number; failed: number; failed_previous: number }>(
     `select
-       count(*) filter (where status = 'completed')::int as completed,
-       count(*) filter (where status in ('failed', 'timeout', 'interrupted'))::int as failed
-     from agent_runs where org_id = $1 and started_at >= now() - interval '30 days'`,
+       count(*) filter (where status = 'completed' and started_at >= now() - interval '30 days')::int as completed,
+       count(*) filter (where status = 'completed' and started_at >= now() - interval '60 days' and started_at < now() - interval '30 days')::int as completed_previous,
+       count(*) filter (where status in ('failed', 'timeout', 'interrupted') and started_at >= now() - interval '30 days')::int as failed,
+       count(*) filter (where status in ('failed', 'timeout', 'interrupted') and started_at >= now() - interval '60 days' and started_at < now() - interval '30 days')::int as failed_previous
+     from agent_runs where org_id = $1`,
     [job.org_id],
   );
   const lead = leadRows.rows[0];
+  const contact = contactRows.rows[0];
   const appointment = appointmentRows.rows[0];
   const deal = dealRows.rows[0];
   const runs = runRows.rows[0];
-  const last30 = { period: "Last 30 days", source: "Persisted workspace records" };
   return [
-    { key: "leads_created", label: "Leads created", value: n(lead?.created), period: last30.period, definition: "Lead rows created in the period.", source: "leads" },
-    { key: "leads_approved", label: "Leads approved", value: n(lead?.approved), period: last30.period, definition: "Leads approved by a person in the period.", source: "leads" },
+    { key: "leads_created", label: "Leads created", value: n(lead?.created), period: PERIOD, definition: "Lead rows created in the period.", source: "leads", ...comparison(n(lead?.created), n(lead?.created_previous), true) },
+    { key: "leads_approved", label: "Leads approved", value: n(lead?.approved), period: PERIOD, definition: "Leads approved by a person in the period.", source: "leads", ...comparison(n(lead?.approved), n(lead?.approved_previous), true) },
     { key: "leads_pending", label: "Leads awaiting review", value: n(lead?.pending), period: "Current", definition: "Lead rows still pending human review.", source: "leads" },
-    { key: "leads_rejected", label: "Leads rejected", value: n(lead?.rejected), period: last30.period, definition: "Leads rejected by a person in the period.", source: "leads" },
-    { key: "contacts_created", label: "Contacts created", value: n(contactRows.rows[0]?.count), period: last30.period, definition: "Active contact rows created in the period.", source: "contacts" },
-    { key: "appointments_booked", label: "Appointments confirmed", value: n(appointment?.booked), period: last30.period, definition: "Bookings whose provider confirmation was recorded in the period.", source: "appointment_bookings" },
+    { key: "leads_rejected", label: "Leads rejected", value: n(lead?.rejected), period: PERIOD, definition: "Leads rejected by a person in the period.", source: "leads", ...comparison(n(lead?.rejected), n(lead?.rejected_previous), false) },
+    { key: "contacts_created", label: "Contacts created", value: n(contact?.count), period: PERIOD, definition: "Active contact rows created in the period.", source: "contacts", ...comparison(n(contact?.count), n(contact?.previous), true) },
+    { key: "appointments_booked", label: "Appointments confirmed", value: n(appointment?.booked), period: PERIOD, definition: "Bookings whose provider confirmation was recorded in the period.", source: "appointment_bookings", ...comparison(n(appointment?.booked), n(appointment?.booked_previous), true) },
     { key: "appointments_upcoming", label: "Upcoming appointments", value: n(appointment?.upcoming), period: "Next 7 days", definition: "Confirmed bookings starting in the next seven days.", source: "appointment_bookings" },
     { key: "open_deals", label: "Open deals", value: n(deal?.open), period: "Current", definition: "Opportunities currently open and not archived.", source: "crm_opportunities" },
-    { key: "deals_won", label: "Deals won", value: n(deal?.won), period: last30.period, definition: "Opportunities marked won with a close time in the period.", source: "crm_opportunities" },
-    { key: "deals_lost", label: "Deals lost", value: n(deal?.lost), period: last30.period, definition: "Opportunities marked lost with a close time in the period.", source: "crm_opportunities" },
-    { key: "ai_runs_completed", label: "AI runs completed", value: n(runs?.completed), period: last30.period, definition: "Agent runs recorded as completed in the period.", source: "agent_runs" },
-    { key: "ai_runs_failed", label: "AI runs failed", value: n(runs?.failed), period: last30.period, definition: "Agent runs recorded as failed, timed out or interrupted in the period.", source: "agent_runs" },
+    { key: "deals_won", label: "Deals won", value: n(deal?.won), period: PERIOD, definition: "Opportunities marked won with a close time in the period.", source: "crm_opportunities", ...comparison(n(deal?.won), n(deal?.won_previous), true) },
+    { key: "deals_lost", label: "Deals lost", value: n(deal?.lost), period: PERIOD, definition: "Opportunities marked lost with a close time in the period.", source: "crm_opportunities", ...comparison(n(deal?.lost), n(deal?.lost_previous), false) },
+    { key: "ai_runs_completed", label: "AI runs completed", value: n(runs?.completed), period: PERIOD, definition: "Agent runs recorded as completed in the period.", source: "agent_runs", ...comparison(n(runs?.completed), n(runs?.completed_previous), true) },
+    { key: "ai_runs_failed", label: "AI runs failed", value: n(runs?.failed), period: PERIOD, definition: "Agent runs recorded as failed, timed out or interrupted in the period.", source: "agent_runs", ...comparison(n(runs?.failed), n(runs?.failed_previous), false) },
   ];
 }
 

@@ -137,6 +137,35 @@ beforeAll(async () => {
        values ($1, $2, 'Won Deal', 'won', 'ghl', 500, now(), now(), now() - interval '5 days')`,
       [org.id, `ghl-won-${crypto.randomUUID().slice(0, 8)}`],
     );
+
+    // Previous 30-day period, used only for measured trend comparisons.
+    await db.query(
+      "insert into leads (org_id, business_name, review_status, reviewed_at, created_at) values ($1, 'Previous Lead', 'approved', now() - interval '45 days', now() - interval '45 days')",
+      [org.id],
+    );
+    await db.query("insert into contacts (org_id, display_name, email, created_at) values ($1, 'Previous Contact', 'previous@example.test', now() - interval '45 days')", [org.id]);
+    await db.query(
+      `insert into appointment_bookings (org_id, contact_id, calendar_id, start_at, end_at, timezone, title, requested_by_kind, status,
+         ghl_appointment_id, booked_at, idempotency_key, created_at)
+       values ($1, $2, 'cal-review', now() - interval '45 days', now() - interval '45 days' + interval '30 minutes', 'UTC',
+               'Previous booked appointment', 'ai', 'booked', 'ghl-booking-previous', now() - interval '45 days', $3, now() - interval '45 days')`,
+      [org.id, contactId, `booking-${crypto.randomUUID()}`],
+    );
+    await db.query(
+      `insert into crm_opportunities (org_id, ghl_opportunity_id, name, status, provider, monetary_value, closed_at, updated_at, created_at)
+       values ($1, $2, 'Previous Won Deal', 'won', 'ghl', 300, now() - interval '45 days', now() - interval '45 days', now() - interval '50 days')`,
+      [org.id, `ghl-won-prev-${crypto.randomUUID().slice(0, 8)}`],
+    );
+    await db.query(
+      `insert into agent_runs (org_id, agent_instance_id, user_id, purpose, idempotency_key, status, started_at)
+       values ($1, $2, $3, 'chat', $4, 'completed', now() - interval '45 days')`,
+      [org.id, performanceAnalystId, owner.id, `perf-prev-${crypto.randomUUID()}`],
+    );
+    await db.query(
+      `insert into agent_runs (org_id, agent_instance_id, user_id, purpose, idempotency_key, status, started_at)
+       values ($1, $2, $3, 'chat', $4, 'failed', now() - interval '45 days')`,
+      [org.id, performanceAnalystId, owner.id, `perf-prev-f-${crypto.randomUUID()}`],
+    );
   });
 }, 60000);
 
@@ -250,16 +279,23 @@ describe("reusable read-only capabilities", () => {
     });
     const job = await waitForJob(dispatched.jobId);
     expect(job.status).toBe("completed");
-    const metrics = (job.result.metrics as Array<{ key: string; value: number }>) ?? [];
-    const value = (key: string) => metrics.find((metric) => metric.key === key)?.value;
+    const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; trend?: string; higherIsBetter?: boolean }>) ?? [];
+    const metric = (key: string) => metrics.find((item) => item.key === key);
     expect(metrics).toHaveLength(12);
-    expect(value("leads_created")).toBe(3);
-    expect(value("leads_pending")).toBe(2);
-    expect(value("leads_approved")).toBe(1);
-    expect(value("appointments_booked")).toBe(1);
-    expect(value("deals_won")).toBe(1);
-    expect(value("ai_runs_completed")).toBe(3);
-    expect(value("ai_runs_failed")).toBe(2);
+    expect(metric("leads_created")?.value).toBe(3);
+    expect(metric("leads_created")?.previous).toBe(1);
+    expect(metric("leads_created")?.trend).toBe("up");
+    expect(metric("leads_pending")?.value).toBe(2);
+    expect(metric("leads_approved")?.value).toBe(1);
+    expect(metric("appointments_booked")?.value).toBe(1);
+    expect(metric("appointments_booked")?.previous).toBe(1);
+    expect(metric("appointments_booked")?.trend).toBe("flat");
+    expect(metric("deals_won")?.value).toBe(1);
+    expect(metric("ai_runs_completed")?.value).toBe(3);
+    expect(metric("ai_runs_completed")?.previous).toBe(1);
+    expect(metric("ai_runs_failed")?.value).toBe(2);
+    expect(metric("ai_runs_failed")?.previous).toBe(1);
+    expect(metric("ai_runs_failed")?.higherIsBetter).toBe(false);
     expect(keysOf(job.result)).toEqual(expect.arrayContaining(["ai_run_failure_rate", "unvalued_open_pipeline"]));
     expect(keysOf(job.result)).not.toContain("no_lead_flow");
     const failure = (job.result.findings as Array<{ key: string; detail: string }>).find((item) => item.key === "ai_run_failure_rate");

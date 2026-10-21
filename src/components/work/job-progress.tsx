@@ -188,6 +188,8 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
   }>).filter((item) => typeof item.title === "string") : [];
   const metrics = Array.isArray(job.result.metrics) ? (job.result.metrics as Array<{
     key?: string; label?: string; value?: number | string; unit?: string; period?: string; definition?: string; source?: string;
+    previous?: number | null; change?: number | null; changePct?: number | null; trend?: "up" | "down" | "flat";
+    comparisonPeriod?: string; higherIsBetter?: boolean;
   }>).filter((item) => typeof item.label === "string") : [];
   const availability = job.result.availability && typeof job.result.availability === "object"
     ? (job.result.availability as { slots?: Array<{ start: string; end: string }>; timeZone?: string })
@@ -267,6 +269,23 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                     {metric.unit && <span className="ml-0.5 text-[11px] font-normal text-muted">{metric.unit}</span>}
                   </dd>
                   {metric.period && <p className="mt-0.5 text-[10px] leading-snug text-faint">{metric.period}</p>}
+                  {metric.trend && metric.previous !== null && metric.previous !== undefined && (
+                    <p
+                      className={cn(
+                        "mt-0.5 text-[10px] leading-snug",
+                        metric.trend === "flat"
+                          ? "text-muted"
+                          : (metric.trend === "up") === (metric.higherIsBetter !== false)
+                            ? "text-success-ink"
+                            : "text-warning-ink",
+                      )}
+                      title={`Previous period: ${metric.previous}${metric.comparisonPeriod ? ` (${metric.comparisonPeriod})` : ""}`}
+                    >
+                      {metric.trend === "up" ? "↑" : metric.trend === "down" ? "↓" : "→"}{" "}
+                      {metric.changePct !== null && metric.changePct !== undefined ? `${Math.abs(metric.changePct)}%` : `${Math.abs(metric.change ?? 0)}`}
+                      {metric.comparisonPeriod ? ` vs ${metric.comparisonPeriod.toLowerCase()}` : ""}
+                    </p>
+                  )}
                 </div>
               ))}
             </dl>

@@ -94,9 +94,9 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/research-intent.test.ts` | 6 passed — canonical assignment, missing-field questions, no false positives, quantity cap |
 | `tests/workforce-jobs.test.ts` | 10 passed — real stages/counts, chat-created job, duplicate detection against CRM, public contact privacy, cancellation, retry, tenant isolation, unreviewed capability refusal, member cancel refusal, idempotency, lease recovery |
 | `tests/lead-hunter-activation.test.ts` | 2 passed — applied configuration + health + profile check + Super Admin acknowledgement produces **6/6 ready**, then a real sandbox research job completes with source-backed leads and a completed `lead_research` run |
-| `tests/work-job-progress.test.tsx` | 4 passed — running/completed/failed/queued honest rendering, no percentage, no invented progress |
+| `tests/work-job-progress.test.tsx` | 6 passed — running/completed/failed/queued honest rendering, real availability, measured comparisons, no percentage, no invented progress |
 | `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
-| `tests/work-board-ui.test.tsx` | 5 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
+| `tests/work-board-ui.test.tsx` | 6 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
 | `tests/workforce-review-capabilities.test.ts` | 7 passed — CRM quality, pipeline, appointment and performance reviews plus real calendar availability; business records unchanged; role and workforce-permission refusals |
 | `tests/workforce-schedules.test.ts` | 5 passed — disabled by default, operator-switch gate, real due job, no duplicate while active, member/capability refusals, enable/pause/delete and audit evidence |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
@@ -176,6 +176,11 @@ reviews changes a record, contacts a provider or creates a schedule.
 (`nativeAvailability`) rather than a second slot algorithm. It returns the real bookable start/end
 times and time zone, or the exact reason the calendar cannot offer slots. It never holds a slot,
 creates a booking or writes to an external calendar.
+
+The performance snapshot also measures the immediately preceding 30-day period for comparable KPIs
+and returns the previous value, absolute change, percentage change and trend. The UI colours a trend
+using the metric's `higherIsBetter` flag, so an increase in failed runs is not shown as positive.
+Pending/open/upcoming counts remain current-state values with no comparison.
 
 The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads eight
 persisted signals: failed runs, approvals pending over a day, overdue tasks, leads waiting for
