@@ -175,11 +175,21 @@ describe("proactive report delivery policy", () => {
     expect(rows[0]).toMatchObject({ status: "suppressed", reason: "below_severity_threshold" });
   }, 30000);
 
-  it("lets a critical alert bypass quiet hours and the threshold", async () => {
+  it("lets a critical alert bypass quiet hours and the threshold for supervisors only", async () => {
     await setProactivePrefs(owner.id, { minimumSeverity: "critical", quietStart: "21:00", quietEnd: "07:00" });
     const now = new Date("2026-10-21T22:30:00.000Z");
     await publish([finding({ severity: "critical", key: "critical_connection", title: "A critical connection is down" })], { now });
     expect(await notificationCount(owner.id)).toBe(1);
+    expect(await notificationCount(admin.id)).toBe(1);
+    expect(await notificationCount(member.id)).toBe(0);
+    const { rows } = await withSystem((db) =>
+      db.query<{ severity: string; audience: string; link: string }>(
+        "select severity, audience, link from notifications where org_id = $1 and user_id = $2 order by created_at desc limit 1",
+        [org.id, owner.id],
+      ),
+    );
+    expect(rows[0]).toMatchObject({ severity: "critical", audience: "client" });
+    expect(rows[0].link).toContain("/work?");
   }, 30000);
 
   it("holds a routine report during quiet hours and releases it when they end", async () => {
