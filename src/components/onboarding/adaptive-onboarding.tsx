@@ -24,7 +24,7 @@ import {
   type ReviewModel,
 } from "@/lib/onboarding/engine";
 import { createSavePipeline, type PipelineState, type SavePipeline } from "@/lib/onboarding/save-pipeline";
-import { ONBOARDING_SECTIONS, type AnswerSource, type AnswerValue, type QuestionDef, type SectionId, type StoredAnswers } from "@/lib/onboarding/types";
+import { type AnswerSource, type AnswerValue, type QuestionDef, type SectionId, type StoredAnswers } from "@/lib/onboarding/types";
 import type { OnboardingSession, Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
 
@@ -123,7 +123,6 @@ export function AdaptiveOnboarding({
   const question: QuestionDef = visible.find((q) => q.id === currentId) ?? QUESTION_BY_ID[currentId] ?? visible[0];
   const isReview = question.kind.type === "review";
   const stored = answers[question.id];
-  const section = ONBOARDING_SECTIONS.find((s) => s.id === question.section)!;
   const countable = visible.filter((q) => q.kind.type !== "review");
   const number = Math.max(1, countable.findIndex((q) => q.id === question.id) + 1);
 
@@ -359,10 +358,18 @@ export function AdaptiveOnboarding({
   const canApprove = Boolean(review && answers["f.review"]?.value === true && !review.blockers.some((blocker) => !blocker.startsWith("Confirm that you approve")));
 
   return (
-    <main className="onboarding-workspace mx-auto max-w-6xl px-4 pb-28 pt-2 sm:px-6 lg:pb-8">
+    <main className="onboarding-workspace mx-auto max-w-5xl px-4 pb-28 pt-2 sm:px-6 lg:pb-8">
       {headerSlot ? createPortal(exitAction, headerSlot) : <div className="mb-2 flex justify-end">{exitAction}</div>}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[208px_minmax(0,1fr)] lg:gap-10">
-        <OnboardingProgress current={question.section} progress={progress} welcome={number === 1 && !isReview} disabled={navigating || submitting} onSelect={(id) => void jumpToSection(id)} />
+      <div className="space-y-4 sm:space-y-5">
+        <OnboardingProgress
+          current={question.section}
+          progress={progress}
+          welcome={number === 1 && !isReview}
+          position={isReview ? "Final step" : `Question ${number} of ${countable.length}`}
+          saveState={<SaveBadge state={save} onRetry={() => void pipeline.flush()} />}
+          disabled={navigating || submitting}
+          onSelect={(id) => void jumpToSection(id)}
+        />
 
         <div className="min-w-0">
           {session.status === "submitted" && (
@@ -371,14 +378,6 @@ export function AdaptiveOnboarding({
               Your setup is already approved. You can edit any answer; changes are saved as a draft and only reach your AI employees when you approve again at the end.
             </p>
           )}
-
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[12.5px]">
-            <span className="font-medium text-muted">{isReview ? "Final step" : `Question ${number} of ${countable.length}`}</span>
-            <SaveBadge state={save} onRetry={() => void pipeline.flush()} />
-          </div>
-          <div className="mb-5 h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label="Setup progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
-            <motion.div initial={false} animate={{ width: `${Math.max(3, progress.percent)}%` }} className="h-full rounded-full brand-gradient" transition={{ duration: reduced ? 0 : 0.4, ease: [0.16, 1, 0.3, 1] }} />
-          </div>
 
           {save.staleBase && (
             <p role="status" className="mb-4 rounded-xl border border-warning/40 bg-warning-soft/60 p-3 text-[13px] text-warning-ink">
@@ -405,13 +404,9 @@ export function AdaptiveOnboarding({
                 noValidate
               >
                 <header className="mb-4">
-                  <p className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[.15em] text-primary">
-                    <span>
-                      {section.id} · {section.title}
-                    </span>
-                    {!isReview && <span className="text-muted">{question.required ? "Required" : "Optional"}</span>}
-                  </p>
-                  <h1 id="onboarding-title" ref={headingRef} tabIndex={-1} className="mt-2 text-[23px] font-semibold leading-tight tracking-[-0.025em] outline-none sm:text-[28px]">
+                  {/* The section is named in the progress panel above; the card only says whether this question can be skipped. */}
+                  {!isReview && <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.15em] text-muted">{question.required ? "Required" : "Optional"}</p>}
+                  <h1 id="onboarding-title" ref={headingRef} tabIndex={-1} className="text-[23px] font-semibold leading-tight tracking-[-0.025em] outline-none sm:text-[28px]">
                     {question.title}
                   </h1>
                   <p className="mt-2 text-[14px] leading-relaxed text-muted">{question.help}</p>
@@ -558,12 +553,13 @@ export function AdaptiveOnboarding({
   );
 }
 
+/** Sits on the navy progress panel, so it uses that panel's colours rather than the theme tokens. */
 function SaveBadge({ state, onRetry }: { state: PipelineState; onRetry: () => void }) {
   return (
-    <span role="status" aria-live="polite" className="flex items-center gap-1.5 text-muted">
+    <span role="status" aria-live="polite" className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-[var(--stage-muted)] lg:text-[12px]">
       {state.status === "saving" ? (
         <>
-          <Loader2 className="size-3.5 animate-spin" aria-hidden /> Saving…
+          <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden /> Saving…
         </>
       ) : state.status === "dirty" ? (
         <>
@@ -571,17 +567,17 @@ function SaveBadge({ state, onRetry }: { state: PipelineState; onRetry: () => vo
         </>
       ) : state.status === "error" ? (
         <>
-          <CloudOff className="size-3.5 text-danger-ink" aria-hidden />
-          <span className="text-danger-ink">{Object.keys(state.rejected).length ? "Some answers need attention" : "Not saved"}</span>
+          <CloudOff className="size-3.5 text-rose-300" aria-hidden />
+          <span className="text-rose-200">{Object.keys(state.rejected).length ? "Some answers need attention" : "Not saved"}</span>
           {Object.keys(state.rejected).length === 0 && (
-            <button type="button" onClick={onRetry} className="font-medium text-danger-ink underline underline-offset-2">
+            <button type="button" onClick={onRetry} className="inline-flex min-h-6 items-center rounded font-medium text-white underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--stage-accent)]">
               Retry
             </button>
           )}
         </>
       ) : state.status === "saved" ? (
         <>
-          <Cloud className="size-3.5 text-success" aria-hidden /> Saved
+          <Cloud className="size-3.5 text-emerald-300" aria-hidden /> <span className="text-[var(--stage-ink-2)]">Saved</span>
         </>
       ) : (
         <>

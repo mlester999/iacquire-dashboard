@@ -58,8 +58,20 @@ describe("premium onboarding interaction", () => {
     const progress = screen.getByLabelText("Setup sections");
     expect(within(progress).getAllByRole("button")).toHaveLength(6);
     expect(within(progress).getByRole("button", { name: /Business/ }).getAttribute("aria-current")).toBe("step");
+    expect(within(progress).getAllByRole("button").map((button) => button.getAttribute("aria-label")?.split(":")[0])).toEqual(["Business", "Goals", "Voice", "Sales", "Knowledge", "Review"]);
     expect(screen.queryByText("Let's set up your workspace.")).toBeNull();
     expect(screen.getByRole("progressbar", { name: "Setup progress" }).getAttribute("aria-valuenow")).not.toBeNull();
+  });
+
+  it("puts section, position, progress and save state in one navy panel without repeating the question count", () => {
+    setup();
+    const panel = screen.getByRole("region", { name: "Business profile" });
+    expect(panel.classList.contains("onboarding-stages")).toBe(true);
+    expect(within(panel).getByText(/^Question \d+ of \d+$/)).toBeTruthy();
+    expect(screen.getAllByText(/^Question \d+ of \d+$/)).toHaveLength(1);
+    expect(within(panel).getByRole("status").textContent).toContain("Saved as you go");
+    expect(within(panel).getByRole("progressbar", { name: "Setup progress" })).toBeTruthy();
+    expect(screen.queryByText(/A · Business profile/)).toBeNull();
     expect(screen.getByText("See an example").closest("details")?.open).toBe(false);
   });
 

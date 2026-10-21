@@ -21,6 +21,105 @@
   }
 }
 
+/* "Built around you" progress panel: dark navy in both themes, like the workspace chrome. Its colours live here so a stage and
+   its text can never disagree; every foreground clears 4.5:1 on --stage-bg and on the top-left glow. Layout stays in the JSX. */
+.onboarding-stages {
+  --stage-bg: #0d1322;
+  --stage-glow: rgb(58 90 200 / .24);
+  --stage-ink: #ffffff;
+  --stage-ink-2: #c6cfe2;
+  --stage-muted: #97a5bf;
+  --stage-line: rgb(255 255 255 / .08);
+  --stage-track: rgb(255 255 255 / .1);
+  --stage-accent: #a3b9ff;
+  --stage-fill: linear-gradient(90deg, #4f7bff, #8b78ff);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--stage-line);
+  border-radius: 20px;
+  background: radial-gradient(70% 140% at 0% 0%, var(--stage-glow), transparent 70%), var(--stage-bg);
+  color: var(--stage-ink);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .06), 0 22px 48px -30px rgb(13 22 52 / .55);
+}
+/* A single hairline of brand colour along the top edge. */
+.onboarding-stages::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 4%, rgb(110 145 255 / .6) 35%, rgb(150 128 255 / .5) 70%, transparent 96%);
+}
+[data-theme="dark"] .onboarding-stages {
+  --stage-line: rgb(255 255 255 / .1);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .06);
+}
+.onboarding-meter {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+.onboarding-meter-segment {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--stage-track);
+}
+.onboarding-meter-segment[data-state="current"] { background: rgb(163 185 255 / .22); }
+.onboarding-meter-segment > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--stage-fill);
+  transition: width var(--motion-slow) var(--ease-out-quart);
+}
+.onboarding-stage {
+  display: flex;
+  width: 100%;
+  min-height: 3rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: .25rem;
+  border: 1px solid rgb(255 255 255 / .05);
+  border-radius: 12px;
+  padding: .5rem .625rem;
+  background: rgb(255 255 255 / .025);
+  color: var(--stage-muted);
+  text-align: left;
+  transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+}
+.onboarding-stage:hover:not(:disabled) { background: rgb(255 255 255 / .06); border-color: rgb(255 255 255 / .1); color: var(--stage-ink-2); }
+.onboarding-stage:focus-visible { outline: 2px solid var(--stage-accent); outline-offset: 2px; }
+.onboarding-stage:disabled { cursor: wait; }
+.onboarding-stage[data-state="complete"] { color: var(--stage-ink-2); }
+.onboarding-stage[data-state="current"],
+.onboarding-stage[data-state="current"]:hover:not(:disabled) {
+  border-color: rgb(163 185 255 / .36);
+  background: linear-gradient(160deg, rgb(79 123 255 / .22), rgb(139 120 255 / .1));
+  color: var(--stage-ink);
+}
+.onboarding-stage-number { font-size: 10.5px; font-weight: 600; line-height: 1; letter-spacing: .08em; font-variant-numeric: tabular-nums; color: var(--stage-muted); }
+.onboarding-stage[data-state="current"] .onboarding-stage-number { color: var(--stage-accent); }
+.onboarding-stage-label { font-size: 13px; font-weight: 600; line-height: 1.25; letter-spacing: -.005em; white-space: nowrap; }
+.onboarding-stage-status { font-size: 11.5px; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--stage-muted); }
+.onboarding-stage[data-state="current"] .onboarding-stage-status { color: var(--stage-ink-2); }
+.onboarding-stage-mark { display: grid; width: 16px; height: 16px; place-items: center; border-radius: 999px; }
+.onboarding-stage-mark[data-state="complete"] { background: var(--stage-fill); color: #fff; }
+.onboarding-stage-mark[data-state="current"]::after { content: ""; width: 7px; height: 7px; border-radius: 999px; background: var(--stage-accent); box-shadow: 0 0 0 3px rgb(163 185 255 / .2); }
+.onboarding-stage-mark[data-state="todo"]::after { content: ""; width: 8px; height: 8px; border-radius: 999px; border: 1px solid rgb(255 255 255 / .2); }
+@media (min-width: 768px) {
+  .onboarding-meter { gap: .5rem; }
+}
+@media (min-width: 1024px) {
+  .onboarding-stage { min-height: 4.5rem; gap: .375rem; padding: .75rem .875rem; border-radius: 14px; }
+  .onboarding-stage-label { font-size: 14px; }
+  .onboarding-stage-status { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-stage, .onboarding-meter-segment > span { transition: none; }
+}
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ------------------------------------------------------------------------ */
