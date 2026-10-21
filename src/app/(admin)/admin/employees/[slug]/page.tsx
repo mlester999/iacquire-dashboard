@@ -220,9 +220,9 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
                 <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{readiness.description}</p>
               </div>
               <div>
-                <p className="mb-2 text-[12px] font-semibold">Authorized portal tools</p>
+                <p className="mb-2 text-[12px] font-semibold">Configured role guidance</p>
                 <ul className="grid gap-1.5 sm:grid-cols-2">{agent.default_tools.map((tool) => <li key={tool} className="text-[12.5px] text-ink-2">• {agentToolLabel(tool)}</li>)}</ul>
-                <p className="mt-2 text-[11.5px] text-muted">Tool access is granted by iAcquire and enforced by the provider profile and connection health check.</p>
+                <p className="mt-2 text-[11.5px] text-muted">These labels describe instruction guidance, not callable Hermes tools. Internal Operations Manager chat receives a read-only, tenant-scoped snapshot of agency tasks, approvals and persisted workforce activity; it cannot create approvals or save summaries.</p>
               </div>
             </CardContent>
           </Card>

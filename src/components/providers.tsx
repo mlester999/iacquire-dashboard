@@ -9,19 +9,15 @@ import { LogoutConfirmationProvider } from "@/components/auth/logout-confirmatio
 import { AqiWidget } from "@/components/aqi/aqi-widget";
 import { OpsLauncher } from "@/components/aqi/ops/ops-launcher";
 import { GuidanceHost } from "@/components/aqi/tutorial/guidance-host";
+import { isAqiSurface } from "@/lib/aqi/surface";
 
 export type ThemePreference = "light" | "dark" | "system";
 
 /**
  * AQi lives at the application shell, not inside each page layout. A client-side navigation between
- * the portal, chat and agency areas therefore keeps the same widget (and its temporary chat) mounted
- * instead of recreating it. Auth, setup and public pages are outside this surface.
+ * the portal and agency areas therefore keeps the same widget (and its temporary chat) mounted
+ * instead of recreating it. Dedicated employee chat, auth, setup and public pages are outside this surface.
  */
-const AQI_SURFACE = /^\/(activity|add-ons|analytics|appointments|approvals|chat|crm|inbox|knowledge|leads|maintenance|notifications|our-work|overview|projects|retention|sales|settings|setup|support|website|workforce|admin)(\/|$)/;
-
-function isAqiSurface(pathname: string | null) {
-  return Boolean(pathname && AQI_SURFACE.test(pathname));
-}
 
 export type AqiMode = "assistant" | "operations";
 

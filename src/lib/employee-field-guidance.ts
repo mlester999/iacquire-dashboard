@@ -217,16 +217,16 @@ export function employeeFieldGuidance(role: AgentRoleKey, field: keyof typeof SH
 
 export const ROLE_TOOL_GUIDANCE: Record<string, { description: string; off: string }> = {
   "tasks.read": {
-    description: "Lets the employee read the workspace tasks it is authorised to access. It cannot read tasks outside its assigned workspace.",
-    off: "The employee will not be given task-list access in its instructions.",
+    description: "Instruction-level guidance, not a callable tool. Internal Operations Manager chat has a separate server-authorized, read-only agency task snapshot; this entry does not grant that access. Client task retrieval is not connected here.",
+    off: "This removes task-list guidance from instructions. The internal Operations Manager snapshot is governed separately by its server authorization gate.",
   },
   "approvals.create": {
-    description: "Lets the employee ask you to approve a customer-facing action. It cannot approve its own requests.",
-    off: "The employee cannot create new approval requests. Existing approval rules still apply.",
+    description: "Instruction-level guidance only; no callable approval creation service is available. Authorized internal Operations Manager runs may include pending and blocked approvals as read-only context.",
+    off: "The employee cannot create or decide approval requests. The internal read-only approval snapshot is governed separately by server authorization.",
   },
   "summaries.write": {
-    description: "Lets the employee save internal summaries for your team. This does not send anything to customers.",
-    off: "The employee will not be asked to save internal summaries.",
+    description: "The employee can draft a response summary from authorized read-only context, but no supported workspace service saves operational summaries.",
+    off: "No summary save action is available; instructions will not ask the employee to save one.",
   },
   "research.public_web": {
     description: "Lets the employee research approved public web sources. It cannot sign in to private sites or use another workspace's data.",
@@ -271,7 +271,7 @@ export const ROLE_TOOL_GUIDANCE: Record<string, { description: string; off: stri
 };
 
 export const TOOL_BOUNDARY_NOTE =
-  "Switching a tool off removes it from the employee's instructions. No switch can add a tool the role was not granted. The provider profile and connection health check remain the enforced boundary.";
+  "These switches remove entries from the employee's instructions. They do not connect a runtime tool or grant a server-side action; only verified provider tools and connected server-side adapters can perform actions.";
 
 export const COMPANY_FIELD_GUIDANCE = {
   companyName: {

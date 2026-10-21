@@ -7,6 +7,7 @@ import { isChannelActive } from "@/server/chat/hub";
 import { ChatWorkspace, type ChatMessage } from "@/components/chat/chat-workspace";
 import { AGENCY_HERMES_PROFILE_IDS, AGENT_BY_SLUG } from "@/lib/agents";
 import type { ReplyLength } from "@/lib/agent-settings";
+import { preferredChatTimeZone } from "@/lib/chat-timezone";
 import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { withSystem } from "@/server/db";
 
@@ -129,7 +130,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       initialConversations={conversations.map((r) => ({ id: r.id, title: r.title, lastMessageAt: new Date(r.last_message_at ?? r.created_at).toISOString() }))}
       initialConversation={convo ? { id: convo.conversation.id, title: convo.conversation.title, messages, hasMore: convo.hasMore } : null}
       activeRunId={activeRunId}
-      timeZone={ctx.org.timezone}
+      preferredTimeZone={preferredChatTimeZone(ctx.user.timezone, ctx.user.preferences)}
       orgKind={ctx.org.kind}
       nowIso={new Date().toISOString()}
       initialInput={typeof q === "string" ? q.slice(0, 2000) : undefined}

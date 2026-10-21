@@ -288,5 +288,12 @@ export const userProfileSchema = z.object({
 export async function updateUserProfile(ctx: OrgContext, input: z.input<typeof userProfileSchema>) {
   const d = userProfileSchema.parse(input);
   if (!isValidTimeZone(d.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
-  await withUser(ctx.user.id, (db) => db.query("update users set full_name = $2, timezone = $3 where id = $1", [ctx.user.id, d.fullName, d.timezone]));
+  await withUser(ctx.user.id, (db) => db.query(
+    `update users set full_name = $2, timezone = $3,
+       preferences = case when timezone is distinct from $3
+         then coalesce(preferences, '{}'::jsonb) || '{"preferredDisplayTimezoneConfigured": true}'::jsonb
+         else coalesce(preferences, '{}'::jsonb) end
+     where id = $1`,
+    [ctx.user.id, d.fullName, d.timezone],
+  ));
 }

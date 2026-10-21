@@ -40,6 +40,7 @@ import type { ConfigPreviewSummary } from "@/lib/workforce-types";
 import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
+import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
 import { OperatingModeCard, type AgentMode } from "@/components/workforce/operating-controls";
@@ -221,7 +222,8 @@ export function EmployeeDetail(props: Props) {
   );
 }
 
-function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals, timeZone, meta, readiness, onConfigure, runs, canConfigure, adminManageHref, canPause, canGoAutonomous, autonomousBlockedReason, agencyPaused }: Props & { readiness: ReturnType<typeof deriveEmployeeReadiness>; onConfigure: () => void }) {
+function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals, timeZone, meta, readiness, onConfigure, runs, canConfigure, adminManageHref, canPause, canGoAutonomous, autonomousBlockedReason, agencyPaused, isInternalWorkspace }: Props & { readiness: ReturnType<typeof deriveEmployeeReadiness>; onConfigure: () => void }) {
+  const operationsNotice = operationsManagerRuntimeNotice(meta.key, isInternalWorkspace ? "agency" : "client");
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_365px]">
       <div className="space-y-6">
@@ -238,25 +240,26 @@ function OverviewTab({ agent, capabilities, knowledgeAppliedAt, pendingApprovals
           </CardHeader>
           <CardContent className="space-y-5">
             <p className="rounded-2xl border border-line bg-surface-2/60 p-4 text-[14px] leading-[1.75] text-ink-2">{agent.summary ?? `${meta.shortName} hasn't been configured yet. Use Configure to describe its responsibilities and goals.`}</p>
+            {operationsNotice && <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft/40 p-3 text-[12px] leading-relaxed text-warning-ink">{operationsNotice}</p>}
             <div>
-              <p className="mb-2.5 text-[12px] font-semibold uppercase tracking-[.12em] text-muted">Capabilities</p>
+              <p className="mb-2.5 text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{operationsNotice ? "Intended role capabilities" : "Capabilities"}</p>
               <ul className="grid gap-2 sm:grid-cols-2">
                 {capabilities.map((c) => (
-                  <li key={c} className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-2"><CircleCheck className="mt-0.5 size-4 shrink-0 text-success" /> {c}</li>
+                  <li key={c} className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-2">{operationsNotice ? <Info className="mt-0.5 size-4 shrink-0 text-muted" /> : <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />} {c}</li>
                 ))}
               </ul>
             </div>
             <div className="border-t border-line pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">Tool permissions</p>
-                <span className="text-[11.5px] text-muted">Granted by iAcquire</span>
+                <p className="text-[12px] font-semibold uppercase tracking-[.12em] text-muted">{operationsNotice ? "Configured role guidance" : "Tool permissions"}</p>
+                <span className="text-[11.5px] text-muted">{operationsNotice ? "Instruction-level entries" : "Granted by iAcquire"}</span>
               </div>
               <ul className="mt-2.5 grid gap-2 sm:grid-cols-2">
                 {agent.defaultTools.map((t) => (
                   <li key={t} className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/50 px-3 py-2 text-[12.5px] text-ink-2"><Lock className="size-3.5 shrink-0 text-faint" /> {agentToolLabel(t)}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-[11.5px] leading-relaxed text-muted">Tools can be switched off in Configure; nobody can add new tools from this screen.</p>
+              <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{operationsNotice ? "These labels do not represent callable services in the current Hermes chat runtime." : "Tools can be switched off in Configure; nobody can add new tools from this screen."}</p>
             </div>
           </CardContent>
         </Card>
@@ -350,7 +353,8 @@ function issueForReason(reason: ReviewReasonView): FieldIssue {
   };
 }
 
-export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus, hasPendingReview, onSaved, onOpenHistory }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
+export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus, hasPendingReview, onSaved, onOpenHistory, isInternalWorkspace }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
+  const operationsNotice = operationsManagerRuntimeNotice(meta.key, isInternalWorkspace ? "agency" : "client");
   const router = useRouter();
   const [s, setS] = React.useState<AgentSettings>(settings);
   const [justSaved, setJustSaved] = React.useState(false);
@@ -714,7 +718,7 @@ export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus,
             </GuidedField>
           </ConfigSection>
 
-          <ConfigSection id="config-tools" step="05" title="Tool permissions" description="Only the tools granted to this role are listed. You can switch tools off, never add new ones.">
+          <ConfigSection id="config-tools" step="05" title={operationsNotice ? "Role capability guidance" : "Tool permissions"} description={operationsNotice ? "These switches change instructions only. When authorized and ready, the internal Operations Manager receives a read-only operations snapshot for each run, but no callable iAcquireOS tool. It cannot create approvals or save summaries." : "Only the tools granted to this role are listed. You can switch tools off, never add new ones."}>
             <div className="space-y-2">
               {agent.defaultTools.map((t) => {
                 const on = !s.disabledTools.includes(t);

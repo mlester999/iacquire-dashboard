@@ -77,11 +77,11 @@ describe("conversation history dates", () => {
     expect(grouped[0][1].map((i) => i.id)).toEqual(["a", "c"]);
   });
 
-  it("formats compact relative times", () => {
+  it("formats same-day previews as local clock times and older previews compactly", () => {
     const t = (ms: number) => new Date(now.getTime() - ms).toISOString();
     expect(compactRelativeTime(t(10_000), now)).toBe("now");
-    expect(compactRelativeTime(t(5 * 60_000), now)).toBe("5m");
-    expect(compactRelativeTime(t(3 * 3_600_000), now)).toBe("3h");
+    expect(compactRelativeTime(t(5 * 60_000), now)).toBe("3:55 AM");
+    expect(compactRelativeTime(t(3 * 3_600_000), now)).toBe("1:00 AM");
     expect(compactRelativeTime(t(2 * 86_400_000), now)).toBe("2d");
     expect(compactRelativeTime(t(15 * 86_400_000), now)).toBe("2w");
     expect(compactRelativeTime(t(60 * 86_400_000), now, "UTC")).toBe("Aug 21");

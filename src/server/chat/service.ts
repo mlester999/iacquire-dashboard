@@ -22,6 +22,7 @@ import {
   type StartRunInput,
 } from "@/server/integrations/hermes/client";
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
+import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
@@ -317,14 +318,41 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   });
 
   // 2. Create the assistant placeholder and run record (trusted server writes).
-  const setup = await withSystem(async (db) => {
+  type ChatSetupResult =
+    | { blockedReason: "invalid_scope" | "unsupported_role" | "employee_gate" | "user_permission" | "configuration_changed" }
+    | {
+        blockedReason: null;
+        assistantMessageId: string;
+        runId: string;
+        instructions: string;
+        conn: HermesConnection;
+        idempotencyKey: string;
+        versionId: string | null;
+        knowledgeEntryIds: string[];
+        knowledgeDocumentIds: string[];
+      };
+
+  const setup: ChatSetupResult = await withSystem(async (db) => {
     if (input.regenerateMessageId) {
       await db.query("update chat_messages set status = 'superseded' where id = $1 and conversation_id = $2", [
         input.regenerateMessageId,
         prepared.conversationId,
       ]);
     }
-    const { instructions, versionId, knowledgeEntryIds, knowledgeDocumentIds } = await buildRunInstructions(db, ctx.org.orgId, agent.id);
+    const runInstructions = await buildRunInstructions(db, ctx.org.orgId, agent.id);
+    let instructions = runInstructions.instructions;
+    if (ctx.org.kind === "agency" && input.agentRole === "operations_manager") {
+      const capabilityContext = await prepareInternalEmployeeContext(db, {
+        orgId: ctx.org.orgId,
+        agentId: agent.id,
+        userId: ctx.user.id,
+        roleKey: input.agentRole,
+        configVersionId: runInstructions.versionId,
+        instructions,
+      });
+      if (!capabilityContext.allowed) return { blockedReason: capabilityContext.reason };
+      instructions = capabilityContext.instructions;
+    }
     const conn = await loadConnection(db, agent.id);
     if (!conn) throw new AppError("agent_unavailable", "This employee isn't connected yet.");
     const { rows: msg } = await db.query<{ id: string }>(
@@ -336,13 +364,32 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       `insert into agent_runs (org_id, agent_instance_id, conversation_id, assistant_message_id, user_id, purpose,
          idempotency_key, status, config_version_id)
        values ($1, $2, $3, $4, $5, 'chat', $6, 'queued', $7) returning id`,
-      [ctx.org.orgId, agent.id, prepared.conversationId, msg[0].id, ctx.user.id, idempotencyKey, versionId],
+      [ctx.org.orgId, agent.id, prepared.conversationId, msg[0].id, ctx.user.id, idempotencyKey, runInstructions.versionId],
     );
     await db.query("update chat_messages set run_id = $2 where id = $1", [msg[0].id, run[0].id]);
     await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
     await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
-    return { assistantMessageId: msg[0].id, runId: run[0].id, instructions, conn, idempotencyKey, versionId, knowledgeEntryIds, knowledgeDocumentIds };
+    return {
+      blockedReason: null,
+      assistantMessageId: msg[0].id,
+      runId: run[0].id,
+      instructions,
+      conn,
+      idempotencyKey,
+      versionId: runInstructions.versionId,
+      knowledgeEntryIds: runInstructions.knowledgeEntryIds,
+      knowledgeDocumentIds: runInstructions.knowledgeDocumentIds,
+    };
   });
+  if (setup.blockedReason) {
+    const isUserPermission = setup.blockedReason === "user_permission";
+    throw new AppError(
+      isUserPermission ? "forbidden" : "agent_unavailable",
+      isUserPermission
+        ? "Your agency role can't read the internal Operations Manager's workforce context."
+        : "The internal Operations Manager's approved configuration could not be verified. No run was started.",
+    );
+  }
 
   const abort = new AbortController();
   openChannel(setup.runId, ctx.user.id, abort);

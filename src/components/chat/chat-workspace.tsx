@@ -40,8 +40,11 @@ import {
 import { agentIdentityLabel, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness, type EmployeeReadiness } from "@/lib/workforce-readiness";
 import { chatNavTargets } from "@/lib/chat-navigation";
+import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
+import { detectBrowserTimeZone, resolveChatTimeZone } from "@/lib/chat-timezone";
+import { chatDateSeparatorLabel, conversationDateKey, formatChatTime } from "@/lib/conversation-time";
 import type { ReplyLength } from "@/lib/agent-settings";
-import { cn, formatTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
   id: string;
@@ -78,7 +81,7 @@ interface Props {
   initialConversations: ConversationItem[];
   initialConversation: { id: string; title: string; messages: ChatMessage[]; hasMore?: boolean } | null;
   activeRunId: string | null;
-  timeZone: string;
+  preferredTimeZone: string | null;
   /** The kind of workspace the viewer is in (client or agency), so "back" and "home" go to the right place. */
   orgKind: string;
   /** The server's clock at render time, so grouped dates and relative times hydrate identically. */
@@ -86,6 +89,18 @@ interface Props {
   /** Pre-filled composer text (e.g. from "Ask Performance Analyst"). Never auto-sent. */
   initialInput?: string;
 }
+
+function subscribeToTimeZoneChanges(onChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("focus", onChange);
+  document.addEventListener("visibilitychange", onChange);
+  return () => {
+    window.removeEventListener("focus", onChange);
+    document.removeEventListener("visibilitychange", onChange);
+  };
+}
+
+const serverBrowserTimeZone = () => null;
 
 type StreamEvent =
   | { type: "ready"; conversationId: string; userMessageId: string | null; assistantMessageId: string; runId: string }
@@ -183,8 +198,12 @@ function useNow(initialIso: string) {
 
 export function ChatWorkspace(props: Props) {
   const { meta } = props;
+  const operationsNotice = operationsManagerRuntimeNotice(meta.key, props.orgKind);
   const reduce = useReducedMotion();
   const now = useNow(props.nowIso);
+  // useSyncExternalStore gives server rendering and hydration the same fallback before reading the browser zone.
+  const browserTimeZone = React.useSyncExternalStore(subscribeToTimeZoneChanges, detectBrowserTimeZone, serverBrowserTimeZone);
+  const timeZone = resolveChatTimeZone(props.preferredTimeZone, browserTimeZone);
   const readiness = deriveEmployeeReadiness({
     displayName: props.agentName,
     enabled: props.status !== "disabled",
@@ -268,7 +287,7 @@ export function ChatWorkspace(props: Props) {
         setListState((s) => (quiet ? (s === "loading" ? "idle" : s) : "error"));
       }
     },
-    [meta.key],
+    [meta.key, setConversations],
   );
   const skipInitialList = React.useRef(true);
   React.useEffect(() => {
@@ -508,7 +527,7 @@ export function ChatWorkspace(props: Props) {
     onDelete: (id: string) => setDeleting(id),
     canManage: props.canConfigure,
     now,
-    timeZone: props.timeZone,
+    timeZone,
   };
 
   return (
@@ -580,6 +599,13 @@ export function ChatWorkspace(props: Props) {
           )}
         </header>
 
+        {operationsNotice && (
+          <div role="status" className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning-soft/40 px-4 py-2.5 text-[12px] leading-relaxed text-warning-ink sm:px-6">
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <p>{operationsNotice}</p>
+          </div>
+        )}
+
         {/* Messages */}
         <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text" aria-busy={Boolean(streaming)}>
           <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-8 sm:px-6">
@@ -595,31 +621,37 @@ export function ChatWorkspace(props: Props) {
                   </li>
                 )}
                 <AnimatePresence initial={false}>
-                  {messages.map((m) => (
-                    <motion.li
-                      key={m.id}
-                      layout="position"
-                      initial={reduce ? false : { opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-                    >
-                      {m.role === "user" ? (
-                        <UserBubble message={m} timeZone={props.timeZone} />
-                      ) : (
-                        <AssistantBubble
-                          message={m}
-                          meta={meta}
-                          timeZone={props.timeZone}
-                          isLast={m.id === lastAssistantId}
-                          streaming={streaming?.assistantId === m.id}
-                          activity={streaming?.assistantId === m.id ? activity : null}
-                          canRetry={ready && !streaming}
-                          onCopy={() => copy(m.content)}
-                          onRegenerate={() => send("", { regenerateMessageId: m.id })}
-                        />
-                      )}
-                    </motion.li>
-                  ))}
+                  {messages.map((m, index) => {
+                    const currentDay = conversationDateKey(m.created_at, timeZone);
+                    const previousDay = index > 0 ? conversationDateKey(messages[index - 1].created_at, timeZone) : null;
+                    const dayLabel = currentDay && currentDay !== previousDay ? chatDateSeparatorLabel(m.created_at, now, timeZone) : "";
+                    return (
+                      <motion.li
+                        key={m.id}
+                        layout="position"
+                        initial={reduce ? false : { opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                      >
+                        {dayLabel && <div role="separator" aria-label={dayLabel} className="-mt-1 mb-1 flex items-center gap-3 text-[11px] text-faint"><span className="h-px flex-1 bg-line" /><span>{dayLabel}</span><span className="h-px flex-1 bg-line" /></div>}
+                        {m.role === "user" ? (
+                          <UserBubble message={m} timeZone={timeZone} />
+                        ) : (
+                          <AssistantBubble
+                            message={m}
+                            meta={meta}
+                            timeZone={timeZone}
+                            isLast={m.id === lastAssistantId}
+                            streaming={streaming?.assistantId === m.id}
+                            activity={streaming?.assistantId === m.id ? activity : null}
+                            canRetry={ready && !streaming}
+                            onCopy={() => copy(m.content)}
+                            onRegenerate={() => send("", { regenerateMessageId: m.id })}
+                          />
+                        )}
+                      </motion.li>
+                    );
+                  })}
                 </AnimatePresence>
                 {streaming && !streaming.assistantId && (
                   <li>
@@ -829,7 +861,7 @@ function UserBubble({ message, timeZone }: { message: ChatMessage; timeZone: str
         {message.content}
       </div>
       <time className="mt-1 pr-1 text-[11px] text-faint opacity-0 transition-opacity group-hover:opacity-100" dateTime={message.created_at}>
-        {formatTime(message.created_at, timeZone)}
+        {formatChatTime(message.created_at, timeZone)}
       </time>
     </div>
   );
@@ -919,7 +951,7 @@ function AssistantBubble({
               </Tooltip>
             )}
             <time className="ml-1 text-[11px]" dateTime={message.created_at}>
-              {formatTime(message.created_at, timeZone)}
+              {formatChatTime(message.created_at, timeZone)}
             </time>
             {message.status === "cancelled" && <span className="ml-1 text-[11px]">· Stopped</span>}
           </div>

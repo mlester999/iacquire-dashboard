@@ -40,7 +40,7 @@ import { callAgentTool, describeAgentTools, inputHash, stableStringify } from "@
 import { handleAgentToolHttp } from "@/server/crm/agent-tools/http";
 import { requestAgentTask } from "@/server/crm/agent-tools/tasks";
 import { getAgentToolsOverview } from "@/server/crm/agent-tools/overview";
-import { agentId as roleAgent, ctxFor } from "./support/fixtures";
+import { agentId as roleAgent, createOrg, ctxFor } from "./support/fixtures";
 import { crmOrg, type CrmOrg } from "./support/crm";
 
 const ALL = [...AGENT_TOOL_SCOPES];
@@ -128,6 +128,16 @@ describe("tokens", () => {
       "insert into crm_agent_tokens (org_id, agent_instance_id, token_hash, scopes, expires_at) values ($1, $2, $3, '{contacts:read}', now() + interval '25 hours')",
       [a.org.id, agent, sha256("x")],
     ))).rejects.toThrow();
+  });
+
+  it("keeps internal agency employees out of the client-only CRM tool adapter", async () => {
+    const agency = await createOrg({ kind: "agency" });
+    const employee = await roleAgent(agency.id, "operations_manager");
+    await expect(withSystem((db) => issueAgentToolToken(db, {
+      orgId: agency.id,
+      agentInstanceId: employee,
+      scopes: ["tasks:write", "reports:read"],
+    }))).rejects.toMatchObject({ code: "not_found" });
   });
 
   it("stops working when expired, revoked, or when its run ends", async () => {
