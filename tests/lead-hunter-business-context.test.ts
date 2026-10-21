@@ -122,6 +122,16 @@ describe("Lead Hunter business context", () => {
     expect(clientPrompt).toContain("We repair roofs");
     expect(clientPrompt).not.toContain("iAcquireOS");
     expect(clientPrompt).not.toContain("Real estate agencies and brokerages");
+
+    const targeted = researchPrompt("Find 20 prospects", targetingSchema.parse({ industries: ["Dentists"], excluded: ["Franchises"] }), "business", {
+      companyName: "Northwind Roofing",
+      orgKind: "client",
+      description: "We repair roofs for local homeowners.",
+      services: "Roof repair and replacement",
+    });
+    expect(targeted).toContain("Dentists");
+    expect(targeted).toContain("Franchises");
+    expect(targeted).not.toContain("Real estate agencies and brokerages");
   });
 
   it("tells the employee to ask when a client's business context is missing", () => {
