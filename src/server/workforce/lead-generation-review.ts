@@ -1,6 +1,7 @@
 import "server-only";
 import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
+import { INTERNAL_PROSPECTING } from "@/lib/internal-business-profile";
 
 /**
  * Lead Hunter proactive duty.
@@ -88,16 +89,25 @@ const crmHandoff: ReviewCheck = async (db, job) => {
 };
 
 async function savedTarget(db: Parameters<ReviewCheck>[0], job: WorkJobRow): Promise<{ target: string; location: string; qualification: string } | null> {
-  const { rows } = await db.query<{ settings: { targetCustomers?: string; roleAnswers?: Record<string, string> } | null }>(
-    `select v.settings
+  const { rows } = await db.query<{ settings: { targetCustomers?: string; roleAnswers?: Record<string, string> } | null; kind: "agency" | "client" }>(
+    `select v.settings, o.kind
        from agent_instances a
        join agent_config_versions v on v.id = a.active_config_version_id and v.org_id = a.org_id
+       join organizations o on o.id = a.org_id
       where a.id = $1 and a.org_id = $2`,
     [job.agent_instance_id, job.org_id],
   );
   const settings = rows[0]?.settings;
   if (!settings) return null;
   const target = (settings.roleAnswers?.targets || settings.targetCustomers || "").trim();
+  if (!target && rows[0]?.kind === "agency") {
+    // The internal workspace has approved prospecting defaults; a client must ask for its own.
+    return {
+      target: INTERNAL_PROSPECTING.targetCustomers.slice(0, 200),
+      location: INTERNAL_PROSPECTING.countries.join(", "),
+      qualification: INTERNAL_PROSPECTING.qualification.slice(0, 240),
+    };
+  }
   const qualification = (settings.roleAnswers?.qualification || "").trim();
   const locationMatch = qualification.match(/\b(?:in|near|around|across)\s+([^;,.]+)/i);
   return {
