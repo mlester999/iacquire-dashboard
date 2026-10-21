@@ -24,6 +24,9 @@ import {
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
 import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
+import { kickWorkJob } from "@/server/workforce/work-runner";
+import { createResearchRequest } from "@/server/leads/service";
+import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -45,6 +48,7 @@ export interface ChatMessageRow {
   content: string;
   status: "streaming" | "complete" | "failed" | "cancelled" | "superseded";
   run_id: string | null;
+  work_job_id: string | null;
   error_code: string | null;
   created_at: Date;
 }
@@ -99,7 +103,7 @@ export async function getConversation(ctx: OrgContext, conversationId: string, b
     if (!conv[0]) return null;
     const { rows } = await db.query<ChatMessageRow>(
       `select * from (
-         select id, role, content, status, run_id, error_code, created_at from chat_messages
+         select id, role, content, status, run_id, work_job_id, error_code, created_at from chat_messages
          where conversation_id = $1 and status <> 'superseded' and ($2::timestamptz is null or created_at < $2::timestamptz)
          order by created_at desc limit 60
        ) t order by created_at asc`,
@@ -171,7 +175,9 @@ export interface SendResult {
   conversationId: string;
   userMessageId: string | null;
   assistantMessageId: string;
-  runId: string;
+  /** Null when the employee accepted a research assignment as a durable job instead of a chat run. */
+  runId: string | null;
+  jobId?: string | null;
 }
 
 async function ensureAgentReady(ctx: OrgContext, role: AgentRoleKey) {
@@ -316,6 +322,47 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       sessionId: conv[0].hermes_session_id,
     };
   });
+
+  // 1b. A Lead Hunter research assignment becomes a durable job, not a generic chat answer.
+  // The parser is deterministic and the job is created before any provider call. Missing details
+  // produce a focused question; nothing is invented to make the request look complete.
+  const research = input.agentRole === "lead_hunter" && !input.regenerateMessageId && input.content
+    ? parseResearchAssignment(input.content)
+    : null;
+  if (research && ctx.can("leads.research")) {
+    if (research.missing.length) {
+      const clarificationId = await withSystem(async (db) => {
+        const { rows } = await db.query<{ id: string }>(
+          "insert into chat_messages (conversation_id, org_id, role, content, status) values ($1, $2, 'assistant', $3, 'complete') returning id",
+          [prepared.conversationId, ctx.org.orgId, researchClarification(research)],
+        );
+        await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
+        await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
+        return rows[0].id;
+      });
+      return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId: clarificationId, runId: null, jobId: null };
+    }
+
+    const created = await createResearchRequest(
+      ctx,
+      { prompt: research.prompt, campaignType: research.campaignType },
+      { conversationId: prepared.conversationId, deferKick: true },
+    );
+    const assistantMessageId = await withSystem(async (db) => {
+      const content = created.jobId
+        ? `I've started a research job for up to ${research.quantity} ${research.target} in ${research.location}. I'll record each verified stage here, including what I could and could not confirm. You can leave this page and come back; the job runs independently of this tab.`
+        : `I couldn't start the research job yet because I'm not connected for authorized work. The request is saved and can be run once the connection is restored.`;
+      const { rows } = await db.query<{ id: string }>(
+        "insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id) values ($1, $2, 'assistant', $3, 'complete', $4) returning id",
+        [prepared.conversationId, ctx.org.orgId, content, created.jobId],
+      );
+      await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
+      await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
+      return rows[0].id;
+    });
+    if (created.jobId) kickWorkJob(created.jobId);
+    return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: created.jobId };
+  }
 
   // 2. Create the assistant placeholder and run record (trusted server writes).
   type ChatSetupResult =

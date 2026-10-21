@@ -41,6 +41,7 @@ import { canChat, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { agentToolLabel } from "@/lib/agent-tools";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
+import { auditRoleConfiguration, recommendedSettings } from "@/lib/role-playbooks";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
 import { OperatingModeCard, type AgentMode } from "@/components/workforce/operating-controls";
@@ -83,6 +84,8 @@ interface Props {
   autonomousBlockedReason: string | null;
   agencyPaused: boolean;
   settings: AgentSettings | null;
+  /** Company profile facts used by the role configuration audit. Never invented by the employee. */
+  companyContext: { description: string; services: string; idealCustomers: string; operatingArea: string; industry: string };
   /** Version number when the Configure screen is editing a saved but unapplied version. */
   draftVersion: number | null;
   /** Storage status of the version being edited: pending_agency_review, rejected or draft. */
@@ -353,7 +356,7 @@ function issueForReason(reason: ReviewReasonView): FieldIssue {
   };
 }
 
-export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus, hasPendingReview, onSaved, onOpenHistory, isInternalWorkspace }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
+export function ConfigureTab({ meta, agent, settings, companyContext, draftVersion, draftStatus, hasPendingReview, onSaved, onOpenHistory, isInternalWorkspace }: Props & { settings: AgentSettings; hasPendingReview: boolean; onSaved: () => void; onOpenHistory: () => void }) {
   const operationsNotice = operationsManagerRuntimeNotice(meta.key, isInternalWorkspace ? "agency" : "client");
   const router = useRouter();
   const [s, setS] = React.useState<AgentSettings>(settings);
@@ -375,6 +378,32 @@ export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus,
   const dirty = !justSaved && JSON.stringify(s) !== JSON.stringify(settings);
   const nameError = s.displayName.trim().length === 0 ? "Enter a name for this employee." : null;
   const showNameError = Boolean(nameError) && (nameTouched || saveAttempted);
+  const configAudit = React.useMemo(
+    () => auditRoleConfiguration(meta.key, s, companyContext ?? { description: "", services: "", idealCustomers: "", operatingArea: "", industry: "" }),
+    [s, meta.key, companyContext],
+  );
+  const fillRecommended = () => {
+    const recommended = recommendedSettings(meta.key);
+    const next: AgentSettings = { ...s };
+    const textFields: Array<keyof Pick<AgentSettings, "responsibilities" | "goals" | "neverPromise" | "escalateWhen" | "customInstruction">> = [
+      "responsibilities", "goals", "neverPromise", "escalateWhen", "customInstruction",
+    ];
+    for (const field of textFields) {
+      if (!next[field].trim()) next[field] = recommended[field];
+    }
+    const mergedAnswers = { ...recommended.roleAnswers, ...s.roleAnswers };
+    for (const [key, value] of Object.entries(mergedAnswers)) {
+      if (typeof value === "string" && !value.trim()) mergedAnswers[key] = recommended.roleAnswers[key] ?? value;
+    }
+    next.roleAnswers = mergedAnswers;
+    setS(next);
+    setJustSaved(false);
+    setResult(null);
+    setCheck({ state: "checking" });
+    toast.success("Recommended role fields added", {
+      description: "Only blank fields were filled. Company-specific facts are left for you to provide, then save to apply.",
+    });
+  };
 
   React.useEffect(() => {
     if (!dirty) return;
@@ -656,6 +685,40 @@ export function ConfigureTab({ meta, agent, settings, draftVersion, draftStatus,
           </ConfigSection>
 
           <ConfigSection id="config-role" step="02" title="Role & responsibilities" description={`The work ${agent.displayName} should own. Short, specific answers work best; blank optional fields use safe defaults.`}>
+            <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium"><Sparkles className="size-3.5 text-primary" aria-hidden /> Role setup check</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-muted">
+                    {configAudit.employeeComplete}/{configAudit.employeeTotal} role fields and {configAudit.companyComplete}/{configAudit.companyTotal} company facts are filled.
+                    Readiness proves this employee may run; this check shows whether its configuration contains enough specific information to do useful work.
+                  </p>
+                  {configAudit.missingCompanyFacts.length > 0 && (
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-warning-ink">
+                      Still needed from your company profile: {configAudit.missingCompanyFacts.join(", ")}. The employee must not invent these.
+                    </p>
+                  )}
+                </div>
+                <Button type="button" size="sm" variant="secondary" onClick={fillRecommended}>
+                  <Wand2 className="size-3.5" aria-hidden /> Fill blank fields
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {configAudit.items.map((item) => (
+                  <span
+                    key={`${item.scope}:${item.key}`}
+                    title={item.detail}
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                      item.state === "complete" ? "border-success/25 bg-success-soft text-success-ink" : "border-line-strong bg-surface text-muted",
+                    )}
+                  >
+                    {item.state === "complete" ? <Check className="size-3" aria-hidden /> : <Info className="size-3" aria-hidden />}
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
             {meta.questions.map((q) => (
               <GuidedField
                 key={q.id}

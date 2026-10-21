@@ -35,6 +35,7 @@ import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
 import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
+import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 
 export interface ScheduledJob {
   name: string;
@@ -137,6 +138,10 @@ export const JOBS: ScheduledJob[] = [
   // Investigation history and stored briefings older than 180 days are removed, 100 of each at a time. Confirmed actions stay in
   // aqi_ops_actions and the audit log.
   { name: "aqiOperationsRetention", run: async () => (await purgeExpiredOpsConversations()) + (await purgeExpiredBriefings()) },
+  // AI work recovery is a fast, idempotent sweep: a job whose worker lease expired is re-queued
+  // (while attempts remain) or failed honestly. It never executes provider work inside the tick;
+  // the dedicated workforce worker (scripts/workforce-worker.ts) runs queued jobs.
+  { name: "aiWorkRecovery", everyMinutes: 5, run: async () => { const r = await recoverExpiredWorkJobs(); return r.retried + r.failed + r.cancelled; } },
 ];
 
 /**

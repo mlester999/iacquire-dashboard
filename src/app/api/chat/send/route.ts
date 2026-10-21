@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       clientMessageId: parsed.data.clientMessageId,
       regenerateMessageId: parsed.data.regenerateMessageId,
     });
+    if (!result.runId) return NextResponse.json(result);
     const stream = sseStream(result.runId, ctx.user.id);
     if (!stream) return NextResponse.json(result);
     return new Response(stream, {

@@ -10,7 +10,7 @@ import {
   type ReplyLength,
   type Tone,
 } from "@/lib/agent-settings";
-import { immutablePolicy, POLICY_VERSION, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
+import { immutablePolicy, POLICY_VERSION, ROLE_OPERATING_STANDARDS, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
 import { detectRiskFlags } from "@/lib/instruction-risk";
 
 // ---------------------------------------------------------------------------
@@ -203,6 +203,9 @@ export function compileAgentConfig(input: {
     "",
     "## Your role",
     ROLE_RESPONSIBILITIES[input.role],
+    "",
+    "## Role operating standard",
+    ...ROLE_OPERATING_STANDARDS[input.role].map((line) => `- ${line}`),
     "",
     "## How to communicate",
     `- Tone: ${TONE_COPY[settings.tone].label}. ${TONE_GUIDE[settings.tone]}`,

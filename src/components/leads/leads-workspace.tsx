@@ -31,6 +31,7 @@ import { Segmented, Sheet, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero,CoverageBar } from "@/components/ui/workspace";
 import { createResearchAction, requestCrmImportAction, retryResearchAction, reviewLeadsAction, saveTargetingAction } from "@/app/actions/leads";
 import { AGENT_BY_KEY, type AgentStatus } from "@/lib/agents";
+import { WorkJobPanel } from "@/components/work/job-progress";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 
 interface Lead {
@@ -46,6 +47,8 @@ interface Lead {
   buying_signals: string[];
   evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null }>;
   duplicate_status: string;
+  duplicate_matches?: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
+  public_contact?: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null };
   review_status: "pending" | "approved" | "rejected";
   crm_sync_status: string;
   created_at: string;
@@ -61,6 +64,11 @@ interface ResearchRequest {
   created_at: string;
   completed_at: string | null;
   requested_by_name: string | null;
+  work_job_id: string | null;
+  job_status: string | null;
+  job_stage: string | null;
+  job_stage_label: string | null;
+  job_progress: Record<string, unknown> | null;
 }
 
 interface Targeting {
@@ -446,8 +454,30 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           <dl className="grid grid-cols-2 gap-3 text-[12.5px]">
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">Duplicate check</dt>
-              <dd className="mt-1.5">{lead.duplicate_status === "no_match" ? <StatusPill tone="success" size="sm">No match</StatusPill> : <StatusPill tone="warning" size="sm">{sentenceCase(lead.duplicate_status)}</StatusPill>}</dd>
+              <dd className="mt-1.5">
+                {lead.duplicate_status === "no_match" ? <StatusPill tone="success" size="sm">No match</StatusPill> : <StatusPill tone="warning" size="sm">{sentenceCase(lead.duplicate_status)}</StatusPill>}
+                {Boolean(lead.duplicate_matches?.length) && (
+                  <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-warning-ink">
+                    {lead.duplicate_matches!.slice(0, 3).map((match) => (
+                      <li key={`${match.kind}:${match.id}`}>
+                        {match.kind === "crm_company" ? "CRM company" : "Existing lead"}: {match.label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
             </div>
+            {lead.public_contact && (lead.public_contact.name || lead.public_contact.email || lead.public_contact.phone) && (
+              <div className="rounded-xl bg-surface-2 p-3">
+                <dt className="text-muted">Public business contact</dt>
+                <dd className="mt-1 space-y-0.5 text-[12px] text-ink-2">
+                  {lead.public_contact.name && <p>{lead.public_contact.name}{lead.public_contact.role ? ` · ${lead.public_contact.role}` : ""}</p>}
+                  {lead.public_contact.email && <p className="break-all">{lead.public_contact.email}</p>}
+                  {lead.public_contact.phone && <p>{lead.public_contact.phone}</p>}
+                  {lead.public_contact.source_url && <a href={lead.public_contact.source_url} target="_blank" rel="noopener noreferrer nofollow" className="text-primary hover:underline">Source</a>}
+                </dd>
+              </div>
+            )}
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">CRM</dt>
               <dd className="mt-1.5"><StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill></dd>
@@ -490,7 +520,8 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
   const [prompt, setPrompt] = React.useState("");
   const [campaign, setCampaign] = React.useState<"business" | "influencer">("business");
   const [pending, setPending] = React.useState(false);
-  const running = requests.some((r) => r.status === "queued" || r.status === "running");
+  const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
+  const running = requests.some((r) => r.status === "queued" || r.status === "running" || r.job_status === "queued" || r.job_status === "running");
 
   React.useEffect(() => {
     if (!running) return;
@@ -504,6 +535,7 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
     setPending(false);
     if (!res.ok) return toast.error(res.error);
     toast[res.data.status === "queued" ? "success" : "info"](res.data.status === "queued" ? "Research started" : "Request saved — it will run once your Lead Hunter is online");
+    setActiveJobId(res.data.jobId ?? null);
     setPrompt("");
     router.refresh();
   };
@@ -543,6 +575,15 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
           <Button variant="brand" className="w-full" loading={pending} disabled={!canResearch || prompt.trim().length < 3} onClick={submit}>
             <Radar className="size-4" /> {hunterReady ? "Start research" : "Save request"}
           </Button>
+          {activeJobId && (
+            <WorkJobPanel
+              jobId={activeJobId}
+              compact
+              onDone={() => {
+                router.refresh();
+              }}
+            />
+          )}
           {!canResearch && <p className="text-[12.5px] text-muted">Only owners and admins can request research.</p>}
       </Panel>
       <Panel className="lg:col-span-3" icon={<Clock />} tone="neutral" title="Research history" description="Real status of every request.">
@@ -558,12 +599,17 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
                     <span className="ml-auto"><InfoChip icon={<Clock />}>{formatDateTime(r.created_at, timeZone)}</InfoChip></span>
                   </div>
                   <p className="mt-2 text-[13.5px] leading-snug text-ink">{r.prompt}</p>
+                  {r.job_stage_label && (r.job_status === "running" || r.job_status === "queued") && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-primary-ink">
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden /> {r.job_stage_label}…
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {r.status === "completed" && <InfoChip icon={<CheckCircle2 />}>{r.result_count} result{r.result_count === 1 ? "" : "s"} added to review</InfoChip>}
                     {r.status !== "completed" && r.failure_reason && <span className="text-[12px] text-danger-ink">{r.failure_reason}</span>}
                     {r.requested_by_name && <InfoChip>{r.requested_by_name}</InfoChip>}
                   </div>
-                  {(r.status === "waiting_for_agent" || r.status === "failed") && hunterReady && canResearch && (
+                  {(r.status === "waiting_for_agent" || r.status === "failed" || r.status === "cancelled" || r.job_status === "failed") && hunterReady && canResearch && (
                     <Button
                       size="sm"
                       variant="ghost"

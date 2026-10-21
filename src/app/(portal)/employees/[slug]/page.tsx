@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { requireOrgContext } from "@/server/tenancy/context";
-import { editableSettings, getAgentByRole, listConfigVersions } from "@/server/workforce/service";
+import { editableSettings, getAgentByRole, listConfigVersions, loadCompanyContext } from "@/server/workforce/service";
 import { withSystem, withUser } from "@/server/db";
 import { EmployeeDetail } from "@/components/workforce/employee-detail";
 import { AGENT_BY_SLUG } from "@/lib/agents";
@@ -33,7 +33,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const canViewKnowledge = ctx.can("knowledge.view");
   const requestedVersion = typeof version === "string" && /^[0-9a-f-]{36}$/i.test(version) ? version : null;
 
-  const [controls, versions, settings, knowledgeView, instructionOverview, extra, internalVerification] = await Promise.all([
+  const [controls, versions, settings, companyContext, knowledgeView, instructionOverview, extra, internalVerification] = await Promise.all([
     withSystem(async (db) => {
       const { rows } = await db.query<{ last_health_ok: boolean | null }>("select last_health_ok from agent_instances where id = $1 and org_id = $2", [agent.id, ctx.org.orgId]);
       const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name });
@@ -42,6 +42,13 @@ export default async function EmployeePage({ params, searchParams }: { params: P
     }),
     canConfigure ? listConfigVersions(ctx.user.id, agent.id) : Promise.resolve([]),
     canConfigure ? withSystem((db) => editableSettings(db, agent.id, ctx.org.orgId, requestedVersion)) : Promise.resolve(null),
+    withSystem((db) => loadCompanyContext(db, ctx.org.orgId)).then((company) => ({
+      description: company.description ?? "",
+      services: company.services ?? "",
+      idealCustomers: company.idealCustomers ?? "",
+      operatingArea: company.operatingArea ?? "",
+      industry: company.industry ?? "",
+    })),
     canViewKnowledge ? listEmployeeKnowledge(ctx, agent.id).catch(() => null) : Promise.resolve(null),
     canConfigure
       ? getEmployeeInstructionOverview({ orgId: ctx.org.orgId, agentId: agent.id, role: meta.key, companyName: ctx.org.name })
@@ -160,6 +167,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       autonomousBlockedReason={controls.autonomousBlockedReason}
       agencyPaused={controls.agencyPaused}
       settings={settings?.settings ?? null}
+      companyContext={companyContext}
       draftVersion={settings?.pendingVersion ?? null}
       draftStatus={settings?.draftStatus ?? null}
       isInternalWorkspace={ctx.org.kind === "agency"}

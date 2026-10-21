@@ -192,7 +192,7 @@ describe("leads", () => {
 
   it("neutralises spreadsheet formulas in CSV export", () => {
     const csv = leadsToCsv([
-      { id: "1", business_name: "=HYPERLINK(\"http://x\")", website: null, domain: null, industry: null, location: null, score: 10, score_breakdown: {}, qualification_summary: null, buying_signals: [], evidence: [], duplicate_status: "no_match", review_status: "pending", crm_sync_status: "not_synced", created_at: new Date(0) },
+      { id: "1", business_name: "=HYPERLINK(\"http://x\")", website: null, domain: null, industry: null, location: null, score: 10, score_breakdown: {}, qualification_summary: null, buying_signals: [], evidence: [], duplicate_status: "no_match", duplicate_matches: [], public_contact: {}, review_status: "pending", crm_sync_status: "not_synced", created_at: new Date(0) },
     ]);
     expect(csv.split("\n")[1].startsWith(`"'=HYPERLINK`)).toBe(true);
   });
