@@ -7,7 +7,8 @@ import { notifyOrgRoles } from "@/server/notifications";
 import { isSwitching, assertNativeOwner } from "@/server/crm/workspace";
 import { MAX_EVENT_DEPTH } from "@/server/crm/events";
 import { callN8nWorkflow, type N8nCallResult } from "@/server/integrations/n8n-actions";
-import { executeStep, stepLabel, type StepContext, type StepOutcome } from "@/server/crm/workflows/executors";
+import { performOutbound } from "@/server/automation-studio/outbound";
+import { executeStep, stepLabel, type ExternalCall, type StepContext, type StepOutcome } from "@/server/crm/workflows/executors";
 import {
   RUN_COLUMNS, StepFailure, VERSION_COLUMNS, attemptKeyFor, backoffMs, effectKeyFor, iso, isPremiumVersion, isRetryable, loadApprovalState, notifyWorkflowProblem, publicMessage, versionAuthorized,
   workflowActor, type RunContextData, type RunRow, type VersionRow,
@@ -57,7 +58,7 @@ interface ExternalPlan {
   rowId: number;
   stepKey: string;
   attempt: number;
-  input: { orgId: string; mappingId: string; payload: Record<string, unknown>; idempotencyKey: string };
+  call: ExternalCall;
 }
 
 interface State {
@@ -340,7 +341,7 @@ async function advance(runId: string, token: string, now: Date): Promise<Advance
         delete ctx.approval;
         ctx.inflight = { key: step.key, rowId };
         await db.query("update crm_workflow_runs set context = $2 where id = $1", [run.id, ctxJson(ctx)]);
-        plan = { runId: run.id, rowId, stepKey: step.key, attempt, input: out.call.input };
+        plan = { runId: run.id, rowId, stepKey: step.key, attempt, call: out.call };
         return { kind: "stop", executed: 0 };
       }
       return applyOutcome(db, st, ctx, step, out, { attempt, effectKey, approvalRowId, now });
@@ -398,9 +399,18 @@ async function recordFailure(runId: string, token: string, now: Date, err: unkno
 /** Phases two and three of an n8n step: the call (outside any transaction), then recording its answer. */
 async function finishExternal(plan: ExternalPlan, token: string, now: Date): Promise<Advance> {
   let result: N8nCallResult | null = null;
+  let extra: Record<string, unknown> = {};
+  let retryAfterMs = 0;
   let thrown: unknown = null;
+  const where = plan.call.kind === "n8n" ? "n8n" : "the other system";
   try {
-    result = await callN8nWorkflow(plan.input);
+    if (plan.call.kind === "n8n") result = await callN8nWorkflow(plan.call.input);
+    else {
+      const out = await performOutbound(plan.call.input);
+      result = { status: out.status, retryable: out.retryable, detail: out.detail, httpStatus: out.httpStatus };
+      extra = out.record;
+      retryAfterMs = Math.min(3_600_000, (out.retryAfterSeconds ?? 0) * 1000);
+    }
   } catch (err) {
     thrown = err;
   }
@@ -415,7 +425,7 @@ async function finishExternal(plan: ExternalPlan, token: string, now: Date): Pro
     const held = status === "blocked" && result?.retryable === true;
     await settleStepRow(db, plan.rowId, {
       status: sent ? "completed" : held ? "cancelled" : "failed",
-      result: { status, detail, httpStatus: result?.httpStatus ?? null, duplicate: result?.duplicate ?? false },
+      result: { status, detail, httpStatus: result?.httpStatus ?? null, duplicate: result?.duplicate ?? false, ...extra },
       error: sent ? null : held ? `Not started: ${detail} The run is on hold and tries this step again later.` : detail,
       now,
     });
@@ -434,17 +444,17 @@ async function finishExternal(plan: ExternalPlan, token: string, now: Date): Pro
     const label = stepLabel(step);
     if (status === "unknown") {
       ctx.outcome = "external_unknown";
-      return endRun(db, st, ctx, "failed", `We couldn't confirm whether n8n ran "${label}" (${detail}). ${UNKNOWN_NEXT}`, now, 1, true);
+      return endRun(db, st, ctx, "failed", `We couldn't confirm whether ${where} ran "${label}" (${detail}). ${UNKNOWN_NEXT}`, now, 1, true);
     }
     if (retryable && plan.attempt < WORKFLOW_LIMITS.maxAttempts) {
       await db.query(
         "update crm_workflow_runs set status = 'queued', attempts = $2, next_run_at = $3, claimed_at = null, last_error = $4, context = $5 where id = $1",
-        [st.run.id, plan.attempt, new Date(now.getTime() + backoffMs(plan.attempt)).toISOString(), detail.slice(0, 500), ctxJson(ctx)],
+        [st.run.id, plan.attempt, new Date(now.getTime() + Math.max(backoffMs(plan.attempt), retryAfterMs)).toISOString(), detail.slice(0, 500), ctxJson(ctx)],
       );
       return { kind: "stop", executed: 1 };
     }
     await db.query("update crm_workflow_runs set attempts = $2 where id = $1", [st.run.id, plan.attempt]);
-    return endRun(db, st, ctx, retryable ? "dead" : "failed", `"${label}" didn't run in n8n: ${detail}`, now, 1, true);
+    return endRun(db, st, ctx, retryable ? "dead" : "failed", `"${label}" didn't run in ${where}: ${detail}`, now, 1, true);
   });
 }
 

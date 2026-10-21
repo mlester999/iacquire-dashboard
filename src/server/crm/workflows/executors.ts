@@ -24,9 +24,11 @@ import { zonedToInstant } from "@/lib/calendars/slots";
 import {
   STEP_KINDS, UPDATABLE_FIELDS, durationMinutes,
   type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig, type InternalNoteConfig, type MoveStageConfig,
-  type N8nConfig, type NotifyTeamConfig, type RequestReviewConfig, type SendMessageConfig, type TagsConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
+  type HttpRequestConfig, type SlackMessageConfig, type N8nConfig, type NotifyTeamConfig, type RequestReviewConfig, type SendMessageConfig, type TagsConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { describeMissing, renderMessage, renderTemplate } from "@/lib/messaging/tokens";
+import { normalizeContentType } from "@/lib/automation-studio/outbound";
+import { slackText, type OutboundCall } from "@/server/automation-studio/outbound";
 import { LEAD_STATUS_LABELS, type LeadStatus } from "@/lib/crm/types";
 
 /**
@@ -54,7 +56,12 @@ export type StepOutcome =
   | { type: "done"; status: "completed" | "skipped"; result: Record<string, unknown>; next?: string | null; messageId?: string | null; opportunityId?: string | null }
   | { type: "wait"; until: Date; result: Record<string, unknown> }
   | { type: "end"; result: Record<string, unknown> }
-  | { type: "external"; call: { kind: "n8n"; input: { orgId: string; mappingId: string; payload: Record<string, unknown>; idempotencyKey: string } }; result: Record<string, unknown> };
+  | { type: "external"; call: ExternalCall; result: Record<string, unknown> };
+
+/** An outside call a step asks the runner to make once its claim is recorded: n8n, or a connection (HTTP or Slack). */
+export type ExternalCall =
+  | { kind: "n8n"; input: { orgId: string; mappingId: string; payload: Record<string, unknown>; idempotencyKey: string } }
+  | { kind: "connection"; input: OutboundCall };
 
 const done = (result: Record<string, unknown>, extra: Partial<Extract<StepOutcome, { type: "done" }>> = {}): StepOutcome => ({ type: "done", status: "completed", result, ...extra });
 const skipped = (detail: string, extra: Record<string, unknown> = {}): StepOutcome => ({ type: "done", status: "skipped", result: { outcome: "skipped", detail, ...extra } });
@@ -606,6 +613,89 @@ async function execN8n(sc: StepContext, c: N8nConfig): Promise<StepOutcome> {
   return { type: "external", call: { kind: "n8n", input: { orgId: sc.org.id, mappingId: c.mappingId, payload, idempotencyKey: sc.effectKey } }, result: { mappingId: c.mappingId } };
 }
 
+// ---- Connections (HTTP request, Slack) ----------------------------------------------------------------------------------------------------
+
+interface ConnectionLook {
+  name: string;
+  kind: string;
+  status: string;
+  settings: { host?: string; pathPrefix?: string; methods?: string[] };
+}
+
+async function loadConnection(sc: StepContext, id: string): Promise<ConnectionLook | null> {
+  const exists = (await sc.db.query<{ ok: boolean }>("select to_regclass('public.automation_connections') is not null as ok")).rows[0]?.ok;
+  if (!exists) return null;
+  return (await sc.db.query<ConnectionLook>("select name, kind, status, settings from automation_connections where id = $1 and org_id = $2", [id, sc.org.id])).rows[0] ?? null;
+}
+
+/** Fills placeholders for text sent outside: a value with nothing in it is left out, and the result is not tidied (it may be JSON or a form). */
+async function fillOutbound(sc: StepContext, text: string, opts: { encode?: boolean; strict?: boolean } = {}): Promise<string> {
+  if (!text.includes("{{")) return text;
+  const tv = await tokenValuesFor(sc.db, sc.org.id, { contactId: sc.run.contactId, timezone: sc.org.timezone, now: sc.now });
+  const values = opts.encode ? Object.fromEntries(Object.entries(tv.values).map(([k, v]) => [k, typeof v === "string" ? encodeURIComponent(v) : v])) : tv.values;
+  const r = renderTemplate(text, values as typeof tv.values, { singleLine: true });
+  if (opts.strict && r.missing.length) throw new StepFailure(`The path needs ${r.missing.map((m) => `{{${m}}}`).join(", ")}, which this run doesn't have a value for, so nothing was called.`);
+  return r.text;
+}
+
+async function fillJson(sc: StepContext, text: string): Promise<string> {
+  const walk = async (v: unknown): Promise<unknown> => {
+    if (typeof v === "string") return fillOutbound(sc, v);
+    if (Array.isArray(v)) return Promise.all(v.map(walk));
+    if (v && typeof v === "object") return Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) => [k, await walk(x)])));
+    return v;
+  };
+  return JSON.stringify(await walk(JSON.parse(text)));
+}
+
+async function execHttpRequest(sc: StepContext, c: HttpRequestConfig): Promise<StepOutcome> {
+  const conn = await loadConnection(sc, c.connectionId);
+  if (!conn || conn.kind !== "http" || conn.status === "revoked") throw new StepFailure("The connection this step uses doesn't exist any more (or was revoked). Edit the workflow.");
+  if (!conn.settings.methods?.includes(c.method)) throw new StepFailure(`The connection "${conn.name}" doesn't allow ${c.method} requests. Edit the workflow.`);
+  const path = await fillOutbound(sc, c.path, { encode: true, strict: true });
+  const query = Object.fromEntries(await Promise.all((c.query ?? []).map(async (q) => [q.name, await fillOutbound(sc, q.value)] as const)));
+  let body: string | undefined;
+  let contentType: "application/json" | "application/x-www-form-urlencoded" | "text/plain" | undefined;
+  if (c.bodyType === "json" && c.body) {
+    body = await fillJson(sc, c.body);
+    contentType = "application/json";
+  } else if (c.bodyType === "text" && c.body) {
+    body = await fillOutbound(sc, c.body);
+    contentType = "text/plain";
+  } else if (c.bodyType === "form") {
+    body = new URLSearchParams(await Promise.all((c.form ?? []).map(async (f) => [f.name, await fillOutbound(sc, f.value)] as [string, string]))).toString();
+    contentType = "application/x-www-form-urlencoded";
+  }
+  if (contentType && !normalizeContentType(contentType)) throw new StepFailure("That content type can't be sent.");
+  const host = conn.settings.host ?? "";
+  const shown = `${host}${conn.settings.pathPrefix ?? ""}${path}`;
+  if (sc.dryRun) {
+    if (conn.status !== "active") return wouldSkip(`The connection "${conn.name}" ${conn.status === "unverified" ? "hasn't been verified" : "needs attention"}, so the step would wait.`, { reason: "connection_unavailable" });
+    if (!sc.version.authorized) return wouldSkip("An owner must approve this version before it calls anything outside iAcquire.", { reason: "authorization_needed" });
+    return would(`Would send ${c.method} ${shown} through "${conn.name}"${Object.keys(query).length ? ` with ${Object.keys(query).length} query value${Object.keys(query).length === 1 ? "" : "s"}` : ""}${body !== undefined ? ` and a ${c.bodyType} body` : ""}. Nothing is sent in a test.`, { host, method: c.method });
+  }
+  assertAuthorized(sc);
+  const call: OutboundCall = {
+    kind: "http", orgId: sc.org.id, connectionId: c.connectionId, origin: "step", workflowId: sc.workflow.id, runId: sc.run.id, idempotencyKey: sc.effectKey,
+    method: c.method, path, query, headers: Object.fromEntries((c.headers ?? []).map((h) => [h.name, h.value])), body, contentType, timeoutSeconds: c.timeoutSeconds, safeToRepeat: c.safeToRepeat === true,
+  };
+  return { type: "external", call: { kind: "connection", input: call }, result: { connection: conn.name, host, method: c.method } };
+}
+
+async function execSlackMessage(sc: StepContext, c: SlackMessageConfig): Promise<StepOutcome> {
+  const conn = await loadConnection(sc, c.connectionId);
+  if (!conn || conn.kind !== "slack_webhook" || conn.status === "revoked") throw new StepFailure("The Slack connection this step uses doesn't exist any more (or was revoked). Edit the workflow.");
+  const text = slackText(await fillOutbound(sc, c.text));
+  if (sc.dryRun) {
+    if (conn.status !== "active") return wouldSkip(`The Slack connection "${conn.name}" ${conn.status === "unverified" ? "hasn't been verified" : "needs attention"}, so the step would wait.`, { reason: "connection_unavailable" });
+    if (!sc.version.authorized) return wouldSkip("An owner must approve this version before it posts anything outside iAcquire.", { reason: "authorization_needed" });
+    return would(`Would post to Slack through "${conn.name}": “${text.slice(0, 200)}”. Nothing is posted in a test.`, { preview: text.slice(0, 300) });
+  }
+  assertAuthorized(sc);
+  const call: OutboundCall = { kind: "slack", orgId: sc.org.id, connectionId: c.connectionId, origin: "step", workflowId: sc.workflow.id, runId: sc.run.id, idempotencyKey: sc.effectKey, text };
+  return { type: "external", call: { kind: "connection", input: call }, result: { connection: conn.name } };
+}
+
 async function execAiTask(sc: StepContext, c: AiTaskConfig, stepKey: string): Promise<StepOutcome> {
   const contact = await loadContact(sc.db, sc.org.id, sc.run.contactId);
   const agent = await sc.db.query<{ display_name: string; enabled: boolean; mode: string; status: string; last_health_ok: boolean | null; hermes_base_url: string | null; hermes_profile: string | null; credential_id: string | null; tool_inventory_contract: string | null; tool_inventory_digest: string | null; tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null; tool_inventory_tool_count: number | null }>(
@@ -651,6 +741,8 @@ export async function executeStep(sc: StepContext, step: WorkflowStep): Promise<
     case "internal_note": return execNote(sc, cfg as InternalNoteConfig);
     case "webhook": return execWebhook(sc, cfg as WebhookConfig);
     case "n8n": return execN8n(sc, cfg as N8nConfig);
+    case "http_request": return execHttpRequest(sc, cfg as HttpRequestConfig);
+    case "slack_message": return execSlackMessage(sc, cfg as SlackMessageConfig);
     case "ai_task": return execAiTask(sc, cfg as AiTaskConfig, step.key);
     case "end": return { type: "end", result: sc.dryRun ? { dryRun: true, outcome: "would_end", detail: "The workflow would end here." } : { detail: "The workflow ended here." } };
   }

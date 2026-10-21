@@ -5,6 +5,7 @@ import { loadFieldDefinitions } from "@/server/crm/fields";
 import { coerceFieldValue } from "@/lib/crm/fields";
 import { agentLiveRunsVerified } from "@/server/crm/agent-tools/tasks";
 import { n8nStepReadiness } from "@/server/integrations/n8n-actions";
+import { connectionsForOptions } from "@/server/automation-studio/connections";
 import {
   hasErrors, parseDefinition, validateDefinition, validationContextFrom, type MessageChannel, type UpdateFieldConfig, type ValidationContext, type ValidationIssue, type WorkflowDefinition,
 } from "@/lib/crm/workflow/spec";
@@ -37,6 +38,8 @@ export interface WorkflowBuilderOptions {
   forms?: Array<{ id: string; name: string; status: string }>;
   /** The workspace's configuration values ({{custom_values.<key>}} in task titles, notes, notifications and deal names). */
   customValues?: Array<{ key: string; label: string }>;
+  /** Connections to outside systems that aren't revoked (never their secrets): what an HTTP or Slack step may name. */
+  connections?: Array<{ id: string; name: string; kind: "http" | "slack_webhook"; status: string; host: string; methods: string[] }>;
 }
 
 const hostOf = (url: string) => {
@@ -85,6 +88,7 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
   const types = await q<{ id: string; name: string; calendar_id: string }>("select id, name, calendar_id from crm_appointment_types where org_id = $1 and archived_at is null order by lower(name)");
   const forms = await q<{ id: string; name: string; status: string }>("select id, name, status from crm_forms where org_id = $1 and archived_at is null order by lower(name)");
   const customValues = await q<{ key: string; label: string }>("select key, label from crm_custom_values where org_id = $1 order by lower(label), key");
+  const connections = await connectionsForOptions(db, orgId);
   return {
     timezone: org?.timezone ?? "UTC",
     tags,
@@ -105,6 +109,7 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
     appointmentTypes: types.map((t) => ({ id: t.id, name: t.name, calendarId: t.calendar_id })),
     forms,
     customValues,
+    connections,
   };
 }
 

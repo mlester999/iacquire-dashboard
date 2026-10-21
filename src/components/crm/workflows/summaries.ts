@@ -9,8 +9,8 @@ import { CREATED_VIA_LABELS, LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS } from
 import { CALL_STATUS_LABELS } from "@/components/crm/calls/model";
 import {
   EFFECT_LABELS as SPEC_EFFECT_LABELS, isStepKind, isTriggerType, OPPORTUNITY_CONDITION_FIELDS, STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS,
-  type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig, type InternalNoteConfig, type MoveStageConfig,
-  type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type TriggerConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
+  type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig, type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig,
+  type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TriggerConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 
 type Tone = "neutral" | "primary" | "success" | "warning" | "danger" | "violet" | "outline";
@@ -25,10 +25,12 @@ const EFFECT_LABELS: Record<string, string> = {
   send_sms: "Sends SMS",
   send_whatsapp: "Sends WhatsApp",
   webhook: "Calls a webhook",
+  http: "Calls a web address",
+  slack: "Posts to Slack",
   n8n: "Runs n8n",
   hermes: "Asks an AI employee",
 };
-export const EFFECT_TONE: Record<string, Tone> = { send_email: "primary", send_sms: "primary", send_whatsapp: "primary", webhook: "warning", n8n: "warning", hermes: "violet" };
+export const EFFECT_TONE: Record<string, Tone> = { send_email: "primary", send_sms: "primary", send_whatsapp: "primary", webhook: "warning", http: "warning", slack: "warning", n8n: "warning", hermes: "violet" };
 export function effectLabel(effect: string): string {
   return EFFECT_LABELS[effect] ?? effect.replace(/_/g, " ");
 }
@@ -109,6 +111,7 @@ export interface NameSource {
   assignmentRules?: Array<{ id: string; name: string }> | null;
   n8nMappings?: Array<{ id: string; label: string }>;
   webhooks?: Array<{ id: string; name: string }>;
+  connections?: Array<{ id: string; name: string }>;
   employees?: Array<{ roleKey: string; name: string }>;
   calendars?: Array<{ id: string; name: string }>;
   appointmentTypes?: Array<{ id: string; name: string }>;
@@ -125,6 +128,7 @@ export interface Names {
   rule: (id: string) => string | undefined;
   n8n: (id: string) => string | undefined;
   webhook: (id: string) => string | undefined;
+  connection: (id: string) => string | undefined;
   agent: (roleKey: string) => string;
   calendar: (id: string) => string | undefined;
   appointmentType: (id: string) => string | undefined;
@@ -146,6 +150,7 @@ export function namesFrom(src: NameSource): Names {
   const rules = map(src.assignmentRules, (r) => r.name);
   const n8n = map(src.n8nMappings, (m) => m.label);
   const webhooks = map(src.webhooks, (w) => w.name);
+  const connections = map(src.connections, (c) => c.name);
   const agents = new Map((src.employees ?? []).map((e) => [e.roleKey, e.name] as const));
   const calendars = map(src.calendars, (c) => c.name);
   const types = map(src.appointmentTypes, (t) => t.name);
@@ -160,6 +165,7 @@ export function namesFrom(src: NameSource): Names {
     rule: (id) => rules.get(id),
     n8n: (id) => n8n.get(id),
     webhook: (id) => webhooks.get(id),
+    connection: (id) => connections.get(id),
     agent: (k) => agents.get(k) ?? AGENT_ROLES.find((r) => r.key === k)?.shortName ?? k.replace(/_/g, " "),
     calendar: (id) => calendars.get(id),
     appointmentType: (id) => types.get(id),
@@ -347,6 +353,16 @@ export function stepSummary(step: Pick<WorkflowStep, "kind" | "config">, names: 
       const w = step.config as WebhookConfig;
       if (!w.subscriptionId) return "Choose a webhook endpoint";
       return `Send a signed request to “${names.webhook(w.subscriptionId) ?? "an inactive endpoint"}”${w.includeContact ? " with the contact's details" : ""}`;
+    }
+    case "http_request": {
+      const h = step.config as HttpRequestConfig;
+      if (!h.connectionId) return "Choose a connection";
+      return `${h.method} ${names.connection(h.connectionId) ?? "an unavailable connection"}${h.path ? ` ${clip(h.path, 40)}` : ""}`;
+    }
+    case "slack_message": {
+      const m = step.config as SlackMessageConfig;
+      if (!m.connectionId) return "Choose a Slack connection";
+      return m.text?.trim() ? `Post to Slack (${names.connection(m.connectionId) ?? "an unavailable connection"}): “${clip(m.text)}”` : "Write the Slack message";
     }
     case "ai_task": {
       const a = step.config as AiTaskConfig;

@@ -106,6 +106,30 @@ connection points carried an `aria-label` without a role, failing the accessibil
 - Anything on a hosted database or a deployed build. Nothing has been pushed, deployed or migrated outside local and test databases.
 - Production-build behaviour of the browser pages. The run is against `next dev` (webpack): React's development-only double mounting and
   React Flow's "parent container needs a width and a height" warning on first mount appear there; the production build has not been driven in a browser.
-- Dragging from the palette onto the canvas, dragging a connection between two nodes, and keyboard-only canvas use were not driven (clicking a palette
-  entry, undo, redo, history, publish and the mode switch were). The pure gesture layer for them is unit-tested.
+- Keyboard-only canvas use was not driven. (Dragging from the palette onto the canvas, drawing a connection between two nodes, deleting with the keyboard and
+  undo were driven in Phase C: `scripts/automation-browser-qa-c.mjs`.)
 - That a customer-facing message was sent: none is. Every automation the QA builds only creates tasks and notifications inside the QA copy.
+
+## Phase C additions (2026-10-21)
+
+- **Real model**: the builder was evaluated against a real model, hardened against prompt injection, claims without changes and edits that race the person's
+  own, and refuses to run on a non-public model address in production. See [ai-evaluation.md](ai-evaluation.md).
+- **Connections** (`/automation-studio/connections`) and the **HTTP request** and **Slack message** steps: [connections-and-outbound.md](connections-and-outbound.md).
+  The step settings (`step-panel.tsx`) show a connection's name and host, never an address or a secret.
+- **Ready-made automations** on the home screen (`template-gallery.tsx`): [templates.md](templates.md).
+- **Usage and plan** (`/automation-studio/usage`): this month's use against each limit with a real progress bar, the plan's state and grace date, the
+  automations a lapse paused (review, then turn on one at a time) and pause/turn-on controls. No cost figures are shown to clients.
+- **Agency plan controls** (`/admin/maintenance`, `plan-lifecycle.tsx`): record a failed payment (with a grace period the client is told), record a payment the
+  agency member confirmed in their own records (a required checkbox; never inferred), end a plan. Each is audited and checked again on the server.
+- The upgrade call to action still goes to the existing Maintenance enrolment, which an agency member activates by hand: nothing is activated automatically.
+
+## Phase C browser evidence
+
+`node scripts/automation-browser-qa-c.mjs` (61 checks, real Chromium, isolated app, no outside request): the template gallery and its readiness text; a template
+opened on the canvas; a step dragged from the palette onto the canvas; a line drawn between two steps (and undone); a step deleted from the keyboard (and undone);
+the Slack and HTTP step settings showing names but no secret anywhere on the page; the publish dialog naming Slack and the owner's approval; an unverified
+connection disabling publish with the reason in words; the Connections page (refusals of `http://`, a metadata address and `localhost` shown in words, the
+verify dialog saying exactly what would be sent and sending nothing on cancel, revoke asking first); the Usage page; the agency's plan controls (a payment can't
+be recorded until the box is ticked); axe WCAG A/AA clean on each new screen in light and dark; no sideways scroll at 375 px. Defects it found and that are fixed:
+a `node:net` import in the policy file that the browser also loads (the whole workflow editor failed to compile), a card that overflowed a phone, and dates written
+in the server's and the browser's time zones on the agency screen. The original 46-check run (`scripts/automation-browser-qa.mjs`) also passes again.

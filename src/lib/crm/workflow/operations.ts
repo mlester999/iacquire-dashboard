@@ -89,6 +89,8 @@ export interface OperationError {
   index: number;
   code: OperationErrorCode;
   message: string;
+  /** Where exactly, and in the schema's words, for the AI builder to correct itself (people see only `message`). */
+  detail?: string;
 }
 
 export type WorkflowChange =
@@ -178,6 +180,13 @@ function mergeTrigger(current: TriggerConfig, patch: Record<string, unknown>): R
   return out;
 }
 
+/**
+ * A setting that picks one of several shapes (a wait's "mode") carries different keys in each. A config that names another mode than the one it is
+ * merged into starts from nothing: merging would keep the other mode's keys (a wait until 9am would keep "amount" and "unit"), which the schema rejects.
+ */
+const switchesMode = (current: Record<string, unknown>, given: Record<string, unknown>) => typeof given.mode === "string" && typeof current.mode === "string" && given.mode !== current.mode;
+const startingConfig = (defaults: Record<string, unknown>, given: Record<string, unknown>): Record<string, unknown> => (switchesMode(defaults, given) ? { ...given } : { ...defaults, ...given });
+
 function applyOne(def: WorkflowDefinition, op: WorkflowOperation, mode: "draft" | "strict"): void {
   switch (op.op) {
     case "add_step": {
@@ -187,7 +196,7 @@ function applyOne(def: WorkflowDefinition, op: WorkflowOperation, mode: "draft" 
       const spec = STEP_KINDS[op.kind];
       if (op.requireApproval && !spec.approvable) refuse("invalid_operation", `${spec.label} steps can't ask for approval first; only steps that act can.`);
       const step = {
-        key: k, kind: op.kind, ...(op.name ? { name: op.name } : {}), config: { ...(spec.defaults() as Record<string, unknown>), ...(op.config ?? {}) },
+        key: k, kind: op.kind, ...(op.name ? { name: op.name } : {}), config: startingConfig(spec.defaults() as Record<string, unknown>, op.config ?? {}),
         ...(op.requireApproval ? { requireApproval: true } : {}), next: null,
       } as unknown as WorkflowStep;
       if ("detached" in op.at) {
@@ -207,7 +216,7 @@ function applyOne(def: WorkflowDefinition, op: WorkflowOperation, mode: "draft" 
         if (op.name === null || op.name === "") delete step.name;
         else step.name = op.name;
       }
-      if (op.config) step.config = (op.replaceConfig ? { ...op.config } : { ...(step.config as Record<string, unknown>), ...op.config }) as never;
+      if (op.config) step.config = (op.replaceConfig || switchesMode(step.config as Record<string, unknown>, op.config) ? { ...op.config } : { ...(step.config as Record<string, unknown>), ...op.config }) as never;
       if (op.requireApproval !== undefined) {
         if (op.requireApproval) step.requireApproval = true;
         else delete step.requireApproval;
@@ -302,9 +311,12 @@ export function applyOperations(input: WorkflowDefinition, operations: readonly 
   if (mode === "strict") {
     // What the batch itself broke: problems that were already there are the workflow's, not this change's.
     const had = new Set(validateDefinition(before, options.context ?? null).filter((i) => i.level === "error").map(issueKey));
-    const introduced = issues.filter((i) => i.level === "error" && !had.has(issueKey(i)));
+    // An inbound-webhook trigger has no address until the server generates one in the workflow's settings: the AI can't (and mustn't) write it, so the
+    // missing address is expected and not counted against its batch (publishing is still blocked until the address exists).
+    const introduced = issues.filter((i) => i.level === "error" && !had.has(issueKey(i)) && !(i.code === "invalid_trigger" && i.path === "trigger.inbound"));
     if (introduced.length) {
-      return { ok: false, error: { index: -1, code: "validation_failed", message: introduced[0].message }, issues: introduced };
+      const detail = introduced.slice(0, 4).map((i) => `${i.stepKey ? `step ${i.stepKey}` : "workflow"}${i.path ? ` ${i.path}` : ""}: ${i.detail ?? i.message}`).join("; ");
+      return { ok: false, error: { index: -1, code: "validation_failed", message: introduced[0].message, detail }, issues: introduced };
     }
   }
   const changes = diffDefinitions(before, def);

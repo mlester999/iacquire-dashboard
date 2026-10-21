@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { STARTERS, STARTER_CATEGORIES, searchStarters, starterReadiness } from "@/lib/automation-studio/starters";
 import type { EditorOptions } from "@/components/crm/workflows/types";
 
-const NEEDS = ["template", "review_template", "employee", "pipeline", "calendar"];
+const NEEDS = ["template", "review_template", "employee", "pipeline", "calendar", "slack", "http"];
 const options = (over: Partial<EditorOptions> = {}) => ({ templates: [], employees: [], pipelines: [], calendars: [], ...over }) as unknown as EditorOptions;
 
 describe("the starters", () => {
@@ -32,6 +32,17 @@ describe("the starters", () => {
 describe("readiness", () => {
   const withTemplate = STARTERS.find((s) => s.needs.includes("template") && s.needs.length === 1)!;
   const needsCalendar = STARTERS.find((s) => s.needs.length === 1 && s.needs[0] === "calendar")!;
+
+  it("says a Slack or HTTP idea needs a connection, and is ready once the workspace has one", () => {
+    const slack = STARTERS.find((s) => s.needs.includes("slack"))!;
+    const http = STARTERS.find((s) => s.needs.includes("http"))!;
+    expect(starterReadiness(slack, options())).toEqual({ ready: false, missing: ["a Slack connection"] });
+    expect(starterReadiness(http, options())).toEqual({ ready: false, missing: ["an HTTP connection"] });
+    // The wrong kind of connection doesn't count.
+    expect(starterReadiness(slack, options({ connections: [{ id: "c", kind: "http" }] as never })).ready).toBe(false);
+    expect(starterReadiness(slack, options({ connections: [{ id: "c", kind: "slack_webhook" }] as never })).ready).toBe(true);
+    expect(starterReadiness(http, options({ connections: [{ id: "c", kind: "http" }] as never })).ready).toBe(true);
+  });
 
   it("is ready when the starter needs nothing, and says exactly what is missing otherwise", () => {
     expect(starterReadiness({ needs: [] }, options())).toEqual({ ready: true, missing: [] });

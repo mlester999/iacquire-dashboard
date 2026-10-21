@@ -13,6 +13,7 @@ import {
   type SaveStepInput,
 } from "@/server/onboarding/service";
 import { deleteAsset, setAssetAlt, setAssetVariant } from "@/server/assets/service";
+import type { AssistanceOptions } from "@/lib/onboarding/assistance";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,10 +24,10 @@ export async function saveOnboardingStepAction(input: SaveStepInput) {
   });
 }
 
-export async function suggestOnboardingAnswerAction(questionId: string) {
+export async function suggestOnboardingAnswerAction(questionId: string, options?: AssistanceOptions) {
   return guard(async () => {
     const ctx = await requireOrgContextOrThrow("workspace.manage_profile");
-    return suggestOnboardingAnswer(ctx, String(questionId));
+    return suggestOnboardingAnswer(ctx, String(questionId), options);
   });
 }
 

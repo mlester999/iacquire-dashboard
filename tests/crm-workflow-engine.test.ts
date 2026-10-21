@@ -185,15 +185,17 @@ describe("catalog, validation, effects and the content hash (pure)", () => {
     expect(STEP_KIND_LIST.filter((k) => STEP_KINDS[k].branches)).toEqual(["branch"]);
     expect(STEP_KINDS.end.terminal).toBe(true);
     expect(STEP_KINDS.n8n.external).toBe(true);
-    // Only messages, webhooks, n8n and the AI employee leave the CRM.
+    // Only messages, webhooks, n8n, the AI employee, HTTP requests and Slack messages leave the CRM.
     for (const k of STEP_KIND_LIST) {
-      if (["send_message", "n8n", "webhook", "ai_task"].includes(k)) continue;
+      if (["send_message", "n8n", "webhook", "ai_task", "http_request", "slack_message"].includes(k)) continue;
       expect((STEP_KINDS[k].effects as (c: never) => string[])(STEP_KINDS[k].defaults() as never), k).toEqual([]);
     }
     expect(STEP_KINDS.send_message.effects({ channel: "whatsapp" } as never)).toEqual(["send_whatsapp"]);
     expect(STEP_KINDS.n8n.effects({} as never)).toEqual(["n8n"]);
     expect(STEP_KINDS.webhook.effects({} as never)).toEqual(["webhook"]);
     expect(STEP_KINDS.ai_task.effects({} as never)).toEqual(["hermes"]);
+    expect(STEP_KINDS.http_request.effects({} as never)).toEqual(["http"]);
+    expect(STEP_KINDS.slack_message.effects({} as never)).toEqual(["slack"]);
     expect(TRIGGERS.schedule.carries.contact).toBe("never");
     expect(TRIGGERS["opportunity.won"].filters).toContain("pipelineId");
   });

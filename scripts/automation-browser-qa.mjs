@@ -114,13 +114,13 @@ async function main() {
   await page.waitForFunction(() => { const el = document.querySelector("#studio-prompt"); return el && Object.keys(el).some((k) => k.startsWith("__reactProps$")); }, null, { timeout: 300_000 });
   check("home: prompt box is enabled (the model connection resolved)", await box.isEnabled());
   check("home: four suggestion chips", (await page.getByRole("group", { name: "Ideas to start from" }).locator("button").count()) === 4);
-  check("home: all 17 ideas, each with readiness text", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 17);
+  check("home: all 19 ideas, each with readiness text", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 19);
   await page.locator("#studio-search").fill("review");
   check("home: searching narrows the ideas", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) < 16);
   await page.locator("#studio-search").fill("");
-  await page.getByRole("button", { name: "Leads", exact: true }).click();
-  check("home: a category filters the ideas", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 5);
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.getByRole("group", { name: "Categories", exact: true }).getByRole("button", { name: "Leads", exact: true }).click();
+  check("home: a category filters the ideas", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 6);
+  await page.getByRole("group", { name: "Categories", exact: true }).getByRole("button", { name: "All", exact: true }).click();
   await page.evaluate(() => window.scrollTo(0, 0));
   await shot(page, "01-home-desktop-light");
   await runAxe(page, "home (desktop, light)");
@@ -279,8 +279,11 @@ async function main() {
   check("upgrade: the call to action goes to the Maintenance page", (await hp.locator("a[href='/maintenance']").count()) > 0);
   check("upgrade: the sidebar entry carries a lock", /Needs the Automation Studio plan/.test((await hp.getByRole("link", { name: /Automation Studio/ }).first().textContent()) ?? ""));
   check("upgrade: the example canvas is labelled as an example", (await hp.getByText("Example", { exact: true }).count()) > 0);
-  await hp.locator(".react-flow__node").first().scrollIntoViewIfNeeded();
-  await hp.waitForTimeout(2500);
+  // The example plays once it is on screen (about nine seconds), adding its steps one by one.
+  await hp.locator("#up-see").scrollIntoViewIfNeeded();
+  await hp.getByRole("button", { name: "Replay the example" }).waitFor({ timeout: 20_000 });
+  await hp.waitForTimeout(800);
+  check("upgrade: the example canvas has no outside link", (await hp.locator(".react-flow__attribution, .react-flow a[href]").count()) === 0);
   check("upgrade: the example canvas shows its steps", (await hp.locator(".react-flow__node").evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 20 && r.height > 10 && getComputedStyle(e).visibility === "visible"; }).length)) >= 5);
   await shot(hp, "14-upgrade-desktop-light", { fullPage: true });
   await runAxe(hp, "upgrade page (desktop, light)");

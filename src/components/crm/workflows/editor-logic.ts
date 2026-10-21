@@ -4,7 +4,7 @@
 // them (no "use client" here: a server component can't call functions from a client module).
 import { CHANNEL_LABELS } from "@/lib/messaging";
 import {
-  STEP_KINDS, STEP_KIND_LIST, validationContextFrom, type AiTaskConfig, type N8nConfig, type SendMessageConfig, type StepKind, type ValidationIssue, type WebhookConfig,
+  STEP_KINDS, STEP_KIND_LIST, validationContextFrom, type AiTaskConfig, type HttpRequestConfig, type N8nConfig, type SlackMessageConfig, type SendMessageConfig, type StepKind, type ValidationIssue, type WebhookConfig,
   type WorkflowDefinition, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { branchMembers, freshKey, layoutCanvas, orderedKeys } from "@/components/crm/workflows/graph";
@@ -30,6 +30,7 @@ export function validationContextOf(o: EditorOptions) {
     appointmentTypes: o.appointmentTypes,
     forms: o.forms,
     customValues: o.customValues,
+    connections: o.connections ?? [],
   });
 }
 
@@ -68,6 +69,8 @@ export function kindChoices(options: EditorOptions): KindChoice[] {
     if (k === "n8n" && !options.n8nMappings.length) return "Your agency hasn't verified an n8n automation for you yet.";
     if (k === "n8n" && !n8nProblems.includes(null)) return n8nProblems.length === 1 ? n8nProblems[0] : "None of your n8n automations can run right now, so this step won't run.";
     if (k === "webhook" && !options.webhooks.some((w) => w.active)) return "Add a webhook endpoint first.";
+    if (k === "http_request" && !(options.connections ?? []).some((c) => c.kind === "http")) return "Set up an HTTP connection first (Automation Studio → Connections).";
+    if (k === "slack_message" && !(options.connections ?? []).some((c) => c.kind === "slack_webhook")) return "Set up a Slack connection first (Automation Studio → Connections).";
     if (k === "ai_task" && !options.employees.length) return "No AI employees are included in your workspace.";
     if (k === "ai_task" && !options.employees.some((e) => aiTaskState(e).state !== "blocked")) {
       return options.employees.some((e) => e.liveRuns) ? "None of your AI employees can be reached yet, so this step would be skipped." : "AI employee runs are switched off for now, so this step would be skipped.";
@@ -94,6 +97,13 @@ export function newStep(steps: readonly WorkflowStep[], kind: StepKind, options:
     const t = options.templates[0];
     Object.assign(config, { templateId: t.id, contentHash: t.contentHash, channel: t.channel });
   }
+  const httpConnections = (options.connections ?? []).filter((c) => c.kind === "http" && c.status === "active");
+  if (kind === "http_request" && httpConnections.length === 1) {
+    config.connectionId = httpConnections[0].id;
+    if (!httpConnections[0].methods.includes(String(config.method))) config.method = httpConnections[0].methods[0] ?? "GET";
+  }
+  const slackConnections = (options.connections ?? []).filter((c) => c.kind === "slack_webhook" && c.status === "active");
+  if (kind === "slack_message" && slackConnections.length === 1) config.connectionId = slackConnections[0].id;
   const reviewTemplates = kind === "request_review" ? options.templates.filter(isReviewTemplate) : [];
   if (reviewTemplates.length === 1) Object.assign(config, { templateId: reviewTemplates[0].id, contentHash: reviewTemplates[0].contentHash, channel: reviewTemplates[0].channel });
   return { key: freshKey(steps, kind), kind, config } as WorkflowStep;
@@ -121,7 +131,7 @@ export function activationBlocker(input: { status: EditorWorkflow["status"]; pub
 export interface EffectItem {
   stepKey: string;
   stepNumber: number;
-  kind: "send_message" | "webhook" | "n8n" | "ai_task";
+  kind: "send_message" | "webhook" | "n8n" | "ai_task" | "http_request" | "slack_message";
   title: string;
   lines: Array<{ label: string; value: string }>;
   /** The exact wording, for messages. */
@@ -196,6 +206,31 @@ export function effectItems(def: WorkflowDefinition, options: EditorOptions): Ef
           { label: "Once", value: "Started at most once per run step; an unclear result is marked for review, never sent again" },
         ],
         warning: m ? m.problem : "This automation isn't verified for your workspace any more.",
+      });
+    } else if (s.kind === "http_request") {
+      const c = s.config as HttpRequestConfig;
+      const conn = (options.connections ?? []).find((x) => x.id === c.connectionId);
+      out.push({
+        stepKey: s.key, stepNumber: n, kind: "http_request", asksFirst, title: `${c.method} ${conn?.host ?? "a connection that isn't available"}${c.path.startsWith("/") ? c.path.split("?")[0].slice(0, 60) : ""}`,
+        lines: [
+          { label: "Connection", value: conn ? `${conn.name} (${conn.host})` : "Not available" },
+          { label: "Sends", value: c.bodyType === "none" ? "No body" : `A ${c.bodyType} body built from this workflow's text, with placeholders filled from the contact` },
+          { label: "Safeguards", value: "Only that host, only public addresses, no redirects, a time limit and a size limit; credentials stay on the connection and are never shown" },
+          { label: "If it fails", value: c.safeToRepeat ? "Tried again, because the other system ignores repeats of the same request" : "Tried again only when it was certainly not sent; otherwise marked for review, never repeated blindly" },
+        ],
+        warning: !conn ? "This connection isn't available any more." : conn.status !== "active" ? "This connection hasn't been verified (or needs attention), so the step would wait." : null,
+      });
+    } else if (s.kind === "slack_message") {
+      const c = s.config as SlackMessageConfig;
+      const conn = (options.connections ?? []).find((x) => x.id === c.connectionId);
+      out.push({
+        stepKey: s.key, stepNumber: n, kind: "slack_message", asksFirst, title: `Slack message via ${conn?.name ?? "a connection that isn't available"}`,
+        lines: [
+          { label: "Posts", value: c.text },
+          { label: "To", value: conn ? `The channel behind “${conn.name}”` : "Not available" },
+          { label: "Safeguards", value: "Mentions and links in the text are made harmless; the Slack address is never shown" },
+        ],
+        warning: !conn ? "This connection isn't available any more." : conn.status !== "active" ? "This connection hasn't been verified (or needs attention), so the step would wait." : null,
       });
     } else if (s.kind === "ai_task") {
       const c = s.config as AiTaskConfig;

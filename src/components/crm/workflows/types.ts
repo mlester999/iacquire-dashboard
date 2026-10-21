@@ -178,6 +178,8 @@ export interface EditorOptions {
   forms?: Array<{ id: string; name: string; status: string }>;
   /** The workspace's configuration values, offered as {{custom_values.<key>}} in task titles, notes, notifications and deal names. */
   customValues?: Array<{ key: string; label: string }>;
+  /** Connections to outside systems that aren't revoked (never their secrets), for HTTP request and Slack steps. */
+  connections?: Array<{ id: string; name: string; kind: "http" | "slack_webhook"; status: string; host: string; methods: string[] }>;
   folders: FolderOption[];
 }
 

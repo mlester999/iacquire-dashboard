@@ -3,13 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CircleAlert, Search, Sparkles, Workflow as WorkflowIcon } from "lucide-react";
+import { ArrowRight, CircleAlert, Gauge, KeyRound, Search, Sparkles, Workflow as WorkflowIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/primitives";
 import { cn, formatDate } from "@/lib/utils";
 import { startAutomationAction, startBlankAutomationAction } from "@/app/actions/automation-studio";
 import { STARTERS, STARTER_CATEGORIES, searchStarters, starterReadiness, type Starter } from "@/lib/automation-studio/starters";
 import type { EditorOptions } from "@/components/crm/workflows/types";
+import { TemplateGallery } from "@/components/automation-studio/template-gallery";
 
 export interface HomeWorkflow {
   id: string;
@@ -90,6 +91,10 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
   return (
     <div className="space-y-10">
       {planNotice && <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink" role="note">{planNotice}</p>}
+      <div className="mb-6 flex justify-end gap-1">
+        <Link href="/automation-studio/usage" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><Gauge className="size-3.5" aria-hidden />Usage and plan</Link>
+        <Link href="/automation-studio/connections" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><KeyRound className="size-3.5" aria-hidden />Connections</Link>
+      </div>
 
       <section aria-labelledby="studio-headline" className="relative overflow-hidden rounded-3xl border border-line bg-surface px-5 py-10 shadow-md sm:px-10 sm:py-14">
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-70 [background:radial-gradient(60%_80%_at_50%_0%,color-mix(in_srgb,var(--primary)_14%,transparent),transparent_70%)]" />
@@ -154,6 +159,8 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
           </ul>
         </section>
       )}
+
+      <TemplateGallery options={options} canBuild={canBuild} />
 
       <section aria-labelledby="studio-ideas">
         <div className="flex flex-wrap items-end justify-between gap-3">

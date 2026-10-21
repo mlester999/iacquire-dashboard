@@ -10,6 +10,7 @@ import { CREATED_VIA, LEAD_STATUSES, PREFERRED_CHANNELS, type FieldType } from "
 import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { customValueKeyOf, extractTokens, isTokenKey } from "@/lib/messaging/tokens";
 import { sha256Hex } from "@/lib/crm/workflow/sha256";
+import { HTTP_METHODS, cleanStepHeaders, pathProblem } from "@/lib/automation-studio/outbound";
 
 export type MessageChannel = "email" | "sms" | "whatsapp";
 
@@ -230,13 +231,13 @@ export const triggerConfigSchema = z.strictObject({
 
 export const STEP_KIND_LIST = [
   "wait", "branch", "add_tag", "remove_tag", "assign", "create_task", "update_field", "create_opportunity", "move_stage", "send_message",
-  "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review",
+  "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review", "http_request", "slack_message",
 ] as const;
 export type StepKind = (typeof STEP_KIND_LIST)[number];
 export const isStepKind = (k: unknown): k is StepKind => typeof k === "string" && (STEP_KIND_LIST as readonly string[]).includes(k);
 
 /** What a version can do outside the CRM. Any of these means an owner must approve the exact version before it runs. */
-export const WORKFLOW_EFFECTS = ["send_email", "send_sms", "send_whatsapp", "webhook", "n8n", "hermes"] as const;
+export const WORKFLOW_EFFECTS = ["send_email", "send_sms", "send_whatsapp", "webhook", "n8n", "hermes", "http", "slack"] as const;
 export type WorkflowEffect = (typeof WORKFLOW_EFFECTS)[number];
 export const EFFECT_LABELS: Record<WorkflowEffect, string> = {
   send_email: "Sends emails to customers",
@@ -245,6 +246,8 @@ export const EFFECT_LABELS: Record<WorkflowEffect, string> = {
   webhook: "Sends data to an outside system (webhook)",
   n8n: "Starts an n8n automation",
   hermes: "Asks an AI employee to do work",
+  http: "Calls an outside web address (HTTP request)",
+  slack: "Posts a message to Slack",
 };
 
 /**
@@ -253,9 +256,9 @@ export const EFFECT_LABELS: Record<WorkflowEffect, string> = {
  * Studio; step kinds that only the plan includes (HTTP request, loops, connectors…) list their own feature on their spec as they are added.
  * Workflows built in the CRM workflow screens, and every step kind listed above, need no plan.
  */
-export const PREMIUM_FEATURES = ["studio_workflow"] as const;
+export const PREMIUM_FEATURES = ["studio_workflow", "http_request", "slack_message"] as const;
 export type PremiumFeature = (typeof PREMIUM_FEATURES)[number];
-export const PREMIUM_FEATURE_LABELS: Record<PremiumFeature, string> = { studio_workflow: "Built in Automation Studio" };
+export const PREMIUM_FEATURE_LABELS: Record<PremiumFeature, string> = { studio_workflow: "Built in Automation Studio", http_request: "HTTP request step", slack_message: "Slack message step" };
 export type WorkflowOrigin = "crm" | "studio";
 
 const durationUnit = z.enum(["minutes", "hours", "days"]);
@@ -404,6 +407,29 @@ const webhookSchema = z.strictObject({
   includeContact: z.boolean(),
 });
 
+const nameValue = z.strictObject({ name: z.string().trim().min(1).max(60), value: z.string().max(300) });
+/** An HTTP request to a connection's host. The host is the connection's, never written here; the path, query and body may hold {{placeholders}}. */
+const httpRequestSchema = z.strictObject({
+  connectionId: uuid,
+  method: z.enum(HTTP_METHODS),
+  path: z.string().trim().min(1, "Write the path to call, for example /v1/orders.").max(300),
+  query: z.array(nameValue).max(20).optional(),
+  /** Extra harmless headers (Accept, X-…). Credentials come from the connection. */
+  headers: z.array(nameValue).max(8).optional(),
+  bodyType: z.enum(["none", "json", "form", "text"]),
+  /** JSON text (strings inside it may hold placeholders) or plain text. */
+  body: z.string().max(4000).optional(),
+  form: z.array(nameValue).max(20).optional(),
+  timeoutSeconds: z.number().int().min(1).max(30).optional(),
+  /** The other system ignores a repeat of the same request (it honours the Idempotency-Key), so a failed attempt may be retried. */
+  safeToRepeat: z.boolean().optional(),
+});
+
+const slackMessageSchema = z.strictObject({
+  connectionId: uuid,
+  text: z.string().trim().min(1, "Write the message.").max(1500),
+});
+
 const aiTaskSchema = z.strictObject({
   roleKey: z.enum(AGENT_ROLE_KEYS),
   instruction: z.string().trim().min(10, "Tell the AI employee what to do (at least a sentence).").max(2000),
@@ -426,6 +452,8 @@ export type InternalNoteConfig = z.infer<typeof noteSchema>;
 export type N8nConfig = z.infer<typeof n8nSchema>;
 export type WebhookConfig = z.infer<typeof webhookSchema>;
 export type AiTaskConfig = z.infer<typeof aiTaskSchema>;
+export type HttpRequestConfig = z.infer<typeof httpRequestSchema>;
+export type SlackMessageConfig = z.infer<typeof slackMessageSchema>;
 
 export interface StepConfigMap {
   wait: WaitConfig;
@@ -445,6 +473,8 @@ export interface StepConfigMap {
   webhook: WebhookConfig;
   ai_task: AiTaskConfig;
   end: Record<string, never>;
+  http_request: HttpRequestConfig;
+  slack_message: SlackMessageConfig;
 }
 
 export type Need = "required" | "optional" | "none";
@@ -562,6 +592,20 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
     schema: aiTaskSchema, branches: false, terminal: false, external: false, emitsEvents: false, approvable: true, needs: () => ({ contact: "optional", opportunity: "none" }), effects: () => ["hermes"],
     defaults: () => ({ roleKey: "crm_manager", instruction: "" }),
   }),
+  http_request: spec({
+    kind: "http_request", label: "HTTP request",
+    description: "Call a web address you have connected (a method, a path, optional query values and body) and carry on when it answers. The address, and the credentials it needs, belong to the connection, not the step. Calls only the connection's own host, never a private network.",
+    group: "Integrations", schema: httpRequestSchema, branches: false, terminal: false, external: true, emitsEvents: false, approvable: true, premium: "http_request",
+    needs: () => ({ contact: "optional", opportunity: "optional" }), effects: () => ["http"],
+    defaults: () => ({ method: "POST" as const, path: "/", bodyType: "none" as const }),
+  }),
+  slack_message: spec({
+    kind: "slack_message", label: "Post to Slack",
+    description: "Post a message to the Slack channel of a Slack connection (an incoming webhook). The text may hold placeholders such as {{contact.full_name}}; mentions and links in values are made harmless.",
+    group: "Integrations", schema: slackMessageSchema, branches: false, terminal: false, external: true, emitsEvents: false, approvable: true, premium: "slack_message",
+    needs: () => ({ contact: "optional", opportunity: "optional" }), effects: () => ["slack"],
+    defaults: () => ({ text: "" }),
+  }),
   end: spec({
     kind: "end", label: "End", description: "Stop the workflow here.", group: "Flow", schema: endSchema as unknown as z.ZodType<Record<string, never>>, branches: false, terminal: true, external: false, emitsEvents: false, approvable: false,
     needs: none, effects: () => [], defaults: () => ({}),
@@ -617,6 +661,8 @@ export interface ValidationIssue {
   stepKey?: string;
   /** Where in the step's config or the trigger (e.g. "config.tagIds", "trigger.filters.stageIds"). */
   path?: string;
+  /** The schema's own words for a setting that is wrong, when the message above is the generic one. For the AI builder to correct itself; people see the message. */
+  detail?: string;
 }
 
 /** Everything in the workspace a definition may refer to. The server loads it; the editor may build it from the builder options. */
@@ -633,6 +679,8 @@ export interface ValidationContext {
   n8nMappings: ReadonlySet<string>;
   /** Active outbound webhook subscriptions. */
   webhookSubscriptions: ReadonlySet<string>;
+  /** The workspace's connections to outside systems that aren't revoked, by id. Absent: not checked. */
+  connections?: ReadonlyMap<string, { kind: "http" | "slack_webhook"; status: string; methods: readonly string[] }>;
   /** Active assignment rules and what they assign. */
   assignmentRules: ReadonlyMap<string, { entity: "contact" | "opportunity" }>;
   /** AI employees (role keys) that are included in the workspace. */
@@ -660,7 +708,7 @@ function zodIssues(err: z.ZodError, base: Pick<ValidationIssue, "stepKey">, pref
   return err.issues.slice(0, 5).map((i) => {
     const path = [prefix, ...i.path.map(String)].filter(Boolean).join(".");
     const message = i.message && !GENERIC_ZOD.test(i.message) ? i.message : `Some settings of this ${prefix === "trigger" ? "trigger" : "step"} are missing or not valid (${path || "settings"}).`;
-    return issue("error", "invalid_config", message, { ...base, path });
+    return { ...issue("error", "invalid_config", message, { ...base, path }), ...(i.message && GENERIC_ZOD.test(i.message) ? { detail: i.message.slice(0, 200) } : {}) };
   });
 }
 
@@ -825,6 +873,77 @@ function tokenIssues(text: string | undefined, base: Pick<ValidationIssue, "step
     return [issue("error", "unknown_token", `${t.raw} isn't a placeholder iAcquire knows. Use the placeholder picker.`, base)];
   }
   return [];
+}
+
+/** A step's connection: it exists, is the right kind, and has been verified. */
+function connectionIssues(id: string, kind: "http" | "slack_webhook", ctx: ValidationContext | null, base: Pick<ValidationIssue, "stepKey">): ValidationIssue[] {
+  const where = { ...base, path: "config.connectionId" };
+  if (!ctx?.connections) return [];
+  const c = ctx.connections.get(id);
+  if (!c) return [issue("error", "missing_connection", "That connection isn't available (it may have been revoked). Choose another or add one.", where)];
+  if (c.kind !== kind) return [issue("error", "invalid_config", kind === "slack_webhook" ? "Choose a Slack connection." : "Choose an HTTP connection.", where)];
+  if (c.status === "unverified") return [issue("error", "unverified_connection", "That connection hasn't been verified yet. Open Connections and send its test first.", where)];
+  if (c.status === "needs_attention") return [issue("error", "connection_needs_attention", "That connection needs attention (its last calls failed). Check it in Connections.", where)];
+  return [];
+}
+
+/** A JSON body template: valid JSON, with every {{placeholder}} inside a string and known. */
+function jsonTemplateIssues(text: string, base: Pick<ValidationIssue, "stepKey">, customValues?: ReadonlySet<string>): ValidationIssue[] {
+  const where = { ...base, path: "config.body" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [issue("error", "invalid_config", `The body isn't valid JSON. Put placeholders inside quotes, like {"name": "{{contact.full_name}}"}.`, where)];
+  }
+  const out: ValidationIssue[] = [];
+  const walk = (v: unknown, depth: number) => {
+    if (out.length || depth > 10) return;
+    if (typeof v === "string") out.push(...tokenIssues(v, where, customValues));
+    else if (Array.isArray(v)) v.forEach((x) => walk(x, depth + 1));
+    else if (v && typeof v === "object") Object.values(v).forEach((x) => walk(x, depth + 1));
+  };
+  walk(parsed, 0);
+  return out;
+}
+
+function httpRequestIssues(c: HttpRequestConfig, ctx: ValidationContext | null, base: Pick<ValidationIssue, "stepKey">): ValidationIssue[] {
+  const out: ValidationIssue[] = [];
+  out.push(...connectionIssues(c.connectionId, "http", ctx, base));
+  const conn = ctx?.connections?.get(c.connectionId);
+  if (conn && conn.kind === "http" && conn.methods.length && !conn.methods.includes(c.method)) {
+    out.push(issue("error", "invalid_config", `That connection doesn't allow ${c.method} requests (it allows ${conn.methods.join(", ")}). Change the method, or allow it on the connection.`, { ...base, path: "config.method" }));
+  }
+  // The path may hold placeholders (each value is encoded when it is filled in); it is checked with a stand-in for each.
+  const probe = c.path.replace(/\{\{[^}]*\}\}/g, "x");
+  const problem = pathProblem(probe);
+  if (problem) out.push(issue("error", "invalid_config", problem, { ...base, path: "config.path" }));
+  out.push(...tokenIssues(c.path, { ...base, path: "config.path" }, ctx?.customValues));
+  for (const q of c.query ?? []) {
+    if (!/^[A-Za-z0-9_.[\]-]{1,60}$/.test(q.name)) out.push(issue("error", "invalid_config", `The query name “${q.name.slice(0, 30)}” isn't allowed (letters, digits and _ . - only).`, { ...base, path: "config.query" }));
+    out.push(...tokenIssues(q.value, { ...base, path: "config.query" }, ctx?.customValues));
+  }
+  try {
+    if ((c.headers ?? []).some((h) => h.value.includes("{{"))) throw new Error("Header values can't hold placeholders.");
+    cleanStepHeaders(Object.fromEntries((c.headers ?? []).map((h) => [h.name, h.value])));
+  } catch (err) {
+    out.push(issue("error", "invalid_config", err instanceof Error ? err.message : "A header isn't allowed.", { ...base, path: "config.headers" }));
+  }
+  if (c.bodyType === "none" && (c.body || c.form?.length)) out.push(issue("error", "invalid_config", "Remove the body, or choose a body type.", { ...base, path: "config.bodyType" }));
+  if (c.method === "GET" && c.bodyType !== "none") out.push(issue("error", "invalid_config", "A GET request doesn't carry a body.", { ...base, path: "config.bodyType" }));
+  if (c.bodyType === "json") {
+    if (!c.body?.trim()) out.push(issue("error", "invalid_config", "Write the JSON body.", { ...base, path: "config.body" }));
+    else out.push(...jsonTemplateIssues(c.body, base, ctx?.customValues));
+  }
+  if (c.bodyType === "text") {
+    if (!c.body?.trim()) out.push(issue("error", "invalid_config", "Write the body text.", { ...base, path: "config.body" }));
+    else out.push(...tokenIssues(c.body, { ...base, path: "config.body" }, ctx?.customValues));
+  }
+  if (c.bodyType === "form") {
+    if (!c.form?.length) out.push(issue("error", "invalid_config", "Add at least one form field.", { ...base, path: "config.form" }));
+    for (const f of c.form ?? []) out.push(...tokenIssues(f.value, { ...base, path: "config.form" }, ctx?.customValues));
+  }
+  return out;
 }
 
 function triggerIssues(t: TriggerConfig, ctx: ValidationContext | null): ValidationIssue[] {
@@ -997,6 +1116,15 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
     case "webhook":
       if (ctx && !ctx.webhookSubscriptions.has((step.config as WebhookConfig).subscriptionId)) out.push(issue("error", "missing_webhook", "That webhook endpoint is not active.", { ...base, path: "config.subscriptionId" }));
       break;
+    case "http_request":
+      out.push(...httpRequestIssues(step.config as HttpRequestConfig, ctx, base));
+      break;
+    case "slack_message": {
+      const m = step.config as SlackMessageConfig;
+      out.push(...connectionIssues(m.connectionId, "slack_webhook", ctx, base));
+      out.push(...tokenIssues(m.text, { ...base, path: "config.text" }, ctx?.customValues));
+      break;
+    }
     case "ai_task":
       if (ctx && !ctx.agents.has((step.config as AiTaskConfig).roleKey)) out.push(issue("error", "missing_agent", "That AI employee isn't included in this workspace.", { ...base, path: "config.roleKey" }));
       break;
@@ -1110,6 +1238,7 @@ export function validationContextFrom(o: {
   templates: Array<{ id: string; contentHash: string; channel: MessageChannel }>;
   n8nMappings: Array<{ id: string }>;
   webhookSubscriptions: Array<{ id: string }>;
+  connections?: Array<{ id: string; kind: "http" | "slack_webhook"; status: string; methods?: string[] }>;
   assignmentRules: Array<{ id: string; entity: "contact" | "opportunity" }>;
   agents: Array<{ roleKey: string }>;
   calendars: Array<{ id: string }>;
@@ -1125,6 +1254,7 @@ export function validationContextFrom(o: {
     templates: new Map(o.templates.map((t) => [t.id, { contentHash: t.contentHash, channel: t.channel }])),
     n8nMappings: new Set(o.n8nMappings.map((m) => m.id)),
     webhookSubscriptions: new Set(o.webhookSubscriptions.map((w) => w.id)),
+    connections: new Map((o.connections ?? []).map((c) => [c.id, { kind: c.kind, status: c.status, methods: c.methods ?? [] }])),
     assignmentRules: new Map(o.assignmentRules.map((r) => [r.id, { entity: r.entity }])),
     agents: new Set(o.agents.map((a) => a.roleKey)),
     calendars: new Set(o.calendars.map((c) => c.id)),

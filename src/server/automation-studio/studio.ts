@@ -91,6 +91,15 @@ export async function recordChange(db: Queryable, c: { orgId: string; workflowId
   return rows[0].seq;
 }
 
+/** The last few changes to a working copy, by label only: what the builder is told about edits made since it last spoke. */
+export async function recentChangeLabels(db: Queryable, orgId: string, workflowId: string, limit = 8): Promise<Array<{ seq: number; source: string; label: string }>> {
+  const { rows } = await db.query<{ seq: number; source: string; label: string }>(
+    `select seq, source, label from (select seq, source, label from automation_studio_changes where org_id = $1 and workflow_id = $2 order by seq desc limit $3) c order by seq`,
+    [orgId, workflowId, limit],
+  );
+  return rows.map((r) => ({ seq: Number(r.seq), source: r.source, label: r.label }));
+}
+
 async function listChanges(db: Queryable, orgId: string, workflowId: string, limit = HISTORY_SHOWN): Promise<StudioChangeEntry[]> {
   const { rows } = await db.query<{ seq: number; source: ChangeSource; label: string; definition: WorkflowDefinition; revision: number; created_at: Date }>(
     `select seq, source, label, definition, revision, created_at from (select * from automation_studio_changes where org_id = $1 and workflow_id = $2 order by seq desc limit $3) c order by seq`,

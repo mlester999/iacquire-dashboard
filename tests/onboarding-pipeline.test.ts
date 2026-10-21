@@ -13,6 +13,46 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("onboarding autosave", () => {
+  it("blocks exit for invalid local edits and removes the older queued value", async () => {
+    const save = vi.fn(async (_payload: PipelinePayload) => ok(1));
+    const { pipeline, last } = setup(save);
+    pipeline.queue("a.contact_email", { value: "old@example.test" });
+    pipeline.invalidate("a.contact_email", "That email address doesn't look right.");
+    expect(await pipeline.flush()).toBe(false);
+    expect(pipeline.hasUnsaved()).toBe(true);
+    expect(last().status).toBe("error");
+    expect(save).not.toHaveBeenCalled();
+    pipeline.queue("a.contact_email", { value: "new@example.test" });
+    expect(await pipeline.flush()).toBe(true);
+    expect(save.mock.calls[0][0].answers["a.contact_email"].value).toBe("new@example.test");
+  });
+
+  it("does not report Saved when an older in-flight save completes after an invalid edit", async () => {
+    let complete!: (value: PipelineSaveResult) => void;
+    const { pipeline, last } = setup(() => new Promise((resolve) => { complete = resolve; }));
+    pipeline.queue("a.contact_email", { value: "old@example.test" });
+    const flushing = pipeline.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    pipeline.invalidate("a.contact_email", "Check this email.");
+    complete(ok(1));
+    expect(await flushing).toBe(false);
+    expect(last().status).toBe("error");
+    expect(pipeline.hasUnsaved()).toBe(true);
+  });
+
+  it("never retries an older value over a newer invalid local edit", async () => {
+    let complete!: (value: PipelineSaveResult) => void;
+    const save = vi.fn((_payload: PipelinePayload) => new Promise<PipelineSaveResult>((resolve) => { complete = resolve; }));
+    const { pipeline } = setup(save);
+    pipeline.queue("a.contact_email", { value: "old@example.test" });
+    const flushing = pipeline.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    pipeline.invalidate("a.contact_email", "Check this email.");
+    complete({ ok: false, error: "Offline" });
+    expect(await flushing).toBe(false);
+    expect(save).toHaveBeenCalledOnce();
+    expect(pipeline.hasUnsaved()).toBe(true);
+  });
   it("waits for a pause in typing and then saves the latest value only once", async () => {
     const save = vi.fn(async (p: PipelinePayload) => {
       void p;

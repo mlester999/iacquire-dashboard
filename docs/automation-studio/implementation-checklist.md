@@ -16,7 +16,7 @@ subscription experience (needs P1 entitlement, P3, P4) → **P7** production har
 - [x] Plan rules as pure code: prices, entitlement per state, grace period, lifecycle transitions, finite default limits, lapse policy text. → `src/lib/automation-studio/plan.ts`, `tests/automation-studio-plan.test.ts` (31 tests)
 - [x] Server entitlement from the maintenance plan; `plan_required` error code. → `src/server/automation-studio/entitlement.ts`
 - [x] Plan lifecycle states `past_due` and `expired` added without breaking the existing maintenance screens or flows. → `tests/maintenance.test.ts` (unchanged, green)
-- [ ] Agency UI to record a failed payment, a verified payment and an expiry (the services exist). *Phase 6.*
+- [x] Agency UI to record a failed payment, a verified payment and an expiry, with grace period choice, an explicit "I confirmed this in our billing records" step, and what a lapse would touch. → `src/components/admin/plan-lifecycle.tsx`, `tests/automation-studio-plan-lifecycle.test.tsx`, `tests/automation-studio-operations.test.ts`; looked at (never submitted) in a real browser
 - [!] Automatic payment verification (recurring PayMongo or similar). Needs the founder to choose and provide the provider account.
 
 ## Phase 2: shared workflow engine
@@ -41,7 +41,7 @@ bounded retries and backoff, dead state, retry/skip/cancel, loop and step limits
 - [x] Grace period is configurable (`STUDIO_PAYMENT_GRACE_DAYS`, 1 to 30, default 7; per case by the agency member), with a reminder 48 hours before it ends. → `tests/automation-studio-engine.test.ts`
 - [ ] Interval and cron-style schedule triggers.
 - [ ] For-each loops with an iteration cap; variables and safe data mapping between steps.
-- [ ] HTTP request step (reuse `security/pinned-https.ts`; allowlisted hosts, secrets by reference, owner approval as an outside effect). Audited, not built: see [connector-audit.md](connector-audit.md); recommended next.
+- [x] HTTP request step on tenant-scoped connections (pinned DNS, no redirects, method/content/size/time limits, redaction, idempotency, unknown outcomes never retried blindly, quotas and concurrency limits, test mode). → [connections-and-outbound.md](connections-and-outbound.md), `tests/outbound-http.test.ts`, `tests/automation-studio-connections.test.ts`, migration `0072`
 - [ ] "Send a real test to myself" distinct from the dry run.
 
 ## Phase 3: manual visual builder
@@ -57,25 +57,28 @@ bounded retries and backoff, dead state, retry/skip/cancel, loop and step limits
 - [x] AI Automation Builder service, separate from AQi: stored conversation, streamed reply, operations validated by `parseOperations` then strict mode in a locked transaction, repair loop, plan, rate limit, monthly allowance, token counters. → `tests/automation-studio-builder.test.ts` (26 tests, scripted model)
 - [x] Home screen ("What would you like to automate?"), 17 suggestions with workspace-readiness text, searchable categories; split-screen chat + live canvas that replays only operations the server accepted, resizable on desktop, tabs on a phone. → browser evidence below
 - [x] Node-aware conversation (the selected step is sent with the message), failure explanations from recent run records.
-- [ ] Evaluate with a real model (none is connected in this environment): operation quality, refusal rate, token cost per turn. [!] Needs the LLM connection verified in Integrations.
-- [ ] The suggestions are prompts, not pre-built templates (Phase 6).
+- [x] Evaluated with a real model (DeepSeek `deepseek-flash`): see [ai-evaluation.md](ai-evaluation.md).
+- [x] 20 executable templates now exist next to the 19 prompt starters. → [templates.md](templates.md)
 
 ## Phase 5: integrations and AI employee nodes
 
 - [x] Audit of existing connector infrastructure. → [connector-audit.md](connector-audit.md)
-- [ ] Build the first connectors (HTTP request, then Slack incoming webhook; Google Sheets and Gmail). [!] Gmail and Sheets need a Google OAuth app and Google's scope verification, supplied by the founder.
+- [x] HTTP request and Slack incoming webhook built (connections, verification by confirmed test, rotation, revocation, call log). → [connections-and-outbound.md](connections-and-outbound.md)
+- [!] Slack OAuth (designed, not built), Gmail and Google Sheets: need apps and verification only the founder can start.
 - [~] AI employee node exists (`ai_task`); [!] live runs stay off until tool inventories are verified.
 - [ ] Employee-node permission tests per role (a Receptionist-like role must not gain Lead Hunter tools through a workflow).
 
 ## Phase 6: templates and subscription experience
 
-- [ ] 15 to 20 executable templates (5 exist), each with integration checks and a test.
+- [x] 20 executable templates, each with readiness and connection checks and 7 tests (created, real references, canvas, dry run, edits, publish/approval, switch on); two also run end to end. → [templates.md](templates.md)
 - [x] Upgrade page ($299/month and the separate setup fee, what keeps working without the plan, provisional allowances, grace period, labelled example canvas, call to action to the existing Maintenance enrolment); locked sidebar entry; the route never exposes another workspace's automations. → browser evidence below, `tests/automation-studio-nav.test.tsx`
-- [ ] Usage page for clients, agency lifecycle controls (record failed/verified payment), billing automation. [!] Payment provider choice.
+- [x] Usage page for clients (limits with real progress bars, what ran, the plan's state and grace date, plan-paused automations with review and turn-on, pause/turn-on per automation). → `src/components/automation-studio/usage-panel.tsx`, `tests/automation-studio-screens.test.tsx`
+- [!] Billing automation (recurring payment collection and automatic verification). Payments are only ever recorded by a person; needs the founder to choose and provide a payment provider.
 
 ## Phase 7: production hardening
 
-- [ ] Browser E2E, accessibility, performance, tenant-isolation sweep on the new tables with a second workspace, hosted migration rehearsal, scheduler activation plan.
+- [x] Browser E2E (Phase C: 62 checks; original: 46; real-model run: 17), accessibility (axe WCAG A/AA on the new screens, light and dark), tenant-isolation tests on the new tables, migrations 0069 to 0072 isolation and schema-drift test. → `tests/automation-studio-migrations.test.ts`
+- [ ] Hosted migration rehearsal (needs `ALLOW_REMOTE_DB_IN_DEV=true` and the user's approval), scheduler activation plan.
 
 ## Evidence log
 
@@ -95,4 +98,10 @@ bounded retries and backoff, dead state, retry/skip/cancel, loop and step limits
 | 2026-10-21 | full `npx vitest run` after the Studio screens, builder, canvas, migrations 0070 and 0071 | 3,625 passed, 1 failed (`workforce-navigation` "Chat with" shortcut, the same failure as on a pristine `HEAD`) |
 | 2026-10-21 | `npm run typecheck` (project and scripts), `npx eslint src tests` and the new scripts | 0 errors, 0 problems |
 | 2026-10-21 | `npm run build:clean` (Turbopack production build, clean typecheck) | exit 0; `/automation-studio`, `/automation-studio/[id]` and `/api/automation-studio/[id]/chat` are in the route list |
+| 2026-10-21 (Phase C) | `node scripts/run-builder-eval.mjs --repeat 3`, DeepSeek `deepseek-flash`, 35 scenarios × 3 on the final code | 105 of 105 scenarios, 117 of 117 turns, 0 errors, 0 left invalid; median 3.2 s, p95 6.3 s per turn; 1.13 M input and 57 k output tokens. [ai-evaluation.md](ai-evaluation.md) |
+| 2026-10-21 (Phase C) | `node scripts/automation-real-model-qa.mjs` (isolated app, real model, real Chromium) | 17 of 17: built from a sentence with nodes appearing one by one, saved, edited by chat on a selected step, an unsupported request refused in words with nothing changed, Manual undo reverts the builder's edit, the model key reaches no page, response or log |
+| 2026-10-21 (Phase C) | `npm run typecheck`, eslint on every touched file, `npm run build:clean` | 0 errors, 0 problems, build exit 0 with `/automation-studio`, `/connections`, `/usage` and `/api/automation-studio/[id]/chat` in the route list |
+| 2026-10-21 (Phase C) | full `npx vitest run` on the final code (256 files) | 4,260 passed, 1 failed: `appointments.test.ts` "queues a plain reminder…", which fails identically on a pristine checkout of the base commit 788f54d; the new `automation-builder-eval.test.ts` (16 tests) passes on its own; the 7 neighbouring Studio files re-run after the last edit: 312 passed |
+| 2026-10-21 (Phase C) | `automation-browser-qa-c.mjs` and `automation-browser-qa.mjs` on the dev server, `automation-browser-qa-c.mjs` on the production build | 62/62 and 46/46 on dev; 62/62 on the production build. The original script cannot pass its model steps on a production build, correctly: the bundle refuses a loopback model ("The AI model address must be an https address. You can still build by hand."), which is the no-silent-fallback policy working |
+| 2026-10-21 (Phase C) | a new layout check found a real defect | The home screen's "Usage and plan" and "Connections" links were overlapped by the main card by 16 px (`-mb-4` under Tailwind 4's `space-y`); fixed (`mb-6`, 24 px gap), the check failed on the old build and passes on the new one |
 | 2026-10-21 | mutation checks: the old plan read in the shell query, and the old "still mounted" flag in the editor hook | the new tests fail on each, pass on the fix |
