@@ -8,7 +8,6 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
-  Building2,
   Check,
   Copy,
   Menu as MenuIcon,
@@ -16,20 +15,18 @@ import {
   Paperclip,
   Plus,
   RefreshCw,
-  Settings2,
   ShieldCheck,
   Square,
-  UserRound,
   Wrench,
 } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
-import { StatusPill } from "@/components/ui/status";
+import { StatusPill, toneDotClass } from "@/components/ui/status";
 import { Markdown } from "@/components/markdown";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { ChatRail, type ConversationItem, type ListState } from "@/components/chat/chat-rail";
-import { OperationsSnapshotDisclosure } from "@/components/chat/operations-snapshot-disclosure";
+import { EmployeeChatInfo } from "@/components/chat/employee-chat-info";
 import { openHelp } from "@/components/help/help-widget";
 import {
   deleteConversationAction,
@@ -38,7 +35,7 @@ import {
   renameConversationAction,
   searchConversationsAction,
 } from "@/app/actions/chat";
-import { agentIdentityLabel, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
+import { type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness, type EmployeeReadiness } from "@/lib/workforce-readiness";
 import { chatNavTargets } from "@/lib/chat-navigation";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
@@ -489,9 +486,15 @@ export function ChatWorkspace(props: Props) {
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
   const awaitingFirstToken = Boolean(streaming) && !messages.some((m) => m.id === streaming?.assistantId && m.content);
 
-  const activeTitle = conversationId
-    ? (conversations.find((c) => c.id === conversationId)?.title ?? (props.initialConversation?.id === conversationId ? props.initialConversation.title : null))
-    : null;
+  const employeeName = props.agentName.trim() || meta.shortName;
+  const showRole = !employeeName.toLowerCase().endsWith(meta.shortName.toLowerCase());
+  const headerStatus = readiness.stage === "ready" ? "Ready"
+    : readiness.stage === "working" ? "Working"
+    : readiness.stage === "approval" ? "Awaiting approval"
+    : readiness.stage === "attention" ? "Needs attention"
+    : readiness.stage === "connection" ? "Check connection"
+    : readiness.stage === "inventory" || readiness.stage === "identity" ? "Verification required"
+    : readiness.label;
   const railProps = {
     role: meta.key,
     agentName: props.agentName,
@@ -521,59 +524,33 @@ export function ChatWorkspace(props: Props) {
       </Sheet>
 
       <main className="relative flex min-w-0 flex-1 flex-col">
-        {/* Employee identity and runtime state stay visible without occupying a warning banner. */}
-        <header className="shrink-0 border-b border-line/80 bg-surface/95 px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] shadow-[0_4px_18px_-18px_rgb(20_30_60/.28)] backdrop-blur sm:px-6" data-aqi-target="chat.employee">
-          <div className="mx-auto flex w-full max-w-5xl items-center gap-3">
+        <header aria-label="Employee chat" className="shrink-0 border-b border-line/80 bg-surface px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6" data-aqi-target="chat.employee">
+          <div className="mx-auto flex w-full max-w-5xl items-center gap-2 sm:gap-3">
             <button type="button" onClick={() => setRailOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-2 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden" aria-label="Open chat navigation" aria-haspopup="dialog" aria-expanded={railOpen}>
               <MenuIcon className="size-5" />
             </button>
-            <span className="grid size-11 shrink-0 place-items-center rounded-[15px] border border-line bg-surface-2/70 shadow-[inset_0_1px_0_rgb(255_255_255/.7)] sm:size-12">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2/70 sm:size-11">
               <AgentAvatar role={meta} size="md" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                <h1 className="max-w-full truncate text-[16px] font-semibold tracking-tight text-ink sm:text-[17px]" title={agentIdentityLabel(props.agentName, meta)}>{agentIdentityLabel(props.agentName, meta)}</h1>
-                <StatusPill tone={statusMeta.tone} size="md" className="h-6 px-2.5 text-[11px] sm:text-[11.5px]">{statusMeta.label}</StatusPill>
-              </div>
-              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
-                <span className="font-medium text-muted">{meta.shortName}</span>
-                <span className="text-faint" aria-hidden>·</span>
-                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-line/80 bg-surface-2/65 px-2 py-0.5 font-medium text-ink-2">
-                  <Building2 className="size-3 shrink-0 text-muted" aria-hidden />
-                  {props.orgKind === "agency" ? "iAcquire workspace" : "Private workspace"}
+              <h1 className="truncate text-[15px] font-semibold tracking-tight text-ink sm:text-[17px]" title={employeeName}>{employeeName}</h1>
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11.5px] text-muted">
+                {showRole && <span className="hidden min-w-0 truncate sm:inline" title={meta.shortName}>{meta.shortName}</span>}
+                {showRole && <span className="hidden text-faint sm:inline" aria-hidden>·</span>}
+                <span role="status" aria-live="polite" aria-label={readiness.label} title={readiness.label} className="inline-flex min-w-0 items-center gap-1.5">
+                  <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", toneDotClass(statusMeta.tone))} />
+                  <span className="truncate">{headerStatus}</span>
                 </span>
-                <span className="hidden min-w-0 truncate text-muted md:inline" title={activeTitle ?? undefined}>· {activeTitle ?? "New conversation"}</span>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-              {props.hasPendingReview && (
-                <span className="hidden rounded-full border border-warning/25 bg-warning-soft/40 px-2.5 py-1 text-[11px] font-medium text-warning-ink xl:inline-flex">Configuration review pending</span>
-              )}
               <Tooltip content="New chat">
-                <Button variant="secondary" size="icon" onClick={newChat} aria-label="New chat" className="shadow-none transition-transform hover:-translate-y-0.5">
+                <Button variant="ghost" size="icon" onClick={newChat} aria-label="New chat" className="size-10 shadow-none">
                   <Plus className="size-4" />
                 </Button>
               </Tooltip>
-              <Tooltip content={`${props.agentName} profile`}>
-                <ButtonLink href={targets.profile} prefetch={false} variant="ghost" size="icon" aria-label={`Open ${props.agentName} profile`} className="hidden sm:inline-flex">
-                  <UserRound className="size-4" />
-                </ButtonLink>
-              </Tooltip>
-              {props.canConfigure && (
-                <Tooltip content="Manage employee">
-                  <ButtonLink href={targets.manage} prefetch={false} variant="ghost" size="icon" aria-label="Manage employee" className="hidden sm:inline-flex">
-                    <Settings2 className="size-4" />
-                  </ButtonLink>
-                </Tooltip>
-              )}
+              <EmployeeChatInfo agentName={employeeName} roleTitle={meta.shortName} readiness={readiness} operationsSnapshot={Boolean(operationsNotice)} hasPendingReview={props.hasPendingReview} canConfigure={props.canConfigure} profileHref={targets.profile} manageHref={targets.manage} />
             </div>
-          </div>
-          <div className="mx-auto mt-2.5 flex w-full max-w-5xl flex-wrap items-center gap-2 pl-0 sm:pl-[60px] lg:pl-0">
-            <span className="truncate text-[11.5px] text-muted md:hidden">{activeTitle ?? "New conversation"}</span>
-            {ready && !readiness.inventoryAttestationCurrent && (
-              <span className="rounded-full border border-line bg-surface-2/70 px-2.5 py-1 text-[10.5px] leading-tight text-muted">Tools are reverified before a new message is saved</span>
-            )}
-            {operationsNotice && <OperationsSnapshotDisclosure agentName={props.agentName} />}
           </div>
         </header>
 
@@ -751,7 +728,7 @@ function EmptyState({ meta, readiness, ready, configured, canConfigure, onPick }
           <h2 className="max-w-md text-[28px] font-semibold leading-[1.08] tracking-[-.035em] text-ink sm:text-[38px]">
             {ready ? <>{headline[0]}<br /><span className="text-primary">{headline[1]}</span></> : title}
           </h2>
-          <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{ready ? `${meta.tagline} This conversation stays in your private company workspace.${readiness.inventoryAttestationCurrent ? "" : " The server rechecks runtime tools before saving your message."}` : explanation}</p>
+          <p className="mt-4 max-w-md text-[14px] leading-relaxed text-muted">{ready ? meta.tagline : explanation}</p>
         </div>
         <motion.div initial={reduce ? false : { scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 18 }} className="relative shrink-0">
           <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full blur-2xl" style={{ background: `${meta.accent}33` }} />
