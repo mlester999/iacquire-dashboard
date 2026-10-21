@@ -134,7 +134,7 @@ async function loadOperationsManagerContext({ db, input }: InternalContextAdapte
                                    and v.agent_instance_id = a.id and v.org_id = a.org_id
       where a.id = $1 and a.org_id = $2
       for share of a, o, v`,
-    [input.agentId, input.orgId, input.userId],
+    [input.agentId, input.orgId],
   );
   const gate = rows[0];
   if (!gate) {

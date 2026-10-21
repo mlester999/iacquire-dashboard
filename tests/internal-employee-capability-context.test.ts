@@ -7,8 +7,7 @@ let agency: Awaited<ReturnType<typeof createOrg>>;
 let client: Awaited<ReturnType<typeof createOrg>>;
 let manager: Awaited<ReturnType<typeof createUser>>;
 let unprivilegedUser: Awaited<ReturnType<typeof createUser>>;
-let approvalsDeniedUser: Awaited<ReturnType<typeof createUser>>;
-let activityDeniedUser: Awaited<ReturnType<typeof createUser>>;
+let activityRestrictedUser: Awaited<ReturnType<typeof createUser>>;
 let clientPrivateUser: Awaited<ReturnType<typeof createUser>>;
 let operationsManagerId: string;
 let activeConfigVersionId: string;
@@ -19,22 +18,15 @@ beforeAll(async () => {
   client = await createOrg({ kind: "client", name: "Separate Client Workspace" });
   manager = await createUser({ platformRole: "agency_manager", name: "Agency Manager" });
   unprivilegedUser = await createUser({ name: "Unprivileged User" });
-  approvalsDeniedUser = await createUser({ platformRole: "agency_manager", name: "Approvals Restricted Manager" });
-  activityDeniedUser = await createUser({ platformRole: "agency_manager", name: "Activity Restricted Manager" });
+  activityRestrictedUser = await createUser({ platformRole: "agency_manager", name: "Activity Restricted Manager" });
   clientPrivateUser = await createUser({ name: "Client Private Person" });
   await addMember(agency.id, manager.id, "owner");
-  await addMember(agency.id, approvalsDeniedUser.id, "owner");
-  await addMember(agency.id, activityDeniedUser.id, "owner");
+  await addMember(agency.id, activityRestrictedUser.id, "member");
   await addMember(client.id, clientPrivateUser.id, "owner");
   operationsManagerId = await agentId(agency.id, "operations_manager");
   salesAssistantId = await agentId(agency.id, "sales_assistant");
 
   await withSystem(async (db) => {
-    await db.query(
-      `insert into member_permission_overrides (org_id, user_id, permission, effect)
-       values ($1, $2, 'approvals.view', 'deny'), ($1, $3, 'activity.view', 'deny')`,
-      [agency.id, approvalsDeniedUser.id, activityDeniedUser.id],
-    );
     const { rows } = await db.query<{ id: string }>(
       `insert into agent_config_versions (org_id, agent_instance_id, version, settings, summary,
          compiled_instructions, policy_version, source, status, applied_at)
@@ -151,11 +143,24 @@ describe("internal employee read-only capability context", () => {
     expect(denied.rows[0]).toMatchObject({ result: "denied", metadata: { reason: "user_permission" } });
   });
 
-  it.each([
-    ["approvals.view", () => approvalsDeniedUser.id],
-    ["activity.view", () => activityDeniedUser.id],
-  ])("refuses the snapshot when the signed-in user lacks the underlying %s permission", async (_permission, getUserId) => {
-    const result = await withSystem((db) => prepareInternalEmployeeContext(db, contextInput({ userId: getUserId() })));
+  it("refuses the snapshot when the signed-in user lacks the underlying activity.view permission", async () => {
+    const result = await withSystem((db) => prepareInternalEmployeeContext(db, contextInput({ userId: activityRestrictedUser.id })));
+    expect(result).toEqual({ allowed: false, reason: "user_permission" });
+  });
+
+  it("refuses approvals when the user lacks the underlying approvals.view permission", async () => {
+    await withSystem((db) => db.query("delete from role_permissions where role = 'owner' and permission = 'approvals.view'"));
+    try {
+      const result = await withSystem((db) => prepareInternalEmployeeContext(db, contextInput()));
+      expect(result).toEqual({ allowed: false, reason: "user_permission" });
+    } finally {
+      await withSystem((db) => db.query("insert into role_permissions (role, permission) values ('owner', 'approvals.view') on conflict do nothing"));
+    }
+  });
+
+  it("refuses reads from an agency employee without access to the internal agency organization", async () => {
+    const outsideUser = await createUser({ platformRole: "agency_manager", name: "Unassigned Agency Manager" });
+    const result = await withSystem((db) => prepareInternalEmployeeContext(db, contextInput({ userId: outsideUser.id })));
     expect(result).toEqual({ allowed: false, reason: "user_permission" });
   });
 
