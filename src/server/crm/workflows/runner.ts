@@ -550,18 +550,40 @@ export async function recoverAbandonedRuns(now = new Date()): Promise<{ recovere
   });
 }
 
-/** Leases due runs (the partial index on next_run_at serves this). A run whose workflow is paused or archived is not taken: it holds. */
-async function claimRuns(now: Date, limit: number): Promise<Array<{ id: string; token: string }>> {
+/**
+ * Leases due runs, fairly across workspaces. A workspace's due runs are ranked oldest first (1, 2, 3…) and the tick takes them rank by
+ * rank across all workspaces, so one workspace with a large backlog cannot use every slot while another's single run waits. A workspace
+ * that is alone still gets the whole tick: the fill is round-robin, not a per-workspace cap. A run whose workflow is paused or archived is
+ * not taken (it holds), and rows another worker already holds are skipped.
+ *
+ * The ranking reads the due rows through the partial index on next_run_at; the rows chosen are then locked with `for update skip locked`
+ * and re-checked, so two overlapping ticks can never lease the same run.
+ */
+async function claimRuns(now: Date, limit: number): Promise<Array<{ id: string; token: string; orgId: string }>> {
   return withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string; claimed_at: Date }>(
+    const { rows } = await db.query<{ id: string; org_id: string; claimed_at: Date; next_run_at: Date }>(
       `update crm_workflow_runs r set status = 'running', claimed_at = $1 where r.id in (
-         select x.id from crm_workflow_runs x join crm_workflows w on w.id = x.workflow_id and w.org_id = x.org_id
-         where x.status in ('queued', 'waiting') and x.next_run_at <= $1 and w.status = 'active'
-         order by x.next_run_at, x.id limit $2 for update of x skip locked)
-       returning r.id, r.claimed_at`,
+         select z.id from crm_workflow_runs z
+         where z.status in ('queued', 'waiting') and z.next_run_at <= $1 and z.id in (
+           select ranked.id from (
+             select y.id, y.next_run_at, row_number() over (partition by y.org_id order by y.next_run_at, y.id) as rank
+             from crm_workflow_runs y join crm_workflows w on w.id = y.workflow_id and w.org_id = y.org_id
+             where y.status in ('queued', 'waiting') and y.next_run_at <= $1 and w.status = 'active'
+           ) ranked order by ranked.rank, ranked.next_run_at, ranked.id limit $2)
+         for update of z skip locked)
+       returning r.id, r.org_id, r.claimed_at, r.next_run_at`,
       [now.toISOString(), limit],
     );
-    return rows.map((r) => ({ id: r.id, token: iso(r.claimed_at)! }));
+    // Work through them in the same fair order: oldest first within a workspace, one workspace after another, so a tick that runs out of time
+    // gives back the tail of every workspace's share rather than all of one's.
+    const byOrg = new Map<string, typeof rows>();
+    for (const r of rows) byOrg.set(r.org_id, [...(byOrg.get(r.org_id) ?? []), r]);
+    for (const list of byOrg.values()) list.sort((a, b) => new Date(a.next_run_at).getTime() - new Date(b.next_run_at).getTime() || a.id.localeCompare(b.id));
+    const ordered: Array<{ id: string; token: string; orgId: string }> = [];
+    for (let round = 0; ordered.length < rows.length; round++) {
+      for (const list of byOrg.values()) if (list[round]) ordered.push({ id: list[round].id, token: iso(list[round].claimed_at)!, orgId: list[round].org_id });
+    }
+    return ordered;
   });
 }
 

@@ -1,0 +1,26 @@
+{
+  // The same compiler options as tsconfig.json, but checking only the project's own sources. tsconfig.json also lists the generated type
+  // folders of every Next build output this machine has ever made (.next, .next-*-qa, …), which Next adds itself; a stale one (written
+  // before a route moved) fails the whole check with errors that are not in the code. This file never looks at those folders, apart from
+  // the one that `npm run build:clean` writes to, so `npm run typecheck` and that build answer for the code alone.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./tsconfig.clean.tsbuildinfo"
+  },
+  "include": [
+    "next-env.d.ts",
+    "next.config.ts",
+    "vitest.config.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    ".next-clean-build/types/**/*.ts",
+    ".next-clean-build/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".data",
+    "scripts"
+  ]
+}

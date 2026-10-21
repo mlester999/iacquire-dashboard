@@ -21,6 +21,8 @@ const CRM_MIGRATION_NAMES = [
   // Automation Studio extends crm_workflows / crm_workflow_versions / crm_workflow_runs and its policies also use app.permitted_orgs, so it
   // is rolled back before everything above (its own rollback refuses while Studio data exists; none does here).
   "0069_automation_studio_foundation.sql",
+  // Its tables hang off crm_workflows and its policies use app.permitted_orgs too, so it goes before 0069.
+  "0070_automation_studio_conversations.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

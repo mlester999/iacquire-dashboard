@@ -2,6 +2,8 @@ import "server-only";
 import crypto from "node:crypto";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
+import { assertStudioEntitled } from "@/server/automation-studio/entitlement";
+import { derivePremiumFeatures, type WorkflowOrigin, type WorkflowStep } from "@/lib/crm/workflow/spec";
 import { slugify } from "@/server/calendars/setup";
 import { templateContentHash } from "@/server/crm/message-templates";
 import { readDraft } from "@/lib/crm/forms/spec";
@@ -62,6 +64,19 @@ async function renumberStages(db: Queryable, orgId: string, pipelineId: string) 
 }
 
 /** Inserts the workspace record for one asset and returns its ID. */
+/**
+ * A Blueprint only ever writes a workflow's working copy, but that copy must not slip past the Automation Studio plan: changing a workflow
+ * built in Automation Studio, or giving any workflow a step only the plan includes, needs the plan, exactly as saving it in the editor does.
+ */
+async function assertPlanForWorkflowDraft(db: Queryable, orgId: string, existingId: string | null, steps: unknown) {
+  const origin: WorkflowOrigin = existingId
+    ? ((await db.query<{ origin: WorkflowOrigin }>("select origin from crm_workflows where id = $1 and org_id = $2", [existingId, orgId])).rows[0]?.origin ?? "crm")
+    : "crm";
+  if (derivePremiumFeatures({ steps: Array.isArray(steps) ? (steps as WorkflowStep[]) : [] }, origin).length) {
+    await assertStudioEntitled(db, orgId, "Applying this Blueprint to an Automation Studio workflow");
+  }
+}
+
 export async function createRecord<T extends AssetType>(ctx: WriteContext, type: T, record: NativeTypeMap[T], opts: CreateOptions = {}): Promise<string> {
   const { db, orgId, userId } = ctx;
   const id = async (sql: string, params: unknown[]) => (await db.query<{ id: string }>(sql, params)).rows[0].id;
@@ -178,6 +193,7 @@ export async function createRecord<T extends AssetType>(ctx: WriteContext, type:
     }
     case "workflow": {
       const r = record as NativeTypeMap["workflow"];
+      await assertPlanForWorkflowDraft(db, orgId, null, r.draft.steps);
       // Always a draft: nothing runs until providers are connected, people are mapped and the workspace's owner approves this exact version.
       return id(
         `insert into crm_workflows (org_id, key, name, description, folder_id, status, draft, hourly_run_limit, created_by, updated_by)
@@ -329,6 +345,7 @@ export async function updateRecord<T extends AssetType>(ctx: WriteContext, entry
     }
     case "workflow": {
       const r = record as NativeTypeMap["workflow"];
+      await assertPlanForWorkflowDraft(db, orgId, nid, r.draft.steps);
       // The working copy only: a published version (and whether it runs) stays exactly as the workspace left it.
       await run(
         "update crm_workflows set name = $3, description = $4, folder_id = $5, hourly_run_limit = $6, draft = $7, draft_revision = draft_revision + 1, updated_by = $8 where id = $1 and org_id = $2",

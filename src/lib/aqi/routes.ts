@@ -25,6 +25,7 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/crm/pipelines", label: "Pipelines", description: "Deals moving through your sales stages.", permission: "sales.view" },
   { path: "/crm/tasks", label: "CRM Tasks", description: "Follow-ups, assignments and completed work.", permission: "crm.view" },
   { path: "/crm/workflows", label: "Workflows", description: "Automations that run when something happens in the CRM.", permission: "workflows.view" },
+  { path: "/automation-studio", label: "Automation Studio", description: "Describe an automation and watch the AI Automation Builder build it, or build it yourself on a visual canvas.", permission: "workflows.view" },
   { path: "/crm/calendar", label: "Calendar", description: "Bookings and availability.", permission: "appointments.view" },
   { path: "/inbox", label: "Inbox", description: "Conversations with your contacts.", permission: "inbox.view" },
   { path: "/analytics", label: "Analytics", description: "Workspace reporting and performance.", permission: "analytics.view" },

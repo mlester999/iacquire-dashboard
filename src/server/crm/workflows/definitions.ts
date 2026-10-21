@@ -365,7 +365,7 @@ async function uniqueKey(db: Queryable, orgId: string, name: string, exceptId: s
 const newNonce = () => crypto.randomBytes(18).toString("base64url");
 
 /** Checks a draft is a storable shape: an object with a trigger object and a steps list, within the size limit. */
-function storableDraft(raw: unknown): WorkflowDefinition {
+export function storableDraft(raw: unknown): WorkflowDefinition {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new AppError("invalid_input", "This workflow can't be saved: it isn't a workflow definition.");
   const r = raw as { trigger?: unknown; steps?: unknown };
   if (!r.trigger || typeof r.trigger !== "object" || Array.isArray(r.trigger) || typeof (r.trigger as { type?: unknown }).type !== "string") throw new AppError("invalid_input", "Choose what starts this workflow.");
@@ -412,24 +412,30 @@ export async function saveWorkflowDraft(actor: CrmActor, id: string, input: { de
   if (!UUID.test(id)) throw notFound();
   if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) throw new AppError("invalid_input", "Reload the workflow and try again.");
   const draft = storableDraft(input.definition);
-  return withSystem(async (db) => {
-    // A workflow built in Automation Studio (or one that gains a step only the plan includes) can't be changed without the plan.
-    // Reading, pausing and archiving never need it.
-    const current = (await db.query<{ origin: WorkflowOrigin }>("select origin from crm_workflows where id = $1 and org_id = $2", [id, actor.orgId])).rows[0];
-    if (!current) throw notFound();
-    if (derivePremiumFeatures(draftSteps(draft), current.origin).length) await assertStudioEntitled(db, actor.orgId, "Changing this workflow");
-    const { rows } = await db.query<{ draft_revision: number }>(
-      "update crm_workflows set draft = $3, draft_revision = draft_revision + 1, updated_by = $4 where id = $1 and org_id = $2 and draft_revision = $5 and status <> 'archived' returning draft_revision",
-      [id, actor.orgId, JSON.stringify(draft), actor.userId, input.expectedRevision],
-    );
-    if (!rows[0]) {
-      const w = (await db.query<{ status: string }>("select status from crm_workflows where id = $1 and org_id = $2", [id, actor.orgId])).rows[0];
-      if (!w) throw notFound();
-      if (w.status === "archived") throw new AppError("conflict", "This workflow is archived. Restore it to edit it.");
-      throw new AppError("conflict", "Someone else saved this workflow since you opened it. Reload to see their changes before saving yours.");
-    }
-    return { revision: rows[0].draft_revision, issues: validateDefinition(draft, await loadValidationContext(db, actor.orgId)), draftHash: draftHashOf(draft) };
-  });
+  return withSystem((db) => saveDraftInTx(db, actor, id, draft, input.expectedRevision));
+}
+
+/**
+ * The save itself, inside the caller's transaction (Automation Studio records the change in the same one). The caller has checked the permission
+ * and the shape of the draft; this checks the plan, the revision and the workflow's state.
+ */
+export async function saveDraftInTx(db: Queryable, actor: CrmActor, id: string, draft: WorkflowDefinition, expectedRevision: number): Promise<{ revision: number; issues: ValidationIssue[]; draftHash: string | null }> {
+  // A workflow built in Automation Studio (or one that gains a step only the plan includes) can't be changed without the plan.
+  // Reading, pausing and archiving never need it.
+  const current = (await db.query<{ origin: WorkflowOrigin }>("select origin from crm_workflows where id = $1 and org_id = $2", [id, actor.orgId])).rows[0];
+  if (!current) throw notFound();
+  if (derivePremiumFeatures(draftSteps(draft), current.origin).length) await assertStudioEntitled(db, actor.orgId, "Changing this workflow");
+  const { rows } = await db.query<{ draft_revision: number }>(
+    "update crm_workflows set draft = $3, draft_revision = draft_revision + 1, updated_by = $4 where id = $1 and org_id = $2 and draft_revision = $5 and status <> 'archived' returning draft_revision",
+    [id, actor.orgId, JSON.stringify(draft), actor.userId, expectedRevision],
+  );
+  if (!rows[0]) {
+    const w = (await db.query<{ status: string }>("select status from crm_workflows where id = $1 and org_id = $2", [id, actor.orgId])).rows[0];
+    if (!w) throw notFound();
+    if (w.status === "archived") throw new AppError("conflict", "This workflow is archived. Restore it to edit it.");
+    throw new AppError("conflict", "Someone else saved this workflow since you opened it. Reload to see their changes before saving yours.");
+  }
+  return { revision: rows[0].draft_revision, issues: validateDefinition(draft, await loadValidationContext(db, actor.orgId)), draftHash: draftHashOf(draft) };
 }
 
 /**

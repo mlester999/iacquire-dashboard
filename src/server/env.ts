@@ -72,6 +72,9 @@ const schema = z.object({
   SCHEDULER_ENABLED: bool,
   // The scheduler is reported as stopped when its last completed run is older than this. Set it to a few times the schedule interval.
   SCHEDULER_STALE_MINUTES: z.coerce.number().int().min(2).max(1440).default(20),
+  // Automation Studio: days a workspace keeps the plan's features after a payment is recorded as failed, before the plan expires. An agency member
+  // can choose a different number (1 to 30) for one case when recording the failure.
+  STUDIO_PAYMENT_GRACE_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   // Website Studio. Included sites live at <label>.<SITES_BASE_DOMAIN>; custom domains point (CNAME) at SITES_CNAME_TARGET.
   SITES_BASE_DOMAIN: z.preprocess(blankToUndefined, z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$|^[a-z0-9-]+\.localhost$/i).default("sites.iacquire.com")),
   SITES_CNAME_TARGET: z.preprocess(blankToUndefined, z.string().optional()),

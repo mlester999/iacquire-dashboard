@@ -178,6 +178,40 @@ describe("update_step", () => {
   });
 });
 
+describe("add_step, detached (the manual editor's drop onto empty canvas)", () => {
+  it("places a step that nothing leads to yet and changes no link", () => {
+    const r = ok(applyOperations(base(), [{ op: "add_step", kind: "internal_note", key: "loose", config: note("Hi"), at: { detached: true } }]));
+    expect(keys(r.definition)).toEqual(["a", "b", "c", "loose"]);
+    expect(by(r.definition, "loose").next).toBeNull();
+    expect(walk(r.definition)).toEqual(["a", "b", "c"]);
+    expect(r.changes).toEqual([{ type: "step_added", key: "loose" }]);
+    expect(by(r.definition, "c").next).toBeNull();
+  });
+
+  it("starts an if / else with both paths empty, and runs a lone detached step first", () => {
+    const empty: WorkflowDefinition = { trigger: { type: "contact.created" }, steps: [] };
+    const r = ok(applyOperations(empty, [{ op: "add_step", kind: "branch", key: "check", config: isNew, at: { detached: true } }]));
+    expect(by(r.definition, "check")).toMatchObject({ next: null, branches: { yes: null, no: null } });
+    expect(r.definition.steps[0].key).toBe("check");
+  });
+
+  it("is reported as unconnected until a line is drawn to it, and then runs", () => {
+    const ctx = validationContextFrom({ tags: [], users: [], pipelines: [], fields: [], templates: [], n8nMappings: [], webhookSubscriptions: [], assignmentRules: [], agents: [], calendars: [], appointmentTypes: [] });
+    const added = ok(applyOperations(base(), [{ op: "add_step", kind: "internal_note", key: "loose", config: note("Hi"), at: { detached: true } }]));
+    expect(validateDefinition(added.definition, ctx).some((i) => i.code === "unreachable" && i.stepKey === "loose")).toBe(true);
+    const joined = ok(applyOperations(added.definition, [{ op: "connect", from: "c", via: "next", to: "loose" }]));
+    expect(walk(joined.definition)).toEqual(["a", "b", "c", "loose"]);
+    expect(validateDefinition(joined.definition, ctx).some((i) => i.code === "unreachable")).toBe(false);
+  });
+
+  it("is still held to the step limit, duplicate keys and approval rules", () => {
+    expect(refused(applyOperations(base(), [{ op: "add_step", kind: "wait", key: "a", at: { detached: true } }]))).toMatchObject({ code: "duplicate_key" });
+    expect(refused(applyOperations(base(), [{ op: "add_step", kind: "wait", requireApproval: true, at: { detached: true } }]))).toMatchObject({ code: "invalid_operation" });
+    const full: WorkflowDefinition = { trigger: { type: "contact.created" }, steps: Array.from({ length: WORKFLOW_LIMITS.maxSteps }, (_, i) => step(`s${i}`, "wait", wait(), i + 1 < WORKFLOW_LIMITS.maxSteps ? `s${i + 1}` : null)) };
+    expect(refused(applyOperations(full, [{ op: "add_step", kind: "wait", at: { detached: true } }]))).toMatchObject({ code: "limit" });
+  });
+});
+
 describe("remove_step, move_step, connect and set_entry", () => {
   it("removes a step and reconnects what led to it", () => {
     const r = ok(applyOperations(base(), [{ op: "remove_step", key: "b" }]));

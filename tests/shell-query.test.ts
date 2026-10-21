@@ -22,6 +22,50 @@ describe("portal shell query", () => {
     expect(shell.crmMode).toBe("native");
   });
 
+  describe("Automation Studio plan in the menu", () => {
+    const plan = (orgId: string, userId: string, status: string, extra = "") =>
+      withSystem((db) =>
+        db.query(
+          `insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_at, billing_start_on${extra ? ", past_due_since, grace_ends_at" : ""})
+           values ($1, $3, 29900, 4, 't', $2, now() - interval '10 days', current_date - 10${extra ? `, ${extra}` : ""})`,
+          [orgId, userId, status],
+        ),
+      );
+    const studio = async (name: string, role: "owner" | "viewer" = "owner") => {
+      const user = await createUser();
+      const org = await createOrg({ name });
+      await addMember(org.id, user.id, role);
+      return { user, org, shell: () => getShellData(ctxFor(user, org, role)) };
+    };
+
+    it("reads the plan as the signed-in person (the lifecycle columns are not table-granted to them) and says it is not entitled without one", async () => {
+      const w = await studio("Studio menu: no plan");
+      expect((await w.shell()).automationStudio).toEqual({ entitled: false });
+    });
+
+    it.each([
+      ["an active plan", "active", "", true],
+      ["a past-due plan still inside its grace period", "past_due", "now() - interval '1 day', now() + interval '3 days'", true],
+      ["a past-due plan whose grace period has ended", "past_due", "now() - interval '9 days', now() - interval '1 day'", false],
+      ["an expired plan", "expired", "", false],
+      ["a plan that is only requested", "requested", "", false],
+    ])("%s", async (_name, status, extra, entitled) => {
+      const w = await studio(`Studio menu: ${status}`);
+      await plan(w.org.id, w.user.id, status, extra);
+      expect((await w.shell()).automationStudio).toEqual({ entitled });
+    });
+
+    it("never shows another workspace's plan, and says nothing to people who can't see automations", async () => {
+      const mine = await studio("Studio menu: mine");
+      const other = await studio("Studio menu: theirs");
+      await plan(other.org.id, other.user.id, "active");
+      expect((await mine.shell()).automationStudio).toEqual({ entitled: false });
+      const viewer = await studio("Studio menu: viewer", "viewer");
+      await plan(viewer.org.id, viewer.user.id, "active");
+      expect((await viewer.shell()).automationStudio).toBeUndefined();
+    });
+  });
+
   it("keeps notification preferences and critical alerts in the unread count", async () => {
     const user = await createUser();
     const org = await createOrg({ name: "Shell notifications workspace" });

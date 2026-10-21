@@ -104,6 +104,8 @@ export const RATE_LIMITS = {
   quoteDecisionByUser: { name: "project:quote", limit: 12, windowSeconds: 3600 },
   publicContentByIp: { name: "public:ip", limit: 120, windowSeconds: 60 },
   maintenanceByUser: { name: "maintenance:user", limit: 10, windowSeconds: 3600 },
+  // The AI Automation Builder: a person can send this many messages an hour (the workspace's monthly limit applies on top).
+  studioBuilderByUser: { name: "studio-builder:user", limit: 60, windowSeconds: 3600 },
   topupByOrg: { name: "billing:topup", limit: 10, windowSeconds: 3600 },
   inboxSendByUser: { name: "inbox:send", limit: 60, windowSeconds: 60 },
   onboardingAssistByOrg: { name: "onboarding:assist", limit: 25, windowSeconds: 3600 },

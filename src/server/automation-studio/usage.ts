@@ -196,3 +196,19 @@ export async function admitActiveWorkflow(db: Queryable, orgId: string): Promise
   }
   return { allowed: true };
 }
+
+/**
+ * Whether the workspace may use the AI Automation Builder for one more message this month. Called before the model is asked, so a workspace over
+ * its limit costs nothing. The owners are told once at the warning level and once when the limit is reached.
+ */
+export async function admitBuilderMessage(db: Queryable, orgId: string, now = new Date()): Promise<RunAdmission> {
+  const [lim, c] = await Promise.all([studioLimits(db, orgId), counters(db, orgId, now, ["builder_messages"])]);
+  const used = c.builder_messages.quantity;
+  const limit = lim.limits.monthlyBuilderMessages;
+  const q = quotaStatus(used, limit, lim.warnAtPercent);
+  await noticeQuota(db, orgId, "monthlyBuilderMessages", q.state, used, limit, now, lim.hardStop);
+  if (q.state === "exceeded" && lim.hardStop) {
+    return { allowed: false, limit: "monthlyBuilderMessages", detail: `This workspace has used all ${limit.toLocaleString("en-US")} AI Builder messages for this month. You can still edit the workflow by hand; ask iAcquire if you need more.` };
+  }
+  return { allowed: true };
+}

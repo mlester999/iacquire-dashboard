@@ -4,7 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Wrench } from "lucide-react";
+import { Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
 import { AvatarTile } from "@/components/ui/status";
@@ -35,6 +35,8 @@ const CRM: NavItem[] = [
   { href: "/crm/pipelines", label: "Pipelines", icon: KanbanSquare, permission: "sales.view" },
   { href: "/crm/calendar", label: "Calendar", icon: CalendarDays, permission: "appointments.view" },
   { href: "/crm/tasks", label: "Tasks", icon: ListChecks, permission: "crm.view" },
+  // Premium: shown with a lock to workspaces without the plan, and the page it opens explains the plan. The core CRM never needs it.
+  { href: "/automation-studio", label: "Automation Studio", icon: Workflow, permission: "workflows.view" },
   { href: "/crm", label: "All CRM tools", icon: Waypoints, permission: "crm.view" },
 ];
 const GROW: NavItem[] = [
@@ -63,18 +65,18 @@ function NavPendingBar() {
   const { pending } = useLinkStatus();
   return <span aria-hidden className={cn("pointer-events-none absolute inset-x-2 bottom-0.5 h-[2px] origin-left rounded-full bg-[#8ab4ff] transition-opacity duration-150", pending ? "opacity-100" : "opacity-0")} />;
 }
-function NavLink({ item, pathname, count, trailing, onNavigate, onWarm, compact = false }: { item: NavItem; pathname: string; count?: number; trailing?: string; onNavigate?: () => void; onWarm: (href: string) => void; compact?: boolean }) {
+function NavLink({ item, pathname, count, trailing, locked = false, onNavigate, onWarm, compact = false }: { item: NavItem; pathname: string; count?: number; trailing?: string; /** Needs a plan the workspace doesn't have: shows a lock and says so to screen readers. */ locked?: boolean; onNavigate?: () => void; onWarm: (href: string) => void; compact?: boolean }) {
   const active = item.match ? item.match(pathname) : pathname === item.href || pathname.startsWith(`${item.href}/`);
   // Warm the full route on intent. This is deliberately hover/focus only: the automatic viewport
   // prefetch on a dynamic route still runs a server render (auth + workspace lookups) for every
   // visible link, which measured 40 background RSC requests on one dashboard load. `prefetch={false}`
   // turns that off; the manual prefetch below still runs on intent, once per destination.
   const warm = () => { if (!active) onWarm(item.href); };
-  const link = <Link href={item.href} prefetch={false} onClick={onNavigate} onMouseEnter={warm} onFocus={warm} onPointerDown={warm} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? item.label : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
+  const link = <Link href={item.href} prefetch={false} onClick={onNavigate} onMouseEnter={warm} onFocus={warm} onPointerDown={warm} data-aqi-target={aqiNavTarget(item.href)} data-tour={item.tour} aria-current={active ? "page" : undefined} aria-label={compact ? (locked ? `${item.label} (needs the Automation Studio plan)` : item.label) : undefined} className={cn("workspace-nav-link group relative flex h-10 items-center gap-2 rounded-xl px-2 text-[13px] font-medium", compact && "justify-center")}>
     <NavPendingBar />
     {active && <motion.span layoutId="client-nav-active" className="absolute inset-0 rounded-xl border border-[#5582ff]/25 bg-[#4268c6]/15" transition={{ type: "spring", stiffness: 460, damping: 38 }} />}
     <span className="nav-icon-box relative"><item.icon className="size-[17px]" /></span>
-    {!compact && <><span className="relative min-w-0 flex-1 truncate">{item.label}</span>{count ? <span className="relative flex min-w-5 items-center justify-center rounded-md bg-[#305ecb] px-1.5 py-0.5 text-[10px] font-semibold text-white">{count > 99 ? "99+" : count}</span> : trailing ? <span className="relative text-[11px] tabular-nums text-[#a9bada]">{trailing}</span> : null}</>}
+    {!compact && <><span className="relative min-w-0 flex-1 truncate">{item.label}</span>{locked ? <span className="relative text-[#a9bada]" title="Needs the Automation Studio plan"><Lock className="size-3.5" aria-hidden /><span className="sr-only">Needs the Automation Studio plan</span></span> : count ? <span className="relative flex min-w-5 items-center justify-center rounded-md bg-[#305ecb] px-1.5 py-0.5 text-[10px] font-semibold text-white">{count > 99 ? "99+" : count}</span> : trailing ? <span className="relative text-[11px] tabular-nums text-[#a9bada]">{trailing}</span> : null}</>}
   </Link>;
   return compact ? <Tooltip content={item.label}>{link}</Tooltip> : link;
 }
@@ -98,7 +100,8 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
   const crmMode = shell.crmMode;
   // Native CRM pipelines replace the GoHighLevel pipeline view; a hybrid workspace keeps both while it migrates.
   const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native");
-  const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar") && crmMode === "ghl"));
+  // Automation Studio builds on the iAcquire workflow engine, so it is offered wherever that engine runs (not in a GoHighLevel-only workspace).
+  const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar" || i.href === "/automation-studio") && crmMode === "ghl"));
   // "All CRM tools" is highlighted only for CRM pages that have no entry of their own here.
   const crmActivePath = (item: NavItem) => (item.href === "/crm" && crmItems.some((i) => i.href !== "/crm" && (pathname === i.href || pathname.startsWith(`${i.href}/`))) ? "" : pathname);
   const visibleAgents = shell.agents.filter((a) => a.enabled);
@@ -114,7 +117,7 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
           return <li key={agent.role} className="group/employee flex items-center gap-0.5"><Link href={href} prefetch={false} onClick={onNavigate} onMouseEnter={() => { if (!active) warmRoute(href); }} onFocus={() => { if (!active) warmRoute(href); }} aria-current={active ? "page" : undefined} aria-label={`${agent.displayName} · ${meta.shortName}`} className={cn("group flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-[12px] transition-colors", active ? "bg-[#4268c6]/15 font-medium text-white" : "text-[#a6b3cd] hover:bg-white/5 hover:text-white")}><AgentAvatar role={meta} size="xs" /><span className="min-w-0 flex-1"><span className="block truncate leading-tight">{agent.displayName}</span><span className="mt-0.5 block truncate text-[10px] leading-tight text-[#a9bada]">{meta.shortName}</span></span><span title={statusText} className="flex"><StatusDot status={agent.status} /></span><span className="sr-only">{statusText}</span></Link>{chatReady && <Tooltip content={`Chat with ${agent.displayName} · ${meta.shortName}`} side="right"><Link href={chatHref} prefetch={false} onClick={onNavigate} onMouseEnter={() => warmRoute(chatHref)} onFocus={() => warmRoute(chatHref)} aria-label={`Chat with ${agent.displayName} · ${meta.shortName}`} className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[#a6b3cd] opacity-0 transition hover:bg-white/10 hover:text-white focus-visible:opacity-100 group-hover/employee:opacity-100 group-focus-within/employee:opacity-100 [@media(hover:none)]:opacity-100"><MessageSquare className="size-3.5" /></Link></Tooltip>}</li>;
         })}</motion.ul>}</AnimatePresence>
       </div>
-      {crmItems.length > 0 && <div className="space-y-1 pb-2">{!compact && <button type="button" onClick={() => setCrmOpen((s) => !s)} aria-expanded={crmOpen} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">CRM<ChevronDown className={cn("size-3 transition-transform", !crmOpen && "-rotate-90")} /></button>}{(crmOpen || compact) && crmItems.map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={crmActivePath(item)} onNavigate={onNavigate} compact={compact} />)}</div>}
+      {crmItems.length > 0 && <div className="space-y-1 pb-2">{!compact && <button type="button" onClick={() => setCrmOpen((s) => !s)} aria-expanded={crmOpen} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">CRM<ChevronDown className={cn("size-3 transition-transform", !crmOpen && "-rotate-90")} /></button>}{(crmOpen || compact) && crmItems.map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={crmActivePath(item)} onNavigate={onNavigate} compact={compact} locked={item.href === "/automation-studio" && shell.automationStudio?.entitled === false} />)}</div>}
       {!compact && <p className="workspace-nav-section px-3 pb-1 pt-2">Business operations</p>}
       {MAIN.slice(1).filter(showMain).map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "approvals" ? shell.pendingApprovals : item.badge === "inbox" ? shell.inboxAttention : undefined} />)}
       {REQUESTS.some((i) => can(i.permission)) && <div data-tour="requests" className="space-y-1 pt-3">

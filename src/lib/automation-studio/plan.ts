@@ -10,8 +10,15 @@ export const STUDIO_PLAN_NAME = "Managed Maintenance + Automation Studio";
 export const STUDIO_PLAN_MONTHLY_USD = MAINTENANCE_MONTHLY_USD;
 export const STUDIO_SETUP_FEE_USD = SETUP_FEE_USD;
 
-/** How long a workspace keeps Automation Studio after a payment is recorded as failed, before the plan expires. Disclosed on the upgrade page. */
+/**
+ * How long a workspace keeps Automation Studio after a payment is recorded as failed, before the plan expires: the default. It is
+ * configurable (STUDIO_PAYMENT_GRACE_DAYS, and per case by the agency member recording the failure, between 1 and MAX_GRACE_DAYS days), and the
+ * client is always told the actual date. Disclosed on the upgrade page.
+ */
 export const PAYMENT_GRACE_DAYS = 7;
+export const MAX_GRACE_DAYS = 30;
+/** A client with a plan in its grace period is reminded once when this little time is left. */
+export const GRACE_REMINDER_HOURS = 48;
 
 export type PlanStatus = "requested" | "active" | "past_due" | "cancel_requested" | "cancelled" | "declined" | "expired";
 /** Plans that count as "the workspace's plan" (the database allows one of these per workspace). */

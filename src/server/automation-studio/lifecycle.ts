@@ -3,10 +3,11 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
+import { env } from "@/server/env";
 import { assertManage, subscriptionForAgency } from "@/server/maintenance/service";
 import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import type { SessionUser } from "@/server/auth/service";
-import { PAYMENT_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_NAME, canTransition, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
+import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_NAME, canTransition, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
 
 /**
  * The Automation Studio plan's lifecycle after activation: a payment that failed, a payment that was verified, expiry, and what a lapse
@@ -58,10 +59,28 @@ export async function pauseWorkflowsForLapse(db: Queryable, orgId: string, now =
   return paused.rows.length;
 }
 
-/** An agency member records that a payment for the plan didn't go through. The workspace keeps Automation Studio for the grace period. */
-export async function recordPaymentFailed(user: SessionUser, subscriptionId: string, now = new Date()): Promise<{ graceEndsAt: string }> {
+/** Tells the owners the plan has ended and what that means (once per plan), whether or not any workflow needed pausing. */
+async function noticeExpired(db: Queryable, orgId: string, subscriptionId: string) {
+  await notifyOrgRoles(db, orgId, ["owner"], {
+    kind: "maintenance_update",
+    severity: "warning",
+    title: "Your maintenance plan has expired",
+    body: `${STUDIO_LAPSE_POLICY.paused} ${STUDIO_LAPSE_POLICY.kept} ${STUDIO_LAPSE_POLICY.unaffected} Contact iAcquire to reactivate the plan.`.slice(0, 900),
+    link: PLAN_LINK,
+    dedupeKey: `studio-expired:${subscriptionId}`,
+  });
+}
+
+/**
+ * An agency member records that a payment for the plan didn't go through. The workspace keeps Automation Studio for the grace period: the
+ * platform default (STUDIO_PAYMENT_GRACE_DAYS, 7 unless configured), or `graceDays` (1 to 30) for this case. The owners are told the date.
+ */
+export async function recordPaymentFailed(user: SessionUser, subscriptionId: string, opts: { graceDays?: number; now?: Date } = {}): Promise<{ graceEndsAt: string; graceDays: number }> {
   assertManage(user);
-  const graceEnds = new Date(now.getTime() + PAYMENT_GRACE_DAYS * 86_400_000);
+  const now = opts.now ?? new Date();
+  const graceDays = opts.graceDays ?? env().STUDIO_PAYMENT_GRACE_DAYS;
+  if (!Number.isInteger(graceDays) || graceDays < 1 || graceDays > MAX_GRACE_DAYS) throw new AppError("invalid_input", `The grace period is a whole number of days from 1 to ${MAX_GRACE_DAYS}.`);
+  const graceEnds = new Date(now.getTime() + graceDays * 86_400_000);
   await withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
     allow(s.status, "payment_failed");
@@ -70,13 +89,13 @@ export async function recordPaymentFailed(user: SessionUser, subscriptionId: str
       kind: "maintenance_update",
       severity: "warning",
       title: "A payment for your maintenance plan didn't go through",
-      body: `Automation Studio keeps working until ${day(graceEnds)}. After that its workflows are paused (nothing is deleted) until the payment is sorted out. Your CRM, AI employees and external automations aren't affected.`,
+      body: `Automation Studio keeps working for ${graceDays} more day${graceDays === 1 ? "" : "s"}, until ${day(graceEnds)}. After that its workflows are paused (nothing is deleted) until the payment is sorted out. Your CRM, AI employees and external automations aren't affected.`,
       link: PLAN_LINK,
       dedupeKey: `studio-payment-failed:${subscriptionId}:${day(now)}`,
     });
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.payment_failed", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { graceEndsAt: graceEnds.toISOString() } }, db);
+    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.payment_failed", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { graceEndsAt: graceEnds.toISOString(), graceDays } }, db);
   });
-  return { graceEndsAt: graceEnds.toISOString() };
+  return { graceEndsAt: graceEnds.toISOString(), graceDays };
 }
 
 /**
@@ -130,6 +149,7 @@ export async function expireSubscription(user: SessionUser, subscriptionId: stri
     allow(s.status, "expire");
     await db.query("update maintenance_subscriptions set status = 'expired', expired_at = $2 where id = $1", [subscriptionId, now.toISOString()]);
     const pausedWorkflows = await pauseWorkflowsForLapse(db, s.org_id, now);
+    await noticeExpired(db, s.org_id, subscriptionId);
     await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.expired", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { pausedWorkflows } }, db);
     return { pausedWorkflows };
   });
@@ -160,10 +180,29 @@ export async function sweepStudioEntitlements(now = new Date()): Promise<SweepRe
     )).rows;
     for (const s of rows) {
       await recordAudit({ orgId: s.org_id, actorKind: "system", action: "maintenance.expired", targetType: "maintenance_subscription", targetId: s.id, result: "success", metadata: { reason: "grace_period_ended" } }, db);
+      await noticeExpired(db, s.org_id, s.id);
     }
     return rows;
   });
   out.expired = lapsed.length;
+
+  // A plan whose grace period is nearly over: the owners are reminded once, with the date.
+  await withSystem(async (db) => {
+    const ending = await db.query<{ id: string; org_id: string; grace_ends_at: Date }>(
+      "select id, org_id, grace_ends_at from maintenance_subscriptions where status = 'past_due' and grace_ends_at > $1 and grace_ends_at <= $2 limit 500",
+      [now.toISOString(), new Date(now.getTime() + GRACE_REMINDER_HOURS * 3_600_000).toISOString()],
+    );
+    for (const s of ending.rows) {
+      await notifyOrgRoles(db, s.org_id, ["owner"], {
+        kind: "maintenance_update",
+        severity: "warning",
+        title: "Automation Studio will pause soon",
+        body: `The payment for your maintenance plan still hasn't been received. Automation Studio keeps working until ${new Date(s.grace_ends_at).toISOString().slice(0, 10)}; after that its workflows are paused (nothing is deleted). Contact iAcquire to sort out the payment.`,
+        link: PLAN_LINK,
+        dedupeKey: `studio-grace-ending:${s.id}`,
+      });
+    }
+  });
 
   // One transaction per workspace: a problem in one never holds back, or rolls back, the others.
   const live = await withSystem((db) =>

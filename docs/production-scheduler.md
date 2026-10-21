@@ -102,9 +102,11 @@ a URL query string.
   the walk (a crashed one is reclaimed after five minutes); the rest return `0` without touching the database. This is what keeps a
   deployment that cold-starts many functions from multiplying the same 25-transaction walk, and it means the scheduled job and the boot
   path can never run it twice at once.
-- **Slow rhythms:** `withinInterval()` skips jobs such as fair-use checks, inactivity review, WhatsApp template sync and AQi tutorial
-  retention until their interval has elapsed. Setup evidence uses its lease instead of `withinInterval`, so the boot path and the
-  scheduler share exactly one window.
+- **Slow rhythms:** jobs such as fair-use checks, inactivity review, WhatsApp template sync and AQi tutorial retention declare
+  `everyMinutes`; `runJob` claims the slot atomically and skips the job (writing nothing) until that much time has passed since its previous
+  run started. A failed run is retried sooner, and a run that never finished is presumed dead after 15 minutes. Intervals are elapsed time,
+  not calendar slots, so they do not depend on a time zone or daylight saving. Setup evidence uses its lease instead, so the boot path and
+  the scheduler share exactly one window.
 
 ## Failure handling
 

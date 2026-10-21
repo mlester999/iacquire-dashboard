@@ -37,6 +37,14 @@
         "scripts/crm-qa.mjs"
       ],
       "port": 3230
+    },
+    {
+      "name": "automation-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/automation-qa.mjs"
+      ],
+      "port": 3262
     }
   ]
 }

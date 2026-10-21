@@ -1,0 +1,50 @@
+/* The Automation Studio canvas: React Flow wearing the portal's tokens, and the motion that shows a change being made. Every animation here is
+   triggered by a mark that the editor sets only after a change really happened (the builder's saved change, or the person's own); none runs on
+   its own, and none runs for people who ask for reduced motion. */
+.studio-flow.react-flow {
+  --xy-background-color: var(--surface-2);
+  --xy-background-pattern-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  --xy-edge-stroke: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-edge-stroke-width: 1.75;
+  --xy-connectionline-stroke: var(--primary);
+  --xy-handle-background-color: var(--surface);
+  --xy-handle-border-color: var(--primary);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--ink-2);
+  --xy-controls-button-border-color: var(--line);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--surface-3) 70%, transparent);
+  --xy-selection-background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  --xy-selection-border: 1px dashed var(--primary);
+  background: var(--surface-2);
+  font-family: inherit;
+}
+.studio-flow .react-flow__attribution { font-size: 10px; }
+.studio-flow .react-flow__controls { box-shadow: var(--shadow-md); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.studio-flow .react-flow__minimap { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-md); }
+.studio-flow .react-flow__node { cursor: grab; }
+.studio-flow .react-flow__node.dragging { cursor: grabbing; }
+.studio-flow .react-flow__handle { width: 12px; height: 12px; border-width: 2px; }
+.studio-flow.is-read-only .react-flow__handle { opacity: 0; pointer-events: none; }
+.studio-flow .react-flow__edge-path { transition: stroke 160ms ease; }
+.studio-flow .react-flow__edge.selected .react-flow__edge-path, .studio-flow .react-flow__edge:hover .react-flow__edge-path { stroke: var(--primary); stroke-width: 2.25; }
+
+/* Programmatic moves (the builder adding a step, tidying up) glide; a drag never does. */
+.studio-flow.is-animating .react-flow__node { transition: transform 420ms var(--ease-out-quart); }
+
+@keyframes studio-node-in { from { opacity: 0; transform: scale(.88) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes studio-node-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.9); } }
+@keyframes studio-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent); } 100% { box-shadow: 0 0 0 16px transparent; } }
+@keyframes studio-edge-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+.studio-node[data-mark="added"] { animation: studio-node-in 380ms var(--ease-out-quart) both, studio-ring 1300ms ease-out 1; }
+.studio-node[data-mark="modified"] { animation: studio-ring 1300ms ease-out 1; border-color: var(--primary); }
+.studio-node[data-mark="removed"] { animation: studio-node-out 360ms ease-in both; pointer-events: none; }
+.studio-edge-path[data-mark="added"] { stroke-dasharray: 1; stroke-dashoffset: 1; animation: studio-edge-draw 520ms var(--ease-out-quart) 80ms forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-flow.is-animating .react-flow__node { transition: none; }
+  .studio-node, .studio-edge-path { animation: none !important; stroke-dasharray: none !important; stroke-dashoffset: 0 !important; }
+}

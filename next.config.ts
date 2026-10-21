@@ -18,6 +18,8 @@ const localPgliteBuild =
 const nextConfig: NextConfig = {
   // Isolated local visual QA must not overwrite the running application's build output.
   distDir: process.env.IAQ_DIST_DIR?.startsWith(".next-") ? process.env.IAQ_DIST_DIR : process.env.IAQ_UI_QA === "true" && process.env.NODE_ENV !== "production" ? ".next-ui-qa" : ".next",
+  // `npm run build:clean` type-checks with a config that ignores the generated type folders of other builds (see scripts/build-clean.mjs).
+  ...(process.env.IAQ_TSCONFIG ? { typescript: { tsconfigPath: process.env.IAQ_TSCONFIG } } : {}),
   poweredByHeader: false,
   // DATABASE_SSL_CA_FILE is read through an environment-derived filesystem path, so the static
   // tracer cannot discover it from fs.readFileSync. Keep the public root CA in every Node function.

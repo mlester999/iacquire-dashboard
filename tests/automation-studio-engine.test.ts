@@ -428,11 +428,11 @@ describe("the plan's lifecycle", () => {
     const sub = await subId(o);
     const now = new Date();
 
-    const failed = await recordPaymentFailed(admin, sub, now);
+    const failed = await recordPaymentFailed(admin, sub, { now });
     expect(new Date(failed.graceEndsAt).getTime() - now.getTime()).toBe(PAYMENT_GRACE_DAYS * DAY);
     expect(await withSystem((db) => studioEntitlement(db, o.org.id, now))).toMatchObject({ entitled: true, state: "past_due" });
     expect((await notices(o, "maintenance_update")).map((n) => n.title)).toContain("A payment for your maintenance plan didn't go through");
-    await expect(recordPaymentFailed(admin, sub, now)).rejects.toThrow(/can't be marked as past due/);
+    await expect(recordPaymentFailed(admin, sub, { now })).rejects.toThrow(/can't be marked as past due/);
 
     // Inside the grace period nothing is paused.
     expect(await sweepStudioEntitlements(new Date(now.getTime() + 3 * DAY))).toMatchObject({ expired: 0, workflowsPaused: 0 });
@@ -463,6 +463,55 @@ describe("the plan's lifecycle", () => {
     expect((await notices(o, "maintenance_update")).filter((n) => /waiting for you/.test(n.title)).length).toBe(1);
     await setWorkflowStatus(o.actor("owner"), id, "active");
     expect(await wf(id)).toMatchObject({ status: "active", entitlement_paused_at: null });
+  });
+
+  it("takes the grace period from the platform default, lets an agency member choose another for one case, and tells the owner the date", async () => {
+    const o = await crmOrg();
+    await grantPlan(o);
+    const admin = await superAdmin();
+    const sub = await subId(o);
+    const now = new Date();
+    await expect(recordPaymentFailed(admin, sub, { graceDays: 0, now })).rejects.toThrow(/from 1 to 30/);
+    await expect(recordPaymentFailed(admin, sub, { graceDays: 31, now })).rejects.toThrow(/from 1 to 30/);
+    await expect(recordPaymentFailed(admin, sub, { graceDays: 2.5, now })).rejects.toThrow(/whole number/);
+    const r = await recordPaymentFailed(admin, sub, { graceDays: 14, now });
+    expect(r.graceDays).toBe(14);
+    expect(new Date(r.graceEndsAt).getTime() - now.getTime()).toBe(14 * DAY);
+    const notice = (await notices(o, "maintenance_update")).find((n) => /payment for your maintenance plan/.test(n.title));
+    expect(notice).toBeDefined();
+    const body = (await withSystem((db) => db.query<{ body: string }>("select body from notifications where org_id = $1 and dedupe_key = $2 limit 1", [o.org.id, notice!.dedupe_key]))).rows[0].body;
+    expect(body).toContain("14 more days");
+    expect(body).toContain(r.graceEndsAt.slice(0, 10));
+    expect(body).toMatch(/nothing is deleted/);
+    // With no choice made, the platform default applies.
+    const o2 = await crmOrg();
+    await grantPlan(o2);
+    expect((await recordPaymentFailed(admin, await subId(o2), { now })).graceDays).toBe(PAYMENT_GRACE_DAYS);
+  });
+
+  it("reminds the owner once when the grace period is nearly over, and once more when the plan expires", async () => {
+    const o = await crmOrg();
+    await grantPlan(o);
+    await studioWorkflow(o);
+    const admin = await superAdmin();
+    const sub = await subId(o);
+    const now = new Date();
+    await recordPaymentFailed(admin, sub, { graceDays: 5, now });
+    const titles = async () => (await notices(o, "maintenance_update")).map((n) => n.title);
+    await sweepStudioEntitlements(new Date(now.getTime() + 2 * DAY));
+    expect(await titles()).not.toContain("Automation Studio will pause soon");
+    const nearEnd = new Date(now.getTime() + 4 * DAY);
+    await sweepStudioEntitlements(nearEnd);
+    await sweepStudioEntitlements(new Date(nearEnd.getTime() + 3600_000));
+    expect((await titles()).filter((t) => t === "Automation Studio will pause soon").length).toBe(1);
+    const gone = new Date(now.getTime() + 6 * DAY);
+    await sweepStudioEntitlements(gone);
+    await sweepStudioEntitlements(new Date(gone.getTime() + 3600_000));
+    expect((await titles()).filter((t) => t === "Your maintenance plan has expired").length).toBe(1);
+    // The expiry notice goes to the owner only, and says what is and isn't affected.
+    const row = (await withSystem((db) => db.query<{ body: string; n: number }>("select body, count(*) over ()::int as n from notifications where org_id = $1 and dedupe_key = $2", [o.org.id, `studio-expired:${sub}`]))).rows;
+    expect(row.length).toBe(1);
+    expect(row[0].body).toMatch(/AI employees/);
   });
 
   it("lets an agency member verify a payment on an active plan without changing its state, and validates the date", async () => {

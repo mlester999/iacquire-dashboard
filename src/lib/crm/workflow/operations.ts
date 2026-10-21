@@ -25,10 +25,11 @@ import {
 const key = z.string().regex(STEP_KEY_RE, "Step keys are lower-case letters, numbers, - and _ (up to 40).");
 const via = z.enum(["next", "yes", "no"]);
 const coordinate = z.number().finite().min(-100_000).max(100_000);
-const insertPoint = z.union([z.strictObject({ after: z.null() }), z.strictObject({ after: key, via })]);
+/** Where a new step goes: first, after a step (on its Yes or No path for an if / else), or `detached` (placed on the canvas, joined up later). */
+const insertPoint = z.union([z.strictObject({ after: z.null() }), z.strictObject({ after: key, via }), z.strictObject({ detached: z.literal(true) })]);
 
 export const operationSchema = z.discriminatedUnion("op", [
-  /** Puts a new step at an insert point; whatever followed the point follows the new step. */
+  /** Puts a new step at an insert point; whatever followed the point follows the new step. A detached step joins no path until it is connected. */
   z.strictObject({
     op: z.literal("add_step"),
     kind: z.enum(STEP_KIND_LIST),
@@ -183,13 +184,19 @@ function applyOne(def: WorkflowDefinition, op: WorkflowOperation, mode: "draft" 
       if (def.steps.length >= WORKFLOW_LIMITS.maxSteps) refuse("limit", `A workflow can have at most ${WORKFLOW_LIMITS.maxSteps} steps. Split it into two workflows.`);
       const k = op.key ?? freshKey(def.steps, op.kind);
       if (def.steps.some((s) => s.key === k)) refuse("duplicate_key", `A step with the key “${k}” already exists.`);
-      checkInsertPoint(def.steps, op.at, op.kind);
       const spec = STEP_KINDS[op.kind];
       if (op.requireApproval && !spec.approvable) refuse("invalid_operation", `${spec.label} steps can't ask for approval first; only steps that act can.`);
       const step = {
         key: k, kind: op.kind, ...(op.name ? { name: op.name } : {}), config: { ...(spec.defaults() as Record<string, unknown>), ...(op.config ?? {}) },
         ...(op.requireApproval ? { requireApproval: true } : {}), next: null,
       } as unknown as WorkflowStep;
+      if ("detached" in op.at) {
+        // Nothing leads to it yet (the validator says so until it is connected); it runs first only when it is the workflow's only step.
+        if (op.kind === "branch") step.branches = { yes: null, no: null };
+        def.steps = [...def.steps, step];
+        return;
+      }
+      checkInsertPoint(def.steps, op.at, op.kind);
       def.steps = insertStep(def.steps, op.at, step);
       return;
     }

@@ -3,6 +3,7 @@ import { withUser } from "@/server/db";
 import type { OrgContext } from "@/server/tenancy/context";
 import { isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import type { Permission } from "@/lib/permissions";
+import { entitlementFor, type PlanStatus } from "@/lib/automation-studio/plan";
 
 export interface ShellAgent {
   role: AgentRoleKey;
@@ -29,6 +30,11 @@ export interface ShellData {
   requestsAttention: number;
   /** Which CRM the workspace runs on, so navigation shows the native CRM or the GoHighLevel views (or both while migrating). */
   crmMode: "native" | "ghl" | "hybrid" | null;
+  /**
+   * Whether the workspace has the Automation Studio plan right now (decided on the server from its maintenance plan). Navigation only: it
+   * decides whether the menu item shows a lock, and every page and action checks the plan again. Absent where the person can't see automations.
+   */
+  automationStudio?: { entitled: boolean };
 }
 
 export async function getShellData(ctx: OrgContext): Promise<ShellData> {
@@ -69,6 +75,10 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
     ? `(select count(*)::int from support_tickets t where t.org_id=$1 and t.created_by=$2 and t.status not in ('resolved','closed') and (t.status='waiting_for_client' or exists (
          select 1 from support_messages m where m.ticket_id=t.id and m.author_kind='agency' and not m.internal and m.created_at > coalesce(t.client_last_read_at, t.created_at)))) as requests_attention`
     : `0::int as requests_attention`;
+  const includeStudio = ctx.org.kind === "client" && ctx.can("workflows.view");
+  const studioProjection = includeStudio
+    ? `app.automation_studio_plan($1) as studio_plan`
+    : `null::json as studio_plan`;
   const crmProjection = includeCrm
     ? `(select mode from crm_workspaces where org_id=$1 limit 1) as crm_mode`
     : `null::text as crm_mode`;
@@ -86,6 +96,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
       inbox_attention: number;
       requests_attention: number;
       crm_mode: ShellData["crmMode"];
+      studio_plan: { id: string; status: PlanStatus; grace_ends_at: string | null; paid_through_on: string | null; created_at: string } | null;
     }>(
       `with preferences as (
          select prefs from notification_preferences where user_id=$2 and org_id=$1 limit 1
@@ -112,7 +123,8 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
          ${projectsProjection},
          ${inboxProjection},
          ${requestsProjection},
-         ${crmProjection}`,
+         ${crmProjection},
+         ${studioProjection}`,
       [ctx.org.orgId, ctx.user.id],
     );
     return rows[0];
@@ -125,6 +137,8 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const inboxAttention = data?.inbox_attention ?? 0;
   const requestsAttention = data?.requests_attention ?? 0;
   const crmMode = data?.crm_mode ?? (includeCrm ? "native" : null);
+  const plan = data?.studio_plan;
+  const automationStudio = includeStudio ? { entitled: entitlementFor(plan ? { id: plan.id, status: plan.status, graceEndsAt: plan.grace_ends_at, paidThroughOn: plan.paid_through_on } : null).entitled } : undefined;
   return {
     user: { id: ctx.user.id, name: ctx.user.fullName || ctx.user.email, email: ctx.user.email, platformRole: ctx.user.platformRole },
     org: {
@@ -148,5 +162,6 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
     inboxAttention,
     requestsAttention,
     crmMode,
+    automationStudio,
   };
 }

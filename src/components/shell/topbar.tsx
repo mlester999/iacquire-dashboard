@@ -59,6 +59,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/projects/, "My Projects"],
   [/^\/our-work/, "Selected Work"],
   [/^\/maintenance/, "Maintenance"],
+  [/^\/automation-studio/, "Automation Studio"],
 ];
 
 function ThemeMenuItems() {
