@@ -19,7 +19,6 @@ import {
   proactiveDeliveryDecision,
   proactiveQuietNow,
   severityAtLeast,
-  type ProactivePrefs,
   type ProactiveReportKind,
   type ProactiveSeverity,
 } from "@/lib/proactive";
