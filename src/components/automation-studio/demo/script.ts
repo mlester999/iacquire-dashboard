@@ -103,7 +103,8 @@ export const BEATS: Beat[] = [
   { after: 1000, chapter: 1, messages: 2, stage: "a", nodes: DRAFT, edges: ["trigger>text", "text>task"], focus: ["task"], caption: "Then a follow-up task for the lead’s owner." },
   { after: 2300, chapter: 2, messages: 3, stage: "a", nodes: DRAFT, edges: ["trigger>text", "text>task"], caption: "You ask for a change, in the same conversation." },
   { after: 1000, chapter: 2, messages: 3, status: "Working on it…", stage: "a", nodes: DRAFT, edges: ["trigger>text", "text>task"], caption: "The builder changes the same draft rather than starting over." },
-  { after: 1100, chapter: 2, messages: 4, stage: "b", nodes: DRAFT, edges: ["trigger>text"], focus: ["task"], caption: "It makes room: the task moves down." },
+  { after: 1100, chapter: 2, messages: 4, stage: "a", nodes: DRAFT, edges: ["trigger>text", "text>task"], caption: "It says what it will change, then changes it." },
+  { after: 1000, chapter: 2, messages: 4, stage: "b", nodes: DRAFT, edges: ["trigger>text"], focus: ["task"], caption: "It makes room: the task moves down." },
   { after: 1000, chapter: 2, messages: 4, stage: "b", nodes: ["trigger", "text", "task", "wait"], edges: ["trigger>text", "text>wait"], focus: ["wait"], caption: "It adds a one-day wait…" },
   { after: 1000, chapter: 2, messages: 4, stage: "b", nodes: ["trigger", "text", "task", "wait", "check"], edges: ["trigger>text", "text>wait", "wait>check"], focus: ["check"], caption: "…then a check for a reply." },
   { after: 1000, chapter: 2, messages: 4, stage: "b", nodes: CHANGED, edges: FINAL_EDGES, focus: ["task", "end"], caption: "No reply leads to the task. A reply ends the run." },
@@ -113,6 +114,25 @@ export const LAST = BEATS.length - 1;
 
 /** Where each chapter starts when it's chosen. "Describe" starts with the request already written. */
 export const CHAPTER_START: readonly number[] = CHAPTERS.map((_, c) => (c === 0 ? 1 : BEATS.findIndex((b) => b.chapter === c)));
+
+// ---------------------------------------------------------------------------
+// On a phone the chat and the canvas take turns in one space, as they do in the real editor there. Each beat is about one of them: a beat
+// that changes the canvas is a canvas beat, anything else (a message, the builder working, what happens next) is a chat beat. The script never
+// adds a message and changes the canvas in the same beat, so a phone never has to choose which of the two to miss.
+// ---------------------------------------------------------------------------
+
+export type DemoView = "chat" | "canvas";
+
+export const viewOf = (b: Beat): DemoView => (b.focus?.length ? "canvas" : "chat");
+
+/** How long a beat waits on a phone: when the canvas is about to take over from the chat, long enough to read the reply just shown first. */
+export function phoneDelay(i: number): number {
+  const b = BEATS[i];
+  const prev = BEATS[i - 1];
+  if (!prev || viewOf(b) !== "canvas" || viewOf(prev) !== "chat" || !prev.messages) return b.after;
+  const words = DEMO_MESSAGES[prev.messages - 1].text.split(/\s+/).length;
+  return Math.max(b.after, Math.min(6500, 1000 + words * 180));
+}
 
 // ---------------------------------------------------------------------------
 // Geometry: where each node sits, in canvas units. "wide" for a desktop-sized canvas, "narrow" for a phone. The main path runs straight down;
@@ -130,18 +150,19 @@ export interface Box {
 
 const SIZE: Record<DemoLayout, { node: { w: number; h: number }; end: { w: number; h: number } }> = {
   wide: { node: { w: 264, h: 96 }, end: { w: 136, h: 40 } },
-  narrow: { node: { w: 248, h: 78 }, end: { w: 112, h: 34 } },
+  narrow: { node: { w: 248, h: 76 }, end: { w: 112, h: 34 } },
 };
 
-/** Each node's centre x and top y, per layout and stage. A node a stage doesn't use is absent. */
+/** Each node's centre x and top y, per layout and stage. A node a stage doesn't use is absent. The phone arrangement is kept short so the
+ *  whole automation still reads at close to life size in a phone-high canvas. */
 const PLACES: Record<DemoLayout, Record<DemoStage, Partial<Record<DemoNodeId, [number, number]>>>> = {
   wide: {
     a: { trigger: [0, 0], text: [0, 132], task: [0, 264] },
     b: { trigger: [0, 0], text: [0, 132], wait: [0, 264], check: [0, 396], task: [0, 536], end: [236, 564] },
   },
   narrow: {
-    a: { trigger: [0, 0], text: [0, 104], task: [0, 208] },
-    b: { trigger: [0, 0], text: [0, 104], wait: [0, 208], check: [0, 312], end: [84, 426], task: [0, 484] },
+    a: { trigger: [0, 0], text: [0, 100], task: [0, 200] },
+    b: { trigger: [0, 0], text: [0, 100], wait: [0, 200], check: [0, 300], end: [84, 404], task: [0, 460] },
   },
 };
 

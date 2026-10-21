@@ -204,8 +204,16 @@ async function main() {
     const gg = await demoGeometry(s.page);
     check(`demo (${w}): every node inside the canvas, none overlapping`, gg.count === 6 && gg.outside.length === 0 && gg.overlaps.length === 0, JSON.stringify(gg));
     check(`demo (${w}): node titles stay readable (12px or more)`, gg.titlePx >= 12, `title=${gg.titlePx}px`);
-    const small = await s.page.evaluate(() => [...document.querySelectorAll("[aria-label='Chapters'] button, button[aria-label$='the example'], button[aria-label$='step of the example']")].filter((b) => b.getBoundingClientRect().height < (window.innerWidth < 640 ? 44 : 32)).length);
+    // Controls that aren't drawn at this size (the phone's Chat / Canvas switch on a wider screen) aren't tap targets; a touch screen needs 44px.
+    const small = await s.page.evaluate(() => [...document.querySelectorAll("[aria-label='Chapters'] button, button[aria-label$='the example'], button[aria-label$='step of the example']")]
+      .filter((b) => b.getClientRects().length > 0 && b.getBoundingClientRect().height < (window.innerWidth < 640 || matchMedia("(pointer: coarse)").matches ? 44 : 32)).length);
     check(`controls (${w}): tap targets are big enough`, small === 0, `small=${small}`);
+    if (w <= 1024) {
+      // On phones and tablets nothing has to be scrolled to while it plays: the whole example fits under the portal's header.
+      const fit = await s.page.evaluate(() => { const r = document.querySelector("[aria-label='Chapters']").closest(".\\@container").getBoundingClientRect(); return { h: Math.round(r.height), room: innerHeight - 64 }; });
+      check(`demo (${w}): the whole example fits one screen`, fit.h <= fit.room, JSON.stringify(fit));
+    }
+    if (w === 390 || w === 768) await runAxe(s.page, `upgrade page (${w}, light)`);
     await s.page.getByRole("list", { name: "Example conversation" }).scrollIntoViewIfNeeded();
     await shot(s.page, `04-demo-${w}`);
     if (w <= 430) await shot(s.page, `05-page-${w}`, { fullPage: true });
@@ -233,6 +241,15 @@ async function main() {
   await dark.page.locator("#up-plan").scrollIntoViewIfNeeded();
   await shot(dark.page, "08-pricing-1440-dark");
   await runAxe(dark.page, "upgrade page (1440, dark, reduced motion)");
+  // A phone in the dark theme: the chat and the canvas take turns, and the person can switch.
+  await hp.setViewportSize({ width: 390, height: 844 });
+  await openUpgrade(dark.page);
+  await dark.page.locator("[aria-label='Chapters']").scrollIntoViewIfNeeded();
+  check("phone: the finished example opens on the chat", (await dark.page.locator("[data-panel='chat']:not([data-off])").count()) === 1 && (await dark.page.locator("[data-panel='canvas'][data-off]").count()) === 1);
+  await dark.page.getByRole("button", { name: "Show the canvas of the example" }).click();
+  check("phone: the switch shows the canvas", (await dark.page.locator("[data-panel='canvas']:not([data-off])").count()) === 1 && (await dark.page.getByRole("button", { name: "Show the canvas of the example" }).getAttribute("aria-pressed")) === "true");
+  await shot(dark.page, "09-demo-390-dark-canvas");
+  await runAxe(dark.page, "upgrade page (390, dark, reduced motion)");
   await haven.context.close();
 
   // ------------------------------------------------------------------ Brightside owner (plan active): the real builder, unchanged

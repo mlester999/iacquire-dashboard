@@ -12,17 +12,41 @@ import { DEMO_EDGES, DEMO_NODES, edgePath, nodeBox, stageFrame, type Beat, type 
 
 /** Below this width the canvas uses the phone arrangement. */
 const NARROW_BELOW = 480;
-const PAD: Record<DemoLayout, { x: number; y: number }> = { wide: { x: 32, y: 22 }, narrow: { x: 12, y: 14 } };
+const PAD: Record<DemoLayout, { x: number; y: number }> = { wide: { x: 32, y: 22 }, narrow: { x: 12, y: 10 } };
+/** On a phone, the smallest the whole automation is drawn while a step is being added; below it the camera follows that step instead. */
+const READABLE = 0.9;
 
-/** The camera for a stage: as large as fits (never above life size), centred across, and with the trigger kept where the longer stage puts it. */
-function camera(layout: DemoLayout, stage: DemoStage, size: { w: number; h: number }) {
+/**
+ * The camera for a stage: as large as fits (never above life size) and centred across. On a desktop-sized canvas the trigger stays where the
+ * longer stage puts it. On a phone the stage is centred; and where a phone is too short to show the whole automation at a readable size, the
+ * camera follows the step being added at life size, and fits everything again once nothing is being added.
+ */
+function camera(layout: DemoLayout, stage: DemoStage, size: { w: number; h: number }, focus: Box | null) {
   const pad = PAD[layout];
   const scaleFor = (f: Box) => Math.min(1, (size.w - pad.x * 2) / f.w, (size.h - pad.y * 2) / f.h);
   const frame = stageFrame(layout, stage);
-  const longest = stageFrame(layout, "b");
   const s = scaleFor(frame);
-  const top = pad.y + Math.max(0, (size.h - pad.y * 2 - longest.h * scaleFor(longest)) / 2);
-  return { s, x: (size.w - frame.w * s) / 2 - frame.x * s, y: top - frame.y * s };
+  const across = (z: number) => (size.w - frame.w * z) / 2 - frame.x * z;
+  if (layout === "wide") {
+    const longest = stageFrame(layout, "b");
+    const top = pad.y + Math.max(0, (size.h - pad.y * 2 - longest.h * scaleFor(longest)) / 2);
+    return { s, x: across(s), y: top - frame.y * s };
+  }
+  if (!focus || s >= READABLE) return { s, x: across(s), y: (size.h - frame.h * s) / 2 - frame.y * s };
+  const z = Math.min(1, (size.w - pad.x * 2) / frame.w);
+  const want = size.h / 2 - (focus.y + focus.h / 2) * z;
+  const highest = pad.y - frame.y * z;
+  const lowest = size.h - pad.y - (frame.y + frame.h) * z;
+  return { s: z, x: across(z), y: Math.min(highest, Math.max(lowest, want)) };
+}
+
+/** The box around the nodes a beat is about, or null. */
+function focusBox(layout: DemoLayout, beat: Beat): Box | null {
+  const boxes = (beat.focus ?? []).map((id) => nodeBox(layout, beat.stage, id)).filter((b): b is Box => b !== null);
+  if (!boxes.length) return null;
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
 }
 
 function NodeCard({ node, layout }: { node: DemoNode; layout: DemoLayout }) {
@@ -42,9 +66,9 @@ function NodeCard({ node, layout }: { node: DemoNode; layout: DemoLayout }) {
         {node.category === "trigger" ? <TriggerIcon /> : <StepIcon kind={node.kind} />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[10px] font-semibold uppercase leading-4 tracking-wider text-faint">{node.meta}</p>
-        <p className={cn("truncate font-semibold leading-5 text-ink", narrow ? "text-[13px]" : "text-[13.5px]")}>{node.title}</p>
-        <p className={cn("leading-snug text-muted", narrow ? "truncate text-[11.5px]" : "line-clamp-2 text-[12px]")} title={narrow ? node.summary : undefined}>{node.summary}</p>
+        <p className={cn("truncate font-semibold uppercase leading-4 tracking-wider text-faint", narrow ? "text-[10.5px]" : "text-[10px]")}>{node.meta}</p>
+        <p className={cn("truncate font-semibold leading-5 text-ink", narrow ? "text-[14px]" : "text-[13.5px]")}>{node.title}</p>
+        <p className={cn("leading-snug text-muted", narrow ? "truncate text-[12px]" : "line-clamp-2 text-[12px]")} title={narrow ? node.summary : undefined}>{node.summary}</p>
       </div>
       {node.reachesOut && (
         <span className="absolute -top-2.5 right-3 inline-flex items-center gap-1 rounded-full border border-surface bg-primary-soft px-2 py-px text-[10.5px] font-medium text-primary-ink">
@@ -80,7 +104,7 @@ export function DemoCanvas({ beat, fresh, className }: { beat: Beat; fresh: { no
   }, []);
 
   const layout: DemoLayout = size && size.w < NARROW_BELOW ? "narrow" : "wide";
-  const cam = size ? camera(layout, beat.stage, size) : null;
+  const cam = size ? camera(layout, beat.stage, size, focusBox(layout, beat)) : null;
 
   return (
     <div ref={ref} className={cn("demo-canvas relative overflow-hidden", className)} role="group" aria-label="Example workflow canvas">

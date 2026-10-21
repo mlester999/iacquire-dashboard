@@ -69,13 +69,35 @@ export function StepNode({ data, selected }: NodeProps<Node<StepNodeData, "step"
       {!end && !branch && <Handle id="next" type="source" position={Position.Bottom} isConnectable={!data.readOnly} title={`Connect ${data.title} to the next step`} />}
       {branch && (
         <>
-          <span className="pointer-events-none absolute -bottom-6 left-[24%] -translate-x-1/2 rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-semibold text-success-ink">{data.branchLabels?.yes ?? "Yes"}</span>
-          <span className="pointer-events-none absolute -bottom-6 left-[76%] -translate-x-1/2 rounded-full bg-surface-3 px-2 py-0.5 text-[10.5px] font-semibold text-ink-2">{data.branchLabels?.no ?? "No"}</span>
+          {/* Which output is which: a short Yes and No inside the card, each straight above its own handle, so no line or handle ever runs
+              through them. The condition is the summary above; hovering a label shows it in full and a screen reader hears it with the label. */}
+          <div className="relative -mx-3 mt-2.5 h-5">
+            <BranchOutput side="yes" condition={data.branchLabels?.yes} />
+            <BranchOutput side="no" condition={data.branchLabels?.no} />
+          </div>
           <Handle id="yes" type="source" position={Position.Bottom} style={{ left: "24%" }} isConnectable={!data.readOnly} title={`Connect the Yes path of ${data.title}`} />
           <Handle id="no" type="source" position={Position.Bottom} style={{ left: "76%" }} isConnectable={!data.readOnly} title={`Connect the No path of ${data.title}`} />
         </>
       )}
     </div>
+  );
+}
+
+/** One output label of an if / else, centred over its handle (24% and 76% of the card, like the handles). */
+function BranchOutput({ side, condition }: { side: "yes" | "no"; condition: string | undefined }) {
+  const word = side === "yes" ? "Yes" : "No";
+  return (
+    <span
+      data-branch-side={side}
+      title={condition ? `${word}: ${condition}` : undefined}
+      className={cn(
+        "absolute top-0 inline-flex h-5 -translate-x-1/2 items-center rounded-full px-2 text-[10.5px] font-bold uppercase tracking-wider",
+        side === "yes" ? "left-[24%] bg-success-soft text-success-ink" : "left-[76%] bg-surface-3 text-ink-2",
+      )}
+    >
+      {word}
+      {condition && <span className="sr-only normal-case">: {condition}</span>}
+    </span>
   );
 }
 

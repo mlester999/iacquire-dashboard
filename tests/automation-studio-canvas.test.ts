@@ -1,11 +1,16 @@
-// The canvas as pure functions: layout, the nodes and edges drawn from a definition, and what each gesture means as operations. No rendering here;
-// the point is that what is drawn follows the definition, that dragging can't change what runs, and that every gesture is a valid operation or a plain refusal.
+// The canvas as pure functions: layout, the nodes and edges drawn from a definition, and what each gesture means as operations. The only rendering
+// here is the if / else card's output labels; the point is that what is drawn follows the definition, that dragging can't change what runs, and that
+// every gesture is a valid operation or a plain refusal.
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import { applyOperations } from "@/lib/crm/workflow/operations";
 import { validateDefinition, type WorkflowDefinition, type WorkflowStep } from "@/lib/crm/workflow/spec";
-import { namesFrom } from "@/components/crm/workflows/summaries";
+import { branchSideLabels, namesFrom } from "@/components/crm/workflows/summaries";
 import { NODE_WIDTH, TRIGGER_ID, X_STEP, Y_STEP, autoLayout, edgeId, positions, sourceHandles, toFlow } from "@/components/automation-studio/canvas/flow-model";
 import { onConnect, onDuplicate, onEdgeDelete, onInsertAfter, onNodeDelete, onNodeDragStop, onPaletteDrop, onTidy } from "@/components/automation-studio/canvas/gestures";
+import { StepNode } from "@/components/automation-studio/canvas/nodes";
 
 const step = (key: string, kind: WorkflowStep["kind"], config: Record<string, unknown>, next: string | null = null, extra: Partial<WorkflowStep> = {}): WorkflowStep => ({ key, kind, config, next, ...extra }) as WorkflowStep;
 const task = (title = "Follow up") => ({ title, priority: "normal", assignee: "none" });
@@ -258,5 +263,44 @@ describe("gestures", () => {
     expect(g.ok && applyOperations(def, g.operations)).toMatchObject({ ok: true, contentChanged: false });
     expect(onTidy({ trigger: { type: "contact.created" }, steps: [] }, new Map())).toMatchObject({ ok: false });
     expect(X_STEP).toBeGreaterThan(NODE_WIDTH);
+  });
+});
+
+describe("the if / else card", () => {
+  /** The card as static HTML with the common entities decoded, so assertions read like the screen. */
+  const card = (def: WorkflowDefinition, key: string) => {
+    const node = toFlow({ def, names, issues: [] }).nodes.find((n) => n.id === key)!;
+    const props = { id: node.id, type: "step", data: node.data, selected: false } as unknown as React.ComponentProps<typeof StepNode>;
+    return renderToStaticMarkup(React.createElement(ReactFlowProvider, null, React.createElement(StepNode, props)))
+      .replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+  };
+  /** One output label: its tooltip, its classes, the word shown, and what only a screen reader hears. */
+  const side = (html: string, which: "yes" | "no") => {
+    const m = new RegExp(`<span data-branch-side="${which}" title="([^"]*)" class="([^"]*)">(\\w+)<span class="sr-only[^"]*">([^<]*)</span></span>`).exec(html);
+    return m && { title: m[1], cls: m[2], word: m[3], spoken: m[4] };
+  };
+  const replyCheck: WorkflowDefinition = {
+    trigger: { type: "contact.created" },
+    steps: [step("quiet", "branch", { subject: "contact", filter: { op: "and", conditions: [] }, reply: "not_replied" }, null, { name: "No reply yet?", branches: { yes: null, no: null } })],
+  };
+
+  it("labels its outputs a short Yes and No, keeping the whole condition for hover and screen readers", () => {
+    const html = card(replyCheck, "quiet");
+    const condition = "they haven't replied since this run started";
+    expect(side(html, "yes")).toMatchObject({ title: `Yes: ${condition}`, word: "Yes", spoken: `: ${condition}` });
+    expect(side(html, "no")).toMatchObject({ title: "No: Otherwise", word: "No", spoken: ": Otherwise" });
+    // The condition is still read in full on the card itself (the summary), not squeezed into a label beside the handles.
+    expect(html).toContain(`If ${condition}`);
+  });
+
+  it("keeps the labels inside the card and hoverable, where no line or handle can cross them", () => {
+    const def = branched();
+    const html = card(def, "check");
+    const [yes, no] = [side(html, "yes"), side(html, "no")];
+    expect([yes?.word, no?.word]).toEqual(["Yes", "No"]);
+    expect(yes?.title).toBe(`Yes: ${branchSideLabels(def.steps[0], names).yes}`);
+    // They used to hang below the card (absolute, -bottom-6) over the handles and the lines leaving them, and ignored the pointer.
+    expect(html).not.toMatch(/-bottom-\d/);
+    expect(`${yes?.cls} ${no?.cls}`).not.toContain("pointer-events-none");
   });
 });

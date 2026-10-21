@@ -20,7 +20,7 @@ vi.mock("next/link", async () => {
 import { UpgradePage, ctaCopy, type UpgradeProps } from "@/components/automation-studio/upgrade-page";
 import { BuilderDemo } from "@/components/automation-studio/demo/builder-demo";
 import {
-  BEATS, CHAPTER_START, CHAPTERS, DEMO_EDGES, DEMO_MESSAGES, DEMO_NODES, DEMO_TEMPLATE_NAME, LAST, edgePath, nodeBox, stageFrame,
+  BEATS, CHAPTER_START, CHAPTERS, DEMO_EDGES, DEMO_MESSAGES, DEMO_NODES, DEMO_TEMPLATE_NAME, LAST, edgePath, nodeBox, phoneDelay, stageFrame, viewOf,
   type DemoLayout, type DemoNodeId, type DemoStage,
 } from "@/components/automation-studio/demo/script";
 import { STUDIO_DEFAULT_LIMITS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_MONTHLY_USD, STUDIO_SETUP_FEE_USD } from "@/lib/automation-studio/plan";
@@ -229,6 +229,30 @@ describe("the example's script", () => {
     }
   });
 
+  it("is about one half at a time, so a phone showing the chat and the canvas in turns misses nothing, and has time to read each reply", () => {
+    for (let i = 1; i < BEATS.length; i++) {
+      const [a, b] = [BEATS[i - 1], BEATS[i]];
+      const canvas = a.stage !== b.stage || a.nodes.join() !== b.nodes.join() || a.edges.join() !== b.edges.join();
+      const chat = a.messages !== b.messages || a.status !== b.status || Boolean(a.next) !== Boolean(b.next);
+      expect(canvas && chat, `beat ${i} changes both halves`).toBe(false);
+      if (canvas) expect(viewOf(b), `beat ${i}`).toBe("canvas");
+      if (chat) expect(viewOf(b), `beat ${i}`).toBe("chat");
+      // Where the canvas takes over from a reply, a phone leaves time to read it; everywhere else the pace is the same as beside the canvas.
+      if (viewOf(b) === "canvas" && viewOf(a) === "chat") expect(phoneDelay(i), `beat ${i}`).toBeGreaterThanOrEqual(4000);
+      else expect(phoneDelay(i), `beat ${i}`).toBe(b.after);
+    }
+    // The builder replies to the change before it makes it, as it does to the request.
+    const reply = BEATS.findIndex((b) => b.messages >= 4);
+    expect(BEATS[reply].stage).toBe("a");
+    expect(BEATS[reply + 1].stage).toBe("b");
+  });
+
+  it("keeps the whole automation readable in a phone-high canvas", () => {
+    const frame = stageFrame("narrow", "b");
+    // 13px titles (the phone card's 14px) at the scale a 500-pixel-high canvas fits it at.
+    expect(14 * Math.min(1, (500 - 28) / frame.h)).toBeGreaterThanOrEqual(12);
+  });
+
   it("keeps everything the page sends to the browser for the example free of the builder, the server and the network", () => {
     const dir = path.resolve(__dirname, "../src/components/automation-studio/demo");
     for (const f of fs.readdirSync(dir).filter((n) => /\.tsx?$/.test(n))) {
@@ -333,6 +357,56 @@ describe("the example played back", () => {
     fireEvent.click(screen.getByRole("button", { name: /Go to chapter 3/ }));
     advance(20_000);
     expect(caption()).toBe(BEATS[CHAPTER_START[2]].caption);
+    expect(screen.getByRole("button", { name: "Resume the example" })).toBeTruthy();
+  });
+
+  it("shows the half the beat is about, and a half the person chooses stays until the example moves on to the other by itself", () => {
+    vi.useFakeTimers();
+    withObserver();
+    render(<BuilderDemo />);
+    const on = () => [...document.querySelectorAll("[data-panel]")].filter((p) => !p.hasAttribute("data-off")).map((p) => p.getAttribute("data-panel"));
+    const chat = screen.getByRole("button", { name: "Show the chat of the example" });
+    const canvas = screen.getByRole("button", { name: "Show the canvas of the example" });
+    onScreen();
+    advance(BEATS[1].after);
+    expect(on()).toEqual(["chat"]);
+    expect(chat.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(canvas);
+    expect(on()).toEqual(["canvas"]);
+    expect(canvas.getAttribute("aria-pressed")).toBe("true");
+    advance(BEATS[2].after);
+    expect(on()).toEqual(["canvas"]);
+    // What the chat got meanwhile is marked on its switch.
+    expect(chat.querySelector("[data-unseen]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Pause the example" })).toBeTruthy();
+
+    const firstNode = BEATS.findIndex((b) => b.nodes.length > 0);
+    for (let i = 3; i <= firstNode; i++) advance(BEATS[i].after);
+    expect(on()).toEqual(["canvas"]);
+    const nextChat = BEATS.findIndex((b, i) => i > firstNode && viewOf(b) === "chat");
+    for (let i = firstNode + 1; i <= nextChat; i++) advance(BEATS[i].after);
+    // The example moved on to the canvas by itself, so the choice ended there: it follows the example back to the chat.
+    expect(on()).toEqual(["chat"]);
+    expect(document.querySelector("[data-unseen]")).toBeNull();
+  });
+
+  it("steps with a sideways swipe, and leaves an up-and-down one to the page", () => {
+    withObserver();
+    render(<BuilderDemo />);
+    const stage = document.querySelector("[data-panel='chat']")!.parentElement!;
+    const swipe = (dx: number, dy: number) => {
+      fireEvent.pointerDown(stage, { pointerType: "touch", clientX: 200, clientY: 300 });
+      fireEvent.pointerUp(stage, { pointerType: "touch", clientX: 200 + dx, clientY: 300 + dy });
+    };
+    swipe(-120, 10);
+    expect(caption()).toBe(BEATS[1].caption);
+    swipe(-120, 0);
+    expect(caption()).toBe(BEATS[2].caption);
+    swipe(130, -8);
+    expect(caption()).toBe(BEATS[1].caption);
+    swipe(30, 200);
+    expect(caption()).toBe(BEATS[1].caption);
     expect(screen.getByRole("button", { name: "Resume the example" })).toBeTruthy();
   });
 

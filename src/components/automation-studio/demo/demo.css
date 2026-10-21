@@ -41,6 +41,24 @@
 .demo-rise { animation: demo-rise 380ms var(--ease-out-quart) both; }
 .demo-progress { transition: width 420ms var(--ease-out-quart); }
 
+/* On a phone the chat and the canvas take turns in one space (the width below Tailwind's @2xl, where they no longer fit side by side): the
+   one going out fades, the one coming in slides a little way in from its side. A hidden half keeps its size, so the canvas stays measured. */
+@container (width < 42rem) {
+  .demo-panel { transition: opacity 260ms ease, transform 420ms var(--ease-out-quart), visibility 0s linear 0s; }
+  .demo-panel[data-off] {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 420ms var(--ease-out-quart), visibility 0s linear 180ms;
+  }
+  .demo-panel[data-panel="chat"][data-off] { transform: translateX(-18px); }
+  .demo-panel[data-panel="canvas"][data-off] { transform: translateX(18px); }
+}
+/* Where the conversation scrolls, earlier messages fade out under the header instead of being cut off by it. */
+@container (width < 56rem) {
+  .demo-chat-scroll { mask-image: linear-gradient(to bottom, transparent, #000 20px); }
+}
+
 @keyframes demo-node-in { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes demo-edge-draw { to { stroke-dashoffset: 0; } }
 @keyframes demo-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -50,4 +68,5 @@
   .demo-world[data-settled], .demo-node, .demo-node-card, .demo-edge-line, .demo-edge-head, .demo-progress { transition: none; }
   .demo-node[data-enter] > .demo-node-card, .demo-edge[data-fresh] .demo-edge-head, .demo-edge-label[data-fresh], .demo-rise { animation: none; }
   .demo-edge[data-fresh] .demo-edge-line { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+  .demo-panel[data-panel], .demo-panel[data-panel][data-off] { transition: none; transform: none; }
 }
