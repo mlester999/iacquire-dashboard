@@ -415,8 +415,9 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
           </div>
           {lead.qualification_summary && (
             <div>
-              <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Why it may fit</p>
+              <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Lead Hunter’s fit notes</p>
               <p className="text-[13.5px] leading-relaxed">{lead.qualification_summary}</p>
+              <p className="mt-1 text-[11.5px] text-faint">Check these notes against the linked sources. Workspace duplicate and review statuses are shown separately.</p>
             </div>
           )}
           {lead.buying_signals.length > 0 && (

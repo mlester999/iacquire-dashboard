@@ -417,7 +417,7 @@ describe("sending", () => {
     // A backlog the dispatcher hasn't sent holds the next batch back too.
     await processCampaigns({ now: new Date(t0 + 125_000) });
     expect(await count()).toBe(4);
-    await dispatchDue({ transport: recordingProvider("twilio").transport, limit: 100 });
+    await dispatchDue({ transport: recordingProvider("twilio").transport, limit: 100, now: new Date(t0 + 125_000) });
     await processCampaigns({ now: new Date(t0 + 125_000) });
     expect(await count()).toBe(5);
   });

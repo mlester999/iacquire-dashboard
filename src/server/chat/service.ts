@@ -24,9 +24,13 @@ import {
 import { buildRunInstructions, loadConnection, markAgentDegraded, runHealthCheck } from "@/server/workforce/service";
 import { prepareInternalEmployeeContext } from "@/server/workforce/internal-capability-context";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
-import { kickWorkJob } from "@/server/workforce/work-runner";
+import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createResearchRequest } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
+import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
+import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
+import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -51,6 +55,36 @@ export interface ChatMessageRow {
   work_job_id: string | null;
   error_code: string | null;
   created_at: Date;
+}
+
+async function persistChatAssistantMessage(
+  input: {
+    orgId: string; userId: string; agentId: string; conversationId: string; content: string; workJobId?: string | null;
+    refusal?: { role: AgentRoleKey; reason: string };
+  },
+): Promise<string> {
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string }>(
+      `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id)
+       values ($1, $2, 'assistant', $3, 'complete', $4) returning id`,
+      [input.conversationId, input.orgId, input.content, input.workJobId ?? null],
+    );
+    await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [input.conversationId, input.orgId]);
+    await recordUsage(db, { orgId: input.orgId, userId: input.userId, agentId: input.agentId, kind: "agent_message" });
+    if (input.refusal) {
+      await recordAudit({
+        orgId: input.orgId,
+        actorUserId: input.userId,
+        actorKind: "user",
+        action: "workforce.chat_request_refused",
+        targetType: "agent_instance",
+        targetId: input.agentId,
+        result: "denied",
+        metadata: { role: input.refusal.role, reason: input.refusal.reason },
+      }, db);
+    }
+    return rows[0].id;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -323,22 +357,47 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     };
   });
 
+  // Guard clear external, out-of-role and unsupported write requests in application code. Do not
+  // depend on an unenforced Hermes approval preference or let a generic run claim an action.
+  const refusal = !input.regenerateMessageId && input.content
+    ? workforceChatRefusal(input.agentRole, input.content)
+    : null;
+  if (refusal) {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      content: refusal.message,
+      refusal: { role: input.agentRole, reason: refusal.reason },
+    });
+    return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+  }
+
   // 1b. A Lead Hunter research assignment becomes a durable job, not a generic chat answer.
   // The parser is deterministic and the job is created before any provider call. Missing details
   // produce a focused question; nothing is invented to make the request look complete.
   const research = input.agentRole === "lead_hunter" && !input.regenerateMessageId && input.content
     ? parseResearchAssignment(input.content)
     : null;
-  if (research && ctx.can("leads.research")) {
+  if (research) {
+    if (!ctx.can("leads.research")) {
+      const assistantMessageId = await persistChatAssistantMessage({
+        orgId: ctx.org.orgId,
+        userId: ctx.user.id,
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        content: "Your workspace role does not have permission to start Lead Hunter research. No research job was created.",
+      });
+      return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+    }
     if (research.missing.length) {
-      const clarificationId = await withSystem(async (db) => {
-        const { rows } = await db.query<{ id: string }>(
-          "insert into chat_messages (conversation_id, org_id, role, content, status) values ($1, $2, 'assistant', $3, 'complete') returning id",
-          [prepared.conversationId, ctx.org.orgId, researchClarification(research)],
-        );
-        await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
-        await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
-        return rows[0].id;
+      const clarificationId = await persistChatAssistantMessage({
+        orgId: ctx.org.orgId,
+        userId: ctx.user.id,
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        content: researchClarification(research),
       });
       return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId: clarificationId, runId: null, jobId: null };
     }
@@ -348,20 +407,67 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       { prompt: research.prompt, campaignType: research.campaignType },
       { conversationId: prepared.conversationId, deferKick: true },
     );
-    const assistantMessageId = await withSystem(async (db) => {
-      const content = created.jobId
+    const content = created.jobId
         ? `I've started a research job for up to ${research.quantity} ${research.target} in ${research.location}. I'll record each verified stage here, including what I could and could not confirm. You can leave this page and come back; the job runs independently of this tab.`
         : `I couldn't start the research job yet because I'm not connected for authorized work. The request is saved and can be run once the connection is restored.`;
-      const { rows } = await db.query<{ id: string }>(
-        "insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id) values ($1, $2, 'assistant', $3, 'complete', $4) returning id",
-        [prepared.conversationId, ctx.org.orgId, content, created.jobId],
-      );
-      await db.query("update chat_conversations set last_message_at = now() where id = $1", [prepared.conversationId]);
-      await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: agent.id, kind: "agent_message" });
-      return rows[0].id;
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      content,
+      workJobId: created.jobId,
     });
     if (created.jobId) kickWorkJob(created.jobId);
     return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: created.jobId };
+  }
+
+  // Clear, read-only role requests use the reviewed native job handlers instead of asking a
+  // language model to claim that it inspected business data. The created job is exact and the
+  // worker kick below names only that job; it never enables or drains the shared queue.
+  const assignment = !input.regenerateMessageId && input.content
+    ? parseWorkforceChatAssignment(input.agentRole, input.content)
+    : null;
+  if (assignment) {
+    const definition = capabilityDefinition(assignment.capability);
+    if (!definition || !definition.allowedRoles.includes(input.agentRole)) {
+      throw new AppError("forbidden", "This employee cannot run that review.");
+    }
+    if (!ctx.can(definition.requiredPermission)) {
+      const assistantMessageId = await persistChatAssistantMessage({
+        orgId: ctx.org.orgId,
+        userId: ctx.user.id,
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        content: `Your workspace role does not have permission to start this ${definition.label.toLowerCase()}. No work was created.`,
+      });
+      return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+    }
+    const dispatched = await dispatchCapabilityJob(ctx, {
+      agentRole: input.agentRole,
+      capability: assignment.capability,
+      title: assignment.title,
+      input: assignment.input,
+      idempotencyKey: `chat-assignment:${prepared.userMessageId}`,
+      conversationId: prepared.conversationId,
+      deferKick: true,
+    });
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: dispatched.agentId,
+      conversationId: prepared.conversationId,
+      content: assignment.acknowledgement,
+      workJobId: dispatched.jobId,
+    });
+    kickWorkJob(dispatched.jobId);
+    return {
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      assistantMessageId,
+      runId: null,
+      jobId: dispatched.jobId,
+    };
   }
 
   // 2. Create the assistant placeholder and run record (trusted server writes).

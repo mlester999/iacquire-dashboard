@@ -1,11 +1,23 @@
 import crypto from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+const afterState = vi.hoisted(() => ({
+  callbacks: [] as Array<() => void | Promise<void>>,
+  autoRun: true,
+}));
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (callback: () => void | Promise<void>) => {
+    if (afterState.autoRun) void Promise.resolve().then(callback);
+    else afterState.callbacks.push(callback);
+  },
+}));
 import { withSystem } from "@/server/db";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { recommendedSettings } from "@/lib/role-playbooks";
 import { createResearchRequest, listLeads } from "@/server/leads/service";
 import { cancelWorkJob, createWorkJob, getWorkJobView, recoverExpiredWorkJobs, retryWorkJobForUser } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
+import { kickWorkJob } from "@/server/workforce/work-kick";
 import { sendChatMessage } from "@/server/chat/service";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { startMockHermes, type MockHermes, type MockScript } from "./support/mock-hermes";
@@ -110,9 +122,38 @@ afterAll(() => mock.close());
 
 beforeEach(() => {
   script = researchScript;
+  afterState.callbacks.splice(0);
+  afterState.autoRun = true;
 });
 
 describe("Lead Hunter durable research", () => {
+  it("keeps a request-triggered job attached to Next's after-response lifecycle", async () => {
+    const created = await withSystem((db) => createWorkJob(db, {
+      orgId: org.id,
+      agentId: hunterId,
+      requestedBy: owner.id,
+      capability: "unregistered_handler",
+      title: "Check after-response worker scheduling",
+      idempotencyKey: `after-response:${crypto.randomUUID()}`,
+    }));
+    vi.stubEnv("NODE_ENV", "production");
+    afterState.autoRun = false;
+    try {
+      kickWorkJob(created.id);
+      expect(afterState.callbacks).toHaveLength(1);
+      const before = await withSystem((db) => db.query<{ status: string }>("select status from ai_work_jobs where id = $1", [created.id]));
+      expect(before.rows[0]?.status).toBe("queued");
+
+      const callback = afterState.callbacks.shift();
+      await callback?.();
+      const after = await withSystem((db) => db.query<{ status: string; failure_code: string | null }>("select status, failure_code from ai_work_jobs where id = $1", [created.id]));
+      expect(after.rows[0]).toMatchObject({ status: "blocked", failure_code: "capability_unavailable" });
+    } finally {
+      afterState.autoRun = true;
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("executes a real research job, records genuine stages and prepares source-backed leads", async () => {
     const created = await createResearchRequest(ctxFor(owner, org, "owner"), {
       prompt: "Find 3 dental practices in Miami that may need appointment automation.",

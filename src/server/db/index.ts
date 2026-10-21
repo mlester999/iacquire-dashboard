@@ -381,6 +381,7 @@ const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0078_ai_work_schedules": ["0077_ai_work_jobs"],
   "0079_ai_work_triggers": ["0077_ai_work_jobs"],
   "0080_proactive_ai_employees": ["0077_ai_work_jobs", "0078_ai_work_schedules"],
+  "0081_ai_work_job_rls_hardening": ["0077_ai_work_jobs", "0080_proactive_ai_employees"],
 };
 
 /**

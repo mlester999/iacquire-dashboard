@@ -1,10 +1,10 @@
 # AI employee execution foundation and Lead Hunter activation
 
-Status: **implemented and verified locally; migrations 0077–0080 applied to the hosted database on
-2026-10-21 after a backup; application deployment and production configuration are pending; no automation
-or provider run was activated.** Lead Hunter reaches a genuine 6/6 in an isolated agency workspace against the
-Hermes test double, and then completes a real sandbox research job through the same persisted path the product
-uses. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
+Status: **implemented and verified locally; migrations 0077–0080 were reported applied to the hosted database
+on 2026-10-21; migration 0081 is a local RLS hardening change and has not been applied; application deployment
+and production configuration are pending; no production automation or provider run was activated.** Lead Hunter
+has a prior isolated 6/6 and sandbox research report against the Hermes test double; this does not verify its
+effective deployed SOUL or establish production readiness. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
 Sales Assistant, Appointment Setter and Performance Analyst sit on the same durable job foundation.
 Tenant-scoped schedules and event triggers exist but are each disabled by two independent switches
 and have not been activated. Production activation remains behind the explicit approval checkpoint at
@@ -160,6 +160,7 @@ shows a synthetic percentage or an activity the worker did not record.
 | Capability | Allowed role | Caller permission | Risk |
 | --- | --- | --- | --- |
 | `lead_research` | Lead Hunter | `leads.research` | read-only research; imports/outreach remain separate approvals |
+| `lead_generation_review` | Lead Hunter | `leads.view` | read-only coverage and backlog review |
 | `proactive_review` | Operations Manager | `activity.view` | read-only review; no record writes, no provider calls, no schedule |
 | `crm_quality_review` | CRM Manager | `contacts.view` | read-only data-quality review |
 | `pipeline_review` | Sales Assistant | `sales.view` | read-only pipeline hygiene review |
@@ -172,6 +173,16 @@ requires `agents.use` plus the capability's permission, checks the role allowlis
 unavailable or unconfigured employee, creates the durable job and records a
 `workforce.capability_dispatched` audit event. A capability without a registered handler becomes an
 honest blocked job.
+
+Employee chat also routes clear requests for these existing read-only workflows through
+`src/lib/workforce-chat-assignment.ts`. The route persists the assistant acknowledgement with the
+exact `work_job_id`, dispatches through the same role and permission checks, then kicks only that
+job ID. It never drains the shared queue or invokes Hermes for a native review. Acknowledgements
+state the real limits: reviews do not edit CRM records, send messages, book appointments or activate
+monitoring. `src/lib/workforce-chat-guardrail.ts` also refuses clear out-of-role public prospecting,
+outbound communication, booking changes, approval bypasses, destructive/import CRM actions and
+unsupported Operations task assignment before Hermes submission; the refusal is persisted with a
+redacted audit reason. Lead Hunter's separate assignment parser still handles research requests.
 
 The Work Board offers one selector for the read-only reviews whose employee is actually available.
 The Lead Hunter's research is not startable there because it needs a target, location and quantity
@@ -189,9 +200,10 @@ reviews changes a record, contacts a provider or creates a schedule.
 times and time zone, or the exact reason the calendar cannot offer slots. It never holds a slot,
 creates a booking or writes to an external calendar.
 
-The performance snapshot also measures the immediately preceding 30-day period for comparable KPIs
-and returns the previous value, absolute change, percentage change and trend. The UI colours a trend
-using the metric's `higherIsBetter` flag, so an increase in failed runs is not shown as positive.
+The performance snapshot accepts either the last 30 days or the current calendar month. Calendar
+month boundaries use the workspace time zone. Comparable KPIs include the matching prior period and
+return the previous value, absolute change, percentage change and trend. The UI colours a trend using
+the metric's `higherIsBetter` flag, so an increase in failed runs is not shown as positive.
 Pending/open/upcoming counts remain current-state values with no comparison.
 
 The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads nine

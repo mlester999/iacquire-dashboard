@@ -1,8 +1,8 @@
 # Proactive AI employees
 
-Status: **implemented and verified locally; migration 0080 is applied to the hosted database; application deployment
-and production configuration are pending; no production monitoring, schedule, trigger, briefing or external action is
-active.** This page covers the proactive layer added on top of the existing AI employee execution foundation in
+Status: **implemented and verified locally; migration 0080 was reported applied to the hosted database; local migration
+0081 hardens workforce job/event RLS and has not been applied; application deployment and production configuration
+are pending; no production monitoring, schedule, trigger, briefing or external action is active.** This page covers the proactive layer added on top of the existing AI employee execution foundation in
 [AI employee execution foundation](ai-employee-execution-foundation.md).
 
 ## 1. What changed

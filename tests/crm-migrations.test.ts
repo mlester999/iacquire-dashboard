@@ -25,6 +25,9 @@ const CRM_MIGRATION_NAMES = [
   "0070_automation_studio_conversations.sql",
   // Connections to outside systems: policies on app.permitted_orgs too, and its rollback refuses while a connection or call record exists.
   "0072_automation_connections.sql",
+  // Workforce foundations are newer than 0060 and their policies reference app.permitted_orgs; roll them back before 0060.
+  "0077_ai_work_jobs.sql", "0078_ai_work_schedules.sql", "0079_ai_work_triggers.sql", "0080_proactive_ai_employees.sql",
+  "0081_ai_work_job_rls_hardening.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

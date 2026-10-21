@@ -597,6 +597,6 @@ export async function retryWorkJobForUser(ctx: OrgContext, jobId: string): Promi
     const retried = await retryWorkJob(db, { jobId, orgId: ctx.org.orgId });
     if (!retried) throw new AppError("conflict", "This work can't be retried from its current state.");
   });
-  const { kickWorkJob } = await import("@/server/workforce/work-runner");
+  const { kickWorkJob } = await import("@/server/workforce/work-kick");
   kickWorkJob(jobId);
 }

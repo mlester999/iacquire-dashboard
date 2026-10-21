@@ -1,5 +1,5 @@
 /**
- * Read-only production activation preflight for migrations 0077–0080.
+ * Read-only production activation preflight for migrations 0077–0081.
  *
  *   NODE_ENV=production DATABASE_SSL_CA_FILE=certs/prod-ca-2021.crt \
  *     node --env-file=.env --conditions=react-server --import tsx \
@@ -50,6 +50,11 @@ const TARGETS = [
       "ai_work_schedules.last_skipped_at",
       "ai_work_schedules.payload",
     ],
+  },
+  {
+    version: "0081_ai_work_job_rls_hardening",
+    tables: ["ai_work_jobs", "ai_work_events"],
+    columns: [],
   },
 ];
 
@@ -208,7 +213,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     readOnly: true,
-    target: "0077–0080",
+    target: "0077–0081",
     appliedTargets,
     pendingTargets,
     pendingOtherLocalMigrations: pendingOther,

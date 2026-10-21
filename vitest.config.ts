@@ -15,7 +15,11 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
-    exclude: perf ? configDefaults.exclude : [...configDefaults.exclude, "tests/perf/**"],
+    // Temporary tests may contain one-off environment-specific diagnostics. Keep them out of the
+    // normal suite so `npm test` cannot unexpectedly execute them.
+    exclude: perf
+      ? [...configDefaults.exclude, "tests/**/*.tmp.test.ts"]
+      : [...configDefaults.exclude, "tests/perf/**", "tests/**/*.tmp.test.ts"],
     testTimeout: 30000,
     hookTimeout: 60000,
     pool: "forks",

@@ -3,7 +3,7 @@ import { withSystem } from "@/server/db";
 import { createOrg } from "./support/fixtures";
 import { loadCompanyContext } from "@/server/workforce/service";
 import { compileAgentConfig, defaultSettings } from "@/server/workforce/compiler";
-import { researchPrompt } from "@/server/leads/research-contract";
+import { parseResearchOutput, researchPrompt } from "@/server/leads/research-contract";
 import { targetingSchema } from "@/lib/leads-targeting";
 
 describe("Lead Hunter business context", () => {
@@ -143,5 +143,36 @@ describe("Lead Hunter business context", () => {
     });
     expect(prompt).toContain("has not confirmed its business description");
     expect(prompt).not.toContain("iAcquireOS");
+  });
+
+  it("keeps model notes from overriding server-owned CRM, queue and evidence-time facts", () => {
+    const output = parseResearchOutput(JSON.stringify({
+      leads: [{
+        business_name: "Miami Realty Group",
+        website: "https://miami-realty.example",
+        industry: "Real estate brokerage",
+        location: "Miami, Florida",
+        evidence: [{
+          url: "https://miami-realty.example/about",
+          observed_at: "2026-10-21T00:00:00Z",
+          summary: "The company describes its Miami brokerage services.",
+        }],
+        qualification_summary: "The company operates a Miami brokerage with a public website. CRM duplicate check not performed because no CRM tool was available in this session, and the result was not persisted to a review queue.",
+        score: { service_fit: 10, market_fit: 10, source_quality: 5 },
+      }],
+    }));
+
+    expect(output.error).toBeNull();
+    expect(output.leads[0].qualification_summary).toBe("The company operates a Miami brokerage with a public website.");
+    expect(output.leads[0].evidence[0].observed_at).toBeNull();
+
+    const unsupportedOnly = parseResearchOutput(JSON.stringify({
+      leads: [{
+        business_name: "Another Realty Group",
+        evidence: [],
+        qualification_summary: "Duplicate check not performed; no review queue tool was available.",
+      }],
+    }));
+    expect(unsupportedOnly.leads[0].qualification_summary).toBeNull();
   });
 });

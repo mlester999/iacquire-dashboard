@@ -449,8 +449,8 @@ export function ChatWorkspace(props: Props) {
       return;
     }
     if (res.ok && res.headers.get("content-type")?.includes("application/json")) {
-      // The Lead Hunter accepted a durable research job (or asked one focused question). Reload
-      // the persisted turn so the message and its work panel are server-backed, not optimistic.
+      // A native employee capability (or Lead Hunter research) accepted durable work, or returned
+      // a focused clarification. Reload the persisted turn so its work panel is server-backed.
       const data = (await res.json().catch(() => null)) as { conversationId?: string; error?: string } | null;
       setStreaming(null);
       if (!data?.conversationId) {

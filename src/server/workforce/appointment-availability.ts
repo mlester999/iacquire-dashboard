@@ -1,6 +1,6 @@
 import "server-only";
 import { withSystem } from "@/server/db";
-import { nativeAvailability } from "@/server/calendars/agent-booking";
+import { nativeAvailability } from "@/server/calendars/native-availability";
 import {
   appendWorkEvent,
   finishWorkJob,

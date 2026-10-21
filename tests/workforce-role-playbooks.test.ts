@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { INTERNAL_BUSINESS } from "@/lib/internal-business-profile";
 import { auditRoleConfiguration, recommendedSettings } from "@/lib/role-playbooks";
 import { compileAgentConfig } from "@/server/workforce/compiler";
 import { agentSettingsSchema } from "@/lib/agent-settings";
@@ -13,6 +15,28 @@ const company = {
 };
 
 describe("role playbooks", () => {
+  it("provides complete role-specific starting configurations for all six employees", () => {
+    const confirmedAgency = {
+      description: INTERNAL_BUSINESS.description,
+      services: INTERNAL_BUSINESS.services,
+      idealCustomers: INTERNAL_BUSINESS.idealCustomers,
+      operatingArea: INTERNAL_BUSINESS.operatingArea,
+      industry: INTERNAL_BUSINESS.industry,
+    };
+    for (const role of AGENT_ROLE_KEYS) {
+      const settings = recommendedSettings(role);
+      expect(agentSettingsSchema.safeParse(settings).success, role).toBe(true);
+      expect(settings.displayName, role).toBeTruthy();
+      expect(settings.responsibilities, role).toMatch(/\S{8,}/);
+      expect(settings.goals, role).toMatch(/\S{8,}/);
+      expect(settings.neverPromise, role).toMatch(/\S{8,}/);
+      expect(settings.escalateWhen, role).toMatch(/\S{8,}/);
+      expect(settings.customInstruction, role).toMatch(/\S{8,}/);
+      expect(settings.approvalPreference, role).toBe("always");
+      expect(auditRoleConfiguration(role, settings, confirmedAgency).ready, role).toBe(true);
+    }
+  });
+
   it("provides a complete, valid Lead Hunter starting point without inventing company facts", () => {
     const settings = recommendedSettings("lead_hunter");
     expect(agentSettingsSchema.safeParse(settings).success).toBe(true);

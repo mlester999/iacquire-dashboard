@@ -48,6 +48,23 @@ export const researchLeadSchema = z.object({
 const researchOutputSchema = z.object({ leads: z.array(z.unknown()).max(50) });
 export type ResearchLead = z.infer<typeof researchLeadSchema>;
 
+/**
+ * Qualification notes come from the model, so they are only allowed to describe business fit or
+ * evidence gaps. CRM checks, persistence, queue state and tool availability are application facts
+ * and are reported from their server-owned fields instead.
+ */
+export function sanitizeQualificationSummary(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const sentences = value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .split(/(?<=[.!?])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const operationClaim = /\b(?:crm|duplicate(?:\s+check|s)?|review\s+queue|work\s+queue|persist(?:ed|ence)?|saved|import(?:ed|ing)?|tools?|database|this\s+session)\b/i;
+  const safe = sentences.filter((sentence) => !operationClaim.test(sentence));
+  return safe.join(" ").slice(0, 2000).trim() || null;
+}
+
 export const SCORE_MAX = { service_fit: 30, problem_evidence: 25, buying_intent: 20, market_fit: 15, source_quality: 10 } as const;
 
 export function normalizeScore(raw: Partial<Record<keyof typeof SCORE_MAX, number>>, evidenceCount: number) {
@@ -99,6 +116,10 @@ export function parseResearchOutput(output: string) {
     // is discarded rather than guessed or inferred.
     const contact = result.data.public_contact;
     if (contact && !contact.source_url) result.data.public_contact = null;
+    // The model cannot reliably attest when it observed an individual page. Persisted research
+    // timestamps come from the server's lead row; don't display a model-supplied timestamp as fact.
+    result.data.evidence = result.data.evidence.map((item) => ({ ...item, observed_at: null }));
+    result.data.qualification_summary = sanitizeQualificationSummary(result.data.qualification_summary);
     leads.push(result.data);
   }
   return { leads, rejected, error: null as string | null };
@@ -148,10 +169,11 @@ export function researchPrompt(prompt: string, targeting: Targeting, campaign: "
     JSON.stringify(campaign === "influencer" ? { ...effective, influencer: effective.influencer } : { ...effective, influencer: undefined }),
     "",
     "Use only approved public sources (company websites, official registries, public business pages). Do not scrape personal profiles, do not message anyone, and do not guess contact details.",
-    "Return at most 20 candidates. Only include evidence you actually observed, with its URL. If you cannot find evidence, say so in qualification_summary and leave evidence empty.",
+    "Return at most 20 candidates. Only include evidence you actually observed, with its URL. If you cannot find evidence, say so in qualification_summary and leave evidence empty. Do not provide observed_at timestamps; the application records when the research result was saved.",
+    "Use qualification_summary only for business fit or evidence gaps. Do not describe CRM or duplicate checks, tool availability, saving, persistence, imports or review queue state; those are checked and reported by the application.",
     "Public contact details are optional. Include them only when a cited public source states them; always include that source_url. Never guess an email address, phone number or person's name.",
     "Respond with JSON only, in this exact shape:",
-    '```json\n{"leads":[{"business_name":"","website":"","industry":"","location":"","evidence":[{"url":"https://…","observed_at":"ISO-8601","summary":""}],"buying_signals":[""],"qualification_summary":"","public_contact":{"name":"","role":"","email":"","phone":"","source_url":"https://…"},"score":{"service_fit":0,"problem_evidence":0,"buying_intent":0,"market_fit":0,"source_quality":0}}]}\n```',
+    '```json\n{"leads":[{"business_name":"","website":"","industry":"","location":"","evidence":[{"url":"https://…","summary":""}],"buying_signals":[""],"qualification_summary":"","public_contact":{"name":"","role":"","email":"","phone":"","source_url":"https://…"},"score":{"service_fit":0,"problem_evidence":0,"buying_intent":0,"market_fit":0,"source_quality":0}}]}\n```',
     `Score maxima: service_fit ${SCORE_MAX.service_fit}, problem_evidence ${SCORE_MAX.problem_evidence}, buying_intent ${SCORE_MAX.buying_intent}, market_fit ${SCORE_MAX.market_fit}, source_quality ${SCORE_MAX.source_quality}. A score is a research priority, not consent or confirmed interest.`,
     "If you cannot verify a requested candidate, omit it and explain the limitation in qualification_summary. Never invent a business to reach the requested quantity.",
   ].join("\n");
