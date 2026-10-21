@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, ListChecks, Loader2, Play, ShieldCheck, Sparkles, Trash2, XCircle, Zap } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Select } from "@/components/ui/primitives";
+import { EmptyState, Select, Textarea } from "@/components/ui/primitives";
 import { StatusPill, InfoChip } from "@/components/ui/status";
 import { Switch } from "@/components/ui/overlays";
 import { MetricCard, PageHero } from "@/components/ui/workspace";
@@ -17,7 +17,7 @@ import { ProactiveWatch } from "@/components/work/proactive-reports";
 import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTriggerAction, setScheduleEnabledAction, setTriggerEnabledAction, startReviewAction } from "@/app/actions/work";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
-import { WEEKDAYS, type BusinessHours, type Weekday } from "@/lib/messaging";
+import type { BusinessHours, Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
@@ -73,11 +73,14 @@ export function WorkBoard({
   reports = [],
   monitoring = null,
   focusReportId = null,
+  scheduleActions,
 }: {
   jobs: WorkBoardJob[];
   summary: WorkBoardSummary;
   filter: WorkBoardFilter;
   reviewActions: WorkBoardCapabilityAction[];
+  /** Capabilities that may be scheduled. Includes Lead Hunter research, which is not startable from the review selector. */
+  scheduleActions?: WorkBoardCapabilityAction[];
   schedules: ScheduleView[];
   canManageSchedules: boolean;
   scheduleOperatorEnabled: boolean;
@@ -97,7 +100,9 @@ export function WorkBoard({
     return reviewActions.find((action) => action.available)?.capability ?? reviewActions[0]?.capability ?? "";
   });
   const selected = reviewActions.find((action) => action.capability === selectedCapability) ?? reviewActions[0] ?? null;
-  const [scheduleCapability, setScheduleCapability] = React.useState<string>(() => reviewActions[0]?.capability ?? "");
+  const scheduleOptions = scheduleActions ?? reviewActions;
+  const [scheduleCapability, setScheduleCapability] = React.useState<string>(() => scheduleOptions.find((action) => action.capability !== "lead_research")?.capability ?? scheduleOptions[0]?.capability ?? "");
+  const [leadResearchPrompt, setLeadResearchPrompt] = React.useState("");
   const [scheduleCadence, setScheduleCadence] = React.useState<"hourly" | "daily" | "weekly">("daily");
   const [restrictHours, setRestrictHours] = React.useState(false);
   const [businessStart, setBusinessStart] = React.useState("09:00");
@@ -108,12 +113,17 @@ export function WorkBoard({
     ? Object.fromEntries(businessDays.map((day) => [day, [[businessStart, businessEnd]]])) as BusinessHours
     : {};
   const businessHoursValid = !restrictHours || (businessDays.length > 0 && businessStart < businessEnd);
+  const selectedScheduleAction = scheduleOptions.find((action) => action.capability === scheduleCapability) ?? scheduleOptions[0] ?? null;
+  const schedulingLeadResearch = selectedScheduleAction?.capability === "lead_research";
+  const schedulePayload = schedulingLeadResearch ? { prompt: leadResearchPrompt.trim() } : undefined;
+  const schedulePayloadValid = !schedulingLeadResearch || leadResearchPrompt.trim().length >= 10;
 
   const saveSchedule = async () => {
     if (!scheduleCapability || scheduleBusy) return;
     if (!businessHoursValid) return toast.error("Choose at least one day and an end time after the start time.");
+    if (!schedulePayloadValid) return toast.error("Describe who to research, where and how many. The schedule runs only that assignment.");
     setScheduleBusy("save");
-    const res = await saveScheduleAction(scheduleCapability, scheduleCadence, businessHours);
+    const res = await saveScheduleAction(scheduleCapability, scheduleCadence, businessHours, schedulePayload);
     setScheduleBusy(null);
     if (!res.ok) return toast.error(res.error);
     toast.success("Schedule saved paused", { description: "Enable it when you are ready. It still only runs when the operator switch is on." });
@@ -266,8 +276,8 @@ export function WorkBoard({
         <Panel
           icon={<CalendarClock />}
           tone="neutral"
-          title="Scheduled reviews"
-          description="A schedule creates a durable job on its cadence. It only runs when both the row and the operator switch are enabled."
+          title="Scheduled work"
+          description="A read-only review or one explicitly approved Lead Hunter research assignment. It only runs when both the row and the operator switch are enabled."
           action={
             <StatusPill tone={scheduleOperatorEnabled ? "success" : "warning"} size="sm">
               {scheduleOperatorEnabled ? "Operator switch on" : "Operator switch off"}
@@ -277,9 +287,9 @@ export function WorkBoard({
           <div className="space-y-4">
             <div className="flex flex-wrap items-end gap-2">
               <label className="block min-w-[15rem] flex-1 text-[12px] font-medium text-ink-2">
-                Review
-                <Select className="mt-1" value={scheduleCapability} onChange={(event) => setScheduleCapability(event.target.value)} disabled={!reviewActions.length}>
-                  {reviewActions.map((action) => (
+                Work
+                <Select className="mt-1" value={scheduleCapability} onChange={(event) => setScheduleCapability(event.target.value)} disabled={!scheduleOptions.length}>
+                  {scheduleOptions.map((action) => (
                     <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
                   ))}
                 </Select>
@@ -292,10 +302,30 @@ export function WorkBoard({
                   <option value="weekly">Weekly</option>
                 </Select>
               </label>
-              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null || !businessHoursValid}>
+              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null || !businessHoursValid || !schedulePayloadValid || Boolean(selectedScheduleAction && !selectedScheduleAction.available)}>
                 Save paused schedule
               </Button>
             </div>
+            {schedulingLeadResearch && (
+              <div className="rounded-xl border border-line bg-surface-2/30 p-3">
+                <label className="block text-[12px] font-medium text-ink-2" htmlFor="lead-research-assignment">
+                  Approved research assignment
+                </label>
+                <Textarea
+                  id="lead-research-assignment"
+                  className="mt-1"
+                  rows={2}
+                  value={leadResearchPrompt}
+                  onChange={(event) => setLeadResearchPrompt(event.target.value)}
+                  placeholder="Find 20 independent dental clinics in Singapore"
+                  aria-describedby="lead-research-assignment-hint"
+                />
+                <p id="lead-research-assignment-hint" className="mt-1 text-[11.5px] leading-relaxed text-muted">
+                  The Lead Hunter will run exactly this assignment on the cadence, using public sources and the existing research gate. It never contacts a prospect. The schedule is saved paused, and the operator switch and the Lead Hunter&apos;s readiness are still required.
+                </p>
+                {!selectedScheduleAction?.available && <p className="mt-1 text-[11.5px] text-warning-ink">{selectedScheduleAction?.reason}</p>}
+              </div>
+            )}
             <div className="rounded-xl border border-line bg-surface-2/30 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
@@ -351,6 +381,7 @@ export function WorkBoard({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12.5px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
+                      {schedule.payload.prompt && <p className="mt-0.5 truncate text-[11.5px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
                       <p className="mt-0.5 text-[11.5px] text-muted" suppressHydrationWarning>
                         {sentenceCase(schedule.cadence)} · next {formatDateTime(schedule.nextRunAt, timeZone)}
                         {schedule.lastRunAt ? ` · last ran ${relativeTime(schedule.lastRunAt)}` : " · not run yet"}

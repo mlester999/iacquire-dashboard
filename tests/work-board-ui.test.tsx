@@ -186,6 +186,7 @@ describe("AI Work Board", () => {
       intervalMinutes: 1440,
       timezone: "UTC",
       businessHours: {},
+      payload: {},
       enabled: true,
       nextRunAt: "2026-10-22T07:00:00.000Z",
       lastRunAt: null,
@@ -195,7 +196,7 @@ describe("AI Work Board", () => {
       operatorEnabled: false,
     }];
     render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={schedules} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
-    expect(screen.getByText("Scheduled reviews")).toBeTruthy();
+    expect(screen.getByText("Scheduled work")).toBeTruthy();
     expect(screen.getByText("Operator switch off")).toBeTruthy();
     expect(screen.getByText(/no schedule creates work even when its row is enabled/i)).toBeTruthy();
     await userEvent.click(screen.getByRole("switch", { name: /Pause On-demand operations review schedule/ }));

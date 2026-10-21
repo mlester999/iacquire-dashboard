@@ -120,6 +120,23 @@ a URL query string.
 - `/admin/health` shows the scheduler state, every job's last success/duration/failure count, and the last seven days of sanitized
   diagnostics. It is agency-only and does not expose customer data.
 
+## Proactive AI employee jobs
+
+Four jobs relate to proactive AI employees and are all inert until separately authorized:
+
+- `aiWorkSchedules` creates jobs for enabled tenant schedules only when `WORKFORCE_SCHEDULES_ENABLED=true`.
+  Business-hour windows are evaluated in the schedule's time zone; an enabled row outside its window is
+  postponed and records the reason.
+- `aiWorkTriggers` creates jobs for enabled event triggers only when `WORKFORCE_TRIGGERS_ENABLED=true`.
+- `aiProactiveHeldReports` releases existing non-critical reports after quiet hours. It never creates work.
+- `aiProactiveBriefings` generates opted-in daily/weekly briefings only when
+  `WORKFORCE_BRIEFINGS_ENABLED=true`. It never contacts a provider.
+
+The tick still never runs provider work. It creates durable `ai_work_jobs` rows and wakes the worker; a Lead Hunter
+research schedule also creates the linked `lead_research_requests` row. See
+[Proactive AI employees](proactive-ai-employees.md) for the delivery policy, safety boundaries and activation
+checkpoint.
+
 ## Activation checklist (requires approval)
 
 1. Decide the scheduler host and confirm it can POST every 1–2 minutes.

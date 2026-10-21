@@ -20,9 +20,7 @@ import {
   ListPlus,
   Radar,
   ShieldCheck,
-  Sparkles,
   Sunrise,
-  XCircle,
 } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
@@ -130,7 +128,7 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
             <span className="text-[11.5px] text-faint">·</span>
             <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted">
               {meta && <AgentAvatar role={meta} size="xs" />}
-              {report.employeeName}
+              {meta ? <Link href={`/employees/${meta.slug}`} className="font-medium hover:text-ink hover:underline">{report.employeeName}</Link> : report.employeeName}
             </span>
             {report.status === "acknowledged" && <InfoChip icon={<Check />}>Acknowledged</InfoChip>}
             {note && <StatusPill tone={note.tone} size="sm">{note.label}</StatusPill>}
@@ -245,6 +243,9 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
 
               <div className="flex flex-wrap items-center gap-2">
                 {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/50 hover:underline">Open work <ArrowRight className="size-3.5" aria-hidden /></Link>}
+                <Link href="/approvals" className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-ink-2 hover:bg-surface-2 hover:underline">
+                  <ShieldCheck className="size-3.5" aria-hidden /> Open Approval Center
+                </Link>
                 {report.status === "open" && (
                   <Button size="sm" variant="secondary" onClick={acknowledge} loading={busy === "acknowledge"} disabled={busy !== null}>
                     <Check className="size-3.5" aria-hidden /> Acknowledge

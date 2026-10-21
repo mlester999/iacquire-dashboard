@@ -6,6 +6,8 @@ import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { appendWorkEvent, createWorkJob, type WorkJobStatus } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-runner";
+import { createScheduledResearchJob } from "@/server/leads/scheduled-research";
+import { parseResearchAssignment } from "@/lib/research-intent";
 import { isWithinBusinessHours, nextSendWindow, validateBusinessHours, type BusinessHours } from "@/lib/messaging";
 import type { OrgContext } from "@/server/tenancy/context";
 
@@ -40,6 +42,8 @@ export interface ScheduleView {
   timezone: string;
   /** Empty means any time. Windows are evaluated in the schedule's own time zone. */
   businessHours: BusinessHours;
+  /** The exact owner-approved assignment for a provider-backed schedule, never inferred at run time. */
+  payload: { prompt?: string; target?: string; location?: string; quantity?: number };
   enabled: boolean;
   nextRunAt: string;
   lastRunAt: string | null;
@@ -53,7 +57,11 @@ const iso = (value: Date | null | undefined) => (value ? new Date(value).toISOSt
 
 function assertSchedulableCapability(capability: string) {
   const definition = capabilityDefinition(capability);
-  if (!definition || !definition.workBoardAction || definition.risk !== "read_only") {
+  if (!definition) throw new AppError("invalid_input", "That capability cannot be scheduled.");
+  // Lead research is the one provider-backed capability a schedule may carry. It is accepted only
+  // with an exact saved assignment and still needs both operator switches before it can run.
+  if (definition.key === "lead_research") return definition;
+  if (!definition.workBoardAction || definition.risk !== "read_only") {
     throw new AppError("invalid_input", "That capability cannot be scheduled. Only reviewed, read-only reviews can run on a schedule.");
   }
   return definition;
@@ -80,11 +88,11 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
   if (!ctx.can("agents.configure")) return [];
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
-      id: string; capability: string; cadence: ScheduleCadence; interval_minutes: number; timezone: string; business_hours: unknown; enabled: boolean;
+      id: string; capability: string; cadence: ScheduleCadence; interval_minutes: number; timezone: string; business_hours: unknown; payload: unknown; enabled: boolean;
       next_run_at: Date; last_run_at: Date | null; last_job_id: string | null; last_skipped_reason: string | null; last_skipped_at: Date | null;
       employee_role: AgentRoleKey; employee_name: string;
     }>(
-      `select s.id, s.capability, s.cadence, s.interval_minutes, s.timezone, s.business_hours, s.enabled, s.next_run_at, s.last_run_at, s.last_job_id,
+      `select s.id, s.capability, s.cadence, s.interval_minutes, s.timezone, s.business_hours, s.payload, s.enabled, s.next_run_at, s.last_run_at, s.last_job_id,
               s.last_skipped_reason, s.last_skipped_at,
               a.role_key as employee_role, a.display_name as employee_name
          from ai_work_schedules s
@@ -103,6 +111,14 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
       intervalMinutes: row.interval_minutes,
       timezone: row.timezone,
       businessHours: validateBusinessHours(row.business_hours) ?? {},
+      payload: typeof row.payload === "object" && row.payload !== null && !Array.isArray(row.payload)
+        ? {
+            prompt: typeof (row.payload as Record<string, unknown>).prompt === "string" ? String((row.payload as Record<string, unknown>).prompt) : undefined,
+            target: typeof (row.payload as Record<string, unknown>).target === "string" ? String((row.payload as Record<string, unknown>).target) : undefined,
+            location: typeof (row.payload as Record<string, unknown>).location === "string" ? String((row.payload as Record<string, unknown>).location) : undefined,
+            quantity: typeof (row.payload as Record<string, unknown>).quantity === "number" ? Number((row.payload as Record<string, unknown>).quantity) : undefined,
+          }
+        : {},
       enabled: row.enabled,
       nextRunAt: new Date(row.next_run_at).toISOString(),
       lastRunAt: iso(row.last_run_at),
@@ -116,16 +132,32 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
 
 export async function saveSchedule(
   ctx: OrgContext,
-  input: { capability: string; cadence: string; enabled: boolean; businessHours?: unknown },
+  input: { capability: string; cadence: string; enabled: boolean; businessHours?: unknown; payload?: unknown },
 ): Promise<{ id: string; enabled: boolean }> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can manage AI schedules.");
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't start AI work.");
   const definition = assertSchedulableCapability(input.capability);
   if (!SCHEDULE_CADENCES.includes(input.cadence as ScheduleCadence)) throw new AppError("invalid_input", "Choose hourly, daily or weekly.");
-  if (!ctx.can(definition.requiredPermission)) throw new AppError("forbidden", "Your role can't run this review.");
+  if (!ctx.can(definition.requiredPermission)) throw new AppError("forbidden", "Your role can't run this work.");
   const cadence = input.cadence as ScheduleCadence;
   const role = definition.allowedRoles[0];
   if (!role) throw new AppError("invalid_input", "That capability has no eligible employee role.");
+  let payload: Record<string, unknown> = {};
+  if (definition.key === "lead_research") {
+    const prompt = typeof input.payload === "object" && input.payload !== null && !Array.isArray(input.payload) && typeof (input.payload as Record<string, unknown>).prompt === "string"
+      ? String((input.payload as Record<string, unknown>).prompt).trim()
+      : "";
+    const assignment = parseResearchAssignment(prompt);
+    if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
+      throw new AppError("invalid_input", "Describe the lead research completely: how many businesses, what kind, and where. The schedule will run only that approved assignment.");
+    }
+    payload = {
+      prompt: String(assignment.prompt).slice(0, 1000),
+      target: assignment.target.slice(0, 120),
+      location: assignment.location.slice(0, 120),
+      quantity: Math.min(50, assignment.quantity),
+    };
+  }
   const agent = await resolveAgent(ctx, role);
   const intervalMinutes = CADENCE_MINUTES[cadence];
   const businessHours = input.businessHours === undefined ? null : validateBusinessHours(input.businessHours);
@@ -135,13 +167,14 @@ export async function saveSchedule(
 
   const saved = await withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; enabled: boolean }>(
-      `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, enabled, next_run_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, case when $9 then now() + make_interval(mins => $6) else now() end)
+      `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, enabled, next_run_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, case when $10 then now() + make_interval(mins => $6) else now() end)
        on conflict (agent_instance_id, capability) do update set
          cadence = excluded.cadence,
          interval_minutes = excluded.interval_minutes,
          timezone = excluded.timezone,
          business_hours = excluded.business_hours,
+         payload = excluded.payload,
          enabled = excluded.enabled,
          next_run_at = case when excluded.enabled then now() + make_interval(mins => excluded.interval_minutes) else now() end,
          last_skipped_reason = null,
@@ -150,7 +183,7 @@ export async function saveSchedule(
        returning id, enabled`,
       [
         ctx.org.orgId, agent.id, ctx.user.id, definition.key, cadence, intervalMinutes, ctx.org.timezone,
-        JSON.stringify(businessHours ?? {}), Boolean(input.enabled),
+        JSON.stringify(businessHours ?? {}), JSON.stringify(payload), Boolean(input.enabled),
       ],
     );
     await recordAudit({
@@ -166,6 +199,7 @@ export async function saveSchedule(
         cadence,
         enabled: Boolean(input.enabled),
         businessHours: businessHours ?? {},
+        hasAssignment: Boolean(payload.prompt),
         operatorEnabled: schedulesOperatorEnabled(),
       },
     }, db);
@@ -232,9 +266,9 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
   const result = await withSystem(async (db) => {
     const { rows: due } = await db.query<{
       id: string; org_id: string; agent_instance_id: string; created_by: string | null; capability: string; interval_minutes: number;
-      timezone: string; business_hours: unknown; last_job_id: string | null;
+      timezone: string; business_hours: unknown; payload: unknown; last_job_id: string | null;
     }>(
-      `select id, org_id, agent_instance_id, created_by, capability, interval_minutes, timezone, business_hours, last_job_id
+      `select id, org_id, agent_instance_id, created_by, capability, interval_minutes, timezone, business_hours, payload, last_job_id
          from ai_work_schedules
         where enabled and next_run_at <= $1
         order by next_run_at asc
@@ -277,8 +311,9 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         previousActive = previous.rows[0] ? ACTIVE.includes(previous.rows[0].status) : false;
       }
       const runnable = Boolean(
-        definition?.workBoardAction
+        definition
         && definition.risk === "read_only"
+        && (definition.workBoardAction || definition.key === "lead_research")
         && definition.allowedRoles[0] === row?.role_key
         && row?.enabled
         && row.active_config_version_id
@@ -291,6 +326,38 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         continue;
       }
       const stamp = now.toISOString().slice(0, 16);
+      if (schedule.capability === "lead_research") {
+        const scheduled = await createScheduledResearchJob(db, {
+          orgId: schedule.org_id,
+          agentId: schedule.agent_instance_id,
+          requestedBy: schedule.created_by,
+          scheduleId: schedule.id,
+          slot: stamp,
+          payload: typeof schedule.payload === "object" && schedule.payload !== null && !Array.isArray(schedule.payload)
+            ? schedule.payload as Record<string, unknown>
+            : {},
+        });
+        if ("skipped" in scheduled) {
+          await db.query(
+            `update ai_work_schedules
+                set next_run_at = $2::timestamptz + make_interval(mins => interval_minutes),
+                    last_skipped_reason = $3, last_skipped_at = $2::timestamptz
+              where id = $1`,
+            [schedule.id, now, scheduled.skipped],
+          );
+          skipped += 1;
+          continue;
+        }
+        await db.query(
+          `update ai_work_schedules
+              set last_run_at = $2::timestamptz, last_job_id = $3, next_run_at = $2::timestamptz + make_interval(mins => interval_minutes),
+                  last_skipped_reason = null, last_skipped_at = null
+            where id = $1`,
+          [schedule.id, now, scheduled.jobId],
+        );
+        jobIds.push(scheduled.jobId);
+        continue;
+      }
       const job = await createWorkJob(db, {
         orgId: schedule.org_id,
         agentId: schedule.agent_instance_id,

@@ -199,6 +199,33 @@ async function stalledJobs(db: Queryable, orgId: string, sinceDays: number): Pro
   });
 }
 
+async function crossEmployeeBlockers(db: Queryable, orgId: string, sinceDays: number): Promise<ProactiveFinding | null> {
+  const { rows } = await db.query<{ employees: number; count: number; samples: string[] }>(
+    `select count(distinct j.agent_instance_id)::int as employees,
+            count(*)::int as count,
+            coalesce(array_agg(distinct a.display_name), '{}') as samples
+       from ai_work_jobs j
+       join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+      where j.org_id = $1 and j.status in ('failed', 'blocked')
+        and j.created_at >= now() - make_interval(days => $2)
+      having count(distinct j.agent_instance_id) >= 2`,
+    [orgId, sinceDays],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return finding({
+    key: "cross_employee_blockers",
+    severity: "warning",
+    title: `Blocked work spans ${num(row.employees)} employees`,
+    detail: "More than one employee has recorded a failure or blocker. A person should decide who owns the next step rather than retrying everything independently.",
+    count: num(row.count),
+    samples: (row.samples ?? []).slice(0, 3),
+    evidenceHref: "/work?status=attention",
+    recommendedAction: "Open the work board, compare the recorded blockers and assign one clear owner or retry order.",
+    requiresApproval: false,
+  });
+}
+
 async function contactDataQuality(db: Queryable, orgId: string): Promise<ProactiveFinding | null> {
   const { rows } = await db.query<{ count: number; samples: string[] }>(
     `select count(*)::int as count, coalesce(array_agg(coalesce(nullif(display_name, ''), 'Unnamed contact') order by created_at asc), '{}') as samples
@@ -271,6 +298,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       () => workforceAttention(db, job.org_id),
       () => integrationAttention(db, job.org_id),
       () => stalledJobs(db, job.org_id, sinceDays),
+      () => crossEmployeeBlockers(db, job.org_id, sinceDays),
       () => contactDataQuality(db, job.org_id),
     ]) {
       const result = await check();
@@ -283,7 +311,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       stage: "analyzing",
       message: "Assessing each signal, separating observed evidence from recommendations and preparing the review…",
       progress: {
-        checksRun: 8,
+        checksRun: 9,
         findings: findings.length,
         affectedItems: findings.reduce((total, item) => total + item.count, 0),
       },
@@ -322,7 +350,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       result: {
         sinceDays,
         checkedAt: new Date().toISOString(),
-        checksRun: 8,
+        checksRun: 9,
         findings,
         limitations: "Only records this workspace already stores were read. No external provider was contacted and no business record was changed.",
       },
@@ -343,7 +371,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       findings,
       metrics: [],
       limitations: "Only records this workspace already stores were read. No external provider was contacted and no business record was changed.",
-      checksRun: 8,
+      checksRun: 9,
     });
   });
 }

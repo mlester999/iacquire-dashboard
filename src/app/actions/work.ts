@@ -36,10 +36,10 @@ export async function startReviewAction(capability: string) {
   }
 }
 
-export async function saveScheduleAction(capability: string, cadence: string, businessHours?: unknown) {
+export async function saveScheduleAction(capability: string, cadence: string, businessHours?: unknown, payload?: unknown) {
   try {
     const ctx = await requireOrgContextOrThrow("agents.configure");
-    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false, businessHours });
+    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false, businessHours, payload });
     revalidatePath("/work");
     return { ok: true as const, data: saved };
   } catch (err) {

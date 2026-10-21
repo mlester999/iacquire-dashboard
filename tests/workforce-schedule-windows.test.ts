@@ -24,11 +24,22 @@ beforeAll(async () => {
   owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   const operationsManagerId = await agentId(org.id, "operations_manager");
+  const leadHunterId = await agentId(org.id, "lead_hunter");
   await withSystem((db) =>
     createConfigVersion(db, {
       orgId: org.id,
       agentId: operationsManagerId,
       settings: defaultSettings("operations_manager"),
+      source: "onboarding",
+      userId: owner.id,
+      apply: true,
+    }),
+  );
+  await withSystem((db) =>
+    createConfigVersion(db, {
+      orgId: org.id,
+      agentId: leadHunterId,
+      settings: defaultSettings("lead_hunter"),
       source: "onboarding",
       userId: owner.id,
       apply: true,
@@ -84,6 +95,50 @@ describe("business-hours monitoring schedules", () => {
         cadence: "daily",
         enabled: false,
         businessHours: { mon: [["17:00", "09:00"]] },
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("creates a real, owner-approved lead research request from its saved assignment", async () => {
+    const saved = await saveSchedule(ctxFor(owner, org, "owner"), {
+      capability: "lead_research",
+      cadence: "daily",
+      enabled: true,
+      payload: { prompt: "Find 3 independent dental clinics in Singapore" },
+    });
+    const now = new Date("2026-10-23T10:00:00.000Z");
+    await withSystem((db) => db.query("update ai_work_schedules set next_run_at = $2 where id = $1", [saved.id, now.toISOString()]));
+    const run = await runDueSchedules({ now });
+    expect(run.created).toBe(1);
+    const { rows } = await withSystem((db) =>
+      db.query<{
+        request_prompt: string; request_status: string; job_input: Record<string, unknown>; job_capability: string; job_title: string;
+      }>(
+        `select r.prompt as request_prompt, r.status as request_status, j.input as job_input, j.capability as job_capability, j.title as job_title
+           from lead_research_requests r join ai_work_jobs j on j.id = r.work_job_id
+          where r.org_id = $1 order by r.created_at desc limit 1`,
+        [org.id],
+      ),
+    );
+    expect(rows[0]).toMatchObject({
+      request_prompt: "Find 3 dental clinics in Singapore",
+      job_capability: "lead_research",
+      job_title: "Find 3 dental clinics in Singapore",
+    });
+    expect(rows[0].request_status).toMatch(/queued|running|failed|blocked/);
+    expect(rows[0].job_input).toMatchObject({ origin: "schedule", prompt: "Find 3 dental clinics in Singapore" });
+    const schedule = (await listSchedules(ctxFor(owner, org, "owner"))).find((row) => row.id === saved.id);
+    expect(schedule?.payload.prompt).toBe("Find 3 independent dental clinics in Singapore");
+    expect(schedule?.lastRunAt).toBeTruthy();
+  }, 30000);
+
+  it("refuses a lead research schedule without a complete assignment", async () => {
+    await expect(
+      saveSchedule(ctxFor(owner, org, "owner"), {
+        capability: "lead_research",
+        cadence: "daily",
+        enabled: false,
+        payload: { prompt: "Find some leads" },
       }),
     ).rejects.toMatchObject({ code: "invalid_input" });
   });

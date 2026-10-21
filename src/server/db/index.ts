@@ -377,10 +377,10 @@ const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0061_aqi_phase3_guidance": ["0047_aqi_assistant", "0048_aqi_cost_controls", "0052_aqi_conversation_lifecycle"],
   "0063_aqi_phase3_hardening": ["0061_aqi_phase3_guidance"],
   // The AI workforce migrations share tables and columns. Refuse an out-of-order partial apply
-  // instead of letting 0075 fail halfway through its pending-report tables.
-  "0073_ai_work_schedules": ["0072_ai_work_jobs"],
-  "0074_ai_work_triggers": ["0072_ai_work_jobs"],
-  "0075_proactive_ai_employees": ["0072_ai_work_jobs", "0073_ai_work_schedules"],
+  // instead of letting 0080 fail halfway through its pending-report tables.
+  "0078_ai_work_schedules": ["0077_ai_work_jobs"],
+  "0079_ai_work_triggers": ["0077_ai_work_jobs"],
+  "0080_proactive_ai_employees": ["0077_ai_work_jobs", "0078_ai_work_schedules"],
 };
 
 /**

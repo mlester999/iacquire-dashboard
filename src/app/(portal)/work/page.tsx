@@ -25,9 +25,8 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
     getProactiveMonitoringStatus(ctx).catch(() => null),
   ]);
 
-  const reviewActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
+  const capabilityActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
     .map((key) => WORKFORCE_CAPABILITIES[key])
-    .filter((definition) => definition.workBoardAction)
     .map((definition) => {
       const role = definition.allowedRoles[0];
       const meta = AGENT_BY_KEY[role];
@@ -35,7 +34,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       const employeeName = agent?.display_name ?? meta.shortName;
       const permission = ctx.can(definition.requiredPermission);
       const reason = !permission
-        ? "Your role can't start this review."
+        ? "Your role can't start this work."
         : !agent
           ? `${employeeName} isn't set up in this workspace.`
           : !agent.enabled
@@ -54,6 +53,11 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
         reason,
       };
     });
+  const reviewActions = capabilityActions.filter((action) => WORKFORCE_CAPABILITIES[action.capability].workBoardAction);
+  const scheduleActions = capabilityActions.filter((action) => {
+    const definition = WORKFORCE_CAPABILITIES[action.capability];
+    return definition.workBoardAction || definition.key === "lead_research";
+  });
 
   return (
     <WorkBoard
@@ -61,6 +65,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       summary={summary}
       filter={filter}
       reviewActions={reviewActions}
+      scheduleActions={scheduleActions}
       schedules={schedules}
       canManageSchedules={ctx.can("agents.configure")}
       scheduleOperatorEnabled={schedulesOperatorEnabled()}

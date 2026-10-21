@@ -33,7 +33,7 @@ because no production write has been authorized.
 
 ## 2. Durable AI work jobs
 
-Migration `0072_ai_work_jobs.sql` adds:
+Migration `0077_ai_work_jobs.sql` adds:
 
 | Table | Purpose |
 | --- | --- |
@@ -106,6 +106,9 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/workforce-schedules.test.ts` | 5 passed — disabled by default, operator-switch gate, real due job, no duplicate while active, member/capability refusals, enable/pause/delete and audit evidence |
 | `tests/workforce-triggers.test.ts` | 5 passed — paused by default, operator gate, one job per new event, no repeat, no replay on enable, refusals and audit evidence |
 | `tests/lead-hunter-business-context.test.ts` | 6 passed — agency-only fallback, confirmed-value precedence, client-owned facts, empty-client ask/block, compiled-instruction isolation and research-prompt isolation |
+| `tests/workforce-proactive-delivery.test.ts` | 11 passed — report publication and supervisor delivery, idempotency, severity thresholds, critical bypass, quiet-hours hold/release, tenant isolation, opt-in task creation, monitoring state and briefing dedupe |
+| `tests/workforce-lead-generation.test.ts` | 3 passed — Lead Hunter-only allowlist, five persisted generation checks, saved-target recommendation, no provider run or business-record change, wrong-role refusal |
+| `tests/workforce-schedule-windows.test.ts` | 5 passed — outside-hours postponement, in-hours execution, invalid windows, real scheduled research request/job and incomplete-assignment refusal |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
 The test gateway is the repository's Hermes test double. It is not a live AI and no external research, outreach,
@@ -127,7 +130,7 @@ performs only `SELECT` queries and changed nothing. Result:
 | Super Admin acknowledgement current | false |
 | Company facts (description, services, ideal customers, operating area) | **0/4 present** (approved facts exist in the repository fallback; production not written) |
 
-1. **Migrations 0072, 0073, 0074 and 0075 are not applied to the hosted database.** Deploying/authorizing them
+1. **Migrations 0077, 0078, 0079 and 0080 are not applied to the hosted database.** Deploying/authorizing them
    is required before any durable job, schedule, event trigger or proactive report exists in production.
 2. **Lead Hunter has no applied configuration in production.** The agency workspace must save the complete
    role configuration through Configure. The approved iAcquire facts now exist in the repository and can be
@@ -136,7 +139,7 @@ performs only `SELECT` queries and changed nothing. Result:
 3. **Production Hermes profile activation is a guarded change.** The exact existing process must be used:
    apply configuration → health check with complete inventory → agency profile check → Super Admin Full Hermes
    Capabilities acknowledgement. No readiness score may be written directly.
-4. **Do not apply migration 0072, save production configuration, run a live research job or enable the worker
+4. **Do not apply migration 0077, save production configuration, run a live research job or enable the worker
    without explicit authorization.** These are the approval boundary for this slice.
 
 The Hermes six-tool whitelist was not changed. No MCP, Tool Search, filesystem, database, browser or general API
@@ -189,16 +192,17 @@ and returns the previous value, absolute change, percentage change and trend. Th
 using the metric's `higherIsBetter` flag, so an increase in failed runs is not shown as positive.
 Pending/open/upcoming counts remain current-state values with no comparison.
 
-The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads eight
+The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads nine
 persisted signals: failed runs, approvals pending over a day, overdue tasks, leads waiting for
-review, employees needing attention, degraded integrations, failed/blocked AI jobs and recent
-contacts with no email or phone. Each finding records its count, examples, evidence link and
-recommended next action. It does not change a business record, create an approval on the employee's
-behalf, contact a provider or create a recurring schedule. A person starts it from the Work Board.
+review, employees needing attention, degraded integrations, failed/blocked AI jobs, blocked work
+spanning more than one employee, and recent contacts with no email or phone. Each finding records
+its count, examples, evidence link and recommended next action. It does not change a business record,
+create an approval on the employee's behalf, contact a provider or create a recurring schedule. A
+person starts it from the Work Board.
 
 ## 9. Scheduled reviews (implemented, not activated)
 
-Migration `0073_ai_work_schedules.sql` adds tenant-scoped `ai_work_schedules`: one reviewed,
+Migration `0078_ai_work_schedules.sql` adds tenant-scoped `ai_work_schedules`: one reviewed,
 read-only capability per employee, a cadence (hourly/daily/weekly), a next-run time, last-run time
 and last job. The Work Board can save a schedule (always paused first), enable or pause it, and
 delete it; every change is audited.
@@ -219,7 +223,7 @@ active, member refusal, non-review capability refusal, enable/pause/delete and a
 
 ## 10. Event-driven triggers (implemented, not activated)
 
-Migration `0074_ai_work_triggers.sql` adds `ai_work_triggers`. Only these reviewed exceptional
+Migration `0079_ai_work_triggers.sql` adds `ai_work_triggers`. Only these reviewed exceptional
 events are accepted:
 
 | Event | Capability |
@@ -285,9 +289,32 @@ facts, and the readiness audit reports **4/4 company facts**, still **0/6 readin
 configuration is applied, no connection check passed, no identity is current and no Super Admin
 acknowledgement exists.
 
-## 12. Exact next action after authorization
+## 12. Proactive employee layer
 
-Apply migrations 0072–0075 to the hosted project, deploy the application, apply the approved iAcquire
+The shared execution foundation now also produces verified proactive reports. All six reviewed reviews plus the new
+Lead Hunter `lead_generation_review` publish an `ai_work_reports` row after they finish. A report answers what
+happened, why it matters, what was verified, what action was taken, what remains blocked, what should happen next and
+whether a person must approve anything.
+
+Delivery is per supervisor: severity thresholds, quiet-hours hold/release, daily digests, deduplication by condition
+and local date, and the existing notification pipeline. The only autonomous business action is an opt-in internal
+follow-up task for critical reports; external and customer-facing actions still require the Approval Center. A
+completed finding can also become a follow-up task through an explicit, permission-checked action.
+
+Schedules now support local business-hour windows and can carry one exact, owner-approved Lead Hunter research
+assignment. The tick creates the real `lead_research_requests` and `ai_work_jobs` rows and wakes the existing worker;
+it never runs provider work itself. A separate operator switch
+(`WORKFORCE_BRIEFINGS_ENABLED`, off by default) controls opt-in daily and weekly briefings.
+
+The Work Board shows a **Proactive watch** panel with an honest monitoring state, the six duties, expandable report
+cards and real acknowledgement/task actions. The employee Activity tab shows the same employee-scoped reports. When
+no recurring row is enabled, both surfaces say that no monitoring is scheduled.
+
+Full design, safety boundaries, tests and activation checkpoint: [Proactive AI employees](proactive-ai-employees.md).
+
+## 13. Exact next action after authorization
+
+Apply migrations 0077–0080 to the hosted project, deploy the application, apply the approved iAcquire
 internal profile to the agency workspace (`scripts/apply-internal-business-profile.ts --apply` with the
 production authorization), save the Lead Hunter configuration, run the health check and profile check, record
 the Super Admin acknowledgement, then run the read-only activation audit and one supervised research job. Keep

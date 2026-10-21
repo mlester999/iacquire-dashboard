@@ -1,5 +1,5 @@
 /**
- * Read-only production activation preflight for migrations 0072–0075.
+ * Read-only production activation preflight for migrations 0077–0080.
  *
  *   NODE_ENV=production DATABASE_SSL_CA_FILE=certs/prod-ca-2021.crt \
  *     node --env-file=.env --conditions=react-server --import tsx \
@@ -22,7 +22,7 @@ if (!process.argv.includes("--live")) {
 
 const TARGETS = [
   {
-    version: "0072_ai_work_jobs",
+    version: "0077_ai_work_jobs",
     tables: ["ai_work_jobs", "ai_work_events"],
     columns: [
       "lead_research_requests.work_job_id",
@@ -32,17 +32,17 @@ const TARGETS = [
     ],
   },
   {
-    version: "0073_ai_work_schedules",
+    version: "0078_ai_work_schedules",
     tables: ["ai_work_schedules"],
     columns: [],
   },
   {
-    version: "0074_ai_work_triggers",
+    version: "0079_ai_work_triggers",
     tables: ["ai_work_triggers"],
     columns: [],
   },
   {
-    version: "0075_proactive_ai_employees",
+    version: "0080_proactive_ai_employees",
     tables: ["ai_work_reports", "ai_work_report_deliveries"],
     columns: [
       "ai_work_schedules.business_hours",
@@ -208,7 +208,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     readOnly: true,
-    target: "0072–0075",
+    target: "0077–0080",
     appliedTargets,
     pendingTargets,
     pendingOtherLocalMigrations: pendingOther,
