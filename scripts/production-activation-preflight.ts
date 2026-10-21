@@ -181,6 +181,12 @@ async function main() {
 
   const targetVersions = new Set(TARGETS.map((target) => target.version));
   const pendingTargets = migrations.filter((migration) => !migration.applied).map((migration) => migration.version);
+  const prefixCollisions = TARGETS.flatMap((target) => {
+    const prefix = target.version.slice(0, 4);
+    return data.appLedger
+      .filter((row) => row.version.startsWith(prefix) && row.version !== target.version)
+      .map((row) => ({ local: target.version, applied: row.version }));
+  });
   const appliedTargets = migrations.filter((migration) => migration.applied).map((migration) => migration.version);
   const pendingOther = localVersions.filter((version) => !applied.has(version) && !targetVersions.has(version));
 
@@ -191,6 +197,7 @@ async function main() {
     appliedTargets,
     pendingTargets,
     pendingOtherLocalMigrations: pendingOther,
+    prefixCollisions,
     migrations,
     dependencies,
     agencyCount: data.agencyCount,
