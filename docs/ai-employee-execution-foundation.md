@@ -3,8 +3,9 @@
 Status: **implemented and verified locally; migration not deployed; no production configuration, activation or
 provider run was performed.** Lead Hunter reaches a genuine 6/6 in an isolated agency workspace against the
 Hermes test double, and then completes a real sandbox research job through the same persisted path the product
-uses. An AI Work Board and a person-triggered, read-only Operations Manager review now sit on the same durable
-job foundation. Production activation remains behind the explicit approval checkpoint at the end of this page.
+uses. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
+Sales Assistant, Appointment Setter and Performance Analyst sit on the same durable job foundation.
+Production activation remains behind the explicit approval checkpoint at the end of this page.
 
 ## 1. Lead Hunter configuration
 
