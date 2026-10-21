@@ -31,9 +31,21 @@ export function advancesDelivery(current: MessageStatus, next: "sent" | "deliver
   return (DELIVERY_RANK[next] ?? 0) > (DELIVERY_RANK[current] ?? 0) ? next : null;
 }
 
+/**
+ * Whether a failed send's error says the provider never confirmed it either way (a timeout, a 5xx, an unreachable host), so the customer may
+ * already have the message. Every transport words those outcomes the same way ("The message was not confirmed sent", "did not confirm", "did
+ * not answer"); a refusal states what the provider rejected instead. Anything in doubt is treated as unconfirmed.
+ */
+export function unconfirmedOutcome(error: string | null | undefined): boolean {
+  return /\bnot confirmed\b|\bdid not confirm\b|\bdid not answer\b|\bnever confirmed\b/i.test(error ?? "");
+}
+
 export const BLOCK_REASON_LABELS: Record<string, string> = {
   needs_approval: "Waiting for approval",
   human_owner: "A person has taken over this conversation",
+  ai_paused: "AI replies are paused for this conversation",
+  stale_ownership: "The conversation changed hands before this was sent",
+  discarded: "Discarded by a teammate",
   escalation_pending: "A person is being asked to take over",
   automation_paused: "Automation is paused",
   org_inactive: "This workspace is not active",

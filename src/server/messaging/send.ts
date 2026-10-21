@@ -17,6 +17,7 @@ import { isTransportName, transportFor } from "@/server/messaging/transports";
 import { TRANSPORT_LABELS, type ChannelTransport, type TransportName, type TransportResult, type TransportSender } from "@/server/messaging/transports/types";
 import {
   advancesDelivery,
+  unconfirmedOutcome,
   isQuietHours,
   isWithinBusinessHours,
   nextSendWindow,
@@ -59,6 +60,11 @@ export interface SendRequest {
   /** Makes the send at-most-once: a second request with the same key is refused by the database. */
   dedupeKey?: string | null;
   purpose?: SendPurpose;
+  /**
+   * AI sends only: the conversation's ownership_version the message was prepared under. If a takeover, pause, resume or another employee
+   * changed it since, the message is stale and is refused (stale_ownership), both when queued and again right before it is sent.
+   */
+  fenceVersion?: number | null;
 }
 
 /** An approved WhatsApp template the message is sent with (whatsapp_templates, for the channel's provider). */
@@ -197,6 +203,8 @@ interface ConversationRow {
   channel: Channel;
   owner_kind: "ai" | "human" | "unassigned";
   owner_user_id: string | null;
+  ownership_version: number;
+  ai_paused_at: Date | null;
   last_inbound_at: Date | null;
   subject: string | null;
   contact_deleted: Date | null;
@@ -213,7 +221,7 @@ interface ConversationRow {
 export async function evaluateSend(db: Queryable, req: SendRequest): Promise<SendDecision> {
   const now = req.now ?? new Date();
   const { rows } = await db.query<ConversationRow>(
-    `select c.id, c.contact_id, c.channel, c.owner_kind, c.owner_user_id, c.last_inbound_at, c.subject,
+    `select c.id, c.contact_id, c.channel, c.owner_kind, c.owner_user_id, c.ownership_version, c.ai_paused_at, c.last_inbound_at, c.subject,
             k.deleted_at as contact_deleted, k.ghl_contact_id, k.timezone as contact_tz, o.timezone as org_tz, o.name as org_name
      from conversations c join contacts k on k.id = c.contact_id and k.org_id = c.org_id join organizations o on o.id = c.org_id
      where c.id = $1 and c.org_id = $2`,
@@ -227,6 +235,13 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if (req.actor.kind === "ai") {
     // A person owns the conversation: the AI never sends, and queued sends stay blocked after retries and restarts.
     if (conv.owner_kind !== "ai") return deny("human_owner", "A person has taken over this conversation.", { permanent: true });
+    // The ownership revision this message was prepared under is the fence: a takeover that was handed straight back, a pause, or another
+    // employee being assigned all move it, so a reply written for the earlier situation never goes out afterwards.
+    if (req.fenceVersion != null && req.fenceVersion !== conv.ownership_version) {
+      return deny("stale_ownership", "This conversation changed hands after the reply was prepared, so it was not sent.", { permanent: true });
+    }
+    // A paused conversation keeps its AI employee but stops automatic replies. A message a person approved by name is theirs to send.
+    if (conv.ai_paused_at && !req.actor.approvalId) return deny("ai_paused", "AI replies are paused for this conversation.", { permanent: true });
     // While someone is being asked to take over, the AI holds off so it cannot promise a human reply that nobody has accepted.
     const pending = await db.query("select 1 from human_escalations where conversation_id = $1 and status in ('awaiting_owner', 'open')", [req.conversationId]);
     if (pending.rows[0]) return deny("escalation_pending", "A person is being asked to take over this conversation.");
@@ -399,13 +414,15 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
   const author = req.actor.kind === "ai" ? { kind: "ai", userId: null, agentId: req.actor.agentId } : { kind: req.actor.kind, userId: req.actor.userId, agentId: null };
   // Recorded with the message so every later check (at dispatch, after a wait) applies the same consent rule.
   const purpose = await recordedPurpose(db, req);
+  // An AI message carries the ownership revision it was prepared under (see SendRequest.fenceVersion); evaluateSend has just confirmed it is current.
+  const fence = req.actor.kind === "ai" ? (req.fenceVersion ?? (await db.query<{ v: number }>("select ownership_version as v from conversations where id = $1 and org_id = $2", [req.conversationId, req.orgId])).rows[0]?.v ?? null) : null;
   const insert = (status: string, extra: { reason?: string; detail?: string; sendAfter?: Date; reservationId?: string | null }) =>
     db.query(
       `insert into conversation_messages (id, org_id, conversation_id, direction, author_kind, author_user_id, agent_id, body, status, status_detail, blocked_reason, scope,
-         template_id, approval_id, followup_step_id, reservation_id, send_after, dedupe_key, purpose, queued_at)
-       values ($1, $2, $3, 'outbound', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, case when $8 = 'queued' then now() end)`,
+         template_id, approval_id, followup_step_id, reservation_id, send_after, dedupe_key, purpose, ownership_fence, queued_at)
+       values ($1, $2, $3, 'outbound', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, case when $8 = 'queued' then now() end)`,
       [messageId, req.orgId, req.conversationId, author.kind, author.userId, author.agentId, req.body, status, extra.detail?.slice(0, 300) ?? null, extra.reason ?? null, req.scope,
-        req.templateId ?? null, req.approvalId ?? (req.actor.kind === "ai" ? req.actor.approvalId ?? null : null), req.followupStepId ?? null, extra.reservationId ?? null, extra.sendAfter ?? new Date(), req.dedupeKey ?? null, purpose],
+        req.templateId ?? null, req.approvalId ?? (req.actor.kind === "ai" ? req.actor.approvalId ?? null : null), req.followupStepId ?? null, extra.reservationId ?? null, extra.sendAfter ?? new Date(), req.dedupeKey ?? null, purpose, fence],
     );
 
   if (!decision.allow) {
@@ -495,6 +512,7 @@ interface MessageRow {
   approval_id: string | null;
   followup_step_id: string | null;
   reservation_id: string | null;
+  ownership_fence: number | null;
   attempt_count: number;
   created_at: Date;
   channel: Channel;
@@ -513,10 +531,11 @@ function requestFor(m: MessageRow, now: Date): SendRequest {
     templateId: m.template_id,
     now,
     hasReservation: Boolean(m.reservation_id),
+    fenceVersion: m.author_kind === "ai" ? m.ownership_fence : null,
   };
 }
 
-const PERMANENT_STEP_REASONS = new Set(["human_owner", "suppressed", "no_consent", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
+const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
 
 async function finishBlocked(db: Queryable, m: Pick<MessageRow, "id" | "org_id" | "reservation_id" | "followup_step_id">, reason: string, detail: string) {
   await db.query("update conversation_messages set status = 'blocked', blocked_reason = $2, status_detail = $3 where id = $1", [m.id, reason, detail.slice(0, 300)]);
@@ -707,7 +726,7 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
     const { rows } = await db.query<MessageRow>(
       `update conversation_messages set status = 'sending', attempt_count = attempt_count + 1, claimed_at = now()
        where id = $1 and status = 'queued' and send_after <= $2
-       returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, purpose, template_id, approval_id, followup_step_id, reservation_id, attempt_count, created_at,
+       returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, purpose, template_id, approval_id, followup_step_id, reservation_id, ownership_fence, attempt_count, created_at,
          (select channel from conversations where id = conversation_id) as channel, (select subject from conversations where id = conversation_id) as subject,
          (select contact_id from conversations where id = conversation_id) as contact_id`,
       [messageId, now.toISOString()],
@@ -878,7 +897,8 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
       await extendHold(db, m.org_id, reservationId, retryAt);
       return { status: "queued" as const };
     }
-    await db.query("update conversation_messages set status = 'failed', failed_at = now(), status_detail = $2, blocked_reason = 'provider_error' where id = $1 and status = 'sending'", [m.id, result.error.slice(0, 300)]);
+    // "rejected": the provider refused it, so the customer has nothing. "unconfirmed": we never heard back, so they might (see unconfirmedOutcome).
+    await db.query("update conversation_messages set status = 'failed', failed_at = now(), status_detail = $2, blocked_reason = 'provider_error', failure_kind = $3 where id = $1 and status = 'sending'", [m.id, result.error.slice(0, 300), unconfirmedOutcome(result.error) ? "unconfirmed" : "rejected"]);
     if (reservationId) await releaseReservation(db, { orgId: m.org_id, reservationId, reason: "Send failed" });
     if (m.followup_step_id) await db.query("update follow_up_steps set status = 'blocked', reason = 'provider_error' where id = $1", [m.followup_step_id]);
     await notifyOrgRoles(db, m.org_id, ["owner", "admin"], { kind: "message_failed", severity: "warning", title: "A message could not be sent", body: result.error.slice(0, 200), link: "/inbox", dedupeKey: `failed:${m.id}` });
@@ -915,7 +935,7 @@ export async function dispatchDue(deps: DispatchDeps & { limit?: number } = {}):
   const now = deps.now ?? new Date();
   const recovered = await withSystem(async (db) => {
     const res = await db.query<{ id: string; org_id: string; reservation_id: string | null }>(
-      `update conversation_messages set status = 'failed', failed_at = now(), blocked_reason = 'provider_error',
+      `update conversation_messages set status = 'failed', failed_at = now(), blocked_reason = 'provider_error', failure_kind = 'unconfirmed',
          status_detail = 'The send was started but never confirmed. It was not repeated automatically, to avoid messaging the customer twice.'
        where status = 'sending' and provider_message_id is null and claimed_at < $1::timestamptz - interval '${STUCK_AFTER}' returning id, org_id, reservation_id`,
       [now.toISOString()],
@@ -965,13 +985,16 @@ export async function dispatchDue(deps: DispatchDeps & { limit?: number } = {}):
   return { attempted: rows.length, recovered: recovered + settled };
 }
 
-/** Stops every not-yet-sent AI message in a conversation (used when a person takes over or automation is stopped). */
-export async function cancelPendingAiMessages(db: Queryable, orgId: string, conversationId: string, reason: string) {
+/**
+ * Stops every not-yet-sent AI message in a conversation (used when a person takes over or automation is stopped). `queuedOnly` leaves the
+ * drafts waiting for a person's approval alone: a paused AI keeps its drafts, because approving one is that person's own decision.
+ */
+export async function cancelPendingAiMessages(db: Queryable, orgId: string, conversationId: string, reason: string, opts: { queuedOnly?: boolean } = {}) {
   const { rows } = await db.query<{ id: string; reservation_id: string | null; followup_step_id: string | null }>(
     `update conversation_messages set status = 'blocked', blocked_reason = $3, status_detail = 'Stopped before sending.'
-     where org_id = $1 and conversation_id = $2 and author_kind = 'ai' and direction = 'outbound' and status in ('draft', 'queued')
+     where org_id = $1 and conversation_id = $2 and author_kind = 'ai' and direction = 'outbound' and status = any($4::text[])
      returning id, reservation_id, followup_step_id`,
-    [orgId, conversationId, reason],
+    [orgId, conversationId, reason, opts.queuedOnly ? ["queued"] : ["draft", "queued"]],
   );
   for (const m of rows) {
     if (m.reservation_id) await releaseReservation(db, { orgId, reservationId: m.reservation_id, reason: `Stopped: ${reason}` });
@@ -1028,7 +1051,8 @@ async function recordDelivery(db: Queryable, m: DeliveryTarget, e: Omit<Delivery
   await db.query(
     `update conversation_messages set status = $2, status_detail = $3,
        delivered_at = case when $2 in ('delivered', 'read') then coalesce(delivered_at, $4) else delivered_at end,
-       failed_at = case when $2 = 'failed' then $4 else failed_at end where id = $1`,
+       failed_at = case when $2 = 'failed' then $4 else failed_at end,
+       failure_kind = case when $2 = 'failed' then 'rejected' else failure_kind end where id = $1`,
     [m.id, next, e.detail?.slice(0, 300) ?? null, e.occurredAt ?? new Date()],
   );
   return { result: "applied", status: next };

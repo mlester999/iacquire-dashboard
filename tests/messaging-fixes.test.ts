@@ -570,11 +570,11 @@ describe("finding 17: the composer's tablist owns only tabs", () => {
     const detail: InboxDetail = {
       conversation: {
         id: "00000000-0000-4000-8000-000000000002", contactId: "c1", contactName: "Lea Reyes", channel: "sms", status: "open", ownerKind: "human", ownerName: "Owner Person", ownerUserId: "u1",
-        assignedUserId: null, priority: "normal", unread: 0, lastMessageAt: new Date().toISOString(), preview: "Hi", escalation: null, subject: null, lastInboundAt: new Date().toISOString(), whatsappWindowOpen: null,
+        assignedUserId: null, priority: "normal", unread: 0, lastMessageAt: new Date().toISOString(), preview: "Hi", escalation: null, aiAgent: null, aiPaused: false, archivedAt: null, resolvedAt: null, outcome: null, lastOutboundAt: null, waitingOnCustomer: false, attention: [], revision: 0, subject: null, lastInboundAt: new Date().toISOString(), whatsappWindowOpen: null,
       },
       contact: { id: "c1", name: "Lea Reyes", lifecycleStage: "lead_captured", temperature: null, source: "inbound_message", identities: [], consent: [] },
       messages: [],
-      timeline: [], memories: [], followUp: null, escalation: null,
+      timeline: [], events: [], memories: [], followUp: null, escalation: null,
     };
     const html = renderToStaticMarkup(React.createElement(InboxWorkspace, {
       list: [detail.conversation], detail, escalations: [], me: { id: "u1", isOwner: true },
@@ -583,7 +583,7 @@ describe("finding 17: the composer's tablist owns only tabs", () => {
       cannedReplies: [{ id: "r1", name: "Greeting", body: "Hi {{contact.first_name}}", channel: null, folderName: null }], cannedValues: {},
     }));
     expect(html).toContain("Canned replies");
-    const tablist = elementHtml(html, 'role="tablist"');
+    const tablist = elementHtml(html, 'aria-label="Composer mode"');
     expect(tablist).toContain('role="tab"');
     expect(tablist).not.toContain("Canned replies");
     expect(tablist).not.toContain("aria-haspopup");

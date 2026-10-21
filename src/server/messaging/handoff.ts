@@ -6,11 +6,12 @@ import { appUrl, sendEmail, type OutgoingEmail } from "@/server/email";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { cancelPendingAiMessages } from "@/server/messaging/send";
 import { cancelFollowUps } from "@/server/messaging/followups";
+import { recordConversationEvent } from "@/server/messaging/events";
 import { eligibleStaff, getOwnerProfile, type EligibleStaff } from "@/server/staff/service";
 import { DEFAULT_URGENCY, ESCALATION_LABELS, type EscalationCategory, type EscalationUrgency } from "@/lib/escalation";
 import type { OrgContext } from "@/server/tenancy/context";
 
-type OwnerKind = "ai" | "human" | "unassigned";
+export type OwnerKind = "ai" | "human" | "unassigned";
 
 export interface EscalationInput {
   orgId: string;
@@ -164,7 +165,12 @@ export async function createEscalation(db: Queryable, input: EscalationInput): P
     });
   }
 
-  await db.query("update conversations set priority = $2 where id = $1 and priority <> 'urgent'", [input.conversationId, urgency === "urgent" ? "urgent" : "high"]);
+  const priority = urgency === "urgent" ? "urgent" : "high";
+  const raised = await db.query("update conversations set priority = $2 where id = $1 and priority <> 'urgent' and priority <> $2 returning id", [input.conversationId, priority]);
+  // The request for a person goes on the conversation's trail (and starts "handoff requested" automations). Only a short category and urgency
+  // are recorded: the AI's summary stays on the escalation, which has its own visibility rules.
+  await recordConversationEvent(db, { orgId: input.orgId, conversationId: input.conversationId, kind: "handoff_requested", actor: input.agentId ? { kind: "ai", agentId: input.agentId } : { kind: "system" }, detail: { category: input.category, urgency, escalationId: esc.id } });
+  if (raised.rowCount) await recordConversationEvent(db, { orgId: input.orgId, conversationId: input.conversationId, kind: "priority_changed", actor: input.agentId ? { kind: "ai", agentId: input.agentId } : { kind: "system" }, detail: { to: priority, reason: "handoff" } });
   await recordAudit({ orgId: input.orgId, actorKind: "agent", agentInstanceId: input.agentId ?? null, action: "escalation.created", targetType: "conversation", targetId: input.conversationId, result: "success", metadata: { category: input.category, urgency, status, ownerResponse } }, db);
   return { escalationId: esc.id, created: true, status, unclaimedAlert, emails };
 }
@@ -204,7 +210,7 @@ export async function advanceEscalations(now = new Date()): Promise<number> {
   return opened;
 }
 
-async function recordOwnership(db: Queryable, e: { orgId: string; conversationId: string; from: { kind: OwnerKind; userId: string | null }; to: { kind: OwnerKind; userId: string | null }; actorKind: "user" | "ai" | "system" | "agency"; actorUserId: string | null; reason: string; escalationId?: string | null }) {
+export async function recordOwnership(db: Queryable, e: { orgId: string; conversationId: string; from: { kind: OwnerKind; userId: string | null }; to: { kind: OwnerKind; userId: string | null }; actorKind: "user" | "ai" | "system" | "agency"; actorUserId: string | null; reason: string; escalationId?: string | null }) {
   await db.query(
     `insert into conversation_ownership_events (org_id, conversation_id, from_kind, from_user_id, to_kind, to_user_id, actor_kind, actor_user_id, reason, escalation_id)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -222,7 +228,8 @@ async function giveToHuman(db: Queryable, input: { orgId: string; conversationId
     throw new AppError("conflict", `${who[0]?.full_name || "A teammate"} already owns this conversation.`);
   }
   if (!(conv.owner_kind === "human" && conv.owner_user_id === input.userId)) {
-    await db.query("update conversations set owner_kind = 'human', owner_user_id = $2, assigned_user_id = $2, ownership_version = ownership_version + 1 where id = $1", [input.conversationId, input.userId]);
+    // A person owning it ends any AI pause too: the pause only means something while the AI is the owner.
+    await db.query("update conversations set owner_kind = 'human', owner_user_id = $2, assigned_user_id = $2, ownership_version = ownership_version + 1, ai_paused_at = null, ai_paused_by = null, ai_pause_reason = null where id = $1", [input.conversationId, input.userId]);
     await recordOwnership(db, { orgId: input.orgId, conversationId: input.conversationId, from: { kind: conv.owner_kind, userId: conv.owner_user_id }, to: { kind: "human", userId: input.userId }, actorKind: "user", actorUserId: input.userId, reason: input.reason, escalationId: input.escalationId });
   }
   const stopped = await cancelPendingAiMessages(db, input.orgId, input.conversationId, "human_owner");
@@ -350,44 +357,58 @@ export async function takeOverConversation(ctx: OrgContext, conversationId: stri
 }
 
 /**
+ * Everything that would make it unsafe to let the AI reply on a conversation right now, in plain words (empty when it is safe): the employee
+ * is attached, enabled, connected and not paused, messaging is not paused, the channel works, and no escalation is still open.
+ */
+export async function aiResumeProblems(db: Queryable, orgId: string, conv: { ai_agent_id: string | null; channel: string }, conversationId: string): Promise<string[]> {
+  const problems: string[] = [];
+  if (!conv.ai_agent_id) problems.push("No AI employee is assigned to this conversation.");
+  else {
+    const { rows: agent } = await db.query<{ enabled: boolean; status: string; mode: string; display_name: string }>("select enabled, status, mode, display_name from agent_instances where id = $1 and org_id = $2", [conv.ai_agent_id, orgId]);
+    const a = agent[0];
+    if (!a || !a.enabled) problems.push("The AI employee is not included in this workspace.");
+    else {
+      if (!["online", "busy"].includes(a.status)) problems.push(`${a.display_name} has not passed its connection check.`);
+      if (a.mode === "paused") problems.push(`${a.display_name} is paused.`);
+    }
+  }
+  const pauses = await db.query<{ scope: string }>("select p.scope from automation_pauses p join organizations o on o.id = p.org_id where p.active and (p.org_id = $1 or (o.kind = 'agency' and p.scope = 'agency'))", [orgId]);
+  if (pauses.rows.some((p) => p.scope === "agency")) problems.push("iAcquire has paused automation for this workspace.");
+  if (pauses.rows.some((p) => p.scope === "messaging")) problems.push("Customer-facing AI messaging is paused.");
+  const ch = await db.query<{ enabled: boolean }>("select enabled from messaging_channels where org_id = $1 and channel = $2", [orgId, conv.channel]);
+  if (!ch.rows[0]?.enabled) problems.push("This channel is not verified and enabled.");
+  const open = await db.query("select 1 from human_escalations where conversation_id = $1 and status in ('awaiting_owner', 'open', 'claimed')", [conversationId]);
+  if (open.rows[0]) problems.push("An escalation for this conversation is still open. Resolve it first.");
+  return problems;
+}
+
+/**
  * Returns a conversation to the AI only if everything that would make that safe is true right now: the person handing it back
  * (or a manager) is doing it, the employee is ready and not paused, messaging is not paused, the channel works, and no
- * escalation is still open.
+ * escalation is still open. It also lifts a pause a person put on the AI's replies (the AI already owns the conversation then).
  */
 export async function resumeAi(ctx: OrgContext, conversationId: string) {
   if (!ctx.can("inbox.resume_ai")) throw new AppError("forbidden", "Your role can't hand conversations back to the AI.");
   return withSystem(async (db) => {
-    const { rows } = await db.query<{ owner_kind: OwnerKind; owner_user_id: string | null; ai_agent_id: string | null; channel: string }>(
-      "select owner_kind, owner_user_id, ai_agent_id, channel from conversations where id = $1 and org_id = $2 for update",
+    const { rows } = await db.query<{ owner_kind: OwnerKind; owner_user_id: string | null; ai_agent_id: string | null; channel: string; ai_paused_at: Date | null }>(
+      "select owner_kind, owner_user_id, ai_agent_id, channel, ai_paused_at from conversations where id = $1 and org_id = $2 for update",
       [conversationId, ctx.org.orgId],
     );
     const conv = rows[0];
     if (!conv) throw new AppError("not_found", "Conversation not found.");
-    if (conv.owner_kind === "ai") throw new AppError("conflict", "The AI already owns this conversation.");
+    if (conv.owner_kind === "ai" && !conv.ai_paused_at) throw new AppError("conflict", "The AI already owns this conversation.");
     if (conv.owner_user_id && conv.owner_user_id !== ctx.user.id && !ctx.can("inbox.assign")) throw new AppError("forbidden", "Only the person handling this, or a manager, can hand it back.");
 
-    const problems: string[] = [];
-    if (!conv.ai_agent_id) problems.push("No AI employee is assigned to this conversation.");
-    else {
-      const { rows: agent } = await db.query<{ enabled: boolean; status: string; mode: string; display_name: string }>("select enabled, status, mode, display_name from agent_instances where id = $1 and org_id = $2", [conv.ai_agent_id, ctx.org.orgId]);
-      const a = agent[0];
-      if (!a || !a.enabled) problems.push("The AI employee is not included in this workspace.");
-      else {
-        if (!["online", "busy"].includes(a.status)) problems.push(`${a.display_name} has not passed its connection check.`);
-        if (a.mode === "paused") problems.push(`${a.display_name} is paused.`);
-      }
-    }
-    const pauses = await db.query<{ scope: string }>("select p.scope from automation_pauses p join organizations o on o.id = p.org_id where p.active and (p.org_id = $1 or (o.kind = 'agency' and p.scope = 'agency'))", [ctx.org.orgId]);
-    if (pauses.rows.some((p) => p.scope === "agency")) problems.push("iAcquire has paused automation for this workspace.");
-    if (pauses.rows.some((p) => p.scope === "messaging")) problems.push("Customer-facing AI messaging is paused.");
-    const ch = await db.query<{ enabled: boolean }>("select enabled from messaging_channels where org_id = $1 and channel = $2", [ctx.org.orgId, conv.channel]);
-    if (!ch.rows[0]?.enabled) problems.push("This channel is not verified and enabled.");
-    const open = await db.query("select 1 from human_escalations where conversation_id = $1 and status in ('awaiting_owner', 'open', 'claimed')", [conversationId]);
-    if (open.rows[0]) problems.push("An escalation for this conversation is still open. Resolve it first.");
+    const problems = await aiResumeProblems(db, ctx.org.orgId, conv, conversationId);
     if (problems.length) throw new AppError("conflict", `It isn't safe to hand this back yet. ${problems.join(" ")}`);
 
-    await db.query("update conversations set owner_kind = 'ai', owner_user_id = null, ownership_version = ownership_version + 1 where id = $1", [conversationId]);
-    await recordOwnership(db, { orgId: ctx.org.orgId, conversationId, from: { kind: conv.owner_kind, userId: conv.owner_user_id }, to: { kind: "ai", userId: null }, actorKind: "user", actorUserId: ctx.user.id, reason: "Handed back to the AI" });
+    // The version moves on every change of who may reply, so anything prepared before this (even by this same employee) is stale.
+    await db.query("update conversations set owner_kind = 'ai', owner_user_id = null, ownership_version = ownership_version + 1, ai_paused_at = null, ai_paused_by = null, ai_pause_reason = null where id = $1", [conversationId]);
+    if (conv.owner_kind !== "ai") {
+      await recordOwnership(db, { orgId: ctx.org.orgId, conversationId, from: { kind: conv.owner_kind, userId: conv.owner_user_id }, to: { kind: "ai", userId: null }, actorKind: "user", actorUserId: ctx.user.id, reason: "Handed back to the AI" });
+    } else {
+      await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "ai_resumed", actor: { kind: "user", userId: ctx.user.id } });
+    }
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "conversation.resumed_ai", targetType: "conversation", targetId: conversationId, result: "success" }, db);
     return { ownerKind: "ai" as const };
   });
@@ -403,8 +424,15 @@ export async function assignConversation(ctx: OrgContext, conversationId: string
       const can = await db.query("select 1 from role_permissions where role = $1 and permission = 'inbox.reply'", [m.rows[0].role]);
       if (!can.rows[0]) throw new AppError("invalid_input", "That person's role can't reply to customers.");
     }
-    const res = await db.query("update conversations set assigned_user_id = $3 where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, userId]);
-    if (!res.rowCount) throw new AppError("not_found", "Conversation not found.");
+    const before = await db.query<{ assigned_user_id: string | null }>("select assigned_user_id from conversations where id = $1 and org_id = $2 for update", [conversationId, ctx.org.orgId]);
+    if (!before.rows[0]) throw new AppError("not_found", "Conversation not found.");
+    if (before.rows[0].assigned_user_id === userId) return;
+    await db.query("update conversations set assigned_user_id = $3 where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, userId]);
+    const ev = await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "assigned", actor: { kind: "user", userId: ctx.user.id }, detail: { to: userId, from: before.rows[0].assigned_user_id } });
+    // The person is told once per assignment (the event id is the key). Assigning to yourself needs no notice.
+    if (userId && userId !== ctx.user.id) {
+      await notifyUser(db, userId, ctx.org.orgId, { kind: "conversation_assigned", title: `${ctx.user.fullName || "A teammate"} assigned you a conversation`, body: "Open it to see the customer's message.", link: link(conversationId), dedupeKey: `conv_assigned:${conversationId}:a${ev.id}` });
+    }
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "conversation.assigned", targetType: "conversation", targetId: conversationId, result: "success", metadata: { assignedTo: userId } }, db);
   });
 }

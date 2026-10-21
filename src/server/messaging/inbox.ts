@@ -4,105 +4,32 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { reserveCredits, releaseReservation, BillingBlockedError } from "@/server/billing/ledger";
 import { createApproval } from "@/server/approvals/service";
-import { ensureHumanOwner } from "@/server/messaging/handoff";
+import { assignConversation, ensureHumanOwner } from "@/server/messaging/handoff";
+import { assertConversationVisible } from "@/server/messaging/access";
+import { recordConversationEvent } from "@/server/messaging/events";
 import { evaluateSend, queueOutbound } from "@/server/messaging/send";
 import { maskCustomerLinks } from "@/server/messaging/redact";
+import { getConversationListItem, listConversationsPage, type ConversationFilters, type ConversationListItem } from "@/server/messaging/inbox-list";
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
-import { validateBusinessHours, type BusinessHours, type Channel, type CustomFollowUp, type FollowUpPreset, type MessageStatus } from "@/lib/messaging";
+import { unconfirmedOutcome, validateBusinessHours, type BusinessHours, type Channel, type CustomFollowUp, type FollowUpPreset, type MessageStatus } from "@/lib/messaging";
+import { describeConversationEvent, isConversationOutcome, type ConversationOutcome } from "@/lib/inbox";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 
-export interface ConversationListItem {
-  id: string;
-  contactId: string;
-  contactName: string;
-  channel: Channel;
-  status: "open" | "snoozed" | "closed";
-  ownerKind: "ai" | "human" | "unassigned";
-  ownerName: string | null;
-  ownerUserId: string | null;
-  assignedUserId: string | null;
-  priority: "low" | "normal" | "high" | "urgent";
-  unread: number;
-  lastMessageAt: string | null;
-  preview: string | null;
-  escalation: { id: string; status: string; urgency: string } | null;
-}
-
-export interface ConversationFilters {
-  q?: string;
-  channel?: Channel;
-  status?: "open" | "closed";
-  owner?: "ai" | "human" | "unassigned" | "mine";
-  unreadOnly?: boolean;
-  priority?: "low" | "normal" | "high" | "urgent";
-  limit?: number;
-}
-
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+export type { ConversationFilters, ConversationListItem } from "@/server/messaging/inbox-list";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Conversations the signed-in person is allowed to see. Row-level security decides visibility, not this query. */
 export async function listConversations(ctx: OrgContext, f: ConversationFilters = {}): Promise<ConversationListItem[]> {
-  if (!ctx.can("inbox.view")) throw new AppError("forbidden", "You can't view the inbox.");
-  return conversationItems(ctx, f, null);
+  return (await listConversationsPage(ctx, f)).items;
 }
 
-/** The list query, or (with `onlyId`) the same row for one conversation, so opening a conversation doesn't depend on it being listed. */
-async function conversationItems(ctx: OrgContext, f: ConversationFilters, onlyId: string | null): Promise<ConversationListItem[]> {
-  const params: unknown[] = [ctx.org.orgId];
-  const where: string[] = ["c.org_id = $1"];
-  const add = (sql: string, value: unknown) => {
-    params.push(value);
-    where.push(sql.replace("?", `$${params.length}`));
-  };
-  if (onlyId) add("c.id = ?", onlyId);
-  if (f.channel) add("c.channel = ?", f.channel);
-  if (f.status) add("c.status = ?", f.status);
-  if (f.priority) add("c.priority = ?", f.priority);
-  if (f.unreadOnly) where.push("c.unread_count > 0");
-  if (f.owner === "mine") add("c.owner_user_id = ?", ctx.user.id);
-  else if (f.owner) add("c.owner_kind = ?", f.owner);
-  if (f.q?.trim()) {
-    params.push(`%${escapeLike(f.q.trim().slice(0, 80))}%`);
-    const p = `$${params.length}`;
-    where.push(`(k.display_name ilike ${p} escape '\\' or c.last_message_preview ilike ${p} escape '\\' or exists (select 1 from contact_identities i where i.contact_id = k.id and i.value ilike ${p} escape '\\'))`);
-  }
-  params.push(Math.min(Math.max(f.limit ?? 60, 1), 200));
-  return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<{
-      id: string; contact_id: string; display_name: string; channel: Channel; status: "open" | "snoozed" | "closed"; owner_kind: "ai" | "human" | "unassigned"; owner_name: string | null; owner_user_id: string | null;
-      assigned_user_id: string | null; priority: "low" | "normal" | "high" | "urgent"; unread_count: number; last_message_at: Date | null; last_message_preview: string | null; esc_id: string | null; esc_status: string | null; esc_urgency: string | null;
-    }>(
-      `select c.id, c.contact_id, k.display_name, c.channel, c.status, c.owner_kind, u.full_name as owner_name, c.owner_user_id, c.assigned_user_id, c.priority, c.unread_count,
-              c.last_message_at, c.last_message_preview, e.id as esc_id, e.status as esc_status, e.urgency as esc_urgency
-       from conversations c join contacts k on k.id = c.contact_id and k.org_id = c.org_id and k.deleted_at is null
-       left join users u on u.id = c.owner_user_id
-       left join lateral (select id, status, urgency from human_escalations where conversation_id = c.id and status in ('awaiting_owner', 'open', 'claimed') limit 1) e on true
-       where ${where.join(" and ")}
-       order by (e.status in ('awaiting_owner', 'open')) desc nulls last, case c.priority when 'urgent' then 0 when 'high' then 1 else 2 end, c.last_message_at desc nulls last
-       limit $${params.length}`,
-      params,
-    );
-    return rows.map((r) => ({
-      id: r.id,
-      contactId: r.contact_id,
-      contactName: r.display_name || "Unknown contact",
-      channel: r.channel,
-      status: r.status,
-      ownerKind: r.owner_kind,
-      ownerName: r.owner_name,
-      ownerUserId: r.owner_user_id,
-      assignedUserId: r.assigned_user_id,
-      priority: r.priority,
-      unread: r.unread_count,
-      lastMessageAt: r.last_message_at ? new Date(r.last_message_at).toISOString() : null,
-      preview: maskCustomerLinks(r.last_message_preview),
-      escalation: r.esc_id ? { id: r.esc_id, status: r.esc_status as string, urgency: r.esc_urgency as string } : null,
-    }));
-  });
-}
+/** The conversation's own list row, under the same row-level security as the list (so opening an old one doesn't depend on it being listed). */
+const conversationItems = async (ctx: OrgContext, _f: ConversationFilters, onlyId: string): Promise<ConversationListItem[]> => {
+  const item = await getConversationListItem(ctx, onlyId);
+  return item ? [item] : [];
+};
 
 export interface MessageView {
   id: string;
@@ -117,6 +44,11 @@ export interface MessageView {
   createdAt: string;
   sentAt: string | null;
   deliveredAt: string | null;
+  /** failed only: "rejected" (the provider refused it, so the customer has nothing) or "unconfirmed" (no answer, so they might already have it). */
+  failureKind: "rejected" | "unconfirmed" | null;
+  /** The message this one re-sent, and the one that re-sent this. */
+  retryOf: string | null;
+  retriedBy: string | null;
 }
 
 /** A conversation opens with at most its newest this-many messages (oldest first), so a years-long SMS thread is not sent whole. */
@@ -124,11 +56,12 @@ export const CONVERSATION_MESSAGE_PAGE = 200;
 /** Drafts still waiting for approval that are older than the newest page are added to it (so they can still be approved), up to this many. */
 const HELD_DRAFTS_LIMIT = 50;
 
-type MessageRow = { id: string; direction: MessageView["direction"]; author_kind: MessageView["authorKind"]; author_name: string | null; body: string; status: MessageStatus; status_detail: string | null; blocked_reason: string | null; scope: string | null; created_at: Date; sent_at: Date | null; delivered_at: Date | null };
-const MESSAGE_COLUMNS = "m.id, m.direction, m.author_kind, u.full_name as author_name, m.body, m.status, m.status_detail, m.blocked_reason, m.scope, m.created_at, m.sent_at, m.delivered_at";
+type MessageRow = { id: string; direction: MessageView["direction"]; author_kind: MessageView["authorKind"]; author_name: string | null; body: string; status: MessageStatus; status_detail: string | null; blocked_reason: string | null; scope: string | null; created_at: Date; sent_at: Date | null; delivered_at: Date | null; failure_kind: "rejected" | "unconfirmed" | null; retry_of: string | null; retried_by: string | null };
+const MESSAGE_COLUMNS = "m.id, m.direction, m.author_kind, u.full_name as author_name, m.body, m.status, m.status_detail, m.blocked_reason, m.scope, m.created_at, m.sent_at, m.delivered_at, m.failure_kind, m.retry_of, (select r.id from conversation_messages r where r.retry_of = m.id limit 1) as retried_by";
 const toMessageView = (m: MessageRow): MessageView => ({
   id: m.id, direction: m.direction, authorKind: m.author_kind, authorName: m.author_name, body: maskCustomerLinks(m.body), status: m.status, statusDetail: m.status_detail, blockedReason: m.blocked_reason,
   scope: m.scope, createdAt: new Date(m.created_at).toISOString(), sentAt: m.sent_at ? new Date(m.sent_at).toISOString() : null, deliveredAt: m.delivered_at ? new Date(m.delivered_at).toISOString() : null,
+  failureKind: m.status === "failed" ? m.failure_kind : null, retryOf: m.retry_of, retriedBy: m.retried_by,
 });
 
 export interface ConversationDetail {
@@ -142,6 +75,8 @@ export interface ConversationDetail {
    */
   olderMessages?: { beforeId: string };
   timeline: Array<{ at: string; text: string }>;
+  /** Ownership changes and lifecycle events only (no message lines): what the thread shows between the messages, in time order. */
+  events: Array<{ id: string; at: string; text: string }>;
   memories: Array<{ id: string; kind: "confirmed_fact" | "ai_summary"; content: string; createdAt: string }>;
   followUp: { status: string; nextDueAt: string | null; remaining: number } | null;
   escalation: { id: string; category: string; urgency: string; status: string; summary: string; ownerResponse: string; ownerDeadlineAt: string | null; claimedByName: string | null } | null;
@@ -178,8 +113,8 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
         )
       : { rows: [] as MessageRow[] };
     const msgs = { rows: [...held.rows, ...page] };
-    const events = await db.query<{ created_at: Date; from_kind: string; to_kind: string; actor_kind: string; reason: string | null; to_name: string | null }>(
-      `select e.created_at, e.from_kind, e.to_kind, e.actor_kind, e.reason, u.full_name as to_name from conversation_ownership_events e left join users u on u.id = e.to_user_id where e.conversation_id = $1 order by e.id`,
+    const events = await db.query<{ id: string; created_at: Date; from_kind: string; to_kind: string; actor_kind: string; reason: string | null; to_name: string | null }>(
+      `select e.id, e.created_at, e.from_kind, e.to_kind, e.actor_kind, e.reason, u.full_name as to_name from conversation_ownership_events e left join users u on u.id = e.to_user_id where e.conversation_id = $1 order by e.id`,
       [conversationId],
     );
     const mem = await db.query<{ id: string; kind: "confirmed_fact" | "ai_summary"; content: string; created_at: Date }>("select id, kind, content, created_at from contact_memories where contact_id = $1 order by created_at desc limit 30", [base.contactId]);
@@ -195,7 +130,25 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
     const policy = await db.query<{ whatsapp_window_hours: number }>("select whatsapp_window_hours from messaging_policy");
     const lastIn = conv.rows[0]?.last_inbound_at ? new Date(conv.rows[0].last_inbound_at) : null;
     const timeline: Array<{ at: string; text: string }> = [];
-    for (const e of events.rows) timeline.push({ at: new Date(e.created_at).toISOString(), text: `${e.actor_kind === "ai" ? "AI" : e.actor_kind === "system" ? "System" : "A teammate"} moved this from ${e.from_kind} to ${e.to_kind}${e.to_name ? ` (${e.to_name})` : ""}${e.reason ? `: ${e.reason}` : ""}` });
+    // What the thread shows between messages: ownership changes first read, then lifecycle events, each with a stable id for the client.
+    const eventLines: Array<{ id: string; at: string; text: string }> = [];
+    for (const e of events.rows) eventLines.push({ id: `own-${e.id}`, at: new Date(e.created_at).toISOString(), text: `${e.actor_kind === "ai" ? "AI" : e.actor_kind === "system" ? "System" : "A teammate"} moved this from ${e.from_kind} to ${e.to_kind}${e.to_name ? ` (${e.to_name})` : ""}${e.reason ? `: ${e.reason}` : ""}` });
+    // Lifecycle events (assignment, AI chosen or paused, status, priority, archive, handoff request, re-sent message), named from ids at read time.
+    const life = await db.query<{ id: string; created_at: Date; kind: string; actor_kind: string; detail: Record<string, unknown>; actor_name: string | null; target_name: string | null; agent_name: string | null }>(
+      `select e.id, e.created_at, e.kind, e.actor_kind, e.detail, au.full_name as actor_name, tu.full_name as target_name, ag.display_name as agent_name
+       from conversation_events e
+       left join users au on au.id = e.actor_user_id
+       left join users tu on tu.id = (case when e.kind = 'assigned' and e.detail->>'to' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (e.detail->>'to')::uuid end)
+       left join agent_instances ag on ag.id = coalesce(e.agent_id, (case when e.detail->>'agentId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (e.detail->>'agentId')::uuid end))
+       where e.conversation_id = $1 and e.org_id = $2 order by e.id`,
+      [conversationId, ctx.org.orgId],
+    );
+    for (const e of life.rows) {
+      const actor = e.actor_kind === "ai" ? (e.agent_name ?? "AI") : e.actor_kind === "workflow" ? "An automation" : e.actor_kind === "system" ? "iAcquire" : (e.actor_name ?? "A teammate");
+      eventLines.push({ id: `ev-${e.id}`, at: new Date(e.created_at).toISOString(), text: describeConversationEvent(e.kind, e.detail ?? {}, { actor, target: e.target_name, agent: e.agent_name }) });
+    }
+    eventLines.sort((a, b) => a.at.localeCompare(b.at));
+    for (const e of eventLines) timeline.push({ at: e.at, text: e.text });
     for (const m of msgs.rows) {
       if (m.direction === "outbound" && m.author_kind === "ai") timeline.push({ at: new Date(m.created_at).toISOString(), text: m.status === "draft" ? "AI drafted a reply for approval" : m.status === "blocked" ? `AI reply was blocked (${m.blocked_reason ?? "policy"})` : `AI ${m.status === "queued" ? "queued" : "sent"} a ${m.scope === "followup" ? "follow-up" : "reply"}` });
     }
@@ -206,6 +159,7 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
       messages: msgs.rows.map(toMessageView),
       ...(hasOlder ? { olderMessages: { beforeId: page[0].id } } : {}),
       timeline,
+      events: eventLines,
       memories: mem.rows.map((m) => ({ id: m.id, kind: m.kind, content: m.content, createdAt: new Date(m.created_at).toISOString() })),
       followUp: plan.rows[0] && steps ? { status: "active", nextDueAt: steps.rows[0].next ? new Date(steps.rows[0].next).toISOString() : null, remaining: Number(steps.rows[0].remaining) } : null,
       escalation: esc.rows[0] ? { id: esc.rows[0].id, category: esc.rows[0].category, urgency: esc.rows[0].urgency, status: esc.rows[0].status, summary: esc.rows[0].summary, ownerResponse: esc.rows[0].owner_response, ownerDeadlineAt: esc.rows[0].owner_deadline_at ? new Date(esc.rows[0].owner_deadline_at).toISOString() : null, claimedByName: esc.rows[0].claimed_name } : null,
@@ -373,7 +327,12 @@ export async function queueApprovedDraft(db: Queryable, input: { orgId: string; 
   }
   try {
     const hold = await reserveCredits(db, { orgId: input.orgId, estimateMicros: Math.max(1, decision.estimateMicros), purpose: `${decision.channel} message`, jobReference: `msg:${m.id}`, ttlSeconds: 6 * 3600 });
-    await db.query("update conversation_messages set status = 'queued', queued_at = now(), approval_id = $2, reservation_id = $3, blocked_reason = null, status_detail = null where id = $1", [m.id, input.approvalId, hold.id]);
+    // A person approving it is a decision about the conversation as it is now, so the fence is taken again here (evaluateSend has just passed).
+    await db.query(
+      `update conversation_messages set status = 'queued', queued_at = now(), approval_id = $2, reservation_id = $3, blocked_reason = null, status_detail = null,
+         ownership_fence = (select ownership_version from conversations where id = conversation_messages.conversation_id) where id = $1`,
+      [m.id, input.approvalId, hold.id],
+    );
   } catch (err) {
     if (err instanceof BillingBlockedError) return { status: "blocked", detail: err.message };
     throw err;
@@ -428,11 +387,152 @@ export async function discardDraft(ctx: OrgContext, messageId: string) {
   });
 }
 
-export async function setConversationState(ctx: OrgContext, conversationId: string, input: { status?: "open" | "closed"; priority?: "low" | "normal" | "high" | "urgent" }) {
+export interface ConversationStateInput {
+  status?: "open" | "closed";
+  priority?: "low" | "normal" | "high" | "urgent";
+  /** How a resolved conversation ended. Only recorded when resolving. */
+  outcome?: ConversationOutcome | null;
+  /** Archive (only a resolved conversation) or bring it back. */
+  archived?: boolean;
+  /** Resolving: the customer's newest message the person had seen. A newer one arrived since, so resolving is refused until they look. */
+  seenInboundAt?: string | null;
+}
+
+/**
+ * Changes a conversation's status, priority or archive state, as a person who can see it and reply. Each change leaves a lifecycle event
+ * (which is also what starts "resolved" / "urgent" automations). Resolving refuses two things a person would regret: closing over a customer
+ * message they have not seen (the conversation moved since their screen loaded), and closing while a person is still being asked to take over.
+ */
+export async function setConversationState(ctx: OrgContext, conversationId: string, input: ConversationStateInput) {
   if (!ctx.can("inbox.reply")) throw new AppError("forbidden", "Your role can't change conversations.");
-  const visible = await withUser(ctx.user.id, (db) => db.query("select 1 from conversations where id = $1", [conversationId]));
-  if (!visible.rows[0]) throw new AppError("not_found", "Conversation not found.");
-  await withSystem((db) => db.query("update conversations set status = coalesce($3, status), priority = coalesce($4, priority) where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, input.status ?? null, input.priority ?? null]));
+  await assertConversationVisible(ctx, conversationId);
+  if (input.outcome != null && !isConversationOutcome(input.outcome)) throw new AppError("invalid_input", "Choose how this ended.");
+  await withSystem(async (db) => {
+    const { rows } = await db.query<{ status: "open" | "snoozed" | "closed"; priority: string; archived_at: Date | null; last_inbound_at: Date | null }>(
+      "select status, priority, archived_at, last_inbound_at from conversations where id = $1 and org_id = $2 for update",
+      [conversationId, ctx.org.orgId],
+    );
+    const cur = rows[0];
+    if (!cur) throw new AppError("not_found", "Conversation not found.");
+    const actor = { kind: "user", userId: ctx.user.id } as const;
+    const closing = input.status === "closed" && cur.status !== "closed";
+    const reopening = input.status === "open" && cur.status === "closed";
+    if (closing) {
+      if (input.seenInboundAt && cur.last_inbound_at && new Date(cur.last_inbound_at).getTime() > new Date(input.seenInboundAt).getTime()) {
+        throw new AppError("conflict", "The customer wrote again while you were looking. Read the new message before resolving this.");
+      }
+      const open = await db.query("select 1 from human_escalations where conversation_id = $1 and status in ('awaiting_owner', 'open')", [conversationId]);
+      if (open.rows[0]) throw new AppError("conflict", "A person is still being asked to take over this conversation. Accept it or let a teammate take it before resolving.");
+    }
+    if (input.archived === true && !(cur.status === "closed" || closing)) throw new AppError("conflict", "Resolve a conversation before archiving it.");
+    if (input.status && input.status !== cur.status) {
+      await db.query("update conversations set status = $3, resolved_by = case when $3 = 'closed' then $4::uuid else null end, outcome = case when $3 = 'closed' then $5 else null end where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, input.status, ctx.user.id, input.outcome ?? null]);
+      await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "status_changed", actor, detail: { from: cur.status, to: input.status, ...(closing && input.outcome ? { outcome: input.outcome } : {}) } });
+    } else if (input.status === "closed" && input.outcome !== undefined && cur.status === "closed") {
+      await db.query("update conversations set outcome = $3 where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, input.outcome]);
+    }
+    if (input.priority && input.priority !== cur.priority) {
+      await db.query("update conversations set priority = $3 where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, input.priority]);
+      await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "priority_changed", actor, detail: { from: cur.priority, to: input.priority } });
+    }
+    if (input.archived === true && !cur.archived_at) {
+      await db.query("update conversations set archived_at = now(), archived_by = $3 where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, ctx.user.id]);
+      await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "archived", actor });
+    } else if (input.archived === false && cur.archived_at && !reopening) {
+      await db.query("update conversations set archived_at = null, archived_by = null where id = $1 and org_id = $2", [conversationId, ctx.org.orgId]);
+      await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "unarchived", actor });
+    }
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "conversation.state_changed", targetType: "conversation", targetId: conversationId, result: "success", metadata: { status: input.status, priority: input.priority, archived: input.archived, outcome: input.outcome } }, db);
+  });
+}
+
+/** Marks a conversation unread again for the team (the unread count is shared by everyone who can see it). */
+export async function markConversationUnread(ctx: OrgContext, conversationId: string) {
+  await assertConversationVisible(ctx, conversationId);
+  await withSystem((db) => db.query("update conversations set unread_count = greatest(unread_count, 1) where id = $1 and org_id = $2", [conversationId, ctx.org.orgId]));
+}
+
+/**
+ * Sends a failed message again, as the person pressing the button. A new message goes through the whole rule chain (consent, opt-out,
+ * window, credits) like any other; the failed one stays as it was and is marked as re-sent. If the first attempt was never confirmed the
+ * customer may already have it, so the person must say they know (`acknowledgeUnconfirmed`). One failed message can be re-sent once.
+ * Only a conversation reply can be re-sent by hand: follow-ups, reminders and program messages follow their own rules.
+ */
+export async function retryFailedMessage(ctx: OrgContext, messageId: string, opts: { acknowledgeUnconfirmed?: boolean } = {}): Promise<{ messageId: string; conversationId: string }> {
+  if (!ctx.can("inbox.reply")) throw new AppError("forbidden", "Your role can't send messages to customers.");
+  if (!UUID.test(messageId)) throw new AppError("not_found", "Message not found.");
+  const found = await withUser(ctx.user.id, (db) => db.query<{ conversation_id: string }>("select conversation_id from conversation_messages where id = $1 and org_id = $2 and direction = 'outbound'", [messageId, ctx.org.orgId]));
+  if (!found.rows[0]) throw new AppError("not_found", "Message not found.");
+  const conversationId = found.rows[0].conversation_id;
+  await assertConversationVisible(ctx, conversationId);
+  return withSystem(async (db) => {
+    const { rows } = await db.query<{ status: MessageStatus; body: string; scope: string | null; template_id: string | null; purpose: "service" | "marketing"; failure_kind: "rejected" | "unconfirmed" | null; status_detail: string | null }>(
+      "select status, body, scope, template_id, purpose, failure_kind, status_detail from conversation_messages where id = $1 and org_id = $2 for update",
+      [messageId, ctx.org.orgId],
+    );
+    const m = rows[0];
+    if (!m) throw new AppError("not_found", "Message not found.");
+    if (m.status !== "failed") throw new AppError("conflict", "Only a message that failed can be sent again.");
+    if (m.scope !== "reply" && m.scope !== "human") throw new AppError("conflict", "Follow-ups, reminders and program messages are not sent again by hand. They follow their own schedule and limits.");
+    const again = await db.query("select 1 from conversation_messages where retry_of = $1", [messageId]);
+    if (again.rows[0]) throw new AppError("conflict", "This message was already sent again.");
+    const unconfirmed = m.failure_kind === "unconfirmed" || (m.failure_kind === null && unconfirmedOutcome(m.status_detail));
+    if (unconfirmed && !opts.acknowledgeUnconfirmed) {
+      throw new AppError("conflict", "The first attempt was never confirmed, so the customer may already have this message. Confirm that you want to send it again.");
+    }
+    // Sending as a person means that person owns the conversation from here (the AI stops), like any reply typed in the inbox.
+    await ensureHumanOwner(db, ctx, conversationId, "Sent a failed message again");
+    const queued = await queueOutbound(db, { orgId: ctx.org.orgId, conversationId, scope: "human", actor: { kind: "human", userId: ctx.user.id }, body: m.body, templateId: m.template_id, purpose: m.purpose, dedupeKey: `retry:${messageId}` });
+    await db.query("update conversation_messages set retry_of = $2 where id = $1", [queued.messageId, messageId]);
+    await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "message_retried", actor: { kind: "user", userId: ctx.user.id }, detail: { messageId, unconfirmed } });
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "message.retried", targetType: "message", targetId: messageId, result: "success", metadata: { newMessageId: queued.messageId, unconfirmed } }, db);
+    return { messageId: queued.messageId, conversationId };
+  });
+}
+
+export type BulkAction =
+  | { kind: "mark_read" }
+  | { kind: "mark_unread" }
+  | { kind: "resolve"; outcome?: ConversationOutcome | null }
+  | { kind: "reopen" }
+  | { kind: "archive" }
+  | { kind: "unarchive" }
+  | { kind: "priority"; priority: "low" | "normal" | "high" | "urgent" }
+  | { kind: "assign"; userId: string | null };
+
+export const BULK_LIMIT = 50;
+
+/**
+ * Applies one safe action to several conversations. There is deliberately no bulk send: nothing here can message a customer. Every
+ * conversation is handled by the same single-conversation function a person would use, so permissions, visibility, guards and lifecycle
+ * events are identical; a conversation that refuses (not visible, escalation open, …) is reported with its reason and the rest carry on.
+ */
+export async function bulkUpdateConversations(ctx: OrgContext, ids: string[], action: BulkAction): Promise<{ done: number; skipped: Array<{ id: string; reason: string }> }> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) throw new AppError("invalid_input", "Choose at least one conversation.");
+  if (unique.length > BULK_LIMIT) throw new AppError("invalid_input", `Choose at most ${BULK_LIMIT} conversations at once.`);
+  if (unique.some((i) => !UUID.test(i))) throw new AppError("invalid_input", "Choose valid conversations.");
+  const needed = action.kind === "assign" ? "inbox.assign" : action.kind === "mark_read" || action.kind === "mark_unread" ? "inbox.view" : "inbox.reply";
+  if (!ctx.can(needed)) throw new AppError("forbidden", "Your role can't do that to conversations.");
+  const out = { done: 0, skipped: [] as Array<{ id: string; reason: string }> };
+  for (const id of unique) {
+    try {
+      switch (action.kind) {
+        case "mark_read": await markConversationRead(ctx, id); break;
+        case "mark_unread": await markConversationUnread(ctx, id); break;
+        case "resolve": await setConversationState(ctx, id, { status: "closed", outcome: action.outcome ?? null }); break;
+        case "reopen": await setConversationState(ctx, id, { status: "open" }); break;
+        case "archive": await setConversationState(ctx, id, { archived: true }); break;
+        case "unarchive": await setConversationState(ctx, id, { archived: false }); break;
+        case "priority": await setConversationState(ctx, id, { priority: action.priority }); break;
+        case "assign": await assignConversation(ctx, id, action.userId); break;
+      }
+      out.done += 1;
+    } catch (err) {
+      out.skipped.push({ id, reason: err instanceof AppError ? err.message : "That didn't work." });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

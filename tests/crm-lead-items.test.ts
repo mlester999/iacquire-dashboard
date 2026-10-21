@@ -741,7 +741,7 @@ describe("E1: loading older messages", () => {
   it("keeps only older messages the page doesn't list, newest copy first, never a draft", () => {
     const m = (id: string, at: string, over: Partial<InboxMessage> = {}): InboxMessage => ({
       id, direction: "inbound", authorKind: "contact", authorName: null, body: id, status: "received", statusDetail: null, blockedReason: null, scope: null,
-      createdAt: `2026-10-0${at}T00:00:00.000Z`, sentAt: null, deliveredAt: null, provider: null, providerLabel: null, deliveryEvents: [], ...over,
+      createdAt: `2026-10-0${at}T00:00:00.000Z`, sentAt: null, deliveredAt: null, provider: null, providerLabel: null, deliveryEvents: [], failureKind: null, retryOf: null, retriedBy: null, ...over,
     });
     const page = [m("held", "1", { status: "draft", direction: "outbound", authorKind: "ai" }), m("p1", "5"), m("p2", "6")];
     const detail = { messages: page, olderMessages: { beforeId: "p1" } };
@@ -971,7 +971,7 @@ describe("E1 review: an older draft handled after 'Load older messages' keeps it
   it("approving or discarding here keeps an older draft in place at once, counted only inside the run; a page draft is left to the refresh", () => {
     const m = (id: string, day: string, over: Partial<InboxMessage> = {}): InboxMessage => ({
       id, direction: "inbound", authorKind: "contact", authorName: null, body: id, status: "received", statusDetail: null, blockedReason: null, scope: null,
-      createdAt: `2026-10-0${day}T00:00:00.000Z`, sentAt: null, deliveredAt: null, provider: null, providerLabel: null, deliveryEvents: [], ...over,
+      createdAt: `2026-10-0${day}T00:00:00.000Z`, sentAt: null, deliveredAt: null, provider: null, providerLabel: null, deliveryEvents: [], failureKind: null, retryOf: null, retriedBy: null, ...over,
     });
     const held = m("held", "1", { status: "draft", direction: "outbound", authorKind: "ai", blockedReason: "needs_approval" });
     const p1 = m("p1", "5");
