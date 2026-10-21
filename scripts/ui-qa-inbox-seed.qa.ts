@@ -168,7 +168,7 @@ async function seed() {
     if (hoursAgo !== undefined) {
       const at = ago(hoursAgo);
       await q(
-        "update conversation_messages set created_at = $2, sent_at = case when sent_at is null then null else $2 end, delivered_at = case when delivered_at is null then null else $2 end, failed_at = case when failed_at is null then null else $2 end, status_changed_at = $2 where id = $1",
+        "update conversation_messages set created_at = $2::timestamptz, sent_at = case when sent_at is null then null else $2::timestamptz end, delivered_at = case when delivered_at is null then null else $2::timestamptz end, failed_at = case when failed_at is null then null else $2::timestamptz end, status_changed_at = $2::timestamptz where id = $1",
         [q2.messageId, at],
       );
     }

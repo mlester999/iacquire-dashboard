@@ -10,6 +10,7 @@ import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import { assignConversation } from "@/server/messaging/handoff";
 import { setConversationState } from "@/server/messaging/inbox";
 import { announceIdleConversations, AWAITING_NOTICE_CAP, idleWindowHours, notifyAwaitingReplies, scanInboxAttention } from "@/server/messaging/attention";
+import { listConversationsPage } from "@/server/messaging/inbox-list";
 import { JOBS } from "@/server/ops/tick";
 import { CONVERSATION_IDLE_HOURS, EVENT_TRIGGER_TYPES, TRIGGERS, validateDefinition, type WorkflowDefinition, type WorkflowStep } from "@/lib/crm/workflow/spec";
 import { triggerSummary } from "@/components/crm/workflows/summaries";
@@ -206,6 +207,21 @@ describe("telling people a customer is waiting", () => {
     await waitingSince(c.conversationId, 50);
     await withSystem((db) => db.query("update conversations set last_outbound_at = now() where id = $1", [c.conversationId]));
     expect(await withSystem((db) => notifyAwaitingReplies(db))).toBe(0);
+  });
+
+  it("does not treat a customer who opted out as waiting: nothing can be sent to them, so there is nothing to reply to", async () => {
+    const org = await messagingOrg({ name: "Opt Out Co" });
+    const stopped = await inbound(org.org.id, { name: "Stopped Stan" });
+    await inbound(org.org.id, { address: stopped.address, body: "STOP" });
+    const normal = await inbound(org.org.id, { name: "Normal Nora" });
+    await waitingSince(stopped.conversationId, 45);
+    await waitingSince(normal.conversationId, 45);
+    expect(await withSystem((db) => notifyAwaitingReplies(db))).toBe(1);
+    const attention = (await listConversationsPage(org.ctx("owner"), { view: "attention", limit: 50 })).items.map((i) => i.id);
+    expect(attention).toContain(normal.conversationId);
+    expect(attention).not.toContain(stopped.conversationId);
+    // It is still unread and open for a person to see; only the "waiting" alarm is withheld.
+    expect((await listConversationsPage(org.ctx("owner"), { view: "unread", limit: 50 })).items.map((i) => i.id)).toContain(stopped.conversationId);
   });
 
   it("goes to the owners and managers when nobody is assigned, and caps a flood at one summary", async () => {

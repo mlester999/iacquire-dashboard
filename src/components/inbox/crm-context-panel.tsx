@@ -63,7 +63,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
   const { state, reload } = useCrmContext(conversationId, version);
   if (state.kind === "loading") {
     return (
-      <div className="space-y-4" aria-busy="true" aria-label="Loading customer details">
+      <div className="space-y-4" role="status" aria-busy="true" aria-label="Loading customer details">
         {[0, 1, 2].map((i) => (
           <div key={i} className="space-y-2 rounded-2xl border border-line bg-surface p-4"><Skeleton className="h-3.5 w-1/3" /><Skeleton className="h-3 w-4/5" /><Skeleton className="h-3 w-3/5" /></div>
         ))}

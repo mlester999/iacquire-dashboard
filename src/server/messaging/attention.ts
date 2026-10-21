@@ -4,6 +4,7 @@ import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { emitEvent } from "@/server/crm/events";
 import { systemActor } from "@/server/crm/actor";
 import { activeVersionsFor } from "@/server/crm/workflows/triggers";
+import { customerUnreachable } from "@/server/messaging/inbox-list";
 import { AWAITING_REPLY_MINUTES } from "@/lib/inbox";
 import { CONVERSATION_IDLE_HOURS } from "@/lib/crm/workflow/spec";
 
@@ -37,6 +38,7 @@ export async function notifyAwaitingReplies(db: Queryable, now = new Date()): Pr
      where c.status <> 'closed' and c.archived_at is null and c.unread_count > 0 and c.last_inbound_at is not null
        and c.last_inbound_at <= $1::timestamptz - ($2 || ' minutes')::interval and c.last_inbound_at > $1::timestamptz - ($3 || ' hours')::interval
        and (c.last_outbound_at is null or c.last_outbound_at < c.last_inbound_at)
+       and not ${customerUnreachable("c")}
      order by c.last_inbound_at limit $4`,
     [now.toISOString(), String(AWAITING_REPLY_MINUTES), String(AWAITING_MAX_AGE_HOURS), SCAN_LIMIT],
   );

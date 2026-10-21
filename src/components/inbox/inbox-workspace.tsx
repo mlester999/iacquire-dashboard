@@ -67,7 +67,8 @@ interface Props {
   cannedCustomValues?: CustomValueTokenDef[];
   escalations: EscalationCard[];
   me: { id: string; isOwner: boolean };
-  perms: { reply: boolean; assign: boolean; notes: boolean; resume: boolean; respond: boolean; editContacts: boolean };
+  /** `viewAll` false: the person sees only conversations they own or that are assigned to them (the empty states say so). Absent counts as true. */
+  perms: { reply: boolean; assign: boolean; notes: boolean; resume: boolean; respond: boolean; editContacts: boolean; viewAll?: boolean };
   team: Array<{ id: string; name: string; role: string }>;
   /** Approved WhatsApp templates of the provider that carries WhatsApp now, with their approved wording. */
   templates: Array<{ id: string; name: string; body: string }>;
@@ -453,7 +454,7 @@ export function InboxWorkspace(props: Props) {
                 aiAssist={props.aiAssist ?? false}
               />
             ) : selectedId && thread.loading ? (
-              <div className="flex h-full min-h-72 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" aria-busy="true" aria-label="Loading conversation">
+              <div className="flex h-full min-h-72 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" role="status" aria-busy="true" aria-label="Loading conversation">
                 <Skeleton className="h-10 w-2/5" />
                 <Skeleton className="h-16 w-3/5" />
                 <Skeleton className="ml-auto h-12 w-1/2" />
@@ -1030,7 +1031,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
             {out && <StatusMark status={m.status} />}
             {out && (m.status === "blocked" || m.status === "failed" || m.status === "draft") && reason && <span>· {reason}</span>}
             {out && m.status === "failed" && m.statusDetail && <span>· {m.statusDetail}</span>}
-            {m.providerLabel && <span className="text-faint">· via {m.providerLabel}</span>}
+            {m.providerLabel && <span className="text-muted">· via {m.providerLabel}</span>}
           </p>
           {out && m.deliveryEvents.length > 0 && <DeliveryDetails events={m.deliveryEvents} timeZone={timeZone} failed={m.status === "failed"} />}
           {out && m.status === "failed" && (
@@ -1043,7 +1044,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
               )}
             </div>
           )}
-          {m.retryOf && <p className="mt-1 text-[11px] text-faint">Sent again after an earlier attempt failed.</p>}
+          {m.retryOf && <p className="mt-1 text-[11px] text-muted">Sent again after an earlier attempt failed.</p>}
           {m.status === "draft" && m.authorKind === "ai" && perms.reply && (
             <div className="mt-2 flex gap-2">
               <Button
@@ -1243,7 +1244,8 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
         {mode === "reply" && openGaps.length > 0 && (
           <p role="status" className="mt-2 flex items-start gap-1.5 text-[12px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />Replace {openGaps.join(", ")} before sending. These details aren&apos;t on the contact&apos;s record.</p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2">
+        {/* On a phone the floating AQi launcher sits over the bottom-right corner: keep Send clear of it. */}
+        <div className="mt-2 flex items-center justify-between gap-2 max-sm:pb-3">
           <span className="text-[11.5px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? `Sends from your verified ${CHANNEL_LABELS[c.channel]} sender` : "Visible to your team only"}</span>
           <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
         </div>

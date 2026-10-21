@@ -86,8 +86,8 @@ export interface ConversationDetail {
 /** What the thread says about a change of who handles a conversation, from what the ownership trail recorded (no names beyond the new owner's). */
 function ownershipText(e: { from_kind: string; to_kind: string; reason: string | null; to_name: string | null }): string {
   const reason = e.reason?.trim() || null;
-  if (e.to_kind === "human") return reason && /^(Handed to|Assigned to)/.test(reason) ? reason : `${e.to_name ?? "A teammate"} took over${reason ? ` · ${reason}` : ""}`;
-  if (e.to_kind === "ai") return reason && /^(Assigned to|Handed back)/.test(reason) ? reason : `Handed to the AI${reason ? ` · ${reason}` : ""}`;
+  if (e.to_kind === "human") return reason && /^(Handed to|Assigned to)\b/.test(reason) ? reason : `${e.to_name ?? "A teammate"} took over${reason ? ` · ${reason}` : ""}`;
+  if (e.to_kind === "ai") return reason && /^(Assigned to|Handed back)\b/.test(reason) ? reason : `Handed to the AI${reason ? ` · ${reason}` : ""}`;
   return "Nobody owns this conversation now";
 }
 

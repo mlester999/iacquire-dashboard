@@ -34,6 +34,9 @@ export const EMPTY_COPY: Record<InboxView, { title: string; body: string }> = {
   archived: { title: "Nothing archived", body: "Archived conversations are kept out of the way. A new customer message brings one back." },
 };
 
+/** What "All" says for a role that sees only what is theirs (see inbox.view and inbox.view_all in src/lib/permissions.ts). */
+export const RESTRICTED_EMPTY = { title: "Nothing is assigned to you yet", body: "You see the conversations you own or that a manager assigns to you. When one is, it shows up here." };
+
 export interface ListPanelProps {
   items: ConversationListItem[];
   counts: ViewCounts | null;
@@ -47,7 +50,7 @@ export interface ListPanelProps {
   loadingMore: boolean;
   error: string | null;
   hasMore: boolean;
-  perms: { reply: boolean; assign: boolean };
+  perms: { reply: boolean; assign: boolean; viewAll?: boolean };
   team: Array<{ id: string; name: string; role: string }>;
   onChange: (next: { view?: InboxView; sort?: InboxSort; q?: string; channel?: string }) => void;
   onOpen: (id: string) => void;
@@ -293,7 +296,9 @@ export function InboxListPanel(p: ListPanelProps) {
     debounce.current = setTimeout(() => p.onChange({ q: value.trim() }), 350);
   }
 
-  const empty = EMPTY_COPY[p.view];
+  // Someone who sees only their own conversations is told that, instead of being sent to check the channels: nothing is wrong with them.
+  const restricted = p.perms.viewAll === false;
+  const empty = restricted && p.view === "all" ? RESTRICTED_EMPTY : EMPTY_COPY[p.view];
   const searching = Boolean(p.q || p.channel);
   const selectedIds = [...checked].filter((id) => p.items.some((i) => i.id === id));
 
@@ -388,7 +393,7 @@ export function InboxListPanel(p: ListPanelProps) {
             <h2 className="mt-3 text-[15px] font-semibold">{searching ? "Nothing matches" : empty.title}</h2>
             <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">{searching ? "Try different words, or clear the channel filter." : empty.body}</p>
             {searching && <Button size="sm" variant="secondary" className="mt-3" onClick={() => { setQ(""); p.onChange({ q: "", channel: "" }); }}>Clear search and filters</Button>}
-            {!searching && p.view === "all" && <Link href="/settings/messaging" className="mt-3 inline-block text-[13px] font-medium text-primary">Check channel setup</Link>}
+            {!searching && p.view === "all" && !restricted && <Link href="/settings/messaging" className="mt-3 inline-block text-[13px] font-medium text-primary">Check channel setup</Link>}
           </div>
         )}
         {p.hasMore && (

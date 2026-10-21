@@ -87,7 +87,14 @@ const NOT_ARCHIVED = "c.archived_at is null";
 const NEEDS_PERSON = "(esc.status in ('awaiting_owner', 'open'))";
 const SEND_FAILED = "(failed.conversation_id is not null)";
 const URGENT = "(c.priority = 'urgent')";
-const AWAITING_REPLY = `(c.unread_count > 0 and c.last_inbound_at is not null and c.last_inbound_at < now() - interval '${AWAITING_REPLY_MINUTES} minutes' and (c.last_outbound_at is null or c.last_outbound_at < c.last_inbound_at))`;
+/**
+ * The customer has opted out (or their address bounced) on this conversation's channel, so there is nothing to reply to. Their last message,
+ * often STOP, is unread but nobody is "waiting": it must not raise Needs attention or a notice. `c` is the conversations alias.
+ */
+export const customerUnreachable = (c: string) =>
+  `exists (select 1 from suppressions sp join contact_identities ci on ci.org_id = sp.org_id and ci.value = sp.address
+           where sp.org_id = ${c}.org_id and sp.channel = ${c}.channel and sp.lifted_at is null and ci.contact_id = ${c}.contact_id)`;
+const AWAITING_REPLY = `(c.unread_count > 0 and c.last_inbound_at is not null and c.last_inbound_at < now() - interval '${AWAITING_REPLY_MINUTES} minutes' and (c.last_outbound_at is null or c.last_outbound_at < c.last_inbound_at) and not ${customerUnreachable("c")})`;
 const WAITING = "(c.last_outbound_at is not null and (c.last_inbound_at is null or c.last_outbound_at >= c.last_inbound_at))";
 
 /** The predicate of each view. `me()` is the bound parameter holding the person's id; it is only called by a view that uses it (an unused parameter is an error). */

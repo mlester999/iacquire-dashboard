@@ -81,7 +81,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       cannedCustomValues={"customValues" in canned ? canned.customValues : undefined}
       escalations={escalations.map((e) => ({ ...e, owner_deadline_at: e.owner_deadline_at ? new Date(e.owner_deadline_at).toISOString() : null }))}
       me={{ id: ctx.user.id, isOwner: ctx.role === "owner" }}
-      perms={{ reply: ctx.can("inbox.reply"), assign: ctx.can("inbox.assign"), notes: ctx.can("inbox.notes"), resume: ctx.can("inbox.resume_ai"), respond: ctx.can("escalations.respond"), editContacts: ctx.can("contacts.edit") }}
+      perms={{ reply: ctx.can("inbox.reply"), assign: ctx.can("inbox.assign"), notes: ctx.can("inbox.notes"), resume: ctx.can("inbox.resume_ai"), respond: ctx.can("escalations.respond"), editContacts: ctx.can("contacts.edit"), viewAll: ctx.can("inbox.view_all") }}
       team={team}
       templates={templates}
       timeZone={ctx.org.timezone}

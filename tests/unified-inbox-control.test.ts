@@ -187,6 +187,18 @@ describe("handing a conversation to someone", () => {
     expect(own.rows.at(-1)).toMatchObject({ to_kind: "human", reason: expect.stringContaining("Handed to") });
   });
 
+  it("reads in the thread as one plain line, not as a takeover with a reason attached", async () => {
+    const c = await inbound(m.org.id);
+    await transferConversation(m.ctx("manager"), c.conversationId, m.people.support.id);
+    const lines = (await getConversationDetail(m.ctx("manager"), c.conversationId)).events.map((e) => e.text);
+    expect(lines).toEqual(["Handed to Sue Support"]);
+    // A person taking it over themselves is a takeover, with the reason they gave.
+    const d = await inbound(m.org.id);
+    await assignConversation(m.ctx("manager"), d.conversationId, m.people.sales.id);
+    await takeOverConversation(m.ctx("sales"), d.conversationId, "Billing question");
+    expect((await getConversationDetail(m.ctx("sales"), d.conversationId)).events.map((e) => e.text)).toContain("Sam Sales took over · Billing question");
+  });
+
   it("lets the current owner pass it on, but not another working teammate take it from them", async () => {
     const c = await inbound(m.org.id);
     await assignConversation(m.ctx("manager"), c.conversationId, m.people.sales.id);
