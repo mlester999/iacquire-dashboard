@@ -4,6 +4,7 @@
 import type { RunStatus } from "@/components/crm/workflows/parts";
 import { AGENT_ROLES } from "@/lib/agents";
 import { CHANNEL_LABELS } from "@/lib/messaging";
+import { idleLabel } from "@/lib/inbox";
 import { CONTACT_FILTER_FIELDS, isGroup, OP_LABELS, type FilterCondition, type FilterGroup } from "@/lib/crm/filters";
 import { CREATED_VIA_LABELS, LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS } from "@/lib/crm/types";
 import { CALL_STATUS_LABELS } from "@/components/crm/calls/model";
@@ -407,6 +408,7 @@ export function triggerSummary(t: TriggerConfig | null | undefined, names: Names
   if (f.formIds?.length) bits.push(`to ${listText(f.formIds, names.form ?? (() => undefined), ["form", "forms"])}`);
   if (f.consentStatus || f.consentPurpose) bits.push(`when they ${f.consentStatus === "granted" ? "give" : f.consentStatus === "revoked" ? "withdraw" : "give or withdraw"} ${f.consentPurpose ?? ""} consent`.replace(/\s+/g, " "));
   if (f.channels?.length) bits.push(`on ${f.channels.map((c) => CHANNEL_LABELS[c]).join(", ")}`);
+  if (f.idleHours?.length) bits.push(`quiet for ${f.idleHours.map(idleLabel).join(", ")}`);
   if (f.callDirections?.length === 1) bits.push(f.callDirections[0] === "inbound" ? "incoming calls" : "outgoing calls");
   if (f.callStatuses?.length) bits.push(`ended as ${f.callStatuses.map((s) => CALL_STATUS_LABELS[s].toLowerCase()).join(", ")}`);
   if (t.type === "schedule" && t.schedule) bits.push(`${t.schedule.frequency === "weekly" ? weekdaysText(t.schedule.weekdays) : "every day"} at ${clockText(t.schedule.time)}`);

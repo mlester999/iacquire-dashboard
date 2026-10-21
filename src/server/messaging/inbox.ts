@@ -76,10 +76,18 @@ export interface ConversationDetail {
   olderMessages?: { beforeId: string };
   timeline: Array<{ at: string; text: string }>;
   /** Ownership changes and lifecycle events only (no message lines): what the thread shows between the messages, in time order. */
-  events: Array<{ id: string; at: string; text: string }>;
+  events: Array<{ id: string; at: string; text: string; after?: boolean }>;
   memories: Array<{ id: string; kind: "confirmed_fact" | "ai_summary"; content: string; createdAt: string }>;
   followUp: { status: string; nextDueAt: string | null; remaining: number } | null;
   escalation: { id: string; category: string; urgency: string; status: string; summary: string; ownerResponse: string; ownerDeadlineAt: string | null; claimedByName: string | null } | null;
+}
+
+/** What the thread says about a change of who handles a conversation, from what the ownership trail recorded (no names beyond the new owner's). */
+function ownershipText(e: { from_kind: string; to_kind: string; reason: string | null; to_name: string | null }): string {
+  const reason = e.reason?.trim() || null;
+  if (e.to_kind === "human") return reason && /^(Handed to|Assigned to)/.test(reason) ? reason : `${e.to_name ?? "A teammate"} took over${reason ? ` · ${reason}` : ""}`;
+  if (e.to_kind === "ai") return reason && /^(Assigned to|Handed back)/.test(reason) ? reason : `Handed to the AI${reason ? ` · ${reason}` : ""}`;
+  return "Nobody owns this conversation now";
 }
 
 export async function getConversationDetail(ctx: OrgContext, conversationId: string): Promise<ConversationDetail> {
@@ -131,8 +139,8 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
     const lastIn = conv.rows[0]?.last_inbound_at ? new Date(conv.rows[0].last_inbound_at) : null;
     const timeline: Array<{ at: string; text: string }> = [];
     // What the thread shows between messages: ownership changes first read, then lifecycle events, each with a stable id for the client.
-    const eventLines: Array<{ id: string; at: string; text: string }> = [];
-    for (const e of events.rows) eventLines.push({ id: `own-${e.id}`, at: new Date(e.created_at).toISOString(), text: `${e.actor_kind === "ai" ? "AI" : e.actor_kind === "system" ? "System" : "A teammate"} moved this from ${e.from_kind} to ${e.to_kind}${e.to_name ? ` (${e.to_name})` : ""}${e.reason ? `: ${e.reason}` : ""}` });
+    const eventLines: Array<{ id: string; at: string; text: string; after?: boolean }> = [];
+    for (const e of events.rows) eventLines.push({ id: `own-${e.id}`, at: new Date(e.created_at).toISOString(), text: ownershipText(e) });
     // Lifecycle events (assignment, AI chosen or paused, status, priority, archive, handoff request, re-sent message), named from ids at read time.
     const life = await db.query<{ id: string; created_at: Date; kind: string; actor_kind: string; detail: Record<string, unknown>; actor_name: string | null; target_name: string | null; agent_name: string | null }>(
       `select e.id, e.created_at, e.kind, e.actor_kind, e.detail, au.full_name as actor_name, tu.full_name as target_name, ag.display_name as agent_name
@@ -144,8 +152,11 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
       [conversationId, ctx.org.orgId],
     );
     for (const e of life.rows) {
+      // A hand-over already shows as a change of owner just above; the event stays on the trail for automations and the audit.
+      if (e.kind === "assigned" && e.detail?.transfer === true) continue;
       const actor = e.actor_kind === "ai" ? (e.agent_name ?? "AI") : e.actor_kind === "workflow" ? "An automation" : e.actor_kind === "system" ? "iAcquire" : (e.actor_name ?? "A teammate");
-      eventLines.push({ id: `ev-${e.id}`, at: new Date(e.created_at).toISOString(), text: describeConversationEvent(e.kind, e.detail ?? {}, { actor, target: e.target_name, agent: e.agent_name }) });
+      // A change a person makes happens before the message they send in the same moment; a request for a person is a reaction to the message that caused it.
+      eventLines.push({ id: `ev-${e.id}`, at: new Date(e.created_at).toISOString(), text: describeConversationEvent(e.kind, e.detail ?? {}, { actor, target: e.target_name, agent: e.agent_name }), ...(e.kind === "handoff_requested" || e.detail?.reason === "handoff" ? { after: true } : {}) });
     }
     eventLines.sort((a, b) => a.at.localeCompare(b.at));
     for (const e of eventLines) timeline.push({ at: e.at, text: e.text });

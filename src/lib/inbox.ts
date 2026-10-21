@@ -40,7 +40,13 @@ export const INBOX_VIEW_HELP: Record<InboxView, string> = {
 export const INBOX_SORTS = ["priority", "recent", "waiting_longest"] as const;
 export type InboxSort = (typeof INBOX_SORTS)[number];
 export const isInboxSort = (v: unknown): v is InboxSort => typeof v === "string" && (INBOX_SORTS as readonly string[]).includes(v);
-export const INBOX_SORT_LABELS: Record<InboxSort, string> = { priority: "Needs a person first", recent: "Most recent", waiting_longest: "Waiting longest" };
+export const INBOX_SORT_LABELS: Record<InboxSort, string> = { priority: "Priority", recent: "Newest", waiting_longest: "Longest waiting" };
+/** What each sort does, for the hint under the control. */
+export const INBOX_SORT_HELP: Record<InboxSort, string> = {
+  priority: "People asked for first, then urgent and high priority, then newest.",
+  recent: "Newest message first.",
+  waiting_longest: "Customers waiting longest for a reply first.",
+};
 
 /** A customer message nobody has answered for this long makes the conversation "awaiting a reply" in Needs attention. */
 export const AWAITING_REPLY_MINUTES = 30;
@@ -53,6 +59,13 @@ export const ATTENTION_LABELS: Record<AttentionReason, string> = {
   urgent: "Marked urgent",
   awaiting_reply: "The customer is waiting for a reply",
 };
+
+/** "4 hours", "3 days": how long a conversation was quiet, as the automation editor and its summaries say it. */
+export function idleLabel(hours: number): string {
+  if (hours < 24 || hours % 24 !== 0) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = hours / 24;
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
 
 // ---------------------------------------------------------------------------
 // Outcomes (how a conversation ended)

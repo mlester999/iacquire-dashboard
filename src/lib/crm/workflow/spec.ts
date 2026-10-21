@@ -44,7 +44,7 @@ export const EVENT_TRIGGER_TYPES = [
   "opportunity.created", "opportunity.stage_changed", "opportunity.won", "opportunity.lost", "opportunity.reopened",
   "appointment.booked", "appointment.rescheduled", "appointment.cancelled", "appointment.no_show", "appointment.showed", "appointment.confirmed",
   "task.created", "task.completed", "task.due",
-  "conversation.message_received",
+  "conversation.message_received", "conversation.assigned", "conversation.resolved", "conversation.urgent", "conversation.handoff_requested", "conversation.idle",
   "form.submitted",
   "campaign.sent", "review.requested", "feedback.received", "call.completed",
 ] as const;
@@ -63,8 +63,12 @@ export const TRIGGER_FILTER_KEYS = [
   "changedFields", "createdVia", "ignoreOptOutKeywords",
   "formIds",
   "callStatuses", "callDirections",
+  "idleHours",
 ] as const;
 export type TriggerFilterKey = (typeof TRIGGER_FILTER_KEYS)[number];
+
+/** How long a conversation may go without a message before "conversation.idle" can start a workflow. Each is announced once per conversation and last message. */
+export const CONVERSATION_IDLE_HOURS = [1, 4, 24, 72, 168] as const;
 
 /** How a call can end (crm_call_records.status once final, FINAL_CALL_STATUSES in src/server/integrations/voice/types.ts). */
 export const CALL_TRIGGER_STATUSES = ["completed", "no_answer", "busy", "failed", "voicemail", "cancelled"] as const;
@@ -100,6 +104,8 @@ export interface TriggerFilters {
   callStatuses?: CallTriggerStatus[];
   /** Call completed: only incoming or only outgoing calls. */
   callDirections?: Array<"inbound" | "outbound">;
+  /** Conversation idle: after this many hours without a message (one of CONVERSATION_IDLE_HOURS). */
+  idleHours?: number[];
 }
 
 export interface ScheduleConfig {
@@ -170,6 +176,13 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "task.completed": T("task.completed", "Task completed", "A task is marked done.", "Tasks", "task", { contact: "maybe", opportunity: "maybe" }, ["assigneeIds"]),
   "task.due": T("task.due", "Task due", "An open task reaches its due time.", "Tasks", "task", { contact: "maybe", opportunity: "maybe" }, ["assigneeIds"]),
   "conversation.message_received": T("conversation.message_received", "Customer message received", "A customer sends a message on SMS, WhatsApp or email.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "ignoreOptOutKeywords"]),
+  // Lifecycle events of a conversation, recorded by src/server/messaging/events.ts in the same transaction as the change. They carry the customer
+  // (the conversation's contact), never the message text. "Idle" is announced by the inbox scan (src/server/messaging/attention.ts), not by a person.
+  "conversation.assigned": T("conversation.assigned", "Conversation assigned", "A conversation is assigned to a teammate, or handed to one.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "assigneeIds"]),
+  "conversation.resolved": T("conversation.resolved", "Conversation resolved", "A teammate resolves a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.urgent": T("conversation.urgent", "Conversation marked urgent", "A conversation's priority becomes urgent, by a person or because a person was asked for.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.handoff_requested": T("conversation.handoff_requested", "A person was asked to take over", "An AI employee (or a plain request for a person) asks for a teammate to take a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.idle": T("conversation.idle", "Conversation went quiet", "An open conversation has had no message for the time you choose. A customer who has since written again does not start it.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "idleHours"]),
   // A submission to a native form or survey, once processed. It carries the contact when the form asked for an email or phone number,
   // and the deal when the form creates one.
   "form.submitted": T("form.submitted", "Form submitted", "Someone sends one of your forms or surveys (on your website or its own page).", "Contacts", "contact", { contact: "maybe", opportunity: "maybe" }, ["formIds"]),
@@ -202,6 +215,7 @@ const triggerFiltersSchema = z.strictObject({
   formIds: z.array(uuid).min(1).max(50).optional(),
   callStatuses: z.array(z.enum(CALL_TRIGGER_STATUSES)).min(1).max(CALL_TRIGGER_STATUSES.length).optional(),
   callDirections: z.array(z.enum(["inbound", "outbound"])).min(1).max(2).optional(),
+  idleHours: z.array(z.number().int().refine((h) => (CONVERSATION_IDLE_HOURS as readonly number[]).includes(h), "Choose one of the listed times.")).min(1).max(CONVERSATION_IDLE_HOURS.length).optional(),
 });
 
 const scheduleSchema = z.strictObject({
@@ -954,6 +968,8 @@ function triggerIssues(t: TriggerConfig, ctx: ValidationContext | null): Validat
     if (filters[key] === undefined) continue;
     if (!ts.filters.includes(key)) out.push(issue("error", "invalid_trigger", `"${ts.label}" can't be filtered that way.`, { path: `trigger.filters.${key}` }));
   }
+  // Without a time, "went quiet" would start at every one of the times a conversation passes, so one is required.
+  if (t.type === "conversation.idle" && !filters.idleHours?.length) out.push(issue("error", "invalid_trigger", "Choose how long a conversation must be quiet.", { path: "trigger.filters.idleHours" }));
   if (t.type === "schedule") {
     if (!t.schedule) out.push(issue("error", "invalid_trigger", "Choose when the schedule runs.", { path: "trigger.schedule" }));
     else if (t.schedule.frequency === "weekly" && !t.schedule.weekdays?.length) out.push(issue("error", "invalid_trigger", "Choose at least one weekday.", { path: "trigger.schedule.weekdays" }));

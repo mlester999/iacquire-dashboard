@@ -7,7 +7,7 @@ import { AlertTriangle, Archive, ArrowLeft, Bot, Check, CheckCheck, Clock, Ellip
 import { Button } from "@/components/ui/button";
 import { Badge, Input, Kbd, Select, Skeleton, Textarea } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Sheet } from "@/components/ui/overlays";
-import { addMemoryAction, addNoteAction, approveDraftAction, assignConversationAction, claimEscalationAction, declineEscalationAction, deleteMemoryAction, discardDraftAction, loadMessagesByIdAction, loadOlderMessagesAction, markReadAction, markUnreadAction, resolveEscalationAction, retryMessageAction, sendReplyAction, setConversationStateAction } from "@/app/actions/inbox";
+import { addMemoryAction, addNoteAction, approveDraftAction, assignAiEmployeeAction, assignConversationAction, claimEscalationAction, declineEscalationAction, deleteMemoryAction, discardDraftAction, loadMessagesByIdAction, loadOlderMessagesAction, markReadAction, markUnreadAction, resolveEscalationAction, retryMessageAction, sendReplyAction, setConversationStateAction } from "@/app/actions/inbox";
 import { AiControls } from "@/components/inbox/ai-controls";
 import { AiAssistPanel } from "@/components/inbox/ai-assist-panel";
 import { requestSuggestedReply } from "@/components/inbox/assist-client";
@@ -168,15 +168,15 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<JsonResult
   }
 }
 
-/** True on screens wide enough for the customer panel to sit beside the thread (the xl breakpoint). Server and first paint assume yes, as before. */
+/** True on screens wide enough for the customer panel to sit beside the thread (the 2xl breakpoint: with the sidebar, anything narrower leaves the thread too thin). Server and first paint assume yes, as before. */
 function useIsWide(): boolean {
   return React.useSyncExternalStore(
     (cb) => {
-      const mq = window.matchMedia("(min-width: 1280px)");
+      const mq = window.matchMedia("(min-width: 1536px)");
       mq.addEventListener("change", cb);
       return () => mq.removeEventListener("change", cb);
     },
-    () => window.matchMedia("(min-width: 1280px)").matches,
+    () => window.matchMedia("(min-width: 1536px)").matches,
     () => true,
   );
 }
@@ -381,7 +381,7 @@ export function InboxWorkspace(props: Props) {
           e.preventDefault();
           openConversation(next);
         }
-      } else if (e.key === "Escape" && selectedRef.current && window.matchMedia("(max-width: 1023px)").matches) {
+      } else if (e.key === "Escape" && selectedRef.current && window.matchMedia("(max-width: 1279px)").matches) {
         closeConversation();
       }
     };
@@ -396,10 +396,11 @@ export function InboxWorkspace(props: Props) {
   return (
     <InboxActions.Provider value={actions}>
       <div className="space-y-3">
-        {props.channelHealth && <ChannelHealthBar channels={props.channelHealth} status={sync.status} lastSyncAt={sync.lastSyncAt} />}
-        <div className="grid gap-4 lg:h-[calc(100dvh-13rem)] lg:min-h-[560px] lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_340px]">
+        {props.channelHealth && <div className={cn(selectedId && "hidden xl:block")}><ChannelHealthBar channels={props.channelHealth} status={sync.status} lastSyncAt={sync.lastSyncAt} /></div>}
+        {/* One pane below xl (the list, or the open conversation, filling the height so the messages scroll above the composer); two columns from xl, three from 2xl. */}
+        <div className={cn("grid grid-rows-[minmax(0,1fr)] gap-4 xl:h-[calc(100dvh-13rem)] xl:min-h-[560px] xl:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)_340px]", selectedId && "h-[calc(100dvh-9rem)] min-h-[480px] xl:h-[calc(100dvh-13rem)]")}>
           {!showDetail && <h1 className="sr-only">Inbox</h1>}
-          <div className={cn("min-w-0 lg:overflow-y-auto lg:pr-1", selectedId ? "hidden lg:block" : "block")}>
+          <div className={cn("min-w-0 xl:overflow-y-auto xl:pr-1", selectedId ? "hidden xl:block" : "block")}>
             <InboxListPanel
               items={items}
               counts={counts}
@@ -440,7 +441,7 @@ export function InboxWorkspace(props: Props) {
             />
           </div>
 
-          <section aria-label="Conversation" className={cn("min-w-0 lg:min-h-0", selectedId ? "block" : "hidden lg:block")}>
+          <section aria-label="Conversation" className={cn("min-h-0 min-w-0", selectedId ? "block" : "hidden xl:block")}>
             {showDetail ? (
               <Thread
                 key={showDetail.conversation.id}
@@ -473,7 +474,7 @@ export function InboxWorkspace(props: Props) {
           </section>
 
           {showDetail && wide && (
-            <div className="min-w-0 lg:overflow-y-auto lg:pr-1">
+            <div className="min-w-0 xl:overflow-y-auto xl:pr-1">
               <ContactPanel key={`c-${showDetail.conversation.id}`} {...props} detail={showDetail} aiAssist={props.aiAssist ?? false} timeZone={props.timeZone} />
             </div>
           )}
@@ -485,7 +486,7 @@ export function InboxWorkspace(props: Props) {
             </div>
           </Sheet>
         )}
-        <p className="hidden text-[11.5px] text-faint lg:block">Shortcuts: <Kbd>/</Kbd> search · <Kbd>J</Kbd> <Kbd>K</Kbd> next and previous conversation · <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> send</p>
+        <p className="hidden text-[11.5px] text-faint xl:block">Shortcuts: <Kbd>/</Kbd> search · <Kbd>J</Kbd> <Kbd>K</Kbd> next and previous conversation · <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> send</p>
       </div>
     </InboxActions.Provider>
   );
@@ -1016,7 +1017,8 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
       );
     }
     const out = m.direction === "outbound";
-    const reason = m.blockedReason ? (BLOCK_REASON_LABELS[m.blockedReason] ?? m.blockedReason) : null;
+    // "The provider rejected the message" is only true when it answered; a send nobody confirmed says what happened in its own detail.
+    const reason = m.blockedReason && !(m.status === "failed" && m.failureKind === "unconfirmed") ? (BLOCK_REASON_LABELS[m.blockedReason] ?? m.blockedReason) : null;
     const canRetry = out && m.status === "failed" && !m.retriedBy && perms.reply && (m.scope === "human" || m.scope === "reply");
     return (
       <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
@@ -1091,9 +1093,13 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
   const floor = truncated && shownMessages.length ? shownMessages[0].createdAt : null;
   const lifecycle = (detail.events ?? []).filter((e) => floor === null || e.at >= floor);
   const newestStart = newestPage[0]?.createdAt ?? "";
-  const merge = (msgs: InboxMessage[], evs: Array<{ id: string; at: string; text: string }>) => {
-    const rows: Array<{ at: string; node: React.ReactNode }> = [...msgs.map((m) => ({ at: m.createdAt, node: renderMessage(m) })), ...evs.map((e) => ({ at: e.at, node: renderEvent(e) }))];
-    return rows.map((r, i) => ({ r, i })).sort((a, b) => (a.r.at < b.r.at ? -1 : a.r.at > b.r.at ? 1 : a.i - b.i)).map((x) => x.r.node);
+  // At the same moment (a database transaction has one clock): what a person changed comes before the message they sent, a request for a person after the message that caused it.
+  const merge = (msgs: InboxMessage[], evs: Array<{ id: string; at: string; text: string; after?: boolean }>) => {
+    const rows: Array<{ at: string; rank: number; node: React.ReactNode }> = [
+      ...msgs.map((m) => ({ at: m.createdAt, rank: 1, node: renderMessage(m) })),
+      ...evs.map((e) => ({ at: e.at, rank: e.after ? 2 : 0, node: renderEvent(e) })),
+    ];
+    return rows.map((r, i) => ({ r, i })).sort((a, b) => (a.r.at < b.r.at ? -1 : a.r.at > b.r.at ? 1 : a.r.rank - b.r.rank || a.i - b.i)).map((x) => x.r.node);
   };
   const olderRows = merge(olderBlock, lifecycle.filter((e) => e.at < newestStart));
   const newestRows = merge(newestPage, lifecycle.filter((e) => e.at >= newestStart));
@@ -1101,23 +1107,23 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
 
   return (
     <article className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-2xl border border-line bg-surface">
-      <header className="flex items-center gap-3 border-b border-line p-3 sm:p-4">
-        <button onClick={props.onBack} className="flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-2 sm:size-9 lg:hidden" aria-label="Back to conversations"><ArrowLeft className="size-4" /></button>
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-violet/80 text-[12px] font-semibold text-white" aria-hidden>{initials(detail.contact.name)}</span>
+      <header className="flex items-center gap-2 border-b border-line p-3 sm:gap-3 sm:p-4">
+        <button onClick={props.onBack} className="flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-2 sm:size-9 xl:hidden" aria-label="Back to conversations"><ArrowLeft className="size-4" /></button>
+        <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-violet/80 text-[12px] font-semibold text-white sm:flex" aria-hidden>{initials(detail.contact.name)}</span>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[16px] font-semibold tracking-tight">{detail.contact.name}</h1>
-          <p className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
             <ChannelBadge channel={c.channel} provider={props.channelProviders?.[c.channel]} />
-            <span>{sentenceCase(detail.contact.lifecycleStage)}</span>
+            <span className="hidden sm:inline">{sentenceCase(detail.contact.lifecycleStage)}</span>
             {archived ? <Badge tone="outline"><Archive className="size-3" aria-hidden />Archived</Badge> : c.status === "closed" ? <Badge tone="success"><Check className="size-3" aria-hidden />Resolved{c.outcome ? ` · ${OUTCOME_LABELS[c.outcome]}` : ""}</Badge> : null}
             {c.priority === "urgent" && <Badge tone="danger">Urgent</Badge>}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button size="sm" variant="ghost" className="xl:hidden" onClick={props.onOpenCustomer} aria-label="Customer details"><PanelRightOpen className="size-4" aria-hidden /><span className="hidden sm:inline">Customer</span></Button>
+          <Button size="sm" variant="ghost" className="2xl:hidden" onClick={props.onOpenCustomer} aria-label="Customer details"><PanelRightOpen className="size-4" aria-hidden /><span className="hidden sm:inline">Customer</span></Button>
           {perms.reply && c.status !== "closed" && (
             <Popover open={resolveOpen} onOpenChange={setResolveOpen}>
-              <PopoverTrigger asChild><Button size="sm" variant="secondary"><SquareCheckBig className="size-3.5" aria-hidden />Resolve</Button></PopoverTrigger>
+              <PopoverTrigger asChild><Button size="sm" variant="secondary" aria-label="Resolve"><SquareCheckBig className="size-3.5" aria-hidden /><span className="hidden sm:inline">Resolve</span></Button></PopoverTrigger>
               <PopoverContent align="end" className="w-[min(300px,calc(100vw-32px))] p-3">
                 <label htmlFor="resolve-outcome" className="text-[12.5px] font-medium">How did it end?</label>
                 <Select id="resolve-outcome" className="mt-1.5" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
@@ -1133,7 +1139,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
             </Popover>
           )}
           {perms.reply && c.status === "closed" && (
-            <Button size="sm" variant="secondary" loading={busy === "state"} onClick={() => run("state", () => setConversationStateAction(c.id, { status: "open" }), "Reopened.")}><RotateCcw className="size-3.5" aria-hidden />Reopen</Button>
+            <Button size="sm" variant="secondary" aria-label="Reopen" loading={busy === "state"} onClick={() => run("state", () => setConversationStateAction(c.id, { status: "open" }), "Reopened.")}><RotateCcw className="size-3.5" aria-hidden /><span className="hidden sm:inline">Reopen</span></Button>
           )}
           {perms.reply && (
             <Menu>
@@ -1199,7 +1205,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
           <span className="ml-auto flex flex-wrap items-center gap-1">
             {mode === "reply" && canReply && props.aiAssist && (
               <button type="button" onClick={suggest} disabled={suggesting} aria-busy={suggesting || undefined} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[12.5px] font-medium text-violet-ink hover:bg-violet-soft disabled:opacity-60">
-                {suggesting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />}Suggest reply
+                {suggesting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />}<span className="hidden sm:inline">Suggest reply</span><span className="sr-only sm:hidden">Suggest reply</span>
               </button>
             )}
             {mode === "reply" && canReply && replies.length > 0 && <CannedReplyPicker replies={replies} onPick={insertCanned} />}
@@ -1223,7 +1229,8 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
           id="composer"
           ref={composerRef}
           data-composer-dirty={text.trim() ? "true" : "false"}
-          rows={3}
+          rows={2}
+          className="min-h-[64px]"
           value={text}
           maxLength={mode === "note" ? 2000 : 5000}
           disabled={mode === "reply" ? !canReply : !perms.notes}
@@ -1357,7 +1364,7 @@ function EscalationBanner({ detail, me, perms, busy, run }: { detail: InboxDetai
   );
 }
 
-function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false }: Props & { detail: InboxDetail; aiAssist: boolean; inline?: boolean }) {
+function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false, ...props }: Props & { detail: InboxDetail; aiAssist: boolean; inline?: boolean }) {
   const idp = inline ? "m-" : "";
   const refresh = useInboxRefresh();
   const c = detail.conversation;
@@ -1417,6 +1424,15 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false 
             <option value="">Unassigned</option>
             {team.map((t) => <option key={t.id} value={t.id}>{t.name} · {sentenceCase(t.role)}</option>)}
           </Select>
+          {(props.aiEmployees ?? []).length > 0 && (
+            <>
+              <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI employee on this conversation</label>
+              <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
+                {!c.aiAgent && <option value="">AI employee: none chosen</option>}
+                {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>AI employee: {a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
+              </Select>
+            </>
+          )}
           <label className="sr-only" htmlFor={`${idp}priority`}>Priority</label>
           <Select id={`${idp}priority`} value={c.priority} onChange={(e) => run("priority", () => setConversationStateAction(c.id, { priority: e.target.value }), "Priority updated.")} className="mt-2" disabled={busy === "priority"}>
             {["low", "normal", "high", "urgent"].map((p) => <option key={p} value={p}>{sentenceCase(p)} priority</option>)}

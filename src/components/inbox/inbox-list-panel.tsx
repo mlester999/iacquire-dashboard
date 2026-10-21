@@ -9,7 +9,7 @@ import { Badge, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlays";
 import { bulkConversationsAction } from "@/app/actions/inbox";
 import { AGENT_ROLES } from "@/lib/agents";
-import { ATTENTION_LABELS, CONVERSATION_OUTCOMES, INBOX_SORTS, INBOX_SORT_LABELS, INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS, OUTCOME_LABELS, type InboxSort, type InboxView } from "@/lib/inbox";
+import { ATTENTION_LABELS, CONVERSATION_OUTCOMES, INBOX_SORTS, INBOX_SORT_HELP, INBOX_SORT_LABELS, INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS, OUTCOME_LABELS, type InboxSort, type InboxView } from "@/lib/inbox";
 import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
 import { cn, initials, relativeTime, sentenceCase } from "@/lib/utils";
 import type { ConversationListItem, ViewCounts } from "@/server/messaging/inbox-list";
@@ -148,7 +148,6 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
       aria-selected={view === v}
       aria-controls="inbox-list"
       tabIndex={view === v ? 0 : -1}
-      title={INBOX_VIEW_HELP[v]}
       onClick={() => onChange(v)}
       className={cn(
         "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-medium transition",
@@ -157,7 +156,10 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
     >
       {INBOX_VIEW_LABELS[v]}
       {count(v) !== null && count(v)! > 0 && (
-        <span className={cn("rounded-full px-1.5 text-[11px] font-semibold tabular-nums", view === v ? "bg-bg/20" : v === "attention" ? "bg-warning-soft text-warning-ink" : "bg-surface-3 text-ink-2")}>{count(v)! > 99 ? "99+" : count(v)}</span>
+        <>
+          <span className="sr-only"> </span>
+          <span className={cn("rounded-full px-1.5 text-[11px] font-semibold tabular-nums", view === v ? "bg-bg/20" : v === "attention" ? "bg-warning-soft text-warning-ink" : "bg-surface-3 text-ink-2")}>{count(v)! > 99 ? "99+" : count(v)}</span>
+        </>
       )}
     </button>
   );
@@ -172,14 +174,15 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
   };
   const moreActive = MORE_VIEWS.includes(view);
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <div role="tablist" aria-label="Conversation views" onKeyDown={onKeyDown} className="flex flex-wrap items-center gap-1.5">
+    // One scrolling row on a phone (three wrapped rows of tabs would push the list off the screen); wrapped from sm up.
+    <div className="scrollbar-thin -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+      <div role="tablist" aria-label="Conversation views" onKeyDown={onKeyDown} className="flex shrink-0 items-center gap-1.5 sm:flex-wrap">
         {PRIMARY_VIEWS.map(tab)}
         {moreActive && tab(view)}
       </div>
       <Menu>
         <MenuTrigger asChild>
-          <button className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-surface-2 px-3 text-[12.5px] font-medium text-muted transition hover:text-ink" aria-label="More views">
+          <button className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-xl bg-surface-2 px-3 text-[12.5px] font-medium text-muted transition hover:text-ink" aria-label="More views">
             More<ChevronDown className="size-3.5" aria-hidden />
           </button>
         </MenuTrigger>
@@ -307,7 +310,7 @@ export function InboxListPanel(p: ListPanelProps) {
       >
         <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" aria-hidden />
         <label className="sr-only" htmlFor="inbox-search">Search conversations</label>
-        <Input ref={searchRef} id="inbox-search" value={q} onChange={(e) => typed(e.target.value)} placeholder="Search name, number, email or message  ( / )" className="pl-9" />
+        <Input ref={searchRef} id="inbox-search" value={q} onChange={(e) => typed(e.target.value)} placeholder="Search customers or messages" className="pl-9" />
       </form>
 
       <ViewTabs view={p.view} counts={p.counts} onChange={(v) => { setChecked(new Set()); p.onChange({ view: v }); }} />
@@ -325,7 +328,7 @@ export function InboxListPanel(p: ListPanelProps) {
         </div>
         <div>
           <label className="sr-only" htmlFor="inbox-sort">Sort by</label>
-          <Select id="inbox-sort" value={p.sort} onChange={(e) => p.onChange({ sort: e.target.value as InboxSort })}>
+          <Select id="inbox-sort" title={INBOX_SORT_HELP[p.sort]} value={p.sort} onChange={(e) => p.onChange({ sort: e.target.value as InboxSort })}>
             {INBOX_SORTS.map((s) => <option key={s} value={s}>{INBOX_SORT_LABELS[s]}</option>)}
           </Select>
         </div>

@@ -39,30 +39,30 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
     c.ownerKind === "ai" && c.aiPaused ? (
       <>
         <PauseCircle className="size-4 text-warning-ink" aria-hidden />
-        <span><strong>AI replies are paused.</strong> {employee ?? "The AI employee"} stays on this conversation but will not reply until you resume.</span>
+        <span><strong>AI replies are paused.</strong><span className="hidden sm:inline"> {employee ?? "The AI employee"} stays on this conversation but will not reply until you resume.</span></span>
       </>
     ) : c.ownerKind === "ai" ? (
       <>
         <Bot className="size-4 text-violet-ink" aria-hidden />
-        <span><strong>{employee ?? "The AI"} is handling this.</strong> It follows your rules and hands off when a person is needed.</span>
+        <span><strong>{employee ?? "The AI"} is handling this.</strong><span className="hidden sm:inline"> It follows your rules and hands off when a person is needed.</span></span>
       </>
     ) : c.ownerKind === "human" ? (
       <>
         <UserRound className="size-4 text-primary" aria-hidden />
-        <span><strong>{mine ? "You are" : `${c.ownerName ?? "A teammate"} is`} handling this.</strong> {employee ? `${employee} is attached but will not reply.` : "The AI will not reply."}</span>
+        <span><strong>{mine ? "You are" : `${c.ownerName ?? "A teammate"} is`} handling this.</strong><span className="hidden sm:inline"> {employee ? `${employee} is attached but will not reply.` : "The AI will not reply."}</span></span>
       </>
     ) : (
       <>
         <Hand className="size-4 text-muted" aria-hidden />
-        <span><strong>Nobody owns this yet.</strong> The AI will not reply.</span>
+        <span><strong>Nobody owns this yet.</strong><span className="hidden sm:inline"> The AI will not reply.</span></span>
       </>
     );
 
   return (
-    <div className="space-y-2 border-b border-line bg-surface-2/60 px-3 py-2 text-[12.5px] sm:px-4">
+    <div className="space-y-1.5 border-b border-line bg-surface-2/60 px-3 py-2 text-[12.5px] sm:px-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex min-w-0 items-start gap-2">{status}</span>
-        <span className="flex flex-wrap gap-2">
+        <span className="flex max-w-full gap-2 overflow-x-auto pb-0.5 sm:flex-wrap sm:overflow-visible sm:pb-0 [&>*]:shrink-0">
           {c.ownerKind !== "human" && perms.reply && (
             <Button size="sm" variant="secondary" loading={busy === "takeover"} onClick={() => run("takeover", () => takeOverAction(c.id), "You're handling this now.")}>Take over</Button>
           )}
@@ -110,10 +110,10 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
         </span>
       </div>
       {perms.assign && aiEmployees.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="ai-employee" className="text-muted">AI employee on this conversation</label>
-          <div className="min-w-[200px] max-w-xs flex-1">
-            <Select id="ai-employee" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }}>
+        <div className="hidden items-center gap-2 sm:flex">
+          <label htmlFor="ai-employee" className="shrink-0 text-muted">AI employee</label>
+          <div className="w-full max-w-[260px]">
+            <Select id="ai-employee" className="h-9 sm:h-8 text-[13px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }}>
               {!c.aiAgent && <option value="">None chosen</option>}
               {aiEmployees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
             </Select>
