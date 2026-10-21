@@ -120,8 +120,8 @@ performs only `SELECT` queries and changed nothing. Result:
 | Super Admin acknowledgement current | false |
 | Company facts (description, services, ideal customers, operating area) | **0/4 present** |
 
-1. **Migration 0072 is not applied to the hosted database.** Deploying/authorizing the migration is required
-   before any durable job exists in production.
+1. **Migrations 0072 and 0073 are not applied to the hosted database.** Deploying/authorizing them is required
+   before any durable job or schedule exists in production.
 2. **Lead Hunter has no applied configuration in production.** The agency workspace must save the complete
    role configuration through Configure. The role-owned procedure fields are prepared; these company-owned
    facts are genuinely missing and must come from the business: business description, products/services, ideal
@@ -201,7 +201,8 @@ active, member refusal, non-review capability refusal, enable/pause/delete and a
 
 ## 10. Exact next action after authorization
 
-Apply migration 0072 to the hosted project, deploy the application, save the Lead Hunter configuration in the
-iAcquire agency workspace, run the health check and profile check, record the Super Admin acknowledgement, then
-run the read-only activation audit and one supervised research job. Only after that run should the job/evidence
-UI be described as production-proven.
+Apply migrations 0072 and 0073 to the hosted project, deploy the application, save the Lead Hunter configuration
+in the iAcquire agency workspace, run the health check and profile check, record the Super Admin acknowledgement,
+then run the read-only activation audit and one supervised research job. Keep `WORKFORCE_SCHEDULES_ENABLED`
+false until a separate supervised schedule activation is approved. Only after that run should the job/evidence UI
+be described as production-proven.
