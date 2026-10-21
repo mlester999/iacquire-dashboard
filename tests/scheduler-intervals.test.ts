@@ -218,6 +218,7 @@ describe("the registered jobs", () => {
     inactivityReview: 360,
     offboardingReminders: 360,
     crmWorkflowRecovery: 5,
+    inboxAttention: 5,
     whatsappTemplateSync: 180,
     aqiTutorialEventRetention: 1440,
   };
@@ -256,9 +257,9 @@ describe("the registered jobs", () => {
     expect(again.messagesDispatched).not.toBe("skipped");
     expect(again.studioEntitlementSweep).not.toBe("skipped");
     expect(again.aqiOperationsBriefings).not.toBe("skipped");
-    // Five minutes later only the five-minute job is due.
+    // Five minutes later only the five-minute jobs are due.
     const five = await runScheduledJobs(at(5));
-    expect(Object.keys(EXPECTED_SLOW).filter((name) => five[name] !== "skipped")).toEqual(["crmWorkflowRecovery"]);
+    expect(Object.keys(EXPECTED_SLOW).filter((name) => five[name] !== "skipped")).toEqual(["crmWorkflowRecovery", "inboxAttention"]);
     // Sixty minutes later the jobs on an hour or faster are due, the longer ones are not. (A job that failed on the first pass is also
     // due: it is retried after fifteen minutes. On an empty database none is expected to fail, but the expectation does not depend on it.)
     const hour = await runScheduledJobs(at(60));

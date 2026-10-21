@@ -11,8 +11,10 @@ import { cn } from "@/lib/utils";
 import { CHANNEL_LABELS } from "@/lib/messaging";
 import { LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS, type FieldType } from "@/lib/crm/types";
 import { EMPTY_FILTER, type FilterGroup } from "@/lib/crm/filters";
+import { CONVERSATION_OUTCOMES, OUTCOME_LABELS, type ConversationOutcome } from "@/lib/inbox";
 import {
-  STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS, type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig,
+  CONVERSATION_ACTIONS, CONVERSATION_ACTION_LABELS, CONVERSATION_PRIORITIES, STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS, type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationAction, type ConversationActionConfig, type ConversationPriority,
+  type CreateOpportunityConfig, type CreateTaskConfig,
   type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig, type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TagsConfig, type UpdateFieldConfig,
   type ValidationIssue, type WaitConfig, type WebhookConfig, type WorkflowDefinition, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
@@ -133,6 +135,8 @@ function KindFields(p: KindProps) {
       return <NotifyFields {...p} />;
     case "internal_note":
       return <NoteFields {...p} />;
+    case "conversation_action":
+      return <ConversationActionFields {...p} />;
     case "n8n":
       return <N8nFields {...p} />;
     case "webhook":
@@ -497,6 +501,52 @@ function NoteFields({ step, options, errorAt, config }: KindProps) {
         <Textarea id="wf-note-body" rows={4} maxLength={4000} value={n.body ?? ""} onChange={(e) => config({ body: e.target.value })} />
         <div className="mt-1.5"><TokenInsert id="wf-note-token" groups={["contact", "appointment"]} customValues={options.customValues} onInsert={(tok) => config({ body: `${n.body ?? ""}${n.body ? " " : ""}${tok}` })} /></div>
       </Field>
+    </>
+  );
+}
+
+const CONVERSATION_ACTION_HELP: Record<ConversationAction, string> = {
+  resolve: "Left open if the customer wrote after this workflow started, or if a person was asked to take the conversation over.",
+  reopen: "Only changes a conversation that is resolved.",
+  set_priority: "Urgent also starts workflows that listen for urgent conversations.",
+  assign_person: "They are told. Assigning doesn't change who replies: the AI employee keeps handling the conversation until a person takes it over.",
+  assign_contact_owner: "Uses the contact's owner when their role can reply to customers; otherwise this step is skipped.",
+  pause_ai: "The AI employee stays on the conversation but stops replying. Only a person can turn it back on.",
+};
+
+function ConversationActionFields({ step, options, errorAt, replace }: KindProps) {
+  const c = step.config as ConversationActionConfig;
+  return (
+    <>
+      <Field label="Do this" htmlFor="wf-conv-action" error={errorAt("config.action")}>
+        <Select id="wf-conv-action" value={c.action} onChange={(e) => replace({ action: e.target.value as ConversationAction })}>
+          {CONVERSATION_ACTIONS.map((a) => <option key={a} value={a}>{CONVERSATION_ACTION_LABELS[a]}</option>)}
+        </Select>
+      </Field>
+      {c.action === "resolve" && (
+        <Field label="How it ended" htmlFor="wf-conv-outcome" hint="Optional. It is recorded with the conversation.">
+          <Select id="wf-conv-outcome" value={c.outcome ?? ""} onChange={(e) => replace(e.target.value ? { action: "resolve", outcome: e.target.value as ConversationOutcome } : { action: "resolve" })}>
+            <option value="">Not recorded</option>
+            {CONVERSATION_OUTCOMES.map((o) => <option key={o} value={o}>{OUTCOME_LABELS[o]}</option>)}
+          </Select>
+        </Field>
+      )}
+      {c.action === "set_priority" && (
+        <Field label="Priority" htmlFor="wf-conv-priority" error={errorAt("config.priority")}>
+          <Select id="wf-conv-priority" value={c.priority ?? ""} onChange={(e) => replace(e.target.value ? { action: "set_priority", priority: e.target.value as ConversationPriority } : { action: "set_priority" })}>
+            <option value="">Choose a priority</option>
+            {CONVERSATION_PRIORITIES.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+          </Select>
+        </Field>
+      )}
+      {c.action === "assign_person" && (
+        <Field label="Person" htmlFor="wf-conv-user" error={errorAt("config.userId")}>
+          <SinglePick id="wf-conv-user" value={c.userId} onChange={(v) => replace(v ? { action: "assign_person", userId: v } : { action: "assign_person" })} options={options.members.map((m) => ({ id: m.id, label: m.name }))} placeholder="Choose a person" />
+        </Field>
+      )}
+      <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
+        {CONVERSATION_ACTION_HELP[c.action]} It acts on the conversation that started this workflow and never sends a message.
+      </p>
     </>
   );
 }

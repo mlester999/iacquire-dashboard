@@ -72,6 +72,10 @@ export function permissionsNeeded(def: WorkflowDefinition): PermissionNeed[] {
       case "request_review":
         need("reviews.manage", `${label} requests reviews`);
         break;
+      case "conversation_action":
+        if (c.action === "assign_person" || c.action === "assign_contact_owner") need("inbox.assign", `${label} assigns conversations`);
+        else need("inbox.reply", `${label} changes conversations`);
+        break;
     }
     // Placeholders put contact details into text the team (or the publisher) reads: a notification, a task, a deal name or a note.
     if (TEXT_KEYS.some((k) => hasPlaceholder(c[k]))) need("contacts.view", `${label} fills in contact details`);

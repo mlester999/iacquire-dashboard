@@ -32,6 +32,11 @@ const BLOCK_REASONS: Record<string, string> = {
   quiet_hours: "Quiet hours",
   frequency_cap: "Sending limit reached",
   human_takeover: "A person took over the conversation",
+  conversation_missing: "The conversation no longer exists",
+  customer_replied: "The customer wrote again",
+  person_requested: "A person was asked to take over",
+  no_owner: "The contact has no owner",
+  owner_unavailable: "The contact's owner can't take conversations",
 };
 
 export function triggerLabelOf(triggerType: string | null, startedVia: RunSummary["startedVia"]): string {
@@ -135,6 +140,10 @@ export function stepResultDetails(kind: string, result: Record<string, unknown>,
       break;
     case "notify_team":
       add("Notified", typeof result.users === "number" ? `${result.users} ${result.users === 1 ? "person" : "people"}` : null);
+      break;
+    case "conversation_action":
+      if (str(result.assignedTo)) add("Assigned to", ctx.names.user(String(result.assignedTo)) ?? "A former teammate");
+      if (str(result.conversationId) && ctx.inboxLinks) links.push({ label: "Open conversation", href: `/inbox?conversation=${result.conversationId}` });
       break;
     case "create_opportunity":
     case "move_stage": {

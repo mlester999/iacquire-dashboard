@@ -15,6 +15,7 @@ import { queueOutreach } from "@/server/messaging/outreach";
 import { hasReviewLinkToken, queueReviewRequestInTx, reviewRequestProblem } from "@/server/crm/reviews";
 import { contactAddress, getConsent, isSuppressed } from "@/server/messaging/contacts";
 import { assignWithRule } from "@/server/crm/assignment";
+import { applyConversationAction } from "@/server/messaging/workflow-actions";
 import { enqueueWorkflowWebhook } from "@/server/crm/webhooks";
 import { agentLiveRunsVerified, requestAgentTask } from "@/server/crm/agent-tools/tasks";
 import { contactMatches, opportunityMatches, repliedSince } from "@/server/crm/workflows/conditions";
@@ -23,7 +24,7 @@ import { addDuration, nextTimeOfDay } from "@/lib/crm/workflow/time";
 import { zonedToInstant } from "@/lib/calendars/slots";
 import {
   STEP_KINDS, UPDATABLE_FIELDS, durationMinutes,
-  type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig, type InternalNoteConfig, type MoveStageConfig,
+  type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationActionConfig, type CreateOpportunityConfig, type CreateTaskConfig, type InternalNoteConfig, type MoveStageConfig,
   type HttpRequestConfig, type SlackMessageConfig, type N8nConfig, type NotifyTeamConfig, type RequestReviewConfig, type SendMessageConfig, type TagsConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { describeMissing, renderMessage, renderTemplate } from "@/lib/messaging/tokens";
@@ -122,6 +123,7 @@ async function loadDeal(db: Queryable, orgId: string, id: string | null, lock = 
 
 const NO_CONTACT = "This run has no contact (or the contact was archived), so the step was skipped.";
 const NO_DEAL = "This run has no deal to work on, so the step was skipped.";
+const NO_CONVERSATION = "This run has no conversation to update, so the step was skipped.";
 
 /** Fills placeholders from the run's contact, leaving out anything that has no value (titles and notes, not customer messages). */
 async function renderLoose(sc: StepContext, text: string): Promise<string> {
@@ -722,6 +724,22 @@ async function execAiTask(sc: StepContext, c: AiTaskConfig, stepKey: string): Pr
   return done({ status: r.status, detail: r.detail, agentRunId: r.agentRunId ?? null });
 }
 
+/** Resolves, reopens, prioritises, assigns or pauses the AI on the conversation that started the run (see messaging/workflow-actions.ts). Never sends a message. */
+async function execConversationAction(sc: StepContext, c: ConversationActionConfig): Promise<StepOutcome> {
+  const conversationId = sc.run.context.conversationId ?? null;
+  if (!conversationId) return sc.dryRun ? wouldSkip(NO_CONVERSATION) : skipped(NO_CONVERSATION);
+  const r = await applyConversationAction(sc.db, { orgId: sc.org.id, conversationId, config: c, since: sc.run.createdAt, causedBy: sc.causedBy, dryRun: sc.dryRun }).catch((err: unknown) => {
+    // A choice made in the workflow that no longer holds (the person left the team) is shown as a failed step, like the task and owner steps.
+    if (err instanceof AppError && err.code === "invalid_input") throw new StepFailure(err.message);
+    throw err;
+  });
+  switch (r.result) {
+    case "changed": return sc.dryRun ? would(r.would, { conversationId }) : done({ detail: r.did, conversationId, action: c.action, ...r.data });
+    case "unchanged": return sc.dryRun ? wouldSkip(r.detail, { conversationId }) : skipped(r.detail, { conversationId });
+    case "blocked": return sc.dryRun ? wouldSkip(r.detail, { reason: r.reason, conversationId }) : blocked(r.reason, r.detail, { conversationId });
+  }
+}
+
 /** Runs (or, in a dry run, describes) one step. Throws StepFailure / AppError for a failure; the runner records it and retries when it can help. */
 export async function executeStep(sc: StepContext, step: WorkflowStep): Promise<StepOutcome> {
   const cfg = step.config as never;
@@ -744,6 +762,7 @@ export async function executeStep(sc: StepContext, step: WorkflowStep): Promise<
     case "http_request": return execHttpRequest(sc, cfg as HttpRequestConfig);
     case "slack_message": return execSlackMessage(sc, cfg as SlackMessageConfig);
     case "ai_task": return execAiTask(sc, cfg as AiTaskConfig, step.key);
+    case "conversation_action": return execConversationAction(sc, cfg as ConversationActionConfig);
     case "end": return { type: "end", result: sc.dryRun ? { dryRun: true, outcome: "would_end", detail: "The workflow would end here." } : { detail: "The workflow ended here." } };
   }
   throw new StepFailure(`Unknown step kind ${String((step as { kind: string }).kind)}.`);

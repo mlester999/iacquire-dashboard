@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyUser } from "@/server/notifications";
 import { assertConversationVisible } from "@/server/messaging/access";
-import { recordConversationEvent } from "@/server/messaging/events";
+import { recordConversationEvent, type ConversationEventActor } from "@/server/messaging/events";
 import { aiResumeProblems, recordOwnership, type OwnerKind } from "@/server/messaging/handoff";
 import { cancelPendingAiMessages } from "@/server/messaging/send";
 import { cancelFollowUps } from "@/server/messaging/followups";
@@ -44,19 +44,39 @@ export async function pauseAi(ctx: OrgContext, conversationId: string, reason?: 
   await assertConversationVisible(ctx, conversationId);
   const why = (reason ?? "").trim().slice(0, 300);
   return withSystem(async (db) => {
-    const conv = await lockConversation(db, ctx.org.orgId, conversationId);
-    if (conv.owner_kind !== "ai") throw new AppError("conflict", conv.owner_kind === "human" ? "A person is handling this conversation, so the AI is not replying." : "No AI employee is handling this conversation, so there is nothing to pause.");
-    if (conv.ai_paused_at) return { changed: false };
-    await db.query(
-      "update conversations set ai_paused_at = now(), ai_paused_by = $3, ai_pause_reason = nullif($4, ''), ownership_version = ownership_version + 1 where id = $1 and org_id = $2",
-      [conversationId, ctx.org.orgId, ctx.user.id, why],
-    );
-    await cancelPendingAiMessages(db, ctx.org.orgId, conversationId, "ai_paused", { queuedOnly: true });
-    await cancelFollowUps(db, { orgId: ctx.org.orgId, contactId: conv.contact_id, reason: "ai_paused" });
-    await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "ai_paused", actor: { kind: "user", userId: ctx.user.id }, detail: why ? { reason: why.slice(0, 120) } : {} });
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "conversation.ai_paused", targetType: "conversation", targetId: conversationId, result: "success" }, db);
-    return { changed: true };
+    const r = await pauseAiInTx(db, { orgId: ctx.org.orgId, conversationId, actor: { kind: "user", userId: ctx.user.id }, userId: ctx.user.id, reason: why });
+    if (r.changed) {
+      await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "conversation.ai_paused", targetType: "conversation", targetId: conversationId, result: "success" }, db);
+      return { changed: true };
+    }
+    if (r.why === "human_owner") throw new AppError("conflict", "A person is handling this conversation, so the AI is not replying.");
+    if (r.why === "no_ai") throw new AppError("conflict", "No AI employee is handling this conversation, so there is nothing to pause.");
+    return { changed: false };
   });
+}
+
+export type PauseResult = { changed: true } | { changed: false; why: "already_paused" | "human_owner" | "no_ai" };
+
+/**
+ * The pause itself, shared by a person pressing Pause AI and a workflow step (which passes `actor: { kind: "workflow" }` and no user). The
+ * caller has already checked who may do it; this locks the conversation, refuses to pause what is not an AI-owned conversation, and returns
+ * why instead of throwing so each caller can answer in its own words.
+ */
+export async function pauseAiInTx(
+  db: Queryable,
+  p: { orgId: string; conversationId: string; actor: ConversationEventActor; userId: string | null; reason: string; causedBy?: { eventId: number; depth: number } | null },
+): Promise<PauseResult> {
+  const conv = await lockConversation(db, p.orgId, p.conversationId);
+  if (conv.owner_kind !== "ai") return { changed: false, why: conv.owner_kind === "human" ? "human_owner" : "no_ai" };
+  if (conv.ai_paused_at) return { changed: false, why: "already_paused" };
+  await db.query(
+    "update conversations set ai_paused_at = now(), ai_paused_by = $3, ai_pause_reason = nullif($4, ''), ownership_version = ownership_version + 1 where id = $1 and org_id = $2",
+    [p.conversationId, p.orgId, p.userId, p.reason],
+  );
+  await cancelPendingAiMessages(db, p.orgId, p.conversationId, "ai_paused", { queuedOnly: true });
+  await cancelFollowUps(db, { orgId: p.orgId, contactId: conv.contact_id, reason: "ai_paused" });
+  await recordConversationEvent(db, { orgId: p.orgId, conversationId: p.conversationId, kind: "ai_paused", actor: p.actor, detail: p.reason ? { reason: p.reason.slice(0, 120) } : {}, causedBy: p.causedBy ?? null });
+  return { changed: true };
 }
 
 /**

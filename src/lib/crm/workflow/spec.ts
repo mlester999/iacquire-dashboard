@@ -11,6 +11,7 @@ import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { customValueKeyOf, extractTokens, isTokenKey } from "@/lib/messaging/tokens";
 import { sha256Hex } from "@/lib/crm/workflow/sha256";
 import { HTTP_METHODS, cleanStepHeaders, pathProblem } from "@/lib/automation-studio/outbound";
+import { CONVERSATION_OUTCOMES } from "@/lib/inbox";
 
 export type MessageChannel = "email" | "sms" | "whatsapp";
 
@@ -245,7 +246,7 @@ export const triggerConfigSchema = z.strictObject({
 
 export const STEP_KIND_LIST = [
   "wait", "branch", "add_tag", "remove_tag", "assign", "create_task", "update_field", "create_opportunity", "move_stage", "send_message",
-  "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review", "http_request", "slack_message",
+  "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review", "http_request", "slack_message", "conversation_action",
 ] as const;
 export type StepKind = (typeof STEP_KIND_LIST)[number];
 export const isStepKind = (k: unknown): k is StepKind => typeof k === "string" && (STEP_KIND_LIST as readonly string[]).includes(k);
@@ -449,6 +450,34 @@ const aiTaskSchema = z.strictObject({
   instruction: z.string().trim().min(10, "Tell the AI employee what to do (at least a sentence).").max(2000),
 });
 
+/**
+ * What a workflow can do to the conversation that started it. Nothing here messages a customer, and nothing turns AI replies on: giving a
+ * conversation back to an AI employee stays a person's decision. Pausing the AI and handing a conversation to a teammate only ever make it
+ * quieter.
+ */
+export const CONVERSATION_ACTIONS = ["resolve", "reopen", "set_priority", "assign_person", "assign_contact_owner", "pause_ai"] as const;
+export type ConversationAction = (typeof CONVERSATION_ACTIONS)[number];
+export const CONVERSATION_ACTION_LABELS: Record<ConversationAction, string> = {
+  resolve: "Resolve it",
+  reopen: "Reopen it",
+  set_priority: "Set its priority",
+  assign_person: "Assign it to a person",
+  assign_contact_owner: "Assign it to the contact's owner",
+  pause_ai: "Pause the AI employee on it",
+};
+export const CONVERSATION_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export type ConversationPriority = (typeof CONVERSATION_PRIORITIES)[number];
+
+const conversationActionSchema = z.strictObject({
+  action: z.enum(CONVERSATION_ACTIONS),
+  /** resolve: how it ended (optional). */
+  outcome: z.enum(CONVERSATION_OUTCOMES).optional(),
+  /** set_priority. */
+  priority: z.enum(CONVERSATION_PRIORITIES).optional(),
+  /** assign_person. */
+  userId: uuid.optional(),
+});
+
 const endSchema = z.strictObject({});
 
 export type WaitConfig = z.infer<typeof waitSchema>;
@@ -468,6 +497,7 @@ export type WebhookConfig = z.infer<typeof webhookSchema>;
 export type AiTaskConfig = z.infer<typeof aiTaskSchema>;
 export type HttpRequestConfig = z.infer<typeof httpRequestSchema>;
 export type SlackMessageConfig = z.infer<typeof slackMessageSchema>;
+export type ConversationActionConfig = z.infer<typeof conversationActionSchema>;
 
 export interface StepConfigMap {
   wait: WaitConfig;
@@ -489,6 +519,7 @@ export interface StepConfigMap {
   end: Record<string, never>;
   http_request: HttpRequestConfig;
   slack_message: SlackMessageConfig;
+  conversation_action: ConversationActionConfig;
 }
 
 export type Need = "required" | "optional" | "none";
@@ -619,6 +650,13 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
     group: "Integrations", schema: slackMessageSchema, branches: false, terminal: false, external: true, emitsEvents: false, approvable: true, premium: "slack_message",
     needs: () => ({ contact: "optional", opportunity: "optional" }), effects: () => ["slack"],
     defaults: () => ({ text: "" }),
+  }),
+  conversation_action: spec({
+    kind: "conversation_action", label: "Update conversation",
+    description: "Resolve or reopen the conversation that started this workflow, set its priority, hand it to a teammate, or pause the AI employee on it. It never sends a message and never turns AI replies on.",
+    group: "Messages", schema: conversationActionSchema, branches: false, terminal: false, external: false, emitsEvents: true, approvable: true,
+    needs: (c) => ({ contact: c.action === "assign_contact_owner" ? "required" : "optional", opportunity: "none" }), effects: () => [],
+    defaults: () => ({ action: "resolve" as const }),
   }),
   end: spec({
     kind: "end", label: "End", description: "Stop the workflow here.", group: "Flow", schema: endSchema as unknown as z.ZodType<Record<string, never>>, branches: false, terminal: true, external: false, emitsEvents: false, approvable: false,
@@ -1144,8 +1182,31 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
     case "ai_task":
       if (ctx && !ctx.agents.has((step.config as AiTaskConfig).roleKey)) out.push(issue("error", "missing_agent", "That AI employee isn't included in this workspace.", { ...base, path: "config.roleKey" }));
       break;
+    case "conversation_action":
+      out.push(...conversationActionIssues(step.config as ConversationActionConfig, def, ctx, base));
+      break;
     case "end":
       break;
+  }
+  return out;
+}
+
+function conversationActionIssues(c: ConversationActionConfig, def: WorkflowDefinition, ctx: ValidationContext | null, base: { stepKey: string }): ValidationIssue[] {
+  const out: ValidationIssue[] = [];
+  const trig = TRIGGERS[def.trigger.type];
+  // The step acts on the conversation that started the run. Only conversation triggers have one, so any other trigger would skip it every time.
+  if (trig.entity !== "conversation") {
+    out.push(issue("error", "needs_conversation", `"Update conversation" works on a conversation, and "${trig.label}" doesn't have one. Start the workflow from a conversation trigger, such as "Customer message received".`, base));
+  }
+  if (c.action === "set_priority" && !c.priority) out.push(issue("error", "invalid_config", "Choose the priority.", { ...base, path: "config.priority" }));
+  if (c.action === "assign_person") {
+    if (!c.userId) out.push(issue("error", "invalid_config", "Choose who gets it.", { ...base, path: "config.userId" }));
+    else if (ctx && !ctx.users.has(c.userId)) out.push(issue("error", "missing_user", "That person is no longer in the workspace or can't see contacts.", { ...base, path: "config.userId" }));
+  }
+  if (c.action === "resolve" && def.trigger.type === "conversation.resolved") out.push(issue("warning", "no_effect", "The conversation is already resolved when this workflow starts, so this step changes nothing.", base));
+  // Handing a conversation over announces "assigned" again, which can start this workflow again; the loop limit stops it, but say so.
+  if ((c.action === "assign_person" || c.action === "assign_contact_owner") && def.trigger.type === "conversation.assigned") {
+    out.push(issue("warning", "self_trigger", "Assigning a conversation starts any workflow that listens for assignments, this one included. The loop limit stops a loop, but check this is what you want.", base));
   }
   return out;
 }

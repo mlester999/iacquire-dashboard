@@ -115,7 +115,7 @@ describe("scheduled jobs", () => {
     expect(names.indexOf("aqiOperationsRetention")).toBeGreaterThan(names.indexOf("aqiOperationsBriefings"));
   });
 
-  it("adds no other job than the AQi Operations pair (and the Automation Studio plan sweep) to the list the previous release shipped", () => {
+  it("adds no other job than the AQi Operations pair (and the Automation Studio plan sweep and the inbox attention scan) to the list the previous release shipped", () => {
     const shipped = [
       "expiredReservations", "escalationsOpened", "followUpsPrepared", "repliesChecked", "approvalExpiry", "bookingHolds", "calendarBusySync", "calendarWriteBack",
       "appointmentReminders", "retentionPrograms", "crmEventDispatch", "crmWorkflowRuns", "crmFormSubmissions", "crmCampaigns", "messagesDispatched", "crmWebhookDeliveries",
@@ -123,8 +123,8 @@ describe("scheduled jobs", () => {
       "supportResponseTargets", "supportEmails", "supportAutoClose", "supportAttachmentCleanup", "fairUseChecks", "inactivityReview", "offboardingReminders",
       "crmWorkflowRecovery", "whatsappTemplateSync", "setupEvidence", "aqiTutorialEventRetention",
     ];
-    // The Automation Studio plan sweep sits right after the workflow housekeeping it follows.
-    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : [name]));
+    // The Automation Studio plan sweep sits right after the workflow housekeeping it follows; the inbox attention scan right after the reply checks.
+    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : name === "repliesChecked" ? [name, "inboxAttention"] : [name]));
     expect(JOBS.map((job) => job.name)).toEqual([...withStudio, "aqiOperationsBriefings", "aqiOperationsRetention"]);
   });
 });
