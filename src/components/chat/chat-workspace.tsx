@@ -8,6 +8,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
+  Building2,
   Check,
   Copy,
   Menu as MenuIcon,
@@ -21,13 +22,14 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
-import { AgentAvatar, ThinkingDots } from "@/components/brand";
+import { AgentAvatar } from "@/components/brand";
 import { StatusPill } from "@/components/ui/status";
 import { Markdown } from "@/components/markdown";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Dialog, Segmented, Sheet, Tooltip } from "@/components/ui/overlays";
+import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { ChatRail, type ConversationItem, type ListState } from "@/components/chat/chat-rail";
+import { OperationsSnapshotDisclosure } from "@/components/chat/operations-snapshot-disclosure";
 import { openHelp } from "@/components/help/help-widget";
 import {
   deleteConversationAction,
@@ -35,7 +37,6 @@ import {
   loadOlderMessagesAction,
   renameConversationAction,
   searchConversationsAction,
-  setReplyLengthAction,
 } from "@/app/actions/chat";
 import { agentIdentityLabel, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness, type EmployeeReadiness } from "@/lib/workforce-readiness";
@@ -43,7 +44,6 @@ import { chatNavTargets } from "@/lib/chat-navigation";
 import { operationsManagerRuntimeNotice } from "@/lib/operations-manager-runtime";
 import { detectBrowserTimeZone, resolveChatTimeZone } from "@/lib/chat-timezone";
 import { chatDateSeparatorLabel, conversationDateKey, formatChatTime } from "@/lib/conversation-time";
-import type { ReplyLength } from "@/lib/agent-settings";
 import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
@@ -74,7 +74,6 @@ interface Props {
   identityCurrent: boolean | null;
   acknowledgementCurrent: boolean | null;
   taskExecuting: boolean;
-  replyLength: ReplyLength;
   canConfigure: boolean;
   configured: boolean;
   hasPendingReview: boolean;
@@ -243,7 +242,6 @@ export function ChatWorkspace(props: Props) {
   const [listState, setListState] = React.useState<ListState>("idle");
   const [compactRail, toggleCompactRail] = useCompactRail();
   const targets = chatNavTargets(props.orgKind, meta.slug);
-  const [replyLength, setReplyLength] = React.useState<ReplyLength>(props.replyLength);
   const [renaming, setRenaming] = React.useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = React.useState<string | null>(null);
   const [atBottom, setAtBottom] = React.useState(true);
@@ -488,23 +486,6 @@ export function ChatWorkspace(props: Props) {
     }
   };
 
-  const changeLength = async (v: ReplyLength) => {
-    const prev = replyLength;
-    setReplyLength(v);
-    const res = await setReplyLengthAction(meta.key, v);
-    if (!res.ok) {
-      setReplyLength(prev);
-      toast.error(res.error);
-    } else if (res.data.status === "pending_agency_review") {
-      // The quick control changed a draft that contains sensitive changes. Nothing is active yet,
-      // so show the active value again and send the person to the review status.
-      setReplyLength(prev);
-      toast.warning("Submitted for review", { description: "Your current reply length stays active until the whole configuration is approved." });
-    } else if (res.data.version) {
-      toast.success(`Replies will be ${v}`, { description: `Saved as configuration v${res.data.version}.` });
-    }
-  };
-
   const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
   const awaitingFirstToken = Boolean(streaming) && !messages.some((m) => m.id === streaming?.assistantId && m.content);
 
@@ -540,79 +521,69 @@ export function ChatWorkspace(props: Props) {
       </Sheet>
 
       <main className="relative flex min-w-0 flex-1 flex-col">
-        {/* Header */}
-        <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6" data-aqi-target="chat.employee">
-          <button type="button" onClick={() => setRailOpen(true)} className="flex size-11 shrink-0 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2 lg:hidden" aria-label="Open chat navigation" aria-haspopup="dialog" aria-expanded={railOpen}>
-            <MenuIcon className="size-5" />
-          </button>
-          <AgentAvatar role={meta} size="md" thinking={Boolean(streaming)} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-[17px] font-semibold tracking-tight text-ink" title={agentIdentityLabel(props.agentName, meta)}>{agentIdentityLabel(props.agentName, meta)}</h1>
-              <span className="hidden rounded-md bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted xl:inline">Private workspace</span>
-            </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-x-2">
-              <StatusPill tone={statusMeta.tone} size="sm" className="shrink-0">{statusMeta.label}</StatusPill>
-              <span className="min-w-0 truncate text-[12px] text-muted" title={activeTitle ?? undefined}>{activeTitle ?? "New conversation"}</span>
-            </div>
-            {ready && !readiness.inventoryAttestationCurrent && (
-              <p className="mt-1 text-[10.5px] leading-tight text-muted">Runtime tools are reverified before a new message is saved.</p>
-            )}
-          </div>
-          {props.canConfigure && ready && !props.hasPendingReview && (
-            <Tooltip content="How much detail new replies use. Saved as a configuration change.">
-              <div className="hidden xl:block">
-                <Segmented
-                  id="reply-length"
-                  ariaLabel="Reply length"
-                  size="sm"
-                  value={replyLength}
-                  onChange={changeLength}
-                  options={[
-                    { value: "concise", label: "Concise" },
-                    { value: "balanced", label: "Balanced" },
-                    { value: "detailed", label: "Detailed" },
-                  ]}
-                />
+        {/* Employee identity and runtime state stay visible without occupying a warning banner. */}
+        <header className="shrink-0 border-b border-line/80 bg-surface/95 px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] shadow-[0_4px_18px_-18px_rgb(20_30_60/.28)] backdrop-blur sm:px-6" data-aqi-target="chat.employee">
+          <div className="mx-auto flex w-full max-w-5xl items-center gap-3">
+            <button type="button" onClick={() => setRailOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-2 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden" aria-label="Open chat navigation" aria-haspopup="dialog" aria-expanded={railOpen}>
+              <MenuIcon className="size-5" />
+            </button>
+            <span className="grid size-11 shrink-0 place-items-center rounded-[15px] border border-line bg-surface-2/70 shadow-[inset_0_1px_0_rgb(255_255_255/.7)] sm:size-12">
+              <AgentAvatar role={meta} size="md" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                <h1 className="max-w-full truncate text-[16px] font-semibold tracking-tight text-ink sm:text-[17px]" title={agentIdentityLabel(props.agentName, meta)}>{agentIdentityLabel(props.agentName, meta)}</h1>
+                <StatusPill tone={statusMeta.tone} size="md" className="h-6 px-2.5 text-[11px] sm:text-[11.5px]">{statusMeta.label}</StatusPill>
               </div>
-            </Tooltip>
-          )}
-          {props.hasPendingReview && (
-            <span className="hidden rounded-full border border-warning/25 bg-warning-soft/40 px-2.5 py-1 text-[11px] font-medium text-warning-ink xl:inline-flex">Configuration review pending</span>
-          )}
-          <Tooltip content="New chat">
-            <Button variant="secondary" size="icon" onClick={newChat} aria-label="New chat">
-              <Plus className="size-4" />
-            </Button>
-          </Tooltip>
-          <Tooltip content={`${props.agentName} profile`}>
-            <ButtonLink href={targets.profile} prefetch={false} variant="ghost" size="icon" aria-label={`Open ${props.agentName} profile`} className="hidden sm:inline-flex">
-              <UserRound className="size-4" />
-            </ButtonLink>
-          </Tooltip>
-          {props.canConfigure && (
-            <Tooltip content="Manage employee">
-              <ButtonLink href={targets.manage} prefetch={false} variant="ghost" size="icon" aria-label="Manage employee" className="hidden sm:inline-flex">
-                <Settings2 className="size-4" />
-              </ButtonLink>
-            </Tooltip>
-          )}
-        </header>
-
-        {operationsNotice && (
-          <div role="status" className="flex shrink-0 items-start gap-2 border-b border-warning/30 bg-warning-soft/40 px-4 py-2.5 text-[12px] leading-relaxed text-warning-ink sm:px-6">
-            <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-            <p>{operationsNotice}</p>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+                <span className="font-medium text-muted">{meta.shortName}</span>
+                <span className="text-faint" aria-hidden>·</span>
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-line/80 bg-surface-2/65 px-2 py-0.5 font-medium text-ink-2">
+                  <Building2 className="size-3 shrink-0 text-muted" aria-hidden />
+                  {props.orgKind === "agency" ? "iAcquire workspace" : "Private workspace"}
+                </span>
+                <span className="hidden min-w-0 truncate text-muted md:inline" title={activeTitle ?? undefined}>· {activeTitle ?? "New conversation"}</span>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+              {props.hasPendingReview && (
+                <span className="hidden rounded-full border border-warning/25 bg-warning-soft/40 px-2.5 py-1 text-[11px] font-medium text-warning-ink xl:inline-flex">Configuration review pending</span>
+              )}
+              <Tooltip content="New chat">
+                <Button variant="secondary" size="icon" onClick={newChat} aria-label="New chat" className="shadow-none transition-transform hover:-translate-y-0.5">
+                  <Plus className="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip content={`${props.agentName} profile`}>
+                <ButtonLink href={targets.profile} prefetch={false} variant="ghost" size="icon" aria-label={`Open ${props.agentName} profile`} className="hidden sm:inline-flex">
+                  <UserRound className="size-4" />
+                </ButtonLink>
+              </Tooltip>
+              {props.canConfigure && (
+                <Tooltip content="Manage employee">
+                  <ButtonLink href={targets.manage} prefetch={false} variant="ghost" size="icon" aria-label="Manage employee" className="hidden sm:inline-flex">
+                    <Settings2 className="size-4" />
+                  </ButtonLink>
+                </Tooltip>
+              )}
+            </div>
           </div>
-        )}
+          <div className="mx-auto mt-2.5 flex w-full max-w-5xl flex-wrap items-center gap-2 pl-0 sm:pl-[60px] lg:pl-0">
+            <span className="truncate text-[11.5px] text-muted md:hidden">{activeTitle ?? "New conversation"}</span>
+            {ready && !readiness.inventoryAttestationCurrent && (
+              <span className="rounded-full border border-line bg-surface-2/70 px-2.5 py-1 text-[10.5px] leading-tight text-muted">Tools are reverified before a new message is saved</span>
+            )}
+            {operationsNotice && <OperationsSnapshotDisclosure agentName={props.agentName} />}
+          </div>
+        </header>
 
         {/* Messages */}
         <div ref={scrollRef} onScroll={onScroll} className="scrollbar-thin relative min-h-0 flex-1 overflow-y-auto" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text" aria-busy={Boolean(streaming)}>
-          <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-8 sm:px-6">
+          <div className="mx-auto w-full max-w-4xl px-4 pb-10 pt-7 sm:px-6 sm:pt-9">
             {messages.length === 0 ? (
               <EmptyState meta={meta} readiness={readiness} ready={ready} configured={props.configured} canConfigure={props.canConfigure} onPick={(p) => send(p)} />
             ) : (
-              <ol className="space-y-6">
+              <ol className="space-y-7">
                 {hasMore && (
                   <li className="flex justify-center">
                     <Button type="button" size="sm" variant="ghost" onClick={() => void loadOlder()} loading={loadingOlder} aria-label="Load earlier messages">
@@ -640,6 +611,8 @@ export function ChatWorkspace(props: Props) {
                           <AssistantBubble
                             message={m}
                             meta={meta}
+                            agentName={props.agentName}
+                            snapshotReview={Boolean(operationsNotice)}
                             timeZone={timeZone}
                             isLast={m.id === lastAssistantId}
                             streaming={streaming?.assistantId === m.id}
@@ -655,12 +628,7 @@ export function ChatWorkspace(props: Props) {
                 </AnimatePresence>
                 {streaming && !streaming.assistantId && (
                   <li>
-                    <div className="flex items-start gap-3">
-                      <AgentAvatar role={meta} size="sm" thinking />
-                      <div className="flex h-9 items-center gap-2 rounded-2xl border border-line bg-surface px-3.5 text-muted shadow-soft">
-                        <ThinkingDots /> <span className="text-[12.5px]">Sending…</span>
-                      </div>
-                    </div>
+                    <AssistantLoadingState meta={meta} agentName={props.agentName} snapshotReview={Boolean(operationsNotice)} phase="preflight" />
                   </li>
                 )}
               </ol>
@@ -699,6 +667,7 @@ export function ChatWorkspace(props: Props) {
             textareaRef={textareaRef}
             placeholder={`Message ${props.agentName}…`}
             awaitingFirstToken={awaitingFirstToken}
+            operationsReadOnly={Boolean(operationsNotice)}
           />
         ) : messages.length > 0 ? (
           <ChatUnavailableDock meta={meta} readiness={readiness} configured={props.configured} canConfigure={props.canConfigure} />
@@ -857,10 +826,10 @@ function ChatUnavailableDock({ meta, readiness, configured, canConfigure }: { me
 function UserBubble({ message, timeZone }: { message: ChatMessage; timeZone: string }) {
   return (
     <div className="group flex flex-col items-end">
-      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-[#4b54ff] px-4 py-2.5 text-[14.5px] leading-relaxed text-white shadow-[0_6px_20px_-10px_rgba(44,91,255,0.7)]">
+      <div className="max-w-[min(88%,44rem)] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary px-4 py-3 text-[14.5px] leading-relaxed text-white shadow-[0_8px_22px_-16px_rgba(44,91,255,.72)] sm:px-5">
         {message.content}
       </div>
-      <time className="mt-1 pr-1 text-[11px] text-faint opacity-0 transition-opacity group-hover:opacity-100" dateTime={message.created_at}>
+      <time className="mt-1.5 pr-1 text-[11px] tabular-nums text-faint transition-colors group-hover:text-muted" dateTime={message.created_at}>
         {formatChatTime(message.created_at, timeZone)}
       </time>
     </div>
@@ -870,6 +839,8 @@ function UserBubble({ message, timeZone }: { message: ChatMessage; timeZone: str
 function AssistantBubble({
   message,
   meta,
+  agentName,
+  snapshotReview,
   timeZone,
   isLast,
   streaming,
@@ -880,6 +851,8 @@ function AssistantBubble({
 }: {
   message: ChatMessage;
   meta: AgentRoleMeta;
+  agentName: string;
+  snapshotReview: boolean;
   timeZone: string;
   isLast: boolean;
   streaming: boolean;
@@ -891,30 +864,33 @@ function AssistantBubble({
   const [copied, setCopied] = React.useState(false);
   const thinking = streaming && !message.content;
   return (
-    <div className="group flex items-start gap-3">
-      <AgentAvatar role={meta} size="sm" thinking={streaming} className="mt-0.5" />
+    <div className="group flex items-start gap-3 sm:gap-3.5">
+      {!thinking && <span className="mt-1 grid size-9 shrink-0 place-items-center rounded-xl border border-line bg-surface-2/70 shadow-[inset_0_1px_0_rgb(255_255_255/.7)]"><AgentAvatar role={meta} size="sm" /></span>}
       <div className="min-w-0 flex-1">
         <AnimatePresence>
-          {streaming && activity && (
+          {streaming && activity && !thinking && (
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="mb-2 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink-2 shadow-soft"
+              className="mb-2 inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-[12px] text-ink-2 shadow-soft"
               role="status"
             >
-              {activity.startsWith("Waiting") ? <ShieldCheck className="size-3.5 text-warning" /> : <Wrench className="size-3.5 animate-pulse text-primary" />}
-              {activity}
+              {activity.startsWith("Waiting") ? <ShieldCheck className="size-3.5 shrink-0 text-warning" /> : <Wrench className="size-3.5 shrink-0 text-primary" />}
+              <span className="truncate">{activity}</span>
             </motion.div>
           )}
         </AnimatePresence>
         {thinking ? (
-          <div className="flex h-9 items-center gap-2 text-muted" role="status">
-            <ThinkingDots className="text-primary" />
-            <span className="text-[13px]">Thinking</span>
-          </div>
+          <AssistantLoadingState
+            meta={meta}
+            agentName={agentName}
+            snapshotReview={snapshotReview}
+            phase={activity ? activity.startsWith("Waiting") ? "waiting" : "active" : "starting"}
+            activity={activity}
+          />
         ) : (
-          <div className={cn("rounded-2xl px-1 py-2 text-ink", message.status === "failed" && "border border-danger/25 bg-danger-soft/30 px-4")}>
+          <div className={cn("rounded-2xl border border-line/80 bg-surface px-4 py-3 text-ink shadow-[0_5px_20px_-17px_rgb(20_30_60/.3)] sm:px-5 sm:py-4", message.status === "failed" && "border-danger/25 bg-danger-soft/30 shadow-none")}>
             {message.content ? <Markdown>{message.content}</Markdown> : message.status === "cancelled" ? <p className="text-[13.5px] italic text-muted">Stopped before a reply was written.</p> : null}
             {streaming && message.content && <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-primary align-middle" aria-hidden />}
             {message.status === "failed" && (
@@ -926,7 +902,7 @@ function AssistantBubble({
           </div>
         )}
         {!streaming && (
-          <div className="mt-1.5 flex items-center gap-1 text-faint">
+          <div className="mt-2 flex min-h-7 items-center gap-1 text-faint">
             {message.content && (
               <Tooltip content={copied ? "Copied" : "Copy"}>
                 <button
@@ -950,13 +926,53 @@ function AssistantBubble({
                 </button>
               </Tooltip>
             )}
-            <time className="ml-1 text-[11px]" dateTime={message.created_at}>
+            <time className="ml-1 text-[11px] tabular-nums" dateTime={message.created_at}>
               {formatChatTime(message.created_at, timeZone)}
             </time>
             {message.status === "cancelled" && <span className="ml-1 text-[11px]">· Stopped</span>}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AssistantLoadingState({ meta, agentName, snapshotReview, phase, activity }: { meta: AgentRoleMeta; agentName: string; snapshotReview: boolean; phase: "preflight" | "starting" | "active" | "waiting"; activity?: string | null }) {
+  const reduce = useReducedMotion();
+  const statusLabel = phase === "preflight"
+    ? "Verifying access before the run starts…"
+    : phase === "starting"
+      ? "Starting the authorized response…"
+      : phase === "waiting"
+        ? activity ?? "Waiting for a response…"
+        : snapshotReview ? `${agentName} is reviewing your workspace snapshot…` : `${agentName} is responding…`;
+  const detailLabel = phase === "preflight"
+    ? "Your message is checked before it is saved"
+    : phase === "starting"
+      ? "Preparing the response"
+      : phase === "waiting"
+        ? "The run is waiting for its next step"
+        : activity ?? "Using authorized context";
+  return (
+    <div className="flex min-h-[76px] w-full max-w-2xl items-center gap-3 rounded-2xl border border-line/80 bg-surface px-3.5 py-3 shadow-[0_5px_20px_-17px_rgb(20_30_60/.3)] sm:px-4" role="status" aria-live="polite" aria-busy="true">
+      <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-primary/10 bg-primary/[.035]">
+        {!reduce && <motion.span aria-hidden className="absolute inset-0 rounded-xl bg-primary/[.06]" animate={{ opacity: [0.3, 0.8, 0.3] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }} />}
+        <AgentAvatar role={meta} size="sm" className="relative" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium leading-snug text-ink">{statusLabel}</p>
+        <p className="mt-1 truncate text-[11.5px] leading-snug text-muted">{detailLabel}</p>
+      </div>
+      <span className="flex shrink-0 items-center gap-1.5 px-1" aria-hidden>
+        {[0, 1, 2].map((index) => (
+          <motion.span
+            key={index}
+            className="size-1.5 rounded-full bg-primary/70"
+            animate={reduce ? { opacity: 0.65 } : { opacity: [0.25, 0.9, 0.25], y: [0, -1, 0] }}
+            transition={reduce ? { duration: 0 } : { duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: index * 0.16 }}
+          />
+        ))}
+      </span>
     </div>
   );
 }
@@ -973,6 +989,7 @@ function Composer({
   textareaRef,
   placeholder,
   awaitingFirstToken,
+  operationsReadOnly,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -985,6 +1002,7 @@ function Composer({
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   placeholder: string;
   awaitingFirstToken: boolean;
+  operationsReadOnly: boolean;
 }) {
   React.useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -994,12 +1012,12 @@ function Composer({
   }, [value, textareaRef]);
 
   return (
-    <div className="shrink-0 bg-gradient-to-t from-surface via-surface to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5" data-aqi-target="chat.composer">
-      <div className="mx-auto w-full max-w-3xl">
+    <div className="shrink-0 border-t border-line/70 bg-surface/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-6 sm:pb-5" data-aqi-target="chat.composer">
+      <div className="mx-auto w-full max-w-4xl">
         <div
           className={cn(
-            "rounded-[22px] border bg-surface-2/60 p-2 shadow-[0_6px_24px_-12px_rgba(20,30,60,.2)] transition",
-            disabled ? "border-line opacity-80" : "border-line-strong focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10",
+            "rounded-[22px] border bg-surface p-2 shadow-[0_8px_26px_-18px_rgba(20,30,60,.28)] transition-[border-color,box-shadow,background-color] duration-200",
+            disabled ? "border-line opacity-80" : "border-line-strong/80 focus-within:border-primary/55 focus-within:ring-4 focus-within:ring-primary/10 focus-within:shadow-[0_10px_30px_-18px_rgba(44,91,255,.32)]",
           )}
         >
           <label htmlFor="chat-input" className="sr-only">
@@ -1020,7 +1038,7 @@ function Composer({
               }
             }}
             placeholder={disabled ? disabledReason : placeholder}
-            className="block max-h-[200px] w-full resize-none bg-transparent px-3 py-2 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint disabled:cursor-not-allowed"
+            className="block max-h-[200px] w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint disabled:cursor-not-allowed"
           />
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
             <Tooltip content="Attachments aren't supported by AI employees yet">
@@ -1044,7 +1062,9 @@ function Composer({
             </div>
           </div>
         </div>
-        <p className="mt-2 text-center text-[11px] text-faint">AI employees can make mistakes. Customer-facing actions always need your approval.</p>
+        <p className="mt-2 text-center text-[11px] text-faint">
+          {operationsReadOnly ? "Read-only chat. No records are changed and no messages are sent externally." : "AI employees can make mistakes. Customer-facing actions always need your approval."}
+        </p>
       </div>
     </div>
   );

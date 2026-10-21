@@ -6,7 +6,6 @@ import { getConversation, listConversations } from "@/server/chat/service";
 import { isChannelActive } from "@/server/chat/hub";
 import { ChatWorkspace, type ChatMessage } from "@/components/chat/chat-workspace";
 import { AGENCY_HERMES_PROFILE_IDS, AGENT_BY_SLUG } from "@/lib/agents";
-import type { ReplyLength } from "@/lib/agent-settings";
 import { preferredChatTimeZone } from "@/lib/chat-timezone";
 import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { withSystem } from "@/server/db";
@@ -123,7 +122,6 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
       acknowledgementCurrent={internalVerification.acknowledgementCurrent}
       credentialReady={agent.credential_ready}
       taskExecuting={agent.active_run}
-      replyLength={(applied?.settings?.replyLength as ReplyLength) ?? "concise"}
       canConfigure={ctx.can("agents.configure")}
       configured={Boolean(applied)}
       hasPendingReview={versions.some((v) => v.status === "pending_agency_review")}

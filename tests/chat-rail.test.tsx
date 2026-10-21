@@ -193,12 +193,12 @@ describe("ChatRail navigation", () => {
 });
 
 describe("ChatRail conversations", () => {
-  it("groups by the workspace's day and shows compact relative times", () => {
+  it("groups by the workspace's day and shows today's time in the viewer's timezone", () => {
     renderRail();
     expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Older" })).toBeInTheDocument();
-    expect(screen.getByText("3h")).toBeInTheDocument();
+    expect(screen.getByText("9:00 AM")).toBeInTheDocument();
   });
 
   it("selects a conversation and highlights the open one", () => {

@@ -150,7 +150,7 @@ export function ChatRail(props: ChatRailProps) {
                     onClick={(e) => goToSpecialist(e, s.current)}
                     aria-current={s.current ? "page" : undefined}
                     aria-label={`${s.name}, ${specialistCaption(s.status)}`}
-                    className="nav-row relative size-11 justify-center"
+                    className={cn("nav-row relative size-11 justify-center", s.current && "before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[#a8c0ff]")}
                   >
                     <AgentAvatar role={s.meta} size="sm" eager />
                     <span className="absolute bottom-1 right-1 flex" aria-hidden>
@@ -248,7 +248,7 @@ export function ChatRail(props: ChatRailProps) {
                 onFocus={() => !s.current && warm(`/chat/${s.slug}`)}
                 onClick={(e) => goToSpecialist(e, s.current)}
                 aria-current={s.current ? "page" : undefined}
-                className="nav-row h-12 gap-2.5 px-2.5 [@media(max-height:760px)]:h-10"
+                className={cn("nav-row relative h-12 gap-2.5 px-2.5 [@media(max-height:760px)]:h-10", s.current && "before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[#a8c0ff]")}
               >
                 <AgentAvatar role={s.meta} size="sm" eager />
                 <span className="min-w-0 flex-1">
@@ -428,7 +428,7 @@ function ConversationList({ conversations, activeId, search, listState, onRetry,
                         onClick={() => onSelect(c.id)}
                         aria-current={active ? "true" : undefined}
                         title={`${c.title} · ${fullTimestamp(c.lastMessageAt, timeZone)}`}
-                        className="nav-row min-h-11 w-full gap-2 pl-3 pr-11 text-left text-[13px] lg:min-h-9"
+                        className={cn("nav-row relative min-h-11 w-full gap-2 pl-3 pr-11 text-left text-[13px] transition-[background-color,box-shadow,color] duration-200 lg:min-h-9", active && "before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[#a8c0ff]")}
                       >
                         <span className={cn("min-w-0 flex-1 truncate", active && "font-semibold")}>{c.title}</span>
                         <time dateTime={c.lastMessageAt} className="shrink-0 text-[11px] tabular-nums text-[var(--nav-muted)]">
