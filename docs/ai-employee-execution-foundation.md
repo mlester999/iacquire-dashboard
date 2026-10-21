@@ -236,6 +236,11 @@ triggers panel with enable/pause/delete, the operator gate and audit evidence.
 event, no repeat, no replay when enabled, member/unknown-event/unavailable-employee refusals, and
 enable/pause/delete audit evidence.
 
+Review notifications reuse the existing notification pipeline: per-job dedupe keys, notification
+preference groups/severity filtering, and the existing non-critical email quiet-hours window
+(21:00–07:00 in the recipient's time zone). Critical findings bypass quiet hours. No parallel
+notification system was added.
+
 ## 11. Exact next action after authorization
 
 Apply migrations 0072, 0073 and 0074 to the hosted project, deploy the application, save the Lead Hunter
