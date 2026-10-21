@@ -22,7 +22,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Conversations the signed-in person is allowed to see. Row-level security decides visibility, not this query. */
 export async function listConversations(ctx: OrgContext, f: ConversationFilters = {}): Promise<ConversationListItem[]> {
-  return (await listConversationsPage(ctx, f)).items;
+  // The whole-list read keeps its original contract: 60 unless told otherwise, never more than 200, no next page. The inbox itself pages (listConversationsPage).
+  return (await listConversationsPage(ctx, { ...f, limit: f.limit ?? 60 }, null, { max: 200, lookahead: false })).items;
 }
 
 /** The conversation's own list row, under the same row-level security as the list (so opening an old one doesn't depend on it being listed). */

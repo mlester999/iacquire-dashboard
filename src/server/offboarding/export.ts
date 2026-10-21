@@ -48,6 +48,7 @@ const TABLES: TableSpec[] = [
   { file: "conversations/follow-up-plans.json", table: "follow_up_plans" },
   { file: "conversations/follow-up-steps.json", table: "follow_up_steps" },
   { file: "conversations/escalations.json", table: "human_escalations" },
+  { file: "conversations/lifecycle-events.json", table: "conversation_events", order: "created_at" },
   { file: "sales/leads.json", table: "leads", order: "created_at" },
   { file: "sales/lead-research-requests.json", table: "lead_research_requests" },
   { file: "sales/lead-targeting-profiles.json", table: "lead_targeting_profiles" },

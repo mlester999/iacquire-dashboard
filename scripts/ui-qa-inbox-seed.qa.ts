@@ -152,7 +152,7 @@ async function seed() {
   const inbound = (channel: "sms" | "whatsapp" | "email", address: string, name: string, body: string, hoursAgo: number, subject?: string, orgId = org.id) =>
     withSystem((db) => ingestInbound(db, { orgId, provider: "ghl", channel, address, name, body, providerMessageId: `qa-in-${++n}`, ghlContactId: `qa_ghl_${address.replace(/\W/g, "")}`, receivedAt: ago(hoursAgo), subject }));
   /** A reply that reaches a stand-in provider, which answers locally. "ok" is accepted (then delivered), "refused" is rejected, "silent" never confirms. */
-  const reply = async (conversationId: string, body: string, kind: "ok" | "refused" | "silent", as: "ai" | Who = "ai") => {
+  const reply = async (conversationId: string, body: string, kind: "ok" | "refused" | "silent", as: "ai" | Who = "ai", hoursAgo?: number) => {
     const q2 = await withSystem((db) =>
       queueOutbound(db, { orgId: org.id, conversationId, scope: as === "ai" ? "reply" : "human", actor: as === "ai" ? { kind: "ai", agentId: agents.sales_assistant } : { kind: "human", userId: people[as].id }, body }),
     );
@@ -164,12 +164,20 @@ async function seed() {
       },
     });
     if (kind === "ok") await withSystem((db) => applyDeliveryEvent(db, { provider: "ghl", providerEventId: `qa-ev-${n}`, providerMessageId: pid, status: "delivered" }));
+    // The seed runs in a moment, but the thread should read as it would have over hours: the reply is stamped just after the message it answers.
+    if (hoursAgo !== undefined) {
+      const at = ago(hoursAgo);
+      await q(
+        "update conversation_messages set created_at = $2, sent_at = case when sent_at is null then null else $2 end, delivered_at = case when delivered_at is null then null else $2 end, failed_at = case when failed_at is null then null else $2 end, status_changed_at = $2 where id = $1",
+        [q2.messageId, at],
+      );
+    }
     return q2.messageId;
   };
 
   // 1. An AI-handled SMS thread with a delivered reply and a new unread message. The customer record is rich (company, deal, task, note, call).
   const maria = await inbound("sms", "+15125550101", "Maria Santos", "Hi! Do you have an inspection slot this week?", 6);
-  await reply(maria.conversationId, "Hi Maria, I'm the AI assistant for Harbor Home Services. We have Thursday 10am and Friday 2pm open. Which suits you?", "ok");
+  await reply(maria.conversationId, "Hi Maria, I'm the AI assistant for Harbor Home Services. We have Thursday 10am and Friday 2pm open. Which suits you?", "ok", "ai", 5.9);
   await inbound("sms", "+15125550101", "Maria Santos", "Thursday 10am works. Can you also tell me what a gutter replacement costs?", 1.5);
   await addMemory(ctx("owner"), { contactId: maria.contactId, kind: "confirmed_fact", content: "Owns a two-storey house; prefers morning visits." });
   const owner = memberActor(ctx("owner"));
@@ -188,7 +196,7 @@ async function seed() {
 
   // 2. An email thread, waiting on the customer (we replied last).
   const lena = await inbound("email", "lena.park@example.test", "Dr. Lena Park", "Could you send over your warranty terms for a full roof replacement?", 30, "Warranty terms");
-  await reply(lena.conversationId, "Hello Dr. Park, our warranty covers workmanship for 10 years. I've attached the full terms for your records.", "ok");
+  await reply(lena.conversationId, "Hello Dr. Park, our warranty covers workmanship for 10 years. I've attached the full terms for your records.", "ok", "ai", 29.5);
   await q("update conversations set unread_count = 0 where id = $1", [lena.conversationId]);
 
   // 3. A WhatsApp customer whose reply window has closed.
@@ -203,17 +211,18 @@ async function seed() {
   const james = await inbound("sms", "+15125550105", "James O'Neil", "I was charged twice last month. Please check.", 26);
   await assignConversation(ctx("manager"), james.conversationId, people.support.id);
   await takeOverConversation(ctx("manager"), james.conversationId, "Billing question");
-  await reply(james.conversationId, "Hi James, it's Mia. I'm checking the invoices now and will come back to you today.", "ok", "manager");
+  await reply(james.conversationId, "Hi James, it's Mia. I'm checking the invoices now and will come back to you today.", "ok", "manager", 25);
   await addInternalNote(ctx("manager"), james.conversationId, "Looks like a duplicate card authorization. Waiting on the bank statement.");
+  await q("update conversation_messages set created_at = $2 where conversation_id = $1 and direction = 'internal'", [james.conversationId, ago(24.5)]);
   await q("update conversations set unread_count = 0 where id = $1", [james.conversationId]);
 
   // 6. A reply the provider refused, and another that was never confirmed.
   const priya = await inbound("sms", "+15125550106", "Priya Nair", "Please confirm my appointment time.", 5);
   await takeOverConversation(ctx("manager"), priya.conversationId);
-  await reply(priya.conversationId, "Hi Priya, you're booked for Thursday at 10am.", "refused", "manager");
+  await reply(priya.conversationId, "Hi Priya, you're booked for Thursday at 10am.", "refused", "manager", 4.9);
   const omar = await inbound("sms", "+15125550107", "Omar Haddad", "What time will your crew arrive tomorrow?", 4);
   await takeOverConversation(ctx("manager"), omar.conversationId);
-  await reply(omar.conversationId, "Hi Omar, the crew arrives between 8 and 9am.", "silent", "manager");
+  await reply(omar.conversationId, "Hi Omar, the crew arrives between 8 and 9am.", "silent", "manager", 3.9);
 
   // 7. A conversation with the AI paused, and an unassigned one with no AI employee.
   const tess = await inbound("sms", "+15125550108", "Tess Lindqvist", "Can you look at a leak above my garage?", 3);
@@ -250,6 +259,15 @@ async function seed() {
     const esc = await db.query<{ conversation_id: string }>("select conversation_id from human_escalations where org_id = $1", [org.id]);
     if (!esc.rows.length) await createEscalation(db, { orgId: org.id, conversationId: dana.conversationId, category: "refund_concern", summary: "The customer wants to talk to a person about a refund.", agentId: agents.sales_assistant });
   });
+
+  // The conversation's own "last" timestamps follow its messages (the replies above were stamped after they were queued).
+  await q(
+    `update conversations c set last_message_at = s.mx, last_outbound_at = s.out_mx, last_inbound_at = coalesce(s.in_mx, c.last_inbound_at)
+     from (select conversation_id, max(created_at) as mx, max(created_at) filter (where direction = 'outbound' and status in ('sent', 'delivered', 'read')) as out_mx, max(created_at) filter (where direction = 'inbound') as in_mx
+           from conversation_messages where direction <> 'internal' group by conversation_id) s
+     where s.conversation_id = c.id and c.org_id = $1`,
+    [org.id],
+  );
 
   // Another workspace's conversation, to prove the boundary in the browser.
   const foreign = await inbound("sms", "+15125550199", "Foreign Customer", "This belongs to another business.", 1, undefined, other.id);

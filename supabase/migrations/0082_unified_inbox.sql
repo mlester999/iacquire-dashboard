@@ -9,14 +9,25 @@
 --   * Execution fencing: conversation_messages.ownership_fence is the ownership_version an AI-authored message was prepared under;
 --     evaluateSend refuses to send it if the version moved (takeover, pause, resume, another employee) before it left.
 --   * Change tracking for near-real-time sync: conversations.revision (bumped on every update) and conversation_messages.status_changed_at
---     (set on insert and whenever the status changes). Both are maintained by row-local BEFORE triggers, so they take no lock on any other
+--     (set on insert and whenever the status changes; NULL on messages that existed before this migration). Both are maintained by row-local BEFORE triggers, so they take no lock on any other
 --     row and cannot add a deadlock to the send path.
 --   * Failed-send handling: conversation_messages.failure_kind separates "the provider refused it" (safe to retry) from "we never heard
 --     back" (the customer may already have it), and retry_of links a re-send to the message it replaces.
 --   * conversation_events: an append-only lifecycle trail (assignment, AI assignment, pause, status, priority, archive, handoff, links).
 --     It holds ids, labels and short enums only (never message text), and is read under the same row-level security as the conversation.
+--     An event's actor is a person, an AI employee, the system, an agency member or "workflow" (an Automation Studio / CRM workflow step).
+--   * Notifications: three new kinds (conversation_assigned, conversation_new_inquiry, conversation_awaiting_reply). notifications_kind_check is
+--     rebuilt from the live constraint plus these kinds instead of from a copied list, so another branch's kinds are kept (see the DO block).
 --
 -- Written by trusted server code only (read-only grants for the application role). Rollback: supabase/rollbacks/0082_unified_inbox.down.sql.
+--
+-- Applying it: the runner wraps this file in one transaction, so every index here is a plain one (CREATE INDEX CONCURRENTLY is an error inside a
+-- transaction). The ALTERs take brief exclusive locks on conversations and conversation_messages; lock_timeout makes the migration fail fast, and
+-- roll back whole, instead of queueing behind a long transaction and blocking every reader and writer queued behind it. Adding columns with a
+-- constant default does not rewrite either table. On a very large conversation_messages table, build the three indexes and the trigram index
+-- by hand with CONCURRENTLY first (same names); the IF NOT EXISTS statements below then find them in place.
+
+set local lock_timeout = '5s';
 
 alter table conversations
   add column archived_at timestamptz,
@@ -30,19 +41,25 @@ alter table conversations
   add column revision bigint not null default 0;
 
 -- Open conversations of one inbox view, and "what changed since" for the sync poll.
-create index conversations_view_idx on conversations (org_id, status, archived_at, last_message_at desc);
-create index conversations_sync_idx on conversations (org_id, updated_at desc);
+create index if not exists conversations_view_idx on conversations (org_id, status, archived_at, last_message_at desc);
+create index if not exists conversations_sync_idx on conversations (org_id, updated_at desc);
 
 alter table conversation_messages
-  add column status_changed_at timestamptz not null default now(),
+  add column status_changed_at timestamptz,
   add column ownership_fence integer check (ownership_fence >= 1),
   add column failure_kind text check (failure_kind in ('rejected', 'unconfirmed')),
   add column retry_of uuid references conversation_messages(id) on delete set null;
 
-create index conversation_messages_changed_idx on conversation_messages (org_id, status_changed_at desc);
-create index conversation_messages_retry_idx on conversation_messages (retry_of) where retry_of is not null;
+-- Old messages keep NULL in status_changed_at on purpose. A default of now() on the ADD COLUMN would stamp the whole history with the migration
+-- time, and the first sync poll of a tab that was open during the deploy would then match every message of its workspace. New messages are
+-- stamped by this default, and a message whose status changes by app.message_status_changed() below.
+alter table conversation_messages alter column status_changed_at set default now();
+
+-- Partial: only messages stamped since this migration, so the index stays small and is never a candidate for queries that do not ask for them.
+create index if not exists conversation_messages_changed_idx on conversation_messages (org_id, status_changed_at desc) where status_changed_at is not null;
+create index if not exists conversation_messages_retry_idx on conversation_messages (retry_of) where retry_of is not null;
 -- "A message could not be sent" in Needs attention: the recent failures of a workspace, without scanning its history.
-create index conversation_messages_failed_idx on conversation_messages (org_id, failed_at desc) where status = 'failed';
+create index if not exists conversation_messages_failed_idx on conversation_messages (org_id, failed_at desc) where status = 'failed';
 
 -- Searching what customers actually wrote. Optional like the contact search index (0027): without pg_trgm the search still works, only slower.
 do $$
@@ -50,7 +67,7 @@ declare s text;
 begin
   select n.nspname into s from pg_extension e join pg_namespace n on n.oid = e.extnamespace where e.extname = 'pg_trgm';
   if s is not null then
-    execute format('create index conversation_messages_body_trgm on conversation_messages using gin (body %I.gin_trgm_ops) where direction <> ''internal''', s);
+    execute format('create index if not exists conversation_messages_body_trgm on conversation_messages using gin (body %I.gin_trgm_ops) where direction <> ''internal''', s);
   else
     raise notice 'pg_trgm unavailable; inbox message search will not use a trigram index';
   end if;
@@ -114,8 +131,8 @@ create table conversation_events (
   created_at timestamptz not null default now(),
   foreign key (conversation_id, org_id) references conversations (id, org_id) on delete cascade
 );
-create index conversation_events_conversation_idx on conversation_events (conversation_id, id);
-create index conversation_events_org_idx on conversation_events (org_id, id);
+create index if not exists conversation_events_conversation_idx on conversation_events (conversation_id, id);
+create index if not exists conversation_events_org_idx on conversation_events (org_id, id);
 create trigger conversation_events_immutable before update on conversation_events for each row execute function app.immutable_row();
 
 alter table conversation_events enable row level security;
@@ -130,17 +147,30 @@ create policy conversation_events_select on conversation_events for select to ia
 
 -- Three kinds for conversation attention. The existing allow-list is read back from the live constraint and extended instead of being
 -- rewritten from a copy, so a kind added by another migration (or by a branch merged around this one) is never dropped by this one.
+-- The constraint reads back as ARRAY['a'::text, ...] when it was written as IN (...) (every earlier migration), or as '{a,b}'::text[] when it was
+-- written from an array literal; both are understood. It is written back in the first form so the next migration can read it the same way.
 do $$
 declare
   def text;
   kinds text[];
+  literal text;
 begin
   select pg_get_constraintdef(c.oid) into def from pg_constraint c where c.conname = 'notifications_kind_check' and c.conrelid = 'notifications'::regclass;
   if def is null then
     raise exception 'notifications_kind_check not found; cannot extend the notification kinds';
   end if;
-  kinds := array(select m[1] from regexp_matches(def, '''([a-z_]+)''::text', 'g') as m);
+  kinds := array(select m[1] from regexp_matches(def, '''([a-z0-9_]+)''::text', 'g') as m);
+  if cardinality(kinds) = 0 then
+    literal := substring(def from '''\{([^}]*)\}''::text\[\]');
+    if literal is not null then
+      kinds := string_to_array(literal, ',');
+    end if;
+  end if;
+  -- Rewriting the allow-list from a failed read would reject every notification the application sends. Refusing rolls the migration back whole.
+  if kinds is null or cardinality(kinds) < 20 then
+    raise exception 'could not read the current notification kinds from notifications_kind_check (read %); refusing to rewrite it', coalesce(cardinality(kinds), 0);
+  end if;
   kinds := array(select distinct k from unnest(kinds || array['conversation_assigned', 'conversation_new_inquiry', 'conversation_awaiting_reply']) as k order by k);
   alter table notifications drop constraint notifications_kind_check;
-  execute format('alter table notifications add constraint notifications_kind_check check (kind = any (%L::text[]))', kinds);
+  execute 'alter table notifications add constraint notifications_kind_check check (kind in (' || (select string_agg(quote_literal(k), ', ' order by k) from unnest(kinds) as k) || '))';
 end $$;

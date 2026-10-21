@@ -183,6 +183,13 @@ export function toListItem(r: Row): ConversationListItem {
   };
 }
 
+export interface PageOptions {
+  /** The largest page that may be asked for (LIST_PAGE_MAX unless a caller with an older contract needs more). */
+  max?: number;
+  /** Read one extra row to learn whether a next page exists (default true). */
+  lookahead?: boolean;
+}
+
 export interface ListPage {
   items: ConversationListItem[];
   /** Pass back as `cursor` for the next page; null when this was the last. */
@@ -193,7 +200,7 @@ export interface ListPage {
  * One page of the list. Conversations the person cannot see never appear (row-level security), a malformed cursor is ignored (first page),
  * and the order is total (rank, time, id) so a page boundary never repeats or skips a row while the list is changing.
  */
-export async function listConversationsPage(ctx: OrgContext, f: ConversationFilters = {}, onlyId: string | null = null): Promise<ListPage> {
+export async function listConversationsPage(ctx: OrgContext, f: ConversationFilters = {}, onlyId: string | null = null, opts: PageOptions = {}): Promise<ListPage> {
   if (!ctx.can("inbox.view")) throw new AppError("forbidden", "You can't view the inbox.");
   const params: unknown[] = [ctx.org.orgId];
   const bind = (v: unknown) => {
@@ -232,8 +239,10 @@ export async function listConversationsPage(ctx: OrgContext, f: ConversationFilt
     // The row after the cursor in (rank asc, key, id) order; the key and the id run the same way.
     where.push(`(${sort.rank} > ${r} or (${sort.rank} = ${r} and (${sort.key} ${past} ${k}::timestamptz or (${sort.key} = ${k}::timestamptz and c.id ${past} ${i}::uuid))))`);
   }
-  const limit = Math.min(Math.max(Math.trunc(f.limit ?? LIST_PAGE_DEFAULT), 1), LIST_PAGE_MAX);
-  const limitParam = bind(limit + 1);
+  const limit = Math.min(Math.max(Math.trunc(f.limit ?? LIST_PAGE_DEFAULT), 1), opts.max ?? LIST_PAGE_MAX);
+  // One extra row says whether there is a next page, without a count. The older whole-list read (listConversations) has no next page to point to.
+  const lookahead = opts.lookahead !== false;
+  const limitParam = bind(limit + (lookahead ? 1 : 0));
   const sql = `with ${CTES}
     select ${LIST_COLUMNS}, ${sort.rank}::int as sort_rank, (${sort.key})::text as sort_key
     ${FROM}
@@ -241,7 +250,7 @@ export async function listConversationsPage(ctx: OrgContext, f: ConversationFilt
     order by ${sort.rank} asc, ${sort.key} ${sort.dir}, c.id ${sort.dir}
     limit ${limitParam}`;
   const rows = await withUser(ctx.user.id, async (db) => (await db.query<Row>(sql, params)).rows);
-  const more = rows.length > limit;
+  const more = lookahead && rows.length > limit;
   const page = more ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
   return { items: page.map(toListItem), nextCursor: more && last ? encodeCursor({ rank: last.sort_rank, key: last.sort_key, id: last.id }) : null };

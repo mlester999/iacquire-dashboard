@@ -46,13 +46,27 @@ do $$
 declare
   def text;
   kinds text[];
+  literal text;
 begin
   if exists (select 1 from notifications where kind in ('conversation_assigned', 'conversation_new_inquiry', 'conversation_awaiting_reply')) then
     raise exception 'Rollback refused: notifications of the conversation kinds exist. Delete them deliberately first.';
   end if;
   select pg_get_constraintdef(c.oid) into def from pg_constraint c where c.conname = 'notifications_kind_check' and c.conrelid = 'notifications'::regclass;
-  kinds := array(select m[1] from regexp_matches(def, '''([a-z_]+)''::text', 'g') as m);
+  if def is null then
+    raise exception 'Rollback refused: notifications_kind_check not found.';
+  end if;
+  -- Both forms the constraint can read back as (see the migration), and never an empty allow-list.
+  kinds := array(select m[1] from regexp_matches(def, '''([a-z0-9_]+)''::text', 'g') as m);
+  if cardinality(kinds) = 0 then
+    literal := substring(def from '''\{([^}]*)\}''::text\[\]');
+    if literal is not null then
+      kinds := string_to_array(literal, ',');
+    end if;
+  end if;
+  if kinds is null or cardinality(kinds) < 20 then
+    raise exception 'Rollback refused: could not read the current notification kinds (read %).', coalesce(cardinality(kinds), 0);
+  end if;
   kinds := array(select k from unnest(kinds) as k where k not in ('conversation_assigned', 'conversation_new_inquiry', 'conversation_awaiting_reply') order by k);
   alter table notifications drop constraint notifications_kind_check;
-  execute format('alter table notifications add constraint notifications_kind_check check (kind = any (%L::text[]))', kinds);
+  execute 'alter table notifications add constraint notifications_kind_check check (kind in (' || (select string_agg(quote_literal(k), ', ' order by k) from unnest(kinds) as k) || '))';
 end $$;

@@ -4,12 +4,10 @@ import { withSystem } from "@/server/db";
 import { assignConversation } from "@/server/messaging/handoff";
 import { addInternalNote } from "@/server/messaging/inbox";
 import { cleanDraft, parseInsights, suggestReply, summarizeConversation, type Complete } from "@/server/messaging/inbox-ai";
-import { inbound, messagingOrg, type MessagingOrg } from "./support/messaging";
+import { inbound, messagingOrg } from "./support/messaging";
 
-let m: MessagingOrg;
-beforeAll(async () => {
+beforeAll(() => {
   resetEnvCache();
-  m = await messagingOrg({ name: "Inbox AI Co" });
 });
 
 const GOOD = "SUMMARY:\nCarla wants a quote for a heat pump. She has not said when.\nNEXT STEPS:\n- Ask which room it is for\n- Offer a site visit\nHUMAN REVIEW:\nNONE\nCONFIDENCE: medium";

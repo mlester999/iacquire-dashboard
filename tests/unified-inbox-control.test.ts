@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { resetEnvCache } from "@/server/env";
 import { withSystem, withUser } from "@/server/db";
-import { assignConversation, claimEscalation, createEscalation, resumeAi, takeOverConversation } from "@/server/messaging/handoff";
+import { assignConversation, claimEscalation, resumeAi, takeOverConversation } from "@/server/messaging/handoff";
 import { assignAiEmployee, pauseAi, transferConversation } from "@/server/messaging/ai-control";
 import { approveDraft, bulkUpdateConversations, retryFailedMessage, sendHumanReply, setConversationState, getConversationDetail } from "@/server/messaging/inbox";
 import { respondToConversation } from "@/server/messaging/responder";
