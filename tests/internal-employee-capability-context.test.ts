@@ -117,6 +117,7 @@ describe("internal employee read-only capability context", () => {
     });
     expect(result.instructions).toContain("Read-only iAcquire operations snapshot");
     expect(result.instructions).toContain("not a callable Hermes tool");
+    expect(result.instructions).toContain("This run's snapshot overrides earlier conversation or employee memory");
     expect(result.instructions).toContain("You may discuss only the internal operations records supplied in the server-authorized read-only snapshot");
     expect(result.instructions).not.toContain("never discuss iAcquire's internal systems");
     expect(result.instructions.indexOf("Read-only iAcquire operations snapshot")).toBeLessThan(result.instructions.indexOf("## Agency policy"));

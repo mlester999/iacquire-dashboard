@@ -386,7 +386,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     throw new AppError(
       isUserPermission ? "forbidden" : "agent_unavailable",
       isUserPermission
-        ? "Your agency role can't read the internal Operations Manager's workforce context."
+        ? "Your agency role doesn't have access to all internal tasks, approvals, and workforce activity needed for this chat."
         : "The internal Operations Manager's approved configuration could not be verified. No run was started.",
     );
   }
