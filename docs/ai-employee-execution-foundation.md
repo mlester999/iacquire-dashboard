@@ -1,7 +1,8 @@
 # AI employee execution foundation and Lead Hunter activation
 
-Status: **implemented and verified locally; migration not deployed; no production configuration, activation or
-provider run was performed.** Lead Hunter reaches a genuine 6/6 in an isolated agency workspace against the
+Status: **implemented and verified locally; migrations 0077–0080 applied to the hosted database on
+2026-10-21 after a backup; application deployment and production configuration are pending; no automation
+or provider run was activated.** Lead Hunter reaches a genuine 6/6 in an isolated agency workspace against the
 Hermes test double, and then completes a real sandbox research job through the same persisted path the product
 uses. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
 Sales Assistant, Appointment Setter and Performance Analyst sit on the same durable job foundation.
@@ -130,8 +131,9 @@ performs only `SELECT` queries and changed nothing. Result:
 | Super Admin acknowledgement current | false |
 | Company facts (description, services, ideal customers, operating area) | **0/4 present** (approved facts exist in the repository fallback; production not written) |
 
-1. **Migrations 0077, 0078, 0079 and 0080 are not applied to the hosted database.** Deploying/authorizing them
-   is required before any durable job, schedule, event trigger or proactive report exists in production.
+1. **Migrations 0077, 0078, 0079 and 0080 are applied to the hosted database** (2026-10-21, after a custom-format
+   backup). The read-only preflight reports all four applied, no prefix collisions and every expected table/column
+   present. The application deployment that reads them is still pending.
 2. **Lead Hunter has no applied configuration in production.** The agency workspace must save the complete
    role configuration through Configure. The approved iAcquire facts now exist in the repository and can be
    written with `scripts/apply-internal-business-profile.ts --apply`; production still needs that authorized
@@ -139,8 +141,8 @@ performs only `SELECT` queries and changed nothing. Result:
 3. **Production Hermes profile activation is a guarded change.** The exact existing process must be used:
    apply configuration → health check with complete inventory → agency profile check → Super Admin Full Hermes
    Capabilities acknowledgement. No readiness score may be written directly.
-4. **Do not apply migration 0077, save production configuration, run a live research job or enable the worker
-   without explicit authorization.** These are the approval boundary for this slice.
+4. **Do not deploy/activate automation, save production configuration, run a live research job or enable the
+   worker without the remaining release approval.** Migrations are the only production write performed here.
 
 The Hermes six-tool whitelist was not changed. No MCP, Tool Search, filesystem, database, browser or general API
 access was enabled. No autonomous schedule was activated.
@@ -314,10 +316,10 @@ Full design, safety boundaries, tests and activation checkpoint: [Proactive AI e
 
 ## 13. Exact next action after authorization
 
-Apply migrations 0077–0080 to the hosted project, deploy the application, apply the approved iAcquire
-internal profile to the agency workspace (`scripts/apply-internal-business-profile.ts --apply` with the
-production authorization), save the Lead Hunter configuration, run the health check and profile check, record
-the Super Admin acknowledgement, then run the read-only activation audit and one supervised research job. Keep
+Migrations 0077–0080 are applied. Deploy the application, apply the approved iAcquire internal profile to the
+agency workspace (`scripts/apply-internal-business-profile.ts --apply` with the production authorization), save
+the Lead Hunter configuration, run the health check and profile check, record the Super Admin acknowledgement,
+then run the read-only activation audit and one supervised research job. Keep
 `WORKFORCE_SCHEDULES_ENABLED`, `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` false until
 separate supervised activations are approved. Only after that run should the job/evidence UI be described as
 production-proven.

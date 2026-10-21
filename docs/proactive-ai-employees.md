@@ -1,8 +1,9 @@
 # Proactive AI employees
 
-Status: **implemented and verified locally; migration 0080 is not deployed; no production monitoring, schedule,
-trigger, briefing or external action is active.** This page covers the proactive layer added on top of the existing
-AI employee execution foundation in [AI employee execution foundation](ai-employee-execution-foundation.md).
+Status: **implemented and verified locally; migration 0080 is applied to the hosted database; application deployment
+and production configuration are pending; no production monitoring, schedule, trigger, briefing or external action is
+active.** This page covers the proactive layer added on top of the existing AI employee execution foundation in
+[AI employee execution foundation](ai-employee-execution-foundation.md).
 
 ## 1. What changed
 
@@ -157,8 +158,9 @@ migration or scheduler activation was performed.
 
 Before any proactive monitoring is described as production-live, all of the following need explicit authorization:
 
-1. Apply migration `0080_proactive_ai_employees.sql` to the hosted project (and deploy the code that reads it).
-2. Confirm the existing AI employee readiness and Lead Hunter configuration prerequisites.
+1. Migration `0080_proactive_ai_employees.sql` is applied (2026-10-21). Deploy the application that reads it.
+2. Confirm the existing AI employee readiness and Lead Hunter configuration prerequisites. Production currently has
+   **0/4 company facts**, no applied Lead Hunter configuration and `setup_required`; this is the active blocker.
 3. Enable a single schedule or event trigger in a supervised window. Keep `WORKFORCE_SCHEDULES_ENABLED`,
    `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` false until each activation is approved.
 4. Start the dedicated worker only when queued jobs are authorized to run.
