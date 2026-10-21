@@ -8,6 +8,7 @@ import { loadHermesAccessCredentials } from "@/server/integrations/hermes/gatewa
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings } from "@/lib/agent-settings";
 import { compileAgentConfig, defaultSettings, type CompanyContext } from "@/server/workforce/compiler";
+import { INTERNAL_BUSINESS, internalServicesText } from "@/lib/internal-business-profile";
 import {
   classifyConfigChange,
   decisionFromRiskFlags,
@@ -179,6 +180,7 @@ export async function listConfigVersions(userId: string, agentId: string) {
 export async function loadCompanyContext(db: Queryable, orgId: string): Promise<CompanyContext> {
   const { rows } = await db.query<{
     name: string;
+    kind: "agency" | "client";
     industry: string | null;
     website: string | null;
     description: string | null;
@@ -187,20 +189,25 @@ export async function loadCompanyContext(db: Queryable, orgId: string): Promise<
     operating_area: string | null;
     goals: string[] | null;
   }>(
-    `select o.name, o.industry, o.website, p.description, p.services, p.ideal_customers, p.operating_area, p.goals
+    `select o.name, o.kind, o.industry, o.website, p.description, p.services, p.ideal_customers, p.operating_area, p.goals
      from organizations o left join company_profiles p on p.org_id = o.id where o.id = $1`,
     [orgId],
   );
   const r = rows[0];
   if (!r) throw new AppError("not_found", "Workspace not found.");
+  // Confirmed values always win. Only the internal agency workspace may fall back to the approved
+  // iAcquire profile; a client with missing facts stays missing so the employee asks instead of
+  // silently researching the wrong business.
+  const internal = r.kind === "agency";
   return {
-    companyName: r.name,
-    industry: r.industry ?? "",
+    companyName: r.name || (internal ? INTERNAL_BUSINESS.companyName : ""),
+    orgKind: r.kind,
+    industry: r.industry ?? (internal ? INTERNAL_BUSINESS.industry : ""),
     website: r.website ?? "",
-    description: r.description ?? "",
-    services: r.services ?? "",
-    idealCustomers: r.ideal_customers ?? "",
-    operatingArea: r.operating_area ?? "",
+    description: r.description?.trim() || (internal ? INTERNAL_BUSINESS.description : ""),
+    services: r.services?.trim() || (internal ? internalServicesText() : ""),
+    idealCustomers: r.ideal_customers?.trim() || (internal ? INTERNAL_BUSINESS.idealCustomers : ""),
+    operatingArea: r.operating_area?.trim() || (internal ? INTERNAL_BUSINESS.operatingArea : ""),
     goals: r.goals ?? [],
   };
 }

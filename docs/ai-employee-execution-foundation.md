@@ -23,8 +23,13 @@ the end of this page.
   configuration and before the immutable agency policy, so client text cannot remove it.
 - `POLICY_VERSION` moved to `2026-10-21.1` so the changed compiled instructions have a real version.
 
-The production Lead Hunter still needs its actual field values (industry, geography, ideal customer, services)
-saved in the iAcquire agency workspace. Those facts are not in the repository and must come from the business.
+The internal iAcquire business facts are now supplied and recorded in
+`src/lib/internal-business-profile.ts` (business description, products/services, ideal customers and
+operating area), with configurable initial prospecting defaults (industries, United States geography
+and Canada only when explicitly approved). They are a fallback for the **agency workspace only**; a
+confirmed saved value wins, and a client tenant never receives them. The local agency profile was
+filled with the empty-only script and now reports **4/4 company facts**. Production remains **0/4**
+because no production write has been authorized.
 
 ## 2. Durable AI work jobs
 
@@ -94,12 +99,13 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/research-intent.test.ts` | 6 passed — canonical assignment, missing-field questions, no false positives, quantity cap |
 | `tests/workforce-jobs.test.ts` | 10 passed — real stages/counts, chat-created job, duplicate detection against CRM, public contact privacy, cancellation, retry, tenant isolation, unreviewed capability refusal, member cancel refusal, idempotency, lease recovery |
 | `tests/lead-hunter-activation.test.ts` | 2 passed — applied configuration + health + profile check + Super Admin acknowledgement produces **6/6 ready**, then a real sandbox research job completes with source-backed leads and a completed `lead_research` run |
-| `tests/work-job-progress.test.tsx` | 6 passed — running/completed/failed/queued honest rendering, real availability, measured comparisons, no percentage, no invented progress |
+| `tests/work-job-progress.test.tsx` | 7 passed — running/completed/failed/queued honest rendering, real availability, measured comparisons, finding-to-task action, no percentage, no invented progress |
 | `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
 | `tests/work-board-ui.test.tsx` | 7 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
-| `tests/workforce-review-capabilities.test.ts` | 7 passed — CRM quality, pipeline, appointment and performance reviews plus real calendar availability; business records unchanged; role and workforce-permission refusals |
+| `tests/workforce-review-capabilities.test.ts` | 8 passed — CRM quality, pipeline, appointment and performance reviews plus real calendar availability and an idempotent finding-to-task action; business records unchanged; role and workforce-permission refusals |
 | `tests/workforce-schedules.test.ts` | 5 passed — disabled by default, operator-switch gate, real due job, no duplicate while active, member/capability refusals, enable/pause/delete and audit evidence |
 | `tests/workforce-triggers.test.ts` | 5 passed — paused by default, operator gate, one job per new event, no repeat, no replay on enable, refusals and audit evidence |
+| `tests/lead-hunter-business-context.test.ts` | 6 passed — agency-only fallback, confirmed-value precedence, client-owned facts, empty-client ask/block, compiled-instruction isolation and research-prompt isolation |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
 The test gateway is the repository's Hermes test double. It is not a live AI and no external research, outreach,
@@ -119,14 +125,14 @@ performs only `SELECT` queries and changed nothing. Result:
 | Saved credential | current |
 | Identity check current | false |
 | Super Admin acknowledgement current | false |
-| Company facts (description, services, ideal customers, operating area) | **0/4 present** |
+| Company facts (description, services, ideal customers, operating area) | **0/4 present** (approved facts exist in the repository fallback; production not written) |
 
-1. **Migrations 0072, 0073 and 0074 are not applied to the hosted database.** Deploying/authorizing them is
-   required before any durable job, schedule or event trigger exists in production.
+1. **Migrations 0072, 0073, 0074 and 0075 are not applied to the hosted database.** Deploying/authorizing them
+   is required before any durable job, schedule, event trigger or proactive report exists in production.
 2. **Lead Hunter has no applied configuration in production.** The agency workspace must save the complete
-   role configuration through Configure. The role-owned procedure fields are prepared; these company-owned
-   facts are genuinely missing and must come from the business: business description, products/services, ideal
-   customers and operating area. The employee must not invent them.
+   role configuration through Configure. The approved iAcquire facts now exist in the repository and can be
+   written with `scripts/apply-internal-business-profile.ts --apply`; production still needs that authorized
+   write, and the configuration must then be applied and checked.
 3. **Production Hermes profile activation is a guarded change.** The exact existing process must be used:
    apply configuration → health check with complete inventory → agency profile check → Super Admin Full Hermes
    Capabilities acknowledgement. No readiness score may be written directly.
@@ -241,10 +247,50 @@ preference groups/severity filtering, and the existing non-critical email quiet-
 (21:00–07:00 in the recipient's time zone). Critical findings bypass quiet hours. No parallel
 notification system was added.
 
-## 11. Exact next action after authorization
+A completed review finding can become an ordinary internal follow-up task from the Work Board
+(“Create follow-up task”). The action requires `tasks.manage`, creates the task through the existing
+task service (assigned to the person who clicked), records `task.created`, `workforce.finding_task_created`
+audit evidence and is idempotent per job/finding. It does not send outreach or modify a customer
+record, and no decorative approval button is shown for actions that have no executor.
 
-Apply migrations 0072, 0073 and 0074 to the hosted project, deploy the application, save the Lead Hunter
-configuration in the iAcquire agency workspace, run the health check and profile check, record the Super Admin
-acknowledgement, then run the read-only activation audit and one supervised research job. Keep
-`WORKFORCE_SCHEDULES_ENABLED` and `WORKFORCE_TRIGGERS_ENABLED` false until separate supervised activations are
-approved. Only after that run should the job/evidence UI be described as production-proven.
+Lead review/import approvals remain on the existing approval path; they are not replaced by this
+task action.
+
+## 11. Lead Hunter business context and tenant isolation
+
+Lead Hunter always researches for the business that owns the employee.
+
+- The internal `organizations.kind = 'agency'` workspace may use the approved iAcquire profile as a
+  **fallback for empty fields** (`src/lib/internal-business-profile.ts`). A confirmed saved value
+  always wins. The fallback includes iAcquireOS products/services, the small-service-business ideal
+  customer profile, the commercial context and the configurable initial industries/geography.
+- A client workspace never receives the fallback. `loadCompanyContext` returns only that tenant's
+  `organizations`/`company_profiles` values; missing facts stay empty. `researchPrompt` tells the
+  employee to ask instead of assuming, and the research job stops with a recorded blocker when a
+  client has neither a business description nor services.
+- `compileAgentConfig` adds the internal prospecting defaults only when the role is Lead Hunter, the
+  workspace is the agency and no persisted target customer exists. Client targeting is limited to
+  its own saved targeting and assignment.
+- `researchPrompt` now begins with the owning business's name, description, services, ideal
+  customers and operating area, and states that another company's profile must not be substituted.
+  The internal prompt fills empty targeting with the approved industries/geography/qualification;
+  the client prompt leaves them empty.
+- The agency fallback is a repository constant, not a cross-tenant lookup. Research jobs, duplicate
+  checks and company context are all scoped by `org_id`.
+
+`tests/lead-hunter-business-context.test.ts` covers the agency fallback, confirmed-value
+precedence, client-owned facts, empty-client refusal to assume, compiled-instruction isolation and
+research-prompt isolation. Local evidence: the empty-only profile script wrote the approved internal
+facts, and the readiness audit reports **4/4 company facts**, still **0/6 readiness** because no
+configuration is applied, no connection check passed, no identity is current and no Super Admin
+acknowledgement exists.
+
+## 12. Exact next action after authorization
+
+Apply migrations 0072–0075 to the hosted project, deploy the application, apply the approved iAcquire
+internal profile to the agency workspace (`scripts/apply-internal-business-profile.ts --apply` with the
+production authorization), save the Lead Hunter configuration, run the health check and profile check, record
+the Super Admin acknowledgement, then run the read-only activation audit and one supervised research job. Keep
+`WORKFORCE_SCHEDULES_ENABLED`, `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` false until
+separate supervised activations are approved. Only after that run should the job/evidence UI be described as
+production-proven.

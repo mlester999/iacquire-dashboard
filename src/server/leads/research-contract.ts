@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Queryable } from "@/server/db";
 import type { WorkJobStage } from "@/server/workforce/jobs";
 import type { Targeting } from "@/lib/leads-targeting";
+import { INTERNAL_PROSPECTING } from "@/lib/internal-business-profile";
 
 // ---------------------------------------------------------------------------
 // Research output contract. The model proposes; the server validates and writes.
@@ -103,12 +104,48 @@ export function parseResearchOutput(output: string) {
   return { leads, rejected, error: null as string | null };
 }
 
-export function researchPrompt(prompt: string, targeting: Targeting, campaign: "business" | "influencer") {
+export interface ResearchBusinessContext {
+  companyName: string;
+  orgKind?: "agency" | "client";
+  description?: string;
+  services?: string;
+  idealCustomers?: string;
+  operatingArea?: string;
+}
+
+export function researchPrompt(prompt: string, targeting: Targeting, campaign: "business" | "influencer", business?: ResearchBusinessContext) {
+  const internal = business?.orgKind === "agency";
+  // The internal agency workspace may fall back to its approved prospecting defaults. A client
+  // tenant never inherits them: its empty fields stay empty and the employee must ask.
+  const effective = internal
+    ? {
+        ...targeting,
+        industries: targeting.industries.length ? targeting.industries : [...INTERNAL_PROSPECTING.industries],
+        countries: targeting.countries.length ? targeting.countries : [...INTERNAL_PROSPECTING.countries],
+        minimumCriteria: targeting.minimumCriteria || INTERNAL_PROSPECTING.qualification,
+      }
+    : targeting;
+  const businessLines = business
+    ? [
+        `Business: ${business.companyName || "the workspace owner"}`,
+        business.description ? `What it does: ${business.description}` : "",
+        business.services ? `Products and services: ${business.services}` : "",
+        business.idealCustomers ? `Ideal customers: ${business.idealCustomers}` : "",
+        business.operatingArea ? `Operating area: ${business.operatingArea}` : "",
+        !business.description || !business.services
+          ? "The workspace has not confirmed its business description or products/services. Do not assume them; ask the requester if the assignment depends on them."
+          : "",
+        "Research prospects only for this business. Do not substitute another company's products, target customers or geography, including iAcquire's internal profile.",
+      ].filter(Boolean)
+    : ["The workspace business context was not available. Do not assume it; ask the requester before using a profile."];
   return [
     `Research request from the business owner: ${prompt}`,
     "",
+    "Business this research is for:",
+    ...businessLines,
+    "",
     "Targeting rules (client-provided data):",
-    JSON.stringify(campaign === "influencer" ? { ...targeting, influencer: targeting.influencer } : { ...targeting, influencer: undefined }),
+    JSON.stringify(campaign === "influencer" ? { ...effective, influencer: effective.influencer } : { ...effective, influencer: undefined }),
     "",
     "Use only approved public sources (company websites, official registries, public business pages). Do not scrape personal profiles, do not message anyone, and do not guess contact details.",
     "Return at most 20 candidates. Only include evidence you actually observed, with its URL. If you cannot find evidence, say so in qualification_summary and leave evidence empty.",

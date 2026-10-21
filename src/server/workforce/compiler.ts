@@ -11,6 +11,7 @@ import {
   type Tone,
 } from "@/lib/agent-settings";
 import { immutablePolicy, POLICY_VERSION, ROLE_OPERATING_STANDARDS, ROLE_RESPONSIBILITIES } from "@/server/workforce/policy";
+import { internalProspectingText } from "@/lib/internal-business-profile";
 import { detectRiskFlags } from "@/lib/instruction-risk";
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,8 @@ const LENGTH_GUIDE: Record<ReplyLength, string> = {
 
 export interface CompanyContext {
   companyName: string;
+  /** "agency" is the iAcquire internal workspace; every client tenant must use its own facts. */
+  orgKind?: "agency" | "client";
   description?: string;
   industry?: string;
   website?: string;
@@ -168,6 +171,10 @@ export function compileAgentConfig(input: {
     ["Escalation contact", sanitizeClientText(settings.escalationContact, 200)],
     ["Additional preference", sanitizeClientText(settings.customInstruction, 500)],
   ];
+  if (input.role === "lead_hunter" && c.orgKind === "agency" && !sanitizeClientText(settings.targetCustomers, 1000)) {
+    // Internal workspace only. A client with no confirmed targeting must ask, not inherit iAcquire's.
+    fields.push(["Approved internal prospecting profile", internalProspectingText()]);
+  }
   for (const q of meta.questions) {
     fields.push([q.label, sanitizeClientText(settings.roleAnswers[q.id], 1000)]);
   }

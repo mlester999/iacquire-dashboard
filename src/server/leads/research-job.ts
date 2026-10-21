@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 import { env } from "@/server/env";
 import { recordUsage } from "@/server/usage";
 import { notifyOrgRoles } from "@/server/notifications";
-import { buildRunInstructions, loadConnection, markAgentDegraded } from "@/server/workforce/service";
+import { buildRunInstructions, loadCompanyContext, loadConnection, markAgentDegraded } from "@/server/workforce/service";
 import {
   AgentRunNotReadyError,
   HermesError,
@@ -209,10 +209,17 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       const runInstructions = await buildRunInstructions(db, job.org_id, job.agent_instance_id);
       if (!runInstructions.versionId) throw new ResearchBlocked("The Lead Hunter has no applied configuration, so no research was started.");
       const targeting = targetingSchema.safeParse(request.criteria);
+      const company = await loadCompanyContext(db, job.org_id);
+      // A client with no confirmed business facts must not inherit another tenant's profile. Stop
+      // before the provider run and let the job record the exact clarification instead.
+      if (company.orgKind === "client" && !company.description?.trim() && !company.services?.trim()) {
+        throw new ResearchBlocked("This workspace has not confirmed its business description or products/services. Add them in Settings → Business profile, then run the research again. No profile was assumed.");
+      }
       const input = researchPrompt(
         request.prompt,
         targeting.success ? targeting.data : targetingSchema.parse({}),
         request.campaign_type,
+        company,
       );
       const idempotencyKey = `research:${requestId}:${job.id}:${job.attempts}`;
       const { rows: run } = await db.query<{ id: string }>(
