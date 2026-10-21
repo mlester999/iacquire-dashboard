@@ -53,6 +53,7 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/admin/usage", label: "Usage", description: "Platform usage and limits.", agency: "staff" },
   { path: "/admin/support", label: "Requests", description: "Client support requests, issue reports and feedback.", agency: "staff" },
   { path: "/admin/aqi", label: "AQi Management", description: "Configure AQi, its knowledge and publishing.", agency: "super_admin" },
+  { path: "/admin/operations", label: "AQi Operations", description: "The Super Admin AI Platform Operations Copilot.", agency: "super_admin" },
 ];
 
 /** Longest-prefix match, so /settings/team resolves before /settings. */

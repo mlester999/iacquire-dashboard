@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/overlays";
 import { LogoutConfirmationProvider } from "@/components/auth/logout-confirmation";
 import { AqiWidget } from "@/components/aqi/aqi-widget";
+import { OpsLauncher } from "@/components/aqi/ops/ops-launcher";
 import { GuidanceHost } from "@/components/aqi/tutorial/guidance-host";
 
 export type ThemePreference = "light" | "dark" | "system";
@@ -22,9 +23,15 @@ function isAqiSurface(pathname: string | null) {
   return Boolean(pathname && AQI_SURFACE.test(pathname));
 }
 
-function AqiMount({ allowed }: { allowed: boolean }) {
+export type AqiMode = "assistant" | "operations";
+
+function AqiMount({ allowed, mode }: { allowed: boolean; mode: AqiMode }) {
   const pathname = usePathname();
   if (!allowed || !isAqiSurface(pathname)) return null;
+  // A Super Admin gets the Operations copilot everywhere AQi appears, never the Client assistant. The
+  // mode comes from the server-resolved role; the chat endpoint independently picks the runtime from the
+  // same role, so a wrong value here could change what is drawn but not what the server will do.
+  if (mode === "operations") return <OpsLauncher />;
   return (
     <>
       <AqiWidget />
@@ -48,7 +55,7 @@ function resolve(t: ThemePreference): "light" | "dark" {
   return t;
 }
 
-export function Providers({ children, aqiAllowed }: { children: React.ReactNode; aqiAllowed: boolean }) {
+export function Providers({ children, aqiAllowed, aqiMode = "assistant" }: { children: React.ReactNode; aqiAllowed: boolean; aqiMode?: AqiMode }) {
   const [theme, setThemeState] = React.useState<ThemePreference>("light");
   const [resolved, setResolved] = React.useState<"light" | "dark">("light");
 
@@ -97,7 +104,7 @@ export function Providers({ children, aqiAllowed }: { children: React.ReactNode;
         <MotionConfig reducedMotion="user">
           <TooltipProvider>
             {children}
-            <AqiMount allowed={aqiAllowed} />
+            <AqiMount allowed={aqiAllowed} mode={aqiMode} />
             <Toaster
               position="top-center"
               theme={resolved}

@@ -18,6 +18,8 @@ import { cn, currentTime, initials } from "@/lib/utils";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: Gauge, exact: true, group: "Operations" },
+  // Super Admin only: the AI Platform Operations Copilot (investigations, evidence cards, confirmed actions, briefings).
+  { href: "/admin/operations", label: "AQi Operations", icon: Activity, superOnly: true, group: "Operations" },
   // Super Admin only: AQi configuration, knowledge, budgets and publishing.
   { href: "/admin/aqi", label: "AQi Management", icon: Sparkles, superOnly: true, group: "Platform" },
   { href: "/admin/clients", label: "Clients", icon: Building2, group: "Operations" },

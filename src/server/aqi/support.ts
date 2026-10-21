@@ -35,6 +35,11 @@ interface ConversationData {
 }
 
 function requireClient(viewer: AqiViewer) {
+  // A Super Admin's AQi is the Operations copilot: it records internal issues in Support & Requests and never opens a
+  // customer-facing request, even if the Super Admin also belongs to the agency workspace.
+  if (viewer.user.platformRole === "agency_super_admin" || viewer.agencyRole === "agency_super_admin") {
+    throw new AppError("forbidden", "Super Admin AQi records internal issues instead of customer support requests. Ask AQi Operations to create an internal issue.");
+  }
   if (!viewer.org) throw new AppError("forbidden", "Support requests are created from a client workspace. Agency staff should use the agency support desk.");
   if (!viewer.can("support.use")) throw new AppError("forbidden", "Your role can't open support requests.");
   return viewer.org;

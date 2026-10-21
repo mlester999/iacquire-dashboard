@@ -239,6 +239,14 @@ describe("the registered jobs", () => {
     expect(job?.everyMinutes).toBeUndefined();
   });
 
+  it("registers the AQi Operations jobs, and runs them on every tick", () => {
+    for (const name of ["aqiOperationsBriefings", "aqiOperationsRetention"]) {
+      const job = JOBS.find((entry) => entry.name === name);
+      expect(job, name).toBeDefined();
+      expect(job?.everyMinutes).toBeUndefined();
+    }
+  });
+
   it("runs the real job list: everything once, then only what is due, and nothing twice", async () => {
     const first = await runScheduledJobs(at(0));
     for (const name of Object.keys(EXPECTED_SLOW)) expect(first[name], name).not.toBe("skipped");
@@ -247,6 +255,7 @@ describe("the registered jobs", () => {
     for (const name of Object.keys(EXPECTED_SLOW)) expect(again[name], name).toBe("skipped");
     expect(again.messagesDispatched).not.toBe("skipped");
     expect(again.studioEntitlementSweep).not.toBe("skipped");
+    expect(again.aqiOperationsBriefings).not.toBe("skipped");
     // Five minutes later only the five-minute job is due.
     const five = await runScheduledJobs(at(5));
     expect(Object.keys(EXPECTED_SLOW).filter((name) => five[name] !== "skipped")).toEqual(["crmWorkflowRecovery"]);

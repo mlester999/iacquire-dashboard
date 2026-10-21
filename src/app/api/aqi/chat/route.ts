@@ -2,6 +2,8 @@ import { z } from "zod";
 import { assertSameOrigin } from "@/server/auth/session";
 import { resolveAqiViewer } from "@/server/aqi/access";
 import { runAqiTurn } from "@/server/aqi/service";
+import { runOpsTurn } from "@/server/aqi/ops/turn";
+import { opsScopeRequestSchema } from "@/server/aqi/ops/scope";
 import { classifyAqiError, logAqiError } from "@/server/aqi/errors";
 import { AppError } from "@/server/errors";
 
@@ -13,6 +15,8 @@ const bodySchema = z.object({
   message: z.string().max(2000).default(""),
   path: z.string().max(300).nullish(),
   attachmentIds: z.array(z.string().uuid()).max(20).optional(),
+  /** Only read for a Super Admin, whose turns run on the operations runtime. Ignored for everyone else. */
+  scope: opsScopeRequestSchema.nullish(),
 });
 
 export async function POST(request: Request) {
@@ -33,12 +37,22 @@ export async function POST(request: Request) {
     const stream = new ReadableStream<Uint8Array>({
       async start(streamController) {
         try {
-          for await (const event of runAqiTurn(viewer, {
-            conversationId: parsed.data.conversationId ?? null,
-            message: parsed.data.message,
-            pathname: parsed.data.path ?? null,
-            attachmentIds: parsed.data.attachmentIds,
-          }, controller.signal)) {
+          // The runtime is chosen by the server-resolved role. A Super Admin is never served by the Client
+          // assistant's prompt, and nothing the browser sends can select the other runtime.
+          const turn = superAdmin
+            ? runOpsTurn(viewer, {
+                conversationId: parsed.data.conversationId ?? null,
+                message: parsed.data.message,
+                pathname: parsed.data.path ?? null,
+                scope: parsed.data.scope ?? null,
+              }, controller.signal)
+            : runAqiTurn(viewer, {
+                conversationId: parsed.data.conversationId ?? null,
+                message: parsed.data.message,
+                pathname: parsed.data.path ?? null,
+                attachmentIds: parsed.data.attachmentIds,
+              }, controller.signal);
+          for await (const event of turn) {
             streamController.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
           }
         } catch (err) {

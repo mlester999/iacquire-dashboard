@@ -32,6 +32,8 @@ import { processFormSubmissions } from "@/server/crm/forms/process";
 import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
+import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
+import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 
 export interface ScheduledJob {
@@ -128,6 +130,13 @@ export const JOBS: ScheduledJob[] = [
   // keeps events for people still in progress. It runs only when an external scheduler calls the
   // tick endpoint; registering the job does not create a cron.
   { name: "aqiTutorialEventRetention", everyMinutes: 1440, run: async () => (await purgeExpiredAqiTutorialEvents()).deleted },
+  // AQi Operations briefings and critical alerts. Nothing is generated for an administrator who has not opted in; each briefing is keyed
+  // per person and local day (or incident), so running on every tick is cheap and can never duplicate. Not interval-gated: the daily
+  // and weekly slots are decided per person, in their own time zone, inside the job.
+  { name: "aqiOperationsBriefings", run: async () => { const r = await runDueBriefings(); return r.generated + r.suppressed + r.alerts; } },
+  // Investigation history and stored briefings older than 180 days are removed, 100 of each at a time. Confirmed actions stay in
+  // aqi_ops_actions and the audit log.
+  { name: "aqiOperationsRetention", run: async () => (await purgeExpiredOpsConversations()) + (await purgeExpiredBriefings()) },
 ];
 
 /**

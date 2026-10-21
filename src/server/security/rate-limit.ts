@@ -87,6 +87,9 @@ export const RATE_LIMITS = {
   aqiMessageByUser: { name: "aqi:user", limit: 20, windowSeconds: 60 },
   // Automatic conversation naming is a tiny background call, but it must never be loopable.
   aqiTitleByUser: { name: "aqi:title:user", limit: 30, windowSeconds: 3600 },
+  // AQi Operations: confirming a proposed action and re-running a read card. Both reach production systems, so they are separate from chat.
+  aqiOpsActionByUser: { name: "aqi:ops:action:user", limit: 12, windowSeconds: 600 },
+  aqiOpsRefreshByUser: { name: "aqi:ops:refresh:user", limit: 40, windowSeconds: 300 },
   supportTicketByUser: { name: "ticket:user", limit: 10, windowSeconds: 3600 },
   // Replies inside a request, per person. High enough for a real back-and-forth, low enough to stop a loop.
   supportReplyByUser: { name: "support:reply:user", limit: 60, windowSeconds: 3600 },

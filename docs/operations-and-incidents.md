@@ -8,12 +8,17 @@ Status: **Implemented locally, tested with mocks** (`tests/operations.test.ts`, 
 All background work runs from one authenticated endpoint, `POST /api/internal/tick` (bearer `CRON_SECRET`). A host cron or scheduler calls it
 every minute or two. Each job in `JOBS` (`src/server/ops/tick.ts`) is idempotent and isolated: one that throws is recorded as failed and the
 rest still run. Slow jobs declare `everyMinutes` on their `JOBS` entry (fair-use checks and support auto-close hourly; inactivity review and deletion
-reminders every six hours; workflow recovery every five minutes; WhatsApp template sync every three hours; AQi tutorial retention daily) and `runJob` runs
-them only when that long has passed since their previous run **started**, claiming the slot in the same statement that checks it. A tick that finds a job
-not due writes nothing, so `worker_job_runs` keeps describing the last time the job really ran, and the tick response reports it as `"skipped"`. A failed
-run is retried after `min(interval, 15)` minutes; a run that started and never finished is treated as still running for 15 minutes and then as dead.
-(Before this, each job tested `withinInterval()` itself and returned 0, which was recorded as a success and moved `last_success_at` forward on every tick,
-so a gated job ran once and never again. `tests/scheduler-intervals.test.ts` runs the real job list on a simulated clock to prove the cadence.)
+reminders every six hours; see the table in [aqi-operations.md](aqi-operations.md#13-scheduler-how-slow-rhythm-jobs-run)) and `runJob` runs them only
+when that long has passed since their previous run **started**, claiming the slot in the same statement that checks it. A tick that finds a job not due
+writes nothing, so `worker_job_runs` keeps describing the last time the job really ran, and the tick response reports it as `"skipped"`.
+A failed run is retried after `min(interval, 15)` minutes; a run that started and never finished is treated as still running for 15 minutes and then as
+dead. (Before this, each job tested `withinInterval()` itself and returned 0, which was recorded as a success and moved `last_success_at` forward on every
+tick, so a gated job ran once and never again.)
+
+Two jobs belong to AQi Operations and are deliberately **not** interval-gated: `aqiOperationsBriefings` (generates a briefing only for an
+administrator who opted in, keyed per person and local day or incident, so running every tick cannot duplicate) and `aqiOperationsRetention`
+(removes Super Admin investigation history and stored briefings older than 180 days, 100 of each per run). Scheduled briefings therefore need the
+scheduler to be configured (`CRON_SECRET`, `SCHEDULER_ENABLED`); until then briefings can only be generated on demand, and the console says so. `tests/scheduler-intervals.test.ts` runs the real job list on a simulated clock to prove the cadence. Automation Studio adds one more job that is deliberately not interval-gated, `studioEntitlementSweep`: two indexed queries that expire a plan past its grace period and pause the Automation Studio workflows of a workspace whose plan is not active.
 
 Every run writes a heartbeat row in `worker_job_runs` (`tick` plus one row per job). If no heartbeat arrives for `SCHEDULER_STALE_MINUTES`
 (default 20) the platform opens a **Scheduled jobs stopped** incident. The scheduler cannot report its own death, so the check runs from `/api/health` (at most once a minute per server instance, and
