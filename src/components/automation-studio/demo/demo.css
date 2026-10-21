@@ -1,0 +1,53 @@
+/* The upgrade page's example: the canvas drawing and the motion that plays it back. Every animation here runs once, when the script reaches the
+   beat that adds something (a node, a line, a message); nothing loops while the example sits still, and nothing moves for people who ask for
+   reduced motion: they get the same states, placed instantly. */
+.demo-canvas {
+  background-color: var(--surface-2);
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 13%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.demo-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.demo-world[data-ready] { opacity: 1; }
+.demo-world[data-settled] { transition: opacity 300ms ease, transform 760ms var(--ease-out-quart); }
+.demo-edges { position: absolute; left: 0; top: 0; overflow: visible; }
+.demo-node { position: absolute; left: 0; top: 0; transition: transform 720ms var(--ease-out-quart); }
+.demo-node-card { transition: border-color 320ms ease, box-shadow 320ms ease; }
+.demo-node[data-active] > .demo-node-card {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent), var(--shadow-md);
+}
+.demo-node[data-enter] > .demo-node-card { animation: demo-node-in 460ms var(--ease-out-quart) both; }
+
+.demo-edge-line { fill: none; stroke: color-mix(in srgb, var(--ink-2) 48%, transparent); stroke-width: 1.75; transition: stroke 700ms ease; }
+.demo-edge-head { fill: color-mix(in srgb, var(--ink-2) 48%, transparent); transition: fill 700ms ease; }
+.demo-edge[data-fresh] .demo-edge-line {
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: demo-edge-draw 560ms var(--ease-out-quart) 140ms forwards;
+}
+.demo-edge[data-fresh] .demo-edge-head { fill: var(--primary); animation: demo-fade 200ms ease 600ms both; }
+.demo-edge-label[data-fresh] { animation: demo-fade 260ms ease 420ms both; }
+
+/* The conversation and the closing card rise in once, when they're shown. */
+.demo-rise { animation: demo-rise 380ms var(--ease-out-quart) both; }
+.demo-progress { transition: width 420ms var(--ease-out-quart); }
+
+@keyframes demo-node-in { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes demo-edge-draw { to { stroke-dashoffset: 0; } }
+@keyframes demo-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes demo-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-world[data-settled], .demo-node, .demo-node-card, .demo-edge-line, .demo-edge-head, .demo-progress { transition: none; }
+  .demo-node[data-enter] > .demo-node-card, .demo-edge[data-fresh] .demo-edge-head, .demo-edge-label[data-fresh], .demo-rise { animation: none; }
+  .demo-edge[data-fresh] .demo-edge-line { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+}

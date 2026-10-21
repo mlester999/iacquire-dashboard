@@ -279,12 +279,12 @@ async function main() {
   check("upgrade: the call to action goes to the Maintenance page", (await hp.locator("a[href='/maintenance']").count()) > 0);
   check("upgrade: the sidebar entry carries a lock", /Needs the Automation Studio plan/.test((await hp.getByRole("link", { name: /Automation Studio/ }).first().textContent()) ?? ""));
   check("upgrade: the example canvas is labelled as an example", (await hp.getByText("Example", { exact: true }).count()) > 0);
-  // The example plays once it is on screen (about nine seconds), adding its steps one by one.
-  await hp.locator("#up-see").scrollIntoViewIfNeeded();
-  await hp.getByRole("button", { name: "Replay the example" }).waitFor({ timeout: 20_000 });
+  // The example plays once it is on screen (about seventeen seconds), adding its steps one by one. It is a drawing, not the editor's canvas.
+  await hp.locator("[aria-label='Chapters']").scrollIntoViewIfNeeded();
+  await hp.getByRole("button", { name: "Replay the example" }).waitFor({ timeout: 40_000 });
   await hp.waitForTimeout(800);
-  check("upgrade: the example canvas has no outside link", (await hp.locator(".react-flow__attribution, .react-flow a[href]").count()) === 0);
-  check("upgrade: the example canvas shows its steps", (await hp.locator(".react-flow__node").evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 20 && r.height > 10 && getComputedStyle(e).visibility === "visible"; }).length)) >= 5);
+  check("upgrade: the example has no outside link and isn't the editor", (await hp.locator("[aria-label='Example workflow canvas'] a[href], .react-flow").count()) === 0);
+  check("upgrade: the example canvas shows its steps", (await hp.locator("[data-node]").evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 20 && r.height > 10 && getComputedStyle(e).visibility === "visible"; }).length)) >= 5);
   await shot(hp, "14-upgrade-desktop-light", { fullPage: true });
   await runAxe(hp, "upgrade page (desktop, light)");
   // Another workspace's automation is not reachable: it lands on the upgrade page.

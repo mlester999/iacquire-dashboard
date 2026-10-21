@@ -22,6 +22,7 @@ export default async function AutomationStudioPreview({ searchParams }: { search
     reason: ent.reason,
     monthlyUsd: STUDIO_PLAN_MONTHLY_USD,
     setupFeeUsd: STUDIO_SETUP_FEE_USD,
+    requestAllowance: 4,
     canRequest: owner,
     requestNote: owner ? null : "Only the owner of your workspace can request the plan. Ask them to open the Maintenance page.",
     saved: q.saved === "1" ? [{ id: "00000000-0000-4000-8000-000000000001", name: "Welcome new leads" }, { id: "00000000-0000-4000-8000-000000000002", name: "Review request after a job" }] : [],

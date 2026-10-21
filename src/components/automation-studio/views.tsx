@@ -6,6 +6,7 @@ import { memberActor } from "@/server/crm/actor";
 import { scopeFor } from "@/server/crm/page";
 import { assertNativeOwner } from "@/server/crm/workspace";
 import { maintenanceEligibility } from "@/server/maintenance/service";
+import { getMaintenancePlan } from "@/server/catalog/service";
 import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import { getStudioState, listStudioWorkflows } from "@/server/automation-studio/studio";
 import { builderAvailability } from "@/server/automation-studio/builder/service";
@@ -57,14 +58,18 @@ export async function StudioHomeView({ ctx }: { ctx: OrgContext }) {
   const [problem, workflows] = await Promise.all([ownerProblem(ctx.org.orgId), listStudioWorkflows(actor)]);
 
   if (!ent.entitled) {
-    const elig = await maintenanceEligibility(ctx.org.orgId);
+    const [elig, catalog] = await Promise.all([maintenanceEligibility(ctx.org.orgId), getMaintenancePlan(ctx.user.id)]);
     const owner = ctx.can("maintenance.manage_plan");
+    // The price a request records is the published plan's (requestMaintenanceEnrollment); show that one, and the approved default only when
+    // the catalog has no USD price to give.
+    const price = catalog?.price;
     return (
       <UpgradePage
         state={ent.state}
         reason={ent.reason}
-        monthlyUsd={STUDIO_PLAN_MONTHLY_USD}
+        monthlyUsd={price?.minCents != null && price.currency === "USD" ? price.minCents / 100 : STUDIO_PLAN_MONTHLY_USD}
         setupFeeUsd={STUDIO_SETUP_FEE_USD}
+        requestAllowance={catalog ? catalog.monthlyRequestAllowance : null}
         canRequest={owner && elig.eligible}
         requestNote={!elig.eligible ? elig.note : !owner ? "Only the owner of your workspace can request the plan. Ask them to open the Maintenance page." : null}
         saved={workflows.map((w) => ({ id: w.id, name: w.name }))}

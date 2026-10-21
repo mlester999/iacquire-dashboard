@@ -46,8 +46,9 @@ how a workflow runs.
   reason in words. Nothing mutates the definition directly.
 - `workflow-canvas.tsx` renders it and applies the replayed operations step by step with a short entrance animation per node; it honours
   `prefers-reduced-motion`. While a turn is running the editor is locked (the builder is working on the latest draft).
-- `static-canvas.tsx` is the read-only, labelled "Example" canvas on the upgrade page. It is a sample definition, never a claim about the
-  person's own workspace.
+- The upgrade page's example (`../demo/`) is not this canvas: it is a fixed script (`demo/script.ts`) drawn with plain DOM and SVG in the
+  canvas's node vocabulary, labelled "Interactive example · Nothing is saved or sent". It calls nothing and saves nothing; a test checks
+  every label in it against the real spec and summaries, so it can't show a step the builder doesn't make.
 
 ## Screens and routes
 
