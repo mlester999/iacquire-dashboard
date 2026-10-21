@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -33,6 +33,16 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     risk: "read_only",
     produces: "Lead profiles with source evidence, qualification reasons and duplicate warnings.",
     workBoardAction: false,
+  },
+  lead_generation_review: {
+    key: "lead_generation_review",
+    label: "Lead generation review",
+    description: "Review the authorized research queue, review backlog, CRM handoff and recent coverage, then recommend the next research assignment. It never starts research or contacts a prospect.",
+    allowedRoles: ["lead_hunter"],
+    requiredPermission: "leads.view",
+    risk: "read_only",
+    produces: "Lead-generation findings with queue counts, stale work, coverage gaps, duplicate rates and a recommended next assignment.",
+    workBoardAction: true,
   },
   proactive_review: {
     key: "proactive_review",

@@ -60,7 +60,7 @@ describe("reviewed capability allowlists", () => {
     expect(roleMayUseCapability("operations_manager", "proactive_review")).toBe(true);
     expect(roleMayUseCapability("operations_manager", "lead_research")).toBe(false);
     expect(roleMayUseCapability("sales_assistant", "proactive_review")).toBe(false);
-    expect(capabilitiesForRole("lead_hunter").map((definition) => definition.key)).toEqual(["lead_research"]);
+    expect(capabilitiesForRole("lead_hunter").map((definition) => definition.key)).toEqual(["lead_research", "lead_generation_review"]);
     expect(WORKFORCE_CAPABILITIES.proactive_review.requiredPermission).toBe("activity.view");
   });
 
@@ -154,7 +154,7 @@ describe("on-demand operations review", () => {
     );
     expect(audit.rows[0]?.metadata).toMatchObject({ capability: "proactive_review", agentRole: "operations_manager" });
     const job = await waitForJob(dispatched.jobId);
-    expect(job.status).toBe("completed");
+    expect(job.status, job.failure_message ?? undefined).toBe("completed");
     const findings = (job.result.findings as Array<{ key: string; count: number; samples: string[]; evidenceHref: string; recommendedAction: string }>) ?? [];
     const keys = findings.map((item) => item.key);
     expect(keys).toEqual(expect.arrayContaining([
@@ -184,7 +184,7 @@ describe("on-demand operations review", () => {
         [org.id, owner.id],
       ),
     );
-    expect(notifications[0].title).toMatch(/found 8 signals/i);
+    expect(notifications[0].title).toMatch(/found 8 (urgent )?signals/i);
     expect(notifications[0].link).toContain("/work?job=");
   }, 30000);
 

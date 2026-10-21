@@ -9,8 +9,10 @@ import { setScheduleEnabledAction, setTriggerEnabledAction } from "@/app/actions
 import type { WorkBoardJob } from "@/server/workforce/work-board";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
+import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/reports";
 
 const startReview = vi.fn(async () => ({ ok: true as const, data: { jobId: "job-new", agentId: "agent-1" } }));
+const acknowledgeReport = vi.fn(async () => ({ ok: true as const, data: { acknowledged: true } }));
 vi.mock("@/app/actions/work", () => ({
   startReviewAction: () => startReview(),
   saveScheduleAction: vi.fn(async () => ({ ok: true as const, data: { id: "s1", enabled: false } })),
@@ -19,6 +21,8 @@ vi.mock("@/app/actions/work", () => ({
   saveTriggerAction: vi.fn(async () => ({ ok: true as const, data: { id: "t1", enabled: false } })),
   setTriggerEnabledAction: vi.fn(async () => ({ ok: true as const })),
   deleteTriggerAction: vi.fn(async () => ({ ok: true as const })),
+  acknowledgeReportAction: () => acknowledgeReport(),
+  createFindingTaskAction: vi.fn(async () => ({ ok: true as const, data: { taskId: "task-1", created: true } })),
 }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), info: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
@@ -71,6 +75,72 @@ const reviewActions = [
   { capability: "crm_quality_review" as const, label: "CRM quality review", description: "Review CRM data quality.", employeeName: "CRM Manager", available: false, reason: "CRM Manager needs an applied configuration first." },
 ];
 
+const proactiveReport: ProactiveReportView = {
+  id: "r1",
+  kind: "alert",
+  severity: "critical",
+  title: "Operations Manager found 1 urgent signal",
+  summary: "1 signal across 1 affected item.",
+  sections: [{ key: "what_happened", title: "What happened", body: "A persisted integration is failing." }],
+  findings: [{
+    key: "integration_attention",
+    severity: "critical",
+    title: "One integration needs attention",
+    detail: "A persisted connection is degraded.",
+    count: 1,
+    samples: ["ghl · error"],
+    evidenceHref: "/settings/integrations",
+    recommendedAction: "Inspect the connection before customer work.",
+    requiresApproval: false,
+  }],
+  evidence: [{ label: "One integration needs attention", href: "/settings/integrations" }],
+  metrics: [],
+  actions: [],
+  data: {},
+  employeeName: "Operations Manager",
+  employeeRole: "operations_manager",
+  capability: "proactive_review",
+  jobId: "job-1",
+  jobStatus: "completed",
+  status: "open",
+  deliveryStatus: "delivered",
+  deliveryReason: null,
+  canCreateTask: true,
+  createdAt: "2026-10-21T06:00:00.000Z",
+  acknowledgedAt: null,
+};
+
+const activeMonitoring: MonitoringStatus = {
+  state: "active",
+  schedulesEnabled: 1,
+  triggersEnabled: 0,
+  schedulesOperatorEnabled: true,
+  triggersOperatorEnabled: false,
+  briefingsOperatorEnabled: false,
+  lastVerifiedReportAt: "2026-10-21T06:00:00.000Z",
+  byRole: [{ role: "operations_manager", schedules: 1, triggers: 0, enabled: 1 }],
+};
+
+describe("AI Work Board proactive reports", () => {
+  it("shows an honest monitoring state and a real acknowledgement action", async () => {
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} reports={[proactiveReport]} monitoring={activeMonitoring} focusReportId="r1" />);
+    expect(screen.getByText("Proactive watch")).toBeTruthy();
+    expect(screen.getByText("Monitoring active")).toBeTruthy();
+    expect(screen.getByText("Operations Manager found 1 urgent signal")).toBeTruthy();
+    expect(screen.getAllByText("One integration needs attention").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /Open evidence/ }).getAttribute("href")).toBe("/settings/integrations");
+    await userEvent.click(screen.getByRole("button", { name: /Acknowledge/ }));
+    await waitFor(() => expect(acknowledgeReport).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not imply continuous monitoring when no schedule is configured", () => {
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} reports={[]} monitoring={{ ...activeMonitoring, state: "not_configured", schedulesEnabled: 0, triggersEnabled: 0, byRole: [] }} />);
+    expect(screen.getByText("No monitoring schedule")).toBeTruthy();
+    expect(screen.getByText(/employees are not watching continuously/i)).toBeTruthy();
+    expect(screen.getByText("No proactive reports yet")).toBeTruthy();
+  });
+});
+
 describe("AI Work Board", () => {
   it("renders persisted status, stage and metrics without inventing progress", () => {
     render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
@@ -115,10 +185,13 @@ describe("AI Work Board", () => {
       cadence: "daily",
       intervalMinutes: 1440,
       timezone: "UTC",
+      businessHours: {},
       enabled: true,
       nextRunAt: "2026-10-22T07:00:00.000Z",
       lastRunAt: null,
       lastJobId: null,
+      lastSkippedReason: null,
+      lastSkippedAt: null,
       operatorEnabled: false,
     }];
     render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={schedules} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);

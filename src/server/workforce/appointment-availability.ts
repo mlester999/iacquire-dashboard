@@ -1,6 +1,5 @@
 import "server-only";
 import { withSystem } from "@/server/db";
-import { notifyOrgRoles } from "@/server/notifications";
 import { nativeAvailability } from "@/server/calendars/agent-booking";
 import {
   appendWorkEvent,
@@ -8,6 +7,7 @@ import {
   recordWorkStage,
   type WorkJobRow,
 } from "@/server/workforce/jobs";
+import { publishReviewReport } from "@/server/workforce/reports";
 import { reviewFinding, type ReviewFinding, type ReviewMetric } from "@/server/workforce/read-only-review";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
 import type { AgentRoleKey } from "@/lib/agents";
@@ -155,15 +155,14 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       message: summary,
       data: { slots: availability.ok ? availability.slots.length : 0 },
     });
-    if (findings.length) {
-      await notifyOrgRoles(db, job.org_id, ["owner", "admin"], {
-        kind: "agent_task_completed",
-        severity: "warning",
-        title: `${agent.display_name} could not find bookable calendar availability`,
-        body: summary,
-        link: `/work?job=${job.id}`,
-        dedupeKey: `appointment-availability:${job.id}`,
-      });
-    }
+    await publishReviewReport(db, {
+      job,
+      agent,
+      subject: "Calendar availability",
+      findings,
+      metrics,
+      limitations: "Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted.",
+      checksRun: 2,
+    });
   });
 }

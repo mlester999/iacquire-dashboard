@@ -13,12 +13,15 @@ import { Switch } from "@/components/ui/overlays";
 import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { IconTile, Panel } from "@/components/overview/panel";
 import { WorkJobPanel } from "@/components/work/job-progress";
+import { ProactiveWatch } from "@/components/work/proactive-reports";
 import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTriggerAction, setScheduleEnabledAction, setTriggerEnabledAction, startReviewAction } from "@/app/actions/work";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
+import { WEEKDAYS, type BusinessHours, type Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
+import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/reports";
 import type { WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 import type { WorkBoardJob, WorkBoardSummary, WorkBoardFilter } from "@/server/workforce/work-board";
 
@@ -28,6 +31,9 @@ const FILTERS: Array<{ key: WorkBoardFilter; label: string }> = [
   { key: "attention", label: "Needs attention" },
   { key: "completed", label: "Completed" },
 ];
+
+const DAY_LABEL: Record<Weekday, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+const WEEKDAY_ORDER: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 const STATUS_TONE: Record<string, "primary" | "success" | "warning" | "danger" | "neutral" | "violet"> = {
   queued: "neutral",
@@ -64,6 +70,9 @@ export function WorkBoard({
   triggerOperatorEnabled,
   timeZone,
   focusJobId,
+  reports = [],
+  monitoring = null,
+  focusReportId = null,
 }: {
   jobs: WorkBoardJob[];
   summary: WorkBoardSummary;
@@ -77,6 +86,9 @@ export function WorkBoard({
   triggerOperatorEnabled: boolean;
   timeZone: string;
   focusJobId: string | null;
+  reports?: ProactiveReportView[];
+  monitoring?: MonitoringStatus | null;
+  focusReportId?: string | null;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = React.useState<string | null>(focusJobId);
@@ -87,12 +99,21 @@ export function WorkBoard({
   const selected = reviewActions.find((action) => action.capability === selectedCapability) ?? reviewActions[0] ?? null;
   const [scheduleCapability, setScheduleCapability] = React.useState<string>(() => reviewActions[0]?.capability ?? "");
   const [scheduleCadence, setScheduleCadence] = React.useState<"hourly" | "daily" | "weekly">("daily");
+  const [restrictHours, setRestrictHours] = React.useState(false);
+  const [businessStart, setBusinessStart] = React.useState("09:00");
+  const [businessEnd, setBusinessEnd] = React.useState("17:00");
+  const [businessDays, setBusinessDays] = React.useState<Weekday[]>(["mon", "tue", "wed", "thu", "fri"]);
   const [scheduleBusy, setScheduleBusy] = React.useState<string | null>(null);
+  const businessHours: BusinessHours = restrictHours && businessDays.length
+    ? Object.fromEntries(businessDays.map((day) => [day, [[businessStart, businessEnd]]])) as BusinessHours
+    : {};
+  const businessHoursValid = !restrictHours || (businessDays.length > 0 && businessStart < businessEnd);
 
   const saveSchedule = async () => {
     if (!scheduleCapability || scheduleBusy) return;
+    if (!businessHoursValid) return toast.error("Choose at least one day and an end time after the start time.");
     setScheduleBusy("save");
-    const res = await saveScheduleAction(scheduleCapability, scheduleCadence);
+    const res = await saveScheduleAction(scheduleCapability, scheduleCadence, businessHours);
     setScheduleBusy(null);
     if (!res.ok) return toast.error(res.error);
     toast.success("Schedule saved paused", { description: "Enable it when you are ready. It still only runs when the operator switch is on." });
@@ -213,6 +234,16 @@ export function WorkBoard({
         <MetricCard label="Completed today" value={summary.completedToday} detail="In this workspace's time zone" icon={<CheckCircle2 />} tone="green" />
       </div>
 
+      {monitoring && (
+        <ProactiveWatch
+          reports={reports}
+          monitoring={monitoring}
+          timeZone={timeZone}
+          focusReportId={focusReportId}
+          canManageSchedules={canManageSchedules}
+        />
+      )}
+
       <nav className="flex flex-wrap items-center gap-1.5" aria-label="Filter AI work">
         {FILTERS.map((item) => (
           <Link
@@ -261,9 +292,45 @@ export function WorkBoard({
                   <option value="weekly">Weekly</option>
                 </Select>
               </label>
-              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null}>
+              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null || !businessHoursValid}>
                 Save paused schedule
               </Button>
+            </div>
+            <div className="rounded-xl border border-line bg-surface-2/30 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
+                  <Switch checked={restrictHours} aria-label="Only run during business hours" onCheckedChange={setRestrictHours} />
+                  Only run during business hours
+                </label>
+                <span className="text-[11px] text-muted">Evaluated in {timeZone}</span>
+              </div>
+              {restrictHours && (
+                <div className="mt-3 space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                    <span className="font-medium text-ink-2">From</span>
+                    <input type="time" aria-label="Business hours start" value={businessStart} onChange={(event) => setBusinessStart(event.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]" />
+                    <span className="font-medium text-ink-2">to</span>
+                    <input type="time" aria-label="Business hours end" value={businessEnd} onChange={(event) => setBusinessEnd(event.target.value)} className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]" />
+                  </div>
+                  <div className="flex flex-wrap gap-1" role="group" aria-label="Business days">
+                    {WEEKDAY_ORDER.map((day) => {
+                      const active = businessDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => setBusinessDays((current) => active ? current.filter((item) => item !== day) : [...current, day])}
+                          className={active ? "min-h-8 rounded-lg bg-primary-soft px-2.5 text-[11.5px] font-semibold text-primary-ink ring-1 ring-inset ring-primary/20" : "min-h-8 rounded-lg border border-line px-2.5 text-[11.5px] font-medium text-muted hover:bg-surface-2"}
+                        >
+                          {DAY_LABEL[day]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted">Outside these hours a due schedule is postponed to the next opening; it does not create a job in the middle of the night.</p>
+                </div>
+              )}
             </div>
             {!scheduleOperatorEnabled && (
               <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
@@ -287,6 +354,8 @@ export function WorkBoard({
                       <p className="mt-0.5 text-[11.5px] text-muted" suppressHydrationWarning>
                         {sentenceCase(schedule.cadence)} · next {formatDateTime(schedule.nextRunAt, timeZone)}
                         {schedule.lastRunAt ? ` · last ran ${relativeTime(schedule.lastRunAt)}` : " · not run yet"}
+                        {Object.keys(schedule.businessHours).length ? " · business hours only" : " · any time"}
+                        {schedule.lastSkippedReason === "outside_business_hours" ? " · waiting for opening" : ""}
                         {schedule.enabled && !scheduleOperatorEnabled ? " · paused by operator" : ""}
                       </p>
                     </div>

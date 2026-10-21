@@ -491,6 +491,8 @@ export interface WorkJobView {
   cancelRequested: boolean;
   canCancel: boolean;
   canRetry: boolean;
+  /** Completed review plus tasks.manage: a finding can become an internal follow-up task. */
+  canCreateTask: boolean;
   conversationId: string | null;
   createdAt: string;
   startedAt: string | null;
@@ -547,6 +549,7 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
     cancelRequested: Boolean(job.cancel_requested_at),
     canCancel: !isTerminalWorkJobStatus(job.status) && !job.cancel_requested_at && canActOnJob(ctx, job, cancelPermission),
     canRetry: ["failed", "blocked", "cancelled"].includes(job.status) && canActOnJob(ctx, job, cancelPermission),
+    canCreateTask: job.status === "completed" && ctx.can("tasks.manage"),
     conversationId: job.conversation_id,
     createdAt: new Date(job.created_at).toISOString(),
     startedAt: job.started_at ? new Date(job.started_at).toISOString() : null,

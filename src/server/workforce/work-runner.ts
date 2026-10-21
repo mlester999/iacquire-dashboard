@@ -11,6 +11,7 @@ import {
 } from "@/server/workforce/jobs";
 import { registerWorkJobController, unregisterWorkJobController } from "@/server/workforce/work-cancel";
 import { runLeadResearchJob } from "@/server/leads/research-job";
+import { runLeadGenerationReviewJob } from "@/server/workforce/lead-generation-review";
 import { runProactiveReviewJob } from "@/server/workforce/proactive-review";
 import { runCrmQualityReviewJob } from "@/server/workforce/crm-quality-review";
 import { runPipelineReviewJob } from "@/server/workforce/pipeline-review";
@@ -30,6 +31,7 @@ type Handler = (job: WorkJobRow, context: { workerId: string; controller: AbortC
 
 const HANDLERS: Record<string, Handler> = {
   lead_research: runLeadResearchJob,
+  lead_generation_review: runLeadGenerationReviewJob,
   proactive_review: runProactiveReviewJob,
   crm_quality_review: runCrmQualityReviewJob,
   pipeline_review: runPipelineReviewJob,

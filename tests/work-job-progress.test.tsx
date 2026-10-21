@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import * as React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { WorkJobPanel, type WorkJob } from "@/components/work/job-progress";
+import { createFindingTaskAction } from "@/app/actions/work";
+
+vi.mock("@/app/actions/work", () => ({
+  createFindingTaskAction: vi.fn(async () => ({ ok: true as const, data: { taskId: "task-1", created: true } })),
+}));
 
 vi.mock("next/link", async () => {
   const React = await import("react");
@@ -39,6 +45,7 @@ function job(overrides: Partial<WorkJob> = {}): WorkJob {
     cancelRequested: false,
     canCancel: true,
     canRetry: false,
+    canCreateTask: false,
     conversationId: null,
     createdAt: "2026-10-20T10:00:00.000Z",
     startedAt: "2026-10-20T10:00:05.000Z",
@@ -165,6 +172,36 @@ describe("WorkJobPanel", () => {
     expect(trends).toHaveLength(2);
     expect(trends.some((element) => element.className.includes("text-success-ink"))).toBe(true);
     expect(trends.some((element) => element.className.includes("text-warning-ink"))).toBe(true);
+  });
+
+  it("turns a completed finding into an assigned follow-up task through the real action", async () => {
+    stubJob(job({
+      status: "completed",
+      statusLabel: "Completed",
+      stage: "completed",
+      stageLabel: "Completed",
+      canCancel: false,
+      canCreateTask: true,
+      resultSummary: "CRM quality review found one signal.",
+      result: {
+        findings: [{
+          key: "companies_missing_web",
+          severity: "warning",
+          title: "2 companies have no domain or website",
+          detail: "Without a domain, duplicate detection is weaker.",
+          count: 2,
+          samples: ["No Web Co"],
+          evidenceHref: "/crm/companies",
+          recommendedAction: "Add the verified official domain or website.",
+        }],
+      },
+      events: [],
+    }));
+    render(<WorkJobPanel jobId="job-1" />);
+    await userEvent.click(await screen.findByRole("button", { name: /Create follow-up task/ }));
+    await waitFor(() => expect(createFindingTaskAction).toHaveBeenCalledWith("job-1", "companies_missing_web"));
+    expect(await screen.findByText("Task created")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Task created/ }).getAttribute("href")).toBe("/crm/tasks?task=task-1");
   });
 
   it("does not invent progress when only a queued state is persisted", async () => {

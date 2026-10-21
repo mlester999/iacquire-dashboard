@@ -1,12 +1,12 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
-import { notifyOrgRoles } from "@/server/notifications";
 import {
   appendWorkEvent,
   finishWorkJob,
   recordWorkStage,
   type WorkJobRow,
 } from "@/server/workforce/jobs";
+import { publishReviewReport } from "@/server/workforce/reports";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
 import type { AgentRoleKey } from "@/lib/agents";
 
@@ -197,15 +197,16 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
       message: summary,
       data: { critical, warning, findings: findings.length },
     });
-    if (findings.length) {
-      await notifyOrgRoles(db, job.org_id, ["owner", "admin"], {
-        kind: "agent_task_completed",
-        severity: critical ? "critical" : "warning",
-        title: `${agent.display_name} found ${findings.length} ${spec.subject.toLowerCase()} signal${findings.length === 1 ? "" : "s"}`,
-        body: summary,
-        link: `/work?job=${job.id}`,
-        dedupeKey: `${job.capability}:${job.id}`,
-      });
-    }
+    // The report is the durable proactive card. It is written after the job is complete, and its
+    // delivery policy is per supervisor. A review with no findings is recorded but not announced.
+    await publishReviewReport(db, {
+      job,
+      agent,
+      subject: spec.subject,
+      findings,
+      metrics,
+      limitations: spec.limitations,
+      checksRun: spec.checks.length,
+    });
   });
 }

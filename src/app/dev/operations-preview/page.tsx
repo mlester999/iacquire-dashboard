@@ -18,6 +18,7 @@ import type { AgencyBillingOverview } from "@/server/billing/service";
 import type { UnitRateRow } from "@/server/billing/rates";
 import type { LifecycleOverview, ProgramView, RetentionActivityRow } from "@/server/retention/service";
 import { NOTIFICATION_GROUPS } from "@/lib/notification-groups";
+import { DEFAULT_PROACTIVE_PREFS } from "@/lib/proactive";
 import type { IncidentRow } from "@/server/ops/incidents";
 import type { PendingBookingRow } from "@/server/appointments/overview";
 import type { PolicyView } from "@/server/appointments/settings";
@@ -184,7 +185,7 @@ export default async function OperationsPreview({ searchParams }: { searchParams
       {view === "notifications" && (
         <NotificationPrefsForm
           groups={NOTIFICATION_GROUPS.map(({ key, label, description }) => ({ key, label, description }))}
-          prefs={{ groups: Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, true])), setupEmails: false, email: "important" }}
+          prefs={{ groups: Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, true])), setupEmails: false, email: "important", proactive: DEFAULT_PROACTIVE_PREFS }}
           emailAvailable
         />
       )}

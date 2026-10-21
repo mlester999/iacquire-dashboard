@@ -1,3 +1,5 @@
+import type { ProactivePrefs } from "@/lib/proactive";
+
 // The groups a person can switch off in the notification bell, shared by the settings screen and the server that filters the list.
 // Critical alerts ignore these switches. Email is controlled separately (see src/lib/ops.ts).
 export const NOTIFICATION_GROUPS = [
@@ -25,4 +27,6 @@ export interface NotificationPrefsView {
   setupEmails: boolean;
   /** Which other notifications are also emailed. Critical alerts are always emailed. */
   email: "important" | "all" | "off";
+  /** Proactive AI employee reports: severity threshold, quiet hours, digests and the opt-in safe action. */
+  proactive: ProactivePrefs;
 }

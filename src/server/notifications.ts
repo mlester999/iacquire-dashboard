@@ -88,9 +88,10 @@ function safeLink(link?: string) {
 /**
  * A direct notification is addressed to one person. Agency recipients of a client-scoped
  * notification are recorded as agency mail so a later loss of that client's access hides it.
+ * Returns the notification id, or null when a dedupe key already announced the same thing.
  */
-export async function notifyUser(db: Queryable, userId: string, orgId: string | null, n: NotificationInput) {
-  await db.query(
+export async function notifyUser(db: Queryable, userId: string, orgId: string | null, n: NotificationInput): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(
     `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
      select case
               when u.platform_role in ('agency_staff','agency_manager','agency_super_admin') and $2::uuid is not null then 'agency'
@@ -100,9 +101,11 @@ export async function notifyUser(db: Queryable, userId: string, orgId: string | 
             end,
             $2, u.id, $3, $4, $5, $6, $7, $8
        from users u where u.id = $1
-     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
+     on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing
+     returning id`,
     [userId, orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
   );
+  return rows[0]?.id ?? null;
 }
 
 export async function notifyOrgRoles(db: Queryable, orgId: string, roles: OrgRole[], n: NotificationInput) {

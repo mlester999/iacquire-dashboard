@@ -62,6 +62,7 @@ import { COMPANY_FIELD_GUIDANCE, SHARED_EMPLOYEE_GUIDANCE } from "@/lib/employee
 import { grantableRoles, ROLE_DESCRIPTIONS, ROLE_LABELS, type OrgRole } from "@/lib/permissions";
 import type { EmailPreference } from "@/lib/ops";
 import type { NotificationPrefsView } from "@/lib/notification-groups";
+import type { ProactivePrefs } from "@/lib/proactive";
 import { cn, relativeTime, timeZoneLabel } from "@/lib/utils";
 
 const ZONES = [
@@ -552,6 +553,9 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
   };
   const choice = EMAIL_CHOICES.find((c) => c.value === p.email) ?? EMAIL_CHOICES[0];
   const on = groups.filter((g) => p.groups[g.key] !== false).length;
+  const saveProactive = (patch: Partial<ProactivePrefs>) =>
+    save({ proactive: patch }, (cur) => ({ ...cur, proactive: { ...cur.proactive, ...patch } }));
+  const quiet = Boolean(p.proactive.quietStart && p.proactive.quietEnd);
   return (
     <div className="space-y-6">
       <Panel
@@ -571,6 +575,95 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
             );
           })}
         </div>
+      </Panel>
+      <Panel
+        icon={<Bot />}
+        tone={p.proactive.enabled ? "primary" : "neutral"}
+        title="Proactive AI updates"
+        description="How verified reports from your AI employees reach you. Only work that actually ran can produce one; these settings never create monitoring."
+        aside={<StatusPill tone={p.proactive.enabled ? "success" : "neutral"}>{p.proactive.enabled ? "Updates on" : "Updates off"}</StatusPill>}
+        bodyClassName="space-y-3"
+      >
+        <SettingRow as="label" title="Proactive reports" description="Issue alerts, recommendations, blockers and completed-work summaries from your AI employees.">
+          <Switch checked={p.proactive.enabled} aria-label="Proactive reports" onCheckedChange={(v) => saveProactive({ enabled: v })} />
+        </SettingRow>
+        <SettingRow title="Only tell me about" description="Critical alerts always bypass this threshold.">
+          <Segmented
+            id="proactive-severity"
+            ariaLabel="Minimum proactive severity"
+            value={p.proactive.minimumSeverity}
+            options={[
+              { value: "info", label: "Everything" },
+              { value: "warning", label: "Warnings" },
+              { value: "critical", label: "Critical" },
+            ]}
+            onChange={(v) => saveProactive({ minimumSeverity: v as ProactivePrefs["minimumSeverity"] })}
+          />
+        </SettingRow>
+        <SettingRow title="Delivery" description="A digest still shows the report in the AI Work Board; it only changes when the notification arrives.">
+          <Segmented
+            id="proactive-delivery"
+            ariaLabel="Proactive delivery"
+            value={p.proactive.delivery}
+            options={[
+              { value: "immediate", label: "When verified" },
+              { value: "daily_digest", label: "Daily digest" },
+            ]}
+            onChange={(v) => saveProactive({ delivery: v as ProactivePrefs["delivery"] })}
+          />
+        </SettingRow>
+        <SettingRow as="label" title="Daily activity briefing" description={`One summary at ${String(p.proactive.briefingHour).padStart(2, "0")}:00 in your time zone on days with recorded activity. Generated only when the deployment briefing switch is enabled.`}>
+          <Switch checked={p.proactive.dailyBriefing} aria-label="Daily activity briefing" onCheckedChange={(v) => saveProactive({ dailyBriefing: v })} />
+        </SettingRow>
+        <SettingRow as="label" title="Weekly performance summary" description="A Monday summary of the week's proactive reports and measured outcomes. This is an opt-in, not an automatic customer email.">
+          <Switch checked={p.proactive.weeklySummary} aria-label="Weekly performance summary" onCheckedChange={(v) => saveProactive({ weeklySummary: v })} />
+        </SettingRow>
+        <SettingRow title="Briefing hour" description="Local time. Nothing is sent outside your chosen briefings unless a critical alert occurs.">
+          <Select
+            aria-label="Briefing hour"
+            value={String(p.proactive.briefingHour)}
+            onChange={(event) => saveProactive({ briefingHour: Number(event.target.value) })}
+            disabled={!p.proactive.dailyBriefing && !p.proactive.weeklySummary}
+          >
+            {Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}
+          </Select>
+        </SettingRow>
+        <SettingRow as="label" title="Quiet hours" description="Non-critical proactive alerts wait until quiet hours end. Critical alerts are sent immediately.">
+          <Switch
+            checked={quiet}
+            aria-label="Quiet hours"
+            onCheckedChange={(v) => saveProactive(v ? { quietStart: "21:00", quietEnd: "07:00" } : { quietStart: null, quietEnd: null })}
+          />
+        </SettingRow>
+        {quiet && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/40 p-3 text-[12.5px]">
+            <Clock className="size-3.5 text-muted" aria-hidden />
+            <span className="font-medium">Quiet from</span>
+            <input
+              type="time"
+              aria-label="Quiet hours start"
+              value={p.proactive.quietStart ?? "21:00"}
+              onChange={(event) => saveProactive({ quietStart: event.target.value })}
+              className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]"
+            />
+            <span className="font-medium">until</span>
+            <input
+              type="time"
+              aria-label="Quiet hours end"
+              value={p.proactive.quietEnd ?? "07:00"}
+              onChange={(event) => saveProactive({ quietEnd: event.target.value })}
+              className="h-9 rounded-lg border border-line bg-surface px-2 text-[13px]"
+            />
+            <span className="text-muted">your local time</span>
+          </div>
+        )}
+        <SettingRow as="label" title="Create a follow-up task for critical reports" description="An internal task assigned to you, never a customer message or CRM change. Off by default. Required fields are still validated by the task service, and the action is audited.">
+          <Switch checked={p.proactive.autoCreateTasks} aria-label="Create a follow-up task for critical reports" onCheckedChange={(v) => saveProactive({ autoCreateTasks: v })} />
+        </SettingRow>
+        <Notice tone="neutral" icon={<Clock />}>
+          Briefings run only when the workspace has authorized a monitoring schedule, the scheduler is active and the deployment&apos;s
+          proactive briefing switch is on. If no monitoring is running, the AI Work Board says so instead of implying continuous coverage.
+        </Notice>
       </Panel>
       <Panel
         icon={<Mail />}

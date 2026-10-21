@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { useReducedMotion } from "motion/react";
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck, Square, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, CheckCircle2, Clock3, ListPlus, RefreshCw, Search, ShieldCheck, Square, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status";
 import { formatChatTime, fullTimestamp } from "@/lib/conversation-time";
+import { createFindingTaskAction } from "@/app/actions/work";
 import { cn } from "@/lib/utils";
 
 export interface WorkJobEvent {
@@ -36,6 +38,7 @@ export interface WorkJob {
   cancelRequested: boolean;
   canCancel: boolean;
   canRetry: boolean;
+  canCreateTask: boolean;
   conversationId: string | null;
   createdAt: string;
   startedAt: string | null;
@@ -97,6 +100,8 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<"cancel" | "retry" | null>(null);
   const [showAllEvents, setShowAllEvents] = React.useState(false);
+  const [taskBusy, setTaskBusy] = React.useState<string | null>(null);
+  const [taskIds, setTaskIds] = React.useState<Record<string, string>>({});
   const zone = React.useMemo(() => browserZone(), []);
   const onDoneRef = React.useRef(onDone);
   React.useEffect(() => {
@@ -166,6 +171,18 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
     } finally {
       setBusy(null);
     }
+  };
+
+  const createTask = async (findingKey: string) => {
+    if (taskBusy) return;
+    setTaskBusy(findingKey);
+    const res = await createFindingTaskAction(jobId, findingKey);
+    setTaskBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    setTaskIds((current) => ({ ...current, [findingKey]: res.data.taskId }));
+    toast.success(res.data.created ? "Follow-up task created" : "That task already exists", {
+      description: res.data.created ? "It is assigned to you in CRM Tasks." : "No duplicate was created.",
+    });
   };
 
   if (!job) {
@@ -337,6 +354,20 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
                       {item.recommendedAction && <span className="text-ink-2"><span className="font-medium">Next:</span> {item.recommendedAction}</span>}
                       {item.evidenceHref && <Link href={item.evidenceHref} className="font-semibold text-primary hover:underline">Open evidence</Link>}
+                      {job.canCreateTask && item.key && (
+                        taskIds[item.key]
+                          ? <Link href={`/crm/tasks?task=${taskIds[item.key]}`} className="inline-flex items-center gap-1 font-semibold text-success-ink hover:underline"><CheckCircle2 className="size-3.5" aria-hidden /> Task created</Link>
+                          : (
+                            <button
+                              type="button"
+                              onClick={() => createTask(item.key!)}
+                              disabled={taskBusy !== null}
+                              className="inline-flex items-center gap-1 font-semibold text-primary hover:underline disabled:opacity-50"
+                            >
+                              <ListPlus className="size-3.5" aria-hidden /> {taskBusy === item.key ? "Creating task…" : "Create follow-up task"}
+                            </button>
+                          )
+                      )}
                     </div>
                   </li>
                 );

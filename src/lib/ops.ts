@@ -94,4 +94,9 @@ export const JOB_LABELS: Record<string, string> = {
   fairUseChecks: "Measure usage against fair-use limits",
   inactivityReview: "Review accounts that have gone quiet",
   offboardingReminders: "Remind departing clients before deletion",
+  aiWorkRecovery: "Recover stalled AI work jobs",
+  aiWorkSchedules: "Run due AI workforce schedules",
+  aiWorkTriggers: "Run AI workforce event triggers",
+  aiProactiveHeldReports: "Release proactive reports held by quiet hours",
+  aiProactiveBriefings: "Generate opted-in AI workforce briefings",
 };

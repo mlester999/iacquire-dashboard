@@ -6,6 +6,8 @@ import { actionError, AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { deleteSchedule, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
 import { deleteTrigger, saveTrigger, setTriggerEnabled } from "@/server/workforce/triggers";
+import { createFindingTask } from "@/server/workforce/finding-actions";
+import { acknowledgeProactiveReport } from "@/server/workforce/reports";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -34,10 +36,10 @@ export async function startReviewAction(capability: string) {
   }
 }
 
-export async function saveScheduleAction(capability: string, cadence: string) {
+export async function saveScheduleAction(capability: string, cadence: string, businessHours?: unknown) {
   try {
     const ctx = await requireOrgContextOrThrow("agents.configure");
-    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false });
+    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false, businessHours });
     revalidatePath("/work");
     return { ok: true as const, data: saved };
   } catch (err) {
@@ -52,6 +54,31 @@ export async function setScheduleEnabledAction(scheduleId: string, enabled: bool
     await setScheduleEnabled(ctx, scheduleId, enabled);
     revalidatePath("/work");
     return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function createFindingTaskAction(jobId: string, findingKey: string) {
+  try {
+    if (!UUID.test(jobId)) throw new AppError("not_found", "Work job not found.");
+    const ctx = await requireOrgContextOrThrow("tasks.manage");
+    const result = await createFindingTask(ctx, { jobId, findingKey: findingKey.slice(0, 80) });
+    revalidatePath("/work");
+    revalidatePath("/crm/tasks");
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function acknowledgeReportAction(reportId: string) {
+  try {
+    if (!UUID.test(reportId)) throw new AppError("not_found", "Report not found.");
+    const ctx = await requireOrgContextOrThrow("activity.view");
+    const result = await acknowledgeProactiveReport(ctx, reportId);
+    revalidatePath("/work");
+    return { ok: true as const, data: result };
   } catch (err) {
     return actionError(err);
   }

@@ -1,12 +1,12 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
-import { notifyOrgRoles } from "@/server/notifications";
 import {
   appendWorkEvent,
   finishWorkJob,
   recordWorkStage,
   type WorkJobRow,
 } from "@/server/workforce/jobs";
+import { publishReviewReport } from "@/server/workforce/reports";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
 import type { AgentRoleKey } from "@/lib/agents";
 
@@ -336,15 +336,14 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       message: summary,
       data: { critical, warning, findings: findings.length },
     });
-    if (findings.length) {
-      await notifyOrgRoles(db, job.org_id, ["owner", "admin"], {
-        kind: "agent_task_completed",
-        severity: critical ? "critical" : "warning",
-        title: `${agent.display_name} found ${findings.length} signal${findings.length === 1 ? "" : "s"} that need attention`,
-        body: summary,
-        link: `/work?job=${job.id}`,
-        dedupeKey: `proactive-review:${job.id}`,
-      });
-    }
+    await publishReviewReport(db, {
+      job,
+      agent,
+      subject: "Operations",
+      findings,
+      metrics: [],
+      limitations: "Only records this workspace already stores were read. No external provider was contacted and no business record was changed.",
+      checksRun: 8,
+    });
   });
 }

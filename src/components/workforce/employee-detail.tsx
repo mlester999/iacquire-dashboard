@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   Lock,
   MessageSquare,
+  Radar,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -50,6 +51,8 @@ import { EmployeeInstructions } from "@/components/workforce/employee-instructio
 import { EmployeeKnowledge } from "@/components/workforce/employee-knowledge";
 import type { EmployeeInstructionOverview } from "@/server/workforce/instructions";
 import type { EmployeeKnowledgeView } from "@/server/workforce/knowledge";
+import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/reports";
+import { PROACTIVE_SEVERITY_LABELS, proactiveDutyForRole } from "@/lib/proactive";
 
 type Version = ConfigVersion;
 
@@ -112,6 +115,10 @@ interface Props {
   instructionOverview: EmployeeInstructionOverview | null;
   knowledgeView: EmployeeKnowledgeView | null;
   uploadAccept: string;
+  /** Verified proactive reports for this employee's role. Empty unless the viewer has activity.view. */
+  proactiveReports: ProactiveReportView[];
+  /** Real monitoring state; null means the server could not read it and the UI must not imply coverage. */
+  proactiveMonitoring: MonitoringStatus | null;
 }
 
 export function EmployeeDetail(props: Props) {
@@ -1041,28 +1048,91 @@ function HistoryTab({ meta, versions, timeZone, now, draftVersion, isInternalWor
   );
 }
 
-function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse }: Props) {
+function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { meta: AgentRoleMeta; reports: ProactiveReportView[]; monitoring: MonitoringStatus | null; timeZone: string }) {
+  const duty = proactiveDutyForRole(meta.key);
+  if (!duty) return null;
+  const roleMonitoring = monitoring?.byRole.find((row) => row.role === meta.key);
+  const state = monitoring?.state ?? "not_configured";
+  const watching = Boolean(roleMonitoring?.enabled && state === "active");
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle className="flex items-center gap-2"><Radar className="size-4" aria-hidden /> Proactive work</CardTitle>
+          <CardDescription>{duty.description}</CardDescription>
+        </div>
+        <Badge tone={watching ? "success" : state === "paused" ? "warning" : "neutral"}>
+          {watching ? "Monitoring active" : state === "paused" ? "Monitoring paused" : "No monitoring scheduled"}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+          <p className="text-[12.5px] font-semibold text-ink">{duty.title}</p>
+          <ul className="mt-1.5 grid gap-1 text-[12px] text-ink-2 sm:grid-cols-2">
+            {duty.watches.slice(0, 6).map((item) => <li key={item} className="flex gap-1.5"><span className="text-primary">•</span>{item}</li>)}
+          </ul>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{duty.approvalBoundary}</p>
+        </div>
+        {reports.length === 0 ? (
+          <p className="text-[12.5px] text-muted">No verified proactive report has been recorded for this employee yet. This view never fabricates one.</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-xl border border-line">
+            {reports.map((report) => (
+              <li key={report.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+                <Badge tone={report.severity === "critical" ? "danger" : report.severity === "warning" ? "warning" : "primary"}>{PROACTIVE_SEVERITY_LABELS[report.severity]}</Badge>
+                <div className="min-w-0 flex-1">
+                  <Link href={`/work?report=${report.id}`} className="block truncate text-[12.5px] font-semibold text-ink hover:underline">{report.title}</Link>
+                  <span className="text-[11.5px] text-muted"><span suppressHydrationWarning>{formatDateTime(report.createdAt, timeZone)}</span> · {report.findings.length} finding{report.findings.length === 1 ? "" : "s"}</span>
+                </div>
+                <Link href={`/work?report=${report.id}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold text-primary hover:bg-primary-soft/50">
+                  Open <ArrowUpRight className="size-3.5" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[11.5px] leading-relaxed text-muted">
+          {watching
+            ? "An authorized schedule or trigger is enabled for this employee. Reports appear only after a real job completes."
+            : "No recurring job is authorized for this employee here. You can inspect or authorize monitoring on the AI Work Board."}
+        </p>
+        <ButtonLink href="/work" variant="secondary">Open the AI Work Board</ButtonLink>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse, proactiveReports, proactiveMonitoring }: Props) {
+  const proactive = <EmployeeProactiveActivity meta={meta} reports={proactiveReports} monitoring={proactiveMonitoring} timeZone={timeZone} />;
   if (!runs.length) {
-    return <Card><EmptyState icon={<Activity className="size-5" />} title="No recorded runs yet" description={`Conversations and tool activity appear here after ${agent.displayName} starts working. This view only shows saved run records.`} action={canUse && agent.enabled && canChat(agent.status) ? <ButtonLink href={`/chat/${meta.slug}`} variant="secondary">Open chat</ButtonLink> : <ButtonLink href="#employee-readiness" variant="secondary">Review setup requirements</ButtonLink>} /></Card>;
+    return (
+      <div className="space-y-4">
+        {proactive}
+        <Card><EmptyState icon={<Activity className="size-5" />} title="No recorded runs yet" description={`Conversations and tool activity appear here after ${agent.displayName} starts working. This view only shows saved run records.`} action={canUse && agent.enabled && canChat(agent.status) ? <ButtonLink href={`/chat/${meta.slug}`} variant="secondary">Open chat</ButtonLink> : <ButtonLink href="#employee-readiness" variant="secondary">Review setup requirements</ButtonLink>} /></Card>
+      </div>
+    );
   }
   return (
-    <Card className="overflow-hidden">
-      <div className="scrollbar-thin overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-[13px]">
-          <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted"><tr><th className="px-5 py-3 font-medium">Started</th><th className="px-3 py-3 font-medium">Type</th><th className="px-3 py-3 font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Tool steps</th><th className="px-5 py-3 text-right font-medium">Tokens</th></tr></thead>
-          <tbody className="divide-y divide-line">
-            {runs.map((r) => (
-              <tr key={r.id}>
-                <td className="px-5 py-2.5">{formatDateTime(r.started_at, timeZone)}</td>
-                <td className="px-3 py-2.5">{r.purpose === "lead_research" ? "Lead research" : "Conversation"}</td>
-                <td className="px-3 py-2.5"><Badge tone={r.status === "completed" ? "success" : r.status === "cancelled" ? "neutral" : r.status === "running" ? "primary" : "danger"}>{sentenceCase(r.status)}</Badge>{r.error_message && <span className="ml-2 text-[12px] text-muted">{r.error_message}</span>}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{r.tools}</td>
-                <td className="px-5 py-2.5 text-right tabular-nums">{r.total_tokens ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <div className="space-y-4">
+      {proactive}
+      <Card className="overflow-hidden">
+        <div className="scrollbar-thin overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-[13px]">
+            <thead className="border-b border-line bg-surface-2/60 text-[12px] text-muted"><tr><th className="px-5 py-3 font-medium">Started</th><th className="px-3 py-3 font-medium">Type</th><th className="px-3 py-3 font-medium">Status</th><th className="px-3 py-3 text-right font-medium">Tool steps</th><th className="px-5 py-3 text-right font-medium">Tokens</th></tr></thead>
+            <tbody className="divide-y divide-line">
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-5 py-2.5">{formatDateTime(r.started_at, timeZone)}</td>
+                  <td className="px-3 py-2.5">{r.purpose === "lead_research" ? "Lead research" : "Conversation"}</td>
+                  <td className="px-3 py-2.5"><Badge tone={r.status === "completed" ? "success" : r.status === "cancelled" ? "neutral" : r.status === "running" ? "primary" : "danger"}>{sentenceCase(r.status)}</Badge>{r.error_message && <span className="ml-2 text-[12px] text-muted">{r.error_message}</span>}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{r.tools}</td>
+                  <td className="px-5 py-2.5 text-right tabular-nums">{r.total_tokens ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
   );
 }

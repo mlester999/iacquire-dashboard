@@ -12,6 +12,7 @@ import { scanInstructionText } from "@/lib/instruction-risk";
 import { grantableRoles, type OrgRole } from "@/lib/permissions";
 import { NOTIFICATION_GROUPS, type NotificationPrefsView } from "@/lib/notification-groups";
 import { parseEmailPreference } from "@/lib/ops";
+import { parseProactivePrefs, proactivePrefsFrom } from "@/lib/proactive";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // ---------------------------------------------------------------------------
@@ -256,13 +257,32 @@ export async function getNotificationPrefs(ctx: OrgContext): Promise<Notificatio
     db.query<{ prefs: Record<string, unknown> }>("select prefs from notification_preferences where user_id = $1 and org_id = $2", [ctx.user.id, ctx.org.orgId]),
   );
   const prefs = rows[0]?.prefs ?? {};
-  return { groups: Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, prefs[g.key] !== false])), setupEmails: prefs.setupEmails === true, email: parseEmailPreference(prefs) };
+  return {
+    groups: Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, prefs[g.key] !== false])),
+    setupEmails: prefs.setupEmails === true,
+    email: parseEmailPreference(prefs),
+    proactive: parseProactivePrefs(prefs),
+  };
 }
+
+const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a 24-hour time such as 21:00.");
+const proactivePatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  minimumSeverity: z.enum(["info", "warning", "critical"]).optional(),
+  delivery: z.enum(["immediate", "daily_digest"]).optional(),
+  dailyBriefing: z.boolean().optional(),
+  weeklySummary: z.boolean().optional(),
+  briefingHour: z.number().int().min(0).max(23).optional(),
+  quietStart: TIME.nullable().optional(),
+  quietEnd: TIME.nullable().optional(),
+  autoCreateTasks: z.boolean().optional(),
+}).optional();
 
 export const notificationPrefsSchema = z.object({
   groups: z.record(z.string(), z.boolean()).optional(),
   setupEmails: z.boolean().optional(),
   email: z.enum(["important", "all", "off"]).optional(),
+  proactive: proactivePatchSchema,
 });
 
 /** Changes only what was sent; everything else the person already chose is kept. */
@@ -270,7 +290,16 @@ export async function saveNotificationPrefs(ctx: OrgContext, input: z.input<type
   const patch = notificationPrefsSchema.parse(input);
   const current = await getNotificationPrefs(ctx);
   const groups = Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g.key, patch.groups ? patch.groups[g.key] !== false : current.groups[g.key]]));
-  const clean = { ...groups, setupEmails: patch.setupEmails ?? current.setupEmails, email: patch.email ?? current.email };
+  const proactive = { ...current.proactive, ...(patch.proactive ?? {}) };
+  if ((proactive.quietStart === null) !== (proactive.quietEnd === null)) {
+    throw new AppError("invalid_input", "Set both quiet-hour times, or neither.");
+  }
+  const clean = {
+    ...groups,
+    setupEmails: patch.setupEmails ?? current.setupEmails,
+    email: patch.email ?? current.email,
+    proactive: proactivePrefsFrom(proactive),
+  };
   await withUser(ctx.user.id, (db) =>
     db.query(
       `insert into notification_preferences (user_id, org_id, prefs) values ($1, $2, $3)

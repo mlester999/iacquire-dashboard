@@ -8,12 +8,14 @@ import type { CapabilityKey } from "@/lib/workforce-capabilities";
 export const TRIGGER_EVENT_CAPABILITIES: Record<string, CapabilityKey> = {
   "appointment.cancelled": "appointment_review",
   "appointment.no_show": "appointment_review",
+  "appointment.rescheduled": "appointment_review",
   "opportunity.lost": "pipeline_review",
 };
 
 export const TRIGGER_EVENT_LABELS: Record<string, string> = {
   "appointment.cancelled": "Appointment cancelled",
   "appointment.no_show": "Appointment no-show",
+  "appointment.rescheduled": "Appointment rescheduled",
   "opportunity.lost": "Deal marked lost",
 };
 

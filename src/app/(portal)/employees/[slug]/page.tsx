@@ -9,6 +9,7 @@ import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/l
 import { autonomousBlocker } from "@/server/automation/controls";
 import { getEmployeeInstructionOverview } from "@/server/workforce/instructions";
 import { listEmployeeKnowledge } from "@/server/workforce/knowledge";
+import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
 import { ACCEPTED_UPLOADS } from "@/server/knowledge/service";
 import { currentTime } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
   const canViewKnowledge = ctx.can("knowledge.view");
   const requestedVersion = typeof version === "string" && /^[0-9a-f-]{36}$/i.test(version) ? version : null;
 
-  const [controls, versions, settings, companyContext, knowledgeView, instructionOverview, extra, internalVerification] = await Promise.all([
+  const [controls, versions, settings, companyContext, knowledgeView, instructionOverview, extra, internalVerification, proactiveReports, proactiveMonitoring] = await Promise.all([
     withSystem(async (db) => {
       const { rows } = await db.query<{ last_health_ok: boolean | null }>("select last_health_ok from agent_instances where id = $1 and org_id = $2", [agent.id, ctx.org.orgId]);
       const blocker = await autonomousBlocker(db, ctx.org.orgId, { enabled: agent.enabled, status: agent.status, last_health_ok: rows[0]?.last_health_ok ?? null, display_name: agent.display_name });
@@ -133,6 +134,8 @@ export default async function EmployeePage({ params, searchParams }: { params: P
           return { identityCurrent, acknowledgementCurrent };
         })
       : Promise.resolve({ identityCurrent: null, acknowledgementCurrent: null }),
+    listProactiveReports(ctx, { role: meta.key, limit: 5 }).catch(() => []),
+    getProactiveMonitoringStatus(ctx).catch(() => null),
   ]);
 
   return (
@@ -191,6 +194,8 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       initialTab={tab ?? "overview"}
       timeZone={ctx.org.timezone}
       now={currentTime()}
+      proactiveReports={proactiveReports}
+      proactiveMonitoring={proactiveMonitoring}
       {...extra}
     />
   );

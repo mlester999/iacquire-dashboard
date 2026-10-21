@@ -5,6 +5,7 @@ import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fix
 import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
+import { createFindingTask } from "@/server/workforce/finding-actions";
 import { capabilitiesForRole, roleMayUseCapability } from "@/lib/workforce-capabilities";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -197,6 +198,40 @@ describe("reusable read-only capabilities", () => {
       db.query<{ count: number }>("select count(*)::int as count from crm_companies where org_id = $1 and deleted_at is null", [org.id]),
     );
     expect(rows[0].count).toBe(3);
+  });
+
+  it("turns a completed finding into one idempotent, assigned follow-up task", async () => {
+    const dispatched = await dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
+      agentRole: "crm_manager",
+      capability: "crm_quality_review",
+      title: "CRM quality review",
+      input: {},
+    });
+    const job = await waitForJob(dispatched.jobId);
+    expect(job.status).toBe("completed");
+    const findings = job.result.findings as Array<{ key: string; title: string }>;
+    expect(findings.length).toBeGreaterThan(0);
+    const first = await createFindingTask(ctxFor(owner, org, "owner"), { jobId: dispatched.jobId, findingKey: findings[0].key });
+    expect(first.created).toBe(true);
+    const again = await createFindingTask(ctxFor(owner, org, "owner"), { jobId: dispatched.jobId, findingKey: findings[0].key });
+    expect(again).toMatchObject({ taskId: first.taskId, created: false });
+    const { rows } = await withSystem((db) =>
+      db.query<{ title: string; assigned_user_id: string; source: string; related_type: string; related_id: string }>(
+        "select title, assigned_user_id, source, related_type, related_id from tasks where id = $1 and org_id = $2",
+        [first.taskId, org.id],
+      ),
+    );
+    expect(rows[0]).toMatchObject({
+      title: `Follow up: ${findings[0].title}`.slice(0, 200),
+      assigned_user_id: owner.id,
+      source: "agent",
+      related_type: "ai_work_finding",
+      related_id: `${dispatched.jobId}:${findings[0].key}`,
+    });
+    const audit = await withSystem((db) =>
+      db.query<{ action: string }>("select action from audit_logs where org_id = $1 and target_id = $2", [org.id, first.taskId]),
+    );
+    expect(audit.rows.map((row) => row.action)).toContain("workforce.finding_task_created");
   });
 
   it("runs a real pipeline review without changing any opportunity", async () => {

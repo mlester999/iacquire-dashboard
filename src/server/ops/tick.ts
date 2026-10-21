@@ -38,6 +38,7 @@ import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck
 import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
+import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
 
 export interface ScheduledJob {
   name: string;
@@ -151,6 +152,18 @@ export const JOBS: ScheduledJob[] = [
   // Event triggers create durable jobs only when WORKFORCE_TRIGGERS_ENABLED=true. The trigger row
   // must also be enabled; both are required and neither runs provider work inside the tick.
   { name: "aiWorkTriggers", run: async () => (await runDueTriggers()).created },
+  // A non-critical proactive report that arrived during quiet hours is released after they end.
+  // This only delivers an existing, already-verified report; it never creates work.
+  { name: "aiProactiveHeldReports", everyMinutes: 5, run: async () => {
+    const r = await releaseHeldProactiveReports();
+    return r.delivered + r.suppressed;
+  } },
+  // Opt-in daily/weekly briefings. WORKFORCE_BRIEFINGS_ENABLED is off by default, so registering
+  // this job cannot start a briefing by itself. It never runs provider work.
+  { name: "aiProactiveBriefings", everyMinutes: 5, run: async () => {
+    const r = await runProactiveBriefings();
+    return r.generated + r.suppressed + r.held + r.failed;
+  } },
 ];
 
 /**

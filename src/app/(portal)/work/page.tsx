@@ -3,21 +3,26 @@ import { listAgents } from "@/server/workforce/service";
 import { listWorkBoardJobs, workBoardSummary, type WorkBoardFilter } from "@/server/workforce/work-board";
 import { listSchedules, schedulesOperatorEnabled } from "@/server/workforce/schedules";
 import { listTriggers, triggersOperatorEnabled } from "@/server/workforce/triggers";
+import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
 import { WorkBoard } from "@/components/work/work-board";
 import { AGENT_BY_KEY, canChat } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 
 export const metadata = { title: "AI Work Board" };
 
-export default async function WorkPage({ searchParams }: { searchParams: Promise<{ status?: string; job?: string }> }) {
-  const [{ status, job }, ctx] = await Promise.all([searchParams, requireOrgContext()]);
+const UUID = /^[0-9a-f-]{36}$/i;
+
+export default async function WorkPage({ searchParams }: { searchParams: Promise<{ status?: string; job?: string; report?: string }> }) {
+  const [{ status, job, report }, ctx] = await Promise.all([searchParams, requireOrgContext()]);
   const filter: WorkBoardFilter = status === "active" || status === "attention" || status === "completed" ? status : "all";
-  const [jobs, summary, agents, schedules, triggers] = await Promise.all([
+  const [jobs, summary, agents, schedules, triggers, reports, monitoring] = await Promise.all([
     listWorkBoardJobs(ctx, filter),
     workBoardSummary(ctx),
     listAgents(ctx.user.id, ctx.org.orgId).catch(() => []),
     listSchedules(ctx).catch(() => []),
     listTriggers(ctx).catch(() => []),
+    listProactiveReports(ctx, { limit: 24 }).catch(() => []),
+    getProactiveMonitoringStatus(ctx).catch(() => null),
   ]);
 
   const reviewActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
@@ -63,7 +68,10 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       canManageTriggers={ctx.can("agents.configure")}
       triggerOperatorEnabled={triggersOperatorEnabled()}
       timeZone={ctx.org.timezone}
-      focusJobId={typeof job === "string" && /^[0-9a-f-]{36}$/i.test(job) ? job : null}
+      focusJobId={typeof job === "string" && UUID.test(job) ? job : null}
+      reports={reports}
+      monitoring={monitoring}
+      focusReportId={typeof report === "string" && UUID.test(report) ? report : null}
     />
   );
 }
