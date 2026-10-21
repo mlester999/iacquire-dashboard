@@ -36,6 +36,7 @@ import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefin
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
+import { runDueSchedules } from "@/server/workforce/schedules";
 
 export interface ScheduledJob {
   name: string;
@@ -142,6 +143,10 @@ export const JOBS: ScheduledJob[] = [
   // (while attempts remain) or failed honestly. It never executes provider work inside the tick;
   // the dedicated workforce worker (scripts/workforce-worker.ts) runs queued jobs.
   { name: "aiWorkRecovery", everyMinutes: 5, run: async () => { const r = await recoverExpiredWorkJobs(); return r.retried + r.failed + r.cancelled; } },
+  // Enabled workforce schedules create durable jobs only when the operator sets
+  // WORKFORCE_SCHEDULES_ENABLED=true. The row switch and this global switch are both required;
+  // the tick still never executes provider work itself.
+  { name: "aiWorkSchedules", run: async () => (await runDueSchedules()).created },
 ];
 
 /**

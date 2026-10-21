@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { actionError, AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
+import { deleteSchedule, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
+
+const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
  * Starts one reviewed, read-only capability from the AI Work Board. Lead research is deliberately
@@ -25,6 +28,41 @@ export async function startReviewAction(capability: string) {
     });
     revalidatePath("/work");
     return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function saveScheduleAction(capability: string, cadence: string) {
+  try {
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const saved = await saveSchedule(ctx, { capability, cadence, enabled: false });
+    revalidatePath("/work");
+    return { ok: true as const, data: saved };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function setScheduleEnabledAction(scheduleId: string, enabled: boolean) {
+  try {
+    if (!UUID.test(scheduleId)) throw new AppError("not_found", "Schedule not found.");
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    await setScheduleEnabled(ctx, scheduleId, enabled);
+    revalidatePath("/work");
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function deleteScheduleAction(scheduleId: string) {
+  try {
+    if (!UUID.test(scheduleId)) throw new AppError("not_found", "Schedule not found.");
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    await deleteSchedule(ctx, scheduleId);
+    revalidatePath("/work");
+    return { ok: true as const };
   } catch (err) {
     return actionError(err);
   }

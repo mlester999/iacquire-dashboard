@@ -1,6 +1,7 @@
 import { requireOrgContext } from "@/server/tenancy/context";
 import { listAgents } from "@/server/workforce/service";
 import { listWorkBoardJobs, workBoardSummary, type WorkBoardFilter } from "@/server/workforce/work-board";
+import { listSchedules, schedulesOperatorEnabled } from "@/server/workforce/schedules";
 import { WorkBoard } from "@/components/work/work-board";
 import { AGENT_BY_KEY, canChat } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
@@ -10,10 +11,11 @@ export const metadata = { title: "AI Work Board" };
 export default async function WorkPage({ searchParams }: { searchParams: Promise<{ status?: string; job?: string }> }) {
   const [{ status, job }, ctx] = await Promise.all([searchParams, requireOrgContext()]);
   const filter: WorkBoardFilter = status === "active" || status === "attention" || status === "completed" ? status : "all";
-  const [jobs, summary, agents] = await Promise.all([
+  const [jobs, summary, agents, schedules] = await Promise.all([
     listWorkBoardJobs(ctx, filter),
     workBoardSummary(ctx),
     listAgents(ctx.user.id, ctx.org.orgId).catch(() => []),
+    listSchedules(ctx).catch(() => []),
   ]);
 
   const reviewActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
@@ -52,6 +54,9 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       summary={summary}
       filter={filter}
       reviewActions={reviewActions}
+      schedules={schedules}
+      canManageSchedules={ctx.can("agents.configure")}
+      scheduleOperatorEnabled={schedulesOperatorEnabled()}
       timeZone={ctx.org.timezone}
       focusJobId={typeof job === "string" && /^[0-9a-f-]{36}$/i.test(job) ? job : null}
     />

@@ -4,17 +4,19 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock3, ListChecks, Loader2, Play, ShieldCheck, Sparkles, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, ListChecks, Loader2, Play, ShieldCheck, Sparkles, Trash2, XCircle } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Select } from "@/components/ui/primitives";
 import { StatusPill, InfoChip } from "@/components/ui/status";
+import { Switch } from "@/components/ui/overlays";
 import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { IconTile, Panel } from "@/components/overview/panel";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { startReviewAction } from "@/app/actions/work";
+import { deleteScheduleAction, saveScheduleAction, setScheduleEnabledAction, startReviewAction } from "@/app/actions/work";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
-import { formatDateTime, relativeTime } from "@/lib/utils";
+import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
+import type { ScheduleView } from "@/server/workforce/schedules";
 import type { WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 import type { WorkBoardJob, WorkBoardSummary, WorkBoardFilter } from "@/server/workforce/work-board";
 
@@ -52,6 +54,9 @@ export function WorkBoard({
   summary,
   filter,
   reviewActions,
+  schedules,
+  canManageSchedules,
+  scheduleOperatorEnabled,
   timeZone,
   focusJobId,
 }: {
@@ -59,6 +64,9 @@ export function WorkBoard({
   summary: WorkBoardSummary;
   filter: WorkBoardFilter;
   reviewActions: WorkBoardCapabilityAction[];
+  schedules: ScheduleView[];
+  canManageSchedules: boolean;
+  scheduleOperatorEnabled: boolean;
   timeZone: string;
   focusJobId: string | null;
 }) {
@@ -69,6 +77,44 @@ export function WorkBoard({
     return reviewActions.find((action) => action.available)?.capability ?? reviewActions[0]?.capability ?? "";
   });
   const selected = reviewActions.find((action) => action.capability === selectedCapability) ?? reviewActions[0] ?? null;
+  const [scheduleCapability, setScheduleCapability] = React.useState<string>(() => reviewActions[0]?.capability ?? "");
+  const [scheduleCadence, setScheduleCadence] = React.useState<"hourly" | "daily" | "weekly">("daily");
+  const [scheduleBusy, setScheduleBusy] = React.useState<string | null>(null);
+
+  const saveSchedule = async () => {
+    if (!scheduleCapability || scheduleBusy) return;
+    setScheduleBusy("save");
+    const res = await saveScheduleAction(scheduleCapability, scheduleCadence);
+    setScheduleBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Schedule saved paused", { description: "Enable it when you are ready. It still only runs when the operator switch is on." });
+    router.refresh();
+  };
+
+  const toggleSchedule = async (id: string, enabled: boolean) => {
+    if (scheduleBusy) return;
+    setScheduleBusy(id);
+    const res = await setScheduleEnabledAction(id, enabled);
+    setScheduleBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(enabled ? "Schedule enabled" : "Schedule paused", {
+      description: enabled && !scheduleOperatorEnabled
+        ? "It will not run until the operator enables AI workforce schedules."
+        : "The change is recorded in the audit trail.",
+    });
+    router.refresh();
+  };
+
+  const removeSchedule = async (id: string) => {
+    if (scheduleBusy) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this schedule? It will stop creating new reviews. Existing jobs and evidence are kept.")) return;
+    setScheduleBusy(id);
+    const res = await deleteScheduleAction(id);
+    setScheduleBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Schedule deleted");
+    router.refresh();
+  };
 
   const startReview = async () => {
     if (!selected?.available || starting) return;
@@ -138,6 +184,82 @@ export function WorkBoard({
         ))}
         <span className="ml-auto text-[11.5px] text-muted">{jobs.length} item{jobs.length === 1 ? "" : "s"} in this view</span>
       </nav>
+
+      {canManageSchedules && (
+        <Panel
+          icon={<CalendarClock />}
+          tone="neutral"
+          title="Scheduled reviews"
+          description="A schedule creates a durable job on its cadence. It only runs when both the row and the operator switch are enabled."
+          action={
+            <StatusPill tone={scheduleOperatorEnabled ? "success" : "warning"} size="sm">
+              {scheduleOperatorEnabled ? "Operator switch on" : "Operator switch off"}
+            </StatusPill>
+          }
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block min-w-[15rem] flex-1 text-[12px] font-medium text-ink-2">
+                Review
+                <Select className="mt-1" value={scheduleCapability} onChange={(event) => setScheduleCapability(event.target.value)} disabled={!reviewActions.length}>
+                  {reviewActions.map((action) => (
+                    <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
+                  ))}
+                </Select>
+              </label>
+              <label className="block text-[12px] font-medium text-ink-2">
+                Cadence
+                <Select className="mt-1" value={scheduleCadence} onChange={(event) => setScheduleCadence(event.target.value as "hourly" | "daily" | "weekly")}>
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </Select>
+              </label>
+              <Button variant="secondary" onClick={saveSchedule} loading={scheduleBusy === "save"} disabled={!scheduleCapability || scheduleBusy !== null}>
+                Save paused schedule
+              </Button>
+            </div>
+            {!scheduleOperatorEnabled && (
+              <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
+                The operator switch is off (<code className="font-mono text-[11px]">WORKFORCE_SCHEDULES_ENABLED</code>), so no schedule creates work even when its row is enabled. This is deliberate.
+              </p>
+            )}
+            {schedules.length === 0 ? (
+              <p className="text-[12.5px] text-muted">No schedules yet. Saving one is always paused first.</p>
+            ) : (
+              <ul className="divide-y divide-line rounded-xl border border-line">
+                {schedules.map((schedule) => (
+                  <li key={schedule.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <Switch
+                      checked={schedule.enabled}
+                      disabled={scheduleBusy !== null}
+                      onCheckedChange={(next) => toggleSchedule(schedule.id, next)}
+                      aria-label={`${schedule.enabled ? "Pause" : "Enable"} ${schedule.capabilityLabel} schedule`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
+                      <p className="mt-0.5 text-[11.5px] text-muted" suppressHydrationWarning>
+                        {sentenceCase(schedule.cadence)} · next {formatDateTime(schedule.nextRunAt, timeZone)}
+                        {schedule.lastRunAt ? ` · last ran ${relativeTime(schedule.lastRunAt)}` : " · not run yet"}
+                        {schedule.enabled && !scheduleOperatorEnabled ? " · paused by operator" : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeSchedule(schedule.id)}
+                      disabled={scheduleBusy !== null}
+                      className="inline-flex size-8 items-center justify-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink disabled:opacity-50"
+                      aria-label={`Delete ${schedule.capabilityLabel} schedule`}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Panel>
+      )}
 
       <Panel icon={<Sparkles />} tone="violet" title="Work queue" description="Tap an item to inspect its recorded stages and events." bodyClassName="px-0 pb-0 pt-3">
         {jobs.length === 0 ? (

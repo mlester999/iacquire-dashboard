@@ -5,10 +5,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { WorkBoard } from "@/components/work/work-board";
+import { setScheduleEnabledAction } from "@/app/actions/work";
 import type { WorkBoardJob } from "@/server/workforce/work-board";
+import type { ScheduleView } from "@/server/workforce/schedules";
 
 const startReview = vi.fn(async () => ({ ok: true as const, data: { jobId: "job-new", agentId: "agent-1" } }));
-vi.mock("@/app/actions/work", () => ({ startReviewAction: () => startReview() }));
+vi.mock("@/app/actions/work", () => ({
+  startReviewAction: () => startReview(),
+  saveScheduleAction: vi.fn(async () => ({ ok: true as const, data: { id: "s1", enabled: false } })),
+  setScheduleEnabledAction: vi.fn(async () => ({ ok: true as const })),
+  deleteScheduleAction: vi.fn(async () => ({ ok: true as const })),
+}));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), info: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("next/link", async () => {
@@ -62,7 +69,7 @@ const reviewActions = [
 
 describe("AI Work Board", () => {
   it("renders persisted status, stage and metrics without inventing progress", () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
     expect(screen.getByText("See the work, not a spinner.")).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
     expect(screen.getByText("Reviewing discovered company websites")).toBeTruthy();
@@ -73,14 +80,14 @@ describe("AI Work Board", () => {
   });
 
   it("starts a real on-demand review when access allows it", async () => {
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
     await userEvent.click(screen.getByRole("button", { name: /Start review/ }));
     await waitFor(() => expect(startReview).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalled();
   });
 
   it("expands the real work panel and links filters correctly", () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
     expect(screen.getByRole("link", { name: "Needs attention" }).getAttribute("href")).toBe("/work?status=attention");
     fireEvent.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByTestId("job-panel").textContent).toBe("job-1");
@@ -89,9 +96,33 @@ describe("AI Work Board", () => {
   });
 
   it("disables a review whose employee is not available and explains why", () => {
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={[reviewActions[1]]} timeZone="UTC" focusJobId={null} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={[reviewActions[1]]} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
     expect(screen.getByRole("button", { name: /Start review/ }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText(/CRM Manager needs an applied configuration first/)).toBeTruthy();
+  });
+
+  it("shows schedules with their real enabled state and pauses one through the audited action", async () => {
+    const schedules: ScheduleView[] = [{
+      id: "s1",
+      capability: "proactive_review",
+      capabilityLabel: "On-demand operations review",
+      employeeRole: "operations_manager",
+      employeeName: "Operations Manager",
+      cadence: "daily",
+      intervalMinutes: 1440,
+      timezone: "UTC",
+      enabled: true,
+      nextRunAt: "2026-10-22T07:00:00.000Z",
+      lastRunAt: null,
+      lastJobId: null,
+      operatorEnabled: false,
+    }];
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={schedules} canManageSchedules scheduleOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
+    expect(screen.getByText("Scheduled reviews")).toBeTruthy();
+    expect(screen.getByText("Operator switch off")).toBeTruthy();
+    expect(screen.getByText(/no schedule creates work even when its row is enabled/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole("switch", { name: /Pause On-demand operations review schedule/ }));
+    await waitFor(() => expect(setScheduleEnabledAction).toHaveBeenCalledWith("s1", false));
   });
 
   it("shows a failed proactive review as failed and keeps its evidence reachable", () => {
@@ -112,6 +143,9 @@ describe("AI Work Board", () => {
       summary={summary}
       filter="attention"
       reviewActions={reviewActions}
+      schedules={[]}
+      canManageSchedules={false}
+      scheduleOperatorEnabled={false}
       timeZone="UTC"
       focusJobId={null}
     />);

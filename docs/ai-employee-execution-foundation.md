@@ -5,7 +5,9 @@ provider run was performed.** Lead Hunter reaches a genuine 6/6 in an isolated a
 Hermes test double, and then completes a real sandbox research job through the same persisted path the product
 uses. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
 Sales Assistant, Appointment Setter and Performance Analyst sit on the same durable job foundation.
-Production activation remains behind the explicit approval checkpoint at the end of this page.
+A tenant-scoped schedule foundation exists but is disabled by two independent switches and has not
+been activated. Production activation remains behind the explicit approval checkpoint at the end of
+this page.
 
 ## 1. Lead Hunter configuration
 
@@ -96,6 +98,7 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
 | `tests/work-board-ui.test.tsx` | 5 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
 | `tests/workforce-review-capabilities.test.ts` | 6 passed — CRM quality, pipeline, appointment and performance reviews produce real findings/measured KPIs; business records unchanged; role and workforce-permission refusals |
+| `tests/workforce-schedules.test.ts` | 5 passed — disabled by default, operator-switch gate, real due job, no duplicate while active, member/capability refusals, enable/pause/delete and audit evidence |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
 The test gateway is the repository's Hermes test double. It is not a live AI and no external research, outreach,
@@ -175,7 +178,28 @@ contacts with no email or phone. Each finding records its count, examples, evide
 recommended next action. It does not change a business record, create an approval on the employee's
 behalf, contact a provider or create a recurring schedule. A person starts it from the Work Board.
 
-## 9. Exact next action after authorization
+## 9. Scheduled reviews (implemented, not activated)
+
+Migration `0073_ai_work_schedules.sql` adds tenant-scoped `ai_work_schedules`: one reviewed,
+read-only capability per employee, a cadence (hourly/daily/weekly), a next-run time, last-run time
+and last job. The Work Board can save a schedule (always paused first), enable or pause it, and
+delete it; every change is audited.
+
+A schedule can only create work when **both** switches are on:
+
+1. the schedule row is `enabled`;
+2. the operator has set `WORKFORCE_SCHEDULES_ENABLED=true`.
+
+The scheduler tick calls `runDueSchedules`. It creates a durable `ai_work_jobs` row, records a
+notice event, updates the next run and wakes the worker. It never runs provider work inside the
+tick. If the previous scheduled job is still active, the run is skipped rather than duplicated.
+The operator switch is absent/false in production, so **no schedule is active**.
+
+`tests/workforce-schedules.test.ts` covers: disabled by default, no run without the operator
+switch, a real due job created only when both switches are on, no duplicate while a prior job is
+active, member refusal, non-review capability refusal, enable/pause/delete and audit evidence.
+
+## 10. Exact next action after authorization
 
 Apply migration 0072 to the hosted project, deploy the application, save the Lead Hunter configuration in the
 iAcquire agency workspace, run the health check and profile check, record the Super Admin acknowledgement, then
