@@ -13,6 +13,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { closeDb, readSystem } from "../src/server/db";
 import { auditRoleConfiguration, recommendedSettings } from "../src/lib/role-playbooks";
+import { OPTIONAL_INVENTORY_TOOLS, REQUIRED_INVENTORY_TOOLS } from "../src/server/integrations/hermes/inventory";
 
 if (!process.argv.includes("--live")) {
   console.error("This reads the hosted database. Re-run with --live when that read is intended.");
@@ -180,6 +181,11 @@ async function main() {
       .map((tool) => ({ name: tool.name, toolset: typeof tool.toolset === "string" ? tool.toolset : "unknown" }));
   })();
 
+  const inventoryNames = inventoryTools.map((tool) => tool.name);
+  const missingRequiredTools = REQUIRED_INVENTORY_TOOLS.filter((name) => !inventoryNames.includes(name));
+  const unexpectedTools = inventoryNames.filter((name) => ![...REQUIRED_INVENTORY_TOOLS, ...OPTIONAL_INVENTORY_TOOLS].includes(name));
+  const inventoryMatchesReviewedSet = missingRequiredTools.length === 0 && unexpectedTools.length === 0;
+
   const targetVersions = new Set(TARGETS.map((target) => target.version));
   const pendingTargets = migrations.filter((migration) => !migration.applied).map((migration) => migration.version);
   const companyFacts = {
@@ -243,6 +249,9 @@ async function main() {
           inventoryCount: data.leadHunter.inventory_count,
           inventoryDigest: data.leadHunter.inventory_digest,
           inventoryTools,
+          inventoryMatchesReviewedSet,
+          missingRequiredTools,
+          unexpectedTools,
           hasWebSearch: inventoryTools.some((tool) => tool.name === "web_search"),
           hasWebExtract: inventoryTools.some((tool) => tool.name === "web_extract"),
           profileSharedWithZeng: Boolean(data.leadHunter.hermes_profile && data.leadHunter.hermes_profile === data.zeng?.hermes_profile),
