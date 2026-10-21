@@ -100,6 +100,10 @@ alter table ai_work_schedules add column if not exists business_hours jsonb not 
 alter table ai_work_schedules add column if not exists last_skipped_reason text
   check (last_skipped_reason is null or char_length(last_skipped_reason) <= 120);
 alter table ai_work_schedules add column if not exists last_skipped_at timestamptz;
+-- A schedule may carry the exact approved assignment it will run. Lead research is the only
+-- provider-backed capability accepted today; the payload is validated again when the schedule fires.
+alter table ai_work_schedules add column if not exists payload jsonb not null default '{}'::jsonb
+  check (pg_column_size(payload) <= 8192);
 
 comment on table ai_work_reports is 'Verified proactive AI employee reports. Written only by reviewed capabilities after they complete.';
 comment on table ai_work_report_deliveries is 'Per-recipient proactive notification policy outcome: delivered, held for quiet hours, digest, or suppressed with a reason.';
