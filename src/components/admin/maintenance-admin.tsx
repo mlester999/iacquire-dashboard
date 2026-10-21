@@ -14,20 +14,23 @@ import { activateMaintenanceAction, resolveMaintenanceAction, updateMaintenanceR
 import { MAINTENANCE_STATUS_LABEL, formatMoney } from "@/lib/projects";
 import type { listAgencyMaintenance } from "@/server/maintenance/service";
 import { formatDate } from "@/lib/utils";
+import { PlanLifecycle } from "@/components/admin/plan-lifecycle";
 
-type Data = Awaited<ReturnType<typeof listAgencyMaintenance>>;
+type AgencyData = Awaited<ReturnType<typeof listAgencyMaintenance>>;
+/** The plan's money side is optional here so sample data without it still draws; the real listing always has it. */
+type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"] }> };
 
 export function MaintenanceAdmin({ subscriptions, requests }: Data) {
   const [planFilter,setPlanFilter]=React.useState("all");const [requestFilter,setRequestFilter]=React.useState("all");
   const active=subscriptions.filter(s=>["active","past_due","cancel_requested"].includes(s.status));const pending=subscriptions.filter(s=>s.status==="requested");const defects=requests.filter(r=>r.kind==="core_defect");
-  const plans=subscriptions.filter(s=>planFilter==="all"||planFilter==="active"&&active.includes(s)||planFilter==="requested"&&s.status==="requested"||planFilter==="cancel_requested"&&s.status==="cancel_requested");
+  const plans=subscriptions.filter(s=>planFilter==="all"||planFilter==="active"&&active.includes(s)||planFilter==="requested"&&s.status==="requested"||planFilter==="cancel_requested"&&s.status==="cancel_requested"||planFilter==="past_due"&&s.status==="past_due"||planFilter==="expired"&&s.status==="expired");
   const shownRequests=requests.filter(r=>requestFilter==="all"||r.kind===requestFilter);
   return (
     <div className="space-y-6">
       <PageHero tone="dark" eyebrow="Client care / Managed maintenance" title={active.length?"Keep every client system in good shape.":"Built to last. Supported with care."} icon={<ShieldCheck className="size-5"/>} description={active.length?`${active.length} active plan${active.length===1?"":"s"}, ${pending.length} enrollment request${pending.length===1?"":"s"} and ${requests.length} open maintenance item${requests.length===1?"":"s"}.`:"No plans are currently active. Optional managed maintenance keeps existing integrations and AI systems cared for after delivery."} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[10px] font-semibold uppercase tracking-[.14em] text-blue-200">Optional managed plan</p><p className="mt-2 text-[35px] font-semibold tracking-tight">$299<span className="text-sm font-normal text-slate-300">/month</span></p><p className="mt-2 text-xs leading-relaxed text-slate-300">Monitoring, troubleshooting, reasonable adjustments and AI optimization.</p><p className="mt-3 border-t border-white/10 pt-3 text-[10px] text-slate-400">Enrollment and activation are explicit. Payment collection is not inferred.</p></div>} action={<ButtonLink href="/admin/clients" variant="secondary">View client accounts <ArrowRight className="size-4"/></ButtonLink>}/>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Active plans" value={active.length} detail="Recorded maintenance agreements" tone="green" icon={<Activity className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Pending enrollment" value={pending.length} detail="Awaiting agency activation" tone="amber" icon={<Clock3 className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Open maintenance items" value={requests.length} detail="Focused changes and corrections" tone="blue" icon={<Wrench className="size-4"/>}/><MetricCard className="!p-4 [&>p]:!mt-2 [&_.metric-value]:!text-[26px]" label="Core defect reports" value={defects.length} detail="No charge · outside allowance" tone="neutral" icon={<ShieldCheck className="size-4"/>}/></div>
       <section aria-label="Client maintenance plans">
-        <SectionLabel title="Client maintenance plans" count={subscriptions.length} description="Activation, agreements and renewals in one place." action={<div className="flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1">{[{id:"all",label:"All plans"},{id:"active",label:"Active"},{id:"requested",label:"Pending"},{id:"cancel_requested",label:"Cancellation"}].map(f=><button key={f.id} onClick={()=>setPlanFilter(f.id)} aria-pressed={planFilter===f.id} className={cn("min-h-8 rounded-lg px-2.5 text-xs font-medium",planFilter===f.id?"bg-surface text-ink shadow-soft":"text-muted")}>{f.label}</button>)}</div>}/>
+        <SectionLabel title="Client maintenance plans" count={subscriptions.length} description="Activation, agreements and renewals in one place." action={<div className="flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1">{[{id:"all",label:"All plans"},{id:"active",label:"Active"},{id:"requested",label:"Pending"},{id:"cancel_requested",label:"Cancellation"},{id:"past_due",label:"Past due"},{id:"expired",label:"Expired"}].map(f=><button key={f.id} onClick={()=>setPlanFilter(f.id)} aria-pressed={planFilter===f.id} className={cn("min-h-8 rounded-lg px-2.5 text-xs font-medium",planFilter===f.id?"bg-surface text-ink shadow-soft":"text-muted")}>{f.label}</button>)}</div>}/>
         {subscriptions.length === 0 ? (
           <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-line-strong bg-surface p-5 sm:flex-row sm:items-center"><span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary-soft"><Wrench className="size-6 text-primary"/></span><div className="flex-1"><h3 className="text-base font-semibold">Ready for your first maintenance client</h3><p className="mt-1 text-xs leading-relaxed text-muted">An enrollment request appears here when an eligible client chooses the plan. Their core defect support remains separate and free under the service agreement.</p></div><ButtonLink variant="outline" size="sm" href="/admin/clients">View eligible clients <ArrowRight className="size-3.5"/></ButtonLink></div>
         ) : (
@@ -76,10 +79,10 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
           <AvatarTile name={s.orgName} />
           <div className="min-w-0">
             <CardTitle className="truncate" title={s.orgName}>{s.orgName}</CardTitle>
-            <p className="mt-0.5 text-[12px] text-muted">Accepted {formatDate(s.acceptedAt)} · terms {s.termsVersion}</p>
+            <p className="mt-0.5 text-[12px] text-muted">Accepted {formatDate(s.acceptedAt, "UTC")} · terms {s.termsVersion}</p>
           </div>
         </div>
-        <StatusPill tone={s.status === "active" ? "success" : s.status === "cancel_requested" || s.status === "past_due" ? "danger" : "warning"}>{MAINTENANCE_STATUS_LABEL[s.status]}</StatusPill>
+        <StatusPill tone={s.status === "active" ? "success" : s.status === "cancel_requested" || s.status === "past_due" || s.status === "expired" ? "danger" : "warning"}>{MAINTENANCE_STATUS_LABEL[s.status]}</StatusPill>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap gap-1.5">
@@ -90,8 +93,8 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
         {s.status === "active" || s.status === "past_due" || s.status === "cancel_requested" ? (
           <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-3">
             {[
-              { label: "Billing started", value: s.billingStartOn ? formatDate(s.billingStartOn) : "—" },
-              { label: "Next renewal", value: s.renewalOn ? formatDate(s.renewalOn) : "—" },
+              { label: "Billing started", value: s.billingStartOn ? formatDate(s.billingStartOn, "UTC") : "—" },
+              { label: "Next renewal", value: s.renewalOn ? formatDate(s.renewalOn, "UTC") : "—" },
               { label: "Used this month", value: `${s.used} of ${s.monthlyRequestAllowance}` },
             ].map((f) => (
               <div key={f.label} className="min-w-0 rounded-xl bg-surface-2/70 px-3 py-2 ring-1 ring-inset ring-line">
@@ -102,6 +105,7 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
           </div>
         ) : null}
         {s.cancelNote && <p className="rounded-xl bg-warning-soft/60 p-3 text-[13px] text-warning-ink">Cancellation note: “{s.cancelNote}”</p>}
+        {s.lifecycle && ["active", "past_due", "cancel_requested", "expired"].includes(s.status) && <PlanLifecycle subscriptionId={s.id} status={s.status} info={s.lifecycle} />}
         {!s.eligible && s.status === "requested" && (
           <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink ring-1 ring-inset ring-warning/25">
             <CalendarClock className="size-4 shrink-0" /> The core system isn&apos;t activated yet, so this can&apos;t start.

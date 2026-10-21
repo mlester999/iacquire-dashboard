@@ -13,7 +13,11 @@ import { loadEditorOptions } from "@/components/crm/views/workflow-view";
 import { StudioHome, type HomeWorkflow } from "@/components/automation-studio/studio-home";
 import { StudioWorkspace } from "@/components/automation-studio/studio-workspace";
 import { UpgradePage } from "@/components/automation-studio/upgrade-page";
-import { STUDIO_PLAN_MONTHLY_USD, STUDIO_SETUP_FEE_USD, type StudioEntitlement } from "@/lib/automation-studio/plan";
+import { ConnectionsPanel } from "@/components/automation-studio/connections-panel";
+import { UsagePanel, type PlanSummary } from "@/components/automation-studio/usage-panel";
+import { studioUsageSnapshot } from "@/server/automation-studio/usage";
+import { listConnections } from "@/server/automation-studio/connections";
+import { STUDIO_METRIC_LABELS, STUDIO_PLAN_MONTHLY_USD, STUDIO_SETUP_FEE_USD, type StudioEntitlement, type StudioMetric } from "@/lib/automation-studio/plan";
 import { TRIGGERS } from "@/lib/crm/workflow/spec";
 import { formatDate } from "@/lib/utils";
 
@@ -146,6 +150,73 @@ export async function StudioWorkflowView({ ctx, id }: { ctx: OrgContext; id: str
       options={JSON.parse(JSON.stringify(options))}
       builder={ent.entitled ? builder : { available: false, reason: ent.reason }}
       readOnlyReason={readOnlyReason}
+    />
+  );
+}
+
+/**
+ * The workspace's connections to outside systems. Anyone who can see automations can see the list (never a secret); setting up, testing and
+ * replacing need the permission and the plan, and revoking needs only the permission, so a workspace whose plan lapsed can still cut a credential off.
+ */
+export async function ConnectionsView({ ctx }: { ctx: OrgContext }) {
+  if (ctx.org.kind !== "client") redirect("/admin/crm");
+  const actor = memberActor(ctx);
+  const ent = await withSystem((db) => studioEntitlement(db, ctx.org.orgId));
+  const connections = await listConnections(actor, { includeRevoked: true });
+  if (!ent.entitled && connections.length === 0) redirect("/automation-studio");
+  return (
+    <ConnectionsPanel
+      connections={JSON.parse(JSON.stringify(connections))}
+      timezone={ctx.org.timezone}
+      canManage={actor.can("workflows.manage")}
+      planReason={ent.entitled ? null : `${ent.reason} Setting up, verifying and replacing connections needs the plan.`}
+    />
+  );
+}
+
+const PLAN_TITLES: Record<StudioEntitlement["state"], string> = {
+  active: "Managed Maintenance + Automation Studio", cancelling: "Managed Maintenance + Automation Studio (ending)", past_due: "A payment needs attention", pending: "Waiting for activation",
+  expired: "The plan has expired", cancelled: "The plan was cancelled", declined: "The plan request wasn’t activated", none: "You’re not on the plan",
+};
+const COUNTERS: StudioMetric[] = ["runs_started", "steps_executed", "step_failures", "step_retries", "test_runs", "builder_messages", "employee_invocations", "integration_calls"];
+
+/**
+ * What the workspace used this month against its limits, the plan's state as iAcquire has it on record, and every automation's pause and turn-on control.
+ * Anyone who can see automations can read it; the controls need the permission, and the server checks the plan again whatever this page shows.
+ */
+export async function UsageView({ ctx }: { ctx: OrgContext }) {
+  if (ctx.org.kind !== "client") redirect("/admin/crm");
+  const actor = memberActor(ctx);
+  const now = new Date();
+  const [ent, usage, workflows, connections] = await Promise.all([
+    withSystem((db) => studioEntitlement(db, ctx.org.orgId, now)),
+    withSystem((db) => studioUsageSnapshot(db, ctx.org.orgId, now)),
+    listStudioWorkflows(actor),
+    listConnections(actor),
+  ]);
+  const plan: PlanSummary = {
+    state: ent.state,
+    title: PLAN_TITLES[ent.state],
+    detail: ent.reason,
+    paidThrough: ent.paidThroughOn ? formatDate(ent.paidThroughOn, ctx.org.timezone) : null,
+    graceEnds: ent.graceEndsAt ? formatDate(ent.graceEndsAt, ctx.org.timezone) : null,
+    entitled: ent.entitled,
+  };
+  return (
+    <UsagePanel
+      plan={plan}
+      usage={{
+        period: usage.period,
+        periodLabel: new Date(`${usage.period}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
+        lines: usage.lines.map((l) => ({ key: l.key, label: l.label, used: l.used, limit: l.limit, state: l.state, percent: l.percent, remaining: l.remaining, custom: l.custom })),
+        counters: COUNTERS.map((m) => ({ label: STUDIO_METRIC_LABELS[m], quantity: usage.counters[m].quantity })),
+        hardStop: usage.hardStop,
+        warnAtPercent: usage.warnAtPercent,
+        note: usage.note,
+      }}
+      workflows={workflows.filter((w) => w.status !== "archived").map((w) => ({ id: w.id, name: w.name, status: w.status, pausedForPlan: w.pausedForPlan, stepCount: w.stepCount }))}
+      canManage={actor.can("workflows.manage")}
+      connectionsNeedingAttention={connections.filter((c) => c.status === "needs_attention").length}
     />
   );
 }

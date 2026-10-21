@@ -161,6 +161,16 @@ export function stepResultDetails(kind: string, result: Record<string, unknown>,
       if (str(result.mappingId)) add("Automation", ctx.names.n8n(String(result.mappingId)) ?? "No longer verified");
       add("Status", str(result.status) ? (result.status === "accepted" || result.status === "succeeded" ? "Started" : String(result.status).replace(/_/g, " ")) : null);
       break;
+    case "http_request":
+    case "slack_message": {
+      add("Connection", str(result.connection));
+      add("Sent to", str(result.host) ? `${result.host}${str(result.path) && kind === "http_request" ? String(result.path) : ""}` : null);
+      add("Answer", typeof result.httpStatus === "number" ? `HTTP ${result.httpStatus}${typeof result.durationMs === "number" ? ` in ${result.durationMs} ms` : ""}` : null);
+      add("Outcome", str(result.status) ? ({ sent: "Delivered", rejected: "Refused by the other system", not_sent: "Not sent", blocked: "Not sent (held back here)", unknown: "Unclear: not sent again" } as Record<string, string>)[String(result.status)] ?? String(result.status) : null);
+      add("What it said", str(result.excerpt));
+      add("Note", str(result.note));
+      break;
+    }
     case "ai_task":
       add("Status", str(result.status) ? (result.status === "queued" ? "Handed to the AI employee" : String(result.status).replace(/_/g, " ")) : null);
       break;

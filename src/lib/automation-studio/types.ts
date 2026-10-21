@@ -45,7 +45,7 @@ export type BuilderEvent =
    * The change was validated and saved. `definition` and `revision` are the saved working copy; `operations` are exactly the validated
    * changes that produced it, in order (the canvas replays them to show the workflow growing, then settles on `definition`).
    */
-  | { type: "applied"; revision: number; definition: WorkflowDefinition; operations: WorkflowOperation[]; changes: WorkflowChange[]; summary: string[]; issues: ValidationIssue[] }
+  | { type: "applied"; revision: number; definition: WorkflowDefinition; operations: WorkflowOperation[]; changes: WorkflowChange[]; summary: string[]; issues: ValidationIssue[]; rebased?: boolean }
   /** A proposed change was refused by validation after the allowed attempts; nothing changed. */
   | { type: "refused"; message: string }
   | { type: "done"; message: StudioMessage }

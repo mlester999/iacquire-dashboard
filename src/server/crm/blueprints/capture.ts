@@ -105,6 +105,10 @@ function withoutPeople(filter: FilterGroup): { filter: FilterGroup; removed: num
   return { filter: walk(filter), removed };
 }
 
+/** A workflow with an HTTP request or Slack message step: its connection is this workspace's own, so it never travels. */
+const usesConnections = (record: unknown) =>
+  ((record as { draft?: { steps?: Array<{ kind?: string }> } }).draft?.steps ?? []).some((st) => st.kind === "http_request" || st.kind === "slack_message");
+
 async function readCapture(db: Queryable, orgId: string, opts: CaptureOptions): Promise<Captured> {
   const org = (await db.query<{ name: string; kind: string }>("select name, kind from organizations where id = $1", [orgId])).rows[0];
   const ws = (await db.query<{ mode: CrmMode }>("select mode from crm_workspaces where org_id = $1", [orgId])).rows[0];
@@ -153,6 +157,10 @@ async function readCapture(db: Queryable, orgId: string, opts: CaptureOptions): 
       }
       if (type === "report" && e.meta.visibility !== "team") {
         top.push({ section, entry: e, note: "A private report belongs to one person, so it isn't captured. Share it with the team first to include it.", ok: false });
+        continue;
+      }
+      if (type === "workflow" && usesConnections(e.record)) {
+        top.push({ section, entry: e, note: "Calls an outside system through a connection (an HTTP request or a Slack message). A connection and its credentials belong to one workspace only, so this workflow isn't captured.", ok: false });
         continue;
       }
       const id = assign(e);

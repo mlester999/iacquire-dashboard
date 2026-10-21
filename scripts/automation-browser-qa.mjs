@@ -114,13 +114,13 @@ async function main() {
   await page.waitForFunction(() => { const el = document.querySelector("#studio-prompt"); return el && Object.keys(el).some((k) => k.startsWith("__reactProps$")); }, null, { timeout: 300_000 });
   check("home: prompt box is enabled (the model connection resolved)", await box.isEnabled());
   check("home: four suggestion chips", (await page.getByRole("group", { name: "Ideas to start from" }).locator("button").count()) === 4);
-  check("home: all 17 ideas, each with readiness text", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 17);
+  check("home: all 19 ideas, each with readiness text", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 19);
   await page.locator("#studio-search").fill("review");
   check("home: searching narrows the ideas", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) < 16);
   await page.locator("#studio-search").fill("");
-  await page.getByRole("button", { name: "Leads", exact: true }).click();
-  check("home: a category filters the ideas", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 5);
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.getByRole("group", { name: "Categories", exact: true }).getByRole("button", { name: "Leads", exact: true }).click();
+  check("home: a category filters the ideas", (await page.locator("#studio-ideas").locator("xpath=ancestor::section").locator("ul > li").count()) === 6);
+  await page.getByRole("group", { name: "Categories", exact: true }).getByRole("button", { name: "All", exact: true }).click();
   await page.evaluate(() => window.scrollTo(0, 0));
   await shot(page, "01-home-desktop-light");
   await runAxe(page, "home (desktop, light)");

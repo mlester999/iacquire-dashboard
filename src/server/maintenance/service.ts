@@ -235,15 +235,26 @@ export interface AgencyMaintenanceRow {
 export async function listAgencyMaintenance(user: SessionUser) {
   assertManage(user);
   return withSystem(async (db) => {
-    const subs = (await db.query<SubRow & { org_id: string; org_name: string; request_note: string | null; cancel_note: string | null; internal_notes: string | null; state: string | null; used: number }>(
+    const subs = (await db.query<SubRow & {
+      org_id: string; org_name: string; request_note: string | null; cancel_note: string | null; internal_notes: string | null; state: string | null; used: number;
+      past_due_since: Date | null; grace_ends_at: Date | null; expired_at: Date | null; paid_through_on: string | null; last_payment_verified_at: Date | null; verified_by_name: string | null;
+      studio_workflows: number; studio_paused: number;
+    }>(
       `select s.id, s.status, s.monthly_price_cents, s.currency, s.monthly_request_allowance, s.terms_version, s.accepted_at, s.activated_at,
          s.billing_start_on::text as billing_start_on, s.renewal_on::text as renewal_on, s.cancel_requested_at,
          s.org_id, o.name as org_name, s.request_note, s.cancel_note, s.internal_notes,
+         s.past_due_since, s.grace_ends_at, s.expired_at, s.paid_through_on::text as paid_through_on, s.last_payment_verified_at,
+         (select coalesce(nullif(u.full_name, ''), u.email::text) from users u where u.id = s.last_payment_verified_by) as verified_by_name,
+         (select count(*)::int from crm_workflows w where w.org_id = s.org_id and w.origin = 'studio' and w.status <> 'archived') as studio_workflows,
+         (select count(*)::int from crm_workflows w where w.org_id = s.org_id and w.status = 'paused' and w.entitlement_paused_at is not null) as studio_paused,
          (select i.state from client_setup_instances i where i.org_id = s.org_id) as state,
          (select count(*)::int from maintenance_requests m where m.subscription_id = s.id and m.kind = 'managed_change' and m.counts_against_allowance and m.status <> 'declined' and m.period_month = date_trunc('month', now())::date) as used
        from maintenance_subscriptions s join organizations o on o.id = s.org_id
-       where s.status in ('requested','active','past_due','cancel_requested') and app.user_can_access_org($1,s.org_id)
-       order by case s.status when 'requested' then 0 when 'past_due' then 1 when 'cancel_requested' then 2 else 3 end, o.name`,
+       where (s.status in ('requested','active','past_due','cancel_requested')
+              or (s.status = 'expired' and s.expired_at > now() - interval '180 days'
+                  and not exists (select 1 from maintenance_subscriptions n where n.org_id = s.org_id and n.id <> s.id and n.status in ('requested','active','past_due','cancel_requested'))))
+         and app.user_can_access_org($1,s.org_id)
+       order by case s.status when 'requested' then 0 when 'past_due' then 1 when 'cancel_requested' then 2 when 'active' then 3 else 4 end, o.name`,
       [user.id],
     )).rows;
     const reqs = (await db.query<{ id: string; ref: string; kind: string; title: string; description: string; status: string; counts_against_allowance: boolean; org_id: string; org_name: string; ticket_id: string | null; created_at: Date; internal_notes: string | null }>(
@@ -254,7 +265,14 @@ export async function listAgencyMaintenance(user: SessionUser) {
       [user.id],
     )).rows;
     return {
-      subscriptions: subs.map((s) => ({ ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" })),
+      subscriptions: subs.map((s) => ({
+        ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated",
+        // What the agency needs to run the plan: where the money side stands (as recorded by people, never detected) and what a lapse would touch.
+        lifecycle: {
+          pastDueSince: iso(s.past_due_since), graceEndsAt: iso(s.grace_ends_at), expiredAt: iso(s.expired_at), paidThroughOn: s.paid_through_on,
+          lastPaymentVerifiedAt: iso(s.last_payment_verified_at), lastPaymentVerifiedBy: s.verified_by_name, studioWorkflows: s.studio_workflows, studioPaused: s.studio_paused,
+        },
+      })),
       requests: reqs.map((r) => ({ id: r.id, ref: r.ref, kind: r.kind as "core_defect" | "managed_change", title: r.title, description: r.description, status: r.status, countsAgainstAllowance: r.counts_against_allowance, orgId: r.org_id, orgName: r.org_name, ticketId: r.ticket_id, createdAt: iso(r.created_at)!, internalNotes: r.internal_notes })),
     };
   });

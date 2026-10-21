@@ -63,6 +63,7 @@ export async function loadEditorOptions(actor: CrmActor): Promise<EditorOptions>
     forms: o.forms ?? [],
     customValues: o.customValues ?? [],
     folders: o.folders,
+    connections: o.connections ?? [],
   };
 }
 

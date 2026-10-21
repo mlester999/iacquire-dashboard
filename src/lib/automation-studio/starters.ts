@@ -5,7 +5,7 @@
 import type { EditorOptions } from "@/components/crm/workflows/types";
 import { isReviewTemplate } from "@/components/crm/reviews/model";
 
-export type StarterNeed = "template" | "review_template" | "employee" | "pipeline" | "calendar";
+export type StarterNeed = "template" | "review_template" | "employee" | "pipeline" | "calendar" | "slack" | "http";
 
 export interface Starter {
   id: string;
@@ -24,6 +24,7 @@ export const STARTERS: Starter[] = [
   { id: "form-leads", category: "Leads", title: "Sort website enquiries", description: "Tag and follow up everyone who sends one of your forms.", prompt: "When someone submits one of my forms, tag them as a website lead and create a task to call them back within a day.", needs: [] },
   { id: "qualify-lead", category: "Leads", title: "Have an AI employee qualify new leads", description: "Ask one of your AI employees to review each new lead.", prompt: "When a new lead is added, ask my CRM Manager to review the lead's details and update their lead status.", needs: ["employee"] },
   { id: "hot-lead", category: "Leads", title: "Alert me about hot leads", description: "Tell the team as soon as a lead is tagged Hot.", prompt: "When a contact is tagged Hot, notify the owners and managers and create an urgent task to contact them today.", needs: [] },
+  { id: "slack-new-lead", category: "Leads", title: "Tell Slack about new leads", description: "Your team hears about a lead the moment it arrives.", prompt: "When a new lead is added, post their name in my Slack sales channel and create a task for the owner to call them.", needs: ["slack"] },
   { id: "webhook-lead", category: "Leads", title: "Add leads from another system", description: "Start from a private webhook address and create the contact.", prompt: "Start from an inbound webhook that creates a contact from the email or phone it receives, then tag them as a webhook lead and create a follow-up task.", needs: [] },
   { id: "appointment-team-reminder", category: "Appointments", title: "Remind my team before appointments", description: "A note for the team the day before each booking.", prompt: "When an appointment is booked, wait until one day before it starts, then notify the team about it.", needs: ["calendar"] },
   { id: "booking-confirmation", category: "Appointments", title: "Confirm every booking", description: "Send an approved confirmation message as soon as someone books.", prompt: "When an appointment is booked, send the contact my approved booking confirmation message.", needs: ["template", "calendar"] },
@@ -36,6 +37,7 @@ export const STARTERS: Starter[] = [
   { id: "review-request", category: "Reviews & feedback", title: "Ask for a review after a visit", description: "A review request the day after someone attends.", prompt: "When someone is marked as having attended an appointment, wait one day and send my approved review request.", needs: ["review_template", "calendar"] },
   { id: "feedback-alert", category: "Reviews & feedback", title: "Hear about private feedback fast", description: "Tell the team the moment a customer sends feedback.", prompt: "When a customer sends private feedback, notify the owners and managers and create a task to reply.", needs: [] },
   { id: "unreplied-message", category: "Team", title: "Catch messages nobody answered", description: "Notify the team if a customer message sits unanswered for an hour.", prompt: "When a customer message comes in, wait one hour. If nobody has replied, notify the team.", needs: [] },
+  { id: "booking-sync", category: "Team", title: "Send bookings to another system", description: "Push each booked appointment to your operations or scheduling tool.", prompt: "When an appointment is booked, post the contact's name and email to my operations API with a POST to /appointments.", needs: ["http"] },
   { id: "weekly-review", category: "Team", title: "A weekly pipeline check-in", description: "A Monday reminder for the team to review the pipeline.", prompt: "Every Monday at 9am, notify the owners and managers to review the pipeline and follow up on open deals.", needs: [] },
 ];
 
@@ -54,6 +56,8 @@ export function starterReadiness(starter: Pick<Starter, "needs">, o: EditorOptio
     else if (need === "employee" && !o.employees.length) missing.push("an AI employee in your workspace");
     else if (need === "pipeline" && !o.pipelines.length) missing.push("a pipeline");
     else if (need === "calendar" && !o.calendars.length) missing.push("a calendar");
+    else if (need === "slack" && !(o.connections ?? []).some((c) => c.kind === "slack_webhook")) missing.push("a Slack connection");
+    else if (need === "http" && !(o.connections ?? []).some((c) => c.kind === "http")) missing.push("an HTTP connection");
   }
   return { ready: missing.length === 0, missing };
 }

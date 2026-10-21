@@ -18,7 +18,8 @@ function currentWorkflow(system) {
   if (at < 0) return { trigger: null, steps: [] };
   const lines = system.slice(at).split("\n");
   try {
-    return JSON.parse(lines[1]);
+    // The workflow is one line of JSON inside a fenced data block ([[data:…]] … [[/data:…]]): the fence lines are skipped.
+    return JSON.parse(lines.slice(1).find((l) => l.trim().startsWith("{")) ?? "");
   } catch {
     return { trigger: null, steps: [] };
   }

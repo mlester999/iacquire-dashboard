@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bot, Send, ShieldAlert, ShieldCheck, Webhook, Workflow } from "lucide-react";
+import { Bot, Globe, MessageSquareText, Send, ShieldAlert, ShieldCheck, Webhook, Workflow } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/overlays";
@@ -14,7 +14,7 @@ import { effectItems } from "@/components/crm/workflows/editor-logic";
 import { Toggle } from "@/components/crm/workflows/pickers";
 import type { EditorOptions, VersionItem } from "@/components/crm/workflows/types";
 
-const ICON = { send_message: Send, webhook: Webhook, n8n: Workflow, ai_task: Bot } as const;
+const ICON = { send_message: Send, webhook: Webhook, n8n: Workflow, ai_task: Bot, http_request: Globe, slack_message: MessageSquareText } as const;
 
 /**
  * Shows the owner exactly what a published version will send and call, and requests their approval of that version. The approval is bound

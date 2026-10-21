@@ -199,7 +199,7 @@ export interface FlowInput {
   readOnly?: boolean;
 }
 
-const OUTSIDE = new Set(["send_message", "request_review", "n8n", "webhook", "ai_task"]);
+const OUTSIDE = new Set(["send_message", "request_review", "n8n", "webhook", "ai_task", "http_request", "slack_message"]);
 export const edgeId = (from: string, via: string, to: string) => `${from}:${via}:${to}`;
 
 export function toFlow({ def, names, issues, marks, addedEdges, readOnly = false }: FlowInput): { nodes: StudioNode[]; edges: StudioEdge[] } {

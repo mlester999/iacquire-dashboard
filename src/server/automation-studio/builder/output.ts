@@ -12,6 +12,11 @@ export class ReplyStreamer {
   private all = "";
   private emitted = 0;
 
+  /** Whether the model has started its operations block (the reply is complete and the changes follow). */
+  hasFence(): boolean {
+    return this.all.includes(FENCE);
+  }
+
   /** Adds a piece of the model's output; returns the part of the reply that is safe to show now (never part of a fence, even a half-arrived one). */
   push(chunk: string): string {
     this.all += chunk;

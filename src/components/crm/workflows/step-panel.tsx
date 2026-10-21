@@ -13,7 +13,7 @@ import { LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS, type FieldType } from "@/
 import { EMPTY_FILTER, type FilterGroup } from "@/lib/crm/filters";
 import {
   STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS, type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig,
-  type InternalNoteConfig, type MoveStageConfig, type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type TagsConfig, type UpdateFieldConfig,
+  type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig, type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TagsConfig, type UpdateFieldConfig,
   type ValidationIssue, type WaitConfig, type WebhookConfig, type WorkflowDefinition, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { StepIcon, stepTone } from "@/components/crm/workflows/parts";
@@ -137,6 +137,10 @@ function KindFields(p: KindProps) {
       return <N8nFields {...p} />;
     case "webhook":
       return <WebhookFields {...p} />;
+    case "http_request":
+      return <HttpRequestFields {...p} />;
+    case "slack_message":
+      return <SlackMessageFields {...p} />;
     case "ai_task":
       return <AiTaskFields {...p} />;
     case "end":
@@ -673,6 +677,110 @@ function WebhookFields({ step, options, errorAt, config, base }: KindProps) {
       </Field>
       <Toggle id="wf-webhook-contact" label="Include the contact's name, email and phone" checked={w.includeContact} onChange={(v) => config({ includeContact: v })} />
       <p className="text-[12.5px] leading-relaxed text-muted">Sent signed with the endpoint&apos;s secret, and retried if the endpoint is down.</p>
+    </>
+  );
+}
+
+/** A short list of name / value pairs (query values, form fields, extra headers) with add and remove. */
+function PairList({ id, label, pairs, onChange, namePlaceholder, valuePlaceholder, max, hint }: {
+  id: string;
+  label: string;
+  pairs: Array<{ name: string; value: string }>;
+  onChange: (next: Array<{ name: string; value: string }>) => void;
+  namePlaceholder: string;
+  valuePlaceholder: string;
+  max: number;
+  hint?: string;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-[13px] font-medium text-ink">{label}</legend>
+      {hint && <p className="text-[12px] text-muted">{hint}</p>}
+      {pairs.map((p, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <Input aria-label={`${label}: name ${i + 1}`} value={p.name} placeholder={namePlaceholder} maxLength={60} onChange={(e) => onChange(pairs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} className="w-2/5" />
+          <Input aria-label={`${label}: value ${i + 1}`} value={p.value} placeholder={valuePlaceholder} maxLength={300} onChange={(e) => onChange(pairs.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} className="flex-1" />
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${label.toLowerCase()} ${i + 1}`} onClick={() => onChange(pairs.filter((_, j) => j !== i))}><Trash2 className="size-4" aria-hidden /></Button>
+        </div>
+      ))}
+      {pairs.length < max && <Button type="button" variant="secondary" size="sm" id={id} onClick={() => onChange([...pairs, { name: "", value: "" }])}>Add</Button>}
+    </fieldset>
+  );
+}
+
+function HttpRequestFields({ step, options, errorAt, config, base }: KindProps) {
+  const h = step.config as HttpRequestConfig;
+  const connections = (options.connections ?? []).filter((c) => c.kind === "http");
+  const conn = connections.find((c) => c.id === h.connectionId);
+  const methods = conn?.methods.length ? conn.methods : ["GET", "POST", "PUT", "PATCH", "DELETE"];
+  return (
+    <>
+      <Field label="Connection" htmlFor="wf-http-connection" error={errorAt("config.connectionId")}>
+        <SinglePick
+          id="wf-http-connection" value={h.connectionId} onChange={(v) => config({ connectionId: v ?? "" })}
+          options={connections.map((c) => ({ id: c.id, label: c.name, hint: `${c.host} · ${c.status === "active" ? "verified" : c.status === "unverified" ? "not verified yet" : "needs attention"}` }))}
+          placeholder={connections.length ? "Choose a connection" : "No HTTP connection yet"}
+        />
+        {!connections.length && <Link href="/automation-studio/connections" className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Set up a connection</Link>}
+        {conn && <p className="mt-1 text-[12px] text-muted">Calls only {conn.host}. The credentials are kept on the connection and never appear here.</p>}
+      </Field>
+      <div className="grid grid-cols-[110px_1fr] gap-3">
+        <Field label="Method" htmlFor="wf-http-method" error={errorAt("config.method")}>
+          <Select id="wf-http-method" value={h.method} onChange={(e) => config({ method: e.target.value, ...(e.target.value === "GET" ? { bodyType: "none", body: undefined, form: undefined } : {}) })}>
+            {methods.map((m) => <option key={m} value={m}>{m}</option>)}
+          </Select>
+        </Field>
+        <Field label="Path" htmlFor="wf-http-path" error={errorAt("config.path")} hint="Starts with /. May hold placeholders, which are filled in safely.">
+          <Input id="wf-http-path" value={h.path} maxLength={300} placeholder="/v1/orders" onChange={(e) => config({ path: e.target.value })} className="font-mono text-[12.5px]" />
+        </Field>
+      </div>
+      <PairList id="wf-http-query-add" label="Query values" pairs={h.query ?? []} onChange={(query) => config({ query })} namePlaceholder="name" valuePlaceholder="value or {{placeholder}}" max={20} />
+      {errorAt("config.query") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.query")}</p>}
+      {h.method !== "GET" && (
+        <>
+          <Field label="Body" htmlFor="wf-http-bodytype" error={errorAt("config.bodyType")}>
+            <Choice<"none" | "json" | "form" | "text"> name="wf-http-bodytype" label="Body type" value={h.bodyType} onChange={(bodyType) => config({ bodyType })} options={[{ value: "none", label: "None" }, { value: "json", label: "JSON" }, { value: "form", label: "Form" }, { value: "text", label: "Text" }]} />
+          </Field>
+          {(h.bodyType === "json" || h.bodyType === "text") && (
+            <Field label={h.bodyType === "json" ? "JSON body" : "Text body"} htmlFor="wf-http-body" error={errorAt("config.body")} hint={h.bodyType === "json" ? "Put placeholders inside quotes. Their values are escaped for you." : undefined}>
+              <Textarea id="wf-http-body" rows={6} maxLength={4000} value={h.body ?? ""} onChange={(e) => config({ body: e.target.value })} className="font-mono text-[12.5px]" placeholder={h.bodyType === "json" ? '{"name": "{{contact.full_name}}", "email": "{{contact.email}}"}' : ""} />
+              <div className="mt-1.5"><TokenInsert id="wf-http-token" groups={["contact", "appointment"]} customValues={options.customValues} onInsert={(tok) => config({ body: `${h.body ?? ""}${tok}` })} /></div>
+            </Field>
+          )}
+          {h.bodyType === "form" && <PairList id="wf-http-form-add" label="Form fields" pairs={h.form ?? []} onChange={(form) => config({ form })} namePlaceholder="field" valuePlaceholder="value or {{placeholder}}" max={20} />}
+          {errorAt("config.form") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.form")}</p>}
+        </>
+      )}
+      <PairList id="wf-http-header-add" label="Extra headers" pairs={h.headers ?? []} onChange={(headers) => config({ headers })} namePlaceholder="X-Source" valuePlaceholder="value" max={8} hint="Only Accept, If-None-Match and headers starting with X-. Credentials go on the connection." />
+      {errorAt("config.headers") && <p className="text-[12.5px] text-danger-ink" role="alert">{errorAt("config.headers")}</p>}
+      <div className="grid grid-cols-[120px_1fr] items-end gap-3">
+        <Field label="Time limit (s)" htmlFor="wf-http-timeout">
+          <Input id="wf-http-timeout" type="number" min={1} max={30} value={h.timeoutSeconds ?? 15} onChange={(e) => config({ timeoutSeconds: Math.max(1, Math.min(30, Math.round(Number(e.target.value) || 15))) })} />
+        </Field>
+        <Toggle id="wf-http-repeat" label="The other system ignores a repeat of the same request" checked={h.safeToRepeat === true} onChange={(v) => config({ safeToRepeat: v })} />
+      </div>
+      <p className="text-[12.5px] leading-relaxed text-muted">Each attempt carries an Idempotency-Key. If the request may have reached the other system and we can&apos;t tell, it is marked for review instead of being sent again, unless you say repeats are safe. Redirects aren&apos;t followed and private networks are never called. {base ? "" : ""}</p>
+    </>
+  );
+}
+
+function SlackMessageFields({ step, options, errorAt, config }: KindProps) {
+  const m = step.config as SlackMessageConfig;
+  const connections = (options.connections ?? []).filter((c) => c.kind === "slack_webhook");
+  return (
+    <>
+      <Field label="Slack connection" htmlFor="wf-slack-connection" error={errorAt("config.connectionId")}>
+        <SinglePick
+          id="wf-slack-connection" value={m.connectionId} onChange={(v) => config({ connectionId: v ?? "" })}
+          options={connections.map((c) => ({ id: c.id, label: c.name, hint: c.status === "active" ? "verified" : c.status === "unverified" ? "not verified yet" : "needs attention" }))}
+          placeholder={connections.length ? "Choose a connection" : "No Slack connection yet"}
+        />
+        {!connections.length && <Link href="/automation-studio/connections" className="mt-1 inline-block text-[12.5px] font-medium text-primary hover:underline">Set up a Slack connection</Link>}
+      </Field>
+      <Field label="Message" htmlFor="wf-slack-text" error={errorAt("config.text")} hint="Mentions and links in the text are made harmless, so a customer's name can't ping a channel.">
+        <Textarea id="wf-slack-text" rows={4} maxLength={1500} value={m.text ?? ""} onChange={(e) => config({ text: e.target.value })} placeholder="New lead: {{contact.full_name}} ({{contact.email}})" />
+        <div className="mt-1.5"><TokenInsert id="wf-slack-token" groups={["contact", "appointment"]} customValues={options.customValues} onInsert={(tok) => config({ text: `${m.text ?? ""}${m.text ? " " : ""}${tok}` })} /></div>
+      </Field>
     </>
   );
 }

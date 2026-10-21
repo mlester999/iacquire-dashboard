@@ -112,9 +112,14 @@ describe("quotaStatus and periodMonth", () => {
 describe("derivePremiumFeatures", () => {
   const def = (kinds: string[]): Pick<WorkflowDefinition, "steps"> => ({ steps: kinds.map((kind, i) => ({ key: `s${i}`, kind, config: {}, next: null })) as WorkflowDefinition["steps"] });
 
-  it("needs no plan for anything built in the CRM screens, whatever its steps", () => {
-    expect(derivePremiumFeatures(def(Object.keys(STEP_KINDS)), "crm")).toEqual([]);
+  it("needs no plan for anything built in the CRM screens, except the steps that only the plan includes", () => {
+    const core = Object.keys(STEP_KINDS).filter((k) => k !== "http_request" && k !== "slack_message");
+    expect(derivePremiumFeatures(def(core), "crm")).toEqual([]);
     expect(derivePremiumFeatures(def([]), "crm")).toEqual([]);
+    // An HTTP request or a Slack message is premium wherever the workflow was built.
+    expect(derivePremiumFeatures(def(["add_tag", "http_request"]), "crm")).toEqual(["http_request"]);
+    expect(derivePremiumFeatures(def(["slack_message", "http_request"]), "crm")).toEqual(["http_request", "slack_message"]);
+    expect(derivePremiumFeatures(def(["slack_message"]), "studio")).toEqual(["studio_workflow", "slack_message"]);
   });
 
   it("marks a workflow built in Automation Studio", () => {

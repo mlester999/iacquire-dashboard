@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireAgencyOrThrow } from "@/server/tenancy/context";
 import { guard } from "@/server/action-guard";
+import { AppError } from "@/server/errors";
 import { activateMaintenance, resolveMaintenanceSubscription, updateMaintenanceRequest } from "@/server/maintenance/service";
+import { expireSubscription, recordPaymentFailed, recordVerifiedPayment } from "@/server/automation-studio/lifecycle";
 
 const refresh = () => {
   revalidatePath("/admin/maintenance");
@@ -26,5 +28,30 @@ export async function updateMaintenanceRequestAction(id: string, changes: Parame
   return guard(async () => {
     await updateMaintenanceRequest(await requireAgencyOrThrow(), id, changes);
     refresh();
+  });
+}
+
+// Automation Studio plan lifecycle. Each is an agency member recording what they know; nothing here charges, detects or assumes a payment.
+export async function recordPaymentFailedAction(id: string, graceDays?: number) {
+  return guard(async () => {
+    const out = await recordPaymentFailed(await requireAgencyOrThrow(), id, graceDays === undefined ? {} : { graceDays });
+    refresh();
+    return out;
+  });
+}
+export async function recordVerifiedPaymentAction(id: string, paidThroughOn: string, confirmed: boolean) {
+  return guard(async () => {
+    // The person confirms they checked the payment in their own billing records: a payment is never inferred.
+    if (confirmed !== true) throw new AppError("invalid_input", "Confirm that you verified this payment in your billing records first.");
+    const out = await recordVerifiedPayment(await requireAgencyOrThrow(), id, { paidThroughOn });
+    refresh();
+    return out;
+  });
+}
+export async function expireSubscriptionAction(id: string) {
+  return guard(async () => {
+    const out = await expireSubscription(await requireAgencyOrThrow(), id);
+    refresh();
+    return out;
   });
 }

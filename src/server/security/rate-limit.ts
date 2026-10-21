@@ -109,6 +109,10 @@ export const RATE_LIMITS = {
   maintenanceByUser: { name: "maintenance:user", limit: 10, windowSeconds: 3600 },
   // The AI Automation Builder: a person can send this many messages an hour (the workspace's monthly limit applies on top).
   studioBuilderByUser: { name: "studio-builder:user", limit: 60, windowSeconds: 3600 },
+  // Outside calls made by Automation Studio steps: per connection (a runaway loop can't hammer someone's API), and the confirmed tests a person can send.
+  studioCallsByConnection: { name: "studio-call:connection", limit: 60, windowSeconds: 60 },
+  studioTestByConnection: { name: "studio-test:connection", limit: 5, windowSeconds: 3600 },
+  studioConnectionByOrg: { name: "studio-connection:org", limit: 30, windowSeconds: 3600 },
   topupByOrg: { name: "billing:topup", limit: 10, windowSeconds: 3600 },
   inboxSendByUser: { name: "inbox:send", limit: 60, windowSeconds: 60 },
   onboardingAssistByOrg: { name: "onboarding:assist", limit: 25, windowSeconds: 3600 },

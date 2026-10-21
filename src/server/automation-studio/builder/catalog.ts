@@ -46,7 +46,7 @@ export function triggerCatalog(): string {
   }
   return [...groups].map(([group, items]) => `${group}:\n${items.map((i) => `  - ${i}`).join("\n")}`).join("\n")
     + `\nTrigger shape: {"type": <one of the above>, "filters": {<only the listed filter keys>}, "reentry": "always"|"once"|"not_while_active", "contactFilter": <condition group, optional>, "schedule": {"frequency":"daily"|"weekly","time":"HH:MM","weekdays":[0-6]} (schedule only)}.`
-    + `\nAll filter keys that exist: ${TRIGGER_FILTER_KEYS.join(", ")}. An inbound_webhook trigger's address is created by the server, so do not set one.`;
+    + `\nAll filter keys that exist: ${TRIGGER_FILTER_KEYS.join(", ")}. To start a workflow from another system's webhook set only {"type":"inbound_webhook"}: the address, how the caller is matched to a contact and whether a contact is created are set by the person in the workflow's settings after the server generates the address, so never write an "inbound" setting; tell the person what to set there.`;
 }
 
 /** The condition language of an if / else step and of a trigger's contact filter. */
