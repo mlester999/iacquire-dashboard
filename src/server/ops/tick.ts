@@ -37,6 +37,7 @@ import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
+import { runDueTriggers } from "@/server/workforce/triggers";
 
 export interface ScheduledJob {
   name: string;
@@ -147,6 +148,9 @@ export const JOBS: ScheduledJob[] = [
   // WORKFORCE_SCHEDULES_ENABLED=true. The row switch and this global switch are both required;
   // the tick still never executes provider work itself.
   { name: "aiWorkSchedules", run: async () => (await runDueSchedules()).created },
+  // Event triggers create durable jobs only when WORKFORCE_TRIGGERS_ENABLED=true. The trigger row
+  // must also be enabled; both are required and neither runs provider work inside the tick.
+  { name: "aiWorkTriggers", run: async () => (await runDueTriggers()).created },
 ];
 
 /**

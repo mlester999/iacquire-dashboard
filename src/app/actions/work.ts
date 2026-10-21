@@ -5,6 +5,7 @@ import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { actionError, AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { deleteSchedule, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
+import { deleteTrigger, saveTrigger, setTriggerEnabled } from "@/server/workforce/triggers";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -49,6 +50,41 @@ export async function setScheduleEnabledAction(scheduleId: string, enabled: bool
     if (!UUID.test(scheduleId)) throw new AppError("not_found", "Schedule not found.");
     const ctx = await requireOrgContextOrThrow("agents.configure");
     await setScheduleEnabled(ctx, scheduleId, enabled);
+    revalidatePath("/work");
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function saveTriggerAction(eventType: string) {
+  try {
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const saved = await saveTrigger(ctx, { eventType, enabled: false });
+    revalidatePath("/work");
+    return { ok: true as const, data: saved };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function setTriggerEnabledAction(triggerId: string, enabled: boolean) {
+  try {
+    if (!UUID.test(triggerId)) throw new AppError("not_found", "Trigger not found.");
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    await setTriggerEnabled(ctx, triggerId, enabled);
+    revalidatePath("/work");
+    return { ok: true as const };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function deleteTriggerAction(triggerId: string) {
+  try {
+    if (!UUID.test(triggerId)) throw new AppError("not_found", "Trigger not found.");
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    await deleteTrigger(ctx, triggerId);
     revalidatePath("/work");
     return { ok: true as const };
   } catch (err) {

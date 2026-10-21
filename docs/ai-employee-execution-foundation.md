@@ -5,9 +5,9 @@ provider run was performed.** Lead Hunter reaches a genuine 6/6 in an isolated a
 Hermes test double, and then completes a real sandbox research job through the same persisted path the product
 uses. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
 Sales Assistant, Appointment Setter and Performance Analyst sit on the same durable job foundation.
-A tenant-scoped schedule foundation exists but is disabled by two independent switches and has not
-been activated. Production activation remains behind the explicit approval checkpoint at the end of
-this page.
+Tenant-scoped schedules and event triggers exist but are each disabled by two independent switches
+and have not been activated. Production activation remains behind the explicit approval checkpoint at
+the end of this page.
 
 ## 1. Lead Hunter configuration
 
@@ -96,9 +96,10 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/lead-hunter-activation.test.ts` | 2 passed — applied configuration + health + profile check + Super Admin acknowledgement produces **6/6 ready**, then a real sandbox research job completes with source-backed leads and a completed `lead_research` run |
 | `tests/work-job-progress.test.tsx` | 6 passed — running/completed/failed/queued honest rendering, real availability, measured comparisons, no percentage, no invented progress |
 | `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
-| `tests/work-board-ui.test.tsx` | 6 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
+| `tests/work-board-ui.test.tsx` | 7 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
 | `tests/workforce-review-capabilities.test.ts` | 7 passed — CRM quality, pipeline, appointment and performance reviews plus real calendar availability; business records unchanged; role and workforce-permission refusals |
 | `tests/workforce-schedules.test.ts` | 5 passed — disabled by default, operator-switch gate, real due job, no duplicate while active, member/capability refusals, enable/pause/delete and audit evidence |
+| `tests/workforce-triggers.test.ts` | 5 passed — paused by default, operator gate, one job per new event, no repeat, no replay on enable, refusals and audit evidence |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
 The test gateway is the repository's Hermes test double. It is not a live AI and no external research, outreach,
@@ -120,8 +121,8 @@ performs only `SELECT` queries and changed nothing. Result:
 | Super Admin acknowledgement current | false |
 | Company facts (description, services, ideal customers, operating area) | **0/4 present** |
 
-1. **Migrations 0072 and 0073 are not applied to the hosted database.** Deploying/authorizing them is required
-   before any durable job or schedule exists in production.
+1. **Migrations 0072, 0073 and 0074 are not applied to the hosted database.** Deploying/authorizing them is
+   required before any durable job, schedule or event trigger exists in production.
 2. **Lead Hunter has no applied configuration in production.** The agency workspace must save the complete
    role configuration through Configure. The role-owned procedure fields are prepared; these company-owned
    facts are genuinely missing and must come from the business: business description, products/services, ideal
@@ -210,10 +211,35 @@ The operator switch is absent/false in production, so **no schedule is active**.
 switch, a real due job created only when both switches are on, no duplicate while a prior job is
 active, member refusal, non-review capability refusal, enable/pause/delete and audit evidence.
 
-## 10. Exact next action after authorization
+## 10. Event-driven triggers (implemented, not activated)
 
-Apply migrations 0072 and 0073 to the hosted project, deploy the application, save the Lead Hunter configuration
-in the iAcquire agency workspace, run the health check and profile check, record the Super Admin acknowledgement,
-then run the read-only activation audit and one supervised research job. Keep `WORKFORCE_SCHEDULES_ENABLED`
-false until a separate supervised schedule activation is approved. Only after that run should the job/evidence UI
-be described as production-proven.
+Migration `0074_ai_work_triggers.sql` adds `ai_work_triggers`. Only these reviewed exceptional
+events are accepted:
+
+| Event | Capability |
+| --- | --- |
+| `appointment.cancelled` | Appointment review |
+| `appointment.no_show` | Appointment review |
+| `opportunity.lost` | Pipeline review |
+
+A trigger only creates a job when **both** the row is enabled and
+`WORKFORCE_TRIGGERS_ENABLED=true`. The scheduler tick reads the next matching `crm_events` row past
+the trigger's `last_event_id`, creates one durable job with an idempotency key based on the trigger
+and event, advances the cursor and wakes the worker. It never runs provider work inside the tick.
+
+Enabling a trigger resets its cursor to the current latest event, so events that occurred while it
+was disabled are not replayed. If the employee is unavailable, the event is skipped and the cursor
+advances rather than creating a job that cannot run. The Work Board has a paused-by-default Event
+triggers panel with enable/pause/delete, the operator gate and audit evidence.
+
+`tests/workforce-triggers.test.ts` covers: paused by default, operator switch, one job per new
+event, no repeat, no replay when enabled, member/unknown-event/unavailable-employee refusals, and
+enable/pause/delete audit evidence.
+
+## 11. Exact next action after authorization
+
+Apply migrations 0072, 0073 and 0074 to the hosted project, deploy the application, save the Lead Hunter
+configuration in the iAcquire agency workspace, run the health check and profile check, record the Super Admin
+acknowledgement, then run the read-only activation audit and one supervised research job. Keep
+`WORKFORCE_SCHEDULES_ENABLED` and `WORKFORCE_TRIGGERS_ENABLED` false until separate supervised activations are
+approved. Only after that run should the job/evidence UI be described as production-proven.

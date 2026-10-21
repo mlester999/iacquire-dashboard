@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, ListChecks, Loader2, Play, ShieldCheck, Sparkles, Trash2, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, ListChecks, Loader2, Play, ShieldCheck, Sparkles, Trash2, XCircle, Zap } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Select } from "@/components/ui/primitives";
@@ -13,10 +13,12 @@ import { Switch } from "@/components/ui/overlays";
 import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { IconTile, Panel } from "@/components/overview/panel";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { deleteScheduleAction, saveScheduleAction, setScheduleEnabledAction, startReviewAction } from "@/app/actions/work";
+import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTriggerAction, setScheduleEnabledAction, setTriggerEnabledAction, startReviewAction } from "@/app/actions/work";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 import type { ScheduleView } from "@/server/workforce/schedules";
+import type { TriggerView } from "@/server/workforce/triggers";
 import type { WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 import type { WorkBoardJob, WorkBoardSummary, WorkBoardFilter } from "@/server/workforce/work-board";
 
@@ -57,6 +59,9 @@ export function WorkBoard({
   schedules,
   canManageSchedules,
   scheduleOperatorEnabled,
+  triggers,
+  canManageTriggers,
+  triggerOperatorEnabled,
   timeZone,
   focusJobId,
 }: {
@@ -67,6 +72,9 @@ export function WorkBoard({
   schedules: ScheduleView[];
   canManageSchedules: boolean;
   scheduleOperatorEnabled: boolean;
+  triggers: TriggerView[];
+  canManageTriggers: boolean;
+  triggerOperatorEnabled: boolean;
   timeZone: string;
   focusJobId: string | null;
 }) {
@@ -113,6 +121,44 @@ export function WorkBoard({
     setScheduleBusy(null);
     if (!res.ok) return toast.error(res.error);
     toast.success("Schedule deleted");
+    router.refresh();
+  };
+
+  const [triggerEvent, setTriggerEvent] = React.useState<string>(() => TRIGGER_EVENT_TYPES[0] ?? "");
+  const [triggerBusy, setTriggerBusy] = React.useState<string | null>(null);
+
+  const saveTrigger = async () => {
+    if (!triggerEvent || triggerBusy) return;
+    setTriggerBusy("save");
+    const res = await saveTriggerAction(triggerEvent);
+    setTriggerBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Event trigger saved paused", { description: "Enable it when you are ready. It still only runs when the operator switch is on." });
+    router.refresh();
+  };
+
+  const toggleTrigger = async (id: string, enabled: boolean) => {
+    if (triggerBusy) return;
+    setTriggerBusy(id);
+    const res = await setTriggerEnabledAction(id, enabled);
+    setTriggerBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(enabled ? "Event trigger enabled" : "Event trigger paused", {
+      description: enabled && !triggerOperatorEnabled
+        ? "It will not run until the operator enables AI workforce triggers."
+        : "The change is recorded in the audit trail.",
+    });
+    router.refresh();
+  };
+
+  const removeTrigger = async (id: string) => {
+    if (triggerBusy) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this event trigger? Existing jobs and evidence are kept.")) return;
+    setTriggerBusy(id);
+    const res = await deleteTriggerAction(id);
+    setTriggerBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Event trigger deleted");
     router.refresh();
   };
 
@@ -250,6 +296,73 @@ export function WorkBoard({
                       disabled={scheduleBusy !== null}
                       className="inline-flex size-8 items-center justify-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink disabled:opacity-50"
                       aria-label={`Delete ${schedule.capabilityLabel} schedule`}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Panel>
+      )}
+
+      {canManageTriggers && (
+        <Panel
+          icon={<Zap />}
+          tone="neutral"
+          title="Event triggers"
+          description="A reviewed exceptional event can start one read-only review. It only runs when both the row and the operator switch are enabled."
+          action={
+            <StatusPill tone={triggerOperatorEnabled ? "success" : "warning"} size="sm">
+              {triggerOperatorEnabled ? "Operator switch on" : "Operator switch off"}
+            </StatusPill>
+          }
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block min-w-[15rem] flex-1 text-[12px] font-medium text-ink-2">
+                Event
+                <Select className="mt-1" value={triggerEvent} onChange={(event) => setTriggerEvent(event.target.value)} disabled={!TRIGGER_EVENT_TYPES.length}>
+                  {TRIGGER_EVENT_TYPES.map((eventType) => (
+                    <option key={eventType} value={eventType}>{TRIGGER_EVENT_LABELS[eventType] ?? eventType}</option>
+                  ))}
+                </Select>
+              </label>
+              <Button variant="secondary" onClick={saveTrigger} loading={triggerBusy === "save"} disabled={!triggerEvent || triggerBusy !== null}>
+                Save paused trigger
+              </Button>
+            </div>
+            {!triggerOperatorEnabled && (
+              <p role="status" className="rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[12px] leading-relaxed text-warning-ink">
+                The operator switch is off (<code className="font-mono text-[11px]">WORKFORCE_TRIGGERS_ENABLED</code>), so no event creates work even when its trigger is enabled. This is deliberate.
+              </p>
+            )}
+            {triggers.length === 0 ? (
+              <p className="text-[12.5px] text-muted">No event triggers yet. Saving one is always paused first.</p>
+            ) : (
+              <ul className="divide-y divide-line rounded-xl border border-line">
+                {triggers.map((trigger) => (
+                  <li key={trigger.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <Switch
+                      checked={trigger.enabled}
+                      disabled={triggerBusy !== null}
+                      onCheckedChange={(next) => toggleTrigger(trigger.id, next)}
+                      aria-label={`${trigger.enabled ? "Pause" : "Enable"} ${TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType} trigger`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-semibold text-ink">{TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType}</p>
+                      <p className="mt-0.5 text-[11.5px] text-muted">
+                        {trigger.capabilityLabel} · {trigger.employeeName} · last event #{trigger.lastEventId}
+                        {trigger.enabled && !triggerOperatorEnabled ? " · paused by operator" : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeTrigger(trigger.id)}
+                      disabled={triggerBusy !== null}
+                      className="inline-flex size-8 items-center justify-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger-ink disabled:opacity-50"
+                      aria-label={`Delete ${TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType} trigger`}
                     >
                       <Trash2 className="size-3.5" aria-hidden />
                     </button>
