@@ -77,6 +77,8 @@ In an environment where sending is switched off the bar says so. Web chat and ph
 * **Anti-loop:** every change carries the run's event depth (`causedBy`), so workflows that react to each other stop at the CRM loop limit. A test hands a conversation back and forth between two workflows and checks it stops.
 * **Idle scan and "customer is waiting" notices** run from the scheduler (`inboxAttention`, every 5 minutes). Each is idempotent by dedupe key. Waiting notices
   go to the owner/assignee (else owners and managers) once per customer message, capped per workspace per run, with one hourly summary beyond the cap.
+  A customer who has opted out (or whose address bounced) on the conversation's channel is never "waiting": nothing can be sent to them, so neither Needs
+  attention nor a notice fires for their STOP message (it stays visible as unread).
   Idle events are only recorded for workspaces that have an active workflow listening for them.
 * **Premium boundary:** the inbox, its triggers and this step work for every workspace. Workflows built in Automation Studio (`origin = studio`) still need the plan, as before.
 
