@@ -93,7 +93,8 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/lead-hunter-activation.test.ts` | 2 passed — applied configuration + health + profile check + Super Admin acknowledgement produces **6/6 ready**, then a real sandbox research job completes with source-backed leads and a completed `lead_research` run |
 | `tests/work-job-progress.test.tsx` | 4 passed — running/completed/failed/queued honest rendering, no percentage, no invented progress |
 | `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
-| `tests/work-board-ui.test.tsx` | 4 passed — persisted status/metrics, on-demand review action, activity expansion, failed review evidence |
+| `tests/work-board-ui.test.tsx` | 5 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
+| `tests/workforce-review-capabilities.test.ts` | 6 passed — CRM quality, pipeline, appointment and performance reviews produce real findings/measured KPIs; business records unchanged; role and workforce-permission refusals |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
 The test gateway is the repository's Hermes test double. It is not a live AI and no external research, outreach,
@@ -144,11 +145,27 @@ shows a synthetic percentage or an activity the worker did not record.
 | --- | --- | --- | --- |
 | `lead_research` | Lead Hunter | `leads.research` | read-only research; imports/outreach remain separate approvals |
 | `proactive_review` | Operations Manager | `activity.view` | read-only review; no record writes, no provider calls, no schedule |
+| `crm_quality_review` | CRM Manager | `contacts.view` | read-only data-quality review |
+| `pipeline_review` | Sales Assistant | `sales.view` | read-only pipeline hygiene review |
+| `appointment_review` | Appointment Setter | `appointments.view` | read-only booking-risk review |
+| `performance_snapshot` | Performance Analyst | `analytics.view` | measured KPIs plus only stated-threshold anomalies |
 
 `src/server/workforce/capability-dispatch.ts` resolves the employee in the caller's own workspace,
-checks role and permission, refuses an unavailable or unconfigured employee, creates the durable job
-and records a `workforce.capability_dispatched` audit event. A capability without a registered
-handler becomes an honest blocked job.
+requires `agents.use` plus the capability's permission, checks the role allowlist, refuses an
+unavailable or unconfigured employee, creates the durable job and records a
+`workforce.capability_dispatched` audit event. A capability without a registered handler becomes an
+honest blocked job.
+
+The Work Board offers one selector for the read-only reviews whose employee is actually available.
+The Lead Hunter's research is not startable there because it needs a target, location and quantity
+from the person first.
+
+The CRM, pipeline, appointment and performance reviews share
+`src/server/workforce/read-only-review.ts`. Each reads only that workspace's persisted records, writes
+stage/evidence events, finishes with findings, examples, evidence links and recommended actions, and
+notifies the owner/admin. The performance snapshot also returns measured KPIs with a period,
+definition and source; its only anomaly thresholds are stated in the finding text. None of these
+reviews changes a record, contacts a provider or creates a schedule.
 
 The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads eight
 persisted signals: failed runs, approvals pending over a day, overdue tasks, leads waiting for

@@ -186,6 +186,9 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
   const findings = Array.isArray(job.result.findings) ? (job.result.findings as Array<{
     key?: string; severity?: string; title?: string; detail?: string; count?: number; samples?: string[]; evidenceHref?: string; recommendedAction?: string;
   }>).filter((item) => typeof item.title === "string") : [];
+  const metrics = Array.isArray(job.result.metrics) ? (job.result.metrics as Array<{
+    key?: string; label?: string; value?: number | string; unit?: string; period?: string; definition?: string; source?: string;
+  }>).filter((item) => typeof item.label === "string") : [];
   const running = job.status === "running";
 
   return (
@@ -246,6 +249,24 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
               </div>
             ))}
           </dl>
+        )}
+
+        {metrics.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Measured KPIs</p>
+            <dl className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {metrics.map((metric, index) => (
+                <div key={metric.key ?? index} className="rounded-xl border border-line bg-surface-2/40 px-3 py-2" title={[metric.definition, metric.period, metric.source ? `Source: ${metric.source}` : null].filter(Boolean).join(" · ")}>
+                  <dt className="text-[10.5px] leading-snug text-muted">{metric.label}</dt>
+                  <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-ink">
+                    {typeof metric.value === "number" ? metric.value.toLocaleString() : metric.value ?? "—"}
+                    {metric.unit && <span className="ml-0.5 text-[11px] font-normal text-muted">{metric.unit}</span>}
+                  </dd>
+                  {metric.period && <p className="mt-0.5 text-[10px] leading-snug text-faint">{metric.period}</p>}
+                </div>
+              ))}
+            </dl>
+          </div>
         )}
 
         {findings.length > 0 && (

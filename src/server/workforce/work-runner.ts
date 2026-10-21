@@ -12,6 +12,10 @@ import {
 import { registerWorkJobController, unregisterWorkJobController } from "@/server/workforce/work-cancel";
 import { runLeadResearchJob } from "@/server/leads/research-job";
 import { runProactiveReviewJob } from "@/server/workforce/proactive-review";
+import { runCrmQualityReviewJob } from "@/server/workforce/crm-quality-review";
+import { runPipelineReviewJob } from "@/server/workforce/pipeline-review";
+import { runAppointmentReviewJob } from "@/server/workforce/appointment-review";
+import { runPerformanceSnapshotJob } from "@/server/workforce/performance-snapshot";
 
 /**
  * Persistent worker entry points for AI work.
@@ -26,6 +30,10 @@ type Handler = (job: WorkJobRow, context: { workerId: string; controller: AbortC
 const HANDLERS: Record<string, Handler> = {
   lead_research: runLeadResearchJob,
   proactive_review: runProactiveReviewJob,
+  crm_quality_review: runCrmQualityReviewJob,
+  pipeline_review: runPipelineReviewJob,
+  appointment_review: runAppointmentReviewJob,
+  performance_snapshot: runPerformanceSnapshotJob,
 };
 
 function workerId() {

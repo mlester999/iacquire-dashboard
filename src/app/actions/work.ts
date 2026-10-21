@@ -2,21 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
-import { actionError } from "@/server/errors";
+import { actionError, AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
+import { capabilityDefinition } from "@/lib/workforce-capabilities";
 
 /**
- * Starts one on-demand Operations Manager review. This is a person-triggered read of persisted
- * records, not a schedule: no recurring trigger is created and the handler cannot change a
- * business record or contact a provider.
+ * Starts one reviewed, read-only capability from the AI Work Board. Lead research is deliberately
+ * not startable here because it needs a target, location and quantity from the person first.
  */
-export async function startProactiveReviewAction() {
+export async function startReviewAction(capability: string) {
   try {
     const ctx = await requireOrgContextOrThrow("agents.use");
+    const definition = capabilityDefinition(capability);
+    if (!definition || !definition.workBoardAction) throw new AppError("invalid_input", "That review is not available from the work board.");
+    const role = definition.allowedRoles[0];
+    if (!role) throw new AppError("invalid_input", "That review has no eligible employee role.");
     const result = await dispatchCapabilityJob(ctx, {
-      agentRole: "operations_manager",
-      capability: "proactive_review",
-      title: "On-demand operations review",
+      agentRole: role,
+      capability: definition.key,
+      title: definition.label,
       input: { sinceDays: 7 },
     });
     revalidatePath("/work");

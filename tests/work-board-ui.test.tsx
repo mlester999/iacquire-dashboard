@@ -8,7 +8,7 @@ import { WorkBoard } from "@/components/work/work-board";
 import type { WorkBoardJob } from "@/server/workforce/work-board";
 
 const startReview = vi.fn(async () => ({ ok: true as const, data: { jobId: "job-new", agentId: "agent-1" } }));
-vi.mock("@/app/actions/work", () => ({ startProactiveReviewAction: () => startReview() }));
+vi.mock("@/app/actions/work", () => ({ startReviewAction: () => startReview() }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), info: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("next/link", async () => {
@@ -55,32 +55,43 @@ function job(overrides: Partial<WorkBoardJob> = {}): WorkBoardJob {
 
 const summary = { active: 1, waiting: 0, failed: 1, completedToday: 2 };
 
+const reviewActions = [
+  { capability: "proactive_review" as const, label: "On-demand operations review", description: "Read persisted records and recommend next actions.", employeeName: "Operations Manager", available: true, reason: null },
+  { capability: "crm_quality_review" as const, label: "CRM quality review", description: "Review CRM data quality.", employeeName: "CRM Manager", available: false, reason: "CRM Manager needs an applied configuration first." },
+];
+
 describe("AI Work Board", () => {
   it("renders persisted status, stage and metrics without inventing progress", () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" canStartReview={false} reviewBlockedReason="Operations review requires workspace activity access." operationsManagerName="Operations Manager" timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} timeZone="Asia/Manila" focusJobId={null} />);
     expect(screen.getByText("See the work, not a spinner.")).toBeTruthy();
     expect(screen.getByText("Working")).toBeTruthy();
     expect(screen.getByText("Reviewing discovered company websites")).toBeTruthy();
     expect(screen.getByText(/3 source pages reviewed/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Run operations review/ }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Operations review requires workspace activity access.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Start review/ }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("combobox", { name: "Review to run" })).toBeTruthy();
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
   it("starts a real on-demand review when access allows it", async () => {
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" canStartReview reviewBlockedReason={null} operationsManagerName="Operations Manager" timeZone="Asia/Manila" focusJobId={null} />);
-    await userEvent.click(screen.getByRole("button", { name: /Run operations review/ }));
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} timeZone="Asia/Manila" focusJobId={null} />);
+    await userEvent.click(screen.getByRole("button", { name: /Start review/ }));
     await waitFor(() => expect(startReview).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalled();
   });
 
   it("expands the real work panel and links filters correctly", () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" canStartReview={false} reviewBlockedReason={null} operationsManagerName="Operations Manager" timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} timeZone="Asia/Manila" focusJobId={null} />);
     expect(screen.getByRole("link", { name: "Needs attention" }).getAttribute("href")).toBe("/work?status=attention");
     fireEvent.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByTestId("job-panel").textContent).toBe("job-1");
     fireEvent.click(screen.getByRole("button", { name: "Hide activity" }));
     expect(screen.queryByTestId("job-panel")).toBeNull();
+  });
+
+  it("disables a review whose employee is not available and explains why", () => {
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={[reviewActions[1]]} timeZone="UTC" focusJobId={null} />);
+    expect(screen.getByRole("button", { name: /Start review/ }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/CRM Manager needs an applied configuration first/)).toBeTruthy();
   });
 
   it("shows a failed proactive review as failed and keeps its evidence reachable", () => {
@@ -100,9 +111,7 @@ describe("AI Work Board", () => {
       })]}
       summary={summary}
       filter="attention"
-      canStartReview={false}
-      reviewBlockedReason={null}
-      operationsManagerName="Operations Manager"
+      reviewActions={reviewActions}
       timeZone="UTC"
       focusJobId={null}
     />);

@@ -7,14 +7,15 @@ import { toast } from "sonner";
 import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock3, ListChecks, Loader2, Play, ShieldCheck, Sparkles, XCircle } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/primitives";
+import { EmptyState, Select } from "@/components/ui/primitives";
 import { StatusPill, InfoChip } from "@/components/ui/status";
 import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { IconTile, Panel } from "@/components/overview/panel";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { startProactiveReviewAction } from "@/app/actions/work";
+import { startReviewAction } from "@/app/actions/work";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
 import { formatDateTime, relativeTime } from "@/lib/utils";
+import type { WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 import type { WorkBoardJob, WorkBoardSummary, WorkBoardFilter } from "@/server/workforce/work-board";
 
 const FILTERS: Array<{ key: WorkBoardFilter; label: string }> = [
@@ -50,32 +51,32 @@ export function WorkBoard({
   jobs,
   summary,
   filter,
-  canStartReview,
-  reviewBlockedReason,
-  operationsManagerName,
+  reviewActions,
   timeZone,
   focusJobId,
 }: {
   jobs: WorkBoardJob[];
   summary: WorkBoardSummary;
   filter: WorkBoardFilter;
-  canStartReview: boolean;
-  reviewBlockedReason: string | null;
-  operationsManagerName: string;
+  reviewActions: WorkBoardCapabilityAction[];
   timeZone: string;
   focusJobId: string | null;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = React.useState<string | null>(focusJobId);
   const [starting, setStarting] = React.useState(false);
+  const [selectedCapability, setSelectedCapability] = React.useState<string>(() => {
+    return reviewActions.find((action) => action.available)?.capability ?? reviewActions[0]?.capability ?? "";
+  });
+  const selected = reviewActions.find((action) => action.capability === selectedCapability) ?? reviewActions[0] ?? null;
 
   const startReview = async () => {
-    if (!canStartReview || starting) return;
+    if (!selected?.available || starting) return;
     setStarting(true);
-    const res = await startProactiveReviewAction();
+    const res = await startReviewAction(selected.capability);
     setStarting(false);
     if (!res.ok) return toast.error(res.error);
-    toast.success("Operations review started", { description: "The review reads persisted records and records its findings. It does not change any record." });
+    toast.success(`${selected.label} started`, { description: "The employee reads only persisted records and records its findings. No record is changed." });
     setExpanded(res.data.jobId);
     router.refresh();
   };
@@ -90,13 +91,25 @@ export function WorkBoard({
         icon={<ListChecks />}
         aside={
           <div className="space-y-2">
-            <Button variant="brand" onClick={startReview} loading={starting} disabled={!canStartReview || starting}>
-              {starting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Play className="size-4" aria-hidden />}
-              Run operations review
-            </Button>
-            <p className="max-w-[28rem] text-[12px] leading-relaxed text-muted">
-              {reviewBlockedReason ?? `Asks ${operationsManagerName} to read persisted records and recommend next actions. No schedule is created, no record is changed and no provider is contacted.`}
-            </p>
+            {reviewActions.length > 0 ? (
+              <>
+                <label htmlFor="work-review" className="block text-[11.5px] font-semibold uppercase tracking-[.08em] text-muted">Review to run</label>
+                <Select id="work-review" value={selected?.capability ?? ""} onChange={(event) => setSelectedCapability(event.target.value)} className="min-w-[16rem]">
+                  {reviewActions.map((action) => (
+                    <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
+                  ))}
+                </Select>
+                <Button variant="brand" onClick={startReview} loading={starting} disabled={!selected?.available || starting}>
+                  {starting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Play className="size-4" aria-hidden />}
+                  Start review
+                </Button>
+                <p className="max-w-[28rem] text-[12px] leading-relaxed text-muted">
+                  {selected?.reason ?? selected?.description ?? "Choose a read-only review to run."} It does not change records, contact a provider or create a schedule.
+                </p>
+              </>
+            ) : (
+              <p className="max-w-[28rem] text-[12px] leading-relaxed text-muted">No reviewed review capability is available for your role in this workspace.</p>
+            )}
           </div>
         }
       />

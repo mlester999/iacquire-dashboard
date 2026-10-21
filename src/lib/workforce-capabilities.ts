@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "proactive_review";
+export type CapabilityKey = "lead_research" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "performance_snapshot";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -19,6 +19,8 @@ export interface CapabilityDefinition {
   /** read_only means the capability cannot change a business record; approval_required means it must not execute without a human decision. */
   risk: "read_only" | "approval_required" | "sensitive";
   produces: string;
+  /** True when a person can start it from the AI Work Board without an additional input form. */
+  workBoardAction: boolean;
 }
 
 export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition> = {
@@ -30,6 +32,7 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "leads.research",
     risk: "read_only",
     produces: "Lead profiles with source evidence, qualification reasons and duplicate warnings.",
+    workBoardAction: false,
   },
   proactive_review: {
     key: "proactive_review",
@@ -41,6 +44,47 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "activity.view",
     risk: "read_only",
     produces: "An evidence-backed review with findings, impact and recommended actions. It does not change business records or start schedules.",
+    workBoardAction: true,
+  },
+  crm_quality_review: {
+    key: "crm_quality_review",
+    label: "CRM quality review",
+    description: "Review authorized CRM contacts and companies for missing details, possible duplicates and unverified identities, then recommend fixes.",
+    allowedRoles: ["crm_manager"],
+    requiredPermission: "contacts.view",
+    risk: "read_only",
+    produces: "Data-quality findings with record counts, examples and a link to the affected records.",
+    workBoardAction: true,
+  },
+  pipeline_review: {
+    key: "pipeline_review",
+    label: "Pipeline review",
+    description: "Review open sales opportunities for missing values, stale stages, missing owners and passed close dates, then recommend next actions.",
+    allowedRoles: ["sales_assistant"],
+    requiredPermission: "sales.view",
+    risk: "read_only",
+    produces: "Pipeline hygiene findings with opportunity counts, examples and a link to the pipeline.",
+    workBoardAction: true,
+  },
+  appointment_review: {
+    key: "appointment_review",
+    label: "Appointment review",
+    description: "Review authorization, booking and coverage problems in upcoming appointments without changing or confirming anything.",
+    allowedRoles: ["appointment_setter"],
+    requiredPermission: "appointments.view",
+    risk: "read_only",
+    produces: "Appointment risk findings with counts, examples and a link to the booking queue.",
+    workBoardAction: true,
+  },
+  performance_snapshot: {
+    key: "performance_snapshot",
+    label: "Performance snapshot",
+    description: "Measure leads, appointments, pipeline outcomes and AI run reliability for a fixed period, then flag only anomalies that cross a stated review threshold.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "analytics.view",
+    risk: "read_only",
+    produces: "Measured KPIs with their period, definition and source, plus anomaly findings. It never invents a benchmark or estimate.",
+    workBoardAction: true,
   },
 };
 
@@ -62,3 +106,14 @@ export function roleMayUseCapability(role: AgentRoleKey, capability: string): bo
   const definition = capabilityDefinition(capability);
   return Boolean(definition?.allowedRoles.includes(role));
 }
+
+/** A capability the current viewer could start from the Work Board, with its real availability. */
+export interface WorkBoardCapabilityAction {
+  capability: CapabilityKey;
+  label: string;
+  description: string;
+  employeeName: string;
+  available: boolean;
+  reason: string | null;
+}
+

@@ -35,6 +35,9 @@ export async function dispatchCapabilityJob(
   if (!definition.allowedRoles.includes(input.agentRole)) {
     throw new AppError("forbidden", "This employee's role does not include that capability.");
   }
+  // Only a member of the workspace's AI workforce can dispatch AI work. Capability permissions
+  // (contacts.view, sales.view, etc.) are additional, not a replacement for this baseline.
+  if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't start AI work.");
   if (!ctx.can(definition.requiredPermission)) {
     throw new AppError("forbidden", "Your role can't start this work.");
   }
