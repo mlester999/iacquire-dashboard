@@ -15,6 +15,7 @@ export interface AqiRoute {
 export const AQI_ROUTES: AqiRoute[] = [
   { path: "/overview", label: "Overview", description: "Your workspace dashboard and current status.", permission: "workspace.view" },
   { path: "/employees", label: "AI Employees", description: "See your AI employees, their status and chat with them.", permission: "agents.use" },
+  { path: "/work", label: "AI Work Board", description: "Real AI work, its stage, progress and recorded outcomes.", permission: "agents.use" },
   { path: "/knowledge", label: "Knowledge Center", description: "Company knowledge and reference documents.", permission: "knowledge.view" },
   { path: "/chat", label: "AI employee chat", description: "Conversations with your AI employees.", permission: "agents.use" },
   { path: "/leads", label: "Leads", description: "Leads, research and review queues.", permission: "leads.view" },

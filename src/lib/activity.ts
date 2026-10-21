@@ -18,6 +18,7 @@ const LABELS: Record<string, string> = {
   "knowledge.section_saved": "updated the Knowledge Center",
   "knowledge.document_uploaded": "uploaded a document",
   "knowledge.document_deleted": "removed a document",
+  "workforce.capability_dispatched": "started authorized AI work",
   "leads.research_requested": "requested lead research",
   "leads.approved": "approved leads",
   "leads.rejected": "rejected leads",

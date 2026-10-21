@@ -10,6 +10,7 @@ import { createWorkJob, getWorkJob, retryWorkJob, workJobStageLabel } from "@/se
 import { kickWorkJob, runWorkJob } from "@/server/workforce/work-runner";
 import { canChat, type AgentStatus } from "@/lib/agents";
 import { targetingSchema, type Targeting } from "@/lib/leads-targeting";
+import { roleMayUseCapability } from "@/lib/workforce-capabilities";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export { targetingSchema };
@@ -59,6 +60,10 @@ export async function createResearchRequest(
   options: { conversationId?: string | null; deferKick?: boolean } = {},
 ) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can request lead research.");
+  // The reviewed capability allowlist is the same one the generic dispatcher and work board use.
+  if (!roleMayUseCapability("lead_hunter", "lead_research")) {
+    throw new AppError("forbidden", "The Lead Hunter is not allowed to perform research in this deployment.");
+  }
   const prompt = input.prompt.trim();
   if (prompt.length < 3 || prompt.length > 1000) throw new AppError("invalid_input", "Describe who you'd like to find in up to 1,000 characters.");
   const limit = await consumeRateLimit(RATE_LIMITS.researchByOrg, ctx.org.orgId);

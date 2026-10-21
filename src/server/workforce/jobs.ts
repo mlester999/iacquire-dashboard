@@ -25,6 +25,8 @@ export type WorkJobStatus = (typeof WORK_JOB_STATUSES)[number];
 
 export const WORK_JOB_STAGES = [
   "preparing",
+  "scanning",
+  "analyzing",
   "searching",
   "reviewing",
   "extracting",
@@ -42,6 +44,8 @@ export type WorkJobStage = (typeof WORK_JOB_STAGES)[number];
 
 export const WORK_JOB_STAGE_LABELS: Record<WorkJobStage, string> = {
   preparing: "Preparing the work",
+  scanning: "Reading persisted workspace records",
+  analyzing: "Assessing impact and preparing recommendations",
   searching: "Searching approved public sources",
   reviewing: "Reviewing discovered company websites",
   extracting: "Extracting prospect details and evidence",

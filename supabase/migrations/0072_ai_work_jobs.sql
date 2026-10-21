@@ -113,17 +113,41 @@ grant select on ai_work_events to iaq_app_user;
 
 drop policy if exists ai_work_jobs_select on ai_work_jobs;
 drop policy if exists ai_work_events_select on ai_work_events;
+-- A regular member can read their own work and ordinary research jobs. A workspace-wide proactive
+-- review can contain approval titles and contact names, so it is visible only to the person who
+-- requested it or to someone with the Activity permission. The server also checks this in code;
+-- this policy is the database-level defence.
 do $$
 begin
   if to_regprocedure('app.permitted_orgs(text)') is null then
     execute $p$create policy ai_work_jobs_select on ai_work_jobs for select to iaq_app_user
-      using (app.has_permission(org_id, 'agents.use'::text))$p$;
+      using (
+        app.has_permission(org_id, 'agents.use'::text)
+        and (capability <> 'proactive_review' or requested_by = app.current_user_id() or app.has_permission(org_id, 'activity.view'::text))
+      )$p$;
     execute $p$create policy ai_work_events_select on ai_work_events for select to iaq_app_user
-      using (app.has_permission(org_id, 'agents.use'::text))$p$;
+      using (
+        app.has_permission(org_id, 'agents.use'::text)
+        and exists (
+          select 1 from ai_work_jobs j
+           where j.id = job_id and j.org_id = org_id
+             and (j.capability <> 'proactive_review' or j.requested_by = app.current_user_id() or app.has_permission(j.org_id, 'activity.view'::text))
+        )
+      )$p$;
   else
     execute $p$create policy ai_work_jobs_select on ai_work_jobs for select to iaq_app_user
-      using (org_id = ANY ((SELECT app.permitted_orgs('agents.use'::text))::uuid[]))$p$;
+      using (
+        org_id = ANY ((SELECT app.permitted_orgs('agents.use'::text))::uuid[])
+        and (capability <> 'proactive_review' or requested_by = app.current_user_id() or app.has_permission(org_id, 'activity.view'::text))
+      )$p$;
     execute $p$create policy ai_work_events_select on ai_work_events for select to iaq_app_user
-      using (org_id = ANY ((SELECT app.permitted_orgs('agents.use'::text))::uuid[]))$p$;
+      using (
+        org_id = ANY ((SELECT app.permitted_orgs('agents.use'::text))::uuid[])
+        and exists (
+          select 1 from ai_work_jobs j
+           where j.id = job_id and j.org_id = org_id
+             and (j.capability <> 'proactive_review' or j.requested_by = app.current_user_id() or app.has_permission(j.org_id, 'activity.view'::text))
+        )
+      )$p$;
   end if;
 end $$;

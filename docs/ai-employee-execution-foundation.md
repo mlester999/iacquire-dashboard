@@ -3,7 +3,8 @@
 Status: **implemented and verified locally; migration not deployed; no production configuration, activation or
 provider run was performed.** Lead Hunter reaches a genuine 6/6 in an isolated agency workspace against the
 Hermes test double, and then completes a real sandbox research job through the same persisted path the product
-uses. Production activation remains behind the explicit approval checkpoint at the end of this page.
+uses. An AI Work Board and a person-triggered, read-only Operations Manager review now sit on the same durable
+job foundation. Production activation remains behind the explicit approval checkpoint at the end of this page.
 
 ## 1. Lead Hunter configuration
 
@@ -91,6 +92,8 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/workforce-jobs.test.ts` | 10 passed — real stages/counts, chat-created job, duplicate detection against CRM, public contact privacy, cancellation, retry, tenant isolation, unreviewed capability refusal, member cancel refusal, idempotency, lease recovery |
 | `tests/lead-hunter-activation.test.ts` | 2 passed — applied configuration + health + profile check + Super Admin acknowledgement produces **6/6 ready**, then a real sandbox research job completes with source-backed leads and a completed `lead_research` run |
 | `tests/work-job-progress.test.tsx` | 4 passed — running/completed/failed/queued honest rendering, no percentage, no invented progress |
+| `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
+| `tests/work-board-ui.test.tsx` | 4 passed — persisted status/metrics, on-demand review action, activity expansion, failed review evidence |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
 The test gateway is the repository's Hermes test double. It is not a live AI and no external research, outreach,
@@ -127,7 +130,34 @@ performs only `SELECT` queries and changed nothing. Result:
 The Hermes six-tool whitelist was not changed. No MCP, Tool Search, filesystem, database, browser or general API
 access was enabled. No autonomous schedule was activated.
 
-## 8. Exact next action after authorization
+## 8. AI Work Board and on-demand proactivity
+
+The AI Work Board (`/work`, linked from the AI Employees navigation) reads only persisted
+`ai_work_jobs`/`ai_work_events`. It shows real status, stage, counts, latest recorded activity and
+result/failure summaries, with filters for active, attention and completed work. A member sees only
+work they requested; an owner or admin with `activity.view` sees the workspace queue. The board never
+shows a synthetic percentage or an activity the worker did not record.
+
+`src/lib/workforce-capabilities.ts` is the reviewed capability allowlist:
+
+| Capability | Allowed role | Caller permission | Risk |
+| --- | --- | --- | --- |
+| `lead_research` | Lead Hunter | `leads.research` | read-only research; imports/outreach remain separate approvals |
+| `proactive_review` | Operations Manager | `activity.view` | read-only review; no record writes, no provider calls, no schedule |
+
+`src/server/workforce/capability-dispatch.ts` resolves the employee in the caller's own workspace,
+checks role and permission, refuses an unavailable or unconfigured employee, creates the durable job
+and records a `workforce.capability_dispatched` audit event. A capability without a registered
+handler becomes an honest blocked job.
+
+The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads eight
+persisted signals: failed runs, approvals pending over a day, overdue tasks, leads waiting for
+review, employees needing attention, degraded integrations, failed/blocked AI jobs and recent
+contacts with no email or phone. Each finding records its count, examples, evidence link and
+recommended next action. It does not change a business record, create an approval on the employee's
+behalf, contact a provider or create a recurring schedule. A person starts it from the Work Board.
+
+## 9. Exact next action after authorization
 
 Apply migration 0072 to the hosted project, deploy the application, save the Lead Hunter configuration in the
 iAcquire agency workspace, run the health check and profile check, record the Super Admin acknowledgement, then

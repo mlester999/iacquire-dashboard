@@ -183,6 +183,9 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
   const elapsed = elapsedLabel(job.elapsedMs);
   const counts = PROGRESS_ITEMS.map(([key, label]) => [label, count(job.progress[key])] as const).filter(([, value]) => value !== null);
   const events = showAllEvents ? job.events : job.events.slice(-5);
+  const findings = Array.isArray(job.result.findings) ? (job.result.findings as Array<{
+    key?: string; severity?: string; title?: string; detail?: string; count?: number; samples?: string[]; evidenceHref?: string; recommendedAction?: string;
+  }>).filter((item) => typeof item.title === "string") : [];
   const running = job.status === "running";
 
   return (
@@ -243,6 +246,33 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
               </div>
             ))}
           </dl>
+        )}
+
+        {findings.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Findings and recommended actions</p>
+            <ul className="space-y-1.5">
+              {findings.map((item, index) => {
+                const tone = item.severity === "critical" ? "border-danger/25 bg-danger-soft/30" : item.severity === "warning" ? "border-warning/25 bg-warning-soft/30" : "border-line bg-surface-2/40";
+                return (
+                  <li key={item.key ?? index} className={cn("rounded-xl border px-3 py-2.5", tone)}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 flex-1 text-[12.5px] font-semibold text-ink">{item.title}</p>
+                      {typeof item.count === "number" && item.count > 0 && <StatusPill tone={item.severity === "critical" ? "danger" : item.severity === "warning" ? "warning" : "neutral"} size="sm">{item.count}</StatusPill>}
+                    </div>
+                    {item.detail && <p className="mt-1 text-[12px] leading-relaxed text-ink-2">{item.detail}</p>}
+                    {Boolean(item.samples?.length) && (
+                      <p className="mt-1 text-[11.5px] leading-relaxed text-muted">Examples: {item.samples!.join("; ")}</p>
+                    )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]">
+                      {item.recommendedAction && <span className="text-ink-2"><span className="font-medium">Next:</span> {item.recommendedAction}</span>}
+                      {item.evidenceHref && <Link href={item.evidenceHref} className="font-semibold text-primary hover:underline">Open evidence</Link>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
 
         {job.failureMessage && (job.status === "failed" || job.status === "blocked") && (
