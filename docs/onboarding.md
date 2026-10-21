@@ -43,6 +43,8 @@ configuration (`effectiveStored`).
 
 **AI help is optional and never authoritative.** "Suggest with AI" uses the connected model, only from the owner's own answers and
 the read website text. Prices and FAQs are suggested **only from the owner's website** (never composed from general knowledge).
+Writing assistance now uses field-specific allowlists, current wording, optional user clarifications and relevant approved company knowledge. Recent website context is excluded if its origin no longer matches the saved website. Output is checked for shape, length, source quotes and unsupported wording. A separate editable preview requires explicit acceptance; missing details are optional and never silently persisted as company facts. See `docs/onboarding-ux-and-ai.md` for limits and verification evidence.
+
 Output is validated against the question's shape. Suggestions are labelled, editable, and for policy-like questions (prices,
 FAQs, hand-off rules) remain `needs_confirmation` until the owner presses "I've checked this"; unconfirmed answers block
 submission and never feed approved knowledge. Website text is treated as untrusted data in the prompt. Nothing the assistant

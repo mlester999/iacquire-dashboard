@@ -493,6 +493,7 @@ describe("website reading and AI suggestions", () => {
     const fresh2 = await createOrg({ name: "No Site Co", status: "onboarding" });
     const o = await createUser();
     await addMember(fresh2.id, o.id, "owner");
+    await saveOnboardingStep(as(o, fresh2, "owner"), { answers: { "d.pricing_policy": { value: "ranges" } } });
     await expect(suggestOnboardingAnswer(as(o, fresh2, "owner"), "e.faqs")).rejects.toThrow(/only suggest this from your website/);
     await expect(suggestOnboardingAnswer(as(o, fresh2, "owner"), "d.pricing_info")).rejects.toThrow(/only suggest this from your website/);
   });
@@ -500,17 +501,17 @@ describe("website reading and AI suggestions", () => {
   it("returns validated, labelled suggestions and rejects malformed model output", async () => {
     llm.config = { baseUrl: "https://llm.test", format: "openai", model: "m", apiKey: "k", source: "environment" };
     await saveOnboardingStep(ctxB(), { answers: { "a.business_name": { value: "Reader Co" }, "a.industry": { value: "home_services" }, "b.services": { value: "Roof repair" } } });
-    llm.reply = { ok: true, text: '```json\n{"value": "Reader Co repairs roofs for local homeowners.", "reason": "Based on your services."}\n```' };
+    llm.reply = { ok: true, text: '```json\n{"value": "Reader Co provides roof repair.", "reason": "Based on your services.", "evidence": [{"factId":"b.services","quote":"Roof repair"}]}\n```' };
     const good = await suggestOnboardingAnswer(ctxB(), "a.description");
-    expect(good).toMatchObject({ questionId: "a.description", value: "Reader Co repairs roofs for local homeowners.", needsConfirmation: false });
+    expect(good).toMatchObject({ questionId: "a.description", value: "Reader Co provides roof repair.", needsConfirmation: false });
     expect(good.basis).toBe("your_website"); // the earlier analysis is available as context
-    llm.reply = { ok: true, text: '{"value": "not-an-option", "reason": "x"}' };
+    llm.reply = { ok: true, text: '{"value": "not-an-option", "reason": "x", "evidence":[{"factId":"a.business_name","quote":"Reader Co"}]}' };
     await expect(suggestOnboardingAnswer(ctxB(), "c.tone")).rejects.toThrow(/wrong shape/);
-    llm.reply = { ok: true, text: '{"value": null, "reason": "Not enough information."}' };
-    await expect(suggestOnboardingAnswer(ctxB(), "a.description")).rejects.toThrow(/Not enough information/);
+    llm.reply = { ok: true, text: '{"value": null, "reason": "Who do you help?", "evidence":[]}' };
+    expect(await suggestOnboardingAnswer(ctxB(), "a.description", { regenerate: true })).toMatchObject({ value: null, clarifications: [{ fieldId: "a.target_customers" }] });
     llm.reply = { ok: false, status: 500 };
-    await expect(suggestOnboardingAnswer(ctxB(), "a.description")).rejects.toThrow(/couldn't answer/);
-    llm.reply = { ok: true, text: '{"value": [{"question": "Do you offer free inspections?", "answer": "Yes, every roof gets a free inspection first."}], "reason": "From your FAQ page."}' };
+    await expect(suggestOnboardingAnswer(ctxB(), "a.description", { regenerate: true })).rejects.toThrow(/couldn't answer/);
+    llm.reply = { ok: true, text: '{"value": [{"question": "Do you offer free inspections?", "answer": "Yes, every roof gets a free inspection first."}], "reason": "From your FAQ page.", "evidence":[{"factId":"website","quote":"Yes, every roof gets a free inspection first."}]}' };
     const faq = await suggestOnboardingAnswer(ctxB(), "e.faqs");
     expect(faq).toMatchObject({ source: "website_analysis", needsConfirmation: true });
   });

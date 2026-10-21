@@ -7,6 +7,7 @@ import { buildReviewModel, computeProgress, resolveCurrentQuestion, submitCheck,
 import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
 import type { AnswerValue, StoredAnswers } from "@/lib/onboarding/types";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { missingDetails } from "@/lib/onboarding/assistance";
 import type { OnboardingSession } from "@/server/onboarding/service";
 
 /*
@@ -98,10 +99,12 @@ function makeServer(kind: "empty" | "full") {
       control.log(`save → ok, revision ${state.revision}, resume at ${state.current}`);
       return { ok: true, data: { revision: state.revision, rejected, staleBase } };
     },
-    async suggest(id) {
+    async suggest(id, options) {
       await wait(700);
       if (id === "a.description") {
-        return { ok: true, data: { questionId: id, value: "Brightside Roofing repairs and replaces roofs for homeowners across the Austin area, starting with a free inspection.", basis: "your_answers", reason: "Based on your business name, industry and location.", source: "ai_suggestion", needsConfirmation: false } };
+        const details = options?.clarifications ?? {};
+        const services = details["b.services"] || String(state.answers["b.services"]?.value ?? "");
+        return { ok: true, data: { questionId: id, value: services ? `Brightside Roofing provides ${services}.` : "Brightside Roofing is a home services business.", basis: "your_answers", reason: "Sample response only. No AI provider was called.", source: "ai_suggestion", needsConfirmation: false, limited: !services, clarifications: missingDetails(QUESTION_BY_ID[id], { ...effectiveAnswers(state.answers), ...details }) } };
       }
       if (id === "e.faqs") {
         return { ok: true, data: { questionId: id, value: [{ question: "Do you offer free inspections?", answer: "Yes, every roof gets a free inspection first." }], basis: "your_website", reason: "Found on your FAQ page.", source: "website_analysis", needsConfirmation: true } };
@@ -188,7 +191,7 @@ export default function PreviewInner({ seed }: { seed: "empty" | "full" }) {
   return (
     <div className="app-backdrop grain min-h-dvh">
       <div className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[12.5px] font-medium text-warning-ink">
-        Design preview — sample data for Brightside Roofing, saved only in this browser tab. Not a real workspace.{" "}
+        Local preview — sample data and mocked AI. No provider calls. Saved only in this tab.{" "}
         <label className="ml-2 inline-flex items-center gap-1.5">
           <input
             type="checkbox"

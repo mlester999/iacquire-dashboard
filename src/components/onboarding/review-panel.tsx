@@ -63,6 +63,7 @@ export function ReviewPanel({
   onEdit,
   onConfirmChange,
   onSubmit,
+  hideSubmit = false,
 }: {
   review: ReviewModel | null;
   loading: boolean;
@@ -74,6 +75,7 @@ export function ReviewPanel({
   onEdit: (questionId: string) => void;
   onConfirmChange: (value: boolean) => void;
   onSubmit: () => void;
+  hideSubmit?: boolean;
 }) {
   if (loading && !review) {
     return (
@@ -283,9 +285,9 @@ export function ReviewPanel({
             {error}
           </p>
         )}
-        <Button className="mt-4 w-full sm:w-auto" variant="brand" size="lg" loading={submitting} disabled={blockers.length > 0 || !confirmed} onClick={onSubmit}>
+        {!hideSubmit && <Button className="mt-4 w-full sm:w-auto" variant="brand" size="lg" loading={submitting} disabled={blockers.length > 0 || !confirmed} onClick={onSubmit}>
           <Sparkles className="size-4" /> {alreadySubmitted ? "Approve and update my AI team" : "Approve and prepare my AI team"}
-        </Button>
+        </Button>}
         {blockers.length > 0 && <p className="mt-2 text-[12.5px] text-muted">Resolve the items above to continue.</p>}
       </section>
     </div>

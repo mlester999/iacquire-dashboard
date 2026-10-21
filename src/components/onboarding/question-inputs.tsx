@@ -18,6 +18,7 @@ export interface DocumentSummary {
 }
 
 export interface InputProps {
+  inputId?: string;
   q: QuestionDef;
   value: AnswerValue | undefined;
   answers: Answers;
@@ -48,13 +49,14 @@ export function QuestionInput(props: InputProps) {
     case "longtext":
       return (
         <Textarea
-          id={INPUT_ID}
+          id={props.inputId ?? INPUT_ID}
+          aria-label={q.title}
           rows={q.kind.rows ?? 4}
           maxLength={q.kind.max}
           value={typeof props.value === "string" ? props.value : ""}
           placeholder={q.kind.placeholder}
           aria-invalid={Boolean(props.error) || undefined}
-          aria-describedby={props.error ? `${INPUT_ID}-error` : undefined}
+          aria-describedby={props.error ? `${props.inputId ?? INPUT_ID}-error` : undefined}
           onChange={(e) => props.onChange(e.target.value)}
         />
       );
@@ -79,13 +81,14 @@ export function QuestionInput(props: InputProps) {
   }
 }
 
-function TextLike({ q, value, error, onChange }: InputProps) {
+function TextLike({ q, value, error, onChange, inputId = INPUT_ID }: InputProps) {
   const t = q.kind.type;
   const max = q.kind.type === "text" ? q.kind.max : 320;
   const placeholder = q.kind.type === "text" ? q.kind.placeholder : q.example;
   return (
     <Input
-      id={INPUT_ID}
+      id={inputId}
+      aria-label={q.title}
       type={t === "email" ? "email" : t === "phone" ? "tel" : "text"}
       inputMode={t === "url" ? "url" : t === "phone" ? "tel" : t === "email" ? "email" : undefined}
       autoComplete={t === "email" ? "email" : t === "phone" ? "tel" : "off"}
@@ -93,13 +96,13 @@ function TextLike({ q, value, error, onChange }: InputProps) {
       value={typeof value === "string" ? value : ""}
       placeholder={placeholder}
       aria-invalid={Boolean(error) || undefined}
-      aria-describedby={error ? `${INPUT_ID}-error` : undefined}
+      aria-describedby={error ? `${inputId}-error` : undefined}
       onChange={(e) => onChange(e.target.value)}
     />
   );
 }
 
-function TimezoneInput({ value, error, onChange }: InputProps) {
+function TimezoneInput({ q, value, error, onChange, inputId = INPUT_ID }: InputProps) {
   const client = useIsClient();
   const zones = React.useMemo(() => {
     if (!client) return [];
@@ -113,7 +116,7 @@ function TimezoneInput({ value, error, onChange }: InputProps) {
   const device = client ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
   return (
     <div className="space-y-3">
-      <Select id={INPUT_ID} value={current} aria-invalid={Boolean(error) || undefined} onChange={(e) => onChange(e.target.value)}>
+      <Select id={inputId} aria-label={q.title} value={current} aria-invalid={Boolean(error) || undefined} onChange={(e) => onChange(e.target.value)}>
         <option value="">Choose a time zone</option>
         {current && !zones.includes(current) && <option value={current}>{current}</option>}
         {zones.map((z) => (
@@ -140,9 +143,9 @@ function OptionCard({ label, description, selected, onClick, role, disabled }: {
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "group relative flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-150",
+        "group relative flex min-h-12 w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-[border-color,background-color] duration-150 motion-reduce:transition-none",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50",
-        selected ? "border-primary bg-primary-soft/60 shadow-card ring-2 ring-primary/15" : "border-line bg-surface hover:border-line-strong",
+        selected ? "border-primary bg-primary-soft/60 ring-1 ring-primary/15" : "border-line bg-surface hover:border-line-strong",
       )}
     >
       <span
@@ -292,7 +295,7 @@ function HoursInput({ value, onChange }: InputProps) {
 // Repeatable rows
 // ---------------------------------------------------------------------------
 
-function ListInput({ q, value, onChange }: InputProps) {
+function ListInput({ q, value, onChange, inputId = INPUT_ID }: InputProps) {
   if (q.kind.type !== "list") return null;
   const { fields, maxRows, addLabel } = q.kind;
   const rows = (Array.isArray(value) ? value : []) as Array<Record<string, string>>;
@@ -304,7 +307,7 @@ function ListInput({ q, value, onChange }: InputProps) {
         <div key={i} className="rounded-2xl border border-line bg-surface p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             {fields.map((f) => (
-              <ListFieldInput key={f.key} field={f} value={row[f.key] ?? ""} id={`${INPUT_ID}-${i}-${f.key}`} wide={f.type === "longtext"} onChange={(v) => update(i, f.key, v)} />
+              <ListFieldInput key={f.key} field={f} value={row[f.key] ?? ""} id={`${inputId}-${i}-${f.key}`} wide={f.type === "longtext"} onChange={(v) => update(i, f.key, v)} />
             ))}
           </div>
           <div className="mt-3 flex justify-end">

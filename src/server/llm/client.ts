@@ -51,6 +51,7 @@ export type LlmReply = { ok: true; text: string } | { ok: false; status: number 
 export async function llmComplete(
   c: LlmConfig,
   input: { system: string; user: string; maxTokens: number; temperature?: number; timeoutMs?: number },
+  signal?: AbortSignal,
 ): Promise<LlmReply> {
   const temperature = input.temperature ?? 0.2;
   const body =
@@ -59,7 +60,8 @@ export async function llmComplete(
       : { model: c.model, max_tokens: input.maxTokens, temperature, messages: [{ role: "system", content: input.system }, { role: "user", content: input.user }] };
   try {
     // Redirects are refused so the credential can never be forwarded to another host.
-    const res = await fetch(llmChatUrl(c), { method: "POST", headers: llmHeaders(c.format, c.apiKey), body: JSON.stringify(body), redirect: "error", cache: "no-store", signal: AbortSignal.timeout(input.timeoutMs ?? 20_000) });
+    const timeout = AbortSignal.timeout(input.timeoutMs ?? 20_000);
+    const res = await fetch(llmChatUrl(c), { method: "POST", headers: llmHeaders(c.format, c.apiKey), body: JSON.stringify(body), redirect: "error", cache: "no-store", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     if (!res.ok) return { ok: false, status: res.status };
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; content?: Array<{ type?: string; text?: string }> };
     const text = (c.format === "anthropic" ? json.content?.find((p) => p.type === "text")?.text : json.choices?.[0]?.message?.content)?.trim();

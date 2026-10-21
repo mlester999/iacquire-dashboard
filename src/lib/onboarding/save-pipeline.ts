@@ -44,6 +44,7 @@ export function createSavePipeline(opts: PipelineOptions) {
   const debounceMs = opts.debounceMs ?? 600;
   const retryDelays = opts.retryDelaysMs ?? [1500, 4000, 10000];
   let pending: Record<string, PipelineAnswer> = {};
+  const edits: Record<string, number> = {};
   let position: string | undefined;
   let revision = opts.baseRevision;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -63,6 +64,7 @@ export function createSavePipeline(opts: PipelineOptions) {
   const writeOnce = async (): Promise<boolean> => {
     if (!hasPending()) return true;
     const sent = pending;
+    const sentEdits = Object.fromEntries(Object.keys(sent).map((id) => [id, edits[id]]));
     const sentPosition = position;
     pending = {};
     position = undefined;
@@ -77,13 +79,18 @@ export function createSavePipeline(opts: PipelineOptions) {
     inFlight -= 1;
     if (!result.ok) {
       // Keep the unsent changes, but never overwrite anything the user changed while this request was out.
-      pending = { ...sent, ...pending };
+      pending = { ...Object.fromEntries(Object.entries(sent).filter(([id]) => edits[id] === sentEdits[id])), ...pending };
       position = position ?? sentPosition;
       set({ status: "error", error: result.error });
       return false;
     }
     revision = result.data.revision;
-    const rejected = result.data.rejected;
+    const rejected = { ...state.rejected };
+    for (const id of Object.keys(sent)) {
+      if (edits[id] !== sentEdits[id]) continue;
+      delete rejected[id];
+      if (result.data.rejected[id]) rejected[id] = result.data.rejected[id];
+    }
     set({
       status: Object.keys(rejected).length ? "error" : hasPending() ? "dirty" : "saved",
       error: Object.keys(rejected).length ? "Some answers need attention before they can be saved." : null,
@@ -122,11 +129,20 @@ export function createSavePipeline(opts: PipelineOptions) {
   return {
     /** Records the latest value for a question. Later calls for the same question replace earlier ones. */
     queue(id: string, answer: PipelineAnswer) {
+      edits[id] = (edits[id] ?? 0) + 1;
       pending = { ...pending, [id]: answer };
       const { [id]: _cleared, ...rest } = state.rejected;
       void _cleared;
       set({ status: "dirty", error: null, rejected: rest });
       schedule();
+    },
+    /** Invalid edits remain local and visibly unsaved; older queued values must not stand in for them. */
+    invalidate(id: string, error: string) {
+      edits[id] = (edits[id] ?? 0) + 1;
+      const { [id]: _old, ...rest } = pending;
+      void _old;
+      pending = rest;
+      set({ status: "error", error, rejected: { ...state.rejected, [id]: error } });
     },
     setPosition(id: string) {
       position = id;
@@ -149,7 +165,7 @@ export function createSavePipeline(opts: PipelineOptions) {
       let ok = await serial();
       if (!ok && hasPending() && !Object.keys(state.rejected).length) ok = await serial();
       if (ok) attempt = 0;
-      return ok && !hasPending() && inFlight === 0;
+      return ok && !hasPending() && inFlight === 0 && Object.keys(state.rejected).length === 0;
     },
     hasUnsaved: () => hasPending() || inFlight > 0 || state.status === "error",
     getState: () => state,

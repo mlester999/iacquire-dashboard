@@ -8,12 +8,12 @@ import {
   saveOnboardingStepAction,
   setAssetVariantAction,
   submitOnboardingAction,
-  suggestOnboardingAnswerAction,
 } from "@/app/actions/onboarding";
 import type { PipelinePayload, PipelineSaveResult } from "@/lib/onboarding/save-pipeline";
 import type { ReviewModel } from "@/lib/onboarding/engine";
 import type { Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
+import type { AssistanceOptions } from "@/lib/onboarding/assistance";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -24,7 +24,7 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: string };
  */
 export interface OnboardingApi {
   save(payload: PipelinePayload): Promise<PipelineSaveResult>;
-  suggest(questionId: string): Promise<Result<Suggestion>>;
+  suggest(questionId: string, options?: AssistanceOptions, signal?: AbortSignal): Promise<Result<Suggestion>>;
   readWebsite(url: string): Promise<Result<WebsiteAnalysisSummary>>;
   review(): Promise<Result<ReviewModel>>;
   submit(): Promise<Result<unknown>>;
@@ -50,7 +50,14 @@ export const serverApi: OnboardingApi = {
     const res = await saveOnboardingStepAction(payload);
     return res.ok ? { ok: true, data: { revision: res.data.revision, rejected: res.data.rejected, staleBase: res.data.staleBase } } : { ok: false, error: res.error };
   },
-  suggest: (id) => suggestOnboardingAnswerAction(id),
+  async suggest(questionId, options, signal) {
+    try {
+      const response = await fetch("/api/onboarding/suggest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId, ...options }), signal });
+      return await response.json() as Result<Suggestion>;
+    } catch {
+      return { ok: false, error: signal?.aborted ? "Suggestion cancelled." : "Couldn't reach writing assistance. Check your connection and try again." };
+    }
+  },
   readWebsite: (url) => readOnboardingWebsiteAction(url),
   review: () => getOnboardingReviewAction(),
   submit: () => submitOnboardingAction(),

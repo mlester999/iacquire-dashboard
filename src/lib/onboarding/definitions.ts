@@ -60,7 +60,7 @@ export const QUESTIONS: QuestionDef[] = [
   },
   {
     id: "a.description", section: "A", required: true, assist: "draft", title: "Tell us what your business does.",
-    help: "Explain what your business does, who it serves, and what makes it different. Your authorized AI employees may use this to understand your company.",
+    help: "What you do, who you help, and what makes your business different.",
     example: "We're a family-owned roofing company helping homeowners in Austin with repairs, inspections and replacements.",
     kind: { type: "longtext", max: 2000, rows: 4, placeholder: "What you do and who you help" }, reviewLabel: "What you do",
   },
