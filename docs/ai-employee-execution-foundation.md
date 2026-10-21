@@ -97,7 +97,7 @@ that arrives from another process is detected at the next safe check. Retries ar
 | `tests/work-job-progress.test.tsx` | 4 passed — running/completed/failed/queued honest rendering, no percentage, no invented progress |
 | `tests/workforce-proactive-review.test.ts` | 6 passed — capability allowlists, role/permission refusal, unconfigured employee refusal, eight real findings, unchanged business records, notification, tenant-scoped work board, role-boundary block |
 | `tests/work-board-ui.test.tsx` | 5 passed — persisted status/metrics, on-demand review action, capability selector, unavailable-employee explanation, activity expansion, failed review evidence |
-| `tests/workforce-review-capabilities.test.ts` | 6 passed — CRM quality, pipeline, appointment and performance reviews produce real findings/measured KPIs; business records unchanged; role and workforce-permission refusals |
+| `tests/workforce-review-capabilities.test.ts` | 7 passed — CRM quality, pipeline, appointment and performance reviews plus real calendar availability; business records unchanged; role and workforce-permission refusals |
 | `tests/workforce-schedules.test.ts` | 5 passed — disabled by default, operator-switch gate, real due job, no duplicate while active, member/capability refusals, enable/pause/delete and audit evidence |
 | Existing focused regressions | `chat`, `modules`, `hermes-run-gate` (17), `hermes-activation-sequence`, `workforce-readiness`, `chat-workspace-ui` passed after the changes |
 
@@ -152,6 +152,7 @@ shows a synthetic percentage or an activity the worker did not record.
 | `crm_quality_review` | CRM Manager | `contacts.view` | read-only data-quality review |
 | `pipeline_review` | Sales Assistant | `sales.view` | read-only pipeline hygiene review |
 | `appointment_review` | Appointment Setter | `appointments.view` | read-only booking-risk review |
+| `appointment_availability` | Appointment Setter | `appointments.view` | real bookable slots; no hold, booking or provider write |
 | `performance_snapshot` | Performance Analyst | `analytics.view` | measured KPIs plus only stated-threshold anomalies |
 
 `src/server/workforce/capability-dispatch.ts` resolves the employee in the caller's own workspace,
@@ -170,6 +171,11 @@ stage/evidence events, finishes with findings, examples, evidence links and reco
 notifies the owner/admin. The performance snapshot also returns measured KPIs with a period,
 definition and source; its only anomaly thresholds are stated in the finding text. None of these
 reviews changes a record, contacts a provider or creates a schedule.
+
+`appointment_availability` reuses the existing native booking availability service
+(`nativeAvailability`) rather than a second slot algorithm. It returns the real bookable start/end
+times and time zone, or the exact reason the calendar cannot offer slots. It never holds a slot,
+creates a booking or writes to an external calendar.
 
 The on-demand Operations Manager review (`src/server/workforce/proactive-review.ts`) reads eight
 persisted signals: failed runs, approvals pending over a day, overdue tasks, leads waiting for

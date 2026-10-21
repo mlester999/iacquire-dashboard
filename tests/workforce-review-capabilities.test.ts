@@ -99,6 +99,25 @@ beforeAll(async () => {
     await booking("requested", "Stuck request", "3 days", "3 hours");
     await booking("booked", "Unassigned confirmed booking", "4 days", "1 day", { ghl: "ghl-booking-1", booked: true });
 
+    // Real native calendar availability fixtures.
+    const calendar = await db.query<{ id: string }>(
+      "insert into crm_calendars (org_id, name, slug, is_default, public, created_by) values ($1, 'Review Calendar', 'review-calendar', true, true, $2) returning id",
+      [org.id, owner.id],
+    );
+    await db.query(
+      `insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, slot_interval_minutes, min_notice_minutes, max_days_ahead, location_kind, public)
+       values ($1, $2, 'Discovery Call', 'discovery-call', 30, 30, 0, 60, 'none', true)`,
+      [org.id, calendar.rows[0].id],
+    );
+    await db.query("insert into crm_calendar_members (org_id, calendar_id, user_id, priority) values ($1, $2, $3, 50)", [org.id, calendar.rows[0].id, owner.id]);
+    await db.query("insert into crm_host_settings (org_id, user_id, timezone, accepting) values ($1, $2, 'UTC', true)", [org.id, owner.id]);
+    for (let weekday = 0; weekday <= 6; weekday += 1) {
+      await db.query(
+        "insert into crm_availability_rules (org_id, user_id, weekday, start_minute, end_minute) values ($1, $2, $3, 540, 1020)",
+        [org.id, owner.id, weekday],
+      );
+    }
+
     // Performance fixtures: measured leads, runs and a won deal.
     await db.query("insert into leads (org_id, business_name, review_status, created_at) values ($1, 'Perf Lead A', 'pending', now())", [org.id]);
     await db.query("insert into leads (org_id, business_name, review_status, created_at) values ($1, 'Perf Lead B', 'pending', now())", [org.id]);
@@ -125,7 +144,7 @@ describe("reusable read-only capabilities", () => {
   it("allows the intended role and permission for each reviewed capability", () => {
     expect(capabilitiesForRole("crm_manager").map((definition) => definition.key)).toEqual(["crm_quality_review"]);
     expect(capabilitiesForRole("sales_assistant").map((definition) => definition.key)).toEqual(["pipeline_review"]);
-    expect(capabilitiesForRole("appointment_setter").map((definition) => definition.key)).toEqual(["appointment_review"]);
+    expect(capabilitiesForRole("appointment_setter").map((definition) => definition.key)).toEqual(["appointment_review", "appointment_availability"]);
     expect(capabilitiesForRole("performance_analyst").map((definition) => definition.key)).toEqual(["performance_snapshot"]);
     expect(roleMayUseCapability("crm_manager", "pipeline_review")).toBe(false);
     expect(roleMayUseCapability("sales_assistant", "crm_quality_review")).toBe(false);
@@ -197,6 +216,29 @@ describe("reusable read-only capabilities", () => {
       db.query<{ status: string; count: number }>("select status, count(*)::int as count from appointment_bookings where org_id = $1 group by status order by status", [org.id]),
     );
     expect(after.rows).toEqual(before.rows);
+  });
+
+  it("reads real calendar availability without holding or booking a slot", async () => {
+    const before = await withSystem((db) =>
+      db.query<{ count: number }>("select count(*)::int as count from appointment_bookings where org_id = $1", [org.id]),
+    );
+    const dispatched = await dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
+      agentRole: "appointment_setter",
+      capability: "appointment_availability",
+      title: "Calendar availability check",
+      input: {},
+    });
+    const job = await waitForJob(dispatched.jobId);
+    expect(job.status).toBe("completed");
+    const availability = job.result.availability as { slots: Array<{ start: string; end: string }>; timeZone: string } | null;
+    expect(availability?.slots.length).toBeGreaterThan(0);
+    expect(availability?.timeZone).toBe("UTC");
+    const metrics = (job.result.metrics as Array<{ key: string; value: number }>) ?? [];
+    expect(metrics.find((metric) => metric.key === "available_slots")?.value).toBeGreaterThan(0);
+    const after = await withSystem((db) =>
+      db.query<{ count: number }>("select count(*)::int as count from appointment_bookings where org_id = $1", [org.id]),
+    );
+    expect(after.rows[0].count).toBe(before.rows[0].count);
   });
 
   it("produces measured performance KPIs and only stated anomaly findings", async () => {

@@ -114,6 +114,34 @@ describe("WorkJobPanel", () => {
     expect(screen.queryByText(/Saved with execution evidence/i)).toBeNull();
   });
 
+  it("shows real bookable availability returned by the job", async () => {
+    stubJob(job({
+      status: "completed",
+      statusLabel: "Completed",
+      stage: "completed",
+      stageLabel: "Completed",
+      resultCount: 2,
+      resultSummary: "Calendar availability checked: 2 bookable slots in the next 7 days (UTC).",
+      canCancel: false,
+      result: {
+        availability: {
+          slots: [
+            { start: "2026-10-22T14:00:00.000Z", end: "2026-10-22T14:30:00.000Z" },
+            { start: "2026-10-22T15:00:00.000Z", end: "2026-10-22T15:30:00.000Z" },
+          ],
+          timeZone: "UTC",
+        },
+        metrics: [{ key: "available_slots", label: "Bookable slots (7 days)", value: 2, period: "Next 7 days", definition: "Distinct start times", source: "crm_calendars" }],
+        findings: [],
+      },
+      events: [],
+    }));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Real bookable availability")).toBeTruthy();
+    expect(screen.getAllByText(/2:00 PM|3:00 PM/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Nothing has been held or booked/i)).toBeTruthy();
+  });
+
   it("does not invent progress when only a queued state is persisted", async () => {
     stubJob(job({
       status: "queued",

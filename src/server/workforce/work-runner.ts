@@ -16,6 +16,7 @@ import { runCrmQualityReviewJob } from "@/server/workforce/crm-quality-review";
 import { runPipelineReviewJob } from "@/server/workforce/pipeline-review";
 import { runAppointmentReviewJob } from "@/server/workforce/appointment-review";
 import { runPerformanceSnapshotJob } from "@/server/workforce/performance-snapshot";
+import { runAppointmentAvailabilityJob } from "@/server/workforce/appointment-availability";
 
 /**
  * Persistent worker entry points for AI work.
@@ -33,6 +34,7 @@ const HANDLERS: Record<string, Handler> = {
   crm_quality_review: runCrmQualityReviewJob,
   pipeline_review: runPipelineReviewJob,
   appointment_review: runAppointmentReviewJob,
+  appointment_availability: runAppointmentAvailabilityJob,
   performance_snapshot: runPerformanceSnapshotJob,
 };
 

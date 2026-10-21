@@ -189,6 +189,10 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
   const metrics = Array.isArray(job.result.metrics) ? (job.result.metrics as Array<{
     key?: string; label?: string; value?: number | string; unit?: string; period?: string; definition?: string; source?: string;
   }>).filter((item) => typeof item.label === "string") : [];
+  const availability = job.result.availability && typeof job.result.availability === "object"
+    ? (job.result.availability as { slots?: Array<{ start: string; end: string }>; timeZone?: string })
+    : null;
+  const availableSlots = (availability?.slots ?? []).slice(0, 12);
   const running = job.status === "running";
 
   return (
@@ -266,6 +270,32 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                 </div>
               ))}
             </dl>
+          </div>
+        )}
+
+        {availableSlots.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Real bookable availability</p>
+            <ul className="flex flex-wrap gap-1.5">
+              {availableSlots.map((slot) => (
+                <li key={slot.start} className="rounded-full border border-line bg-surface px-2.5 py-1 text-[11.5px] tabular-nums text-ink-2">
+                  {(() => {
+                    try {
+                      return new Intl.DateTimeFormat("en-US", {
+                        timeZone: availability?.timeZone || zone,
+                        weekday: "short",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                      }).format(new Date(slot.start));
+                    } catch {
+                      return new Date(slot.start).toISOString();
+                    }
+                  })()}
+                </li>
+              ))}
+            </ul>
+            {availability?.timeZone && <p className="mt-1 text-[10.5px] text-faint">Times shown in {availability.timeZone}. Nothing has been held or booked.</p>}
           </div>
         )}
 
