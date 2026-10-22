@@ -261,6 +261,10 @@ jobs:
             docker inspect -f '{{.State.Status}}/{{.State.ExitCode}}' "$harness_id" || true
             printf 'worker='
             docker inspect -f '{{.State.Status}}/{{.State.ExitCode}}' "$worker_id" || true
+            worker_code="$(docker logs "$worker_id" 2>&1 | grep -E '^Hermes provisioner stopped: [a-z0-9_]+$' | tail -n 1 || true)"
+            if [[ -n "$worker_code" ]]; then
+              echo "SANDBOX_WORKER_CODE: ${worker_code#Hermes provisioner stopped: }"
+            fi
             exit 1
           fi
 
