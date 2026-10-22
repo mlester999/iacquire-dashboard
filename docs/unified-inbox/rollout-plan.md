@@ -22,7 +22,7 @@ It follows the conventions already in this repository: [staging-environment.md](
 | Area | On release | Stays off until a separate approval |
 | --- | --- | --- |
 | Database | Migration 0082: new nullable columns, seven indexes plus an optional trigram index, a lifecycle-event table, two row-local triggers, three notification kinds. No existing row changes meaning. | n/a |
-| `/inbox` | **Replaced for every workspace at once** (no per-workspace flag). | A global kill switch exists: `INBOX_DISABLED=true` (decision D1, built; see README). It removes the new screen; it cannot restore the old one. |
+| `/inbox` | **Replaced for every workspace at once** (no per-workspace flag). | A global kill switch exists: `INBOX_DISABLED=true` (decision D1, built; see README). It removes the new screen; it cannot restore the old one. **The first production deployment ships with it on (dark)**; a second deployment exposes the inbox (stage 6). |
 | New API routes | `/api/inbox/*` (read-only except AI help), signed-in members only. | n/a |
 | AI behaviour | Replies carry an ownership fence and respect an AI pause. Summaries and suggestions need a configured AI provider; otherwise they say so. | Any live model call beyond what is already configured. |
 | Messaging | Nothing new is sent. Channel health reads honestly ("switched off in this environment"). | Every provider write switch (`GHL`, `RESEND`, `TWILIO`, `META_WHATSAPP`, `N8N_ACTIONS`) and the `WORKFORCE_*_ENABLED` switches. |
@@ -45,7 +45,8 @@ Each stage ends at a gate. A gate is passed only when the evidence listed is in 
 | 3 | Staging: provision, rehearse 0081 and 0082, acceptance, supervised scheduler test | **Yes** | A3, A4, A5, A6 |
 | 4 | Provider and model checks on staging, one at a time | **Yes** | A7 (per provider) |
 | 5 | Production migration | **Yes** | A8 |
-| 6 | Production deployment and first exposure | **Yes** | A9 |
+| 6a | Production deployment, **dark** (`INBOX_DISABLED=true`) | **Yes** | A9 |
+| 6b | A second deployment of the same commit exposes the inbox | **Yes** | A9b |
 | 7 | Scheduler | **Yes** | A10 |
 | 8 | Provider write switches | **Yes** | A11 (per provider, existing process) |
 
@@ -171,26 +172,62 @@ Abort and rollback:
 * Any error: the transaction rolled back; the ledger is unchanged. Investigate; do not retry blindly.
 * After success the change is additive, so **the normal response to a problem is to roll the application back, not the database.** The 0082 rollback exists but refuses once any lifecycle event or conversation notification exists, on purpose; use it only for a defect in the migration itself, from the backup and with your approval.
 
-### Stage 6: production deployment and first exposure (A9)
+### Stage 6: production deployment, dark first, then exposure (A9, A9b)
 
-**A9 approves deploying the merged application.** There is no per-workspace switch; the global kill switch `INBOX_DISABLED` is built (D1) and is **off by default**, i.e. the inbox is on. Decide beforehand whether the first
-deployment goes out with `INBOX_DISABLED=true` (deploy dark, then redeploy with it unset when you are ready to expose it), which separates "the code is live" from "people can see it".
+**Decided: the first production deployment goes out with `INBOX_DISABLED=true`, and a second deployment exposes the inbox.** That separates "the code is live" from "people can see it". The switch is global
+(every workspace at once) and applies to a deployment, so each step below is a deployment of the **same commit**; only the environment variable differs.
 
-1. Build the exact commit that was tested. Deploy by the existing process (a preview first if one is available).
-2. Smoke checklist (UI and read-only, no sends): `/inbox` loads for the internal workspace owner; the channel bar says sending is switched off; `/api/inbox/sync` and `/api/inbox/conversations` return 200; opening a conversation works; AI help either works or says it is not set up; the workflow editor lists the new triggers and step; no console errors; no 5xx.
-3. Watch for an agreed period: error rate, `/api/inbox/*` latency, database pool saturation (polling), and notification volume.
-4. Fastest "off": set `INBOX_DISABLED=true` and redeploy the same build (the inbox answers "temporarily unavailable"; receiving and sending carry on). Full rollback: redeploy the previous build, which brings the old screen back.
-   The schema stays either way. (Old code ignores the new columns; see the compatibility result above.) Read the kill-switch section of the README first: it removes people's screen, not the AI's ability to reply.
+#### 6a. Deploy dark (A9)
+
+**A9 approves deploying the merged application with `INBOX_DISABLED=true`.** The new inbox stays off for everyone; everything else in the release is live.
+
+Preconditions, each shown to you before you say yes:
+
+1. Stage 5 is done: `0082` is applied and verified in production. The new code reads the new columns, so the migration must come first.
+2. **Nobody depends on the inbox screen.** While dark there is no inbox, and the previous one no longer exists, so nobody can take over, reply, approve a draft or answer an escalation from a screen (existing escalation notices
+   link to `/inbox`, which shows the unavailable notice). That is acceptable only while no live customer conversation needs a person, i.e. every provider write switch is still `false` (true as of `production-scheduler.md`; re-check
+   it read-only). If live messaging has started by then, pause automation as well or expose instead of staying dark.
+3. The variable is **set in the production environment before the deploy**, so no deployment of this build ever exists with the inbox on, and the exact spelling is confirmed. A value the app does not understand stops it starting by design,
+   so try the variable on a preview deployment first.
+
+Steps:
+
+1. Build the exact commit that was tested (record its SHA). Set `INBOX_DISABLED=true`. Deploy by the existing process (a preview first if one is available).
+2. **Smoke checklist while dark** (UI and read-only, no sends): a signed-in member opening `/inbox` sees the "temporarily unavailable" notice and a signed-out visitor is sent to sign in; `/api/inbox/sync` answers 503 with
+   `Retry-After`; Overview and Settings, including the messaging settings, load; the workflow editor lists the new conversation triggers and the "Update conversation" step (they are not behind the switch: a workspace could start
+   building a workflow with them while dark; say so now if you would rather it could not); `/api/health` reports the database healthy; no new console errors; no unexpected 5xx.
+3. **Dark period.** Length is decision D4. What it proves: the deployment itself (boot, routes, pool, migration compatibility under the application's own writes) and the backend changes that run with or without the screen
+   (ownership fence and pause checks, delivery stamps, failure classification). With every provider write switch still off there is no real customer traffic, so it does **not** prove behaviour under live messaging; that comes at stage 8.
+   Watch, read-only: error rate; `/api/health`; the database connection pool; new `conversation_messages` rows carry `status_changed_at`; no `conversation_awaiting_reply` or `conversation_new_inquiry` notices appear (proof the switch
+   holds them back); `worker_job_runs` unchanged by this release.
+4. **Rollback while dark:** redeploy the previous build, which brings the old screen back. (The schema stays; old code ignores the new columns, see the compatibility result above.)
+
+#### 6b. Expose (A9b)
+
+**A9b approves making the inbox visible: redeploy the same commit with `INBOX_DISABLED` unset or `false`.** No code changes between 6a and 6b.
+
+Preconditions: the dark period ran for the agreed length with its checks green and recorded; the staging results are in front of you; you have chosen the time. Because the switch is global, **every workspace sees the new inbox at the same moment**;
+the earlier idea of showing it to one workspace first needs per-workspace gating, which is not built (D4).
+
+Steps:
+
+1. Confirm the deployed commit SHA equals the dark one. Change the variable. Redeploy.
+2. **Smoke checklist after exposing** (UI and read-only, no sends): `/inbox` loads for the internal workspace owner; the channel bar says sending is switched off; `/api/inbox/sync` and `/api/inbox/conversations` return 200; opening a conversation works; AI help either works or says it is not set up; no console errors; no 5xx.
+3. Watch for an agreed period: error rate, `/api/inbox/*` latency, database pool saturation (polling every 5 s per open tab), and notification volume.
+4. **Fastest "off":** set `INBOX_DISABLED=true` and redeploy the same build (the inbox answers "temporarily unavailable"; receiving and sending carry on). **Full rollback:** redeploy the previous build, which brings the old screen back.
+   The schema stays either way. Read the kill-switch section of the README first: it removes people's screen, not the AI's ability to reply.
 
 ### Stage 7: scheduler (A10)
 
 Separate approval, per `production-scheduler.md`: deciding the host, a 24-plus-character `CRON_SECRET`, `SCHEDULER_ENABLED=false` first, then true with one manual tick, then the recurring schedule, watching the first three ticks.
 **It starts every job, not just the inbox's:** email, SMS, campaigns, workflow actions, imports and webhooks, as soon as rows exist. That is why it is its own gate. The inbox's
-job only creates in-app notices and CRM events. Until it runs, "customer is waiting" notices and "went quiet" workflows do nothing.
+job only creates in-app notices and CRM events. Until it runs, "customer is waiting" notices and "went quiet" workflows do nothing. While the inbox is dark (6a) the job raises no notices even if the scheduler is on, so the scheduler
+can be enabled before or after exposure; its own approval and checklist do not change.
 
 ### Stage 8: provider write switches (A11, per provider)
 
-The existing process, one provider at a time, with a supervised first send. The inbox needs nothing special here: its channel health shows "connected" only when the sender is
+The existing process, one provider at a time, with a supervised first send. **Not while the inbox is dark:** a live conversation needs a person to be able to take over (6a, precondition 2), so expose the inbox (6b) before the first
+write switch goes on. The inbox needs nothing special here: its channel health shows "connected" only when the sender is
 verified, the channel is on and the write switch is on, so it will say honestly when a channel is not ready.
 
 ## 4. Approvals at a glance
@@ -205,7 +242,8 @@ verified, the channel is on and the write switch is on, so it will say honestly 
 | A6 | Supervised scheduler test on staging | Relying on the notices |
 | A7 | Each provider or model check on staging, one at a time | Enabling any provider in production |
 | A8 | Apply `0081` and `0082` to production, after backup and read-only ledger check | Deployment |
-| A9 | Deploy the merged application | Exposure |
+| A9 | Deploy the merged application with `INBOX_DISABLED=true` (the inbox stays off) | The dark period |
+| A9b | Expose the inbox: redeploy the same commit with the switch off, after the dark period's evidence | Anyone seeing the new inbox |
 | A10 | Enable the scheduler | Notices and idle workflows |
 | A11 | Each provider's write switch | Live messaging |
 
@@ -215,10 +253,13 @@ Nothing in this plan pushes, deploys, migrates a hosted database, enables a swit
 
 * **D1, a kill switch: decided and built (local commit, not pushed).** `INBOX_DISABLED=true` switches the new inbox off (page, `/api/inbox/*`, the inbox's actions and notices say it is temporarily unavailable); unset or
   false is the default and changes nothing. It cannot bring the old screen back, because the new one replaced it; only a redeploy of the previous build does that. What it does and does not touch is in the README.
-  Remaining question for you (part of D4): deploy dark with it set to `true` first, or expose immediately.
+  **Decided: the first production deployment goes out with it set to `true` (dark), and a second deployment of the same commit exposes the inbox** (stage 6).
 * **D2, how staging gets its data (A4).** I recommend the fresh chain with fictional data; production's schema-only dump if you want the exact hand-applied history.
 * **D3, backups.** Which machine and tool took the existing `.data/backups/*.dump` files, so the same one is used (it is not on this machine's PATH).
-* **D4, timing.** A window for stage 5, and which workspace sees the inbox first in stage 6 (the internal agency workspace is the obvious one).
+* **D4, timing.** Three things to set: a window for stage 5 (the migration); **how long the dark period lasts** between the dark deployment (6a) and the exposing one (6b) (I suggest at least one full business day; with provider writes still
+  off it proves the deployment, not live traffic, so a longer wait buys little); and a window for the exposing deployment.
+  **Superseded:** the earlier plan to show the inbox to one workspace first (the internal agency one) is not possible with a global switch, which exposes every workspace at once. If you still want that, it needs a small per-workspace
+  allowlist, which is not built; say so and I will add it before 6b.
 * **D5, who commits the workforce work (A1)** and when, since the merge waits on it.
 
 ## 6. Rehearsal evidence this plan rests on

@@ -115,6 +115,7 @@ How to use it, and what it is not:
 
 * It is an environment variable, so it takes effect when the app is redeployed or restarted with it set (on Vercel a changed variable applies to the next deployment).
   That is faster and lower-risk than rolling the application back, but it is a deployment, not an instant toggle.
+* The planned production rollout uses it twice: the first deployment ships with `INBOX_DISABLED=true` (dark), and a second deployment of the same commit with it unset exposes the inbox ([rollout-plan.md](./rollout-plan.md), stage 6).
 * It is **global**, not per workspace, and it **does not bring the previous screen back**: the new inbox replaced it. Rolling back the screen means redeploying the previous build.
 * **People lose their screen, not the AI.** While it is off nobody can take over, reply, approve a draft or answer an escalation from the inbox, but AI employees keep working under
   their existing settings. If the reason for switching it off is that people can no longer supervise safely, pause automation as well, with the controls that already exist
