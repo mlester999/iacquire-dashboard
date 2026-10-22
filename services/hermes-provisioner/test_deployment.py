@@ -146,5 +146,19 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertEqual(upstream_manifest, CATALOG_OVERLAY_V0223_UPSTREAM_SHA256)
 
 
+    def test_dockerfile_copy_sources_resolve_from_repository_root_context(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        repository_root = ROOT.parent.parent
+        copied_sources = (
+            "services/hermes-provisioner/hermes-client-entrypoint.sh",
+            "services/hermes-provisioner/worker.py",
+            "services/hermes-provisioner/catalog-overlay-v0223",
+        )
+        for source in copied_sources:
+            path = repository_root / source
+            self.assertTrue(path.exists(), source)
+            self.assertIn(f"COPY --chown=0:0 {source}", dockerfile)
+
+
 if __name__ == "__main__":
     unittest.main()

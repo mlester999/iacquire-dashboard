@@ -19,7 +19,7 @@ RUN set -eu; \
     chmod a+rX,go-w /opt/hermes/model_tools.py /opt/hermes/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py; \
     /opt/hermes/.venv/bin/python -m compileall -q /opt/hermes/model_tools.py /opt/hermes/gateway/platforms/api_server.py /opt/hermes/gateway/platforms/api_server_tool_catalog.py; \
     /opt/hermes/.venv/bin/python -c 'import inspect,sys; sys.path.insert(0,"/opt/hermes"); from gateway.platforms.api_server import APIServerAdapter; from gateway.platforms.api_server_tool_catalog import build_model_tool_catalog; from model_tools import get_tool_definitions; assert hasattr(APIServerAdapter,"_handle_tools"); assert callable(build_model_tool_catalog); assert "update_last_resolved" in inspect.signature(get_tool_definitions).parameters'
-COPY --chown=0:0 hermes-client-entrypoint.sh /opt/iacquire-hermes/hermes-client-entrypoint.sh
+COPY --chown=0:0 services/hermes-provisioner/hermes-client-entrypoint.sh /opt/iacquire-hermes/hermes-client-entrypoint.sh
 RUN chmod 0555 /opt/iacquire-hermes/hermes-client-entrypoint.sh
 ENTRYPOINT ["/opt/iacquire-hermes/hermes-client-entrypoint.sh"]
 CMD ["gateway", "run"]
@@ -29,7 +29,7 @@ LABEL com.iacquire.hermes.catalog-revision="${HERMES_CATALOG_REVISION}"
 
 FROM hermes-client AS provisioner
 USER root
-COPY --chown=0:0 worker.py /opt/iacquire-hermes/worker.py
+COPY --chown=0:0 services/hermes-provisioner/worker.py /opt/iacquire-hermes/worker.py
 RUN chmod 0444 /opt/iacquire-hermes/worker.py
 ENV HERMES_HOME=/opt/data \
     HERMES_CLI=/opt/hermes/bin/hermes \

@@ -280,13 +280,25 @@ jobs:
           print("SANDBOX_PASS: " + json.dumps(result, sort_keys=True, separators=(",", ":")))
           PY
 
-      - name: Remove all synthetic containers, networks, and volumes
+      - name: Remove all synthetic containers, networks, volumes, and credentials
         if: always()
         shell: bash
         run: |
-          set +e
-          docker compose --project-name "${HERMES_ACCEPTANCE_PROJECT:-iacquire-hermes-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}" \
-            --env-file "${HERMES_ACCEPTANCE_DIR:-$RUNNER_TEMP/does-not-exist}/compose.env" \
-            -f services/hermes-provisioner/compose.client.yaml \
-            -f services/hermes-provisioner/compose.acceptance.yaml \
-            --profile provisioner --profile acceptance down --volumes --remove-orphans --timeout 15 >/dev/null 2>&1
+          set -euo pipefail
+          expected_dir="$RUNNER_TEMP/hermes-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          candidate_dir="${HERMES_ACCEPTANCE_DIR:-$expected_dir}"
+          if [[ "$candidate_dir" != "$expected_dir" ]]; then
+            echo "SANDBOX_CLEANUP_FAIL: refusing to remove an unexpected path"
+            exit 1
+          fi
+          if [[ -d "$candidate_dir" ]]; then
+            if [[ -f "$candidate_dir/compose.env" ]]; then
+              docker compose --project-name "iacquire-hermes-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+                --env-file "$candidate_dir/compose.env" \
+                -f services/hermes-provisioner/compose.client.yaml \
+                -f services/hermes-provisioner/compose.acceptance.yaml \
+                --profile provisioner --profile acceptance down --volumes --remove-orphans --timeout 15 >/dev/null 2>&1 || \
+                echo "SANDBOX_CLEANUP_WARNING: Compose teardown failed; the hosted runner will be discarded"
+            fi
+            rm -rf -- "$candidate_dir"
+          fi
