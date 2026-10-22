@@ -1,9 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
+import fs from "node:fs";
+import path from "node:path";
 import type { OrgContext } from "@/server/tenancy/context";
 
-// The inbox kill switch (INBOX_DISABLED): off takes the /inbox page, /api/inbox/*, the inbox's server actions and the inbox's notices away and answers
-// "temporarily unavailable"; unset or false (the default) changes nothing. Receiving and storing messages is never touched.
+// The global emergency switch (INBOX_DISABLED): on takes the new inbox away from every workspace at once, whatever the per-workspace rollout says.
+// /api/inbox/* answers "temporarily unavailable", the new-only server actions refuse, /inbox shows the previous inbox screen (so people can still
+// reply, take over and answer escalations), and the new inbox's own notices stop. Unset or false (the default) changes nothing.
+// Receiving and storing messages, sending, the AI employees and every provider write switch are never touched by it.
 
 const state = vi.hoisted(() => ({ ctx: null as null | OrgContext, authCalls: 0, originCalls: 0 }));
 
@@ -29,6 +32,7 @@ import { withSystem } from "@/server/db";
 import { AppError, toPublicError } from "@/server/errors";
 import { INBOX_UNAVAILABLE_MESSAGE } from "@/lib/inbox";
 import { assertInboxEnabled, inboxEnabled } from "@/server/messaging/inbox-switch";
+import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { scanInboxAttention } from "@/server/messaging/attention";
 import { GET as syncGET } from "@/app/api/inbox/sync/route";
 import { GET as listGET } from "@/app/api/inbox/conversations/route";
@@ -37,8 +41,10 @@ import { GET as contextGET } from "@/app/api/inbox/conversations/[id]/context/ro
 import { POST as assistPOST } from "@/app/api/inbox/conversations/[id]/assist/route";
 import { GET as escalationsGET } from "@/app/api/inbox/escalations/route";
 import InboxPage from "@/app/(portal)/inbox/page";
+import { LegacyInbox } from "@/app/(portal)/inbox/legacy-inbox";
 import * as inboxActions from "@/app/actions/inbox";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
+import { LegacyInboxWorkspace } from "@/components/inbox/legacy-inbox-workspace";
 import { inbound, messagingOrg, type MessagingOrg } from "./support/messaging";
 
 const setSwitch = (value: string | undefined) => {
@@ -104,6 +110,15 @@ describe("the flag", () => {
     expect(caught).toBeInstanceOf(AppError);
     expect(toPublicError(caught)).toEqual({ code: "unavailable", message: INBOX_UNAVAILABLE_MESSAGE, status: 503, retryAfterSeconds: 60 });
   });
+
+  it("overrides the rollout: a workspace that is switched on has no new inbox while it is on, and gets it back when it is off", async () => {
+    setSwitch(undefined);
+    expect(await inboxEnabledFor(m.org.id)).toBe(true);
+    setSwitch("true");
+    expect(await inboxEnabledFor(m.org.id)).toBe(false);
+    setSwitch(undefined);
+    expect(await inboxEnabledFor(m.org.id)).toBe(true);
+  });
 });
 
 describe("/api/inbox/* while switched off", () => {
@@ -137,28 +152,23 @@ describe("/api/inbox/* while switched off", () => {
 });
 
 describe("the /inbox page while switched off", () => {
-  const render = async () => renderToStaticMarkup((await InboxPage({ searchParams: Promise.resolve({}) })) as never);
-
-  it("shows the unavailable notice, still after the sign-in check, and reads no inbox data", async () => {
+  it("shows the previous inbox screen, after the sign-in check and before any new-inbox query, so nobody loses the screen where they reply and take over", async () => {
     setSwitch("true");
     state.ctx = m.ctx("owner");
-    // A conversation exists and is open in a link; none of it is read.
-    const c = await inbound(m.org.id, { name: "Hidden Hana" });
-    const el = (await InboxPage({ searchParams: Promise.resolve({ conversation: c.conversationId }) })) as { type: unknown };
+    const c = await inbound(m.org.id, { name: "Legacy Lena" });
+    const el = (await InboxPage({ searchParams: Promise.resolve({ conversation: c.conversationId }) })) as { type: unknown; props: { ctx: OrgContext } };
+    expect(el.type).toBe(LegacyInbox);
     expect(el.type).not.toBe(InboxWorkspace);
-    const html = renderToStaticMarkup(el as never);
-    expect(html).toContain(INBOX_UNAVAILABLE_MESSAGE.replace(/'/g, "&#x27;"));
-    expect(html).toContain("<h1");
-    expect(html).toContain("Messages from your customers are still being received and kept");
-    expect(html).toContain('href="/overview"');
-    expect(html).not.toContain("Hidden Hana");
-    expect(html).not.toContain("Search customers or messages");
+    expect(el.props.ctx.org.orgId).toBe(m.org.id);
     expect(state.authCalls).toBe(1);
+    // The previous screen loads from the services that exist today and hands its data to the previous workspace component.
+    const screen = (await LegacyInbox(el.props as never)) as { type: unknown };
+    expect(screen.type).toBe(LegacyInboxWorkspace);
   });
 
-  it("still sends a signed-out visitor to sign in (the check runs first), and shows the inbox as usual when it is on", async () => {
+  it("still sends a signed-out visitor to sign in (the check runs first), and shows the new inbox as usual when it is on and the workspace is switched on", async () => {
     setSwitch("true");
-    await expect(render()).rejects.toThrow(/Sign in/);
+    await expect(InboxPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(/Sign in/);
     setSwitch(undefined);
     state.ctx = m.ctx("manager");
     const el = (await InboxPage({ searchParams: Promise.resolve({}) })) as { type: unknown };
@@ -167,41 +177,61 @@ describe("the /inbox page while switched off", () => {
 });
 
 describe("the inbox's server actions while switched off", () => {
-  // The settings that share the actions file (messaging settings, channel switches, availability, notification preferences, escalation authorization)
-  // are not the inbox screen and keep working. Every other action is the inbox's and must refuse.
-  const SETTINGS = new Set(["updateMessagingSettingsAction", "setChannelEnabledAction", "setAvailabilityAction", "setNotificationPreferencesAction", "setOwnerPriorityModeAction", "setEscalationAuthorizationAction"]);
-  const all = Object.entries(inboxActions).filter(([n, f]) => n.endsWith("Action") && typeof f === "function") as Array<[string, (...a: unknown[]) => Promise<{ ok: boolean; code?: string; error?: string }>]>;
-  const call = (f: (...a: unknown[]) => Promise<{ ok: boolean; code?: string; error?: string }>) => f("x", "x", "x", "x", "x");
+  // Ten actions exist only on the new inbox; one more is new-only for some of its inputs. They refuse. Everything the previous inbox screen also uses
+  // (replying, taking over, answering an escalation, notes, assigning, reading) and the settings that share the file keep working: a switch or a
+  // rollout must never take away a person's way to answer a customer.
+  const NEW_ONLY = ["pauseAiAction", "assignAiEmployeeAction", "transferConversationAction", "retryMessageAction", "markUnreadAction", "bulkConversationsAction", "createTaskFromConversationAction", "createDealFromConversationAction", "addContactNoteFromConversationAction", "setLeadStatusAction"];
+  const SHARED = ["sendReplyAction", "takeOverAction", "resumeAiAction", "addNoteAction", "approveDraftAction", "discardDraftAction", "claimEscalationAction", "declineEscalationAction", "resolveEscalationAction", "assignConversationAction", "setConversationStateAction", "markReadAction", "loadOlderMessagesAction", "loadMessagesByIdAction", "addMemoryAction", "deleteMemoryAction", "recordConsentAction"];
+  const SETTINGS = ["updateMessagingSettingsAction", "setChannelEnabledAction", "setAvailabilityAction", "setNotificationPreferencesAction", "setOwnerPriorityModeAction", "setEscalationAuthorizationAction"];
+  type Out = { ok: boolean; code?: string; error?: string };
+  const actions = inboxActions as unknown as Record<string, (...a: unknown[]) => Promise<Out>>;
+  const call = (name: string) => actions[name]("x", "x", "x", "x", "x");
+  const source = fs.readFileSync(path.join(process.cwd(), "src/app/actions/inbox.ts"), "utf8");
+  const bodyOf = (name: string) => {
+    const start = source.indexOf(`export async function ${name}(`);
+    const next = source.indexOf("\nexport async function ", start + 1);
+    return source.slice(start, next === -1 ? undefined : next);
+  };
 
-  it("covers every action in the file (a new one has to be classified here)", () => {
-    expect(all.length).toBeGreaterThanOrEqual(33);
-    for (const s of SETTINGS) expect(all.map(([n]) => n)).toContain(s);
+  it("classifies every action in the file (a new one has to be added to a list here, on purpose)", () => {
+    const exported = Object.entries(inboxActions).filter(([n, f]) => n.endsWith("Action") && typeof f === "function").map(([n]) => n).sort();
+    expect([...NEW_ONLY, ...SHARED, ...SETTINGS].sort()).toEqual(exported);
   });
 
-  it("refuses every inbox action with the plain message, touching neither the session nor the database", async () => {
+  it("checks the workspace's rollout in exactly the new-only actions, and nowhere an action is shared with the previous inbox", () => {
+    for (const n of NEW_ONLY) expect(bodyOf(n), n).toContain("assertInboxEnabledFor(ctx.org.orgId)");
+    for (const n of [...SHARED, ...SETTINGS]) if (n !== "setConversationStateAction") expect(bodyOf(n), n).not.toMatch(/assertInboxEnabled/);
+    // The one mixed action: status and priority are shared, outcome, archiving and the seen marker belong to the new inbox.
+    expect(bodyOf("setConversationStateAction")).toMatch(/input\.outcome !== undefined \|\| input\.archived !== undefined \|\| input\.seenInboundAt !== undefined\) await assertInboxEnabledFor/);
+  });
+
+  it("refuses the new-only actions with the plain message, touching the database not at all, and only after the sign-in check", async () => {
     setSwitch("true");
+    state.ctx = m.ctx("owner");
     const before = (await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from conversation_messages"))).rows[0].n;
-    for (const [name, fn] of all.filter(([n]) => !SETTINGS.has(n))) {
-      expect(await call(fn), name).toEqual({ ok: false, error: INBOX_UNAVAILABLE_MESSAGE, code: "unavailable" });
-    }
-    expect(state.authCalls).toBe(0);
+    for (const name of NEW_ONLY) expect(await call(name), name).toEqual({ ok: false, error: INBOX_UNAVAILABLE_MESSAGE, code: "unavailable" });
+    expect(await actions.setConversationStateAction("x", { outcome: "answered" }), "setConversationStateAction (outcome)").toEqual({ ok: false, error: INBOX_UNAVAILABLE_MESSAGE, code: "unavailable" });
+    expect(await actions.setConversationStateAction("x", { archived: true }), "setConversationStateAction (archive)").toEqual({ ok: false, error: INBOX_UNAVAILABLE_MESSAGE, code: "unavailable" });
     expect((await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from conversation_messages"))).rows[0].n).toBe(before);
+    state.ctx = null;
+    for (const name of NEW_ONLY) expect((await call(name)).code, name).toBe("unauthenticated");
   });
 
-  it("leaves the settings actions alone: they go on to their own checks as usual", async () => {
+  it("leaves the shared actions and the settings alone: they go on to their own checks as usual", async () => {
     setSwitch("true");
-    for (const [name, fn] of all.filter(([n]) => SETTINGS.has(n))) {
-      const out = await call(fn);
-      expect(out.code, name).not.toBe("unavailable");
+    for (const name of [...SHARED, ...SETTINGS]) {
+      const out = await call(name);
       expect(out.code, name).toBe("unauthenticated");
     }
     expect(state.authCalls).toBeGreaterThan(0);
   });
 
-  it("works as before when it is on", async () => {
-    setSwitch(undefined);
-    state.ctx = m.ctx("manager");
+  it("keeps a shared action working for a signed-in person, and works as before when it is on", async () => {
     const c = await inbound(m.org.id, { name: "Read Rina" });
+    state.ctx = m.ctx("manager");
+    setSwitch("true");
+    expect(await inboxActions.markReadAction(c.conversationId)).toEqual({ ok: true });
+    setSwitch(undefined);
     expect(await inboxActions.markReadAction(c.conversationId)).toEqual({ ok: true });
     state.ctx = null;
     expect((await inboxActions.markReadAction(c.conversationId)).ok).toBe(false);

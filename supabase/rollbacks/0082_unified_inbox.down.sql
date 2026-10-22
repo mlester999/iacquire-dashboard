@@ -9,6 +9,10 @@ begin
   end if;
 end $$;
 
+-- The rollout configuration is current state only (the history of changes is in audit_logs), so it is dropped without ceremony.
+drop trigger if exists inbox_rollout_touch on inbox_rollout;
+drop table if exists inbox_rollout;
+
 drop policy if exists conversation_events_select on conversation_events;
 drop trigger if exists conversation_events_immutable on conversation_events;
 drop table conversation_events;

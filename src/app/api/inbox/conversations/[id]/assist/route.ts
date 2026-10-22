@@ -3,6 +3,7 @@ import { assertSameOrigin } from "@/server/auth/session";
 import { AppError } from "@/server/errors";
 import { suggestReply, summarizeConversation } from "@/server/messaging/inbox-ai";
 import { assertInboxEnabled } from "@/server/messaging/inbox-switch";
+import { assertInboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { inboxError, inboxJson } from "@/server/messaging/inbox-http";
 import { UUID } from "@/server/messaging/access";
 
@@ -19,6 +20,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     assertInboxEnabled();
     await assertSameOrigin();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
+    await assertInboxEnabledFor(ctx.org.orgId);
     const { id } = await params;
     if (!UUID.test(id)) throw new AppError("not_found", "Conversation not found.");
     const body = (await request.json().catch(() => null)) as { kind?: unknown } | null;

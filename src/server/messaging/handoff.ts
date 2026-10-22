@@ -7,6 +7,7 @@ import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import { cancelPendingAiMessages } from "@/server/messaging/send";
 import { cancelFollowUps } from "@/server/messaging/followups";
 import { recordConversationEvent } from "@/server/messaging/events";
+import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { eligibleStaff, getOwnerProfile, type EligibleStaff } from "@/server/staff/service";
 import { DEFAULT_URGENCY, ESCALATION_LABELS, type EscalationCategory, type EscalationUrgency } from "@/lib/escalation";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -429,8 +430,8 @@ export async function assignConversation(ctx: OrgContext, conversationId: string
     if (before.rows[0].assigned_user_id === userId) return;
     await db.query("update conversations set assigned_user_id = $3 where id = $1 and org_id = $2", [conversationId, ctx.org.orgId, userId]);
     const ev = await recordConversationEvent(db, { orgId: ctx.org.orgId, conversationId, kind: "assigned", actor: { kind: "user", userId: ctx.user.id }, detail: { to: userId, from: before.rows[0].assigned_user_id } });
-    // The person is told once per assignment (the event id is the key). Assigning to yourself needs no notice.
-    if (userId && userId !== ctx.user.id) {
+    // The person is told once per assignment (the event id is the key) if the workspace has the new inbox, whose notice this is. Assigning to yourself needs no notice.
+    if (userId && userId !== ctx.user.id && (await inboxEnabledFor(ctx.org.orgId, db))) {
       await notifyUser(db, userId, ctx.org.orgId, { kind: "conversation_assigned", title: `${ctx.user.fullName || "A teammate"} assigned you a conversation`, body: "Open it to see the customer's message.", link: link(conversationId), dedupeKey: `conv_assigned:${conversationId}:a${ev.id}` });
     }
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "conversation.assigned", targetType: "conversation", targetId: conversationId, result: "success", metadata: { assignedTo: userId } }, db);

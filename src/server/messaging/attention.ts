@@ -6,6 +6,7 @@ import { systemActor } from "@/server/crm/actor";
 import { activeVersionsFor } from "@/server/crm/workflows/triggers";
 import { customerUnreachable } from "@/server/messaging/inbox-list";
 import { inboxEnabled } from "@/server/messaging/inbox-switch";
+import { rolloutOnSql } from "@/server/messaging/inbox-rollout";
 import { AWAITING_REPLY_MINUTES } from "@/lib/inbox";
 import { CONVERSATION_IDLE_HOURS } from "@/lib/crm/workflow/spec";
 
@@ -40,6 +41,7 @@ export async function notifyAwaitingReplies(db: Queryable, now = new Date()): Pr
        and c.last_inbound_at <= $1::timestamptz - ($2 || ' minutes')::interval and c.last_inbound_at > $1::timestamptz - ($3 || ' hours')::interval
        and (c.last_outbound_at is null or c.last_outbound_at < c.last_inbound_at)
        and not ${customerUnreachable("c")}
+       and ${rolloutOnSql("c")}
      order by c.last_inbound_at limit $4`,
     [now.toISOString(), String(AWAITING_REPLY_MINUTES), String(AWAITING_MAX_AGE_HOURS), SCAN_LIMIT],
   );
@@ -88,6 +90,7 @@ export async function announceIdleConversations(db: Queryable, now = new Date())
   const orgs = await db.query<{ id: string; name: string; timezone: string }>(
     `select distinct o.id, o.name, o.timezone from organizations o join crm_workflows w on w.org_id = o.id and w.status = 'active'
        join crm_workflow_versions v on v.id = w.published_version_id and v.org_id = w.org_id
+       join inbox_rollout ir on ir.org_id = o.id and ir.enabled
      where o.kind = 'client' and o.status not in ('suspended', 'archived') and v.trigger_config->>'type' = 'conversation.idle'`,
   );
   let announced = 0;

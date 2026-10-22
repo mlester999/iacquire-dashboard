@@ -4,7 +4,8 @@ One inbox for every customer conversation (SMS, WhatsApp, email), shared by the 
 messaging core and native CRM. Nothing here replaces those: the inbox is the working surface over them.
 
 Related: [audit.md](./audit.md) (what existed before and why the design is what it is), [readiness.md](./readiness.md) (what is
-proven, what is not, and the release verdict), [rollout-plan.md](./rollout-plan.md) (the staged path to production and the approval each stage needs).
+proven, what is not, and the release verdict), [workspace-rollout.md](./workspace-rollout.md) (the per-workspace rollout, its audit and its rollback),
+[rollout-plan.md](./rollout-plan.md) (the staged path to production and the approval each stage needs).
 
 ## What was reused, what was added
 
@@ -80,7 +81,7 @@ In an environment where sending is switched off the bar says so. Web chat and ph
   A customer who has opted out (or whose address bounced) on the conversation's channel is never "waiting": nothing can be sent to them, so neither Needs
   attention nor a notice fires for their STOP message (it stays visible as unread).
   Idle events are only recorded for workspaces that have an active workflow listening for them.
-* **Premium boundary:** the inbox, its triggers and this step work for every workspace. Workflows built in Automation Studio (`origin = studio`) still need the plan, as before.
+* **Premium boundary:** the inbox, its triggers and this step work for every workspace that has the new inbox, whatever its plan. Workflows built in Automation Studio (`origin = studio`) still need the plan, as before.
 
 ## Permissions
 
@@ -99,28 +100,41 @@ Every control is enforced on the server; hiding a button is a convenience.
 `GET sync`, `GET conversations`, `GET conversations/[id]`, `GET conversations/[id]/context`, `POST conversations/[id]/assist` (same-origin check),
 `GET escalations`. All require a signed-in member and re-check visibility per conversation.
 
-## Kill switch: `INBOX_DISABLED`
+## Who gets the new inbox: the workspace rollout and the global switch
 
-`INBOX_DISABLED=true` takes the new inbox away; unset or `false` (the default) leaves it on. Only `true`/`1` switch it off; any value the app does not understand
+A workspace has the new inbox only when a **Super Admin switched it on for that workspace** (`/admin/inbox-rollout`, table `inbox_rollout`, off by default) **and** the global emergency switch is not on. Every other
+workspace keeps the previous inbox screen unchanged. The rule is enforced on the server (routes, actions, notices, workflows), not just in the navigation. The design, the audit of what it can and cannot interrupt, the
+in-flight behaviour when a workspace is switched off, the rollback ladder and the tests are in [workspace-rollout.md](./workspace-rollout.md); the waves (internal workspace, then test clients, then customers gradually)
+are in [rollout-plan.md](./rollout-plan.md), stage 6.
+
+| Rollout state of a workspace | `/inbox` | `/api/inbox/*` and new-only actions |
+| --- | --- | --- |
+| Not switched on (the default) | previous inbox | 403 `not_enabled` |
+| Switched on | new inbox | normal |
+| Anything, while `INBOX_DISABLED=true` | previous inbox | 503 `unavailable` |
+
+### Global emergency switch: `INBOX_DISABLED`
+
+`INBOX_DISABLED=true` takes the new inbox from every workspace at once; unset or `false` (the default) leaves each workspace's own rollout state in charge. Only `true`/`1` switch it on; any value the app does not understand
 (for example `yes`) is refused at start-up, like every other flag here, so a typo is loud instead of silently leaving the inbox on.
 
 | Goes off | Stays on |
 | --- | --- |
-| The `/inbox` page (a plain "temporarily unavailable" notice, after the sign-in check, with no inbox data read) | Receiving, storing and sending messages, delivery events, consent and opt-outs |
+| The new inbox screen: `/inbox` shows the **previous inbox** instead (after the sign-in check, with no new-inbox data read) | Receiving, storing and sending messages, delivery events, consent and opt-outs |
 | Every `/api/inbox/*` route (HTTP 503 with `Retry-After: 60`, before any sign-in or database work) | The AI employees and their rules, the Approvals screen, and the handoff and escalation records themselves |
-| The server actions the inbox screen calls (reply, take over, assign, resolve, bulk, notes, CRM links, consent, memories, escalation responses) | The Settings screens and their actions (messaging settings, channels, availability, notification preferences) |
-| The inbox's own notices: "customer is waiting" and "new inquiry with nobody handling it" | The workflow engine, the five conversation triggers, the "Update conversation" step and the "went quiet" events |
+| The ten server actions only the new inbox calls (pause AI, choose the employee, transfer, retry, mark unread, bulk, task / deal / note / lead status from a conversation) and the new-inbox-only inputs of `setConversationStateAction` | Every action the previous screen also uses (reply, take over, resume, notes, drafts, escalations, assign, read, status, priority, memories, consent) and the Settings actions |
+| The new inbox's own notices: "customer is waiting", "new inquiry with nobody handling it", "assigned to you" | The workflow engine and every step except the next one; the "went quiet" announcements for workspaces that have the new inbox |
+| Publishing or turning on a workflow that uses the conversation triggers or the Update conversation step; that step in a workflow that is already live (it records `blocked` and changes nothing) | |
 
 How to use it, and what it is not:
 
-* It is an environment variable, so it takes effect when the app is redeployed or restarted with it set (on Vercel a changed variable applies to the next deployment).
-  That is faster and lower-risk than rolling the application back, but it is a deployment, not an instant toggle.
-* The planned production rollout uses it twice: the first deployment ships with `INBOX_DISABLED=true` (dark), and a second deployment of the same commit with it unset exposes the inbox ([rollout-plan.md](./rollout-plan.md), stage 6).
-* It is **global**, not per workspace, and it **does not bring the previous screen back**: the new inbox replaced it. Rolling back the screen means redeploying the previous build.
-* **People lose their screen, not the AI.** While it is off nobody can take over, reply, approve a draft or answer an escalation from the inbox, but AI employees keep working under
-  their existing settings. If the reason for switching it off is that people can no longer supervise safely, pause automation as well, with the controls that already exist
-  (the automation pause and the provider write switches), before relying on this.
-* Tabs that are already open show the same message the next time they read from the server, and retry slowly in the background.
+* It is an environment variable, so it takes effect when the app is redeployed or restarted with it set (on Vercel a changed variable applies to the next deployment). It is a deployment, not an instant toggle; the per-workspace rollout
+  on the Super Admin page is the quick control.
+* The planned production rollout uses it first: the first deployment ships with `INBOX_DISABLED=true` (dark), a second deployment of the same commit lifts it, and workspaces are then switched on one at a time ([rollout-plan.md](./rollout-plan.md), stage 6).
+* It is global. The per-workspace list is preserved while it is on and takes effect again when it is removed.
+* It **brings the previous screen back**, so people keep a place to reply, take over, approve a draft and answer an escalation. AI employees keep working under their existing settings either way. If the reason for switching the inbox
+  off is that people can no longer supervise safely, pause automation as well, with the controls that already exist (the automation pause and the provider write switches).
+* Tabs that are already open keep the screen they rendered until their next load; a request they make to a new-inbox route is refused with the same message and retried slowly in the background.
 
 ## Rollout notes
 

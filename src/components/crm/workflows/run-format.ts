@@ -32,6 +32,7 @@ const BLOCK_REASONS: Record<string, string> = {
   quiet_hours: "Quiet hours",
   frequency_cap: "Sending limit reached",
   human_takeover: "A person took over the conversation",
+  inbox_not_enabled: "The new inbox isn't switched on for this workspace",
   conversation_missing: "The conversation no longer exists",
   customer_replied: "The customer wrote again",
   person_requested: "A person was asked to take over",

@@ -167,17 +167,20 @@ describe("rolling migration 0082 back and forward on a populated database", () =
       await db.query("delete from conversation_events");
       await db.query("delete from notifications where kind = any($1)", [OUR_KINDS]);
       await run(db, DOWN);
-      const down = { data: await snapshot(db), kinds: await kindsOf(db), conv: await columnsOf(db, "conversations"), msg: await columnsOf(db, "conversation_messages"), events: (await db.query("select to_regclass('public.conversation_events')::text as t")).rows[0] };
+      const down = { data: await snapshot(db), kinds: await kindsOf(db), conv: await columnsOf(db, "conversations"), msg: await columnsOf(db, "conversation_messages"), events: (await db.query("select to_regclass('public.conversation_events')::text as t")).rows[0], rollout: (await db.query("select to_regclass('public.inbox_rollout')::text as t")).rows[0] };
       await run(db, UP);
-      const up = { data: await snapshot(db), kinds: await kindsOf(db), conv: await columnsOf(db, "conversations"), msg: await columnsOf(db, "conversation_messages") };
+      const up = { data: await snapshot(db), kinds: await kindsOf(db), conv: await columnsOf(db, "conversations"), msg: await columnsOf(db, "conversation_messages"), rollout: (await db.query("select to_regclass('public.inbox_rollout')::text as t")).rows[0] };
       Object.assign(out, { before, down, up });
       throw new Done();
     })).rejects.toBeInstanceOf(Done);
-    const { before, down, up } = out as Record<"before" | "down" | "up", { data: Awaited<ReturnType<typeof snapshot>>; kinds: string[]; conv: string[]; msg: string[]; events?: unknown }>;
+    const { before, down, up } = out as Record<"before" | "down" | "up", { data: Awaited<ReturnType<typeof snapshot>>; kinds: string[]; conv: string[]; msg: string[]; events?: unknown; rollout?: unknown }>;
     // Down: our columns, our table and our three notification kinds are gone; everything else is exactly as it was.
     for (const c of NEW_CONVERSATION_COLUMNS) expect(down.conv).not.toContain(c);
     for (const c of NEW_MESSAGE_COLUMNS) expect(down.msg).not.toContain(c);
     expect(down.events).toEqual({ t: null });
+    // The rollout allowlist is current state only (its history is in audit_logs), so rolling back drops it and rolling forward brings it back empty: every workspace off.
+    expect(down.rollout).toEqual({ t: null });
+    expect(up.rollout).toEqual({ t: "inbox_rollout" });
     expect(down.kinds).toEqual(before.kinds.filter((k) => !OUR_KINDS.includes(k)));
     expect(down.data).toEqual(before.data);
     // Up again: back to the same columns and the same allow-list, with the data untouched.

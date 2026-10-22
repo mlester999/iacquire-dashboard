@@ -6,6 +6,7 @@ import { coerceFieldValue } from "@/lib/crm/fields";
 import { agentLiveRunsVerified } from "@/server/crm/agent-tools/tasks";
 import { n8nStepReadiness } from "@/server/integrations/n8n-actions";
 import { connectionsForOptions } from "@/server/automation-studio/connections";
+import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import {
   hasErrors, parseDefinition, validateDefinition, validationContextFrom, type MessageChannel, type UpdateFieldConfig, type ValidationContext, type ValidationIssue, type WorkflowDefinition,
 } from "@/lib/crm/workflow/spec";
@@ -40,6 +41,8 @@ export interface WorkflowBuilderOptions {
   customValues?: Array<{ key: string; label: string }>;
   /** Connections to outside systems that aren't revoked (never their secrets): what an HTTP or Slack step may name. */
   connections?: Array<{ id: string; name: string; kind: "http" | "slack_webhook"; status: string; host: string; methods: string[] }>;
+  /** Whether the workspace has the new inbox (the rollout): without it the conversation triggers and the "Update conversation" step can't be published. */
+  inboxEnabled?: boolean;
 }
 
 const hostOf = (url: string) => {
@@ -110,6 +113,7 @@ export async function loadBuilderOptions(db: Queryable, orgId: string): Promise<
     forms,
     customValues,
     connections,
+    inboxEnabled: await inboxEnabledFor(orgId, db),
   };
 }
 

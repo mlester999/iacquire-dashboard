@@ -16,6 +16,7 @@
 --   * conversation_events: an append-only lifecycle trail (assignment, AI assignment, pause, status, priority, archive, handoff, links).
 --     It holds ids, labels and short enums only (never message text), and is read under the same row-level security as the conversation.
 --     An event's actor is a person, an AI employee, the system, an agency member or "workflow" (an Automation Studio / CRM workflow step).
+--   * inbox_rollout: which workspaces have the new inbox switched on (none by default). The rollout is per workspace and enforced on the server.
 --   * Notifications: three new kinds (conversation_assigned, conversation_new_inquiry, conversation_awaiting_reply). notifications_kind_check is
 --     rebuilt from the live constraint plus these kinds instead of from a copied list, so another branch's kinds are kept (see the DO block).
 --
@@ -140,6 +141,27 @@ revoke all on conversation_events from public, anon, authenticated;
 grant select on conversation_events to iaq_app_user;
 create policy conversation_events_select on conversation_events for select to iaq_app_user using (
   exists (select 1 from conversations c where c.id = conversation_id and c.org_id = conversation_events.org_id));
+
+-- ---------------------------------------------------------------------------
+-- Workspace rollout
+-- ---------------------------------------------------------------------------
+
+-- Which workspaces have the Unified Inbox switched on. No row means off, and off is the default: a workspace keeps the inbox screen it already had until a
+-- Super Admin switches it on. Read and written by trusted server code only (no access for the application role). Every change is also written to
+-- audit_logs; this row is only the current state.
+create table if not exists inbox_rollout (
+  org_id uuid primary key references organizations(id) on delete cascade,
+  enabled boolean not null default false,
+  note text check (char_length(note) <= 200),
+  enabled_at timestamptz,
+  enabled_by uuid references users(id) on delete set null,
+  disabled_at timestamptz,
+  disabled_by uuid references users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+create trigger inbox_rollout_touch before update on inbox_rollout for each row execute function app.touch_updated_at();
+alter table inbox_rollout enable row level security;
+revoke all on inbox_rollout from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Notification kinds

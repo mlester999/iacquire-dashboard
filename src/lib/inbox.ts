@@ -72,6 +72,8 @@ export function idleLabel(hours: number): string {
  * toast, in an API error. Plain and free of reasons; why it is off is the operator's to say.
  */
 export const INBOX_UNAVAILABLE_MESSAGE = "The inbox is temporarily unavailable. Please try again in a little while.";
+/** What a call to a new-inbox-only API or action gets when the workspace is not switched on in the rollout (see src/server/messaging/inbox-rollout.ts). */
+export const INBOX_NOT_ENABLED_MESSAGE = "The new inbox isn't switched on for your workspace yet.";
 
 // ---------------------------------------------------------------------------
 // Outcomes (how a conversation ended)

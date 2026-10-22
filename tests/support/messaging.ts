@@ -62,6 +62,8 @@ export interface MessagingOrgOptions {
   provider?: TransportName | Partial<Record<Channel, TransportName>>;
   /** Publish usage rates for the native providers in use (default true). GoHighLevel's rates are always published. */
   publishNativeRates?: boolean;
+  /** Switch the new inbox on for the workspace (default true; real workspaces start with it off). Pass false to test the previous inbox. */
+  inboxRollout?: boolean;
 }
 
 /**
@@ -89,6 +91,7 @@ export async function messagingOrg(opts: MessagingOrgOptions = {}): Promise<Mess
   await withSystem(async (db) => {
     await db.query("update organizations set timezone = 'UTC' where id = $1", [org.id]);
     await db.query("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'");
+    if (opts.inboxRollout !== false) await db.query("insert into inbox_rollout (org_id, enabled, note, enabled_at) values ($1, true, 'Test fixture', now())", [org.id]);
     await db.query(
       "update agent_instances set status = 'online', last_health_ok = true, enabled = true, mode = $2 where id = $1",
       [salesAgentId, opts.autonomous === false ? "approval_required" : "autonomous"],

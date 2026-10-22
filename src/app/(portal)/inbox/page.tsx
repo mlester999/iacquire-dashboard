@@ -9,8 +9,8 @@ import { memberActor } from "@/server/crm/actor";
 import { cannedRepliesForConversation, sendableWhatsappTemplates } from "@/server/crm/message-templates";
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
-import { InboxUnavailable } from "@/components/inbox/inbox-unavailable";
-import { inboxEnabled } from "@/server/messaging/inbox-switch";
+import { LegacyInbox } from "@/app/(portal)/inbox/legacy-inbox";
+import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { isInboxSort, isInboxView, type InboxView } from "@/lib/inbox";
 import { isChannel, type Channel } from "@/lib/messaging";
 
@@ -29,9 +29,11 @@ function viewOf(sp: Search): InboxView {
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<Search> }) {
   const ctx = await requireOrgContext("inbox.view");
-  // Switched off by an operator (INBOX_DISABLED): after the sign-in and permission check, before a single inbox query.
-  if (!inboxEnabled()) return <InboxUnavailable />;
   const sp = await searchParams;
+  // Which screen this workspace gets, decided on the server after the sign-in and permission check and before a single new-inbox query: the new inbox only
+  // when it is switched on for the workspace (the rollout) and not switched off globally (INBOX_DISABLED); otherwise the legacy inbox the workspace already had,
+  // so no human reply, takeover or escalation screen ever disappears because of a rollout.
+  if (!(await inboxEnabledFor(ctx.org.orgId))) return <LegacyInbox ctx={ctx} searchParams={sp} />;
   const channel = isChannel(sp.channel) ? sp.channel : undefined;
   const view = viewOf(sp);
   const sort = isInboxSort(sp.sort) ? sp.sort : "priority";

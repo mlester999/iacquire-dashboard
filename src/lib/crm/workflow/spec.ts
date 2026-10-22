@@ -743,6 +743,8 @@ export interface ValidationContext {
   forms?: ReadonlySet<string>;
   /** The workspace's configuration value keys ({{custom_values.<key>}} in a workflow's own texts). Absent: not checked. */
   customValues?: ReadonlySet<string>;
+  /** False: the workspace does not have the new inbox yet (the rollout), so the conversation triggers and the "Update conversation" step can't be published. Absent: not checked. */
+  inboxEnabled?: boolean;
 }
 
 export interface ParsedDefinition {
@@ -1006,6 +1008,8 @@ function triggerIssues(t: TriggerConfig, ctx: ValidationContext | null): Validat
     if (filters[key] === undefined) continue;
     if (!ts.filters.includes(key)) out.push(issue("error", "invalid_trigger", `"${ts.label}" can't be filtered that way.`, { path: `trigger.filters.${key}` }));
   }
+  // The conversation triggers that exist because of the new inbox (customer message received is older and stays available to every workspace).
+  if (ctx?.inboxEnabled === false && NEW_INBOX_TRIGGERS.has(t.type)) out.push(issue("error", "inbox_not_enabled", INBOX_WORKFLOW_MESSAGE, { path: "trigger.type" }));
   // Without a time, "went quiet" would start at every one of the times a conversation passes, so one is required.
   if (t.type === "conversation.idle" && !filters.idleHours?.length) out.push(issue("error", "invalid_trigger", "Choose how long a conversation must be quiet.", { path: "trigger.filters.idleHours" }));
   if (t.type === "schedule") {
@@ -1191,8 +1195,13 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
   return out;
 }
 
+/** The conversation triggers added with the new inbox. They can only be published in a workspace that has it. */
+const NEW_INBOX_TRIGGERS: ReadonlySet<string> = new Set(["conversation.assigned", "conversation.resolved", "conversation.urgent", "conversation.handoff_requested", "conversation.idle"]);
+export const INBOX_WORKFLOW_MESSAGE = "The new inbox isn't switched on for this workspace yet, so workflows can't use its conversation triggers or the Update conversation step.";
+
 function conversationActionIssues(c: ConversationActionConfig, def: WorkflowDefinition, ctx: ValidationContext | null, base: { stepKey: string }): ValidationIssue[] {
   const out: ValidationIssue[] = [];
+  if (ctx?.inboxEnabled === false) out.push(issue("error", "inbox_not_enabled", INBOX_WORKFLOW_MESSAGE, base));
   const trig = TRIGGERS[def.trigger.type];
   // The step acts on the conversation that started the run. Only conversation triggers have one, so any other trigger would skip it every time.
   if (trig.entity !== "conversation") {
@@ -1322,6 +1331,7 @@ export function validationContextFrom(o: {
   appointmentTypes: Array<{ id: string }>;
   forms?: Array<{ id: string }>;
   customValues?: Array<{ key: string }>;
+  inboxEnabled?: boolean;
 }): ValidationContext {
   return {
     tags: new Set(o.tags.map((t) => t.id)),
@@ -1338,6 +1348,7 @@ export function validationContextFrom(o: {
     appointmentTypes: new Set(o.appointmentTypes.map((t) => t.id)),
     ...(o.forms ? { forms: new Set(o.forms.map((f) => f.id)) } : {}),
     ...(o.customValues ? { customValues: new Set(o.customValues.map((v) => v.key)) } : {}),
+    ...(o.inboxEnabled !== undefined ? { inboxEnabled: o.inboxEnabled } : {}),
   };
 }
 

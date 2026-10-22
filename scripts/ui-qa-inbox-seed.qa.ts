@@ -140,6 +140,17 @@ async function seed() {
   fs.writeFileSync(CRED_FILE, JSON.stringify({ note: "Local-only passwords for the isolated QA database.", users: creds }, null, 2));
   const ctx = (who: Who) => ctxFor(people[who], org, who);
   await prepareMessaging(org.id, people.owner.id);
+  // The new inbox is switched on for this workspace only; the other tenant below stays on the previous inbox, as every workspace does until a Super Admin chooses.
+  await q("insert into inbox_rollout (org_id, enabled, note, enabled_at) values ($1, true, 'Inbox QA workspace', now())", [org.id]);
+  // A Super Admin for the rollout page (/admin/inbox-rollout).
+  const superEmail = "super.agency@example.test";
+  const superPw = password();
+  await withSystem(async (db) => {
+    const { rows } = await db.query<{ id: string }>("insert into users (email, full_name, email_verified_at, platform_role, timezone) values ($1, 'Sasha Super', now(), 'agency_super_admin', 'America/Chicago') returning id", [superEmail]);
+    await db.query("insert into auth_credentials (user_id, password_hash) values ($1, $2)", [rows[0].id, await hashPassword(superPw)]);
+  });
+  creds["agency:super"] = { email: superEmail, password: superPw, name: "Sasha Super" };
+  fs.writeFileSync(CRED_FILE, JSON.stringify({ note: "Local-only passwords for the isolated QA database.", users: creds }, null, 2));
   const agents = Object.fromEntries((await q<{ id: string; role_key: string }>("select id, role_key from agent_instances where org_id = $1", [org.id])).map((a) => [a.role_key, a.id]));
 
   const other = await createOrg(OTHER_ORG_NAME);
