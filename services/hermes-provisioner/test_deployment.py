@@ -153,12 +153,15 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         copied_sources = (
             "services/hermes-provisioner/hermes-client-entrypoint.sh",
             "services/hermes-provisioner/worker.py",
+            "services/hermes-provisioner/requirements.txt",
             "services/hermes-provisioner/catalog-overlay-v0223",
         )
         for source in copied_sources:
             path = repository_root / source
             self.assertTrue(path.exists(), source)
             self.assertIn(f"COPY --chown=0:0 {source}", dockerfile)
+        self.assertIn("COPY --chown=0:0 services/hermes-provisioner/requirements.txt", dockerfile)
+        self.assertIn("-m pip install --no-cache-dir --requirement /opt/iacquire-hermes/requirements.txt", dockerfile)
 
 
 if __name__ == "__main__":
