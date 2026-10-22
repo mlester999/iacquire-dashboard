@@ -1,7 +1,7 @@
 # Secret-free client-only Hermes config. Review model/provider fields against the pinned build.
 # Put provider credentials in the private profile-model-env JSON file, never here.
 model:
-  provider: openai
+  provider: openai-api
   model: REPLACE_WITH_APPROVED_MODEL_ID
 
 gateway:

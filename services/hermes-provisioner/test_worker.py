@@ -363,8 +363,8 @@ class RestrictedProvisionerTests(unittest.TestCase):
     def test_blank_profile_uses_only_the_client_global_model_block(self):
         client_config = self.home / "config.yaml"
         client_config.write_text(
-            "model:\n  provider: openai\n  model: synthetic-fixture\n"
-            "  base_url: http://127.0.0.1:19000/v1\n"
+            "model:\n  provider: openai-api\n  model: synthetic-fixture\n"
+            "  api_mode: chat_completions\n  base_url: http://127.0.0.1:19000/v1\n"
             "SOUL.md: must-not-copy\n",
             encoding="utf-8",
         )
@@ -382,20 +382,22 @@ class RestrictedProvisionerTests(unittest.TestCase):
         )
 
         self.assertEqual(effective["model"], model_config)
+        self.assertEqual(effective["model"]["provider"], "openai-api")
+        self.assertEqual(effective["model"]["api_mode"], "chat_completions")
         self.assertEqual(effective["model"]["base_url"], "http://127.0.0.1:19000/v1")
         self.assertNotIn("SOUL.md", effective)
 
     def test_client_model_config_rejects_placeholders_and_secret_fields(self):
         config_path = self.home / "config.yaml"
         config_path.write_text(
-            "model:\n  provider: openai\n  model: REPLACE_WITH_APPROVED_MODEL_ID\n",
+            "model:\n  provider: openai-api\n  model: REPLACE_WITH_APPROVED_MODEL_ID\n",
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ProvisioningError, "client_model_config_missing"):
             _load_client_model_config(self.home)
 
         config_path.write_text(
-            "model:\n  provider: openai\n  model: synthetic-fixture\n  api_key: must-not-copy\n",
+            "model:\n  provider: openai-api\n  model: synthetic-fixture\n  api_key: must-not-copy\n",
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ProvisioningError, "client_model_config_invalid"):

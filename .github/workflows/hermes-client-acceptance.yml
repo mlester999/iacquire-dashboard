@@ -83,6 +83,41 @@ jobs:
             exit 1
           fi
 
+          provider_home="$RUNNER_TEMP/hermes-provider-preflight-${GITHUB_RUN_ID}"
+          mkdir -m 0700 "$provider_home"
+          cat > "$provider_home/config.yaml" <<'YAML'
+          model:
+            provider: openai-api
+            model: synthetic-fixture
+            api_mode: chat_completions
+            base_url: http://127.0.0.1:19000/v1
+          YAML
+          printf '%s\n' 'OPENAI_API_KEY=synthetic-preflight-key-000000000000' > "$provider_home/.env"
+          chmod 0400 "$provider_home/config.yaml" "$provider_home/.env"
+          if docker run --rm --network none --read-only --user 10000:10000 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
+            --env HERMES_HOME=/hermes-home --env HOME=/hermes-home \
+            --env OPENAI_API_KEY=synthetic-preflight-key-000000000000 \
+            --mount "type=bind,source=$provider_home,target=/hermes-home,readonly" \
+            --entrypoint /opt/hermes/.venv/bin/python "$IACQUIRE_PROVISIONER_IMAGE" -B - <<'PY'
+          from hermes_cli.runtime_provider import resolve_runtime_provider
+
+          runtime = resolve_runtime_provider()
+          assert runtime.get("provider") == "openai-api"
+          assert runtime.get("api_mode") == "chat_completions"
+          assert runtime.get("base_url") == "http://127.0.0.1:19000/v1"
+          assert runtime.get("api_key") == "synthetic-preflight-key-000000000000"
+          print("SYNTHETIC_MODEL_ROUTE_PASS: pinned Hermes resolves the local fixture without external credentials")
+          PY
+          then
+            rm -rf -- "$provider_home"
+          else
+            rm -rf -- "$provider_home"
+            echo "SYNTHETIC_MODEL_ROUTE_FAIL: pinned Hermes did not resolve the isolated local route"
+            exit 1
+          fi
+
       - name: Create one-run synthetic credentials and local TLS
         shell: bash
         env:
@@ -122,8 +157,9 @@ jobs:
 
           cat > "$temp_dir/client-config.yaml" <<'YAML'
           model:
-            provider: openai
+            provider: openai-api
             model: synthetic-fixture
+            api_mode: chat_completions
             base_url: http://127.0.0.1:19000/v1
           gateway:
             multiplex_profiles: true
