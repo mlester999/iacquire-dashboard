@@ -290,6 +290,7 @@ Nothing in this plan pushes, deploys, migrates a hosted database, enables a swit
 
 * **D1, a global emergency switch: decided and built (local commits, not pushed).** `INBOX_DISABLED=true` takes the new inbox from every workspace at once: `/api/inbox/*` and the new-only actions answer "temporarily unavailable",
   its notices stop, and `/inbox` shows the **previous inbox** (which is kept, see workspace-rollout.md); unset or false is the default. What it does and does not touch is in the README.
+  **Confirmed by you on 2026-10-22:** the global switch shows the previous inbox, not a "temporarily unavailable" page (this replaces the earlier request for that page, because an unavailable page would strand people who still need to reply, take over or answer an escalation).
   **Decided: the first production deployment goes out with it set to `true` (dark), and a second deployment of the same commit lifts it** (stage 6), after which workspaces are switched on one at a time (D6).
 * **D2, how staging gets its data (A4).** I recommend the fresh chain with fictional data; production's schema-only dump if you want the exact hand-applied history.
 * **D3, backups.** Which machine and tool took the existing `.data/backups/*.dump` files, so the same one is used (it is not on this machine's PATH).
