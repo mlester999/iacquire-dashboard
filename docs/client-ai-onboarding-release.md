@@ -57,6 +57,6 @@ Production activation requires: prior six-agency release and SOUL remediation ve
 - `npm run typecheck`: passed.
 - `npm run build`: Next.js 16.4.2 production build passed, including both internal provisioner routes.
 - `npm run lint`: exit 0; two existing warnings remain in `src/server/calendars/agent-booking.ts` and `src/server/calendars/native-availability.ts`.
-- `git diff --check`: pending final merge commit.
+- `git diff --check`: passed. Validated integration merge: `ab1a725f5835953c858cff5c21e8171ad25cb7fa` (local; not pushed).
 
 The actual end-to-end production provisioning result remains **zero profiles created and zero production changes**. The worker has not been installed or exercised against a live Hermes runtime. A compatible complete-catalog Hermes build and an isolated client-only runtime are still missing, so isolated Hermes acceptance and production readiness remain blocked. The local release is validated against the integrated master tree but is not pushed, deployed, migrated or approved for activation.
