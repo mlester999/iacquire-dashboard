@@ -46,10 +46,11 @@ function toPatch(d: Draft) {
 
 function Check({ id, checked, onChange, children, hint }: { id: string; checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode; hint?: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
+    <div className="relative flex items-start gap-3 py-1.5">
       <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-5 shrink-0 rounded border-line-strong accent-[var(--color-primary,#2563eb)]" />
       <div className="min-w-0">
-        <label htmlFor={id} className="text-[14px] font-medium text-ink">{children}</label>
+        {/* The label stretches over the whole row, so the tap target is the row and not only the 20px box. */}
+        <label htmlFor={id} className="text-[14px] font-medium text-ink after:absolute after:inset-0 after:content-['']">{children}</label>
         {hint && <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{hint}</p>}
       </div>
     </div>
@@ -69,7 +70,7 @@ function Health({ checks }: { checks: HealthCheck[] }) {
             <Icon className={`mt-0.5 size-4 shrink-0 ${HEALTH_TONE[c.state]}`} role="img" aria-label={c.state === "ok" ? "Working" : c.state === "attention" ? "Needs attention" : "Off"} />
             <div>
               <p className="font-medium text-ink">{c.label}</p>
-              <p className="text-[12.5px] text-muted">{c.detail}{c.href ? <> <Link href={c.href} className="font-medium text-primary-ink underline">Open</Link></> : null}</p>
+              <p className="text-[12.5px] text-muted">{c.detail}{c.href ? <> <Link href={c.href} className="-my-2 inline-block py-2 font-medium text-primary-ink underline">Open</Link></> : null}</p>
             </div>
           </li>
         );
@@ -90,17 +91,17 @@ function Stats({ s }: { s: ChatWindowStats }) {
           <div key={label} className="rounded-xl border border-line bg-surface-2 p-3">
             <dt className="text-[12px] text-muted">{label}</dt>
             <dd className="mt-0.5 text-[20px] font-semibold tabular-nums text-ink">{n}</dd>
-            {hint && <p className="text-[11.5px] text-muted">{hint}</p>}
+            {hint && <dd className="text-[11.5px] text-muted">{hint}</dd>}
           </div>
         ))}
       </dl>
       <div className="mt-3 grid gap-3 text-[12.5px] sm:grid-cols-2">
         <div>
-          <h4 className="font-medium text-ink">Where chats start</h4>
+          <h3 className="font-medium text-ink">Where chats start</h3>
           {s.topPages.length === 0 ? <p className="text-muted">No pages recorded yet.</p> : <ul className="mt-1 space-y-0.5">{s.topPages.map((p) => <li key={p.path} className="flex justify-between gap-2"><span className="truncate text-ink-2">{p.path}</span><span className="tabular-nums text-muted">{p.chats}</span></li>)}</ul>}
         </div>
         <div>
-          <h4 className="font-medium text-ink">Where visitors came from</h4>
+          <h3 className="font-medium text-ink">Where visitors came from</h3>
           {s.topSources.length === 0 ? <p className="text-muted">Nothing recorded yet. Sources are never guessed.</p> : <ul className="mt-1 space-y-0.5">{s.topSources.map((p) => <li key={p.source} className="flex justify-between gap-2"><span className="truncate text-ink-2">{p.label}</span><span className="tabular-nums text-muted">{p.chats}</span></li>)}</ul>}
         </div>
       </div>
@@ -186,8 +187,8 @@ export function WebChatSettings({ view, overview, appOrigin, sections }: { view:
             <p className="text-[12.5px] text-muted">Paste this just before the closing body tag. It contains your public chat key only, which is not a password.</p>
             <pre className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface-2 p-3 text-[12px]" tabIndex={0} aria-label="Chat snippet"><code>{snippet}</code></pre>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <CopyTextButton text={snippet} label="Copy snippet" />
-              {canEdit && <Button variant="outline" size="sm" onClick={rotate} loading={busy === "rotate"}><KeyRound className="size-4" aria-hidden />Replace the key</Button>}
+              <CopyTextButton text={snippet} label="Copy snippet" className="min-h-11 sm:min-h-8" />
+              {canEdit && <Button variant="outline" size="sm" className="min-h-11 sm:min-h-8" onClick={rotate} loading={busy === "rotate"}><KeyRound className="size-4" aria-hidden />Replace the key</Button>}
               {view.settings.lastSeenAt && <span className="text-[12.5px] text-muted">Last loaded on {view.settings.lastSeenOrigin} {relativeTime(view.settings.lastSeenAt as unknown as string)}.</span>}
             </div>
           </div>
@@ -241,10 +242,10 @@ export function WebChatSettings({ view, overview, appOrigin, sections }: { view:
                   <Input aria-label={`Question ${i + 1}`} placeholder="What do you need help with?" value={q.label} onChange={(e) => set("questions", d.questions.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} disabled={!canEdit} />
                   <Select aria-label={`Question ${i + 1} type`} value={q.kind} onChange={(e) => set("questions", d.questions.map((x, j) => (j === i ? { ...x, kind: e.target.value as "text" | "choice" } : x)))} disabled={!canEdit}><option value="text">Free text</option><option value="choice">Choices</option></Select>
                   <Input aria-label={`Question ${i + 1} choices`} placeholder="Choices, separated by commas" value={q.choices} disabled={!canEdit || q.kind !== "choice"} onChange={(e) => set("questions", d.questions.map((x, j) => (j === i ? { ...x, choices: e.target.value } : x)))} />
-                  <div className="flex items-center gap-3"><label className="flex items-center gap-1.5 text-[12.5px]"><input type="checkbox" checked={q.required} onChange={(e) => set("questions", d.questions.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))} className="size-5" disabled={!canEdit} />Required</label>{canEdit && <Button variant="ghost" size="sm" onClick={() => set("questions", d.questions.filter((_, j) => j !== i))}>Remove</Button>}</div>
+                  <div className="flex items-center gap-3"><label className="flex min-h-11 items-center gap-1.5 text-[12.5px] sm:min-h-6"><input type="checkbox" checked={q.required} onChange={(e) => set("questions", d.questions.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))} className="size-5" disabled={!canEdit} />Required</label>{canEdit && <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-8" onClick={() => set("questions", d.questions.filter((_, j) => j !== i))}>Remove</Button>}</div>
                 </div>
               ))}
-              {canEdit && d.questions.length < 3 && <Button variant="outline" size="sm" onClick={() => set("questions", [...d.questions, { label: "", kind: "text", choices: "", required: false }])}>Add a question</Button>}
+              {canEdit && d.questions.length < 3 && <Button variant="outline" size="sm" className="min-h-11 sm:min-h-8" onClick={() => set("questions", [...d.questions, { label: "", kind: "text", choices: "", required: false }])}>Add a question</Button>}
             </div>
           </fieldset>
         </CardContent>
@@ -299,7 +300,7 @@ export function WebChatSettings({ view, overview, appOrigin, sections }: { view:
             {overview.recent.length === 0 ? (
               <p className="mt-2 text-[13px] text-muted">No chats yet. When a visitor writes, it appears here and in your Inbox.</p>
             ) : (
-              <div className="mt-2 overflow-x-auto">
+              <div className="mt-2 overflow-x-auto" role="region" aria-label="Recent website chats" tabIndex={0}>
                 <table className="w-full min-w-[640px] text-left text-[13px]">
                   <caption className="sr-only">Recent website chats</caption>
                   <thead className="text-[12px] text-muted"><tr><th scope="col" className="py-1.5 pr-3 font-medium">Visitor</th><th scope="col" className="py-1.5 pr-3 font-medium">Started on</th><th scope="col" className="py-1.5 pr-3 font-medium">Messages</th><th scope="col" className="py-1.5 pr-3 font-medium">Status</th><th scope="col" className="py-1.5 font-medium"><span className="sr-only">Open</span></th></tr></thead>

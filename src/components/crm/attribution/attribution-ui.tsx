@@ -35,7 +35,8 @@ function TouchLine({ label, t }: { label: string; t: TouchRecord }) {
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span className="w-20 shrink-0 text-muted">{label}</span>
       <span className="font-medium text-ink">{describe(t)}</span>
-      <Badge tone={CONFIDENCE_TONE[t.confidence]}>{CONFIDENCE_LABELS[t.confidence]}</Badge>
+      {/* A touch with no source already reads "Not recorded"; a second badge saying the same would only repeat it. */}
+      {t.confidence !== "unknown" && <Badge tone={CONFIDENCE_TONE[t.confidence]}>{CONFIDENCE_LABELS[t.confidence]}</Badge>}
       <span className="text-muted">{TOUCH_KIND_LABELS[t.kind]}, {relativeTime(t.occurredAt)}</span>
     </li>
   );

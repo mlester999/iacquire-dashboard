@@ -1024,7 +1024,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
     return (
       <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div className={cn("max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", out ? (m.authorKind === "ai" ? "bg-violet-soft text-ink" : "bg-primary-soft text-ink") : "bg-surface-2", m.status === "draft" && "border border-dashed border-warning/60")}>
-          {out && <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-muted">{m.authorKind === "ai" ? <Bot className="size-3" aria-hidden /> : <UserRound className="size-3" aria-hidden />}{m.authorKind === "ai" ? (m.scope === "followup" ? "AI follow-up" : "AI") : (m.authorName ?? "Teammate")}</p>}
+          {out && <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-muted">{m.authorKind === "ai" || m.authorKind === "system" ? <Bot className="size-3" aria-hidden /> : <UserRound className="size-3" aria-hidden />}{m.authorKind === "ai" ? (m.scope === "followup" ? "AI follow-up" : "AI") : m.authorKind === "system" ? "Automatic notice" : (m.authorName ?? "Teammate")}</p>}
           <p className="whitespace-pre-wrap break-words">{m.body}</p>
           <p className={cn("mt-1 flex flex-wrap items-center gap-x-2 text-[11px]", STATUS_STYLE[m.status])}>
             <span suppressHydrationWarning>{formatDateTime(m.createdAt, timeZone)}</span>
@@ -1160,7 +1160,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
       <AiControls c={c} me={me} perms={perms} team={props.team} aiEmployees={props.aiEmployees} busy={busy} run={run} />
       {detail.escalation && <EscalationBanner detail={detail} me={me} perms={perms} busy={busy} run={run} />}
 
-      <div ref={logRef} onScroll={(e) => { followRef.current = isScrolledToEnd(e.currentTarget); }} className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4" role="log" aria-label="Messages" aria-live="polite">
+      <div ref={logRef} onScroll={(e) => { followRef.current = isScrolledToEnd(e.currentTarget); }} className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4" role="log" tabIndex={0} aria-label="Messages" aria-live="polite">
         {truncated && (
           // Older messages arrive as a page at once: not announced one by one (the status line below says how many came in).
           <div aria-live="off" className="space-y-3">

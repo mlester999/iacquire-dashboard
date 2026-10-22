@@ -39,6 +39,8 @@ export async function getWebChatContext(ctx: OrgContext, conversationId: string)
     const parsed = validateQualificationQuestions(rows[0]?.q ?? []);
     return new Map((parsed.ok ? parsed.questions : []).map((x) => [x.key, x.label]));
   });
+  const order = [...labels.keys()];
+  const rank = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length);
   return {
     surface: row.surface,
     host: row.origin_host,
@@ -48,7 +50,10 @@ export async function getWebChatContext(ctx: OrgContext, conversationId: string)
     leadCaptured: Boolean(row.lead_captured_at),
     marketingOptIn: row.marketing_opt_in,
     handoffRequested: Boolean(row.handoff_requested_at),
-    qualification: Object.entries(row.qualification ?? {}).map(([key, answer]) => ({ label: labels.get(key) ?? key, answer })),
+    // In the order the questions are asked (the stored object has no order); answers to a question since removed come last.
+    qualification: Object.entries(row.qualification ?? {})
+      .sort(([x], [y]) => rank(x) - rank(y))
+      .map(([key, answer]) => ({ label: labels.get(key) ?? key, answer })),
     possibleMatch: row.possible_match_contact_id && row.match_name ? { id: row.possible_match_contact_id, name: row.match_name } : null,
   };
 }

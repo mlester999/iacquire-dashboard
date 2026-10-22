@@ -148,9 +148,10 @@ export async function chatHealth(ctx: OrgContext): Promise<HealthCheck[]> {
   );
   const a = agent.rows[0];
   if (w.aiEnabled) {
-    out.push(a?.enabled && a.config
-      ? { key: "employee", state: "ok", label: "The AI employee that answers is set up", detail: "It owns each chat, so a person taking over or pausing it works the same as in your Inbox." }
-      : { key: "employee", state: "attention", label: "The AI employee that answers is not ready", detail: "Chats will wait for a person until it is set up. Check its setup in AI Employees.", href: "/employees" });
+    // Mirrors what the chat itself does: it gives a chat to this employee when the employee is switched on (visitor.ts), whatever setup version it has.
+    out.push(a?.enabled
+      ? { key: "employee", state: "ok", label: "The AI employee that answers is switched on", detail: "It owns each chat, so a person taking over or pausing it works the same as in your Inbox." }
+      : { key: "employee", state: "attention", label: "The AI employee that answers is not switched on", detail: "Chats will wait for a person until it is. Check it in AI Employees.", href: "/employees" });
     const llm = await resolveLlmConfigDetailed();
     out.push(llm.config
       ? { key: "model", state: "ok", label: "The AI language model is connected", detail: "The assistant can answer from the knowledge you chose." }

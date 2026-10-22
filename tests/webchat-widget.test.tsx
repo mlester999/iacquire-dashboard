@@ -266,6 +266,8 @@ describe("what the widget exposes to a screen reader and a keyboard", () => {
     const log = q(".log");
     expect(log.getAttribute("role")).toBe("log");
     expect(log.getAttribute("aria-live")).toBe("polite");
+    expect(log.getAttribute("tabindex")).toBe("0"); // a scrollable region a keyboard visitor can reach
+    expect(q(".launcher").getAttribute("aria-label")).toBeNull(); // named by its own content, so the visible words are the announced words
     expect(q("textarea").getAttribute("aria-label")).toBe("Your message");
     expect(q(".close").getAttribute("aria-label")).toBe("Close chat");
     expect(q(".panel").getAttribute("aria-labelledby")).toBe("iaq-title");

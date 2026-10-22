@@ -64,7 +64,7 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
         {report.rows.length === 0 ? (
           <p className="text-[13px] text-muted">No leads were created in this period. When a visitor fills in a form, chats on your website or phones, the source is recorded here.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" role="region" aria-label="Leads by source" tabIndex={0}>
             <table className="w-full min-w-[860px] text-left text-[13px]">
               <caption className="sr-only">Leads by source, credited to each lead&apos;s {model} touch</caption>
               <thead className="text-[12px] text-muted">
@@ -120,7 +120,7 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
           <p className="text-[12.5px] text-muted">Owners and managers enter campaign costs.</p>
         )}
         {costs.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-4 overflow-x-auto" role="region" aria-label="Entered campaign costs" tabIndex={0}>
             <table className="w-full min-w-[560px] text-left text-[13px]">
               <caption className="sr-only">Entered campaign costs</caption>
               <thead className="text-[12px] text-muted"><tr>{["Source", "Campaign", "Period", "Amount", "Note", ""].map((h, i) => <th key={i} scope="col" className="py-1.5 pr-3 font-medium">{h || <span className="sr-only">Remove</span>}</th>)}</tr></thead>
@@ -132,7 +132,7 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
                     <td className="py-2 pr-3">{c.periodStart} to {c.periodEnd}</td>
                     <td className="py-2 pr-3 tabular-nums">{c.currency} {c.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     <td className="py-2 pr-3 text-ink-2">{c.note ?? ""}</td>
-                    <td className="py-2 text-right">{canEnterCosts && <Button variant="ghost" size="sm" loading={busy(`rm-${c.id}`)} onClick={() => run(`rm-${c.id}`, () => removeCostAction(orgId, c.id), "Cost removed")}>Remove</Button>}</td>
+                    <td className="py-2 text-right">{canEnterCosts && <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-8" loading={busy(`rm-${c.id}`)} onClick={() => run(`rm-${c.id}`, () => removeCostAction(orgId, c.id), "Cost removed")}>Remove</Button>}</td>
                   </tr>
                 ))}
               </tbody>

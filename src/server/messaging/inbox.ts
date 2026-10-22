@@ -279,7 +279,8 @@ export async function withDeliveryDetail(userId: string, messages: MessageView[]
     list.push({ status: e.status, rawStatus: e.raw_status, detail: e.detail, at: new Date(e.occurred_at).toISOString() });
     eventsOf.set(e.message_id, list);
   }
-  const label = (p: string | null) => (p ? (TRANSPORT_LABELS[p as TransportName] ?? p) : null);
+  // A website chat has no outside provider to name: the thread already says "Website chat", so the line shows nothing rather than an internal key.
+  const label = (p: string | null) => (p && p !== "web_chat" ? (TRANSPORT_LABELS[p as TransportName] ?? p) : null);
   return messages.map((m) => ({ ...m, provider: providerOf.get(m.id) ?? null, providerLabel: label(providerOf.get(m.id) ?? null), deliveryEvents: eventsOf.get(m.id) ?? [] }));
 }
 

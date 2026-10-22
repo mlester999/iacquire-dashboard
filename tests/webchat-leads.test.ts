@@ -6,6 +6,8 @@ import { memberActor } from "@/server/crm/actor";
 import { crmEventDispatch } from "@/server/crm/dispatch";
 import { getConsent, redactContact } from "@/server/messaging/contacts";
 import { purgeExpiredWebChats } from "@/server/webchat/retention";
+import { getWebChatContext } from "@/server/webchat/context";
+import { getConversationDetail, withDeliveryDetail } from "@/server/messaging/inbox";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { getPriority } from "@/server/lead-scoring/priority";
 import { answer, bodyOf, chatOrg, clientId, embedCall, reconfigure, start, viewOf, hashOf, type ChatOrg } from "./support/webchat";
@@ -143,6 +145,29 @@ describe("qualification", () => {
     expect(s.qualification_completed_at).not.toBeNull();
     const events = await rows<{ type: string }>("select type from crm_events where org_id = $1 and contact_id = $2 and type in ('webchat.lead_captured', 'webchat.qualification_completed')", [q.m.org.id, s.contact_id]);
     expect(events.map((e) => e.type).sort()).toEqual(["webchat.lead_captured", "webchat.qualification_completed"]); // each once, despite the repeat
+  });
+});
+
+describe("what the team sees in the Inbox", () => {
+  it("lists a chat's answers in the order the questions are asked, and names no outside provider on its messages", async () => {
+    const q = await chatOrg({
+      qualificationQuestions: [
+        { label: "What do you need help with?", kind: "text", required: true },
+        { label: "How soon?", kind: "text", required: false },
+      ],
+    });
+    const token = await start(q);
+    await embedCall(q, { action: "send", token, body: { text: "Hello", clientMessageId: clientId() }, generate: answer("Hi, how can I help?").generate });
+    await embedCall(q, { action: "lead", token, body: { details: { email: "order@example.com" }, privacyAck: true, answers: { what_do_you_need_help_with: "Roof leak", how_soon: "This week" } } });
+    const s = await sessionOf(token);
+    const ctx = q.m.ctx("owner");
+    const view = await getWebChatContext(ctx, s.conversation_id);
+    // The stored object sorts the shorter key first; the Inbox shows the questions as they were asked.
+    expect(view?.qualification.map((x) => x.label)).toEqual(["What do you need help with?", "How soon?"]);
+    const detail = await getConversationDetail(ctx, s.conversation_id);
+    expect(detail.messages.length).toBeGreaterThanOrEqual(2);
+    const shown = await withDeliveryDetail(ctx.user.id, detail.messages);
+    for (const m of shown) expect(m.providerLabel).toBeNull(); // a website chat has no provider to name ("web_chat" is an internal key)
   });
 });
 

@@ -48,7 +48,9 @@ describe("reading where a touch came from", () => {
     expect(normalizeSourceName("a".repeat(200)).length).toBe(60);
     expect(normalizeSourceName(42)).toBe("");
     expect(normalizeSourceName("\u0000\u0007")).toBe("");
-    expect(sourceLabel("my-custom")).toBe("my-custom"); // unknown names are shown as typed
+    expect(sourceLabel("my-custom")).toBe("My custom"); // other names: first letter raised, hyphens read as spaces
+    expect(sourceLabel("trade-show")).toBe("Trade show");
+    expect(normalizeSourceName(sourceLabel("trade-show"))).toBe("trade-show"); // a label typed back stores the same name
   });
 });
 

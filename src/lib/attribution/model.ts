@@ -131,9 +131,16 @@ const DISPLAY: Record<string, string> = {
   email: "Email", newsletter: "Newsletter", phone: "Phone call", [UNKNOWN_SOURCE]: "Not recorded",
 };
 
-/** A source for people to read. Unknown names are shown as typed, never "improved". */
+/**
+ * A source for people to read. Known platforms get their proper name; any other name is shown as stored with only its first letter raised and hyphens or
+ * underscores read as spaces ("trade-show" shows as "Trade show"). Typing that text back into a source field stores the same name again, so a label
+ * and its stored name never drift apart.
+ */
 export function sourceLabel(source: string): string {
-  return DISPLAY[source] ?? source;
+  const known = DISPLAY[source];
+  if (known) return known;
+  const text = source.replace(/[-_]+/g, " ").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : source;
 }
 
 // ---------------------------------------------------------------------------

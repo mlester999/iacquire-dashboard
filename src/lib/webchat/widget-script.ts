@@ -85,7 +85,7 @@ export const WIDGET_SCRIPT = String.raw`(function () {
       '.close{background:transparent;border:0;color:inherit;font-size:22px;line-height:1;cursor:pointer;min-width:44px;min-height:44px;border-radius:8px}' +
       '.log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f6f7f9}' +
       '.msg{max-width:85%;padding:10px 12px;border-radius:14px;font-size:14.5px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}' +
-      '.msg .who{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
+      '.msg .who,.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
       '.v{align-self:flex-end;background:' + c.color + ';color:' + c.text + ';border-bottom-right-radius:4px}' +
       '.a,.t{align-self:flex-start;background:#fff;border:1px solid #e5e7eb;border-bottom-left-radius:4px}' +
       '.t{border-color:#bfdbfe;background:#eff6ff}' +
@@ -105,8 +105,8 @@ export const WIDGET_SCRIPT = String.raw`(function () {
       '.foot{padding:8px 14px;font-size:12px;color:#475569;background:#fff;border-top:1px solid #e5e7eb}.foot a{color:#1d4ed8}' +
       '.note{padding:8px 14px;font-size:13px;background:#fff7ed;color:#7c2d12;border-top:1px solid #fed7aa}' +
       '.err{color:#b91c1c;font-size:13px;margin:8px 0}' +
-      '@media (max-width:480px){.panel{inset:0;bottom:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100dvh;border-radius:0;padding-bottom:env(safe-area-inset-bottom)}}' +
-      '@media (prefers-color-scheme:dark){.panel,.tools,.compose,.foot,.form{background:#111827;color:#e5e7eb;border-color:#374151}.log,.typing{background:#0b1220}.a,.t,.intro{background:#1f2937;color:#e5e7eb;border-color:#374151}.btn{background:#1f2937;color:#e5e7eb;border-color:#4b5563}textarea,input[type=text],input[type=email],input[type=tel],select{background:#0b1220;color:#e5e7eb;border-color:#6b7280}.foot a{color:#93c5fd}.s{background:#422006;color:#fde68a;border-color:#854d0e}}' +
+      '@media (max-width:480px){.panel{inset:0;bottom:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:100dvh;border-radius:0;padding-bottom:env(safe-area-inset-bottom)}textarea,input[type=text],input[type=email],input[type=tel],select{font-size:16px}}' +
+      '@media (prefers-color-scheme:dark){.panel,.tools,.compose,.foot,.form{background:#111827;color:#e5e7eb;border-color:#374151}.log,.typing{background:#0b1220}.a,.t,.intro{background:#1f2937;color:#e5e7eb;border-color:#374151}.btn{background:#1f2937;color:#e5e7eb;border-color:#4b5563}textarea,input[type=text],input[type=email],input[type=tel],select{background:#0b1220;color:#e5e7eb;border-color:#6b7280}.foot a{color:#93c5fd}.s{background:#422006;color:#fde68a;border-color:#854d0e}.err{color:#fca5a5}}' +
       '@media (prefers-reduced-motion:no-preference){.panel{animation:iaqin .15s ease-out}@keyframes iaqin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}';
   }
 
@@ -132,7 +132,7 @@ export const WIDGET_SCRIPT = String.raw`(function () {
       root.appendChild(style);
     }
 
-    badge = el('span', { 'class': 'badge', 'aria-hidden': 'true' });
+    badge = el('span', { 'class': 'badge' });
     badge.style.display = 'none';
     launcher = el('button', { 'class': 'launcher', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-controls': 'iaq-panel' }, [el('span', { text: state.cfg.launcherLabel }), badge]);
     launcher.addEventListener('click', function () { setOpen(!state.open); });
@@ -144,7 +144,7 @@ export const WIDGET_SCRIPT = String.raw`(function () {
 
     offlineEl = el('div', { 'class': 'note', role: 'status' });
     offlineEl.style.display = 'none';
-    logEl = el('div', { 'class': 'log', role: 'log', 'aria-live': 'polite', 'aria-relevant': 'additions', 'aria-label': 'Conversation' });
+    logEl = el('div', { 'class': 'log', role: 'log', 'aria-live': 'polite', 'aria-relevant': 'additions', 'aria-label': 'Conversation', tabindex: '0' });
     typingEl = el('div', { 'class': 'typing', role: 'status', 'aria-live': 'polite' });
     noticeEl = el('div', { 'class': 'note', role: 'alert' });
     noticeEl.style.display = 'none';
@@ -193,9 +193,10 @@ export const WIDGET_SCRIPT = String.raw`(function () {
   }
 
   function renderBadge() {
+    // The button's name comes from its own content ("Chat 2 new messages"), so what a sighted visitor reads is contained in what is announced.
     badge.textContent = String(state.unread);
+    badge.appendChild(el('span', { 'class': 'vh', text: ' new message' + (state.unread === 1 ? '' : 's') }));
     badge.style.display = state.unread > 0 ? 'inline-flex' : 'none';
-    launcher.setAttribute('aria-label', state.unread > 0 ? state.cfg.launcherLabel + ', ' + state.unread + ' new message' + (state.unread === 1 ? '' : 's') : state.cfg.launcherLabel);
   }
 
   function bubble(m) {

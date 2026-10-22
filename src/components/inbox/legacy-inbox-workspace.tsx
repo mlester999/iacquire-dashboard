@@ -767,7 +767,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
       <OwnershipBar detail={detail} me={me} perms={perms} busy={busy} run={run} />
       {detail.escalation && <EscalationBanner detail={detail} me={me} perms={perms} busy={busy} run={run} />}
 
-      <div ref={logRef} onScroll={(e) => { followRef.current = isScrolledToEnd(e.currentTarget); }} className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4" role="log" aria-label="Messages" aria-live="polite">
+      <div ref={logRef} onScroll={(e) => { followRef.current = isScrolledToEnd(e.currentTarget); }} className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4" role="log" tabIndex={0} aria-label="Messages" aria-live="polite">
         {truncated && (
           // Older messages arrive as a page at once: not announced one by one (the status line below says how many came in).
           <div aria-live="off" className="space-y-3">
