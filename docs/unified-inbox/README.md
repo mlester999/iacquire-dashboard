@@ -4,7 +4,7 @@ One inbox for every customer conversation (SMS, WhatsApp, email), shared by the 
 messaging core and native CRM. Nothing here replaces those: the inbox is the working surface over them.
 
 Related: [audit.md](./audit.md) (what existed before and why the design is what it is), [readiness.md](./readiness.md) (what is
-proven, what is not, and the release verdict).
+proven, what is not, and the release verdict), [rollout-plan.md](./rollout-plan.md) (the staged path to production and the approval each stage needs).
 
 ## What was reused, what was added
 

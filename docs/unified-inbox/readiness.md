@@ -55,7 +55,7 @@ gates in section 9 that are closed.
 | 1F | Tenant isolation and role tests, route tests, migration tests, acceptance walk | Done |
 | 1F | Browser QA, accessibility, mobile | Done in the isolated QA workspace (section 6) |
 | 1F | Production build | Passes: `npm run build:clean -- --webpack` (isolated output folder, every provider and hosted setting pinned off); type-check inside the build; the six `/api/inbox/*` routes and `/inbox` compile. The default Turbopack build could not resolve `next` from this worktree only because its `node_modules` is a junction to the main checkout; that is the worktree, not the code. |
-| 1F | Performance at scale | Measured at 20% of the repo's perf dataset (about 600 conversations and 4,000 messages, `tests/perf`, embedded Postgres, 3 runs): every new read takes 9 to 25 ms (first page of a view 9 to 14, second page by cursor 23, counts for every tab 9, the change poll with counts 17); body search 80 ms, the same as the existing search (84 ms) because the embedded database has no trigram index. **Indicative only**: in-process, no network, small data. Full scale and hosted Postgres were not measured. |
+| 1F | Performance at scale | Measured at 20% of the repo's perf dataset (about 600 conversations and 4,000 messages, `tests/perf`, embedded Postgres, 3 runs): every new read takes 9 to 25 ms (first page of a view 9 to 14, second page by cursor 23, counts for every tab 9, the change poll with counts 17); body search 80 ms, the same as the existing search (84 ms). In those plans the database read each candidate conversation's messages through the per-conversation index instead of using the trigram index `conversation_messages_body_trgm`; whether hosted Postgres ever picks the trigram index for this query shape is **unverified** (check `EXPLAIN` on staging; if it is never used, drop it from the migration, because it costs time on every message insert). **Indicative only**: in-process, no network, small data. Full scale and hosted Postgres were not measured. |
 
 ## 4. Test evidence
 
@@ -145,13 +145,13 @@ scheduler-driven notices (covered by tests; the QA server runs without the sched
 | 1 | **High** | No live provider or model verified (matrix above) | Credentials and approval; staging with sandbox accounts first |
 | 2 | **High** | Migration 0082 unrehearsed on a production copy; number collision with master's pending 0081 | Rehearse on a copy; renumber if another branch lands first |
 | 3 | Medium | Production scheduler reported OFF: waiting notices and "went quiet" workflows are inert | Confirm and enable, per the Automation Studio runbook |
-| 4 | Medium | Merge with master's uncommitted AI-workforce changes (job-list tests, messaging code) | Merge, re-run the suite, resolve the two test files |
-| 5 | Medium | Seven pre-existing test failures on master | Owned by the AI workforce stream |
+| 4 | Medium | Merge with master's uncommitted AI-workforce changes. **Rehearsed locally:** three files conflict (one line in `send.ts`, two job-list tests), all resolved; the merged tree passes type-check and the whole suite (293 files, 4,654 tests, 0 failed) | The workforce stream commits first, then the real merge; see [rollout-plan.md](./rollout-plan.md) |
+| 5 | Medium | Seven pre-existing test failures on master | Not present in the merged tree, so by elimination fixed by master's pending workforce changes (not run on their own); needs those committed |
 | 6 | Medium | Polling every 5 s per open tab, per-process rate limit (not shared across instances); no load measurement on hosted Postgres | Measure on staging; add a shared limiter if instances multiply |
 | 7 | Low | Shared unread state; free-text pause reason in the trail | Per-user read state is a larger change; consider dropping the free text |
 | 7b | Low | The Priority sort orders by a computed rank, so each list read scans the workspace's open conversations and sorts them before taking the first page (fine for hundreds or a few thousand; it grows with the workspace) | Measure on staging with a realistic workspace; if needed, store the rank or index the common views |
 | 8 | Low | Viewer role not exercised in a browser | Repeat when sign-out works in the QA pane |
-| 9 | Info | Trigram index is built inside the migration transaction | Build it `CONCURRENTLY` first on a large table (same name; the migration then finds it) |
+| 9 | Info | The trigram index is built inside the migration transaction, and may turn out to be unused by the search query | Check `EXPLAIN` on staging; drop it from the migration if unused; on a large table build it `CONCURRENTLY` first (same name; the migration then finds it) |
 
 ## 10. Approvals this work is waiting on
 
