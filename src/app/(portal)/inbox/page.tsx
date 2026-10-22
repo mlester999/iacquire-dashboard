@@ -12,7 +12,7 @@ import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import { LegacyInbox } from "@/app/(portal)/inbox/legacy-inbox";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { isInboxSort, isInboxView, type InboxView } from "@/lib/inbox";
-import { isChannel, type Channel } from "@/lib/messaging";
+import { isConversationChannel, type Channel } from "@/lib/messaging";
 
 export const metadata = { title: "Inbox" };
 
@@ -34,7 +34,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   // when it is switched on for the workspace (the rollout) and not switched off globally (INBOX_DISABLED); otherwise the legacy inbox the workspace already had,
   // so no human reply, takeover or escalation screen ever disappears because of a rollout.
   if (!(await inboxEnabledFor(ctx.org.orgId))) return <LegacyInbox ctx={ctx} searchParams={sp} />;
-  const channel = isChannel(sp.channel) ? sp.channel : undefined;
+  const channel = isConversationChannel(sp.channel) ? sp.channel : undefined;
   const view = viewOf(sp);
   const sort = isInboxSort(sp.sort) ? sp.sort : "priority";
   const q = (sp.q ?? "").slice(0, 80);
@@ -54,8 +54,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const channelProviders: Partial<Record<Channel, string>> = Object.fromEntries(channelRows.rows.map((r) => [r.channel, providerLabel(r.provider)]));
   // Canned replies for the composer, filled with this conversation's contact. Only for people who can reply.
   const canned =
-    thread && ctx.can("inbox.reply") && ctx.org.kind === "client"
-      ? await cannedRepliesForConversation(memberActor(ctx), { channel: thread.conversation.channel, contactId: thread.contact.id }).catch(() => ({ replies: [], values: {} }))
+    thread && thread.conversation.channel !== "web_chat" && ctx.can("inbox.reply") && ctx.org.kind === "client"
+      ? await cannedRepliesForConversation(memberActor(ctx), { channel: thread.conversation.channel as Channel, contactId: thread.contact.id }).catch(() => ({ replies: [], values: {} }))
       : { replies: [], values: {} };
   const escalations = ctx.can("escalations.respond") || ctx.can("inbox.view_all") ? await listOpenEscalations(ctx) : [];
   const team = ctx.can("inbox.assign") || ctx.can("inbox.reply")

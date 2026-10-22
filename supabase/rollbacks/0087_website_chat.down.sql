@@ -12,6 +12,8 @@ begin
   end if;
 end $$;
 
+drop function if exists app.site_chat_widget(text);
+
 drop policy if exists web_chat_sessions_select on web_chat_sessions;
 drop policy if exists web_chat_widgets_select on web_chat_widgets;
 

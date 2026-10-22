@@ -9,13 +9,13 @@ import { memberActor } from "@/server/crm/actor";
 import { cannedRepliesForConversation, sendableWhatsappTemplates } from "@/server/crm/message-templates";
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
 import { LegacyInboxWorkspace, type InboxDetail } from "@/components/inbox/legacy-inbox-workspace";
-import { isChannel, type Channel } from "@/lib/messaging";
+import { isConversationChannel, type Channel } from "@/lib/messaging";
 
 type Search = { conversation?: string; q?: string; channel?: string; owner?: string; unread?: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function LegacyInbox({ ctx, searchParams: sp }: { ctx: OrgContext; searchParams: Search }) {
-  const channel = isChannel(sp.channel) ? sp.channel : undefined;
+  const channel = isConversationChannel(sp.channel) ? sp.channel : undefined;
   const owner = ["ai", "human", "unassigned", "mine"].includes(sp.owner ?? "") ? (sp.owner as "ai" | "human" | "unassigned" | "mine") : undefined;
   const list = await listConversations(ctx, { q: sp.q, channel, owner, unreadOnly: sp.unread === "1" });
   let detail: ConversationDetail | null = null;
@@ -31,8 +31,8 @@ export async function LegacyInbox({ ctx, searchParams: sp }: { ctx: OrgContext; 
   const inboxDetail: InboxDetail | null = detail ? { ...detail, messages: await withDeliveryDetail(ctx.user.id, detail.messages) } : null;
   // Canned replies for the composer, filled with this conversation's contact. Only for people who can reply.
   const canned =
-    detail && ctx.can("inbox.reply") && ctx.org.kind === "client"
-      ? await cannedRepliesForConversation(memberActor(ctx), { channel: detail.conversation.channel, contactId: detail.contact.id }).catch(() => ({ replies: [], values: {} }))
+    detail && detail.conversation.channel !== "web_chat" && ctx.can("inbox.reply") && ctx.org.kind === "client"
+      ? await cannedRepliesForConversation(memberActor(ctx), { channel: detail.conversation.channel as Channel, contactId: detail.contact.id }).catch(() => ({ replies: [], values: {} }))
       : { replies: [], values: {} };
   const escalations = ctx.can("escalations.respond") || ctx.can("inbox.view_all") ? await listOpenEscalations(ctx) : [];
   const team = ctx.can("inbox.assign")

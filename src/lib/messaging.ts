@@ -12,6 +12,7 @@ export const CHANNEL_LABELS: Record<Channel, string> = { sms: "SMS", whatsapp: "
  */
 export const CONVERSATION_CHANNELS = [...CHANNELS, "web_chat"] as const;
 export type ConversationChannel = (typeof CONVERSATION_CHANNELS)[number];
+export const isConversationChannel = (v: unknown): v is ConversationChannel => typeof v === "string" && (CONVERSATION_CHANNELS as readonly string[]).includes(v);
 export const isWebChat = (v: unknown): v is "web_chat" => v === "web_chat";
 export const CONVERSATION_CHANNEL_LABELS: Record<ConversationChannel, string> = { ...CHANNEL_LABELS, web_chat: "Website chat" };
 

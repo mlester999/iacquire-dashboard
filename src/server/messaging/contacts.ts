@@ -1,5 +1,6 @@
 import "server-only";
 import { eraseRecoveryAndScoring } from "@/server/missed-calls/erasure";
+import { eraseWebChatAndAttribution } from "@/server/webchat/retention";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -252,6 +253,7 @@ export async function redactContact(who: OrgContext | CrmActor, contactId: strin
     await db.query("update conversations set last_message_preview = null, status = 'closed' where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
     // Missed-call cases (the caller's number, drafted texts) and lead scores about this person go with them.
     await eraseRecoveryAndScoring(db, ctx.org.orgId, contactId);
+    await eraseWebChatAndAttribution(db, ctx.org.orgId, contactId);
     await db.query("delete from contact_identities where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
     await db.query("update contact_memories set deleted_at = now() where org_id = $1 and contact_id = $2 and deleted_at is null", [ctx.org.orgId, contactId]);
     // CRM details about the person go too: custom field values, tags, company links, and the text of notes about them.

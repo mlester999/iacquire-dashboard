@@ -1,4 +1,5 @@
 import "server-only";
+import { recordFormTouch } from "@/server/attribution/touches";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
@@ -120,6 +121,8 @@ async function markProcessed(db: Queryable, s: SubmissionRow, contactId: string 
     "update crm_form_submissions set status = 'processed', contact_id = $3, opportunity_id = $4, processed_at = now(), error = $5 where id = $1 and org_id = $2",
     [s.id, s.org_id, contactId, opportunityId, notes.length ? notes.join(" ").slice(0, NOTE_MAX) : null],
   );
+  // Where this lead came from, as the visit reported it. Recorded once per submission, so a retried run adds nothing.
+  if (contactId) await recordFormTouch(db, { orgId: s.org_id, contactId, kind: "crm_form", submissionId: s.id, attribution: { ...s.attribution }, occurredAt: s.created_at });
 }
 
 /** Which contacts own the email and phone the person gave (exact, normalized identifiers only; never names). */

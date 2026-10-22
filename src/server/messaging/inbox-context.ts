@@ -1,5 +1,7 @@
 import "server-only";
 import { getPriority, type PriorityView } from "@/server/lead-scoring/priority";
+import { getContactAttribution, type TouchRecord } from "@/server/attribution/touches";
+import { getWebChatContext, type WebChatContext } from "@/server/webchat/context";
 import { openCaseFor, type CaseView } from "@/server/missed-calls/ops";
 import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -101,6 +103,9 @@ export interface InboxCrmContext {
   /** The lead's explained priority (people who may see contacts), or null; and the missed call still waiting for an answer (people who may see calls). */
   priority: PriorityView | null;
   missedCall: CaseView | null;
+  /** Where the contact came from (people who may see contacts), and, for a website chat, what the visit carried and what the visitor shared. */
+  attribution: { first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[] } | null;
+  webChat: WebChatContext | null;
   links: { contact: string; deals: string; tasks: string; appointments: string; calls: string };
   /** What this person may do from here, so the interface offers only what the server will accept. The server checks again on every action. */
   can: { task: boolean; deal: boolean; note: boolean; leadStatus: boolean };
@@ -127,9 +132,11 @@ export async function getInboxCrmContext(ctx: OrgContext, conversationId: string
 
   const detail: ContactDetail | null = actor.can("contacts.view") ? await getContactDetail(actor, contactId).catch(() => null) : null;
   // Neither may stop the rest of the panel from loading.
-  const [priority, missedCall] = await Promise.all([
+  const [priority, missedCall, attribution, webChat] = await Promise.all([
     detail ? getPriority(actor, contactId).catch(() => null) : Promise.resolve(null),
     actor.can("calls.view") ? openCaseFor(actor, { contactId }).catch(() => null) : Promise.resolve(null),
+    detail ? getContactAttribution(actor, contactId).catch(() => null) : Promise.resolve(null),
+    getWebChatContext(ctx, conversationId).catch(() => null),
   ]);
   const [deals, tasks, appointments, notes, calls, others, duplicates, ai] = await Promise.all([
     section(actor.can("sales.view"), async () =>
@@ -172,7 +179,7 @@ export async function getInboxCrmContext(ctx: OrgContext, conversationId: string
           preferredChannel: detail.preferredChannel, createdAt: detail.createdAt,
         }
       : null,
-    deals, tasks, appointments, notes, calls, otherConversations: others, possibleDuplicates: duplicates, ai, priority, missedCall,
+    deals, tasks, appointments, notes, calls, otherConversations: others, possibleDuplicates: duplicates, ai, priority, missedCall, attribution, webChat,
     links: { contact: `/crm/contacts/${contactId}`, deals: "/crm/opportunities", tasks: "/crm/tasks", appointments: "/crm/appointments", calls: "/crm/calls" },
     can: { task: actor.can("tasks.manage") && actor.can("contacts.view"), deal: actor.can("opportunities.create"), note: actor.can("notes.write") && actor.can("contacts.view"), leadStatus: actor.can("contacts.edit") },
   };

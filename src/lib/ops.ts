@@ -90,6 +90,7 @@ export const JOB_LABELS: Record<string, string> = {
   retentionPrograms: "Run customer retention programs",
   missedCallRecovery: "Follow up missed calls",
   phase2Retention: "Clear out old missed-call and lead-score records",
+  webChatRetention: "Clear out old website chats",
   leadScoreReassessment: "Re-score leads whose details changed",
   messagesDispatched: "Send queued messages",
   websiteEnquiries: "Turn website enquiries into leads",

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { after } from "next/server";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { findPage, pagePath, type ImageSrc, type SiteContent } from "@/lib/website/doc";
 import { recordUsage, siteAssets } from "@/server/sites/runtime";
 import { hrefForPage, renderSitePage, siteForRequest, thanksPage } from "@/server/sites/render";
+import { chatScriptSrc, siteChatKey } from "@/server/sites/chat";
 
 export const dynamic = "force-dynamic";
 
@@ -69,9 +71,14 @@ export default async function SiteRuntimePage({ params }: { params: Params }) {
   // Requests are counted exactly; response sizes are measured at the CDN, not guessed here.
   after(() => recordUsage(host, 0));
   const url = `https://${site.canonicalHost}${hrefForPage(slug) === "/" ? "" : hrefForPage(slug)}`;
+  // The website chat, when the workspace switched it on and installs it on its own sites: the portal's script, loaded with this page's nonce.
+  const chatKey = await siteChatKey(host);
+  const chatSrc = chatKey ? chatScriptSrc() : null;
+  const nonce = chatSrc ? ((await headers()).get("x-nonce") ?? undefined) : undefined;
   return (
     <>
       {tree}
+      {chatKey && chatSrc ? <script src={chatSrc} data-key={chatKey} nonce={nonce} async /> : null}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJson(structuredData(site.content, url)) }} />
     </>
   );

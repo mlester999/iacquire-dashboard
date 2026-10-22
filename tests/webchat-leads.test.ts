@@ -4,7 +4,8 @@ import { withSystem } from "@/server/db";
 import { createContact } from "@/server/crm/contacts";
 import { memberActor } from "@/server/crm/actor";
 import { crmEventDispatch } from "@/server/crm/dispatch";
-import { getConsent } from "@/server/messaging/contacts";
+import { getConsent, redactContact } from "@/server/messaging/contacts";
+import { purgeExpiredWebChats } from "@/server/webchat/retention";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { getPriority } from "@/server/lead-scoring/priority";
 import { answer, bodyOf, chatOrg, clientId, embedCall, reconfigure, start, viewOf, hashOf, type ChatOrg } from "./support/webchat";
@@ -185,5 +186,63 @@ describe("what the lead form does when the assistant is off or the business is c
     expect(ai.calls).toHaveLength(0);
     expect(viewOf(r).mode).toBe("waiting");
     await reconfigure(closed, { offlineBehavior: "ai_answers" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retention and privacy requests
+// ---------------------------------------------------------------------------
+
+describe("how long chats are kept, and what a privacy request removes", () => {
+  it("removes an anonymous chat, its messages and the empty contact it made after the widget's retention, and leaves everything else alone", async () => {
+    const keep = await chatOrg({ anonymousRetentionDays: 30, retentionDays: 90 });
+    const anon = await start(keep);
+    await embedCall(keep, { action: "send", token: anon, body: { text: "Just browsing", clientMessageId: clientId() }, generate: answer("Welcome!").generate });
+    const withLead = await start(keep);
+    await embedCall(keep, { action: "send", token: withLead, body: { text: "Quote please", clientMessageId: clientId() }, generate: answer("Sure.").generate });
+    await embedCall(keep, { action: "lead", token: withLead, body: { details: { email: "kept@example.com" }, privacyAck: true } });
+    const recent = await start(keep);
+    await embedCall(keep, { action: "send", token: recent, body: { text: "Hello", clientMessageId: clientId() }, generate: answer("Hi.").generate });
+    // 40 days pass for the first two chats: the anonymous one is past 30 days, the one with details is not yet past 90.
+    await withSystem((db) => db.query("update web_chat_sessions set last_seen_at = now() - interval '40 days' where token_hash = any($1::text[])", [[hashOf(anon), hashOf(withLead)]]));
+    const first = await purgeExpiredWebChats();
+    expect(first.anonymousChats).toBeGreaterThanOrEqual(1);
+    const left = await rows<{ token_hash: string }>("select token_hash from web_chat_sessions where org_id = $1", [keep.m.org.id]);
+    expect(left.map((r) => r.token_hash).sort()).toEqual([hashOf(withLead), hashOf(recent)].sort());
+    expect(await rows("select 1 from conversations c where c.org_id = $1 and c.channel = 'web_chat'", [keep.m.org.id])).toHaveLength(2);
+    // The anonymous chat's contact was still empty, so it went; the lead's contact stays.
+    expect(await rows("select 1 from contacts where org_id = $1 and created_via = 'website_chat'", [keep.m.org.id])).toHaveLength(2);
+    // 100 days pass for the chat with details: past the widget's retention, its transcript goes but the contact stays (it holds a person's details).
+    await withSystem((db) => db.query("update web_chat_sessions set last_seen_at = now() - interval '100 days' where token_hash = $1", [hashOf(withLead)]));
+    const second = await purgeExpiredWebChats();
+    expect(second.expiredChats).toBeGreaterThanOrEqual(1);
+    expect(await rows("select 1 from contacts where org_id = $1 and email = 'kept@example.com'", [keep.m.org.id])).toHaveLength(1);
+    expect(await rows("select 1 from web_chat_sessions where org_id = $1", [keep.m.org.id])).toHaveLength(1); // only the recent one
+  });
+
+  it("never deletes a contact a person has added anything to", async () => {
+    const mine = await chatOrg({ anonymousRetentionDays: 1 });
+    const t = await start(mine);
+    await embedCall(mine, { action: "send", token: t, body: { text: "Hi", clientMessageId: clientId() }, generate: answer("Hello.").generate });
+    const s = (await rows<{ contact_id: string }>("select contact_id from web_chat_sessions where token_hash = $1", [hashOf(t)]))[0];
+    await withSystem((db) => db.query("insert into tasks (org_id, contact_id, title) values ($1, $2, 'Call back')", [mine.m.org.id, s.contact_id]));
+    await withSystem((db) => db.query("update web_chat_sessions set last_seen_at = now() - interval '5 days' where token_hash = $1", [hashOf(t)]));
+    await purgeExpiredWebChats();
+    expect(await rows("select 1 from web_chat_sessions where token_hash = $1", [hashOf(t)])).toHaveLength(0);
+    expect(await rows("select 1 from contacts where id = $1", [s.contact_id])).toHaveLength(1); // a task was added: the contact stays
+  });
+
+  it("clears what the visitor typed and where they came from when a privacy request is made for their contact", async () => {
+    const t = await start(c, { landing: "/pricing?utm_source=google", referrer: "https://www.google.com/" });
+    await embedCall(c, { action: "send", token: t, body: { text: "Hello", clientMessageId: clientId() }, generate: answer("Hi.").generate });
+    await embedCall(c, { action: "lead", token: t, body: { details: { name: "Erase Me", email: "erase.me@example.com", phone: "+639175550123" }, privacyAck: true } });
+    const s = await sessionOf(t);
+    expect(await rows("select 1 from lead_touches where contact_id = $1", [s.contact_id])).toHaveLength(1);
+    await redactContact(c.m.ctx("owner"), s.contact_id, "Privacy request from the visitor");
+    const after = (await rows<{ visitor_name: string | null; visitor_email: string | null; visitor_phone: string | null; landing_path: string | null; referrer: string | null; attribution: Record<string, string>; ip_hash: string | null; qualification: Record<string, string>; status: string }>("select * from web_chat_sessions where id = $1", [s.id]))[0];
+    expect(after).toMatchObject({ visitor_name: null, visitor_email: null, visitor_phone: null, landing_path: null, referrer: null, attribution: {}, ip_hash: null, qualification: {}, status: "closed" });
+    expect(await rows("select 1 from lead_touches where contact_id = $1", [s.contact_id])).toHaveLength(0);
+    const contact = (await rows<{ first_touch_id: string | null; latest_touch_id: string | null }>("select first_touch_id, latest_touch_id from contacts where id = $1", [s.contact_id]))[0];
+    expect(contact).toEqual({ first_touch_id: null, latest_touch_id: null });
   });
 });

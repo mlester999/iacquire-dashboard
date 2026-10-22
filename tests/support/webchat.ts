@@ -66,20 +66,6 @@ export function embedCall(c: ChatOrg, call: Call): Promise<ChatResponse> {
   return handleWebChat(req);
 }
 
-/** The same request from a Website Studio site (same origin; the workspace comes from the host). */
-export function siteCall(c: ChatOrg, host: string, call: Call): Promise<ChatResponse> {
-  return handleWebChat({
-    action: call.action,
-    method: call.method ?? (call.action === "config" || call.action === "messages" ? "GET" : "POST"),
-    surface: { kind: "site", host, orgId: c.m.org.id },
-    token: call.token ?? null,
-    address: ipFor(),
-    query: new URLSearchParams(call.query ?? {}),
-    body: call.body ?? {},
-    generate: call.generate,
-  });
-}
-
 export const bodyOf = <T = Record<string, unknown>>(r: ChatResponse) => r.body as T & { ok: boolean; error?: { code: string; message: string } };
 
 /** A reply generator that answers with fixed text and records what it was asked. */
@@ -115,3 +101,11 @@ export const viewOf = (r: ChatResponse) => (bodyOf<{ view: { messages: Visible[]
 
 /** The stored form of a session token (the database never holds the token itself). */
 export const hashOf = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
+
+/** A Website Studio site for the workspace with one host (the platform address), as publishing would leave it. */
+export async function addSiteHost(orgId: string, hostname: string): Promise<void> {
+  await withSystem(async (db) => {
+    const w = await db.query<{ id: string }>("insert into websites (org_id, name, template_key, subdomain, draft_content) values ($1, 'Site', 'summit.peak', $2, '{}'::jsonb) returning id", [orgId, hostname.split(".")[0]]);
+    await db.query("insert into website_domains (org_id, website_id, hostname, kind, status, verification_token, acquisition, is_primary) values ($1, $2, $3, 'platform', 'active', $4, 'platform', true)", [orgId, w.rows[0].id, hostname, crypto.randomBytes(16).toString("hex")]);
+  });
+}

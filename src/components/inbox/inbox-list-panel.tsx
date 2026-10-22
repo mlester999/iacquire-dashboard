@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, Archive, Bot, Check, CheckCheck, PhoneMissed, ChevronDown, Clock, Inbox, Loader2, Mail, MessageCircle, MessageSquareText, PauseCircle, RotateCcw, Search, ShieldAlert, SquareCheckBig, UserRound, X } from "lucide-react";
+import { AlertTriangle, Archive, Bot, Check, CheckCheck, PhoneMissed, ChevronDown, Clock, Inbox, Loader2, Mail, Globe, MessageCircle, MessageSquareText, PauseCircle, RotateCcw, Search, ShieldAlert, SquareCheckBig, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlays";
@@ -11,12 +11,12 @@ import { bulkConversationsAction } from "@/app/actions/inbox";
 import { PriorityBadge } from "@/components/crm/priority/priority-ui";
 import { AGENT_ROLES } from "@/lib/agents";
 import { ATTENTION_LABELS, CONVERSATION_OUTCOMES, INBOX_SORTS, INBOX_SORT_HELP, INBOX_SORT_LABELS, INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS, OUTCOME_LABELS, type InboxSort, type InboxView } from "@/lib/inbox";
-import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
+import { CONVERSATION_CHANNEL_LABELS, type ConversationChannel } from "@/lib/messaging";
 import { cn, initials, relativeTime, sentenceCase } from "@/lib/utils";
 import type { ConversationListItem, ViewCounts } from "@/server/messaging/inbox-list";
 
-const CHANNEL_ICON: Record<Channel, React.ComponentType<{ className?: string }>> = { sms: MessageSquareText, whatsapp: MessageCircle, email: Mail };
-const CHANNEL_TONE: Record<Channel, string> = { sms: "text-primary", whatsapp: "text-success-ink", email: "text-violet-ink" };
+const CHANNEL_ICON: Record<ConversationChannel, React.ComponentType<{ className?: string }>> = { sms: MessageSquareText, whatsapp: MessageCircle, email: Mail, web_chat: Globe };
+const CHANNEL_TONE: Record<ConversationChannel, string> = { sms: "text-primary", whatsapp: "text-success-ink", email: "text-violet-ink", web_chat: "text-primary" };
 
 /** The views always on the tab row; the rest are under "More". */
 export const PRIMARY_VIEWS: readonly InboxView[] = ["all", "unread", "attention", "mine", "ai"];
@@ -46,7 +46,7 @@ export interface ListPanelProps {
   q: string;
   channel: string;
   selectedId: string | null;
-  channelProviders?: Partial<Record<Channel, string>>;
+  channelProviders?: Partial<Record<ConversationChannel, string>>;
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
@@ -63,12 +63,12 @@ export interface ListPanelProps {
   aboveList?: React.ReactNode;
 }
 
-function ChannelMark({ channel, provider }: { channel: Channel; provider?: string | null }) {
+function ChannelMark({ channel, provider }: { channel: ConversationChannel; provider?: string | null }) {
   const Icon = CHANNEL_ICON[channel];
   return (
     <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", CHANNEL_TONE[channel])}>
       <Icon className="size-3.5" aria-hidden />
-      {CHANNEL_LABELS[channel]}
+      {CONVERSATION_CHANNEL_LABELS[channel]}
       {provider && <span className="font-normal text-faint">via {provider}</span>}
     </span>
   );
@@ -333,6 +333,7 @@ export function InboxListPanel(p: ListPanelProps) {
             <option value="sms">SMS</option>
             <option value="whatsapp">WhatsApp</option>
             <option value="email">Email</option>
+            <option value="web_chat">Website chat</option>
           </Select>
         </div>
         <div>

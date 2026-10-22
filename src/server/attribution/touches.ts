@@ -1,9 +1,9 @@
 import "server-only";
 import crypto from "node:crypto";
-import { withSystem, withUser, type Queryable } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { systemActor } from "@/server/crm/actor";
+import { crmRead, systemActor, type CrmActor } from "@/server/crm/actor";
 import { emitEvent } from "@/server/crm/events";
 import { classifyTouch, type ClassifiedTouch, type Confidence, type Evidence, type TouchFacts, type TouchKind } from "@/lib/attribution/model";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -95,6 +95,21 @@ export async function recordCallTouch(db: Queryable, input: { orgId: string; con
   return recordTouch(db, { orgId: input.orgId, contactId: input.contactId, occurredAt: input.occurredAt, facts: { kind: "call" }, ref: { type: "call", id: input.callId } });
 }
 
+/**
+ * recordCallTouch in its own savepoint: a problem recording where a caller came from must never lose the call record it is part of.
+ * Only an inbound call that is matched to a contact is a touch (an outbound call is the business reaching out, not the lead arriving).
+ */
+export async function recordCallTouchSafely(db: Queryable, input: { orgId: string; contactId: string; callId: string; occurredAt?: Date }): Promise<void> {
+  await db.query("savepoint call_touch");
+  try {
+    await recordCallTouch(db, input);
+    await db.query("release savepoint call_touch");
+  } catch {
+    await db.query("rollback to savepoint call_touch");
+    await db.query("release savepoint call_touch");
+  }
+}
+
 /** The first message of a website chat session: what the visit carried when the widget started. */
 export async function recordChatTouch(db: Queryable, input: { orgId: string; contactId: string; sessionId: string; surface: "site" | "embed"; originHost: string }) {
   const { rows } = await db.query<{ landing_path: string | null; referrer: string | null; attribution: Record<string, string>; created_at: Date }>(
@@ -136,13 +151,13 @@ const map = (r: Row): TouchRecord => ({
 });
 
 /** A contact's source history for the contact page: first touch, latest touch and every touch in between, oldest first. */
-export async function getContactAttribution(ctx: OrgContext, contactId: string): Promise<{ first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[] }> {
-  if (!ctx.can("contacts.view")) throw new AppError("forbidden", "Your role can't see contacts.");
-  return withUser(ctx.user.id, async (db) => {
+export async function getContactAttribution(actor: CrmActor, contactId: string): Promise<{ first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[] }> {
+  if (!actor.can("contacts.view")) throw new AppError("forbidden", "Your role can't see contacts.");
+  return crmRead(actor, async (db) => {
     const { rows } = await db.query<Row>(
       `select t.id, t.occurred_at, t.kind, t.source, t.medium, t.campaign, t.content, t.term, t.landing_path, t.referrer, t.confidence, t.evidence
        from lead_touches t where t.org_id = $1 and t.contact_id = $2 order by t.occurred_at, t.id limit 100`,
-      [ctx.org.orgId, contactId],
+      [actor.orgId, contactId],
     );
     const history = rows.map(map);
     return { first: history[0] ?? null, latest: history[history.length - 1] ?? null, history };

@@ -27,6 +27,8 @@ const PUBLIC = [
   /^\/api\/public\//,
   /^\/api\/webhooks\//,
   /^\/api\/internal\//,
+  // The embeddable website-chat script: a public file, the same for everyone, carrying no secret.
+  /^\/widget\//,
   /^\/dev\//,
   // Public booking pages and the customer's manage link. They read only public-safe data; the manage pages authorize by their secret.
   /^\/book\//,
@@ -63,6 +65,15 @@ function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null, fra
   ].join("; ");
 }
 
+/** The portal's own origin (from APP_URL), which a customer's site may call for its website chat. Null when APP_URL is missing or invalid. */
+function appOrigin(): string | null {
+  try {
+    return new URL(process.env.APP_URL ?? "").origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Public customer websites. They are served from the same codebase but never share a session, cookie or privilege with the
  * portal: every request to a site host is rewritten to the internal site routes and answered with a strict, site-only policy.
@@ -74,7 +85,7 @@ function siteResponse(req: NextRequest, route: Extract<SiteRoute, { kind: "site"
   if (!["GET", "HEAD", "POST"].includes(req.method)) return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD, POST" } });
   if (req.method === "POST" && !route.isForm) return new NextResponse(null, { status: 405, headers: { Allow: "GET, HEAD" } });
   const nonce = btoa(crypto.randomUUID());
-  const csp = siteContentSecurityPolicy(nonce, process.env.NODE_ENV !== "production");
+  const csp = siteContentSecurityPolicy(nonce, process.env.NODE_ENV !== "production", appOrigin());
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);

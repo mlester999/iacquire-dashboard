@@ -9,7 +9,7 @@ import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { assertConversationVisible } from "@/server/messaging/access";
 import { cleanText } from "@/lib/support/content";
 import { draftWarnings, redactForAi } from "@/lib/support/suggest";
-import type { Channel } from "@/lib/messaging";
+import type { ConversationChannel } from "@/lib/messaging";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // AI help inside the inbox. It is advice for a person, kept apart from the AI employees that answer customers on their own:
@@ -52,9 +52,9 @@ const MAX_MESSAGES = 20;
 const MAX_CHARS = 6000;
 
 /** The latest messages of one conversation, as the person can see them (row-level security), oldest first. */
-async function gather(ctx: OrgContext, conversationId: string, includeNotes: boolean): Promise<{ lines: Line[]; channel: Channel; businessName: string; firstName: string; lastInboundId: string | null }> {
+async function gather(ctx: OrgContext, conversationId: string, includeNotes: boolean): Promise<{ lines: Line[]; channel: ConversationChannel; businessName: string; firstName: string; lastInboundId: string | null }> {
   return withUser(ctx.user.id, async (db) => {
-    const head = await db.query<{ channel: Channel; display_name: string; org_name: string }>(
+    const head = await db.query<{ channel: ConversationChannel; display_name: string; org_name: string }>(
       `select c.channel, k.display_name, o.name as org_name from conversations c join contacts k on k.id = c.contact_id and k.org_id = c.org_id join organizations o on o.id = c.org_id
        where c.id = $1 and c.org_id = $2`,
       [conversationId, ctx.org.orgId],
@@ -184,10 +184,10 @@ export interface SuggestedReply {
   generatedAt: string;
 }
 
-const MAX_REPLY: Record<Channel, number> = { sms: 600, whatsapp: 1000, email: 3000 };
+const MAX_REPLY: Record<ConversationChannel, number> = { sms: 600, whatsapp: 1000, email: 3000, web_chat: 800 };
 
 /** What the model returned, as a draft the composer can take: no wrapper text, no markup, no longer than the channel allows. */
-export function cleanDraft(raw: string, channel: Channel): string {
+export function cleanDraft(raw: string, channel: ConversationChannel): string {
   return cleanText(raw, 6000)
     .replace(/^(?:reply|draft|message|response)\s*:\s*/i, "")
     .replace(/^["'“”]+|["'“”]+$/g, "")

@@ -3,7 +3,7 @@ import { withSystem } from "@/server/db";
 import { sendEmail } from "@/server/email";
 import { hashClient } from "@/server/sites/form-token";
 import { hostFromOrigin, isClientMessageId, isHostAllowed, isWidgetKey, type QualificationQuestion } from "@/lib/webchat/rules";
-import { getWidgetByKey, getWidgetByOrg, recordWidgetSeen, siteHostsFor, type WidgetSettings } from "@/server/webchat/config";
+import { getWidgetByKey, recordWidgetSeen, siteHostsFor, type WidgetSettings } from "@/server/webchat/config";
 import {
   businessOpen, captureLead, postVisitorMessage, requestHandoff, sessionForToken, startOrResumeSession, visitorView,
   type Refusal, type SessionRow, type VisitorView,
@@ -12,12 +12,18 @@ import { replyToVisitor } from "@/server/webchat/respond";
 import type { ReplyGenerator } from "@/server/messaging/responder";
 import type { AppointmentProvider } from "@/server/appointments/provider";
 
-// One adapter for both ways a page can reach the chat:
-//   embed  an external website: the public widget key names the workspace, and the browser's Origin must be on the widget's allowed list.
-//   site   a Website Studio site: the host the proxy routed names the workspace (same-origin, no key, no CORS).
+// The adapter for the public chat API. The workspace is named by the widget's public key (`?k=`), and the browser's Origin must be on that widget's allowed
+// list: the owner's own websites, plus (when the workspace installs the chat on its Website Studio sites) those sites' hosts. Website Studio sites load the
+// widget from the portal like any other site, so the chat is never served from the restricted site runtime.
 // The workspace is never read from the request body or the query, and a visitor can only ever reach the one session its own token opens.
 
-export type ChatSurface = { kind: "embed"; key: string; origin: string | null } | { kind: "site"; host: string; orgId: string };
+export interface ChatSurface {
+  kind: "embed";
+  /** The public widget key from the request address. */
+  key: string;
+  /** The browser's Origin header. */
+  origin: string | null;
+}
 
 export interface ChatRequest {
   action: string;
@@ -77,19 +83,17 @@ function publicConfig(w: WidgetSettings, open: boolean): PublicConfig {
 
 /** The widget this request is for, with the host it ran on, or the response to send instead. */
 async function resolve(req: ChatRequest): Promise<{ widget: WidgetSettings; host: string; surface: "site" | "embed"; cors: string | null } | ChatResponse> {
-  if (req.surface.kind === "embed") {
-    if (!isWidgetKey(req.surface.key)) return fail(404, "unavailable", "Chat is not available here.");
-    const widget = await withSystem((db) => getWidgetByKey(db, (req.surface as { key: string }).key));
-    // Missing, switched off and not-yours all look the same from outside: nothing about other workspaces is revealed.
-    if (!widget || !widget.enabled) return fail(404, "unavailable", "Chat is not available here.");
-    const host = hostFromOrigin(req.surface.origin);
-    const siteHosts = widget.autoInstallSites ? await withSystem((db) => siteHostsFor(db, widget.orgId)) : [];
-    if (!isHostAllowed(host, widget.allowedOrigins, siteHosts)) return fail(403, "origin_not_allowed", "This website is not allowed to use this chat.");
-    return { widget, host: host as string, surface: "embed", cors: req.surface.origin };
-  }
-  const widget = await withSystem((db) => getWidgetByOrg(db, (req.surface as { orgId: string }).orgId));
-  if (!widget || !widget.enabled || !widget.autoInstallSites) return fail(404, "unavailable", "Chat is not available here.");
-  return { widget, host: req.surface.host, surface: "site", cors: null };
+  if (!isWidgetKey(req.surface.key)) return fail(404, "unavailable", "Chat is not available here.");
+  const key = req.surface.key;
+  const widget = await withSystem((db) => getWidgetByKey(db, key));
+  // Missing, switched off and not-yours all look the same from outside: nothing about other workspaces is revealed.
+  if (!widget || !widget.enabled) return fail(404, "unavailable", "Chat is not available here.");
+  const host = hostFromOrigin(req.surface.origin);
+  const siteHosts = widget.autoInstallSites ? await withSystem((db) => siteHostsFor(db, widget.orgId)) : [];
+  if (!isHostAllowed(host, widget.allowedOrigins, siteHosts)) return fail(403, "origin_not_allowed", "This website is not allowed to use this chat.");
+  // "site" is a page of the workspace's own Website Studio site; "embed" is any other allowed website. Only used to report where chats come from.
+  const own = siteHosts.includes((host as string).toLowerCase()) && !widget.allowedOrigins.includes(host as string);
+  return { widget, host: host as string, surface: own ? "site" : "embed", cors: req.surface.origin };
 }
 
 const asRecord = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});

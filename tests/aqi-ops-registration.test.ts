@@ -124,8 +124,8 @@ describe("scheduled jobs", () => {
       "crmWorkflowRecovery", "whatsappTemplateSync", "setupEvidence", "aqiTutorialEventRetention",
     ];
     // The Automation Studio plan sweep sits right after the workflow housekeeping it follows; the inbox attention scan right after the reply checks;
-    // lead re-scoring, the Phase 2 clean-up and missed-call recovery run just before the dispatcher, so what they queue goes out in the same run.
-    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : name === "repliesChecked" ? [name, "inboxAttention"] : name === "messagesDispatched" ? ["leadScoreReassessment", "phase2Retention", "missedCallRecovery", name] : [name]));
+    // lead re-scoring, the Phase 2 and website-chat clean-ups and missed-call recovery run just before the dispatcher, so what they queue goes out in the same run.
+    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : name === "repliesChecked" ? [name, "inboxAttention"] : name === "messagesDispatched" ? ["leadScoreReassessment", "phase2Retention", "webChatRetention", "missedCallRecovery", name] : [name]));
     expect(JOBS.map((job) => job.name)).toEqual([
       ...withStudio,
       "aqiOperationsBriefings",

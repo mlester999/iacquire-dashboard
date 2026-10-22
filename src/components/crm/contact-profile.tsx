@@ -28,6 +28,8 @@ import type { CrmScope } from "@/server/crm/page";
 import type { CallRecordView } from "@/server/crm/calls";
 import { ContactCalls } from "@/components/crm/calls/contact-calls";
 import { PriorityCard } from "@/components/crm/priority/priority-ui";
+import { AttributionCard } from "@/components/crm/attribution/attribution-ui";
+import type { TouchRecord } from "@/server/attribution/touches";
 import { MissedCallBanner } from "@/components/crm/recovery/missed-call-banner";
 import type { PriorityView } from "@/server/lead-scoring/priority";
 import type { CaseView } from "@/server/missed-calls/ops";
@@ -38,7 +40,7 @@ type Opp = { id: string; name: string; status: string; value: number | null; cur
 const CHANNEL_LABEL: Record<string, string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
 
 export function ContactProfile({
-  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls, priority, missedCall,
+  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls, priority, missedCall, attribution,
 }: {
   scope: CrmScope;
   detail: ContactDetail;
@@ -56,6 +58,8 @@ export function ContactProfile({
   /** The contact's explained lead priority, and the missed call still waiting for an answer (absent when the viewer can't see them). */
   priority?: PriorityView | null;
   missedCall?: CaseView | null;
+  /** Where the contact came from: first and latest touch and the history (absent when the viewer can't see it). */
+  attribution?: { first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[] } | null;
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
@@ -232,6 +236,7 @@ export function ContactProfile({
 
         <aside className="min-w-0 space-y-4">
           {priority && <PriorityCard scope={scope} contactId={detail.id} view={priority} canEdit={canEdit} />}
+          {attribution && <AttributionCard {...attribution} />}
           <SectionCard title="Contact details">
             <div className="space-y-4">
               <div>

@@ -153,6 +153,26 @@ create policy web_chat_sessions_select on web_chat_sessions for select to iaq_ap
   using (org_id = ANY ((SELECT app.permitted_orgs('inbox.view'::text))::uuid[]));
 
 -- ---------------------------------------------------------------------------
+-- Website Studio sites
+-- ---------------------------------------------------------------------------
+
+-- A published site runs under a database role with no table privileges, so it can only ask this one question: "is the chat installed on this host, and
+-- which public key names it?". The answer is the key and nothing else, and only for a verified host with a live publication whose workspace switched the
+-- chat on and chose to install it on its own sites. The chat itself is served by the portal, never from the site's runtime.
+create or replace function app.site_chat_widget(p_host text)
+returns table (public_key text)
+language sql stable security definer set search_path = public, pg_temp
+as $$
+  select w.public_key
+  from app.site_by_host(p_host) s
+  join web_chat_widgets w on w.org_id = s.org_id
+  where w.enabled and w.auto_install_sites
+  limit 1
+$$;
+revoke all on function app.site_chat_widget(text) from public;
+grant execute on function app.site_chat_widget(text) to iaq_site_runtime;
+
+-- ---------------------------------------------------------------------------
 -- Notification kind
 -- ---------------------------------------------------------------------------
 

@@ -3,9 +3,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { ensureWidget, readWidgetView, rotatePublicKey, saveWidgetSettings } from "@/server/webchat/config";
-import { sendHumanReply } from "@/server/messaging/inbox";
-import { listConversationsPage } from "@/server/messaging/inbox-list";
-import { answer, answering, bodyOf, chatOrg, embedCall, hashOf, ipFor, ORIGIN, reconfigure, reload, siteCall, start, viewOf, clientId, type ChatOrg } from "./support/webchat";
+import { getConversationDetail, sendHumanReply } from "@/server/messaging/inbox";
+import { getInboxCrmContext } from "@/server/messaging/inbox-context";
+import { inboxViewCounts, listConversationsPage } from "@/server/messaging/inbox-list";
+import { addSiteHost, answer, answering, bodyOf, chatOrg, embedCall, hashOf, ipFor, ORIGIN, reconfigure, reload, start, viewOf, clientId, type ChatOrg } from "./support/webchat";
 import { messagingOrg } from "./support/messaging";
 
 let c: ChatOrg;
@@ -125,13 +126,22 @@ describe("who can use a widget", () => {
     expect((await embedCall(w, { action: "config", origin: "https://x.y.shop.client.test" })).status).toBe(403);
   });
 
-  it("serves a Website Studio site from its own host, only when the workspace installs the chat there", async () => {
-    const r = await siteCall(c, "demo.iacquire.site", { action: "config" });
-    expect(r.status).toBe(200);
-    expect(r.corsOrigin).toBeNull();
+  it("allows the workspace's own Website Studio sites automatically, only while it installs the chat there", async () => {
+    const site = "demo-co.iacquire.site";
+    await addSiteHost(c.m.org.id, site);
+    const origin = `https://${site}`;
+    const ok = await embedCall(c, { action: "config", origin });
+    expect(ok).toMatchObject({ status: 200, corsOrigin: origin });
     await reconfigure(c, { autoInstallSites: false });
-    expect((await siteCall(c, "demo.iacquire.site", { action: "config" })).status).toBe(404);
+    expect((await embedCall(c, { action: "config", origin })).status).toBe(403);
     await reconfigure(c, { autoInstallSites: true });
+    // Another workspace's site host is not this workspace's: it is refused.
+    await addSiteHost(other.m.org.id, "someone-else.iacquire.site");
+    expect((await embedCall(c, { action: "config", origin: "https://someone-else.iacquire.site" })).status).toBe(403);
+    // Chats that start there are labelled as coming from the workspace's own site.
+    const t = await embedCall(c, { action: "session", origin, body: { landing: "/" } });
+    const row = await rows<{ surface: string }>("select surface from web_chat_sessions where token_hash = $1", [hashOf(bodyOf<{ token: string }>(t).token)]);
+    expect(row[0].surface).toBe("site");
   });
 });
 
@@ -342,6 +352,24 @@ describe("the Inbox", () => {
     expect(item).toMatchObject({ ownerKind: "ai" });
     const foreign = await listConversationsPage(other.m.ctx("owner"), {});
     expect(foreign.items.some((i) => i.id === item?.id)).toBe(false);
+  });
+
+  it("opens the thread and the CRM panel for a website chat, counts it, and filters by it", async () => {
+    const token = await start(c);
+    await embedCall(c, { action: "send", token, body: { text: "Thread check", clientMessageId: clientId() }, generate: answer("Answer.").generate });
+    const id = (await rows<{ id: string }>("select c.id from conversations c join web_chat_sessions s on s.conversation_id = c.id where s.token_hash = $1", [hashOf(token)]))[0].id;
+    const detail = await getConversationDetail(c.m.ctx("owner"), id);
+    expect(detail.conversation.channel).toBe("web_chat");
+    expect(detail.messages.map((m) => m.direction)).toEqual(["inbound", "outbound"]);
+    const crm = await getInboxCrmContext(c.m.ctx("owner"), id);
+    expect(crm.contact).toMatchObject({ name: "Website visitor", createdVia: "website_chat", source: "Website chat" });
+    const counts = await inboxViewCounts(c.m.ctx("owner"));
+    expect(counts.all).toBeGreaterThan(0);
+    const onlyChat = await listConversationsPage(c.m.ctx("owner"), { channel: "web_chat" });
+    expect(onlyChat.items.length).toBeGreaterThan(0);
+    expect(onlyChat.items.every((i) => (i.channel as string) === "web_chat")).toBe(true);
+    const onlySms = await listConversationsPage(c.m.ctx("owner"), { channel: "sms" });
+    expect(onlySms.items.some((i) => i.id === id)).toBe(false);
   });
 });
 

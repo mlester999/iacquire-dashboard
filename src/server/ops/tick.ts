@@ -9,6 +9,7 @@ import { respondToPending } from "@/server/messaging/responder";
 import { scanInboxAttention } from "@/server/messaging/attention";
 import { processMissedCalls } from "@/server/missed-calls/engine";
 import { purgeExpiredPhase2Records } from "@/server/missed-calls/retention";
+import { purgeExpiredWebChats } from "@/server/webchat/retention";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
@@ -98,6 +99,7 @@ export const JOBS: ScheduledJob[] = [
   // scoring; a model is asked only for workspaces that switched signal extraction on, within their daily limit.
   { name: "leadScoreReassessment", run: async () => { const r = await processScoringQueue(); return r.claimed; } },
   { name: "phase2Retention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredPhase2Records(); return r.cases + r.assessments + r.overrides + r.usage; } },
+  { name: "webChatRetention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredWebChats(); return r.anonymousChats + r.expiredChats; } },
   { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).

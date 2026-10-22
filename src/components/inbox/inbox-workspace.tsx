@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Archive, ArrowLeft, Bot, Check, CheckCheck, Clock, EllipsisVertical, Inbox, Loader2, Lock, Mail, MessageCircle, MessageSquareQuote, MessageSquareText, PanelRightOpen, RotateCcw, Send, ShieldAlert, Sparkles, SquareCheckBig, StickyNote, UserRound, XCircle } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, Bot, Check, CheckCheck, Clock, EllipsisVertical, Inbox, Loader2, Lock, Mail, Globe, MessageCircle, MessageSquareQuote, MessageSquareText, PanelRightOpen, RotateCcw, Send, ShieldAlert, Sparkles, SquareCheckBig, StickyNote, UserRound, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Input, Kbd, Select, Skeleton, Textarea } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Sheet } from "@/components/ui/overlays";
@@ -15,7 +15,7 @@ import { ChannelHealthBar } from "@/components/inbox/channel-health-bar";
 import { CrmContextPanel } from "@/components/inbox/crm-context-panel";
 import { InboxListPanel } from "@/components/inbox/inbox-list-panel";
 import { useInboxSync } from "@/components/inbox/use-inbox-sync";
-import { BLOCK_REASON_LABELS, CHANNEL_LABELS, MESSAGE_STATUS_LABELS, smsSegments, type Channel, type MessageStatus } from "@/lib/messaging";
+import { BLOCK_REASON_LABELS, CONVERSATION_CHANNEL_LABELS, MESSAGE_STATUS_LABELS, smsSegments, type ConversationChannel, type MessageStatus } from "@/lib/messaging";
 import { anyTokenLabel, customValueKeyOf, renderTemplate, type CustomValueTokenDef, type TokenValues } from "@/lib/messaging/tokens";
 import { pickFocusGuard } from "@/components/crm/templates/parts";
 import { ESCALATION_LABELS, type EscalationCategory } from "@/lib/escalation";
@@ -39,7 +39,7 @@ export interface CannedReplyOption {
   id: string;
   name: string;
   body: string;
-  channel: Channel | null;
+  channel: ConversationChannel | null;
   folderName: string | null;
 }
 
@@ -59,7 +59,7 @@ interface Props {
   list: ConversationListItem[];
   detail: InboxDetail | null;
   /** The provider carrying each channel for this workspace (GoHighLevel, Resend, Twilio, WhatsApp Business). */
-  channelProviders?: Partial<Record<Channel, string>>;
+  channelProviders?: Partial<Record<ConversationChannel, string>>;
   cannedReplies?: CannedReplyOption[];
   /** Token values for the open conversation's contact, used to fill a canned reply when it is inserted. */
   cannedValues?: TokenValues;
@@ -97,15 +97,15 @@ export function whatsappTemplateDraft(body: string): { text: string; holes: stri
   return { text: body, holes: [...new Set(body.match(/\{\{\s*\d{1,2}\s*\}\}/g) ?? [])] };
 }
 
-const CHANNEL_ICON: Record<Channel, React.ComponentType<{ className?: string }>> = { sms: MessageSquareText, whatsapp: MessageCircle, email: Mail };
-const CHANNEL_TONE: Record<Channel, string> = { sms: "text-primary", whatsapp: "text-success-ink", email: "text-violet-ink" };
+const CHANNEL_ICON: Record<ConversationChannel, React.ComponentType<{ className?: string }>> = { sms: MessageSquareText, whatsapp: MessageCircle, email: Mail, web_chat: Globe };
+const CHANNEL_TONE: Record<ConversationChannel, string> = { sms: "text-primary", whatsapp: "text-success-ink", email: "text-violet-ink", web_chat: "text-primary" };
 
-function ChannelBadge({ channel, provider }: { channel: Channel; provider?: string | null }) {
+function ChannelBadge({ channel, provider }: { channel: ConversationChannel; provider?: string | null }) {
   const Icon = CHANNEL_ICON[channel];
   return (
     <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", CHANNEL_TONE[channel])}>
       <Icon className="size-3.5" aria-hidden />
-      {CHANNEL_LABELS[channel]}
+      {CONVERSATION_CHANNEL_LABELS[channel]}
       {provider && <span className="font-normal text-faint">via {provider}</span>}
     </span>
   );
@@ -1225,7 +1225,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
             </div>
           </div>
         )}
-        <label className="sr-only" htmlFor="composer">{mode === "note" ? "Internal note" : `Reply by ${CHANNEL_LABELS[c.channel]}`}</label>
+        <label className="sr-only" htmlFor="composer">{mode === "note" ? "Internal note" : c.channel === "web_chat" ? "Reply in the website chat" : `Reply by ${CONVERSATION_CHANNEL_LABELS[c.channel]}`}</label>
         <Textarea
           id="composer"
           ref={composerRef}
@@ -1235,7 +1235,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
           value={text}
           maxLength={mode === "note" ? 2000 : 5000}
           disabled={mode === "reply" ? !canReply : !perms.notes}
-          placeholder={mode === "note" ? "Write a note for your team. The customer never sees it." : `Reply by ${CHANNEL_LABELS[c.channel]}…`}
+          placeholder={mode === "note" ? "Write a note for your team. The customer never sees it." : c.channel === "web_chat" ? "Reply in the website chat…" : `Reply by ${CONVERSATION_CHANNEL_LABELS[c.channel]}…`}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit();
@@ -1246,7 +1246,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
         )}
         {/* On a phone the floating AQi launcher sits over the bottom-right corner: keep Send clear of it. */}
         <div className="mt-2 flex items-center justify-between gap-2 max-sm:pb-3">
-          <span className="text-[11.5px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? `Sends from your verified ${CHANNEL_LABELS[c.channel]} sender` : "Visible to your team only"}</span>
+          <span className="text-[11.5px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? (c.channel === "web_chat" ? "Appears in the visitor's chat window" : `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender`) : "Visible to your team only"}</span>
           <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
         </div>
       </footer>
@@ -1406,7 +1406,7 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
         <h3 className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-muted">Consent</h3>
         <ul className="mt-1.5 space-y-1 text-[12.5px]">
           {detail.contact.consent.length ? detail.contact.consent.map((x) => (
-            <li key={`${x.channel}-${x.purpose}`} className="flex justify-between gap-2"><span>{CHANNEL_LABELS[x.channel as Channel] ?? x.channel} · {x.purpose}</span><span className={x.status === "revoked" ? "font-medium text-danger-ink" : "text-success-ink"}>{sentenceCase(x.status)}</span></li>
+            <li key={`${x.channel}-${x.purpose}`} className="flex justify-between gap-2"><span>{CONVERSATION_CHANNEL_LABELS[x.channel as ConversationChannel] ?? x.channel} · {x.purpose}</span><span className={x.status === "revoked" ? "font-medium text-danger-ink" : "text-success-ink"}>{sentenceCase(x.status)}</span></li>
           )) : <li className="text-muted">No consent recorded.</li>}
         </ul>
       </section>
