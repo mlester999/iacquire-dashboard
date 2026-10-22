@@ -118,6 +118,10 @@ scheduler-driven notices (covered by tests; the QA server runs without the sched
   constraint printed in its other text form (it now reads both and refuses to proceed on a short read); the sync stamp would have matched a workspace's entire
   history on the first poll after deploy (old messages now stay NULL, the index is partial); a regex with a stray backspace character made hand-over lines read
   wrongly; opted-out customers counted as "waiting" (they no longer do); the legacy list silently changed its cap (restored).
+* **Found and fixed in the release-hardening pass (2026-10-22):** (1) both attention scans ran for every workspace in one transaction, so one workspace's bad data would have rolled back everyone's notices on every
+  tick; they now fall back to a workspace at a time and report the failing workspaces (4 of 6 new tests fail on the old code, e.g. the healthy workspace got no notice). (2) The scan read the 500 oldest waiting customers overall, so one large
+  workspace could crowd the others out; each workspace now contributes at most the notice cap and the rows are taken a workspace at a time, and the "N customers are waiting" summary states the real total. (3) The migration number clashed
+  with another branch's `0082` (see the numbering note in the README); the runner would have skipped the second file silently where a Supabase CLI ledger exists.
 * **Workflow step:** cannot message a customer or resume AI replies; the publisher needs the matching inbox permission; changes carry the run's event depth; resolve is
   refused over a customer who wrote since the run started or a person who was asked to take over.
 * **Open, low:** pause reasons are free text up to 120 characters in the event trail (ids and enums otherwise); they are exported with the workspace but are not redacted if a

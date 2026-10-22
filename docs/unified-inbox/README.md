@@ -81,6 +81,9 @@ In an environment where sending is switched off the bar says so. Web chat and ph
   A customer who has opted out (or whose address bounced) on the conversation's channel is never "waiting": nothing can be sent to them, so neither Needs
   attention nor a notice fires for their STOP message (it stays visible as unread).
   Idle events are only recorded for workspaces that have an active workflow listening for them.
+  Both scans read only workspaces that have the new inbox, and are built for several workspaces in one pass: each workspace contributes at most the notice cap of rows (oldest first, a workspace at a time, so a large backlog in one cannot
+  crowd the others out), the summary states how many are really waiting, and if one workspace's data makes the pass fail, the pass is redone one workspace at a time so the others are still served; the run then fails, naming the workspaces
+  (ids only), so the scheduler records it and retries. Nothing already done is repeated (every notice and event is keyed).
 * **Premium boundary:** the inbox, its triggers and this step work for every workspace that has the new inbox, whatever its plan. Workflows built in Automation Studio (`origin = studio`) still need the plan, as before.
 
 ## Permissions
