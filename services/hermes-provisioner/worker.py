@@ -64,6 +64,8 @@ CANARY_PROMPT = "Return only the iAcquire profile initialization marker in your 
 MAX_SOUL_BYTES = 48_000
 MAX_CONFIG_BYTES = 24_000
 MAX_HTTP_BODY = 128_000
+PROFILE_DISCOVERY_TIMEOUT_SECONDS = 40
+PROFILE_DISCOVERY_RETRY_INTERVAL_SECONDS = 1
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
 MODEL_API_KEY_ENV_NAMES = {
@@ -588,22 +590,45 @@ class HermesApi:
 
 
 def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False) -> str:
-    """Prove this gateway supports the full challenged catalog before the worker can claim jobs."""
+    """Prove this gateway supports a complete authenticated catalog before the worker can claim jobs."""
+    if default_profile:
+        capability_status, capabilities = api.json_request_default(key, "/v1/capabilities")
+    else:
+        capability_status, capabilities = api.json_request(profile, key, "/v1/capabilities")
+    if (
+        capability_status != 200
+        or not isinstance(capabilities, dict)
+        or capabilities.get("object") != "hermes.api_server.capabilities"
+        or not isinstance(capabilities.get("auth"), dict)
+        or capabilities["auth"].get("required") is not True
+        or capabilities["auth"].get("type") != "bearer"
+    ):
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+    endpoints = capabilities.get("endpoints")
+    tools_endpoint = endpoints.get("tools") if isinstance(endpoints, dict) else None
+    if tools_endpoint != ["GET", "/v1/tools"]:
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
     stable_digest: str | None = None
     for _ in range(2):
         challenge = secrets.token_urlsafe(24)
+        path = "/v1/tools?platform=api_server&inventory_challenge=" + urllib.parse.quote(challenge, safe="")
+        headers = {
+            "X-Hermes-Inventory-Challenge": challenge,
+            "Cache-Control": "no-cache, no-store, max-age=0",
+            "Pragma": "no-cache",
+        }
         if default_profile:
             status, catalog = api.json_request_default(
                 key,
-                "/v1/tools?platform=api_server",
-                extra_headers={"X-Hermes-Inventory-Challenge": challenge},
+                path,
+                extra_headers=headers,
             )
         else:
             status, catalog = api.json_request(
                 profile,
                 key,
-                "/v1/tools?platform=api_server",
-                extra_headers={"X-Hermes-Inventory-Challenge": challenge},
+                path,
+                extra_headers=headers,
             )
         if status != 200:
             raise ProvisioningError("runtime_tool_inventory_incomplete")
@@ -695,6 +720,7 @@ class RestrictedProvisioner:
         self._write_soul(profile_dir, manifest.soul)
         config_path = profile_dir / "config.yaml"
         _atomic_write(config_path, render_config(config_path, policy, canary=True))
+        self._wait_for_profile_gateway(manifest, key)
         self._verify_api_and_soul(manifest, key)
         deployed_config = render_config(config_path, policy, canary=False)
         _atomic_write(config_path, deployed_config)
@@ -1038,6 +1064,52 @@ class RestrictedProvisioner:
         output = self.api.read_events(manifest.profile, key, run["run_id"])
         if not secrets.compare_digest(output, manifest.soul_challenge):
             raise ProvisioningError("effective_soul_unverified")
+
+    def _wait_for_profile_gateway(self, manifest: Manifest, key: str) -> None:
+        """Wait for Hermes' shared multiplexer to discover a newly published profile directory.
+
+        The worker deliberately has a separate Hermes home from the gateway, so the CLI's local
+        control-socket notification cannot reach that gateway. Hermes rescans profiles periodically;
+        poll the profile-scoped read-only capabilities route through that window before running checks.
+        """
+        deadline = time.monotonic() + PROFILE_DISCOVERY_TIMEOUT_SECONDS
+        while True:
+            status: int | None = None
+            capabilities: Any = None
+            try:
+                status, capabilities = self.api.json_request(
+                    manifest.profile,
+                    key,
+                    "/v1/capabilities",
+                )
+            except ProvisioningError as error:
+                if error.code != "http_unavailable":
+                    raise
+
+            if status == 200:
+                if not isinstance(capabilities, dict):
+                    raise ProvisioningError("profile_api_contract_failed")
+                auth = capabilities.get("auth") if isinstance(capabilities, dict) else None
+                features = capabilities.get("features") if isinstance(capabilities, dict) else None
+                if (
+                    capabilities.get("object") != "hermes.api_server.capabilities"
+                    or not isinstance(auth, dict)
+                    or auth.get("required") is not True
+                    or auth.get("type") != "bearer"
+                    or not isinstance(features, dict)
+                    or features.get("run_submission") is not True
+                ):
+                    raise ProvisioningError("profile_api_contract_failed")
+                return
+            if status == 401:
+                raise ProvisioningError("profile_authentication_failed")
+            if status not in {None, 404, 502, 503, 504}:
+                raise ProvisioningError("profile_api_contract_failed")
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProvisioningError("profile_gateway_discovery_timeout")
+            time.sleep(min(PROFILE_DISCOVERY_RETRY_INTERVAL_SECONDS, remaining))
 
     def _verify_final_policy(self, manifest: Manifest, key: str) -> None:
         status, toolsets = self.api.json_request(manifest.profile, key, "/v1/toolsets")

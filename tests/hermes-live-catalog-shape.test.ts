@@ -21,10 +21,14 @@ const TOOLS = [
 ];
 
 type Row = (typeof TOOLS)[number];
-const requests: Array<{ method: string; path: string; challenge: string | null }> = [];
+const requests: Array<{ method: string; path: string; challenge: string | null; queryChallenge: string | null; cacheControl: string | null }> = [];
 let server: http.Server;
 let baseUrl: string;
 let tools: Row[] = TOOLS;
+let advertiseToolsEndpoint = true;
+let echoChallenge = true;
+let completeCatalog = true;
+let omitNativeMetadata = false;
 
 /** Exactly the row the patched gateway emits: flat schema plus provenance; `available` only on MCP rows. */
 function liveRow(tool: Row) {
@@ -43,18 +47,22 @@ function liveRow(tool: Row) {
 }
 
 function body(challenge: string | null) {
-  return {
+  const catalog = {
     object: "list",
     platform: "api_server",
-    contract: "hermes.api_server.tool_catalog.v1",
-    complete: true,
-    incomplete_reason: null,
     explicit_config_present: true,
     enabled_toolsets: TOOLSETS,
-    challenge,
+    data: tools.map(liveRow),
+  };
+  if (omitNativeMetadata) return catalog;
+  return {
+    ...catalog,
+    contract: "hermes.api_server.tool_catalog.v1",
+    complete: completeCatalog,
+    incomplete_reason: null,
+    challenge: echoChallenge ? challenge : null,
     generated_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 120_000).toISOString(),
-    data: tools.map(liveRow),
   };
 }
 
@@ -76,13 +84,19 @@ beforeAll(async () => {
         model: PROFILE,
         auth: { type: "bearer", required: true },
         features: { run_submission: true, run_status: true, run_events_sse: true },
-        endpoints: { tools: ["GET", "/v1/tools"] },
+        endpoints: advertiseToolsEndpoint ? { tools: ["GET", "/v1/tools"] } : {},
       });
     }
     if (req.method === "GET" && path === "/v1/tools") {
       const raw = req.headers["x-hermes-inventory-challenge"];
       const challenge = Array.isArray(raw) ? raw[0] : raw ?? null;
-      requests.push({ method: "GET", path, challenge });
+      requests.push({
+        method: "GET",
+        path,
+        challenge,
+        queryChallenge: url.searchParams.get("inventory_challenge"),
+        cacheControl: typeof req.headers["cache-control"] === "string" ? req.headers["cache-control"] : null,
+      });
       return send(200, body(challenge));
     }
     return send(404, { error: "not found" });
@@ -119,6 +133,8 @@ describe("the deployed live catalog shape", () => {
     const challenges = requests.map((request) => request.challenge);
     expect(challenges.every((challenge) => typeof challenge === "string" && challenge.length > 10)).toBe(true);
     expect(new Set(challenges).size).toBe(2);
+    expect(requests.map((request) => request.queryChallenge)).toEqual(challenges);
+    expect(requests.every((request) => request.cacheControl?.includes("no-store"))).toBe(true);
   });
 
   it("still accepts the live shape without vision credentials because vision_analyze is optional", async () => {
@@ -133,5 +149,38 @@ describe("the deployed live catalog shape", () => {
     const first = await verifyToolInventory(conn(), { stabilityReads: 2 });
     const second = await verifyToolInventory(conn(), { stabilityReads: 2 });
     expect(second.digest).toBe(first.digest);
+  });
+
+  it("rejects an advertised resolver route when it omits the native completeness contract", async () => {
+    omitNativeMetadata = true;
+    try {
+      await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).rejects.toMatchObject({ code: "inventory_incomplete" });
+    } finally {
+      omitNativeMetadata = false;
+    }
+  });
+
+  it("requires the authenticated capabilities response to advertise GET /v1/tools", async () => {
+    advertiseToolsEndpoint = false;
+    try {
+      await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).rejects.toMatchObject({ code: "contract_unavailable" });
+    } finally {
+      advertiseToolsEndpoint = true;
+    }
+  });
+
+  it("requires an exact challenge echo and a complete catalog", async () => {
+    echoChallenge = false;
+    try {
+      await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).rejects.toMatchObject({ code: "inventory_incomplete" });
+    } finally {
+      echoChallenge = true;
+    }
+    completeCatalog = false;
+    try {
+      await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).rejects.toMatchObject({ code: "inventory_incomplete" });
+    } finally {
+      completeCatalog = true;
+    }
   });
 });

@@ -147,8 +147,8 @@ export async function startMockHermes(profiles: Record<string, MockProfile>): Pr
         auth: { type: "bearer", required: true },
         features: { chat_completions: true, responses_api: true, run_submission: true, run_status: true, run_events_sse: !p.polling, run_stop: true, run_approval_response: true, approval_events: true },
         endpoints: {
-          toolsets: { method: "GET", path: "/v1/toolsets" },
-          ...(inventoryAdvertised ? { tools: { method: "GET", path: "/v1/tools" } } : {}),
+          toolsets: ["GET", "/v1/toolsets"],
+          ...(inventoryAdvertised ? { tools: ["GET", "/v1/tools"] } : {}),
         },
       });
     }

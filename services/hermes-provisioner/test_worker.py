@@ -108,9 +108,16 @@ class FakeHermesApi:
         self.bad_signature = False
         self.change_catalog_between_reads = False
         self.incomplete_catalog = False
+        self.legacy_resolver_catalog = False
+        self.advertise_tools_endpoint = True
+        self.omit_tool: str | None = None
         self.catalog_reads = 0
         self.catalog_challenges: list[str] = []
+        self.catalog_query_challenges: list[str] = []
+        self.catalog_cache_controls: list[str] = []
         self.catalog_digest = ""
+        self.profile_discovery_pending = 0
+        self.profile_capability_reads = 0
 
     def json_request(
         self,
@@ -123,7 +130,18 @@ class FakeHermesApi:
     ):
         self.paths.append(path)
         if path == "/v1/capabilities":
-            return 200, {"object": "hermes.api_server.capabilities", "auth": {"required": True, "type": "bearer"}, "features": {"run_submission": True}}
+            if profile != "default":
+                self.profile_capability_reads += 1
+                if self.profile_discovery_pending > 0:
+                    self.profile_discovery_pending -= 1
+                    return 404, {"error": "profile_not_discovered_yet"}
+            endpoints = {"tools": ["GET", "/v1/tools"]} if self.advertise_tools_endpoint else {}
+            return 200, {
+                "object": "hermes.api_server.capabilities",
+                "auth": {"required": True, "type": "bearer"},
+                "features": {"run_submission": True},
+                "endpoints": endpoints,
+            }
         if path == "/v1/models":
             return 200, {"data": [{"id": profile, "owned_by": "hermes", "parent": None, "root": profile}]}
         if path == "/v1/toolsets":
@@ -141,10 +159,14 @@ class FakeHermesApi:
         if path == "/v1/runs" and method == "POST":
             self.challenge = body.get("session_id", "").split("-")[-1]
             return 202, {"run_id": "run-test"}
-        if path == "/v1/tools?platform=api_server":
+        if path.startswith("/v1/tools?platform=api_server"):
             challenge = (extra_headers or {}).get("X-Hermes-Inventory-Challenge", "")
             self.catalog_reads += 1
             self.catalog_challenges.append(challenge)
+            self.catalog_cache_controls.append((extra_headers or {}).get("Cache-Control", ""))
+            query = path.partition("?")[2]
+            query_fields = dict(field.split("=", 1) for field in query.split("&") if "=" in field)
+            self.catalog_query_challenges.append(query_fields.get("inventory_challenge", ""))
             available: bool | None = None if self.change_catalog_between_reads and self.catalog_reads % 2 == 0 else True
             entries = [
                 ("memory", "memory"),
@@ -154,9 +176,12 @@ class FakeHermesApi:
                 ("web_search", "web"),
                 ("vision_analyze", "vision"),
             ]
+            if self.omit_tool:
+                entries = [entry for entry in entries if entry[0] != self.omit_tool]
             rows = [
                 {
-                    "function": {"name": name, "parameters": {}},
+                    "name": name,
+                    "parameters": {},
                     "available": available,
                     "provenance": {
                         "source": "configurable",
@@ -196,14 +221,19 @@ class FakeHermesApi:
             signature = base64.urlsafe_b64encode(hmac.new(key.encode(), signed_payload, hashlib.sha256).digest()).decode().rstrip("=")
             if self.bad_signature:
                 signature = "invalid-signature"
-            return 200, {
+            catalog = {
                 "object": "list",
                 "platform": "api_server",
-                "contract": "hermes.api_server.tool_catalog.v1",
-                "complete": not self.incomplete_catalog,
                 "explicit_config_present": True,
                 "enabled_toolsets": ["memory", "session_search", "todo", "vision", "web"],
                 "data": rows,
+            }
+            if self.legacy_resolver_catalog:
+                return 200, catalog
+            return 200, {
+                **catalog,
+                "contract": "hermes.api_server.tool_catalog.v1",
+                "complete": not self.incomplete_catalog,
                 "challenge": challenge,
                 "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
                 "attestation": {"algorithm": "hmac-sha256", "signature": signature, "key_id": "profile-key"},
@@ -298,6 +328,37 @@ class RestrictedProvisionerTests(unittest.TestCase):
             self.assertEqual(profile.stat().st_mode & 0o777, 0o700)
             self.assertEqual(audit_path.stat().st_mode & 0o777, 0o600)
 
+    def test_new_profile_waits_for_profile_route_before_canary(self):
+        self.api.profile_discovery_pending = 2
+        with patch("worker.time.sleep") as sleep:
+            result = self.provisioner.process(self.manifest)
+
+        self.assertTrue(result["effectiveSoulVerified"])
+        self.assertEqual(self.api.profile_capability_reads, 5)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(self.api.paths.count("/v1/runs"), 1)
+
+    def test_profile_discovery_timeout_keeps_durable_creation_for_retry(self):
+        self.api.profile_discovery_pending = 1
+        with patch("worker.PROFILE_DISCOVERY_TIMEOUT_SECONDS", 0):
+            with self.assertRaisesRegex(ProvisioningError, "profile_gateway_discovery_timeout"):
+                self.provisioner.process(self.manifest)
+
+        profile = self.home / "profiles" / self.manifest["profile"]
+        journal = json.loads(
+            (self.home / "iacquire-provisioner-state" / (self.manifest["profile"] + ".json"))
+            .read_text(encoding="utf-8")
+        )
+        self.assertTrue(journal["apiKeyWritten"])
+        key_before_retry = (profile / ".env").read_text(encoding="utf-8")
+        self.api.profile_discovery_pending = 0
+        with patch("worker.time.sleep"):
+            result = self.provisioner.process(self.manifest)
+
+        self.assertTrue(result["effectiveSoulVerified"])
+        self.assertEqual((profile / ".env").read_text(encoding="utf-8"), key_before_retry)
+        self.assertEqual(len(self.commands), 1)
+
     def test_retry_is_idempotent_and_does_not_rotate_the_profile_key(self):
         first = self.provisioner.process(self.manifest)
         second = self.provisioner.process(self.manifest)
@@ -352,7 +413,29 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertEqual(len(catalog_digest), 64)
         self.assertEqual(self.api.catalog_reads, 2)
         self.assertEqual(len(set(self.api.catalog_challenges)), 2)
-        self.assertEqual(self.api.paths, ["/v1/tools?platform=api_server"] * 2)
+        self.assertEqual(self.api.paths[0], "/v1/capabilities")
+        self.assertEqual(self.api.paths[1:], [path for path in self.api.paths[1:] if path.startswith("/v1/tools?platform=api_server")])
+        self.assertEqual(len(set(self.api.catalog_query_challenges)), 2)
+        self.assertTrue(all("no-store" in value for value in self.api.catalog_cache_controls))
+
+    def test_native_catalog_requires_advertised_route_challenge_contract_and_safe_inventory(self):
+        self.api.advertise_tools_endpoint = False
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+        self.assertEqual(self.api.catalog_reads, 0)
+
+        self.api.advertise_tools_endpoint = True
+        self.api.legacy_resolver_catalog = True
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+        self.assertEqual(self.api.catalog_reads, 1)
+
+        self.api.catalog_reads = 0
+        self.api.legacy_resolver_catalog = False
+        self.api.omit_tool = "web_search"
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+        self.assertEqual(self.api.catalog_reads, 1)
 
     def test_default_profile_preflight_uses_the_root_route_and_bearer_key(self):
         class Recorder:

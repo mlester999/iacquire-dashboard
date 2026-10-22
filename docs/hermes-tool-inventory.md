@@ -1,8 +1,6 @@
 # Hermes complete tool-inventory verification
 
-Status: **implemented and fail-closed. The patched gateway is deployed and all six profiles pass the
-VPS `verify-catalog` check (6/6), but the six internal employees are still `provisioning`: none has had a
-portal health check or an applied configuration, so none can run.**
+Status (2026-10-22): **the native patched catalog route is present in the authenticated Hostinger app-terminal context, but the inspected default profile is unsafe and fails policy** (`explicit_config_present=false`, 24 default-injected tools). A prior operator report says six named profiles passed `verify-catalog` 6/6; that result was not re-run and does not establish current readiness. The terminal's container hostname differed from the earlier recorded container ID, and Docker inspection was unavailable. The six internal employees remain `provisioning`; none has a current portal health check and applied configuration.
 
 This page records the contract, the verification rules, the live evidence and the remaining
 activation steps. It contains no API keys, profile identifiers, organization names or customer
@@ -57,12 +55,14 @@ is absent or false, the portal refuses the catalog. This is deliberately stricte
 PR, which has no completeness signal and can silently omit a failed dynamic provider or an
 MCP server that never completed discovery.
 
-The unpatched gateway (Hermes `0.21.5`, observed 2026-10-18) did not register this route: an
-authenticated request returned HTTP 404 (`Unknown or unconfigured profile`). Its
-`GET /v1/capabilities` also returned an empty `endpoints` object, so the portal probes
-`/v1/tools` directly instead of trusting a capability advertisement. The deployed gateway is now
-Hermes `0.21.5` plus the complete-catalog patch (see [Deployed gateway](#deployed-gateway-patched-hermes-0215)),
-which returns the response above.
+The original unpatched gateway (Hermes `0.21.5`, observed 2026-10-18) did not register this route:
+an authenticated request returned HTTP 404. A 2026-10-22 authenticated app-terminal probe returned
+HTTP 200 with the native contract, `complete=true`, and an echoed challenge, showing that a catalog
+backport is present in that Hermes installation context. It also reported `explicit_config_present=false`
+and broad `default_injected` tools, so the default profile fails the portal's explicit-policy gate.
+Because the terminal hostname differed from the earlier container short ID and `docker inspect` was
+unavailable, this probe is not tied to a confirmed container ID. The separately recorded operator
+check of six named profiles is historical and has not been re-run in this session.
 
 ## What the running process could provide before the patch
 
@@ -199,7 +199,7 @@ Observed for all six mapped profiles:
 | Employee status | `provisioning` (correct) |
 | Live run | none started |
 
-## Deployed gateway (patched Hermes 0.21.5)
+## Previously deployed gateway (operator-reported patched Hermes 0.21.5)
 
 The gateway is Hermes `0.21.5` plus the complete-tool-catalog patch, which registers
 `GET /v1/tools?platform=api_server` with the `hermes.api_server.tool_catalog.v1` contract:
@@ -221,8 +221,9 @@ The gateway is Hermes `0.21.5` plus the complete-tool-catalog patch, which regis
   policy, blocks one without (`allowlist_missing`) and blocks a wrong key (`auth_failed`).
 - Hosted migration `0059_hermes_tool_inventory` is applied (2026-10-18T22:52Z).
 
-This evidence comes from the operator's VPS run and the loopback cross-test. Nothing in this repository
-contacted the gateway, and no run has been started.
+This section records the earlier operator VPS run and loopback cross-test. It is not a fresh 2026-10-22
+six-profile check. The current app-terminal probe and its limitations are recorded above. No run has
+been started by this repository work.
 
 ### What is still not true
 

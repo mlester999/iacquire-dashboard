@@ -246,7 +246,7 @@ export interface HermesToolCatalogEntry {
 
 export interface HermesToolCatalog {
   platform: string;
-  /** The catalog contract the gateway says it implements (`hermes.api_server.tool_catalog.v1` on the patched gateway). */
+  /** The catalog contract the gateway says it implements. */
   contract: string | null;
   /** The gateway certified that every enabled runtime tool was enumerated. */
   complete: boolean;
@@ -254,8 +254,10 @@ export interface HermesToolCatalog {
   explicitConfigPresent: boolean;
   enabledToolsets: string[];
   tools: HermesToolCatalogEntry[];
-  /** The request's `X-Hermes-Inventory-Challenge`, echoed by the patched gateway. The verifier requires it. */
+  /** The request challenge echoed by the native contract. */
   challenge: string | null;
+  /** Freshness is accepted only when the gateway echoes this request's challenge. */
+  responseBinding: "challenge_bound_authenticated_catalog";
   generatedAt: string | null;
   expiresAt: string | null;
   attestation: { algorithm: string; signature: string; keyId: string | null } | null;
@@ -267,13 +269,23 @@ const TOOL_NAME = /^[a-z][a-z0-9_]{0,79}$/;
 /**
  * GET /v1/tools?platform=api_server — the complete model-callable catalog, including MCP and
  * plugin tools, before Tool Search replaces them with its bridge. The endpoint is not present in
- * older gateways (0.21.5 returns 404), so its absence is reported as a concrete contract problem
+ * older unpatched gateways return 404, so absence is reported as a concrete contract problem
  * rather than being mistaken for an empty inventory. No run is started by this call.
  */
-export async function getToolCatalog(conn: HermesConnection, challenge?: string, timeoutMs = 12000): Promise<HermesToolCatalog> {
-  const res = await request(conn, "/v1/tools?platform=api_server", {
+export async function getToolCatalog(
+  conn: HermesConnection,
+  challenge?: string,
+  timeoutMs = 12000,
+): Promise<HermesToolCatalog> {
+  // Bind each read to a unique nonce and tell intermediaries not to cache the profile snapshot.
+  const catalogPath = "/v1/tools?platform=api_server" + (challenge ? `&inventory_challenge=${encodeURIComponent(challenge)}` : "");
+  const res = await request(conn, catalogPath, {
     method: "GET",
-    headers: headers(conn, challenge ? { "X-Hermes-Inventory-Challenge": challenge } : undefined),
+    headers: headers(conn, challenge ? {
+      "X-Hermes-Inventory-Challenge": challenge,
+      "Cache-Control": "no-cache, no-store, max-age=0",
+      Pragma: "no-cache",
+    } : { "Cache-Control": "no-cache, no-store, max-age=0", Pragma: "no-cache" }),
     timeoutMs,
   });
   if (res.status === 404 || res.status === 405) {
@@ -328,14 +340,14 @@ export async function getToolCatalog(conn: HermesConnection, challenge?: string,
   return {
     platform: raw.platform,
     contract: typeof raw.contract === "string" ? raw.contract : null,
-    // Fail closed if the gateway does not explicitly certify completeness. An older
-    // endpoint that never sends this field is treated as incomplete, not as complete.
+    // Fail closed if the gateway does not explicitly certify completeness.
     complete: raw.complete === true,
     incompleteReason: typeof raw.incomplete_reason === "string" ? raw.incomplete_reason : null,
     explicitConfigPresent: raw.explicit_config_present,
     enabledToolsets,
     tools,
     challenge: typeof raw.challenge === "string" ? raw.challenge : null,
+    responseBinding: "challenge_bound_authenticated_catalog",
     generatedAt: typeof raw.generated_at === "string" ? raw.generated_at : null,
     expiresAt: typeof raw.expires_at === "string" ? raw.expires_at : null,
     attestation: attestation

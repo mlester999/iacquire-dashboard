@@ -16,6 +16,7 @@ services:
       HERMES_HOME: /opt/data
       HERMES_UID: "10000"
       GATEWAY_MULTIPLEX_PROFILES: "true"
+      HERMES_DASHBOARD: "0"
     volumes:
       - hermes_home:/opt/data
       - client_profiles:/opt/data/profiles
