@@ -5,11 +5,11 @@ import { withSystem, withUser } from "@/server/db";
 import { assignConversation } from "@/server/messaging/handoff";
 import { inbound, messagingOrg, type MessagingOrg } from "./support/messaging";
 
-// Migration 0082 (Unified Inbox) and its rollback: what it adds, that it changes nothing that already exists, that it is safe in the
+// Migration 0083 (Unified Inbox) and its rollback: what it adds, that it changes nothing that already exists, that it is safe in the
 // application's transactional runner, and that down-then-up on a populated database loses and invents nothing.
 
-const UP = readFileSync("supabase/migrations/0082_unified_inbox.sql", "utf8");
-const DOWN = readFileSync("supabase/rollbacks/0082_unified_inbox.down.sql", "utf8");
+const UP = readFileSync("supabase/migrations/0083_unified_inbox.sql", "utf8");
+const DOWN = readFileSync("supabase/rollbacks/0083_unified_inbox.down.sql", "utf8");
 class Done extends Error {}
 
 const OUR_KINDS = ["conversation_assigned", "conversation_awaiting_reply", "conversation_new_inquiry"];
@@ -71,7 +71,7 @@ beforeAll(async () => {
   await assignConversation(m.ctx("manager"), c.conversationId, m.people.support.id);
 });
 
-describe("migration 0082 Unified Inbox", () => {
+describe("migration 0083 Unified Inbox", () => {
   it("adds its columns and indexes, and the event trail with row-level security and read-only access for the application role", async () => {
     const conv = await withSystem((db) => columnsOf(db, "conversations"));
     const msg = await withSystem((db) => columnsOf(db, "conversation_messages"));
@@ -149,7 +149,7 @@ describe("migration 0082 Unified Inbox", () => {
   });
 });
 
-describe("rolling migration 0082 back and forward on a populated database", () => {
+describe("rolling migration 0083 back and forward on a populated database", () => {
   it("refuses while lifecycle history or conversation notifications exist, and says why", async () => {
     await expect(withSystem((db) => run(db, DOWN))).rejects.toThrow(/conversation_events holds lifecycle history/);
     await expect(withSystem(async (db) => {

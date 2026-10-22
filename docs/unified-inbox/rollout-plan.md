@@ -10,7 +10,7 @@ It follows the conventions already in this repository: [staging-environment.md](
 
 | Fact | Source |
 | --- | --- |
-| The branch is `feat/unified-inbox`, based on master `22c68c2`, unpushed. It adds one migration, `0082_unified_inbox` (additive, with a rollback). | git |
+| The branch is `feat/unified-inbox`, based on master `22c68c2`, unpushed. It adds one migration, `0083_unified_inbox` (additive, with a rollback). | git |
 | Master's **working tree** (not committed) holds the AI-workforce work: 32 modified and 12 new source, test and migration files, including migration `0081_ai_work_job_rls_hardening` and rollbacks for `0077` to `0081`. | `git status` on master |
 | Production's migration ledger was recorded through **0080** on 2026-10-21, after a backup. `0081` is not applied. The workforce **application deployment is still pending**. | `ai-employee-execution-foundation.md` |
 | **No staging project exists.** Creating one costs quota or money and needs approval. | `staging-environment.md` |
@@ -21,7 +21,7 @@ It follows the conventions already in this repository: [staging-environment.md](
 
 | Area | On release | Stays off until a separate approval |
 | --- | --- | --- |
-| Database | Migration 0082: new nullable columns, seven indexes plus an optional trigram index, a lifecycle-event table, two row-local triggers, three notification kinds, and the rollout table `inbox_rollout` (empty, which means every workspace is off). No existing row changes meaning. | n/a |
+| Database | Migration 0083: new nullable columns, seven indexes plus an optional trigram index, a lifecycle-event table, two row-local triggers, three notification kinds, and the rollout table `inbox_rollout` (empty, which means every workspace is off). No existing row changes meaning. | n/a |
 | `/inbox` | **Unchanged for every workspace.** The previous inbox stays the default. The new inbox appears only for workspaces a Super Admin switches on, one at a time ([workspace-rollout.md](./workspace-rollout.md)); **none is on after the migration or the deployment.** | Switching any workspace on (waves W1 to W4, stage 6c). The global emergency switch `INBOX_DISABLED=true` (decision D1, built) takes the new inbox from every workspace at once and returns them all to the previous screen. **The first production deployment ships with it on (dark)** (stage 6a). |
 | New API routes | `/api/inbox/*` (read-only except AI help), signed-in members only, and only for workspaces switched on (403 `not_enabled` for the rest, 503 while the global switch is on). | n/a |
 | AI behaviour | Replies carry an ownership fence and respect an AI pause, in every workspace. Summaries and suggestions need a configured AI provider and a workspace on the new inbox; otherwise they say so. | Any live model call beyond what is already configured. |
@@ -29,8 +29,8 @@ It follows the conventions already in this repository: [staging-environment.md](
 | Automation | Five conversation triggers and the "Update conversation" step appear in the workflow editor, but only a workspace with the new inbox can publish a workflow that uses them. | n/a |
 | Scheduler | The `inboxAttention` job is registered. It does nothing until the scheduler runs. | `SCHEDULER_ENABLED=true` (which also starts every other job). |
 
-**Order is migrate first, then deploy.** The new code needs the new columns; the old code does not mind them. Old code against the 0082 schema was
-checked by running master's whole suite (22c68c2, old code) on a database that includes 0082: **4,491 tests passed and 7 failed, the same seven tests that fail on master without 0082; no new failure.**
+**Order is migrate first, then deploy.** The new code needs the new columns; the old code does not mind them. Old code against the 0083 schema was
+checked by running master's whole suite (22c68c2, old code) on a database that includes 0083: **4,491 tests passed and 7 failed, the same seven tests that fail on master without 0083; no new failure.**
 This covers the application's own reads and writes on an embedded database; it does not replace the staging check under real concurrency.
 
 ## 3. The stages
@@ -42,7 +42,7 @@ Each stage ends at a gate. A gate is passed only when the evidence listed is in 
 | 0 | Local rehearsals (done, repeatable) | No | None |
 | 1 | The workforce work is committed on master, then the inbox branch is merged | No (local git only) | A1, A2 |
 | 2 | Release-candidate checks on the merged tree | No | None |
-| 3 | Staging: provision, rehearse 0081 and 0082, acceptance, supervised scheduler test | **Yes** | A3, A4, A5, A6 |
+| 3 | Staging: provision, rehearse 0081 and 0083, acceptance, supervised scheduler test | **Yes** | A3, A4, A5, A6 |
 | 4 | Provider and model checks on staging, one at a time | **Yes** | A7 (per provider) |
 | 5 | Production migration | **Yes** | A8 |
 | 6a | Production deployment, **dark** (`INBOX_DISABLED=true`, no workspace switched on) | **Yes** | A9 |
@@ -53,13 +53,13 @@ Each stage ends at a gate. A gate is passed only when the evidence listed is in 
 
 ### Stage 0: local rehearsals (done, no approval needed)
 
-* **0082 up, down, up on populated data, both notification-constraint text forms, and the refusal cases:** `tests/unified-inbox-migration.test.ts` (9 tests).
+* **0083 up, down, up on populated data, both notification-constraint text forms, and the refusal cases:** `tests/unified-inbox-migration.test.ts` (9 tests).
 * **The merge with master's pending work, rehearsed in a scratch worktree** (`.data/wt-merge-rehearsal`, branch `rehearsal/workforce-pending-snapshot`, a throwaway
   copy of master's uncommitted files plus a trial merge). Result: **exactly three files conflict, four hunks**, all trivial, and the merged tree passes:
   type-check clean, **293 files, 4,654 tests passed, 0 failed**. On master (and on the inbox branch alone) the same seven tests fail; by elimination master's pending work is what fixes
   them (not run on its own), so the two streams are green together and the workforce work should land first (A1).
-* **Old code on the new schema** (`.data/wt-compat-rehearsal`: master `22c68c2` plus only the 0082 migration and rollback files): 281 files, 4,491 tests passed, 7 failed,
-  the same seven as master without 0082. So deploying the migration before the new code cannot break the code that is running.
+* **Old code on the new schema** (`.data/wt-compat-rehearsal`: master `22c68c2` plus only the 0083 migration and rollback files): 281 files, 4,491 tests passed, 7 failed,
+  the same seven as master without 0083. So deploying the migration before the new code cannot break the code that is running.
 
 The three conflicts and how they resolve:
 
@@ -94,7 +94,7 @@ Staging does not exist, so the first approvals are about creating it. Everything
 | ID | You approve | What it enables | Cost or risk | Evidence you will see |
 | --- | --- | --- | --- | --- |
 | **A3** | Create the `iacquire-staging` Supabase project (name, organisation, region and size per `staging-environment.md`), state Free or Pro, and who owns it | A place to rehearse | $0 on Free (uses the second and last free slot, pauses after a week idle) or about $10 a month on Pro | The project reference (never the production reference) and the plan you chose |
-| **A4** | How staging gets its data: **(a)** apply the whole chain `0001` onward to an empty project and load fictional data (default); **(b)** restore a production **schema-only** dump first, so staging has production's exact hand-applied history, then load fictional data; **(c)** a full production copy | The 0081 and 0082 rehearsal | (a) none; (b) one read-only dump of production's schema; (c) **customer data in a second place, not recommended** (production's last dump is only about 2 MB, so there is little to gain) | Which option, and for (b) or (c) which tool takes and restores the dump |
+| **A4** | How staging gets its data: **(a)** apply the whole chain `0001` onward to an empty project and load fictional data (default); **(b)** restore a production **schema-only** dump first, so staging has production's exact hand-applied history, then load fictional data; **(c)** a full production copy | The 0081 and 0083 rehearsal | (a) none; (b) one read-only dump of production's schema; (c) **customer data in a second place, not recommended** (production's last dump is only about 2 MB, so there is little to gain) | Which option, and for (b) or (c) which tool takes and restores the dump |
 | **A5** | Apply migrations to staging with the staging-only env file, and run the acceptance matrix with every write switch `false` and `EMAIL_PROVIDER=capture` | The actual rehearsal | None outside staging | The printed schema versions, the checks below |
 | **A6** | A supervised scheduler test on staging only (staging `CRON_SECRET`, `SCHEDULER_ENABLED=true`, one manual tick, then off again) | Proof that `inboxAttention` runs and notifies | None outside staging | `worker_job_runs` rows, the notices it created |
 
@@ -105,17 +105,17 @@ Order inside stage 3, stopping at the first failure:
 2. Load data: a few workspaces, conversations in every state (AI-owned, person-owned, paused, failed, resolved, archived, an opt-out), contacts with deals and tasks.
    The QA seed in `scripts/ui-qa-inbox-seed.qa.ts` is the model; it targets the embedded database, so a hosted seed needs its own small script (to be written and reviewed first).
 3. **Backup staging** (custom format), verify with `pg_restore --list`, record the TOC count.
-4. Apply `0081`, then `0082`, each on its own, using the repository runner with the **staging env file only** (never `npm run db:migrate`, which also loads production-valued `.env` files):
+4. Apply `0081`, then `0083`, each on its own, using the repository runner with the **staging env file only** (never `npm run db:migrate`, which also loads production-valued `.env` files):
    ```bash
    # Do not run until A5 is approved. Staging env file only.
    node --env-file-if-exists=.env.staging.local --conditions=react-server --import tsx scripts/migrate.ts --only 0081_ai_work_job_rls_hardening
-   node --env-file-if-exists=.env.staging.local --conditions=react-server --import tsx scripts/migrate.ts --only 0082_unified_inbox
+   node --env-file-if-exists=.env.staging.local --conditions=react-server --import tsx scripts/migrate.ts --only 0083_unified_inbox
    ```
-   Each file runs as one transaction together with its ledger row, so a failure leaves nothing behind. 0082 sets `lock_timeout = 5s`: if it fails on a lock, it changed nothing and can be retried when the system is quieter.
+   Each file runs as one transaction together with its ledger row, so a failure leaves nothing behind. 0083 sets `lock_timeout = 5s`: if it fails on a lock, it changed nothing and can be retried when the system is quieter.
    Record how long each took and any lock wait.
 5. **Verify** (read-only; expected values in brackets):
    ```sql
-   select version from schema_migrations where version in ('0081_ai_work_job_rls_hardening', '0082_unified_inbox');   -- both
+   select version from schema_migrations where version in ('0081_ai_work_job_rls_hardening', '0083_unified_inbox');   -- both
    select count(*) from information_schema.columns where table_name = 'conversations'
      and column_name in ('archived_at','archived_by','resolved_at','resolved_by','outcome','ai_paused_at','ai_paused_by','ai_pause_reason','revision');   -- 9
    select count(*) from information_schema.columns where table_name = 'conversation_messages'
@@ -129,7 +129,7 @@ Order inside stage 3, stopping at the first failure:
    select indexname from pg_indexes where indexname like 'conversation%idx' or indexname = 'conversation_messages_body_trgm';
    ```
    Also record row counts of `conversations` and `conversation_messages` before and after (equal), and the public table count (one more than before: the events table).
-6. **Rehearse the rollback** on a restored copy (not the only staging copy): `0082_unified_inbox.down.sql` must refuse while events or conversation notifications exist, and must leave the notification allow-list intact when it does run. Then re-apply `0082`.
+6. **Rehearse the rollback** on a restored copy (not the only staging copy): `0083_unified_inbox.down.sql` must refuse while events or conversation notifications exist, and must leave the notification allow-list intact when it does run. Then re-apply `0083`.
 7. **Acceptance:** the matrix in `staging-environment.md`, plus the inbox scenarios in `readiness.md` section 5 run in a browser against staging (the scenarios that depend on a real provider or model stay simulated until stage 4). Include the load-related checks only staging can answer:
    * `EXPLAIN` the list, counts and sync queries on a realistic number of conversations and messages, as a member (row-level security on).
    * Whether the optional trigram index `conversation_messages_body_trgm` is **ever used** by the search. If not, remove it from the migration before production.
@@ -154,14 +154,15 @@ Rules: one account at a time, an approved test destination only, `*_WRITES_ENABL
 
 ### Stage 5: production migration (A8)
 
-**A8 approves one thing: applying `0081` (if the workforce stream has not already) and `0082` to the production database, in that order, after the checks below.** It does not approve deploying code.
+**A8 approves one thing: applying `0081` (if the workforce stream has not already) and `0083` to the production database, in that order, after the checks below.** It does not approve deploying code.
 
 Preconditions, each shown to you before you say yes:
 
 1. Stage 3 passed and its timings and `EXPLAIN` findings are recorded.
 2. The merged code is committed locally and the suite is green (stage 1 and 2).
 3. A fresh **custom-format backup** exists and was verified with `pg_restore --list` (the precedent in `workforce-migration-and-release.md`). The backup file name and TOC count are written down.
-4. The **hosted ledger was re-read read-only** and still ends at `0080` (or `0081`), with no collision for `0082`. Compare with `schema_migrations`; do not assume from numbering.
+4. The **hosted ledger was re-read read-only** and still ends at `0080` (or `0081`), with no collision for `0083`. Compare with `schema_migrations` **and, where it exists, `supabase_migrations.schema_migrations`**: the runner treats a file as applied when its numeric prefix is in the CLI ledger, so a second file with the same prefix would be skipped without a message.
+   `0082_client_employee_provisioning` (branch `codex/client-ai-onboarding`, table `agent_provisioning_jobs`, no overlap with this release) is **not part of this release**; the inbox migration is `0083` so the two can never share a prefix, whichever lands first.
 5. A quiet moment: the migration takes brief exclusive locks on `conversations` and `conversation_messages`; with `lock_timeout` it fails fast instead of queueing. Production is small today, so the locks should be momentary.
 
 Procedure: the repository's `--only` runner (`npm run db:migrate -- --only <version>` from the main checkout, whose `.env` points at production), one file at a time, one transaction per file, as in the
@@ -171,7 +172,7 @@ where you have not confirmed which database the environment points at.
 Abort and rollback:
 
 * Any error: the transaction rolled back; the ledger is unchanged. Investigate; do not retry blindly.
-* After success the change is additive, so **the normal response to a problem is to roll the application back, not the database.** The 0082 rollback exists but refuses once any lifecycle event or conversation notification exists, on purpose; use it only for a defect in the migration itself, from the backup and with your approval.
+* After success the change is additive, so **the normal response to a problem is to roll the application back, not the database.** The 0083 rollback exists but refuses once any lifecycle event or conversation notification exists, on purpose; use it only for a defect in the migration itself, from the backup and with your approval.
 
 ### Stage 6: production deployment: dark, then lifted, then workspace by workspace (A9, A9b, W1 to W4)
 
@@ -185,7 +186,7 @@ these steps: only an environment variable (6a to 6b) and then rows in a table (6
 
 Preconditions, each shown to you before you say yes:
 
-1. Stage 5 is done: `0082` is applied and verified in production. The new code reads the new columns, so the migration must come first.
+1. Stage 5 is done: `0083` is applied and verified in production. The new code reads the new columns, so the migration must come first.
 2. The rollout table is empty (`select count(*) from inbox_rollout;` is `0`), which it is straight after the migration.
 3. The variable is **set in the production environment before the deploy**, so no deployment of this build ever exists with the global switch off while the plan says it is on, and the exact spelling is confirmed. A value the app does
    not understand stops it starting by design, so try the variable on a preview deployment first.
@@ -271,7 +272,7 @@ verified, the channel is on and the write switch is on, so it will say honestly 
 | A5 | Apply migrations to staging and run the acceptance matrix, writes off | Production migration |
 | A6 | Supervised scheduler test on staging | Relying on the notices |
 | A7 | Each provider or model check on staging, one at a time | Enabling any provider in production |
-| A8 | Apply `0081` and `0082` to production, after backup and read-only ledger check | Deployment |
+| A8 | Apply `0081` and `0083` to production, after backup and read-only ledger check | Deployment |
 | A9 | Deploy the merged application with `INBOX_DISABLED=true` (the new inbox stays off for everyone) | The dark period |
 | A9b | Lift the global switch: redeploy the same commit with it unset, after the dark period's evidence. **Exposes no workspace.** | Any wave |
 | W1 | Switch the new inbox on for the **internal workspace** (Super Admin page) | W2 |
@@ -308,8 +309,8 @@ Nothing in this plan pushes, deploys, migrates a hosted database, enables a swit
 | **The merge rehearsal below predates the rollout work** | The rollout touches `attention.ts`, `ingest.ts`, `handoff.ts`, the workflow files, the admin shell and the inbox page, none of which master's pending changes edit as far as the file list shows, but it **must be repeated at A2**: not yet re-run |
 | Master's pending work | **Inferred, not run on its own:** the inbox branch alone still fails the same seven, the merged tree fails none, so master's pending changes are what fix them |
 | **Inbox branch merged onto master's pending work** | 3 conflicting files, 4 hunks, resolved; type-check clean; **293 files, 4,654 tests passed, 0 failed** |
-| 0082 up, down, up, both constraint forms, refusals | `unified-inbox-migration` (9 tests) |
-| Old code (master `22c68c2`) on the 0082 schema | 281 files; 4,491 passed; the same 7 fail as on master without 0082; no new failure |
+| 0083 up, down, up, both constraint forms, refusals | `unified-inbox-migration` (9 tests) |
+| Old code (master `22c68c2`) on the 0083 schema | 281 files; 4,491 passed; the same 7 fail as on master without 0083; no new failure |
 | Hosted anything | **Not done** |
 
 ## 7. Clean-up of rehearsal artifacts

@@ -88,7 +88,7 @@ notes, deals, appointments, calls; `consumeRateLimit`; `recordAudit`; `tests/sup
 | 4 | Medium | `markConversationRead` marks read **for everyone** (one shared `unread_count`). Two staff viewing the same thread clear each other's unread state. Documented, not changed (per-user read state is a larger model change). |
 | 5 | Low | Inbound attachments are dropped (only a count is noted). No storage, no malware scanning, so none is claimed. |
 | 6 | Low | `listConversations` caps at 200 rows with no cursor; busy workspaces cannot page beyond that. |
-| 7 | Info | Migration numbering: master has an untracked `0081`; other worktrees stop at 0081. This phase uses **0082**. Renumber at merge if another branch lands 0082 first (`tests/workforce-migration-renumber.test.ts` guards collisions). |
+| 7 | Info | Migration numbering: master has an untracked `0081`, and `codex/client-ai-onboarding` has a `0082` (a different table, `agent_provisioning_jobs`). This phase first used `0082` and was renumbered to **0083** on 2026-10-22 because two files with one prefix would let the runner skip the second where a Supabase CLI ledger exists. Renumber at merge if another branch lands 0083 first (`tests/workforce-migration-renumber.test.ts` guards collisions on the workforce side). |
 
 ## 3. Decisions (what this phase builds, and what it deliberately does not)
 

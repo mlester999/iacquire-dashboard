@@ -144,7 +144,7 @@ function scenarios(): Scenario[] {
     { group: "inbox", name: "inbox: search", fn: () => listConversations(ctx, { q: "viewing 12" }) },
     { group: "inbox", name: "inbox: open one conversation", fn: async () => getConversationDetail(ctx, await someConversation()) },
     { group: "inbox", name: "inbox: list as a sales rep (own + assigned only)", fn: () => listConversations(ctxFor(c.people.sales, c.org, "sales_rep"), {}) },
-    // The Unified Inbox's own reads (migration 0082): one page per view, the cursor's second page, the counts every tab shows, and the change poll.
+    // The Unified Inbox's own reads (migration 0083): one page per view, the cursor's second page, the counts every tab shows, and the change poll.
     // They filter on now() (waiting, attention, "since"), so their answers are not compared between phases.
     { group: "inbox", name: "inbox page: All, first page", fn: () => listConversationsPage(ctx, { limit: 50 }), check: (r) => expect((r as ListPage).items.length).toBeLessThanOrEqual(50) },
     { group: "inbox", name: "inbox page: Unread", fn: () => listConversationsPage(ctx, { view: "unread", limit: 50 }) },

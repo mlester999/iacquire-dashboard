@@ -3,7 +3,7 @@
 How the new inbox reaches workspaces one at a time, what that does and does not touch, and how to turn it back. Companion to
 [rollout-plan.md](./rollout-plan.md) (the staged path and the approvals) and [README.md](./README.md) (how the inbox works).
 
-Nothing here has run on a hosted system. Migration `0082` (which adds the rollout table) is **not applied anywhere** and nothing is pushed or deployed.
+Nothing here has run on a hosted system. Migration `0083` (which adds the rollout table) is **not applied anywhere** and nothing is pushed or deployed.
 
 ## 1. What it is
 
@@ -64,7 +64,7 @@ Errors are explicit: `unavailable` (503, global switch, with `Retry-After: 60`) 
 2. **The global kill switch, as first built, gated every inbox action**, including the ones the previous screen needs. With a rollout that would have blocked replies in workspaces that never had the new inbox. *Done:* the guard was removed from every shared action; 27 per-action global guards became ten per-workspace guards on actions only the new screen calls. Settings were never gated.
 3. **Notices pointing at a screen that cannot be opened** (new-inquiry, waiting, assigned) would have been raised for workspaces without the new inbox. *Done:* raised only for workspaces on it.
 4. **A live workflow that updates a conversation** could keep acting after the inbox goes off. *Done:* the step is a recorded no-op (`inbox_not_enabled`) while off, and works again when it is switched on.
-5. **Backend behaviour that does reach every workspace at deploy time** (and is *not* rollout-gated, deliberately): the ownership fence and AI-pause check at queue and dispatch time; `status_changed_at` and `revision` triggers; `failure_kind`; lifecycle events. They are additive, row-local and safety-increasing (a reply prepared before a person took over is now refused instead of sent). Compatibility was checked both ways on an embedded database: old code on the 0082 schema (4,491 tests passed, the same 7 as before fail) and the merged tree (see [rollout-plan.md](./rollout-plan.md) section 6). **Not yet checked on a hosted database under real concurrency**; that is what staging is for.
+5. **Backend behaviour that does reach every workspace at deploy time** (and is *not* rollout-gated, deliberately): the ownership fence and AI-pause check at queue and dispatch time; `status_changed_at` and `revision` triggers; `failure_kind`; lifecycle events. They are additive, row-local and safety-increasing (a reply prepared before a person took over is now refused instead of sent). Compatibility was checked both ways on an embedded database: old code on the 0083 schema (4,491 tests passed, the same 7 as before fail) and the merged tree (see [rollout-plan.md](./rollout-plan.md) section 6). **Not yet checked on a hosted database under real concurrency**; that is what staging is for.
 
 ### What the audit did not prove
 
@@ -105,11 +105,11 @@ The audit entry for a switch-off includes a snapshot of what was in flight (open
 2. **Every workspace:** "Switch off for every workspace" on the same page. One transaction, one audit entry each.
 3. **Global:** set `INBOX_DISABLED=true` and redeploy the same build. Every workspace is on the previous screen; the rollout list is preserved and takes effect again when the variable is removed. It is a deployment, not an instant toggle.
 4. **Application:** redeploy the previous build. The schema stays (old code ignores the new columns).
-5. **Database:** `supabase/rollbacks/0082_unified_inbox.down.sql` drops the rollout table (current state only; the history is in `audit_logs`) and everything else 0082 added. It still refuses while lifecycle events or conversation notifications exist, and needs separate approval from a verified backup.
+5. **Database:** `supabase/rollbacks/0083_unified_inbox.down.sql` drops the rollout table (current state only; the history is in `audit_logs`) and everything else 0083 added. It still refuses while lifecycle events or conversation notifications exist, and needs separate approval from a verified backup.
 
 ## 7. Data
 
-`inbox_rollout (org_id pk → organizations on delete cascade, enabled default false, note ≤ 200, enabled_at/by, disabled_at/by → users on delete set null, updated_at)`, row-level security on, `revoke all` from public, anon and authenticated, read and written by trusted server code only. It is part of `0082_unified_inbox.sql` (still unapplied). It needs no data migration: no row means off.
+`inbox_rollout (org_id pk → organizations on delete cascade, enabled default false, note ≤ 200, enabled_at/by, disabled_at/by → users on delete set null, updated_at)`, row-level security on, `revoke all` from public, anon and authenticated, read and written by trusted server code only. It is part of `0083_unified_inbox.sql` (still unapplied). It needs no data migration: no row means off.
 
 ## 8. Tests
 

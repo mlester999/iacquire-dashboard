@@ -17,7 +17,7 @@ proven, what is not, and the release verdict), [workspace-rollout.md](./workspac
 | AI employees | Real roles, readiness checks, `llmComplete`, usage limits, redaction | Choosing/pausing/resuming the employee per conversation; summaries and reply suggestions (never sent) |
 | Automation | CRM event outbox, workflow engine, Automation Studio plan checks | Five conversation triggers, one conversation step, a scheduled attention scan |
 
-## Data model (`supabase/migrations/0082_unified_inbox.sql`, additive)
+## Data model (`supabase/migrations/0083_unified_inbox.sql`, additive)
 
 * `conversations`: `archived_at/by`, `resolved_at/by`, `outcome`, `ai_paused_at/by/reason`, `revision` (bumped by a row-local BEFORE trigger).
 * `conversation_messages`: `status_changed_at` (trigger), `ownership_fence`, `failure_kind` (`rejected` or `unconfirmed`), `retry_of`.
@@ -25,7 +25,7 @@ proven, what is not, and the release verdict), [workspace-rollout.md](./workspac
   Ids and short enums only, never message text. Actor is a person, an AI employee, the system, an agency member or `workflow`.
 * Three notification kinds. `notifications_kind_check` is rebuilt from the **live** constraint plus the new kinds, so another branch's kinds survive.
 * Optional trigram index for message search, created inside a guarded `DO` block (skipped when the extension is unavailable).
-* Rollback: `supabase/rollbacks/0082_unified_inbox.down.sql`. It refuses to run if lifecycle events or conversation notifications exist, so it can never silently discard history.
+* Rollback: `supabase/rollbacks/0083_unified_inbox.down.sql`. It refuses to run if lifecycle events or conversation notifications exist, so it can never silently discard history.
 
 ## Rules the inbox enforces
 
@@ -139,7 +139,8 @@ How to use it, and what it is not:
 ## Rollout notes
 
 * Do **not** run this migration in production without approval. Rehearse on a copy first (see readiness.md for what was rehearsed).
-* Number: this branch uses `0082` because master already has an untracked `0081_ai_work_job_rls_hardening.sql`. If master's numbering changes, renumber together with the rollback file; the migration itself does not depend on its number.
+* Number: this branch uses `0083`. Master's pending work holds an untracked `0081_ai_work_job_rls_hardening.sql`, and the branch `codex/client-ai-onboarding` already has a `0082_client_employee_provisioning.sql`, so `0083` is the first number free everywhere (checked across every local ref and worktree on 2026-10-22).
+  **Two files must never share a number:** the runner treats a file as already applied when its numeric prefix is in the Supabase CLI ledger, which hosted projects have, so the second file with a shared prefix would be skipped silently. If another branch lands `0083` first, renumber together with the rollback file; the migration itself does not depend on its number.
 * The trigram index is built inside the migration transaction. On a large `conversation_messages` table do it `CONCURRENTLY` by hand first (and let the guarded block find it present).
 * Provider sending stays controlled by the existing `*_WRITES_ENABLED` switches. Nothing in this work enables a provider or sends a real message.
 * The scheduler job `inboxAttention` is registered in `src/server/ops/tick.ts`; confirm the production scheduler runs it before relying on waiting notices or idle workflows.

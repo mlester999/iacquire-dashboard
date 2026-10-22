@@ -20,7 +20,7 @@
 --   * Notifications: three new kinds (conversation_assigned, conversation_new_inquiry, conversation_awaiting_reply). notifications_kind_check is
 --     rebuilt from the live constraint plus these kinds instead of from a copied list, so another branch's kinds are kept (see the DO block).
 --
--- Written by trusted server code only (read-only grants for the application role). Rollback: supabase/rollbacks/0082_unified_inbox.down.sql.
+-- Written by trusted server code only (read-only grants for the application role). Rollback: supabase/rollbacks/0083_unified_inbox.down.sql.
 --
 -- Applying it: the runner wraps this file in one transaction, so every index here is a plain one (CREATE INDEX CONCURRENTLY is an error inside a
 -- transaction). The ALTERs take brief exclusive locks on conversations and conversation_messages; lock_timeout makes the migration fail fast, and

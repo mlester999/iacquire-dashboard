@@ -1,5 +1,5 @@
--- Rollback for 0082_unified_inbox.sql. NOT a migration: stop the application first, review, and run in one transaction.
--- Drops only what 0082 added. conversations and conversation_messages keep every row and every pre-existing column.
+-- Rollback for 0083_unified_inbox.sql. NOT a migration: stop the application first, review, and run in one transaction.
+-- Drops only what 0083 added. conversations and conversation_messages keep every row and every pre-existing column.
 -- Refused when conversation_events holds history, because that trail is not recoverable from anywhere else.
 
 do $$

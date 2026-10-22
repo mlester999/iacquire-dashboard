@@ -6,7 +6,7 @@ import { assertInboxEnabled, inboxEnabled as inboxSwitchedOn } from "@/server/me
 import { INBOX_NOT_ENABLED_MESSAGE } from "@/lib/inbox";
 import type { SessionUser } from "@/server/auth/service";
 
-// The Unified Inbox's per-workspace rollout. A workspace has the new inbox only when a Super Admin switched it on (table inbox_rollout, migration 0082);
+// The Unified Inbox's per-workspace rollout. A workspace has the new inbox only when a Super Admin switched it on (table inbox_rollout, migration 0083);
 // no row means off, and off is the default. The global emergency switch INBOX_DISABLED (inbox-switch.ts) overrides everything: with it on, no workspace has the new inbox.
 //
 // What the rollout controls, and what it never touches (docs/unified-inbox/workspace-rollout.md):

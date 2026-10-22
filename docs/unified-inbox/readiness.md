@@ -3,7 +3,7 @@
 Branch `feat/unified-inbox` (worktree `.data/wt-unified-inbox`, based on master `22c68c2`). Written at the end of Phase 1; see
 [README.md](./README.md) for how it works and [audit.md](./audit.md) for the Phase 0 findings this closes.
 
-> **Nothing here has been pushed, deployed or run against production. Migration 0082 has not been applied to any hosted database. No real customer
+> **Nothing here has been pushed, deployed or run against production. Migration 0083 has not been applied to any hosted database. No real customer
 > message was sent and no live provider or model was called at any point.** Everything below is verified in an embedded Postgres (PGlite) with
 > simulated providers and a simulated AI model, in an isolated local QA workspace, unless a row says otherwise.
 
@@ -17,12 +17,12 @@ allows: the whole suite is green apart from failures that already exist on maste
 
 1. **No live provider has been exercised.** GoHighLevel, Twilio, Meta WhatsApp and Resend sending and delivery callbacks are verified against recording
    stand-ins only (as they were before this work). Needs credentials and the owner's approval.
-2. **Migration 0082 has not been rehearsed on a production-sized copy,** and its number must be reconciled with master's pending `0081`.
+2. **Migration 0083 has not been rehearsed on a production-sized copy.** Its number was moved from 0082 to 0083 because `codex/client-ai-onboarding` already has a 0082 (different table); it must still be re-checked against every branch at merge time.
 3. **The production scheduler was reported OFF** (Automation Studio state, 2026-10-22). The waiting notices and "went quiet" workflows run from the
    `inboxAttention` job, so they do nothing until the scheduler runs.
 4. **It must be merged with master's uncommitted AI-workforce work** (same job-list tests, same `src/server/messaging/*` neighbourhood) and re-tested.
 
-Recommended order: merge and re-run the suite → apply 0082 to a staging copy with provider writes off → verify with provider sandbox accounts → enable the scheduler → production, each step on your approval.
+Recommended order: merge and re-run the suite → apply 0083 to a staging copy with provider writes off → verify with provider sandbox accounts → enable the scheduler → production, each step on your approval.
 
 ## 2. Estimates
 
@@ -39,7 +39,7 @@ gates in section 9 that are closed.
 | Phase | Item | Status |
 | --- | --- | --- |
 | 0 | Repository audit, risks, decisions | Done ([audit.md](./audit.md)) |
-| 1A | Additive migration 0082 with rollback; lifecycle columns; `conversation_events`; revision and status stamps | Done; rehearsed down/up on populated data in tests |
+| 1A | Additive migration 0083 with rollback; lifecycle columns; `conversation_events`; revision and status stamps | Done; rehearsed down/up on populated data in tests |
 | 1A | Ownership fence and AI pause enforced at queue and at dispatch; stale AI replies refused | Done |
 | 1B | Views (10), sorts (3), keyset paging, search, bulk actions (no bulk send), select mode | Done |
 | 1B | Thread: lifecycle events inline, resolve with outcome, archive, mark unread, retry with confirmation | Done |
@@ -135,7 +135,7 @@ scheduler-driven notices (covered by tests; the QA server runs without the sched
 | AI assist (summary, suggested reply) | Via the shared `llmComplete` | Simulated provider | **Not verified live** | A configured AI provider |
 | Native CRM (contacts, deals, tasks, notes, calls) | Context panel and four actions | Real services, embedded DB | Same code as production | None |
 | CRM workflow engine / Automation Studio | Triggers, step, loop limit, plan boundary | Real engine, embedded DB | Same code as production; **scheduler reported OFF** | Enable the scheduler |
-| Notifications | Three new kinds | Real | Same code as production | Migration 0082 |
+| Notifications | Three new kinds | Real | Same code as production | Migration 0083 |
 | Website AI chat, social, phone as inbox channels | Shown as not available | n/a | **Not built** | Product decision |
 
 ## 9. Remaining issues and gates
@@ -143,12 +143,12 @@ scheduler-driven notices (covered by tests; the QA server runs without the sched
 | # | Severity | Item | Next step |
 | --- | --- | --- | --- |
 | 1 | **High** | No live provider or model verified (matrix above) | Credentials and approval; staging with sandbox accounts first |
-| 2 | **High** | Migration 0082 unrehearsed on a production copy; number collision with master's pending 0081 | Rehearse on a copy; renumber if another branch lands first |
+| 2 | **High** | Migration 0083 unrehearsed on a production copy. Number collision with `codex/client-ai-onboarding`'s 0082 removed by renumbering (a shared prefix would be skipped silently by the runner where a Supabase CLI ledger exists) | Rehearse on a copy; re-check the number against every branch at merge |
 | 3 | Medium | Production scheduler reported OFF: waiting notices and "went quiet" workflows are inert | Confirm and enable, per the Automation Studio runbook |
 | 4 | Medium | Merge with master's uncommitted AI-workforce changes. **Rehearsed locally:** three files conflict (one line in `send.ts`, two job-list tests), all resolved; the merged tree passes type-check and the whole suite (293 files, 4,654 tests, 0 failed) | The workforce stream commits first, then the real merge; see [rollout-plan.md](./rollout-plan.md) |
 | 5 | Medium | Seven pre-existing test failures on master | Not present in the merged tree, so by elimination fixed by master's pending workforce changes (not run on their own); needs those committed |
 | 6 | Medium | Polling every 5 s per open tab, per-process rate limit (not shared across instances); no load measurement on hosted Postgres | Measure on staging; add a shared limiter if instances multiply |
-| 6b | Info | **Per-workspace rollout built (local, unapplied).** Off by default; a Super Admin switches workspaces on one at a time; enforced on the server; the previous inbox is kept for every other workspace; audited; every in-flight item survives a switch-off ([workspace-rollout.md](./workspace-rollout.md)). The global switch `INBOX_DISABLED=true` remains and now returns workspaces to the previous screen. A changed variable applies on the next deployment | Decided: first deployment dark (`INBOX_DISABLED=true`), second deployment lifts the switch, then internal workspace, test clients, gradual customers (rollout plan, stage 6). Needs migration 0082 (the rollout table) and your choice of waves (D6) |
+| 6b | Info | **Per-workspace rollout built (local, unapplied).** Off by default; a Super Admin switches workspaces on one at a time; enforced on the server; the previous inbox is kept for every other workspace; audited; every in-flight item survives a switch-off ([workspace-rollout.md](./workspace-rollout.md)). The global switch `INBOX_DISABLED=true` remains and now returns workspaces to the previous screen. A changed variable applies on the next deployment | Decided: first deployment dark (`INBOX_DISABLED=true`), second deployment lifts the switch, then internal workspace, test clients, gradual customers (rollout plan, stage 6). Needs migration 0083 (the rollout table) and your choice of waves (D6) |
 | 6c | Low | The previous inbox is kept alongside the new one for the duration of the rollout (two screens to maintain; the previous one is frozen at master `22c68c2`). A rollout change reaches other server instances within 3 s; an open tab keeps its screen until it next loads | Delete the previous screen after the last workspace has moved and held; see workspace-rollout.md section 9 |
 | 7 | Low | Shared unread state; free-text pause reason in the trail | Per-user read state is a larger change; consider dropping the free text |
 | 7b | Low | The Priority sort orders by a computed rank, so each list read scans the workspace's open conversations and sorts them before taking the first page (fine for hundreds or a few thousand; it grows with the workspace) | Measure on staging with a realistic workspace; if needed, store the rank or index the common views |
@@ -157,4 +157,4 @@ scheduler-driven notices (covered by tests; the QA server runs without the sched
 
 ## 10. Approvals this work is waiting on
 
-Push the branch; apply 0082 anywhere hosted; enable any provider write switch; run any live provider or model check; enable the scheduler; deploy.
+Push the branch; apply 0083 anywhere hosted; enable any provider write switch; run any live provider or model check; enable the scheduler; deploy.
