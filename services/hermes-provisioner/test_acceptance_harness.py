@@ -47,6 +47,14 @@ class AcceptanceFixtureTests(unittest.TestCase):
         gateway = "00000000-0000-4000-8000-000000000001"
         state = AcceptanceState(gateway, Path("/tmp"))
         first = state.claim(gateway)
+        first_challenge = first["soulChallenge"]
+        other_challenge = next(
+            job["soulChallenge"] for job in state.base_jobs.values()
+            if job["jobId"] != first["jobId"]
+        )
+        self.assertTrue(state.should_inject_canary_mismatch(first_challenge))
+        self.assertTrue(state.should_inject_canary_mismatch(first_challenge))
+        self.assertFalse(state.should_inject_canary_mismatch(other_challenge))
         state.complete({
             "ok": False,
             "jobId": first["jobId"],
@@ -54,6 +62,7 @@ class AcceptanceFixtureTests(unittest.TestCase):
             "gatewayId": gateway,
             "code": "effective_soul_unverified",
         })
+        self.assertFalse(state.should_inject_canary_mismatch(first_challenge))
         retry = state.claim(gateway)
         self.assertEqual(retry["jobId"], first["jobId"])
         while True:

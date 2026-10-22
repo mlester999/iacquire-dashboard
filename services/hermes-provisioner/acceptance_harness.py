@@ -324,6 +324,11 @@ class AcceptanceState:
             if chat_completion:
                 self.model_chat_calls += 1
 
+    def should_inject_canary_mismatch(self, challenge: str) -> bool:
+        first_challenge = self.base_jobs[self.first_job_id]["soulChallenge"]
+        with self.lock:
+            return not self.failed_once and hmac.compare_digest(challenge, first_challenge)
+
     def verify_runtime(self, model_key: str, bootstrap_key: str) -> dict[str, Any]:
         profiles_root = Path(os.environ["ACCEPTANCE_PROFILE_ROOT"])
         state_root = Path(os.environ["ACCEPTANCE_STATE_ROOT"])
@@ -623,8 +628,7 @@ def _model_handler(state: AcceptanceState, model_key: str):
             if challenge is None:
                 self._send_json(400, {"error": {"message": "synthetic_prompt_marker_missing", "type": "invalid_request_error"}})
                 return
-            with state.lock:
-                fail_canary = not state.failed_once and state.model_chat_calls == 1
+            fail_canary = state.should_inject_canary_mismatch(challenge)
             if fail_canary:
                 output = ("00" * 16) if challenge != ("00" * 16) else ("11" * 16)
             else:
