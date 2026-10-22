@@ -281,6 +281,9 @@ jobs:
                   print("SANDBOX_ACCEPTANCE_FAILURE_CODE: " + failure)
               else:
                   print("SANDBOX_ACCEPTANCE_FAILURE_CODE: unknown")
+              worker_failure = result.get("workerFailureCode")
+              if isinstance(worker_failure, str) and re.fullmatch(r"[a-z0-9_]{1,80}", worker_failure):
+                  print("SANDBOX_WORKER_FAILURE_CODE: " + worker_failure)
               raise SystemExit(1)
           expected = {
               "result": "SANDBOX_PASS",

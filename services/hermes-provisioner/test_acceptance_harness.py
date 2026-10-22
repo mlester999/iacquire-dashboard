@@ -51,6 +51,32 @@ class AcceptanceFixtureTests(unittest.TestCase):
         self.assertEqual(len(set(state.profile_keys.values())), 12)
         self.assertEqual(state.latest_manifest[first["profile"]]["configVersion"], 2)
 
+    def test_unexpected_worker_failure_keeps_only_a_safe_code_for_diagnostics(self):
+        gateway = "00000000-0000-4000-8000-000000000001"
+        state = AcceptanceState(gateway, Path("/tmp"))
+        job = state.claim(gateway)
+        with self.assertRaisesRegex(ValueError, "unexpected_provisioning_failure"):
+            state.complete({
+                "ok": False,
+                "jobId": job["jobId"],
+                "leaseToken": job["leaseToken"],
+                "gatewayId": gateway,
+                "code": "profile_create_failed",
+            })
+        self.assertEqual(state.worker_failure_code, "profile_create_failed")
+
+        other = AcceptanceState(gateway, Path("/tmp"))
+        job = other.claim(gateway)
+        with self.assertRaisesRegex(ValueError, "unexpected_provisioning_failure"):
+            other.complete({
+                "ok": False,
+                "jobId": job["jobId"],
+                "leaseToken": job["leaseToken"],
+                "gatewayId": gateway,
+                "code": "not-a-safe-code value",
+            })
+        self.assertEqual(other.worker_failure_code, "unknown")
+
     def _complete_success(self, state, job, gateway):
         profile = job["profile"]
         key = hashlib.sha256(profile.encode("ascii")).hexdigest()

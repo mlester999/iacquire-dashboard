@@ -134,6 +134,7 @@ class AcceptanceState:
         self.queue: collections.deque[dict[str, Any]] = collections.deque()
         self.active: dict[str, Any] | None = None
         self.abort_code: str | None = None
+        self.worker_failure_code: str | None = None
         self.done = threading.Event()
         self.attempts: list[dict[str, Any]] = []
         self.failed_once = False
@@ -246,6 +247,10 @@ class AcceptanceState:
                     self.queue.appendleft(job)
                     self.active = None
                     return
+                self.worker_failure_code = (
+                    code if isinstance(code, str) and re.fullmatch(r"[a-z0-9_]{1,80}", code)
+                    else "unknown"
+                )
                 self._fail("unexpected_provisioning_failure")
                 raise ValueError("unexpected_provisioning_failure")
 
@@ -709,6 +714,8 @@ def serve() -> None:
 
         if state.abort_code:
             result = {"result": "SANDBOX_FAIL", "failure": state.abort_code}
+            if state.worker_failure_code is not None:
+                result["workerFailureCode"] = state.worker_failure_code
             write_summary(state, result)
             raise SystemExit(1)
         try:
