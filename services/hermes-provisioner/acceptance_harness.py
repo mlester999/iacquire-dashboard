@@ -153,6 +153,7 @@ class AcceptanceState:
         self.model_calls = 0
         self.model_chat_calls = 0
         self.model_bad_auth = 0
+        self.audit_events_observed: int | None = None
         self.cross_tenant_denials = 0
         self.profile_key_denials = 0
         self.cross_tenant_successes = 0
@@ -385,6 +386,7 @@ class AcceptanceState:
             raise ValueError("audit_permissions_invalid")
         audit_text = audit_path.read_text(encoding="utf-8")
         audit_records = [json.loads(line) for line in audit_text.splitlines() if line.strip()]
+        self.audit_events_observed = len(audit_records)
         if len(audit_records) != 15:
             raise ValueError("audit_event_count_mismatch")
         if any("apiKey" in row or model_key in json.dumps(row) for row in audit_records):
@@ -730,6 +732,7 @@ def serve() -> None:
                 "result": "SANDBOX_FAIL",
                 "failure": safe_code,
                 **_synthetic_model_counters(state),
+                **_audit_event_diagnostic(state),
             }
             write_summary(state, result)
             raise SystemExit(1)
@@ -747,6 +750,13 @@ def _synthetic_model_counters(state: AcceptanceState) -> dict[str, int]:
         "modelChatCalls": state.model_chat_calls,
         "modelAuthenticationFailures": state.model_bad_auth,
     }
+
+
+def _audit_event_diagnostic(state: AcceptanceState) -> dict[str, int]:
+    """Return only the observed count; never include audit record contents in runner logs."""
+    if state.audit_events_observed is None:
+        return {}
+    return {"auditEventsObserved": state.audit_events_observed}
 
 
 if __name__ == "__main__":

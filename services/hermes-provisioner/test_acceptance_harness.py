@@ -2,7 +2,7 @@ import hashlib
 import unittest
 from pathlib import Path
 
-from acceptance_harness import AcceptanceState, ROLE_TITLES, TENANTS, _synthetic_model_counters
+from acceptance_harness import AcceptanceState, ROLE_TITLES, TENANTS, _audit_event_diagnostic, _synthetic_model_counters
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
@@ -15,6 +15,11 @@ class AcceptanceFixtureTests(unittest.TestCase):
             _synthetic_model_counters(state),
             {"modelCalls": 5, "modelChatCalls": 4, "modelAuthenticationFailures": 1},
         )
+
+    def test_audit_diagnostic_exposes_only_the_observed_record_count(self):
+        state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
+        state.audit_events_observed = 16
+        self.assertEqual(_audit_event_diagnostic(state), {"auditEventsObserved": 16})
 
     def test_fixture_is_two_isolated_tenants_with_all_six_roles(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
