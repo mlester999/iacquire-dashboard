@@ -48,5 +48,7 @@ cannot be switched on without it, and then switches on. Two templates (the Slack
 replaced: the filled message and request leave once, the task and tag appear, and a refusal from the other system leaves the contact untagged and the run
 failed with the reason.
 
+All twenty are also **started and run to the end through the scheduler's own runner** (`tests/automation-studio-templates-run.test.ts`, 20 tests, simulated clock: the 30-day win-back finishes in seconds): each leaves a readable row for every step (a customer message with no consent is recorded as "blocked", an AI employee request as "blocked" while live AI runs are off, a repeat tag as "skipped"), none leaves a run unfinished, and the ones that don't promise an outside call make none. The gallery on the home screen can be searched (any words, in any order, with a category: `templateMatches`).
+
 Honest limits: the templates only use the six real AI employee roles and the triggers and steps that exist (the brief's "AI Receptionist" and "AI Lead
 Qualifier" do not exist as roles). Slack text uses contact and appointment fields only (the engine has no deal-name placeholder).

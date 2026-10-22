@@ -788,7 +788,13 @@ export async function setWorkflowStatus(actor: CrmActor, id: string, status: Wor
       "update crm_workflows set status = $3, archived_at = case when $3 = 'archived' then now() else null end, entitlement_paused_at = null, updated_by = $4 where id = $1 and org_id = $2",
       [id, actor.orgId, status, actor.userId],
     );
-    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_status_changed", targetType: "crm_workflow", targetId: id, result: "success", metadata: { from: w.status, to: status, cancelledRuns } }, db);
+    // Runs that were put on hold while the workflow was off (the plan lapsed, a pause) are looked at again as soon as a person turns it back on, not
+    // after the hour a hold lasts: the engine re-checks everything before it does anything, and a run that is still waiting for its time goes back to sleep.
+    let resumedRuns = 0;
+    if (status === "active") {
+      resumedRuns = (await db.query("update crm_workflow_runs set next_run_at = now() where org_id = $1 and workflow_id = $2 and status in ('queued', 'waiting') and last_error like 'On hold:%' and next_run_at > now()", [actor.orgId, id])).rowCount ?? 0;
+    }
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.workflow_status_changed", targetType: "crm_workflow", targetId: id, result: "success", metadata: { from: w.status, to: status, cancelledRuns, ...(resumedRuns ? { resumedRuns } : {}) } }, db);
     return { status, cancelledRuns };
   });
 }

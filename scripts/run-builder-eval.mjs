@@ -1,4 +1,4 @@
-// Evaluates the AI Automation Builder against a real model: node scripts/run-builder-eval.mjs [--only <id>[,<id>]] [--repeat N] [--env-file <path>]
+// Evaluates the AI Automation Builder against a real model: node scripts/run-builder-eval.mjs [--only <id>[,<id>]] [--repeat N] [--set tuned|heldout|heldout-A|heldout-B] [--env-file <path>]
 // The model connection is read from EVAL_LLM_BASE_URL / EVAL_LLM_API_KEY / EVAL_LLM_MODEL, or (with --env-file) from the LLM_BASE_URL, LLM_API_KEY and LLM_MODEL
 // lines of that file ONLY: no other line of it is read or passed on, so a database address in the same file can never reach this run. The database is
 // in memory. The key is never printed.
@@ -24,6 +24,7 @@ for (const k of ["EVAL_LLM_BASE_URL", "EVAL_LLM_API_KEY", "EVAL_LLM_MODEL"]) {
 }
 if (arg("--only")) env.EVAL_ONLY = arg("--only");
 if (arg("--repeat")) env.EVAL_REPEAT = arg("--repeat");
+if (arg("--set")) env.EVAL_SET = arg("--set");
 console.log(`Evaluating ${env.EVAL_LLM_MODEL} at ${new URL(env.EVAL_LLM_BASE_URL).host} (in-memory database; the key is not printed).`);
 const r = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "run", "--config", "scripts/builder-eval.vitest.config.ts", "--disableConsoleIntercept"], { cwd: root, stdio: "inherit", env });
 process.exit(r.status ?? 1);

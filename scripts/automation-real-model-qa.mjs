@@ -3,7 +3,7 @@
 // What this shows that the stand-in cannot: that what a real model writes goes through the whole product path (server validation, the transaction, the stream,
 // the animated canvas, undo history, reload) and that nothing about the connection (the key) reaches the browser.
 //
-//   node scripts/automation-real-model-qa.mjs --env-file "<path to the .env that holds LLM_BASE_URL, LLM_API_KEY and LLM_MODEL>" [--headed]
+//   node scripts/automation-real-model-qa.mjs --env-file "<path to the .env that holds LLM_BASE_URL, LLM_API_KEY and LLM_MODEL>" [--headed] [--production]
 //
 // ONLY those three lines of the file are read; a database address in the same file is never read or passed on. The server it starts is the isolated one on
 // AUTOMATION_QA_URL (stop any other QA server first: both use that port and database). The prompts are fixed and synthetic and the workspace is fictional; the
@@ -21,6 +21,8 @@ const SCREENS = path.join(DATA, "screens-real");
 const BASE = AUTOMATION_QA_URL;
 const args = process.argv.slice(2);
 const headed = args.includes("--headed");
+/** --production: serve the production bundle (npm run build:clean first) instead of the dev server, with the same real model. */
+const production = args.includes("--production");
 const envFile = args.includes("--env-file") ? args[args.indexOf("--env-file") + 1] : undefined;
 fs.mkdirSync(SCREENS, { recursive: true });
 
@@ -48,8 +50,8 @@ const isLocal = (u) => { try { return new URL(u).host === new URL(BASE).host; } 
 
 // The isolated app, with the model connection replaced by the real one for this process only.
 const nodeOptions = String(process.env.NODE_OPTIONS ?? "").trim();
-const env = { ...process.env, ...AUTOMATION_QA_ENV, LLM_BASE_URL: llm.LLM_BASE_URL, LLM_API_KEY: llm.LLM_API_KEY, LLM_MODEL: llm.LLM_MODEL, NODE_OPTIONS: [nodeOptions, "--max-old-space-size=8192"].filter(Boolean).join(" ") };
-const server = spawn(process.execPath, [path.join("node_modules", "next", "dist", "bin", "next"), "dev", "--webpack", "--hostname", "127.0.0.1", "-p", String(AUTOMATION_QA_PORT)], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env });
+const env = { ...process.env, ...AUTOMATION_QA_ENV, LLM_BASE_URL: llm.LLM_BASE_URL, LLM_API_KEY: llm.LLM_API_KEY, LLM_MODEL: llm.LLM_MODEL, ...(production ? { NODE_ENV: "test", IAQ_DIST_DIR: ".next-clean-build", SECRET_STORE: "test-memory" } : {}), NODE_OPTIONS: [nodeOptions, "--max-old-space-size=8192"].filter(Boolean).join(" ") };
+const server = spawn(process.execPath, [path.join("node_modules", "next", "dist", "bin", "next"), ...(production ? ["start"] : ["dev", "--webpack"]), "--hostname", "127.0.0.1", "-p", String(AUTOMATION_QA_PORT)], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env });
 let serverLog = "";
 const keep = (b) => { serverLog = (serverLog + b.toString()).slice(-20_000); };
 server.stdout.on("data", keep);

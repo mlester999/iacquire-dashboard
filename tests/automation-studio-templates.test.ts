@@ -19,7 +19,7 @@ import { createStudioFromTemplate } from "@/server/automation-studio/templates";
 import { getStudioState } from "@/server/automation-studio/studio";
 import { toFlow } from "@/components/automation-studio/canvas/flow-model";
 import { namesFrom } from "@/components/crm/workflows/summaries";
-import { STUDIO_TEMPLATES, STUDIO_TEMPLATE_CATEGORIES, studioTemplate, templateReadiness, type StudioInputs, type StudioTemplate } from "@/lib/automation-studio/templates";
+import { STUDIO_TEMPLATES, STUDIO_TEMPLATE_CATEGORIES, studioTemplate, templateMatches, templateReadiness, type StudioInputs, type StudioTemplate } from "@/lib/automation-studio/templates";
 import { applyOperations } from "@/lib/crm/workflow/operations";
 import { TRIGGERS, deriveEffects, hasErrors, parseDefinition, validateDefinition, validationContextFrom, type WorkflowDefinition } from "@/lib/crm/workflow/spec";
 import { ctxFor } from "./support/fixtures";
@@ -398,5 +398,22 @@ describe("running for real (with the outside transport replaced)", () => {
     expect(runs[1].last_error).toMatch(/didn't run in the other system/);
     const notTagged = await withSystem((db) => db.query("select 1 from crm_contact_tags where org_id = $1 and contact_id = $2", [f.ws.o.org.id, second.id]));
     expect(notTagged.rows.length).toBe(0);
+  });
+});
+
+describe("searching the library", () => {
+  const list = STUDIO_TEMPLATES;
+  it("matches every word, in any order, ignoring case and accents, across the name, description, category, trigger and reach", () => {
+    expect(templateMatches(list, "")).toHaveLength(list.length);
+    expect(templateMatches(list, "   ")).toHaveLength(list.length);
+    const slackLead = templateMatches(list, "Slack LEAD").map((t) => t.key);
+    expect(slackLead).toContain("new-lead-slack-alert");
+    expect(templateMatches(list, "lead slack").map((t) => t.key)).toEqual(slackLead);
+    expect(templateMatches(list, "calls another system").every((t) => t.reach.includes("http"))).toBe(true);
+    expect(templateMatches(list, "appointment booked").map((t) => t.trigger)).toContain("appointment.booked");
+    expect(templateMatches(list, "slàck léad").map((t) => t.key)).toEqual(slackLead);
+    expect(templateMatches(list, "xyzzy")).toEqual([]);
+    // A word that is in no template makes the whole search match nothing (every word must match).
+    expect(templateMatches(list, "slack xyzzy")).toEqual([]);
   });
 });

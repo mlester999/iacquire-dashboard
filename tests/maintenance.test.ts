@@ -74,13 +74,41 @@ describe("optional managed maintenance", () => {
     const manager = agencyUser(await createUser({ platformRole: "agency_manager" }), "agency_manager");
     expect((await listAgencyMaintenance(manager)).subscriptions.some((s) => s.orgId === org.id)).toBe(true);
     const outsider = agencyUser(await createUser({ platformRole: "agency_staff" }), "agency_staff");
-    await expect(activateMaintenance(outsider, sub.id)).rejects.toThrow(/not found/i);
-    await activateMaintenance(staff, sub.id, { billingStartOn: "2026-11-01" });
+    const paidThroughOn = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    await expect(activateMaintenance(outsider, sub.id, { payment: { verified: true, paidThroughOn } })).rejects.toThrow(/not found/i);
+    await activateMaintenance(staff, sub.id, { billingStartOn: "2026-11-01", payment: { verified: true, paidThroughOn } });
     const o = await getMaintenanceOverview(ctx());
     expect(o.subscription!.status).toBe("active");
     expect(o.subscription!.billingStartOn).toBe("2026-11-01");
     expect(o.subscription!.renewalOn).toBeTruthy();
     expect(o.allowance).toEqual(expect.objectContaining({ total: 4, used: 0, remaining: 4 }));
+    // The verified payment is on the plan, with who recorded it, and in the audit trail.
+    const row = await withSystem((db) => db.query<{ paid_through_on: string; last_payment_verified_by: string | null; last_payment_verified_at: Date | null }>(
+      "select paid_through_on::text, last_payment_verified_by, last_payment_verified_at from maintenance_subscriptions where id = $1", [sub.id]));
+    expect(row.rows[0]).toMatchObject({ paid_through_on: paidThroughOn, last_payment_verified_by: staff.id });
+    expect(row.rows[0].last_payment_verified_at).not.toBeNull();
+    const audit = await withSystem((db) => db.query<{ metadata: { paymentVerified?: boolean; paidThroughOn?: string } }>("select metadata from audit_logs where action = 'maintenance.activated' and target_id = $1", [sub.id]));
+    expect(audit.rows[0].metadata).toMatchObject({ paymentVerified: true, paidThroughOn });
+  });
+
+  it("never starts a plan without a verified payment: not unconfirmed, not for a period that is over, not for years ahead", async () => {
+    const other2 = await createOrg({ name: "No Payment Co" });
+    const o2 = await createUser();
+    await addMember(other2.id, o2.id, "owner");
+    await withSystem((db) => db.query("insert into client_setup_instances (org_id, state, activated_at) values ($1, 'activated', now())", [other2.id]));
+    await withSystem((db) => db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [other2.id, staff.id]));
+    await requestMaintenanceEnrollment(ctxFor(o2, other2, "owner"), { acceptTerms: true });
+    const sub = (await listAgencyMaintenance(staff)).subscriptions.find((s) => s.orgId === other2.id)!;
+    const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    await expect(activateMaintenance(staff, sub.id, { payment: { verified: false, paidThroughOn: day(30) } })).rejects.toThrow(/verified the payment/);
+    await expect(activateMaintenance(staff, sub.id, {} as never)).rejects.toThrow(/verified the payment/);
+    await expect(activateMaintenance(staff, sub.id, { payment: { verified: true, paidThroughOn: "not a date" } })).rejects.toThrow(/valid date/);
+    await expect(activateMaintenance(staff, sub.id, { payment: { verified: true, paidThroughOn: day(-10) } })).rejects.toThrow(/already ended/);
+    await expect(activateMaintenance(staff, sub.id, { payment: { verified: true, paidThroughOn: day(900) } })).rejects.toThrow(/a year ahead/);
+    // Nothing changed: it is still only requested, with no payment recorded.
+    const row = await withSystem((db) => db.query<{ status: string; paid_through_on: string | null; last_payment_verified_at: Date | null }>("select status, paid_through_on::text, last_payment_verified_at from maintenance_subscriptions where id = $1", [sub.id]));
+    expect(row.rows[0]).toEqual({ status: "requested", paid_through_on: null, last_payment_verified_at: null });
+    expect((await getMaintenanceOverview(ctxFor(o2, other2, "owner"))).allowance).toBeNull();
   });
 
   it("enforces a defined monthly allowance; defects never count; staff can waive", async () => {

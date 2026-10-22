@@ -68,6 +68,9 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
   const router = useRouter();
   const { run, isPending } = useRunner();
   const [start, setStart] = React.useState(new Date().toISOString().slice(0, 10));
+  // A plan starts only once a person has checked the payment in their own billing records and says what period it pays for (a month by default).
+  const [through, setThrough] = React.useState(() => { const d = new Date(); d.setUTCDate(d.getUTCDate() + 31); return d.toISOString().slice(0, 10); });
+  const [paymentConfirmed, setPaymentConfirmed] = React.useState(false);
   const done = async (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
     const ok = await run(key, fn as never, msg);
     if (ok !== null) router.refresh();
@@ -118,7 +121,15 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
                 Billing starts
                 <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="mt-1 h-9 w-44" />
               </label>
-              <Button size="sm" variant="brand" disabled={!s.eligible} loading={isPending(`a-${s.id}`)} onClick={() => void done(`a-${s.id}`, () => activateMaintenanceAction(s.id, start), "Plan activated")}>
+              <label className="text-[12px] text-muted">
+                Payment covers through
+                <Input type="date" value={through} onChange={(e) => setThrough(e.target.value)} className="mt-1 h-9 w-44" />
+              </label>
+              <label className="flex basis-full items-start gap-2 text-[12.5px] text-ink-2">
+                <input type="checkbox" className="mt-0.5 size-4 rounded border-line-strong" checked={paymentConfirmed} onChange={(e) => setPaymentConfirmed(e.target.checked)} />
+                <span>I confirmed this client&apos;s payment in our billing records. iAcquire doesn&apos;t detect payments, so the plan starts only on this confirmation.</span>
+              </label>
+              <Button size="sm" variant="brand" disabled={!s.eligible || !paymentConfirmed || !through} loading={isPending(`a-${s.id}`)} onClick={() => void done(`a-${s.id}`, () => activateMaintenanceAction(s.id, start, through, paymentConfirmed), "Plan activated")}>
                 <Check className="size-3.5" /> Activate plan
               </Button>
               <Button size="sm" variant="outline" loading={isPending(`d-${s.id}`)} onClick={() => void done(`d-${s.id}`, () => resolveMaintenanceAction(s.id, "decline"), "Request declined")}>

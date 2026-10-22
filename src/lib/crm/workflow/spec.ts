@@ -185,7 +185,7 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   manual: T("manual", "Started by a person", "Someone in your team starts the workflow for a contact.", "Other", "contact", CONTACT_ONLY),
 };
 
-const triggerFiltersSchema = z.strictObject({
+export const triggerFiltersSchema = z.strictObject({
   tagIds: z.array(uuid).min(1).max(20).optional(),
   pipelineId: uuid.optional(),
   stageIds: z.array(uuid).min(1).max(50).optional(),

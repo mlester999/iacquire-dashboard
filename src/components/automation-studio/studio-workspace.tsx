@@ -276,7 +276,7 @@ export function StudioWorkspace(props: WorkspaceProps) {
           <Button variant="ghost" size="icon-sm" onClick={() => { const r = editor.undo(); if (!r.ok && r.message) toast.message(r.message); }} disabled={!editor.canUndo} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 className="size-4" aria-hidden /></Button>
           <Button variant="ghost" size="icon-sm" onClick={() => { const r = editor.redo(); if (!r.ok && r.message) toast.message(r.message); }} disabled={!editor.canRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 className="size-4" aria-hidden /></Button>
           <Button variant="ghost" size="icon-sm" onClick={() => setDialog("history")} aria-label="Version history" title="Version history"><History className="size-4" aria-hidden /></Button>
-          <Button variant="secondary" size="sm" onClick={() => setDialog("test")} disabled={readOnly || editor.definition.steps.length === 0}><FlaskConical className="size-4" aria-hidden /><span className="hidden sm:inline">Test</span></Button>
+          <Button variant="secondary" size="sm" onClick={() => setDialog("test")} disabled={readOnly || editor.definition.steps.length === 0} aria-label="Test"><FlaskConical className="size-4" aria-hidden /><span className="hidden sm:inline">Test</span></Button>
         </div>
         {!readOnly && (
           <div className="flex items-center gap-1.5">

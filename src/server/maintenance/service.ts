@@ -11,6 +11,7 @@ import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { roleHasPermission } from "@/lib/permissions";
 import { MAINTENANCE_TERMS_VERSION, type MaintenanceStatus, type ServiceView } from "@/lib/projects";
+import { paidThroughProblem } from "@/lib/automation-studio/plan";
 import { iso } from "@/server/projects/shared";
 
 export interface MaintenanceSubscriptionView {
@@ -285,19 +286,38 @@ export async function subscriptionForAgency(db: Parameters<Parameters<typeof wit
   return s;
 }
 
-/** Activation is agency-confirmed and re-checks that the core system is activated. It never charges anything. */
-export async function activateMaintenance(user: SessionUser, subscriptionId: string, opts: { billingStartOn?: string } = {}) {
+/**
+ * What a person confirms before a plan starts: they checked, in their own billing records, that the payment arrived, and the date it pays for.
+ * iAcquire doesn't charge cards or detect payments, so a plan never starts on a click alone.
+ */
+export interface ActivationPayment {
+  verified: boolean;
+  paidThroughOn: string;
+}
+
+/**
+ * Activation is agency-confirmed. It re-checks that the core system is activated and that the person who activates has verified the payment (recorded
+ * with who and when, like any later payment: see recordVerifiedPayment). It never charges anything.
+ */
+export async function activateMaintenance(user: SessionUser, subscriptionId: string, opts: { billingStartOn?: string; payment: ActivationPayment }) {
   assertManage(user);
   const start = opts.billingStartOn ?? new Date().toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) throw new AppError("invalid_input", "Use a valid billing start date.");
+  if (opts.payment?.verified !== true) throw new AppError("invalid_input", "Confirm that you verified the payment in your billing records before the plan starts.");
+  const problem = paidThroughProblem(opts.payment.paidThroughOn);
+  if (problem) throw new AppError("invalid_input", problem);
   await withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
     if (s.status !== "requested") throw new AppError("conflict", "Only a requested plan can be activated.");
     const st = (await db.query<{ state: string }>("select state from client_setup_instances where org_id = $1", [s.org_id])).rows[0];
     if (st?.state !== "activated") throw new AppError("conflict", "The core system isn't activated yet, so the plan can't start.");
-    await db.query("update maintenance_subscriptions set status = 'active', activated_by = $2, activated_at = now(), billing_start_on = $3, renewal_on = null where id = $1", [subscriptionId, user.id, start]);
+    await db.query(
+      `update maintenance_subscriptions set status = 'active', activated_by = $2, activated_at = now(), billing_start_on = $3, renewal_on = null,
+         last_payment_verified_at = now(), last_payment_verified_by = $2, paid_through_on = $4 where id = $1`,
+      [subscriptionId, user.id, start, opts.payment.paidThroughOn],
+    );
     await notifyOrgRoles(db, s.org_id, ["owner"], { kind: "maintenance_update", severity: "success", title: "Managed maintenance is active", body: `Billing starts ${start}.`, link: "/maintenance" });
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.activated", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { billingStartOn: start } }, db);
+    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.activated", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { billingStartOn: start, paymentVerified: true, paidThroughOn: opts.payment.paidThroughOn } }, db);
   });
 }
 

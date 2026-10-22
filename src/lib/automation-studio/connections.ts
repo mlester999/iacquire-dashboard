@@ -12,6 +12,17 @@ export const MAX_LIVE_CONNECTIONS = 20;
 export const FAILURES_BEFORE_ATTENTION = 5;
 
 export const CONNECTION_KIND_LABELS: Record<ConnectionKind, string> = { http: "HTTP API", slack_webhook: "Slack (incoming webhook)" };
+
+/**
+ * Apps people ask for that Automation Studio can't connect to yet, and exactly why. Shown on the Connections page as plain information (never a button that
+ * pretends to connect): each one needs iAcquire to register an app with the provider, which no workspace can do for itself. What works today is named too.
+ */
+export const NOT_YET_AVAILABLE_CONNECTIONS = [
+  { key: "gmail", name: "Gmail", what: "Send or read email as your own Gmail account.", needs: "iAcquire has to register an app with Google and pass Google's review for email access." },
+  { key: "google_sheets", name: "Google Sheets", what: "Add or read rows in a spreadsheet.", needs: "iAcquire has to register an app with Google and pass its review for spreadsheet access." },
+  { key: "outlook", name: "Outlook and Microsoft 365 email", what: "Send or read email as your own Microsoft account.", needs: "iAcquire has to register an app with Microsoft." },
+  { key: "slack_sign_in", name: "Sign in with Slack", what: "Pick a channel from a list instead of pasting a webhook address.", needs: "iAcquire has to register a Slack app." },
+] as const;
 export const STATUS_LABELS: Record<ConnectionStatus, string> = { unverified: "Not verified yet", active: "Verified", needs_attention: "Needs attention", revoked: "Revoked" };
 
 /** Slack's incoming-webhook addresses look like this and live on hooks.slack.com only. Anything else is not a Slack webhook. */

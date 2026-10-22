@@ -12,9 +12,11 @@ const refresh = () => {
   revalidatePath("/maintenance");
 };
 
-export async function activateMaintenanceAction(id: string, billingStartOn?: string) {
+export async function activateMaintenanceAction(id: string, billingStartOn: string | undefined, paidThroughOn: string, paymentConfirmed: boolean) {
   return guard(async () => {
-    await activateMaintenance(await requireAgencyOrThrow(), id, { billingStartOn });
+    // The person confirms they checked the payment in their own billing records: a payment is never inferred, and a plan never starts without one.
+    if (paymentConfirmed !== true) throw new AppError("invalid_input", "Confirm that you verified the payment in your billing records first.");
+    await activateMaintenance(await requireAgencyOrThrow(), id, { billingStartOn, payment: { verified: true, paidThroughOn } });
     refresh();
   });
 }

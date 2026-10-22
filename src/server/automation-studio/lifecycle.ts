@@ -7,7 +7,7 @@ import { env } from "@/server/env";
 import { assertManage, subscriptionForAgency } from "@/server/maintenance/service";
 import { studioEntitlement } from "@/server/automation-studio/entitlement";
 import type { SessionUser } from "@/server/auth/service";
-import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_NAME, canTransition, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
+import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_NAME, canTransition, paidThroughProblem, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
 
 /**
  * The Automation Studio plan's lifecycle after activation: a payment that failed, a payment that was verified, expiry, and what a lapse
@@ -104,10 +104,8 @@ export async function recordPaymentFailed(user: SessionUser, subscriptionId: str
  */
 export async function recordVerifiedPayment(user: SessionUser, subscriptionId: string, input: { paidThroughOn: string }, now = new Date()): Promise<{ reactivated: boolean; workflowsWaiting: number }> {
   assertManage(user);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.paidThroughOn) || Number.isNaN(Date.parse(input.paidThroughOn))) throw new AppError("invalid_input", "Use a valid date for the period the payment covers.");
-  const through = new Date(`${input.paidThroughOn}T00:00:00Z`);
-  if (through.getTime() < now.getTime() - 86_400_000) throw new AppError("invalid_input", "A payment can't cover a period that has already ended.");
-  if (through.getTime() > now.getTime() + 400 * 86_400_000) throw new AppError("invalid_input", "A payment can't cover more than about a year ahead.");
+  const problem = paidThroughProblem(input.paidThroughOn, now);
+  if (problem) throw new AppError("invalid_input", problem);
   return withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
     allow(s.status, "payment_verified");

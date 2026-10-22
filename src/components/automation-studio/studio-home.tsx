@@ -92,6 +92,7 @@ export function StudioHome({ workflows, options, builderReady, builderReason, ca
     <div className="space-y-10">
       {planNotice && <p className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink" role="note">{planNotice}</p>}
       <div className="mb-6 flex justify-end gap-1">
+        <a href="#studio-templates" className="sr-only rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-primary focus:not-sr-only focus-visible:outline-2 focus-visible:outline-primary">Skip to ready-made automations</a>
         <Link href="/automation-studio/usage" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><Gauge className="size-3.5" aria-hidden />Usage and plan</Link>
         <Link href="/automation-studio/connections" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-primary"><KeyRound className="size-3.5" aria-hidden />Connections</Link>
       </div>

@@ -34,6 +34,8 @@ export interface WorkspaceOptions {
   plan?: boolean;
   /** A verified Slack connection ("Sales channel") and a verified HTTP connection ("Operations API", GET and POST only). */
   connections?: boolean;
+  /** The workspace's IANA time zone (default UTC). */
+  timezone?: string;
 }
 
 export async function grantStudioPlan(o: CrmOrg, status: "active" | "past_due" | "expired" = "active") {
@@ -47,7 +49,7 @@ export async function grantStudioPlan(o: CrmOrg, status: "active" | "past_due" |
 }
 
 export async function studioWorkspace(opts: WorkspaceOptions = {}): Promise<StudioWorkspace> {
-  const o = await crmOrg(opts.name ? { name: opts.name } : {});
+  const o = await crmOrg({ ...(opts.name ? { name: opts.name } : {}), ...(opts.timezone ? { timezone: opts.timezone } : {}) });
   if (opts.plan !== false) await grantStudioPlan(o);
   const owner = o.actor("owner");
 
