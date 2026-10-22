@@ -179,7 +179,8 @@ jobs:
           docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
-            -f services/hermes-provisioner/compose.acceptance.yaml config --quiet
+            -f services/hermes-provisioner/compose.acceptance.yaml \
+            --profile provisioner --profile acceptance config --quiet
 
       - name: Run the candidate gateway and synthetic provisioner
         shell: bash
