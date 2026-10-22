@@ -142,17 +142,16 @@ jobs:
             container_persistent: false
           YAML
 
-          runner_gid="$(id -g)"
-          sudo chown "10000:$runner_gid" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+          sudo chown "10000:10000" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
-          sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+          sudo chmod 0400 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
           for private_file in "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"; do
-            [[ "$(stat -c '%u:%g:%a' "$private_file")" == "10000:$runner_gid:440" ]]
+            [[ "$(stat -c '%u:%g:%a' "$private_file")" == "10000:10000:400" ]]
           done
 
           cat > "$temp_dir/compose.env" <<EOF
@@ -215,7 +214,7 @@ jobs:
             --profile provisioner --profile acceptance ps -q hermes-provisioner)"
           [[ -n "$client_id" && -n "$harness_id" && -n "$worker_id" ]]
 
-          python3 - "$client_id" "$harness_id" "$worker_id" "$HERMES_ACCEPTANCE_DIR" <<'PY'
+          sudo python3 - "$client_id" "$harness_id" "$worker_id" "$HERMES_ACCEPTANCE_DIR" <<'PY'
           import json, pathlib, subprocess, sys
           client_id, harness_id, worker_id, temp_dir = sys.argv[1:]
           def inspect(container):
