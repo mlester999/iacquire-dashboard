@@ -588,6 +588,17 @@ class HermesApi:
                             break
                         if name in {"run.failed", "failed", "run.cancelled", "run.interrupted"}:
                             safe_code = _safe_canary_error_code(event)
+                            if safe_code is None:
+                                try:
+                                    status, run_status = self.json_request(
+                                        profile,
+                                        key,
+                                        "/v1/runs/" + urllib.parse.quote(run_id, safe=""),
+                                    )
+                                    if status == 200:
+                                        safe_code = _safe_canary_error_code(run_status)
+                                except ProvisioningError:
+                                    pass
                             raise ProvisioningError(
                                 "canary_failed_" + safe_code if safe_code else "canary_failed"
                             )

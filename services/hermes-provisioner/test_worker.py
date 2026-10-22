@@ -417,6 +417,9 @@ class RestrictedProvisionerTests(unittest.TestCase):
             def readline(self):
                 return next(self._lines, b"")
 
+            def read(self, _size: int = -1):
+                return b""
+
         api = HermesApi("http://127.0.0.1:8642")
         secret_message = "provider rejected request with synthetic-secret-value"
         response = EventResponse({"error": secret_message, "code": "model_provider_error"})
@@ -448,6 +451,18 @@ class RestrictedProvisionerTests(unittest.TestCase):
             with self.assertRaises(ProvisioningError) as exit_caught:
                 api.read_events("c-northwind-0123456789ab-lead-hunter", "synthetic-key", "run-4")
         self.assertEqual(exit_caught.exception.code, "canary_failed_provider_resolution_failed")
+
+        status_secret = "No API key found for openai: status-only synthetic secret"
+        status_response = EventResponse({})
+        with (
+            patch.object(api.http.opener, "open", return_value=status_response),
+            patch.object(api, "json_request", return_value=(200, {"status": "failed", "error": status_secret})) as status_request,
+        ):
+            with self.assertRaises(ProvisioningError) as status_caught:
+                api.read_events("c-northwind-0123456789ab-lead-hunter", "synthetic-key", "run-5")
+        self.assertEqual(status_caught.exception.code, "canary_failed_model_credentials_missing")
+        self.assertNotIn(status_secret, str(status_caught.exception))
+        self.assertEqual(status_request.call_args.args[2], "/v1/runs/run-5")
 
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
         self.api.canary_policy_pending_reads = 2
