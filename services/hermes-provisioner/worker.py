@@ -1047,27 +1047,44 @@ class RestrictedProvisioner:
         if manifest.profile not in identities:
             raise ProvisioningError("profile_identity_failed")
         self._wait_for_effective_toolsets(manifest, key, expected=set(), failure_code="canary_tool_isolation_failed")
-        status, run = self.api.json_request(
-            manifest.profile,
-            key,
-            "/v1/runs",
-            method="POST",
-            body={"input": CANARY_PROMPT, "session_id": "iacquire-verify-" + uuid.uuid4().hex},
-            extra_headers={"Idempotency-Key": str(uuid.uuid4())},
-        )
-        if status not in {200, 202}:
-            safe_status = status if type(status) is int and 100 <= status <= 599 else "unavailable"
-            gateway_error = run.get("error") if isinstance(run, dict) else None
-            gateway_code = gateway_error.get("code") if isinstance(gateway_error, dict) else None
-            if not isinstance(gateway_code, str) or not RUN_SUBMISSION_ERROR_CODE_RE.fullmatch(gateway_code):
-                gateway_code = None
-            suffix = "_" + gateway_code if gateway_code else ""
-            raise ProvisioningError(f"canary_submission_http_{safe_status}{suffix}")
-        if not isinstance(run, dict) or not isinstance(run.get("run_id"), str):
-            raise ProvisioningError("canary_submission_failed")
-        output = self.api.read_events(manifest.profile, key, run["run_id"])
+        run_id = self._submit_canary_run(manifest, key)
+        output = self.api.read_events(manifest.profile, key, run_id)
         if not secrets.compare_digest(output, manifest.soul_challenge):
             raise ProvisioningError("effective_soul_unverified")
+
+    def _submit_canary_run(self, manifest: Manifest, key: str) -> str:
+        """Retry only a bounded profile-authority 409; it admits no run and is safe to replay."""
+        deadline = time.monotonic() + PROFILE_DISCOVERY_TIMEOUT_SECONDS
+        request_body = {
+            "input": CANARY_PROMPT,
+            "session_id": "iacquire-verify-" + uuid.uuid4().hex,
+        }
+        idempotency_key = str(uuid.uuid4())
+        while True:
+            status, run = self.api.json_request(
+                manifest.profile,
+                key,
+                "/v1/runs",
+                method="POST",
+                body=request_body,
+                extra_headers={"Idempotency-Key": idempotency_key},
+            )
+            gateway_error = run.get("error") if isinstance(run, dict) else None
+            gateway_code = gateway_error.get("code") if isinstance(gateway_error, dict) else None
+            if status == 409 and gateway_code == "profile_mismatch":
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(PROFILE_DISCOVERY_RETRY_INTERVAL_SECONDS, remaining))
+                    continue
+            if status not in {200, 202}:
+                safe_status = status if type(status) is int and 100 <= status <= 599 else "unavailable"
+                if not isinstance(gateway_code, str) or not RUN_SUBMISSION_ERROR_CODE_RE.fullmatch(gateway_code):
+                    gateway_code = None
+                suffix = "_" + gateway_code if gateway_code else ""
+                raise ProvisioningError(f"canary_submission_http_{safe_status}{suffix}")
+            if not isinstance(run, dict) or not isinstance(run.get("run_id"), str):
+                raise ProvisioningError("canary_submission_failed")
+            return run["run_id"]
 
     def _wait_for_profile_gateway(self, manifest: Manifest, key: str) -> None:
         """Wait for Hermes' shared multiplexer to discover a newly published profile directory.

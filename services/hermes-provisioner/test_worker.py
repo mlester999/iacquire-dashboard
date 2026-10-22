@@ -125,6 +125,8 @@ class FakeHermesApi:
         self.final_policy_pending_reads = 0
         self.run_submission_status = 202
         self.run_submission_error_code: str | None = None
+        self.run_submission_profile_mismatch_rejections = 0
+        self.run_submission_calls = 0
 
     def json_request(
         self,
@@ -178,7 +180,11 @@ class FakeHermesApi:
                 return 200, [{"name": "no_mcp", "enabled": False, "tools": []}]
             return 200, final_toolsets
         if path == "/v1/runs" and method == "POST":
+            self.run_submission_calls += 1
             self.challenge = body.get("session_id", "").split("-")[-1]
+            if self.run_submission_profile_mismatch_rejections:
+                self.run_submission_profile_mismatch_rejections -= 1
+                return 409, {"error": {"code": "profile_mismatch"}}
             if self.run_submission_error_code:
                 return self.run_submission_status, {"error": {"code": self.run_submission_error_code}}
             return self.run_submission_status, {"run_id": "run-test"}
@@ -373,6 +379,21 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.api.run_submission_error_code = "permission_denied"
         with self.assertRaisesRegex(ProvisioningError, "canary_submission_http_409_permission_denied"):
             self.provisioner.process(self.manifest)
+
+    def test_canary_submission_retries_bounded_profile_authority_refusals(self):
+        self.api.run_submission_profile_mismatch_rejections = 2
+        with patch("worker.time.sleep") as sleep:
+            result = self.provisioner.process(self.manifest)
+        self.assertTrue(result["effectiveSoulVerified"])
+        self.assertEqual(self.api.run_submission_calls, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_canary_submission_fails_closed_when_profile_authority_never_appears(self):
+        self.api.run_submission_profile_mismatch_rejections = 1
+        with patch("worker.PROFILE_DISCOVERY_TIMEOUT_SECONDS", 0):
+            with self.assertRaisesRegex(ProvisioningError, "canary_submission_http_409_profile_mismatch"):
+                self.provisioner.process(self.manifest)
+        self.assertEqual(self.api.run_submission_calls, 1)
 
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
         self.api.canary_policy_pending_reads = 2
