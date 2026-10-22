@@ -142,8 +142,8 @@ jobs:
             container_persistent: false
           YAML
 
-          runner_uid="$(id -u)"
-          sudo chown "$runner_uid:10000" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+          runner_gid="$(id -g)"
+          sudo chown "10000:$runner_gid" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
           sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \

@@ -96,6 +96,12 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn("still needs isolated runtime acceptance", env_example)
 
+    def test_acceptance_secret_files_are_owned_by_worker_and_readable_by_runner_group(self):
+        workflow = (ROOT.parent.parent / ".github/workflows/hermes-client-acceptance.yml").read_text(encoding="utf-8")
+        self.assertIn('runner_gid="$(id -g)"', workflow)
+        self.assertIn('sudo chown "10000:$runner_gid"', workflow)
+        self.assertIn('chmod 0440', workflow)
+
     def test_legacy_overlay_matches_reviewed_hermes_0215_backport_hashes(self):
         overlay = ROOT / "catalog-overlay"
         manifest = {
