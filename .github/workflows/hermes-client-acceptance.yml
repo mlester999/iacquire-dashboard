@@ -284,6 +284,14 @@ jobs:
               worker_failure = result.get("workerFailureCode")
               if isinstance(worker_failure, str) and re.fullmatch(r"[a-z0-9_]{1,80}", worker_failure):
                   print("SANDBOX_WORKER_FAILURE_CODE: " + worker_failure)
+              for key, marker in (
+                  ("modelCalls", "SANDBOX_DIAGNOSTIC_MODEL_CALLS"),
+                  ("modelChatCalls", "SANDBOX_DIAGNOSTIC_MODEL_CHAT_CALLS"),
+                  ("modelAuthenticationFailures", "SANDBOX_DIAGNOSTIC_MODEL_AUTH_FAILURES"),
+              ):
+                  value = result.get(key)
+                  if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10000:
+                      print(f"{marker}: {value}")
               raise SystemExit(1)
           expected = {
               "result": "SANDBOX_PASS",

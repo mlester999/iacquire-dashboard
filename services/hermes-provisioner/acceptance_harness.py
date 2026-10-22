@@ -713,7 +713,11 @@ def serve() -> None:
                 break
 
         if state.abort_code:
-            result = {"result": "SANDBOX_FAIL", "failure": state.abort_code}
+            result = {
+                "result": "SANDBOX_FAIL",
+                "failure": state.abort_code,
+                **_synthetic_model_counters(state),
+            }
             if state.worker_failure_code is not None:
                 result["workerFailureCode"] = state.worker_failure_code
             write_summary(state, result)
@@ -722,7 +726,11 @@ def serve() -> None:
             result = state.verify_runtime(model_key, bootstrap_key)
         except Exception as error:
             safe_code = str(error) if re.fullmatch(r"[a-z0-9_]{1,80}", str(error)) else "runtime_verification_failed"
-            result = {"result": "SANDBOX_FAIL", "failure": safe_code}
+            result = {
+                "result": "SANDBOX_FAIL",
+                "failure": safe_code,
+                **_synthetic_model_counters(state),
+            }
             write_summary(state, result)
             raise SystemExit(1)
         write_summary(state, result)
@@ -731,6 +739,14 @@ def serve() -> None:
         model.shutdown()
         portal.server_close()
         model.server_close()
+
+
+def _synthetic_model_counters(state: AcceptanceState) -> dict[str, int]:
+    return {
+        "modelCalls": state.model_calls,
+        "modelChatCalls": state.model_chat_calls,
+        "modelAuthenticationFailures": state.model_bad_auth,
+    }
 
 
 if __name__ == "__main__":

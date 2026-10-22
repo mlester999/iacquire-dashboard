@@ -572,7 +572,24 @@ class HermesApi:
                             output = event.get("output") if isinstance(event, dict) else None
                             break
                         if name in {"run.failed", "failed", "run.cancelled", "run.interrupted"}:
-                            raise ProvisioningError("canary_failed")
+                            safe_code = None
+                            if isinstance(event, dict):
+                                candidates = [event.get("code"), event.get("error_code")]
+                                error = event.get("error")
+                                if isinstance(error, dict):
+                                    candidates.extend((error.get("code"), error.get("error_code")))
+                                safe_code = next(
+                                    (
+                                        candidate
+                                        for candidate in candidates
+                                        if isinstance(candidate, str)
+                                        and RUN_SUBMISSION_ERROR_CODE_RE.fullmatch(candidate)
+                                    ),
+                                    None,
+                                )
+                            raise ProvisioningError(
+                                "canary_failed_" + safe_code if safe_code else "canary_failed"
+                            )
                         event_name, data_lines = "", []
                         continue
                     if line.startswith(":"):

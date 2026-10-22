@@ -395,6 +395,45 @@ class RestrictedProvisionerTests(unittest.TestCase):
                 self.provisioner.process(self.manifest)
         self.assertEqual(self.api.run_submission_calls, 1)
 
+    def test_failed_canary_event_reports_only_a_bounded_error_code(self):
+        class EventResponse:
+            status = 200
+
+            def __init__(self, payload: dict[str, Any]):
+                self._lines = iter(
+                    [
+                        b"event: run.failed\n",
+                        b"data: " + json.dumps(payload).encode("utf-8") + b"\n",
+                        b"\n",
+                    ]
+                )
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def readline(self):
+                return next(self._lines, b"")
+
+        api = HermesApi("http://127.0.0.1:8642")
+        secret_message = "provider rejected request with synthetic-secret-value"
+        response = EventResponse({"error": secret_message, "code": "model_provider_error"})
+        with patch.object(api.http.opener, "open", return_value=response):
+            with self.assertRaises(ProvisioningError) as caught:
+                api.read_events("c-northwind-0123456789ab-lead-hunter", "synthetic-key", "run-1")
+        self.assertEqual(caught.exception.code, "canary_failed_model_provider_error")
+        self.assertNotIn(secret_message, str(caught.exception))
+        self.assertNotIn("synthetic-secret-value", str(caught.exception))
+
+        unsafe_response = EventResponse({"error": secret_message, "code": "secret-value"})
+        with patch.object(api.http.opener, "open", return_value=unsafe_response):
+            with self.assertRaises(ProvisioningError) as unsafe_caught:
+                api.read_events("c-northwind-0123456789ab-lead-hunter", "synthetic-key", "run-2")
+        self.assertEqual(unsafe_caught.exception.code, "canary_failed")
+        self.assertNotIn("secret-value", str(unsafe_caught.exception))
+
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
         self.api.canary_policy_pending_reads = 2
         with patch("worker.time.sleep"):

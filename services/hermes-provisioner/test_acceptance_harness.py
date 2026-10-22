@@ -2,10 +2,20 @@ import hashlib
 import unittest
 from pathlib import Path
 
-from acceptance_harness import AcceptanceState, ROLE_TITLES, TENANTS
+from acceptance_harness import AcceptanceState, ROLE_TITLES, TENANTS, _synthetic_model_counters
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
+    def test_failure_diagnostics_expose_only_synthetic_model_call_counts(self):
+        state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
+        state.model_calls = 5
+        state.model_chat_calls = 4
+        state.model_bad_auth = 1
+        self.assertEqual(
+            _synthetic_model_counters(state),
+            {"modelCalls": 5, "modelChatCalls": 4, "modelAuthenticationFailures": 1},
+        )
+
     def test_fixture_is_two_isolated_tenants_with_all_six_roles(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
         self.assertEqual(len(state.base_jobs), 12)
