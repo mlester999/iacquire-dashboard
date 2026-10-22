@@ -1,6 +1,6 @@
 # Phase 2 architecture: Missed-Call Recovery and AI Lead Scoring
 
-Branch `feat/phase2-lead-conversion`, cut from `origin/master` `447249d`. Migrations `0085_missed_call_recovery` and `0086_lead_scoring` (rollbacks in `supabase/rollbacks/`). Nothing here has been applied to a hosted database, pushed or deployed.
+Branch `feat/phase2-lead-conversion`, cut from `origin/master` `447249d`. Migrations `0085_missed_call_recovery` and `0086_lead_scoring` (rollbacks in `supabase/rollbacks/`). Released dormant on 2026-10-22 (migrations applied to production, code on `origin/master`); see `05-release-readiness.md`.
 
 ## 1. Reused, not rebuilt
 

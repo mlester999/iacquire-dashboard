@@ -1,11 +1,24 @@
 # Phase 2 release readiness
 
-Branch `feat/phase2-lead-conversion`, from `origin/master` `447249d`. Date of this record: 2026-10-22. Nothing is committed, pushed, deployed or applied to a hosted database; no provider setting or switch was changed; no customer communication was enabled; no real person was a recipient of anything.
+Branch `feat/phase2-lead-conversion`, from `origin/master` `447249d`. Date of this record: 2026-10-22. No provider setting or switch was changed; no customer communication was enabled; no real person was a recipient of anything.
+
+## Release record (2026-10-22, on the founder's explicit instruction "commit and push to master and do migrations")
+
+| Step | Result |
+| --- | --- |
+| Backup | `.data/backups/pre-phase2-0085-0086-20261022T140337.dump` (main checkout): custom-format dump of schemas `public` and `app`, `pg_restore --list` verified, 3,734 table-of-contents entries, 1.9 MB, taken from project `lkkiavjwxaeoqgsbjyso` (ref checked before dumping) |
+| Dry run | `scripts/migrate.ts --dry-run --only 0085_missed_call_recovery --only 0086_lead_scoring`: would apply exactly those two, in that order; nothing applied |
+| Migrations | `0085_missed_call_recovery` then `0086_lead_scoring` applied to production, one at a time. Ledger now 80 rows, latest `0086_lead_scoring` |
+| Production schema check (read-only) | 10 of 10 new tables with row-level security and a policy each; the application role has SELECT only, anon / authenticated / public nothing; six `contacts.priority_*` columns; `contacts_priority_idx` and `crm_call_records_inbound_created_idx`; notification kinds 69 (all earlier kinds kept, `missed_call_follow_up` and `hot_lead_detected` added); no case, policy, assessment or priority row exists yet |
+| Push | `origin/master` fast-forwarded `447249d..74dcf64` |
+| Deploy | Vercel production build of that commit: Ready. `GET /api/health` `{"status":"ok","database":"ok","scheduler":"never_ran"}`; signed-out `/crm/calls`, `/crm/settings/lead-scoring` and `/inbox` redirect to sign-in |
+
+**State after release: deployed and dormant.** Every workspace's recovery policy is off (there are no policy rows) and the scheduler has never run, so a missed call from a connected voice assistant creates a case and a timeline entry (as designed) but no task, notice, contact, conversation change or text; nothing is scored; and nothing is sent. The Phase 1 rollout is unchanged (the new Inbox is off for every workspace, so its Phase 2 cards are not shown anywhere yet).
 
 ## Decision
 
-**NO-GO for switching anything on for customers, and for applying 0085 / 0086 to the hosted database, today.**
-**GO for founder review, and for the staged, approval-gated rollout in `02-operations-and-rollout.md`** (hosted dry run, then one internal workspace, team-only first).
+**NO-GO for activating it: no workspace policy is switched on, the scheduler is not started, and no text is sent, until the approvals below are given.** (The migrations and the code are now released, dormant, on the founder's instruction.)
+**GO for the staged, approval-gated activation in `02-operations-and-rollout.md`** (one internal workspace, team-only first).
 
 Why not "go": the code is complete and tested against simulated providers, but none of it has been seen working against a real database, a real scheduler, a real telephony provider, a real carrier or a real model. Those are the things that fail first.
 
@@ -13,7 +26,7 @@ Why not "go": the code is complete and tested against simulated providers, but n
 
 **Feature completion: about 90% of the directive.** Phases 2A to 2F are built and tested. The remaining ~10% is two items that depend on things the platform does not have: a voice adapter for plain business lines (Twilio Voice, GoHighLevel call webhooks) and an executable AI call-back (no outbound-calling credential or contract). Both are modelled honestly (the call-back is recorded as blocked and never as done) and documented, not hidden.
 
-**Evidence-based production readiness: about 45%.** Counted as verified gates out of the 14 that must hold before a real customer is affected:
+**Evidence-based production readiness: about 50%.** Counted as verified gates (7 of 14) that must hold before a real customer is affected:
 
 | # | Gate | Verified? |
 | --- | --- | --- |
@@ -24,7 +37,7 @@ Why not "go": the code is complete and tested against simulated providers, but n
 | 5 | Browser QA at phone, tablet and desktop, light and dark, accessibility | Yes, with listed gaps |
 | 6 | Typecheck (two configs), lint, clean build | Yes |
 | 7 | Scale probe (20,000 contacts / 8,000 cases) | Yes, indicative only |
-| 8 | Hosted migration dry run and backup | **No** |
+| 8 | Hosted migration dry run, backup and apply | Yes (2026-10-22, see the release record; production schema checked read-only) |
 | 9 | Scheduler run for real (staged, internal workspace) | **No** |
 | 10 | A real missed call from a provider to an internal test number, end to end | **No** |
 | 11 | A real text to an approved internal test recipient | **No** |
@@ -53,8 +66,8 @@ Fixed during this pass, found by browser QA (see `04-verification.md`): a contra
 
 ## What needs the founder's approval
 
-1. Apply 0085 then 0086 to the hosted database, after a verified backup and `--dry-run`, one file at a time.
-2. Push the branch and merge to master. (Safe while dormant: policy is off by default, nothing is scored or sent until the scheduler runs, and the new tables are unused by older code.)
+1. ~~Apply 0085 then 0086 to the hosted database~~ Done 2026-10-22 (see the release record).
+2. ~~Push the branch and merge to master~~ Done 2026-10-22; dormant (policy off, scheduler never ran).
 3. Start the scheduler in the staged order: `crmEventDispatch` + `leadScoreReassessment`, then `missedCallRecovery`, then one internal workspace in team-only mode. No send mode before item 4.
 4. Legal review of the consent rule, per country and state where callers live, before any workspace uses "draft for approval" or "send automatically". Especially the "anyone who phoned us" option.
 5. Whether the language model may read customer messages for lead signals (and a key to evaluate it).

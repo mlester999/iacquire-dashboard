@@ -1,6 +1,6 @@
 # Phase 2 operations, readiness and rollout
 
-Everything below is a plan. Nothing in Phase 2 has been pushed, deployed, applied to a hosted database, or switched on for any workspace, and no real customer was used as a test recipient.
+Status (2026-10-22): migrations 0085 and 0086 are applied to production and the code is deployed from `origin/master` `74dcf64`, **dormant**: no workspace policy is on, the scheduler has never run, and no provider switch was touched (see the release record in `05-release-readiness.md`). Everything below about switching it on is still a plan; no real customer was used as a test recipient.
 
 ## 1. What changes when this is deployed (and what does not)
 

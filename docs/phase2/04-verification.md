@@ -1,6 +1,6 @@
 # Phase 2 verification
 
-Branch `feat/phase2-lead-conversion` (from `origin/master` `447249d`). Nothing is committed, pushed, deployed or applied to a hosted database. No real customer was a recipient of anything.
+Branch `feat/phase2-lead-conversion` (from `origin/master` `447249d`). Everything below was established before release; the release itself (migrations applied to production, push and deploy of `74dcf64`, all dormant) is recorded in `05-release-readiness.md`. No real customer was a recipient of anything.
 
 ## 1. What kind of evidence this is
 
