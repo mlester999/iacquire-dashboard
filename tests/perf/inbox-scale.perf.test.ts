@@ -12,7 +12,7 @@
 // cache, parallel workers and a network hop; the useful signals are the plan shapes, the statement counts and how the cost grows with the data.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { withSystem } from "@/server/db";
+import { withSystem, withUser } from "@/server/db";
 import { inboxViewCounts, listConversationsPage, type ListPage } from "@/server/messaging/inbox-list";
 import { inboxSync } from "@/server/messaging/inbox-sync";
 import { notifyAwaitingReplies } from "@/server/messaging/attention";
@@ -124,5 +124,99 @@ describe.skipIf(!RUN)("inbox reads at scale", () => {
     // Pages and counts must not read the whole workspace into the application: a page is at most 50 items however large the workspace is.
     for (const r of rows.filter((x) => x.name.startsWith("page:"))) expect(r.payloadBytes, r.name).toBeLessThan(400_000);
     void noise;
+  }, 900_000);
+
+  // WHERE the search time goes. The same predicate the list uses (src/server/messaging/inbox-list.ts), one branch at a time and all together, as a workspace
+  // member (row-level security) and as the system role (none), so the cost of the predicate can be told from the cost of row-level security. Diagnostic only:
+  // it changes nothing in the application. A rewrite of the predicate as a union was tried on 2026-10-22 and was about four times slower under row-level security.
+  it("attributes the cost of search to its branches and to row-level security", async () => {
+    const owner = big.ctx("owner");
+    const p = "%viewing 12%";
+    const name = "k.display_name ilike $2";
+    const text = "(c.last_message_preview ilike $2 or c.subject ilike $2)";
+    const identity = "exists (select 1 from contact_identities i where i.contact_id = k.id and i.org_id = c.org_id and i.value ilike $2)";
+    const body = "exists (select 1 from conversation_messages sm where sm.conversation_id = c.id and sm.org_id = c.org_id and sm.direction <> 'internal' and sm.body ilike $2)";
+    const variants: Array<[string, string]> = [
+      ["no search (the first page, for comparison)", "true"],
+      ["name only", name],
+      ["preview and subject only", text],
+      ["identity only", identity],
+      ["message text only", body],
+      ["name or preview or subject", `(${name} or ${text})`],
+      ["all five, as the list runs them", `(${name} or ${text} or ${identity} or ${body})`],
+    ];
+    const sql = (pred: string) => `select c.id from conversations c join contacts k on k.id = c.contact_id where c.org_id = $1 and ${pred} order by c.last_message_at desc nulls last limit 51`;
+    const time = async (run: () => Promise<unknown>) => {
+      await run();
+      const samples: number[] = [];
+      for (let i = 0; i < RUNS; i += 1) {
+        const t0 = performance.now();
+        await run();
+        samples.push(performance.now() - t0);
+      }
+      return Math.round(samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)] * 10) / 10;
+    };
+    const rows: Array<{ variant: string; memberMs: number; systemMs: number }> = [];
+    for (const [variant, pred] of variants) {
+      const params = pred === "true" ? [big.org.id] : [big.org.id, p];
+      const text2 = pred === "true" ? sql(pred) : sql(pred);
+      const memberMs = await time(() => withUser(owner.user.id, (db) => db.query(text2, params)));
+      const systemMs = await time(() => withSystem((db) => db.query(text2, params)));
+      rows.push({ variant, memberMs, systemMs });
+      console.log(`${variant.padEnd(46)} member ${String(memberMs).padStart(8)} ms   system ${String(systemMs).padStart(8)} ms`);
+    }
+    mkdirSync(".data/perf", { recursive: true });
+    writeFileSync(".data/perf/inbox-search-attribution.json", JSON.stringify({ label: PERF_LABEL, conversations: CONVERSATIONS, term: "viewing 12", runs: RUNS, rows }, null, 2));
+    expect(rows).toHaveLength(variants.length);
+  }, 900_000);
+
+  // A CANDIDATE, measured and then undone. conversation_messages' policy says a message is visible when an EXISTS lookup finds its conversation, so a text search does one
+  // lookup per message before it can filter. This swaps in a policy with the same meaning that short-circuits for a workspace's people who see every conversation
+  // (owner, admin), and checks that every role sees exactly the same messages. It is NOT in a migration: a change to a row-level security policy needs its own security
+  // review. The original policy is restored at the end, whatever happens. Run last in this file.
+  it("measures a candidate policy for conversation_messages, and proves it shows each role the same rows", async () => {
+    const original = (await withSystem((db) => db.query<{ qual: string }>("select qual from pg_policies where tablename = 'conversation_messages' and policyname = 'conversation_messages_select'"))).rows[0].qual;
+    expect(original).toMatch(/EXISTS/);
+    const people = ["owner", "manager", "sales", "support", "viewer"] as const;
+    const visible = async () => Object.fromEntries(await Promise.all(people.map(async (who) => [who, Number((await withUser(big.ctx(who).user.id, (db) => db.query<{ n: string }>("select count(*)::text as n from conversation_messages where org_id = $1", [big.org.id]))).rows[0].n)])));
+    const search = (who: (typeof people)[number]) => async () => withUser(big.ctx(who).user.id, (db) => db.query(
+      "select c.id from conversations c join contacts k on k.id = c.contact_id where c.org_id = $1 and exists (select 1 from conversation_messages sm where sm.conversation_id = c.id and sm.org_id = c.org_id and sm.direction <> 'internal' and sm.body ilike $2) order by c.last_message_at desc nulls last limit 51",
+      [big.org.id, "%viewing 12%"],
+    ));
+    const median = async (run: () => Promise<unknown>) => {
+      await run();
+      const samples: number[] = [];
+      for (let i = 0; i < RUNS; i += 1) {
+        const t0 = performance.now();
+        await run();
+        samples.push(performance.now() - t0);
+      }
+      return Math.round(samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)] * 10) / 10;
+    };
+    const measure = async () => ({ owner: await median(search("owner")), sales: await median(search("sales")) });
+    const before = { visible: await visible(), searchMs: await measure() };
+    try {
+      await withSystem(async (db) => {
+        await db.query("drop policy conversation_messages_select on conversation_messages");
+        await db.query(
+          `create policy conversation_messages_select on conversation_messages for select using (
+             org_id = any ((select app.permitted_orgs('inbox.view'))::uuid[])
+             and (org_id = any ((select app.permitted_orgs('inbox.view_all'))::uuid[])
+                  or exists (select 1 from conversations c where c.id = conversation_messages.conversation_id and c.org_id = conversation_messages.org_id)))`,
+        );
+      });
+      const after = { visible: await visible(), searchMs: await measure() };
+      mkdirSync(".data/perf", { recursive: true });
+      writeFileSync(".data/perf/inbox-rls-candidate.json", JSON.stringify({ label: PERF_LABEL, conversations: CONVERSATIONS, term: "viewing 12", before, after }, null, 2));
+      console.log(`candidate policy: owner search ${before.searchMs.owner} -> ${after.searchMs.owner} ms; sales rep ${before.searchMs.sales} -> ${after.searchMs.sales} ms; visible rows ${JSON.stringify(before.visible)} -> ${JSON.stringify(after.visible)}`);
+      // The same messages are visible to every role.
+      expect(after.visible).toEqual(before.visible);
+    } finally {
+      await withSystem(async (db) => {
+        await db.query("drop policy if exists conversation_messages_select on conversation_messages");
+        await db.query(`create policy conversation_messages_select on conversation_messages for select using (${original})`);
+      });
+    }
+    expect((await withSystem((db) => db.query<{ qual: string }>("select qual from pg_policies where tablename = 'conversation_messages' and policyname = 'conversation_messages_select'"))).rows[0].qual).toBe(original);
   }, 900_000);
 });
