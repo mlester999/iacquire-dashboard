@@ -8,6 +8,8 @@ build
 .env
 .env.local
 .env.*.local
+__pycache__/
+*.py[cod]
 *.tsbuildinfo
 next-env.d.ts
 coverage

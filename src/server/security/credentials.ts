@@ -83,6 +83,62 @@ export async function saveCredential(db: Queryable, input: { orgId: string | nul
   return { id:rows[0].id,fingerprint };
 }
 
+/**
+ * Stores the one-time Hermes profile key returned by the restricted host worker.
+ * This path intentionally has no actor impersonation parameter: it can only save a
+ * per-client Hermes API key and attributes the write to the system.
+ */
+export async function saveProvisionedHermesCredential(
+  db: Queryable,
+  input: { orgId: string; agentId: string; secret: string; profile: string },
+) {
+  const secret = input.secret.trim();
+  if (!/^[0-9a-f]{64}$/.test(secret) || !/^[a-z0-9][a-z0-9_-]{1,62}$/.test(input.profile)) {
+    throw new AppError("invalid_input", "The provisioner returned an invalid Hermes profile credential.");
+  }
+  if (!await credentialStoreReady(db)) {
+    throw new AppError("integration_unavailable", "Secure credential storage is unavailable.");
+  }
+  let vaultId: string;
+  try {
+    if (testStore()) {
+      vaultId = crypto.randomUUID();
+      testSecrets.set(vaultId, secret);
+    } else {
+      const { rows } = await db.query<{ id: string }>(
+        "select vault.create_secret($1,$2,$3) as id",
+        [secret, "iacquire-" + crypto.randomUUID(), "iAcquire provisioned Hermes profile key"],
+      );
+      vaultId = rows[0].id;
+    }
+  } catch {
+    throw new AppError("integration_unavailable", "Secure credential storage rejected the provisioned Hermes key.");
+  }
+  const fingerprint = secretFingerprint(secret);
+  const label = "Hermes profile " + input.profile;
+  const { rows: refs } = await db.query<{ id: string }>(
+    "insert into credential_references (org_id,provider,store,vault_secret_id,label,fingerprint,scopes,created_by) " +
+    "values ($1,'hermes',$2,$3,$4,$5,'{}',null) returning id",
+    [input.orgId, testStore() ? "test_memory" : "supabase_vault", vaultId, label, fingerprint],
+  );
+  const { rows } = await db.query<{ id: string }>(
+    "insert into integration_credentials (org_id,provider,label,ciphertext,fingerprint,scopes,created_by,credential_reference_id) " +
+    "values ($1,'hermes',$2,$3,$4,'{}',null,$5) returning id",
+    [input.orgId, label, "vault-ref:" + refs[0].id, fingerprint, refs[0].id],
+  );
+  await recordAudit({
+    orgId: input.orgId,
+    actorKind: "system",
+    agentInstanceId: input.agentId,
+    action: "credential.provisioned",
+    targetType: "integration",
+    targetId: rows[0].id,
+    result: "success",
+    metadata: { provider: "hermes", store: testStore() ? "test_memory" : "supabase_vault" },
+  }, db);
+  return { id: rows[0].id, fingerprint };
+}
+
 /** Scope is validated before touching Vault. References are never accepted from the browser. */
 export async function resolveCredential(db: Queryable, credentialId: string, orgId: string | null, provider: string): Promise<string | null> {
   const { rows } = await db.query<{ org_id:string|null; provider:string; ciphertext:string; revoked_at:Date|null; reference_id:string|null; store:string|null; vault_secret_id:string|null; reference_revoked_at:Date|null; reference_org_id:string|null; reference_provider:string|null }>(

@@ -67,6 +67,10 @@ const schema = z.object({
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
   // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
   CRON_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
+  // Restricted Hermes provisioner worker. Disabled by default and pinned to one reviewed client-only gateway.
+  HERMES_PROVISIONER_ENABLED: bool,
+  HERMES_PROVISIONER_TOKEN: z.preprocess(blankToUndefined, z.string().min(32).max(512).optional()),
+  HERMES_PROVISIONER_GATEWAY_ID: z.preprocess(blankToUndefined, z.string().uuid().optional()),
   // Second, deliberate switch for the scheduled worker. Both this and CRON_SECRET must be set before any job can run, so deploying
   // the scheduler configuration cannot start outbound work by itself. Off unless explicitly enabled.
   SCHEDULER_ENABLED: bool,
@@ -127,6 +131,9 @@ export function env(): Env {
     throw new Error(`Invalid server environment configuration: ${fields}`);
   }
   const value = parsed.data;
+  if (value.HERMES_PROVISIONER_ENABLED && (!value.HERMES_PROVISIONER_TOKEN || !value.HERMES_PROVISIONER_GATEWAY_ID)) {
+    throw new Error("HERMES_PROVISIONER_ENABLED requires its server-only token and pinned gateway id.");
+  }
   const authProvider = resolveAuthProvider(process.env);
   const driver = value.DATABASE_DRIVER ?? (authProvider === "local" ? "pglite" : "postgres");
   // A secret in a NEXT_PUBLIC_ variable is a leak in every environment, not just production.

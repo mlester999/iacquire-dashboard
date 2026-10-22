@@ -1,0 +1,897 @@
+#!/usr/bin/env python3
+"""Restricted Hermes profile worker for a dedicated client-only Hermes home.
+
+This process must run as the unprivileged Hermes account inside a client-only
+runtime. It accepts typed manifests from iAcquireOS and never accepts shell
+commands, file paths, model credentials, or profile names outside the c- namespace.
+"""
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import json
+import os
+import re
+import secrets
+import signal
+import stat
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from datetime import datetime, timezone
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows-only local test fallback
+    fcntl = None
+
+try:
+    import yaml
+except ImportError as exc:  # pragma: no cover - deployment dependency guard
+    raise SystemExit("PyYAML is required by the Hermes provisioner image.") from exc
+
+
+PROFILE_RE = re.compile(r"^c-[a-z0-9][a-z0-9_-]{0,60}$")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+API_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
+ROLE_KEYS = {
+    "operations_manager",
+    "lead_hunter",
+    "appointment_setter",
+    "sales_assistant",
+    "crm_manager",
+    "performance_analyst",
+}
+SAFE_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
+BLOCKABLE_TOOLSETS = {
+    "terminal", "file", "code_execution", "browser", "computer_use",
+    "cronjob", "delegation", "connections", "catalog", "kanban",
+    "image_gen", "skills",
+}
+FORBIDDEN_CONFIG_KEY = re.compile(r"(?:api[_-]?key|secret|token|password|credential|authorization)", re.I)
+CANARY_PROMPT = "Return only the iAcquire profile initialization marker in your permanent identity instructions. Do not call tools."
+MAX_SOUL_BYTES = 48_000
+MAX_CONFIG_BYTES = 24_000
+MAX_HTTP_BODY = 128_000
+
+
+class ProvisioningError(Exception):
+    """A safe, loggable failure code. Never includes input text or secret material."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+@dataclass(frozen=True)
+class Manifest:
+    job_id: str
+    lease_token: str
+    gateway_id: str
+    kind: str
+    org_id: str
+    agent_id: str
+    profile: str
+    role: str
+    config_version_id: str
+    config_version: int
+    source_provision_job_id: str | None
+    soul: str
+    soul_sha256: str
+    soul_challenge: str
+    config_yaml: str
+    policy_config_sha256: str
+    expires_at: str
+
+
+def digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _is_uuid(value: Any) -> bool:
+    return isinstance(value, str) and UUID_RE.fullmatch(value) is not None
+
+
+def parse_manifest(raw: Any, expected_gateway_id: str) -> Manifest:
+    required = {
+        "jobId", "leaseToken", "gatewayId", "kind", "orgId", "agentId", "profile",
+        "role", "configVersionId", "configVersion", "sourceProvisionJobId",
+        "soul", "soulSha256", "soulChallenge", "configYaml", "policyConfigSha256",
+        "expiresAt",
+    }
+    if not isinstance(raw, dict) or set(raw) != required:
+        raise ProvisioningError("invalid_manifest")
+    for name in ("jobId", "leaseToken", "gatewayId", "orgId", "agentId", "configVersionId"):
+        if not _is_uuid(raw[name]):
+            raise ProvisioningError("invalid_manifest")
+    if raw["sourceProvisionJobId"] is not None and not _is_uuid(raw["sourceProvisionJobId"]):
+        raise ProvisioningError("invalid_manifest")
+    if raw["gatewayId"] != expected_gateway_id or raw["kind"] not in {"provision", "sync"}:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["profile"], str) or not PROFILE_RE.fullmatch(raw["profile"]):
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["role"], str) or raw["role"] not in ROLE_KEYS:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["configVersion"], int) or raw["configVersion"] < 1:
+        raise ProvisioningError("invalid_manifest")
+    if raw["kind"] == "sync" and raw["sourceProvisionJobId"] is None:
+        raise ProvisioningError("invalid_manifest")
+    if raw["kind"] == "provision" and raw["sourceProvisionJobId"] is not None:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["soul"], str) or not raw["soul"].strip() or len(raw["soul"].encode("utf-8")) > MAX_SOUL_BYTES:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["configYaml"], str) or not raw["configYaml"].strip() or len(raw["configYaml"].encode("utf-8")) > MAX_CONFIG_BYTES:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["soulSha256"], str) or not SHA256_RE.fullmatch(raw["soulSha256"]):
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["policyConfigSha256"], str) or not SHA256_RE.fullmatch(raw["policyConfigSha256"]):
+        raise ProvisioningError("invalid_manifest")
+    if digest(raw["soul"].encode("utf-8")) != raw["soulSha256"]:
+        raise ProvisioningError("soul_digest_mismatch")
+    if digest(raw["configYaml"].encode("utf-8")) != raw["policyConfigSha256"]:
+        raise ProvisioningError("policy_digest_mismatch")
+    challenge = raw["soulChallenge"]
+    if not isinstance(challenge, str) or not re.fullmatch(r"[0-9a-f]{32}", challenge) or challenge not in raw["soul"]:
+        raise ProvisioningError("invalid_manifest")
+    if not isinstance(raw["expiresAt"], str):
+        raise ProvisioningError("invalid_manifest")
+    try:
+        expiry = datetime.fromisoformat(raw["expiresAt"].replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            raise ValueError
+    except ValueError:
+        raise ProvisioningError("invalid_manifest") from None
+    if expiry <= datetime.now(timezone.utc):
+        raise ProvisioningError("lease_expired")
+    return Manifest(
+        job_id=raw["jobId"],
+        lease_token=raw["leaseToken"],
+        gateway_id=raw["gatewayId"],
+        kind=raw["kind"],
+        org_id=raw["orgId"],
+        agent_id=raw["agentId"],
+        profile=raw["profile"],
+        role=raw["role"],
+        config_version_id=raw["configVersionId"],
+        config_version=raw["configVersion"],
+        source_provision_job_id=raw["sourceProvisionJobId"],
+        soul=raw["soul"],
+        soul_sha256=raw["soulSha256"],
+        soul_challenge=challenge,
+        config_yaml=raw["configYaml"],
+        policy_config_sha256=raw["policyConfigSha256"],
+        expires_at=raw["expiresAt"],
+    )
+
+
+def _reject_secret_fields(value: Any, depth: int = 0) -> None:
+    if depth > 12:
+        raise ProvisioningError("unsafe_model_config")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str) or FORBIDDEN_CONFIG_KEY.search(key):
+                raise ProvisioningError("unsafe_model_config")
+            _reject_secret_fields(item, depth + 1)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_secret_fields(item, depth + 1)
+    elif not isinstance(value, (str, int, float, bool, type(None))):
+        raise ProvisioningError("unsafe_model_config")
+
+
+def parse_policy_config(source: str) -> dict[str, Any]:
+    try:
+        parsed = yaml.safe_load(source)
+    except Exception:
+        raise ProvisioningError("invalid_policy_config") from None
+    if not isinstance(parsed, dict) or set(parsed) != {"platform_toolsets", "agent", "terminal"}:
+        raise ProvisioningError("invalid_policy_config")
+    platform = parsed["platform_toolsets"]
+    agent = parsed["agent"]
+    terminal = parsed["terminal"]
+    if not isinstance(platform, dict) or set(platform) != {"api_server"} or not isinstance(platform["api_server"], list):
+        raise ProvisioningError("invalid_policy_config")
+    tools = platform["api_server"]
+    if any(not isinstance(tool, str) or tool not in SAFE_TOOLSETS | {"no_mcp"} for tool in tools):
+        raise ProvisioningError("invalid_policy_config")
+    if len(set(tools)) != len(tools) or "no_mcp" not in tools:
+        raise ProvisioningError("invalid_policy_config")
+    if not isinstance(agent, dict) or set(agent) != {"disabled_toolsets"} or not isinstance(agent["disabled_toolsets"], list):
+        raise ProvisioningError("invalid_policy_config")
+    blocked = agent["disabled_toolsets"]
+    if any(not isinstance(tool, str) or tool not in BLOCKABLE_TOOLSETS for tool in blocked):
+        raise ProvisioningError("invalid_policy_config")
+    if len(set(blocked)) != len(blocked):
+        raise ProvisioningError("invalid_policy_config")
+    if not isinstance(terminal, dict) or set(terminal) != {"backend", "docker_forward_env", "container_persistent"}:
+        raise ProvisioningError("invalid_policy_config")
+    if terminal != {"backend": "docker", "docker_forward_env": [], "container_persistent": False}:
+        raise ProvisioningError("invalid_policy_config")
+    return parsed
+
+
+def _safe_model_block(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    _require_regular_file(path)
+    try:
+        current = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        raise ProvisioningError("invalid_profile_config") from None
+    if current is None:
+        return {}
+    if not isinstance(current, dict):
+        raise ProvisioningError("invalid_profile_config")
+    model = current.get("model", {})
+    if not isinstance(model, dict):
+        raise ProvisioningError("invalid_profile_config")
+    _reject_secret_fields(model)
+    encoded = yaml.safe_dump(model, allow_unicode=True, sort_keys=True)
+    if len(encoded.encode("utf-8")) > 8_000:
+        raise ProvisioningError("unsafe_model_config")
+    return model
+
+
+def render_config(path: Path, policy: dict[str, Any], canary: bool) -> bytes:
+    model = _safe_model_block(path)
+    tools = ["no_mcp"] if canary else policy["platform_toolsets"]["api_server"]
+    payload = {
+        "model": model,
+        "platform_toolsets": {"api_server": tools},
+        "agent": {"disabled_toolsets": sorted(BLOCKABLE_TOOLSETS)},
+        "terminal": {"backend": "docker", "docker_forward_env": [], "container_persistent": False},
+    }
+    return yaml.safe_dump(payload, allow_unicode=True, sort_keys=True).encode("utf-8")
+
+
+def _require_regular_file(path: Path) -> None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        raise ProvisioningError("profile_file_missing") from None
+    if not stat.S_ISREG(mode):
+        raise ProvisioningError("unsafe_profile_path")
+
+
+def _atomic_write(path: Path, data: bytes, mode: int = 0o600) -> None:
+    parent = path.parent
+    if parent.is_symlink() or not parent.is_dir():
+        raise ProvisioningError("unsafe_profile_path")
+    if path.exists() or path.is_symlink():
+        _require_regular_file(path)
+    temp = parent / ("." + path.name + "." + secrets.token_hex(12) + ".tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(temp, flags, mode)
+    fd_open = True
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+            if hasattr(os, "fchmod"):
+                os.fchmod(stream.fileno(), mode)
+        fd_open = False
+        os.replace(temp, path)
+        os.chmod(path, mode)
+        if os.name != "nt":
+            dir_fd = os.open(parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+    finally:
+        if fd_open:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        with contextlib.suppress(FileNotFoundError):
+            temp.unlink()
+
+
+_WINDOWS_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _profile_lock(path: Path):
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.parent.is_symlink():
+        raise ProvisioningError("unsafe_profile_path")
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if fcntl is None:  # local unit tests; deployment is Linux
+            _WINDOWS_LOCK.acquire()
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fcntl is None:
+            _WINDOWS_LOCK.release()
+        else:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class JsonHttp:
+    def __init__(self, timeout: int = 20):
+        self.timeout = timeout
+        self.opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            urllib.request.HTTPSHandler(),
+            NoRedirect(),
+        )
+
+    def request(self, url: str, method: str, headers: dict[str, str], body: dict[str, Any] | None = None) -> tuple[int, Any]:
+        data = None if body is None else json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with self.opener.open(req, timeout=self.timeout) as response:
+                payload = response.read(MAX_HTTP_BODY + 1)
+                if len(payload) > MAX_HTTP_BODY:
+                    raise ProvisioningError("http_response_too_large")
+                status = response.status
+        except urllib.error.HTTPError as error:
+            payload = error.read(MAX_HTTP_BODY + 1)
+            status = error.code
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise ProvisioningError("http_unavailable") from None
+        try:
+            return status, json.loads(payload.decode("utf-8")) if payload else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return status, None
+
+
+class HermesApi:
+    def __init__(self, base_url: str, timeout: int = 30):
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ProvisioningError("unsafe_hermes_api_origin")
+        if parsed.path not in {"", "/"} or parsed.query or parsed.fragment or parsed.username or parsed.password:
+            raise ProvisioningError("unsafe_hermes_api_origin")
+        self.base = base_url.rstrip("/")
+        self.http = JsonHttp(timeout=timeout)
+
+    def _url(self, profile: str, path: str) -> str:
+        if not PROFILE_RE.fullmatch(profile) or not path.startswith("/v1/"):
+            raise ProvisioningError("invalid_profile_route")
+        return self.base + "/p/" + urllib.parse.quote(profile, safe="") + path
+
+    def json_request(self, profile: str, key: str, path: str, method: str = "GET", body: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None):
+        headers = {"Authorization": "Bearer " + key, "Accept": "application/json"}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        if extra_headers:
+            headers.update(extra_headers)
+        status, data = self.http.request(self._url(profile, path), method, headers, body)
+        return status, data
+
+    def read_events(self, profile: str, key: str, run_id: str, timeout: int = 120) -> str:
+        run = urllib.parse.quote(run_id, safe="")
+        url = self._url(profile, "/v1/runs/" + run + "/events")
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": "Bearer " + key, "Accept": "text/event-stream"},
+            method="GET",
+        )
+        try:
+            with self.http.opener.open(req, timeout=timeout) as response:
+                if response.status != 200:
+                    raise ProvisioningError("canary_events_unavailable")
+                event_name = ""
+                data_lines: list[str] = []
+                output: str | None = None
+                while True:
+                    raw = response.readline()
+                    if not raw:
+                        break
+                    line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                    if not line:
+                        if not data_lines:
+                            event_name = ""
+                            continue
+                        try:
+                            event = json.loads("\n".join(data_lines))
+                        except json.JSONDecodeError:
+                            raise ProvisioningError("canary_event_invalid") from None
+                        name = event_name or (event.get("event") if isinstance(event, dict) else "") or (event.get("type") if isinstance(event, dict) else "")
+                        if isinstance(name, str) and name.startswith("tool."):
+                            raise ProvisioningError("canary_tool_invoked")
+                        if name in {"run.completed", "completed"}:
+                            output = event.get("output") if isinstance(event, dict) else None
+                            break
+                        if name in {"run.failed", "failed", "run.cancelled", "run.interrupted"}:
+                            raise ProvisioningError("canary_failed")
+                        event_name, data_lines = "", []
+                        continue
+                    if line.startswith(":"):
+                        continue
+                    field, _, value = line.partition(":")
+                    value = value[1:] if value.startswith(" ") else value
+                    if field == "event":
+                        event_name = value
+                    elif field == "data":
+                        data_lines.append(value)
+        except ProvisioningError:
+            raise
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise ProvisioningError("canary_events_unavailable") from None
+        if output is None:
+            raise ProvisioningError("canary_incomplete")
+        return output.strip()
+
+
+class RestrictedProvisioner:
+    def __init__(
+        self,
+        *,
+        home: Path,
+        hermes_cli: Path,
+        api: HermesApi,
+        gateway_id: str,
+        hermes_version: str,
+        run_command: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    ):
+        self.home = home.resolve()
+        self.profile_root = self.home / "profiles"
+        self.state_root = self.home / "iacquire-provisioner-state"
+        self.hermes_cli = hermes_cli
+        self.api = api
+        self.gateway_id = gateway_id
+        self.hermes_version = hermes_version[:80]
+        self.run_command = run_command
+        if self.home == Path("/") or not self.profile_root.exists() or self.profile_root.is_symlink():
+            raise ProvisioningError("unsafe_hermes_home")
+        if self.state_root.exists() and self.state_root.is_symlink():
+            raise ProvisioningError("unsafe_hermes_home")
+        self.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(self.state_root, 0o700)
+        for entry in self.profile_root.iterdir():
+            if entry.is_symlink():
+                raise ProvisioningError("unsafe_hermes_home")
+            if entry.is_dir() and entry.name.startswith("iacquire-"):
+                raise ProvisioningError("agency_profile_found")
+
+    def process(self, raw_manifest: Any) -> dict[str, Any]:
+        manifest = parse_manifest(raw_manifest, self.gateway_id)
+        with _profile_lock(self.state_root / (manifest.profile + ".lock")):
+            profile_dir = self._profile_dir(manifest.profile)
+            policy = parse_policy_config(manifest.config_yaml)
+            key = self._prepare_profile(manifest, profile_dir)
+            self._write_soul(profile_dir, manifest.soul)
+            config_path = profile_dir / "config.yaml"
+            _atomic_write(config_path, render_config(config_path, policy, canary=True))
+            self._verify_api_and_soul(manifest, key)
+            deployed_config = render_config(config_path, policy, canary=False)
+            _atomic_write(config_path, deployed_config)
+            self._verify_final_policy(manifest, key)
+            effective_config_hash = digest(config_path.read_bytes())
+            self._write_marker(manifest, profile_dir, effective_config_hash)
+            result = {
+                "ok": True,
+                "jobId": manifest.job_id,
+                "leaseToken": manifest.lease_token,
+                "gatewayId": manifest.gateway_id,
+                "kind": manifest.kind,
+                "orgId": manifest.org_id,
+                "agentId": manifest.agent_id,
+                "profile": manifest.profile,
+                "sourceProvisionJobId": manifest.source_provision_job_id,
+                "configVersionId": manifest.config_version_id,
+                "configVersion": manifest.config_version,
+                "soulSha256": digest((profile_dir / "SOUL.md").read_bytes()),
+                "soulChallengeSha256": digest(manifest.soul_challenge.encode("utf-8")),
+                "policyConfigSha256": manifest.policy_config_sha256,
+                "effectiveConfigSha256": effective_config_hash,
+                "authenticated": True,
+                "identityVerified": True,
+                "effectiveSoulVerified": True,
+                "toolInventoryComplete": True,
+                "toolInventoryDigest": self._inventory_digest,
+                "hermesVersion": self.hermes_version,
+            }
+            if manifest.kind == "provision":
+                result["apiKey"] = key
+            return result
+
+    @property
+    def _inventory_digest(self) -> str:
+        return getattr(self, "__inventory_digest", "")
+
+    @_inventory_digest.setter
+    def _inventory_digest(self, value: str) -> None:
+        self.__inventory_digest = value
+
+    def _profile_dir(self, name: str) -> Path:
+        if not PROFILE_RE.fullmatch(name):
+            raise ProvisioningError("invalid_profile")
+        path = self.profile_root / name
+        if path.parent.resolve() != self.profile_root.resolve() or path.is_symlink():
+            raise ProvisioningError("unsafe_profile_path")
+        if path.exists() and not path.is_dir():
+            raise ProvisioningError("profile_conflict")
+        return path
+
+    def _journal_path(self, profile: str) -> Path:
+        return self.state_root / (profile + ".json")
+
+    def _read_json_file(self, path: Path) -> dict[str, Any] | None:
+        if not path.exists():
+            return None
+        _require_regular_file(path)
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            raise ProvisioningError("profile_state_invalid") from None
+        if not isinstance(value, dict):
+            raise ProvisioningError("profile_state_invalid")
+        return value
+
+    def _prepare_profile(self, manifest: Manifest, profile_dir: Path) -> str:
+        marker_path = profile_dir / ".iacquire-provisioner.json"
+        marker = self._read_json_file(marker_path) if profile_dir.exists() else None
+        journal_path = self._journal_path(manifest.profile)
+        journal = self._read_json_file(journal_path)
+        if manifest.kind == "sync":
+            if not profile_dir.exists() or marker is None:
+                raise ProvisioningError("profile_ownership_missing")
+            if (
+                marker.get("orgId") != manifest.org_id
+                or marker.get("agentId") != manifest.agent_id
+                or marker.get("profile") != manifest.profile
+                or marker.get("sourceProvisionJobId") != manifest.source_provision_job_id
+            ):
+                raise ProvisioningError("profile_ownership_conflict")
+            env_path = profile_dir / ".env"
+            key = self._read_api_key(env_path)
+            if key is None:
+                raise ProvisioningError("profile_key_missing")
+            return key
+
+        if marker is not None:
+            if (
+                marker.get("orgId") != manifest.org_id
+                or marker.get("agentId") != manifest.agent_id
+                or marker.get("profile") != manifest.profile
+                or marker.get("sourceProvisionJobId") != manifest.job_id
+            ):
+                raise ProvisioningError("profile_ownership_conflict")
+            key = self._read_api_key(profile_dir / ".env")
+            if key is None:
+                raise ProvisioningError("profile_key_missing")
+            return key
+        if profile_dir.exists():
+            if not journal or journal.get("jobId") != manifest.job_id or journal.get("orgId") != manifest.org_id or journal.get("agentId") != manifest.agent_id:
+                raise ProvisioningError("profile_conflict")
+        else:
+            if journal and journal.get("jobId") != manifest.job_id:
+                raise ProvisioningError("profile_ownership_conflict")
+            journal = {
+                "schemaVersion": 1,
+                "jobId": manifest.job_id,
+                "orgId": manifest.org_id,
+                "agentId": manifest.agent_id,
+                "profile": manifest.profile,
+                "createdAt": int(time.time()),
+            }
+            _atomic_write(journal_path, json.dumps(journal, separators=(",", ":")).encode("utf-8"))
+            description = "iAcquire client " + manifest.role + " profile"
+            env = _hermes_cli_environment(self.home)
+            try:
+                self.run_command(
+                    [
+                        str(self.hermes_cli), "profile", "create", manifest.profile,
+                        "--description", description, "--no-alias", "--no-skills",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=90,
+                    env=env,
+                )
+            except (subprocess.SubprocessError, OSError):
+                raise ProvisioningError("profile_create_failed") from None
+            if not profile_dir.exists() or profile_dir.is_symlink():
+                raise ProvisioningError("profile_create_failed")
+        if profile_dir.is_symlink() or profile_dir.parent.resolve() != self.profile_root.resolve():
+            raise ProvisioningError("unsafe_profile_path")
+        for path in profile_dir.iterdir():
+            if path.is_symlink():
+                raise ProvisioningError("unsafe_profile_path")
+        env_path = profile_dir / ".env"
+        key = self._read_api_key(env_path) if journal and journal.get("apiKeyWritten") is True else None
+        if key is None:
+            key = secrets.token_hex(32)
+        env_text = "API_SERVER_ENABLED=true\nAPI_SERVER_KEY=" + key + "\n"
+        _atomic_write(env_path, env_text.encode("utf-8"))
+        journal = journal or {
+            "schemaVersion": 1,
+            "jobId": manifest.job_id,
+            "orgId": manifest.org_id,
+            "agentId": manifest.agent_id,
+            "profile": manifest.profile,
+        }
+        journal["apiKeyWritten"] = True
+        _atomic_write(journal_path, json.dumps(journal, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+        os.chmod(profile_dir, 0o700)
+        return key
+
+    def _read_api_key(self, path: Path) -> str | None:
+        if not path.exists():
+            return None
+        _require_regular_file(path)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            raise ProvisioningError("profile_key_invalid") from None
+        values = [line.partition("=")[2] for line in lines if line.startswith("API_SERVER_KEY=")]
+        if len(values) != 1 or not API_KEY_RE.fullmatch(values[0]):
+            return None
+        return values[0]
+
+    def _write_soul(self, profile_dir: Path, soul: str) -> None:
+        path = profile_dir / "SOUL.md"
+        _atomic_write(path, soul.encode("utf-8"))
+
+    def _write_marker(self, manifest: Manifest, profile_dir: Path, effective_config_hash: str) -> None:
+        source_job = manifest.source_provision_job_id or manifest.job_id
+        marker = {
+            "schemaVersion": 1,
+            "orgId": manifest.org_id,
+            "agentId": manifest.agent_id,
+            "profile": manifest.profile,
+            "sourceProvisionJobId": source_job,
+            "lastJobId": manifest.job_id,
+            "configVersionId": manifest.config_version_id,
+            "soulSha256": manifest.soul_sha256,
+            "policyConfigSha256": manifest.policy_config_sha256,
+            "effectiveConfigSha256": effective_config_hash,
+            "updatedAt": int(time.time()),
+        }
+        _atomic_write(
+            profile_dir / ".iacquire-provisioner.json",
+            json.dumps(marker, separators=(",", ":"), sort_keys=True).encode("utf-8"),
+        )
+
+    def _verify_api_and_soul(self, manifest: Manifest, key: str) -> None:
+        status, caps = self.api.json_request(manifest.profile, key, "/v1/capabilities")
+        if status != 200 or not isinstance(caps, dict):
+            raise ProvisioningError("profile_authentication_failed")
+        features = caps.get("features") if isinstance(caps.get("features"), dict) else {}
+        auth = caps.get("auth") if isinstance(caps.get("auth"), dict) else {}
+        if auth.get("required") is not True or auth.get("type") != "bearer" or features.get("run_submission") is not True:
+            raise ProvisioningError("profile_api_contract_failed")
+        status, models = self.api.json_request(manifest.profile, key, "/v1/models")
+        if status != 200 or not isinstance(models, dict) or not isinstance(models.get("data"), list):
+            raise ProvisioningError("profile_identity_failed")
+        identities = [
+            row.get("id") for row in models["data"]
+            if isinstance(row, dict) and row.get("owned_by") == "hermes" and row.get("parent") is None and row.get("root") == row.get("id")
+        ]
+        if manifest.profile not in identities:
+            raise ProvisioningError("profile_identity_failed")
+        status, toolsets = self.api.json_request(manifest.profile, key, "/v1/toolsets")
+        if status != 200 or not isinstance(toolsets, (list, dict)):
+            raise ProvisioningError("canary_tool_isolation_failed")
+        entries = toolsets if isinstance(toolsets, list) else toolsets.get("data")
+        if not isinstance(entries, list):
+            raise ProvisioningError("canary_tool_isolation_failed")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ProvisioningError("canary_tool_isolation_failed")
+            enabled = entry.get("enabled") is True
+            tools = entry.get("tools")
+            if enabled and isinstance(tools, list) and tools:
+                raise ProvisioningError("canary_tool_isolation_failed")
+            if enabled and tools is None:
+                raise ProvisioningError("canary_tool_isolation_failed")
+        status, run = self.api.json_request(
+            manifest.profile,
+            key,
+            "/v1/runs",
+            method="POST",
+            body={"input": CANARY_PROMPT, "session_id": "iacquire-verify-" + uuid.uuid4().hex},
+            extra_headers={"Idempotency-Key": str(uuid.uuid4())},
+        )
+        if status not in {200, 202} or not isinstance(run, dict) or not isinstance(run.get("run_id"), str):
+            raise ProvisioningError("canary_submission_failed")
+        output = self.api.read_events(manifest.profile, key, run["run_id"])
+        if not secrets.compare_digest(output, manifest.soul_challenge):
+            raise ProvisioningError("effective_soul_unverified")
+
+    def _verify_final_policy(self, manifest: Manifest, key: str) -> None:
+        status, toolsets = self.api.json_request(manifest.profile, key, "/v1/toolsets")
+        if status != 200 or not isinstance(toolsets, (list, dict)):
+            raise ProvisioningError("runtime_tool_policy_unverified")
+        entries = toolsets if isinstance(toolsets, list) else toolsets.get("data")
+        if not isinstance(entries, list) or not entries:
+            raise ProvisioningError("runtime_tool_policy_unverified")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ProvisioningError("runtime_tool_policy_unverified")
+            if entry.get("enabled") is True:
+                name = entry.get("name")
+                tools = entry.get("tools")
+                if name not in SAFE_TOOLSETS or not isinstance(tools, list) or not tools:
+                    raise ProvisioningError("runtime_tool_policy_unverified")
+        challenge = secrets.token_hex(24)
+        status, catalog = self.api.json_request(
+            manifest.profile,
+            key,
+            "/v1/tools?platform=api_server",
+            extra_headers={"X-Hermes-Inventory-Challenge": challenge},
+        )
+        if status != 200 or not isinstance(catalog, dict):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        if (
+            catalog.get("platform") != "api_server"
+            or catalog.get("complete") is not True
+            or catalog.get("explicit_config_present") is not True
+            or catalog.get("challenge") != challenge
+            or not isinstance(catalog.get("tools"), list)
+        ):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        self._inventory_digest = digest(
+            json.dumps(catalog, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+
+
+def _validate_runtime() -> tuple[Path, Path, str, str, str, str]:
+    if hasattr(os, "getuid") and os.getuid() == 0:
+        raise ProvisioningError("worker_must_not_run_as_root")
+    home = Path(os.environ.get("HERMES_HOME", "/opt/data")).resolve()
+    profile_root = home / "profiles"
+    if not profile_root.is_dir() or profile_root.is_symlink():
+        raise ProvisioningError("unsafe_hermes_home")
+    cli = Path(os.environ.get("HERMES_CLI", "/usr/local/bin/hermes"))
+    if not cli.is_absolute() or not cli.is_file():
+        raise ProvisioningError("hermes_cli_unavailable")
+    portal_url = _validate_portal_origin(os.environ.get("IACQUIRE_PROVISIONER_URL", ""))
+    token = os.environ.get("IACQUIRE_PROVISIONER_TOKEN", "")
+    gateway_id = os.environ.get("IACQUIRE_PROVISIONER_GATEWAY_ID", "")
+    api_base = os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642")
+    if len(token) < 32 or not _is_uuid(gateway_id):
+        raise ProvisioningError("provisioner_credentials_missing")
+    api = HermesApi(api_base)
+    _sanitize_worker_environment(home, api_base)
+    try:
+        version = subprocess.run(
+            [str(cli), "--version"], check=True, capture_output=True, text=True,
+            timeout=20, env=_hermes_cli_environment(home),
+        ).stdout.strip()
+        help_text = subprocess.run(
+            [str(cli), "profile", "create", "--help"], check=True, capture_output=True, text=True,
+            timeout=20, env=_hermes_cli_environment(home),
+        ).stdout
+    except (subprocess.SubprocessError, OSError):
+        raise ProvisioningError("hermes_cli_preflight_failed") from None
+    if not all(flag in help_text for flag in ("--description", "--no-alias", "--no-skills")):
+        raise ProvisioningError("unsupported_profile_create_cli")
+    return home, cli, portal_url, token, gateway_id, version
+
+
+def _hermes_cli_environment(home: Path) -> dict[str, str]:
+    """Give the CLI only the runtime variables it needs, never the worker token."""
+    allowed = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM")
+    result = {key: os.environ[key] for key in allowed if key in os.environ}
+    result.update({"HERMES_HOME": str(home), "HOME": str(home), "PYTHONNOUSERSITE": "1"})
+    return result
+
+
+def _sanitize_worker_environment(home: Path, api_base: str) -> None:
+    """Drop model-provider and unrelated inherited secrets from the worker process."""
+    allowed = (
+        "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR",
+        "SSL_CERT_FILE", "SSL_CERT_DIR",
+    )
+    clean = {key: os.environ[key] for key in allowed if key in os.environ}
+    clean.update({
+        "HERMES_HOME": str(home),
+        "HOME": str(home),
+        "HERMES_PROVISIONER_API_BASE": api_base,
+    })
+    os.environ.clear()
+    os.environ.update(clean)
+
+
+def _validate_portal_origin(value: str) -> str:
+    try:
+        parsed = urllib.parse.urlsplit(value.strip())
+        port = parsed.port
+    except ValueError:
+        raise ProvisioningError("portal_url_invalid") from None
+    if parsed.scheme != "https":
+        raise ProvisioningError("portal_url_must_use_https")
+    if (
+        not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or any(char.isspace() for char in value)
+    ):
+        raise ProvisioningError("portal_url_invalid")
+    authority = parsed.hostname
+    if ":" in authority and not authority.startswith("["):
+        authority = "[" + authority + "]"
+    if port is not None:
+        authority += ":" + str(port)
+    return "https://" + authority
+
+
+def run_worker() -> None:
+    home, cli, portal_url, token, gateway_id, version = _validate_runtime()
+    worker = RestrictedProvisioner(
+        home=home,
+        hermes_cli=cli,
+        api=HermesApi(os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642")),
+        gateway_id=gateway_id,
+        hermes_version=version,
+    )
+    http = JsonHttp(timeout=30)
+    headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"}
+    base = portal_url + "/api/internal/hermes-provisioner"
+    stopped = False
+
+    def stop(_signum, _frame):
+        nonlocal stopped
+        stopped = True
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    while not stopped:
+        try:
+            status, response = http.request(
+                base + "/claim",
+                "POST",
+                headers,
+                {"gatewayId": gateway_id},
+            )
+            if status != 200 or not isinstance(response, dict):
+                time.sleep(10)
+                continue
+            manifest = response.get("job")
+            if manifest is None:
+                time.sleep(5)
+                continue
+            try:
+                result = worker.process(manifest)
+            except ProvisioningError as error:
+                raw = manifest if isinstance(manifest, dict) else {}
+                result = {
+                    "ok": False,
+                    "jobId": raw.get("jobId"),
+                    "leaseToken": raw.get("leaseToken"),
+                    "gatewayId": gateway_id,
+                    "code": error.code,
+                }
+            status, _ = http.request(base + "/complete", "POST", headers, result)
+            if status not in {200, 202}:
+                time.sleep(10)
+        except ProvisioningError:
+            time.sleep(10)
+        except Exception:
+            # No exception message is emitted because third-party errors can include request data.
+            time.sleep(10)
+
+
+if __name__ == "__main__":
+    try:
+        run_worker()
+    except ProvisioningError as error:
+        print("Hermes provisioner stopped: " + error.code, file=sys.stderr)
+        raise SystemExit(1)

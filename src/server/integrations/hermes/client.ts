@@ -496,6 +496,7 @@ export type AgentRunBlockReason =
   | "identity_unverified"
   | "acknowledgement_required"
   | "credential_unavailable"
+  | "configuration_sync_required"
   | "permission_mismatch"
   | "readiness_unknown";
 
@@ -523,6 +524,7 @@ interface AgentRunGateRow {
   status: string;
   credential_ready: boolean;
   active_config_version_id: string | null;
+  hermes_profile_config_version_id?: string | null;
   tool_inventory_digest: string | null;
   last_health_ok: boolean | null;
   tool_inventory_contract: string | null;
@@ -539,13 +541,16 @@ interface AgentRunGateRow {
  * a recorded digest the live catalog would have nothing to be compared against, so a never-health-checked employee
  * could run on a catalog that merely looks safe today.
  */
-export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "tool_inventory_digest" | "credential_ready">): string {
+export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "hermes_profile_config_version_id" | "tool_inventory_digest" | "credential_ready">): string {
   if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
   if (!canChat(row.status as AgentStatus)) {
     throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status));
   }
   if (!row.active_config_version_id) {
     throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
+  }
+  if (row.hermes_profile_config_version_id && row.hermes_profile_config_version_id !== row.active_config_version_id) {
+    throw new AgentRunNotReadyError("configuration_sync_required", "This AI employee's approved configuration is still synchronizing to its dedicated Hermes profile.");
   }
   if (!row.credential_ready) {
     throw new AgentRunNotReadyError("credential_unavailable", "This AI employee's saved Hermes credential is missing or revoked, so it can't run.");
@@ -684,7 +689,7 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
   try {
     await withSystem(async (db) => {
       const { rows } = await db.query<AgentRunGateRow>(
-        `select o.kind,a.enabled,a.status,a.active_config_version_id,a.last_health_ok,
+        `select o.kind,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
                 (cred.id is not null and cred.revoked_at is null and
                  (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
                 a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
@@ -709,7 +714,7 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
 async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRunGateRow | null> {
   try {
     const { rows } = await withSystem((db) => db.query<AgentRunGateRow>(
-      `select o.kind,a.enabled,a.status,a.active_config_version_id,a.last_health_ok,
+      `select o.kind,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
               (cred.id is not null and cred.revoked_at is null and
                (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
               a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
