@@ -28,7 +28,7 @@ LABEL com.iacquire.hermes.catalog-revision="${HERMES_CATALOG_REVISION}"
 FROM hermes-client AS provisioner
 USER root
 COPY --chown=0:0 services/hermes-provisioner/requirements.txt /opt/iacquire-hermes/requirements.txt
-RUN python3 -c 'import subprocess; from pm import installed_package; uv=str(installed_package("uv").binary); subprocess.run([uv, "venv", "--python", "/opt/hermes/.venv/bin/python", "/opt/iacquire-hermes/.venv"], check=True); subprocess.run([uv, "pip", "install", "--no-cache", "--python", "/opt/iacquire-hermes/.venv/bin/python", "--requirement", "/opt/iacquire-hermes/requirements.txt"], check=True)'
+RUN python3 -c 'import subprocess; from pm import uv_launcher; uv=uv_launcher("uv"); assert uv is not None; subprocess.run([str(uv), "venv", "--python", "/opt/hermes/.venv/bin/python", "/opt/iacquire-hermes/.venv"], check=True); subprocess.run([str(uv), "pip", "install", "--no-cache", "--python", "/opt/iacquire-hermes/.venv/bin/python", "--requirement", "/opt/iacquire-hermes/requirements.txt"], check=True)'
 RUN /opt/iacquire-hermes/.venv/bin/python -c 'import yaml'
 COPY --chown=0:0 services/hermes-provisioner/worker.py /opt/iacquire-hermes/worker.py
 RUN chmod 0444 /opt/iacquire-hermes/worker.py
