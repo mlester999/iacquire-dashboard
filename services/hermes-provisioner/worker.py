@@ -70,6 +70,9 @@ PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS = 90
 PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS = 1
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
+SAFE_RUN_SUBMISSION_ERROR_CODES = {
+    "admission_conflict", "idempotency_key_conflict", "permission_denied",
+}
 MODEL_API_KEY_ENV_NAMES = {
     "AI_GATEWAY_API_KEY", "ANTHROPIC_API_KEY", "DEEPINFRA_API_KEY", "DEEPSEEK_API_KEY",
     "FIREWORKS_API_KEY", "GEMINI_API_KEY", "GLM_API_KEY", "GOOGLE_API_KEY",
@@ -1056,7 +1059,12 @@ class RestrictedProvisioner:
         )
         if status not in {200, 202}:
             safe_status = status if type(status) is int and 100 <= status <= 599 else "unavailable"
-            raise ProvisioningError(f"canary_submission_http_{safe_status}")
+            gateway_error = run.get("error") if isinstance(run, dict) else None
+            gateway_code = gateway_error.get("code") if isinstance(gateway_error, dict) else None
+            if gateway_code not in SAFE_RUN_SUBMISSION_ERROR_CODES:
+                gateway_code = None
+            suffix = "_" + gateway_code if gateway_code else ""
+            raise ProvisioningError(f"canary_submission_http_{safe_status}{suffix}")
         if not isinstance(run, dict) or not isinstance(run.get("run_id"), str):
             raise ProvisioningError("canary_submission_failed")
         output = self.api.read_events(manifest.profile, key, run["run_id"])

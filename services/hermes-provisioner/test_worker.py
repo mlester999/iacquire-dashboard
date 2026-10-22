@@ -124,6 +124,7 @@ class FakeHermesApi:
         self.canary_policy_pending_reads = 0
         self.final_policy_pending_reads = 0
         self.run_submission_status = 202
+        self.run_submission_error_code: str | None = None
 
     def json_request(
         self,
@@ -178,6 +179,8 @@ class FakeHermesApi:
             return 200, final_toolsets
         if path == "/v1/runs" and method == "POST":
             self.challenge = body.get("session_id", "").split("-")[-1]
+            if self.run_submission_error_code:
+                return self.run_submission_status, {"error": {"code": self.run_submission_error_code}}
             return self.run_submission_status, {"run_id": "run-test"}
         if path.startswith("/v1/tools?platform=api_server"):
             challenge = (extra_headers or {}).get("X-Hermes-Inventory-Challenge", "")
@@ -360,6 +363,12 @@ class RestrictedProvisionerTests(unittest.TestCase):
     def test_canary_submission_failure_reports_only_the_http_status(self):
         self.api.run_submission_status = 403
         with self.assertRaisesRegex(ProvisioningError, "canary_submission_http_403"):
+            self.provisioner.process(self.manifest)
+
+    def test_canary_submission_reports_only_allowlisted_gateway_error_code(self):
+        self.api.run_submission_status = 409
+        self.api.run_submission_error_code = "permission_denied"
+        with self.assertRaisesRegex(ProvisioningError, "canary_submission_http_409_permission_denied"):
             self.provisioner.process(self.manifest)
 
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
