@@ -1,8 +1,11 @@
 # Handoff
 
-Last updated: 2026-10-22, start of Phase 3.
+Last updated: 2026-10-23, end of Phase 3 (before Phase 4 starts).
 
-* Worktree: `C:\Users\ZEPHY\Documents\Marky Files\Programming Projects\iAcquire-dashboard\.data\wt-phases-3-7`, branch `feat/phases-3-7`, base `36bf78c`. Nothing committed yet beyond the base.
-* Completed: audit and ledger (this folder).
-* Active blockers: see `blockers.md` (none blocks the start of Phase 3).
-* **Single next safe action:** write migration `0087_website_chat.sql` and its rollback (tables, `web_chat` channel, `website_chat` created-via), then the pure rules under `src/lib/webchat/`.
+* Worktree: `C:\Users\ZEPHY\Documents\Marky Files\Programming Projects\iAcquire-dashboard\.data\wt-phases-3-7`, branch `feat/phases-3-7`, base `36bf78c` (released Phase 2). Local commits only; **nothing pushed, nothing applied to any hosted database.**
+* Completed: audit and ledger; Phase 3 (website chat, lead attribution, sources report, five Studio triggers). Gates: full suite, both typechecks, eslint, clean build, migration rehearsal, browser QA. Exact numbers are in `verification-evidence.md`; the report is `phase-3-checkpoint.md`.
+* Migrations in this branch: `0087_website_chat`, `0088_lead_attribution`, each with a rollback in `supabase/rollbacks/`. **Next free number: 0089.** Re-run `node scripts/rehearse-phase3-migrations.mjs` (section A) before creating one: other branches may have taken it.
+* Active blockers: `blockers.md`. None blocks local work on Phase 4.
+* Re-creating the browser QA: `node scripts/run-inbox-qa-seed.mjs`, `node scripts/run-phase3-qa-seed.mjs` (server stopped), `node scripts/inbox-qa.mjs` in the background (port 3270). Serve a stand-in customer page from a different origin (`http://localhost:3280`, the seed allows host `localhost`) with `<script src="http://127.0.0.1:3270/widget/chat.js" data-key="<key in .data/crm-qa/phase3-seed-summary.json>" async>`. Sign in through a local cookie bridge so no password passes through chat. The widget script is cached by the browser for five minutes: after editing it, fetch it with `cache: "reload"` before reloading the page.
+* Traps: the widget's CSS is a string inside `src/lib/webchat/widget-script.ts` (String.raw), so use the Edit tool, not heredocs; a worktree edit during a vitest or build run can corrupt the run; `withSystem` cannot be nested in tests; a contact holds one conversation per channel (use a fresh contact when probing channel constraints).
+* **Single next safe action:** start Phase 4 by auditing what exists for social publishing (nothing is in the tree), then write the migration for social accounts, posts, approvals, media and the publishing outbox as `0089`, with the durable idempotent publisher built against a simulated provider only. No live publish, ever, without approval.

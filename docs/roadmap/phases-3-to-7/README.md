@@ -5,7 +5,7 @@ This folder is the resumable record of the Phase 3 to 7 initiative (website acqu
 | Item | Value |
 | --- | --- |
 | Branch / worktree | `feat/phases-3-7` in `.data/wt-phases-3-7` (from `origin/master` `36bf78c`, the released Phase 2). `node_modules` is a junction to the main checkout. |
-| Next free migration number | **0087** (0084 is reserved by `codex/client-ai-onboarding` and `codex/hermes-gha-acceptance`; 0085 and 0086 are Phase 2, applied to production). Re-check across all refs before creating one. |
+| Next free migration number | **0089** (0084 is reserved by `codex/client-ai-onboarding` and `codex/hermes-gha-acceptance`; 0085 and 0086 are Phase 2, applied to production; 0087 and 0088 are Phase 3, local only). Re-check across all refs and sibling worktrees (`scripts/rehearse-phase3-migrations.mjs`, section A) before creating one. |
 | Approval boundaries | No push, deploy, hosted migration, scheduler start, live provider operation, real customer message or live social publish without the founder's explicit approval. Nothing in this initiative has been pushed. |
 | Evidence classes | Built, locally tested, integration-tested (embedded Postgres, real internal services, simulated providers), tested with a real provider, deployed, production-verified. Never collapsed into one status. |
 
@@ -17,6 +17,7 @@ Files:
 * `verification-evidence.md`: exact test, typecheck, lint, build and browser results per milestone.
 * `blockers.md`: what is blocked on external resources or approvals, and what was done instead.
 * `handoff.md`: where to resume, the single next safe action.
+* `phase-3-checkpoint.md`: the Phase 3 checkpoint report (what was built, how it was verified, status with evidence-based estimates, blockers, next phase).
 
 Conventions that matter when resuming (learned in Phases 1 and 2):
 
