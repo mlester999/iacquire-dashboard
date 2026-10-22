@@ -364,7 +364,7 @@ export function selectMigrationFiles(versions?: readonly string[]): string[] {
   return files.filter((file) => selected.has(file.replace(/\.sql$/, "")));
 }
 
-const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
+export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0039_agency_team_permission_overrides": [
     "0037_service_role_integration_credential_access",
     "0038_agency_team_and_hermes_policies",
@@ -382,6 +382,9 @@ const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0079_ai_work_triggers": ["0077_ai_work_jobs"],
   "0080_proactive_ai_employees": ["0077_ai_work_jobs", "0078_ai_work_schedules"],
   "0081_ai_work_job_rls_hardening": ["0077_ai_work_jobs", "0080_proactive_ai_employees"],
+  // 0083 extends notifications_kind_check from the live constraint. 0065 is the last migration that rewrites that constraint from a copied list, so it
+  // must already be in: applied after 0083 (for example by --only), it would silently drop the inbox's three notification kinds.
+  "0083_unified_inbox": ["0065_support_requests"],
 };
 
 /**
