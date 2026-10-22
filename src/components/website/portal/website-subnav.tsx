@@ -9,6 +9,7 @@ const ITEMS = [
   { href: "/website/edit", label: "Edit", needs: "edit" },
   { href: "/website/domains", label: "Domains", needs: "site" },
   { href: "/website/leads", label: "Enquiries", needs: "site" },
+  { href: "/website/chat", label: "Chat", needs: "any" },
   { href: "/website/history", label: "History", needs: "site" },
 ] as const;
 

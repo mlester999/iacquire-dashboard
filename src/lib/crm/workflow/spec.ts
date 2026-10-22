@@ -53,6 +53,8 @@ export const EVENT_TRIGGER_TYPES = [
   // Missed-call recovery (src/server/missed-calls) and lead scoring (src/server/lead-scoring) announce themselves here once each.
   "call.missed", "recovery.eligible", "recovery.failed", "recovery.responded", "recovery.completed",
   "lead.score_updated", "lead.became_hot", "lead.label_changed", "lead.qualification_completed",
+  // The website chat (src/server/webchat) and lead attribution (src/server/attribution), announced once each.
+  "webchat.started", "webchat.lead_captured", "webchat.qualification_completed", "webchat.booking_requested", "lead.source_recorded",
 ] as const;
 export type EventTriggerType = (typeof EVENT_TRIGGER_TYPES)[number];
 
@@ -212,6 +214,11 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "lead.became_hot": T("lead.became_hot", "Lead became hot", "A lead's label turned Hot (by the scoring rules).", "Contacts", "contact", CONTACT_ONLY),
   "lead.label_changed": T("lead.label_changed", "Lead label changed", "A lead's Hot / Warm / Cold / Insufficient data label changed, by the rules or by a person.", "Contacts", "contact", CONTACT_ONLY, ["leadLabels"]),
   "lead.qualification_completed": T("lead.qualification_completed", "Lead qualified enough to score", "A lead went from Insufficient data to a scored label because enough became known.", "Contacts", "contact", CONTACT_ONLY),
+  "webchat.started": T("webchat.started", "Website chat started", "A visitor sends their first message in the chat on your website. It carries the conversation and the new contact the chat created.", "Conversations", "conversation", CONTACT_ONLY),
+  "webchat.lead_captured": T("webchat.lead_captured", "Website visitor shared their details", "A visitor fills in the details form in the website chat. Their details are unverified: anyone can type anyone's address.", "Contacts", "contact", CONTACT_ONLY),
+  "webchat.qualification_completed": T("webchat.qualification_completed", "Website visitor answered your questions", "A visitor answers every required qualification question in the website chat's details form.", "Contacts", "contact", CONTACT_ONLY),
+  "webchat.booking_requested": T("webchat.booking_requested", "Website visitor asked to book", "The website assistant took a booking request from a visitor. Whether it was booked, is waiting for approval or needs a person is in the booking itself.", "Conversations", "contact", CONTACT_ONLY),
+  "lead.source_recorded": T("lead.source_recorded", "Lead source recorded", "Where a contact came from was recorded: a form, a website chat, a call or a person's choice. Its details say what was recorded and how sure it is.", "Contacts", "contact", CONTACT_ONLY),
   "call.completed": T("call.completed", "Call ended", "A call with your voice assistant ends, or someone in your team logs a call. It has a contact when the caller's number matches one.", "Growth", "contact", { contact: "maybe", opportunity: "never" }, ["callStatuses", "callDirections"]),
   schedule: T("schedule", "On a schedule", "Runs every day or on chosen weekdays at a set time in your workspace's time zone. A scheduled run has no contact.", "Other", "none", { contact: "never", opportunity: "never" }),
   inbound_webhook: T("inbound_webhook", "Inbound webhook", "Another system calls this workflow's private, signed URL. The body can be matched to a contact by email or phone.", "Other", "none", { contact: "maybe", opportunity: "never" }),

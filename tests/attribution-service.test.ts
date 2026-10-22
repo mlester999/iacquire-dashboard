@@ -12,7 +12,6 @@ import { getContactAttribution, recordCallTouch, recordFormTouch, recordManualTo
 import { crmOrg, eventsFor, type CrmOrg } from "./support/crm";
 import { callerNumber, recordCall, voice } from "./support/missed-calls";
 import { addSiteHost, answer, chatOrg, clientId, embedCall, start, type ChatOrg } from "./support/webchat";
-import { ctxFor } from "./support/fixtures";
 
 let c: CrmOrg;
 const rows = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await withSystem((db) => db.query<T & Record<string, unknown>>(sql, params))).rows;
@@ -127,12 +126,12 @@ describe("where touches come from", () => {
   it("lets a person record a source they know, as known and attributed to them, without rewriting the first touch", async () => {
     const id = await make("Referral");
     await touch(id, { kind: "website_form", attribution: { utm_source: "google" } }, new Date("2026-10-01T00:00:00Z"), { type: "form_submission", id: "manual-1" });
-    await recordManualTouch(ctxFor(c.people.sales, c.org, "sales_rep"), { contactId: id, source: "Trade Show", medium: "Event", campaign: "Expo 2026" });
+    await recordManualTouch(c.actor("sales"), { contactId: id, source: "Trade Show", medium: "Event", campaign: "Expo 2026" });
     const a = await attr(id);
     expect(a.first?.source).toBe("google"); // unchanged
     expect(a.latest).toMatchObject({ kind: "manual", source: "trade-show", medium: "event", campaign: "Expo 2026", confidence: "known", evidence: "manual" });
-    await expect(recordManualTouch(ctxFor(c.people.sales, c.org, "sales_rep"), { contactId: id, source: "   " })).rejects.toThrow(/Enter a source/);
-    await expect(recordManualTouch(ctxFor(c.people.viewer, c.org, "viewer"), { contactId: id, source: "x" })).rejects.toThrow(/can't change/i);
+    await expect(recordManualTouch(c.actor("sales"), { contactId: id, source: "   " })).rejects.toThrow(/Enter a source/);
+    await expect(recordManualTouch(c.actor("viewer"), { contactId: id, source: "x" })).rejects.toThrow(/can't change/i);
     expect(await rows("select 1 from audit_logs where org_id = $1 and action = 'attribution.manual_touch'", [c.org.id])).not.toHaveLength(0);
   });
 
@@ -204,8 +203,8 @@ describe("the source report", () => {
 
   it("computes cost per lead only from an entered cost wholly inside the period and in one currency, and still never computes return on spend", async () => {
     const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-    const owner = ctxFor(c.people.owner, c.org, "owner");
-    await expect(addCost(ctxFor(c.people.sales, c.org, "sales_rep"), { source: "google", periodStart: day(-1), periodEnd: day(0), amount: 100, currency: "USD" })).rejects.toThrow(/Only people who can export/);
+    const owner = c.actor("owner");
+    await expect(addCost(c.actor("sales"), { source: "google", periodStart: day(-1), periodEnd: day(0), amount: 100, currency: "USD" })).rejects.toThrow(/Only people who can export/);
     await expect(addCost(owner, { source: "google", periodStart: day(0), periodEnd: day(-3), amount: 100, currency: "USD" })).rejects.toThrow(/cannot be before/);
     await expect(addCost(owner, { source: "google", periodStart: day(0), periodEnd: day(0), amount: -5, currency: "USD" })).rejects.toThrow(/positive/);
     await expect(addCost(owner, { source: "google", periodStart: day(0), periodEnd: day(0), amount: 5, currency: "dollars" })).rejects.toThrow(/three-letter/);

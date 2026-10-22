@@ -1,10 +1,8 @@
 import "server-only";
-import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { crmRead, type CrmActor } from "@/server/crm/actor";
+import { assertCan, auditActor, crmRead, crmWrite, type CrmActor } from "@/server/crm/actor";
 import { normalizeSourceName, sourceLabel } from "@/lib/attribution/model";
-import type { OrgContext } from "@/server/tenancy/context";
 
 // Campaign spend, as a person entered it. Nothing here is fetched from an advertising platform and nothing is estimated: cost per lead and return on spend
 // exist only for a source and period where somebody typed a cost. Entering and removing costs is for the people who can export reports (owners and
@@ -29,10 +27,10 @@ export interface CostEntry {
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function addCost(
-  ctx: OrgContext,
+  actor: CrmActor,
   input: { source: string; campaign?: string | null; periodStart: string; periodEnd: string; amount: number; currency: string; note?: string | null },
 ): Promise<CostEntry> {
-  if (!ctx.can("analytics.export")) throw new AppError("forbidden", "Only people who can export reports can enter campaign costs.");
+  assertCan(actor, "analytics.export", "Only people who can export reports can enter campaign costs.");
   const source = normalizeSourceName(input.source, 80);
   if (!source) throw new AppError("invalid_input", "Choose the source this cost belongs to, for example google or facebook.");
   if (!DAY.test(input.periodStart) || !DAY.test(input.periodEnd) || Number.isNaN(Date.parse(input.periodStart)) || Number.isNaN(Date.parse(input.periodEnd))) throw new AppError("invalid_input", "Enter the first and last day the cost covers.");
@@ -44,24 +42,24 @@ export async function addCost(
   if (!/^[A-Z]{3}$/.test(currency)) throw new AppError("invalid_input", "Use a three-letter currency code, such as USD.");
   const campaign = input.campaign?.replace(/\s+/g, " ").trim().slice(0, 120) || null;
   const note = input.note?.replace(/\s+/g, " ").trim().slice(0, 300) || null;
-  return withSystem(async (db) => {
-    const count = await db.query<{ n: string }>("select count(*)::text as n from attribution_costs where org_id = $1", [ctx.org.orgId]);
+  return crmWrite(actor, async (db) => {
+    const count = await db.query<{ n: string }>("select count(*)::text as n from attribution_costs where org_id = $1", [actor.orgId]);
     if (Number(count.rows[0].n) >= MAX_COST_ROWS) throw new AppError("usage_limit", `A workspace can keep up to ${MAX_COST_ROWS} cost entries. Remove old ones first.`);
     const { rows } = await db.query<{ id: string; created_at: Date }>(
       "insert into attribution_costs (org_id, source, campaign, period_start, period_end, amount, currency, note, entered_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id, created_at",
-      [ctx.org.orgId, source, campaign, input.periodStart, input.periodEnd, Math.round(input.amount * 100) / 100, currency, note, ctx.user.id],
+      [actor.orgId, source, campaign, input.periodStart, input.periodEnd, Math.round(input.amount * 100) / 100, currency, note, actor.userId],
     );
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "attribution.cost_entered", targetType: "attribution_cost", targetId: rows[0].id, result: "success", metadata: { source, currency } }, db);
-    return { id: rows[0].id, source, label: sourceLabel(source), campaign, periodStart: input.periodStart, periodEnd: input.periodEnd, amount: Math.round(input.amount * 100) / 100, currency, note, enteredBy: ctx.user.id, createdAt: new Date(rows[0].created_at).toISOString() };
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "attribution.cost_entered", targetType: "attribution_cost", targetId: rows[0].id, result: "success", metadata: { source, currency } }, db);
+    return { id: rows[0].id, source, label: sourceLabel(source), campaign, periodStart: input.periodStart, periodEnd: input.periodEnd, amount: Math.round(input.amount * 100) / 100, currency, note, enteredBy: actor.userId, createdAt: new Date(rows[0].created_at).toISOString() };
   });
 }
 
-export async function removeCost(ctx: OrgContext, id: string): Promise<void> {
-  if (!ctx.can("analytics.export")) throw new AppError("forbidden", "Only people who can export reports can remove campaign costs.");
-  await withSystem(async (db) => {
-    const r = await db.query("delete from attribution_costs where id = $1 and org_id = $2 returning id", [id, ctx.org.orgId]);
+export async function removeCost(actor: CrmActor, id: string): Promise<void> {
+  assertCan(actor, "analytics.export", "Only people who can export reports can remove campaign costs.");
+  await crmWrite(actor, async (db) => {
+    const r = await db.query("delete from attribution_costs where id = $1 and org_id = $2 returning id", [id, actor.orgId]);
     if (!r.rows[0]) throw new AppError("not_found", "That cost entry was not found.");
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "attribution.cost_removed", targetType: "attribution_cost", targetId: id, result: "success" }, db);
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "attribution.cost_removed", targetType: "attribution_cost", targetId: id, result: "success" }, db);
   });
 }
 

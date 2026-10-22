@@ -30,6 +30,7 @@ import { AssignmentView } from "@/components/crm/views/assignment-view";
 import { LeadScoringView } from "@/components/crm/views/lead-scoring-view";
 import { CustomValuesView } from "@/components/crm/views/custom-values-view";
 import { ReportsView } from "@/components/crm/views/reports-view";
+import { SourcesView } from "@/components/crm/views/sources-view";
 import { CampaignsView } from "@/components/crm/views/campaigns-view";
 import { CampaignView } from "@/components/crm/views/campaign-view";
 import { FormsView } from "@/components/crm/views/forms-view";
@@ -145,6 +146,7 @@ export default async function AgencyClientCrmPage({ params, searchParams }: { pa
       return b ? <CampaignView actor={actor} scope={scope} id={b} searchParams={sp} /> : <CampaignsView actor={actor} scope={scope} searchParams={sp} />;
     case "reports":
       need("analytics.view");
+      if (b === "sources") return <SourcesView actor={actor} scope={scope} searchParams={sp} />;
       if (b) notFound();
       return <ReportsView actor={actor} scope={scope} searchParams={sp} />;
     case "settings":

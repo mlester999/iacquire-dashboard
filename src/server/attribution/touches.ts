@@ -1,12 +1,11 @@
 import "server-only";
 import crypto from "node:crypto";
-import { withSystem, type Queryable } from "@/server/db";
+import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { crmRead, systemActor, type CrmActor } from "@/server/crm/actor";
+import { assertCan, auditActor, crmRead, crmWrite, systemActor, type CrmActor } from "@/server/crm/actor";
 import { emitEvent } from "@/server/crm/events";
 import { classifyTouch, type ClassifiedTouch, type Confidence, type Evidence, type TouchFacts, type TouchKind } from "@/lib/attribution/model";
-import type { OrgContext } from "@/server/tenancy/context";
 
 type RefType = "form_submission" | "website_submission" | "web_chat_session" | "call" | "booking" | "manual";
 
@@ -125,18 +124,18 @@ export async function recordChatTouch(db: Queryable, input: { orgId: string; con
 }
 
 /** A person's own choice of source for a contact ("they told us at the trade show"). Known, attributed to them, and it never replaces an earlier touch. */
-export async function recordManualTouch(ctx: OrgContext, input: { contactId: string; source: string; medium?: string | null; campaign?: string | null }) {
-  if (!ctx.can("contacts.edit")) throw new AppError("forbidden", "Your role can't change a contact's source.");
-  return withSystem(async (db) => {
-    const exists = await db.query("select 1 from contacts where id = $1 and org_id = $2 and deleted_at is null", [input.contactId, ctx.org.orgId]);
+export async function recordManualTouch(actor: CrmActor, input: { contactId: string; source: string; medium?: string | null; campaign?: string | null }) {
+  assertCan(actor, "contacts.edit", "Your role can't change a contact's source.");
+  return crmWrite(actor, async (db) => {
+    const exists = await db.query("select 1 from contacts where id = $1 and org_id = $2 and deleted_at is null", [input.contactId, actor.orgId]);
     if (!exists.rows[0]) throw new AppError("not_found", "Contact not found.");
     const r = await recordTouch(db, {
-      orgId: ctx.org.orgId, contactId: input.contactId, createdBy: ctx.user.id,
+      orgId: actor.orgId, contactId: input.contactId, createdBy: actor.userId,
       facts: { kind: "manual", manual: { source: input.source, medium: input.medium ?? null, campaign: input.campaign ?? null } },
       ref: { type: "manual", id: crypto.randomUUID() },
     });
     if (r.touch.evidence !== "manual") throw new AppError("invalid_input", "Enter a source, for example Referral or Trade show.");
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "attribution.manual_touch", targetType: "contact", targetId: input.contactId, result: "success", metadata: { source: r.touch.source } }, db);
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "attribution.manual_touch", targetType: "contact", targetId: input.contactId, result: "success", metadata: { source: r.touch.source } }, db);
     return r;
   });
 }

@@ -1,6 +1,8 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
+import { systemActor } from "@/server/crm/actor";
+import { emitEvent } from "@/server/crm/events";
 import { createEscalation } from "@/server/messaging/handoff";
 import { respondToConversation, type ReplyGenerator, type RespondResult } from "@/server/messaging/responder";
 import type { AppointmentProvider } from "@/server/appointments/provider";
@@ -24,6 +26,7 @@ export interface ReplyDeps {
 }
 
 export async function replyToVisitor(orgId: string, conversationId: string, deps: ReplyDeps = {}): Promise<RespondResult | { status: "timeout" }> {
+  const startedAt = new Date(Date.now() - 1000);
   const work = respondToConversation(orgId, conversationId, { generate: deps.generate, now: deps.now, provider: deps.provider });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<{ status: "timeout" }>((resolve) => {
@@ -37,6 +40,11 @@ export async function replyToVisitor(orgId: string, conversationId: string, deps
   }
   const emails: OutgoingEmail[] = [];
   await withSystem(async (db) => {
+    // A booking the assistant took from this visitor is announced to workflows once, whatever became of it.
+    const booked = await db.query<{ id: string; contact_id: string; status: string }>("select id, contact_id, status from appointment_bookings where org_id = $1 and conversation_id = $2 and created_at >= $3", [orgId, conversationId, startedAt]);
+    for (const b of booked.rows) {
+      await emitEvent(db, systemActor({ id: orgId }), { type: "webchat.booking_requested", entityType: "contact", entityId: b.contact_id, contactId: b.contact_id, byContact: true, payload: { conversationId, bookingId: b.id, status: b.status }, dedupeKey: `webchat.booking_requested:${b.id}` });
+    }
     const last = await db.query<{ id: string }>("select id from conversation_messages where conversation_id = $1 and org_id = $2 and direction = 'inbound' order by created_at desc, id desc limit 1", [conversationId, orgId]);
     const inbound = last.rows[0]?.id ?? "none";
     if (result.status === "unavailable") {

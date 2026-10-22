@@ -236,7 +236,7 @@ export function ContactProfile({
 
         <aside className="min-w-0 space-y-4">
           {priority && <PriorityCard scope={scope} contactId={detail.id} view={priority} canEdit={canEdit} />}
-          {attribution && <AttributionCard {...attribution} />}
+          {attribution && <AttributionCard {...attribution} edit={canEdit ? { orgId: scope.orgId, contactId: detail.id } : undefined} />}
           <SectionCard title="Contact details">
             <div className="space-y-4">
               <div>

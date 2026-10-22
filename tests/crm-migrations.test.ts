@@ -33,6 +33,8 @@ const CRM_MIGRATION_NAMES = [
   "0085_missed_call_recovery.sql", "0086_lead_scoring.sql",
   // Website chat: read policies on app.permitted_orgs; its rollback refuses while a widget is on or a chat exists (none do here).
   "0087_website_chat.sql",
+  // Lead touches and entered campaign costs: read policies on app.permitted_orgs; its rollback refuses while a touch or cost exists (none do here).
+  "0088_lead_attribution.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

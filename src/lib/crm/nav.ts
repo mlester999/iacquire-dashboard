@@ -34,7 +34,8 @@ export const CRM_NAV: CrmNavSection[] = [
       { path: "/smart-lists", label: "Smart Lists", icon: "list-filter", permission: "contacts.view", capability: "contacts" },
       { path: "/tags", label: "Tags & Segments", icon: "tags", permission: "crm.view", capability: "tags" },
       { path: "/fields", label: "Custom Fields", icon: "text-cursor-input", permission: "crm.view", capability: "custom_fields" },
-      { path: "/reports", label: "Reports", icon: "bar-chart-3", permission: "analytics.view", capability: "reporting" },
+      { path: "/reports", label: "Reports", icon: "bar-chart-3", permission: "analytics.view", capability: "reporting", exact: true },
+      { path: "/reports/sources", label: "Lead Sources & ROI", icon: "route", permission: "analytics.view", capability: "reporting" },
     ],
   },
   {

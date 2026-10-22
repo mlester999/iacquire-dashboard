@@ -3,7 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { Globe, MapPin } from "lucide-react";
-import { Badge } from "@/components/ui/primitives";
+import { Button } from "@/components/ui/button";
+import { Badge, Input } from "@/components/ui/primitives";
+import { useCrmAction } from "@/components/crm/ui";
+import { recordSourceAction } from "@/app/actions/attribution";
 import { CONFIDENCE_LABELS, sourceLabel, TOUCH_KIND_LABELS } from "@/lib/attribution/model";
 import { relativeTime } from "@/lib/utils";
 import type { TouchRecord } from "@/server/attribution/touches";
@@ -38,11 +41,40 @@ function TouchLine({ label, t }: { label: string; t: TouchRecord }) {
   );
 }
 
-export function AttributionCard({ first, latest, history }: { first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[] }) {
+/** A person's own note of where a contact came from (a referral, a trade show). It is recorded as a touch like any other, marked as entered by hand. */
+function RecordSource({ orgId, contactId }: { orgId: string | null; contactId: string }) {
+  const { run, busy } = useCrmAction();
+  const [open, setOpen] = React.useState(false);
+  const [source, setSource] = React.useState("");
+  const [campaign, setCampaign] = React.useState("");
+  if (!open) return <Button variant="secondary" size="sm" className="mt-3" onClick={() => setOpen(true)}>Record a source</Button>;
+  return (
+    <form
+      className="mt-3 space-y-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (await run("source", () => recordSourceAction(orgId, contactId, { source, campaign: campaign || null }), "Source recorded.")) { setOpen(false); setSource(""); setCampaign(""); }
+      }}
+    >
+      <label className="block text-[12px] font-medium text-ink" htmlFor={`src-${contactId}`}>Where did they find you?</label>
+      <Input id={`src-${contactId}`} list={`src-list-${contactId}`} value={source} maxLength={80} onChange={(e) => setSource(e.target.value)} placeholder="Referral, trade show, walk-in" required />
+      <datalist id={`src-list-${contactId}`}>{["Referral", "Walk-in", "Trade show", "Event", "Phone", "Partner"].map((o) => <option key={o} value={o} />)}</datalist>
+      <label className="block text-[12px] font-medium text-ink" htmlFor={`camp-${contactId}`}>Campaign or detail <span className="font-normal text-muted">(optional)</span></label>
+      <Input id={`camp-${contactId}`} value={campaign} maxLength={120} onChange={(e) => setCampaign(e.target.value)} />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" variant="brand" loading={busy("source")} disabled={!source.trim()}>Save</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      </div>
+    </form>
+  );
+}
+
+export function AttributionCard({ first, latest, history, edit }: { first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[]; edit?: { orgId: string | null; contactId: string } }) {
   if (!first) {
     return (
       <Card title="Where they came from" icon={MapPin}>
         <p className="text-[12.5px] text-muted">Nothing was recorded about how this contact found you. It is not guessed.</p>
+        {edit && <RecordSource {...edit} />}
       </Card>
     );
   }
@@ -63,6 +95,7 @@ export function AttributionCard({ first, latest, history }: { first: TouchRecord
           </ul>
         </details>
       )}
+      {edit && <RecordSource {...edit} />}
     </Card>
   );
 }
