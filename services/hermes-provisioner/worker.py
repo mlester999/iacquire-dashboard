@@ -393,15 +393,27 @@ def _safe_model_block(path: Path) -> dict[str, Any]:
     model = current.get("model", {})
     if not isinstance(model, dict):
         raise ProvisioningError("invalid_profile_config")
+    return _validate_model_block(model)
+
+
+def _validate_model_block(model: Any) -> dict[str, Any]:
+    if not isinstance(model, dict):
+        raise ProvisioningError("invalid_profile_config")
     _reject_secret_fields(model)
     encoded = yaml.safe_dump(model, allow_unicode=True, sort_keys=True)
     if len(encoded.encode("utf-8")) > 8_000:
         raise ProvisioningError("unsafe_model_config")
-    return model
+    return dict(model)
 
 
-def render_config(path: Path, policy: dict[str, Any], canary: bool) -> bytes:
-    model = _safe_model_block(path)
+def render_config(
+    path: Path,
+    policy: dict[str, Any],
+    canary: bool,
+    *,
+    model_config: dict[str, Any] | None = None,
+) -> bytes:
+    model = _safe_model_block(path) if model_config is None else _validate_model_block(model_config)
     tools = ["no_mcp"] if canary else policy["platform_toolsets"]["api_server"]
     payload = {
         "model": model,
@@ -715,6 +727,7 @@ class RestrictedProvisioner:
         gateway_id: str,
         hermes_version: str,
         profile_model_env: dict[str, str] | None = None,
+        profile_model_config: dict[str, Any] | None = None,
         run_command: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     ):
         self.home = home.resolve()
@@ -725,6 +738,9 @@ class RestrictedProvisioner:
         self.gateway_id = gateway_id
         self.hermes_version = hermes_version[:80]
         self.profile_model_env = dict(profile_model_env or {})
+        self.profile_model_config = (
+            None if profile_model_config is None else _validate_model_block(profile_model_config)
+        )
         self.run_command = run_command
         if self.home == Path("/") or not self.profile_root.exists() or self.profile_root.is_symlink():
             raise ProvisioningError("unsafe_hermes_home")
@@ -783,10 +799,15 @@ class RestrictedProvisioner:
         key = self._prepare_profile(manifest, profile_dir)
         self._write_soul(profile_dir, manifest.soul)
         config_path = profile_dir / "config.yaml"
-        _atomic_write(config_path, render_config(config_path, policy, canary=True))
+        _atomic_write(
+            config_path,
+            render_config(config_path, policy, canary=True, model_config=self.profile_model_config),
+        )
         self._wait_for_profile_gateway(manifest, key)
         self._verify_api_and_soul(manifest, key)
-        deployed_config = render_config(config_path, policy, canary=False)
+        deployed_config = render_config(
+            config_path, policy, canary=False, model_config=self.profile_model_config
+        )
         _atomic_write(config_path, deployed_config)
         self._verify_final_policy(manifest, key)
         effective_config_hash = digest(config_path.read_bytes())
@@ -1503,8 +1524,40 @@ def _validate_portal_origin(value: str) -> str:
     return "https://" + authority
 
 
+def _load_client_model_config(home: Path) -> dict[str, Any]:
+    """Read only the explicit, secret-free model block from this client runtime's global config."""
+    path = home / "config.yaml"
+    if path.is_symlink():
+        raise ProvisioningError("client_model_config_invalid")
+    try:
+        _require_regular_file(path)
+        if path.stat().st_size > MAX_CONFIG_BYTES:
+            raise ProvisioningError("client_model_config_invalid")
+        model = _safe_model_block(path)
+    except ProvisioningError as error:
+        if error.code in {"invalid_profile_config", "unsafe_model_config", "unsafe_profile_path", "profile_file_missing"}:
+            raise ProvisioningError("client_model_config_invalid") from None
+        raise
+    except OSError:
+        raise ProvisioningError("client_model_config_invalid") from None
+    provider = model.get("provider")
+    selected_model = model.get("default") or model.get("model") or model.get("name")
+    if isinstance(selected_model, dict):
+        selected_model = selected_model.get("default") or selected_model.get("model") or selected_model.get("name")
+    if (
+        not isinstance(provider, str)
+        or not provider.strip()
+        or not isinstance(selected_model, str)
+        or not selected_model.strip()
+        or selected_model.strip().upper().startswith("REPLACE_WITH_")
+    ):
+        raise ProvisioningError("client_model_config_missing")
+    return model
+
+
 def run_worker() -> None:
     home, cli, portal_url, token, gateway_id, version, bootstrap_api_key, profile_model_env = _validate_runtime()
+    profile_model_config = _load_client_model_config(home)
     api = HermesApi(os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642"))
     # This read-only check happens before audit/heartbeat writes and before the first portal claim.
     # The default profile belongs to this isolated runtime and is never an agency profile.
@@ -1516,6 +1569,7 @@ def run_worker() -> None:
         gateway_id=gateway_id,
         hermes_version=version,
         profile_model_env=profile_model_env,
+        profile_model_config=profile_model_config,
     )
     http = JsonHttp(timeout=30)
     headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"}

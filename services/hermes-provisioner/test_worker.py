@@ -24,9 +24,12 @@ from worker import (
     _validate_portal_origin,
     _worker_healthcheck,
     _write_worker_heartbeat,
+    _load_client_model_config,
     HermesApi,
     digest,
     parse_manifest,
+    parse_policy_config,
+    render_config,
     verify_complete_catalog,
 )
 
@@ -356,6 +359,47 @@ class RestrictedProvisionerTests(unittest.TestCase):
             self.assertEqual((profile / ".env").stat().st_mode & 0o777, 0o600)
             self.assertEqual(profile.stat().st_mode & 0o777, 0o700)
             self.assertEqual(audit_path.stat().st_mode & 0o777, 0o600)
+
+    def test_blank_profile_uses_only_the_client_global_model_block(self):
+        client_config = self.home / "config.yaml"
+        client_config.write_text(
+            "model:\n  provider: openai\n  model: synthetic-fixture\n"
+            "  base_url: http://127.0.0.1:19000/v1\n"
+            "SOUL.md: must-not-copy\n",
+            encoding="utf-8",
+        )
+        model_config = _load_client_model_config(self.home)
+        blank_profile_config = self.home / "profiles" / "blank-client-profile.yaml"
+        blank_profile_config.write_text("model: {}\n", encoding="utf-8")
+
+        effective = yaml.safe_load(
+            render_config(
+                blank_profile_config,
+                parse_policy_config(POLICY),
+                canary=True,
+                model_config=model_config,
+            ).decode("utf-8")
+        )
+
+        self.assertEqual(effective["model"], model_config)
+        self.assertEqual(effective["model"]["base_url"], "http://127.0.0.1:19000/v1")
+        self.assertNotIn("SOUL.md", effective)
+
+    def test_client_model_config_rejects_placeholders_and_secret_fields(self):
+        config_path = self.home / "config.yaml"
+        config_path.write_text(
+            "model:\n  provider: openai\n  model: REPLACE_WITH_APPROVED_MODEL_ID\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ProvisioningError, "client_model_config_missing"):
+            _load_client_model_config(self.home)
+
+        config_path.write_text(
+            "model:\n  provider: openai\n  model: synthetic-fixture\n  api_key: must-not-copy\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ProvisioningError, "client_model_config_invalid"):
+            _load_client_model_config(self.home)
 
     def test_new_profile_waits_for_profile_route_before_canary(self):
         self.api.profile_discovery_pending = 2
