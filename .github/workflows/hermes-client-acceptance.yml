@@ -65,14 +65,20 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
             --env PYTHONDONTWRITEBYTECODE=1 \
-            --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/tests,readonly" \
-            --workdir /tests --entrypoint /opt/iacquire-hermes/.venv/bin/python \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/repository/services/hermes-provisioner,readonly" \
+            --workdir /repository/services/hermes-provisioner --entrypoint /opt/iacquire-hermes/.venv/bin/python \
             "$IACQUIRE_PROVISIONER_IMAGE" -B -m unittest -q \
             test_worker test_deployment test_acceptance_harness >"$test_log" 2>&1; then
             summary="$(grep -E '^Ran [0-9]+ tests? ' "$test_log" | tail -n1 | sed -E 's/ in .*//')"
             [[ -n "$summary" ]]
             echo "CANDIDATE_COMPATIBILITY_PASS: $summary"
           else
+            failure_names="$(grep -E '^(FAIL|ERROR): ' "$test_log" | sed -E 's/^(FAIL|ERROR): ([^ ]+).*/\1: \2/' | head -n 10 || true)"
+            if [[ -n "$failure_names" ]]; then
+              while IFS= read -r failure_name; do
+                echo "CANDIDATE_TEST_FAILURE: $failure_name"
+              done <<< "$failure_names"
+            fi
             echo "CANDIDATE_COMPATIBILITY_FAIL: test details withheld to keep synthetic credential fixtures out of logs"
             exit 1
           fi
