@@ -22,7 +22,7 @@ It follows the conventions already in this repository: [staging-environment.md](
 | Area | On release | Stays off until a separate approval |
 | --- | --- | --- |
 | Database | Migration 0082: new nullable columns, seven indexes plus an optional trigram index, a lifecycle-event table, two row-local triggers, three notification kinds. No existing row changes meaning. | n/a |
-| `/inbox` | **Replaced for every workspace at once.** There is no feature flag. | See decision D1: add a kill switch before release, or accept redeploy as the rollback. |
+| `/inbox` | **Replaced for every workspace at once** (no per-workspace flag). | A global kill switch exists: `INBOX_DISABLED=true` (decision D1, built; see README). It removes the new screen; it cannot restore the old one. |
 | New API routes | `/api/inbox/*` (read-only except AI help), signed-in members only. | n/a |
 | AI behaviour | Replies carry an ownership fence and respect an AI pause. Summaries and suggestions need a configured AI provider; otherwise they say so. | Any live model call beyond what is already configured. |
 | Messaging | Nothing new is sent. Channel health reads honestly ("switched off in this environment"). | Every provider write switch (`GHL`, `RESEND`, `TWILIO`, `META_WHATSAPP`, `N8N_ACTIONS`) and the `WORKFORCE_*_ENABLED` switches. |
@@ -173,12 +173,14 @@ Abort and rollback:
 
 ### Stage 6: production deployment and first exposure (A9)
 
-**A9 approves deploying the merged application.** Because there is no per-workspace switch, decide **D1** first.
+**A9 approves deploying the merged application.** There is no per-workspace switch; the global kill switch `INBOX_DISABLED` is built (D1) and is **off by default**, i.e. the inbox is on. Decide beforehand whether the first
+deployment goes out with `INBOX_DISABLED=true` (deploy dark, then redeploy with it unset when you are ready to expose it), which separates "the code is live" from "people can see it".
 
 1. Build the exact commit that was tested. Deploy by the existing process (a preview first if one is available).
 2. Smoke checklist (UI and read-only, no sends): `/inbox` loads for the internal workspace owner; the channel bar says sending is switched off; `/api/inbox/sync` and `/api/inbox/conversations` return 200; opening a conversation works; AI help either works or says it is not set up; the workflow editor lists the new triggers and step; no console errors; no 5xx.
 3. Watch for an agreed period: error rate, `/api/inbox/*` latency, database pool saturation (polling), and notification volume.
-4. Rollback: redeploy the previous build. The schema stays. (Old code ignores the new columns; see the compatibility result above.)
+4. Fastest "off": set `INBOX_DISABLED=true` and redeploy the same build (the inbox answers "temporarily unavailable"; receiving and sending carry on). Full rollback: redeploy the previous build, which brings the old screen back.
+   The schema stays either way. (Old code ignores the new columns; see the compatibility result above.) Read the kill-switch section of the README first: it removes people's screen, not the AI's ability to reply.
 
 ### Stage 7: scheduler (A10)
 
@@ -211,9 +213,9 @@ Nothing in this plan pushes, deploys, migrates a hosted database, enables a swit
 
 ## 5. Decisions I need from you
 
-* **D1, a kill switch.** The new inbox replaces the old one for every workspace the moment it deploys. Either accept "redeploy the previous build" as the rollback, or have me add an
-  environment flag before stage 6 that switches the new inbox off (the page and its routes would say it is temporarily unavailable). A flag cannot bring the old screen back, because the new one replaced it;
-  only a redeploy does that. The flag would give a faster, safer "off" than a redeploy, not a fallback.
+* **D1, a kill switch: decided and built (local commit, not pushed).** `INBOX_DISABLED=true` switches the new inbox off (page, `/api/inbox/*`, the inbox's actions and notices say it is temporarily unavailable); unset or
+  false is the default and changes nothing. It cannot bring the old screen back, because the new one replaced it; only a redeploy of the previous build does that. What it does and does not touch is in the README.
+  Remaining question for you (part of D4): deploy dark with it set to `true` first, or expose immediately.
 * **D2, how staging gets its data (A4).** I recommend the fresh chain with fictional data; production's schema-only dump if you want the exact hand-applied history.
 * **D3, backups.** Which machine and tool took the existing `.data/backups/*.dump` files, so the same one is used (it is not on this machine's PATH).
 * **D4, timing.** A window for stage 5, and which workspace sees the inbox first in stage 6 (the internal agency workspace is the obvious one).

@@ -2,6 +2,7 @@ import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { assertSameOrigin } from "@/server/auth/session";
 import { AppError } from "@/server/errors";
 import { suggestReply, summarizeConversation } from "@/server/messaging/inbox-ai";
+import { assertInboxEnabled } from "@/server/messaging/inbox-switch";
 import { inboxError, inboxJson } from "@/server/messaging/inbox-http";
 import { UUID } from "@/server/messaging/access";
 
@@ -15,6 +16,7 @@ export const maxDuration = 60;
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    assertInboxEnabled();
     await assertSameOrigin();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     const { id } = await params;

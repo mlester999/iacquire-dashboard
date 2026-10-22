@@ -99,6 +99,28 @@ Every control is enforced on the server; hiding a button is a convenience.
 `GET sync`, `GET conversations`, `GET conversations/[id]`, `GET conversations/[id]/context`, `POST conversations/[id]/assist` (same-origin check),
 `GET escalations`. All require a signed-in member and re-check visibility per conversation.
 
+## Kill switch: `INBOX_DISABLED`
+
+`INBOX_DISABLED=true` takes the new inbox away; unset or `false` (the default) leaves it on. Only `true`/`1` switch it off; any value the app does not understand
+(for example `yes`) is refused at start-up, like every other flag here, so a typo is loud instead of silently leaving the inbox on.
+
+| Goes off | Stays on |
+| --- | --- |
+| The `/inbox` page (a plain "temporarily unavailable" notice, after the sign-in check, with no inbox data read) | Receiving, storing and sending messages, delivery events, consent and opt-outs |
+| Every `/api/inbox/*` route (HTTP 503 with `Retry-After: 60`, before any sign-in or database work) | The AI employees and their rules, the Approvals screen, and the handoff and escalation records themselves |
+| The server actions the inbox screen calls (reply, take over, assign, resolve, bulk, notes, CRM links, consent, memories, escalation responses) | The Settings screens and their actions (messaging settings, channels, availability, notification preferences) |
+| The inbox's own notices: "customer is waiting" and "new inquiry with nobody handling it" | The workflow engine, the five conversation triggers, the "Update conversation" step and the "went quiet" events |
+
+How to use it, and what it is not:
+
+* It is an environment variable, so it takes effect when the app is redeployed or restarted with it set (on Vercel a changed variable applies to the next deployment).
+  That is faster and lower-risk than rolling the application back, but it is a deployment, not an instant toggle.
+* It is **global**, not per workspace, and it **does not bring the previous screen back**: the new inbox replaced it. Rolling back the screen means redeploying the previous build.
+* **People lose their screen, not the AI.** While it is off nobody can take over, reply, approve a draft or answer an escalation from the inbox, but AI employees keep working under
+  their existing settings. If the reason for switching it off is that people can no longer supervise safely, pause automation as well, with the controls that already exist
+  (the automation pause and the provider write switches), before relying on this.
+* Tabs that are already open show the same message the next time they read from the server, and retry slowly in the background.
+
 ## Rollout notes
 
 * Do **not** run this migration in production without approval. Rehearse on a copy first (see readiness.md for what was rehearsed).

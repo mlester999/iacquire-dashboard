@@ -5,6 +5,7 @@ import { emitEvent } from "@/server/crm/events";
 import { systemActor } from "@/server/crm/actor";
 import { activeVersionsFor } from "@/server/crm/workflows/triggers";
 import { customerUnreachable } from "@/server/messaging/inbox-list";
+import { inboxEnabled } from "@/server/messaging/inbox-switch";
 import { AWAITING_REPLY_MINUTES } from "@/lib/inbox";
 import { CONVERSATION_IDLE_HOURS } from "@/lib/crm/workflow/spec";
 
@@ -119,7 +120,9 @@ export async function announceIdleConversations(db: Queryable, now = new Date())
 
 /** The scheduled entry point: both scans, each isolated by its own transaction. Returns how many notices and events it produced. */
 export async function scanInboxAttention(now = new Date()): Promise<{ notified: number; idle: number }> {
-  const notified = await withSystem((db) => notifyAwaitingReplies(db, now));
+  // With the inbox switched off (INBOX_DISABLED) nobody can open the conversation a notice points to, so no notice is raised. "Went quiet" is an event for
+  // workflows, not a screen, and keeps being announced.
+  const notified = inboxEnabled() ? await withSystem((db) => notifyAwaitingReplies(db, now)) : 0;
   const idle = await withSystem((db) => announceIdleConversations(db, now));
   return { notified, idle };
 }

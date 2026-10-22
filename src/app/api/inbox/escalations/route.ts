@@ -1,6 +1,7 @@
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { AppError } from "@/server/errors";
 import { listOpenEscalations } from "@/server/messaging/handoff";
+import { assertInboxEnabled } from "@/server/messaging/inbox-switch";
 import { inboxError, inboxJson, pollAllowed } from "@/server/messaging/inbox-http";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     const allowed = pollAllowed(`escalations:${ctx.user.id}`, 240);
     if (!allowed.ok) throw new AppError("rate_limited", "The inbox is refreshing too quickly. Please wait a moment.", { retryAfterSeconds: allowed.retryAfterSeconds });

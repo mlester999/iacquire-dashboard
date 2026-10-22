@@ -67,6 +67,12 @@ export function idleLabel(hours: number): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
+/**
+ * What a person sees when an operator has switched the inbox off (INBOX_DISABLED, see src/server/messaging/inbox-switch.ts): on the page, in a
+ * toast, in an API error. Plain and free of reasons; why it is off is the operator's to say.
+ */
+export const INBOX_UNAVAILABLE_MESSAGE = "The inbox is temporarily unavailable. Please try again in a little while.";
+
 // ---------------------------------------------------------------------------
 // Outcomes (how a conversation ended)
 // ---------------------------------------------------------------------------

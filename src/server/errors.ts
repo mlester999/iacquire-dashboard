@@ -11,6 +11,7 @@ export type ErrorCode =
   | "plan_required"
   | "budget_exhausted"
   | "billing_unavailable"
+  | "unavailable"
   | "agent_unavailable"
   | "integration_unavailable"
   | "upstream_error"
@@ -28,6 +29,8 @@ const STATUS: Record<ErrorCode, number> = {
   plan_required: 403,
   budget_exhausted: 429,
   billing_unavailable: 503,
+  // A feature an operator switched off on purpose (INBOX_DISABLED). Temporary by intent, so clients retry later.
+  unavailable: 503,
   agent_unavailable: 503,
   integration_unavailable: 503,
   upstream_error: 502,

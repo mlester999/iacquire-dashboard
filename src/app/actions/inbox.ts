@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
+import { assertInboxEnabled } from "@/server/messaging/inbox-switch";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { addInternalNote, approveDraft, bulkUpdateConversations, discardDraft, getMessagesByIds, getOlderMessages, markConversationRead, markConversationUnread, retryFailedMessage, sendHumanReply, setChannelEnabled, setConversationState, updateMessagingSettings, withDeliveryDetail, type BulkAction, type MessagingSettingsInput } from "@/server/messaging/inbox";
 import { assignAiEmployee, pauseAi, transferConversation } from "@/server/messaging/ai-control";
@@ -37,6 +38,7 @@ async function sendNow(messageId: string) {
 
 export async function sendReplyAction(conversationId: string, body: string, templateId?: string | null) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     const limit = await consumeRateLimit(RATE_LIMITS.inboxSendByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "You are sending quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
@@ -55,6 +57,7 @@ export async function sendReplyAction(conversationId: string, body: string, temp
 
 export async function takeOverAction(conversationId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     await takeOverConversation(ctx, id(conversationId, "conversation"));
     refresh();
@@ -66,6 +69,7 @@ export async function takeOverAction(conversationId: string) {
 
 export async function resumeAiAction(conversationId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.resume_ai");
     await resumeAi(ctx, id(conversationId, "conversation"));
     refresh();
@@ -77,6 +81,7 @@ export async function resumeAiAction(conversationId: string) {
 
 export async function addNoteAction(conversationId: string, body: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.notes");
     await addInternalNote(ctx, id(conversationId, "conversation"), body);
     refresh();
@@ -88,6 +93,7 @@ export async function addNoteAction(conversationId: string, body: string) {
 
 export async function approveDraftAction(messageId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     await approveDraft(ctx, id(messageId, "message"));
     const status = await sendNow(messageId);
@@ -101,6 +107,7 @@ export async function approveDraftAction(messageId: string) {
 
 export async function discardDraftAction(messageId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     await discardDraft(ctx, id(messageId, "message"));
     refresh();
@@ -113,6 +120,7 @@ export async function discardDraftAction(messageId: string) {
 
 export async function claimEscalationAction(escalationId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("escalations.respond");
     const out = await claimEscalation(ctx, id(escalationId, "escalation"));
     refresh();
@@ -124,6 +132,7 @@ export async function claimEscalationAction(escalationId: string) {
 
 export async function declineEscalationAction(escalationId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("escalations.respond");
     await declineEscalation(ctx, id(escalationId, "escalation"));
     refresh();
@@ -135,6 +144,7 @@ export async function declineEscalationAction(escalationId: string) {
 
 export async function resolveEscalationAction(escalationId: string, resolution: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("escalations.respond");
     await resolveEscalation(ctx, id(escalationId, "escalation"), resolution ?? "");
     refresh();
@@ -146,6 +156,7 @@ export async function resolveEscalationAction(escalationId: string, resolution: 
 
 export async function assignConversationAction(conversationId: string, userId: string | null) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.assign");
     await assignConversation(ctx, id(conversationId, "conversation"), userId ? id(userId, "teammate") : null);
     refresh();
@@ -157,6 +168,7 @@ export async function assignConversationAction(conversationId: string, userId: s
 
 export async function setConversationStateAction(conversationId: string, input: { status?: string; priority?: string; outcome?: string | null; archived?: boolean; seenInboundAt?: string | null }) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     const status = input.status === "open" || input.status === "closed" ? input.status : undefined;
     const priority = ["low", "normal", "high", "urgent"].includes(input.priority ?? "") ? (input.priority as "low" | "normal" | "high" | "urgent") : undefined;
@@ -173,6 +185,7 @@ export async function setConversationStateAction(conversationId: string, input: 
 /** Stops AI replies on a conversation without handing it to a person. Lifting the pause is resumeAiAction. */
 export async function pauseAiAction(conversationId: string, reason?: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     await pauseAi(ctx, id(conversationId, "conversation"), reason);
     refresh();
@@ -184,6 +197,7 @@ export async function pauseAiAction(conversationId: string, reason?: string) {
 
 export async function assignAiEmployeeAction(conversationId: string, agentId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.assign");
     const out = await assignAiEmployee(ctx, id(conversationId, "conversation"), id(agentId, "AI employee"));
     refresh();
@@ -195,6 +209,7 @@ export async function assignAiEmployeeAction(conversationId: string, agentId: st
 
 export async function transferConversationAction(conversationId: string, userId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     await transferConversation(ctx, id(conversationId, "conversation"), id(userId, "teammate"));
     refresh();
@@ -207,6 +222,7 @@ export async function transferConversationAction(conversationId: string, userId:
 /** Sends a failed message again (see retryFailedMessage). Goes through the same send path and limits as a typed reply. */
 export async function retryMessageAction(messageId: string, acknowledgeUnconfirmed = false) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     const limit = await consumeRateLimit(RATE_LIMITS.inboxSendByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "You are sending quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
@@ -221,6 +237,7 @@ export async function retryMessageAction(messageId: string, acknowledgeUnconfirm
 
 export async function markUnreadAction(conversationId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     await markConversationUnread(ctx, id(conversationId, "conversation"));
     refresh();
@@ -233,6 +250,7 @@ export async function markUnreadAction(conversationId: string) {
 /** One safe action on up to 50 conversations. There is no bulk send. Each conversation is checked on its own; refusals are reported by reason. */
 export async function bulkConversationsAction(conversationIds: string[], action: { kind: string; outcome?: string | null; priority?: string; userId?: string | null }) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     const limit = await consumeRateLimit(RATE_LIMITS.inboxBulkByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "You are doing that quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
@@ -270,6 +288,7 @@ export async function bulkConversationsAction(conversationIds: string[], action:
 
 export async function createTaskFromConversationAction(conversationId: string, input: { title: string; dueAt?: string | null; priority?: string; assigneeId?: string | null }) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     const priority = ["low", "normal", "high", "urgent"].includes(input.priority ?? "") ? (input.priority as "low" | "normal" | "high" | "urgent") : "normal";
     const out = await createTaskFromConversation(ctx, id(conversationId, "conversation"), { title: String(input.title ?? ""), dueAt: input.dueAt ?? null, priority, assigneeId: input.assigneeId ? id(input.assigneeId, "teammate") : null });
@@ -282,6 +301,7 @@ export async function createTaskFromConversationAction(conversationId: string, i
 
 export async function createDealFromConversationAction(conversationId: string, input: { name?: string | null; value?: number | null } = {}) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     const value = typeof input.value === "number" && Number.isFinite(input.value) ? input.value : null;
     const out = await createDealFromConversation(ctx, id(conversationId, "conversation"), { name: input.name ?? null, value });
@@ -294,6 +314,7 @@ export async function createDealFromConversationAction(conversationId: string, i
 
 export async function addContactNoteFromConversationAction(conversationId: string, body: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     const out = await addContactNoteFromConversation(ctx, id(conversationId, "conversation"), String(body ?? ""));
     refresh();
@@ -305,6 +326,7 @@ export async function addContactNoteFromConversationAction(conversationId: strin
 
 export async function setLeadStatusAction(conversationId: string, leadStatus: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     await setLeadStatusFromConversation(ctx, id(conversationId, "conversation"), String(leadStatus ?? ""));
     refresh();
@@ -316,6 +338,7 @@ export async function setLeadStatusAction(conversationId: string, leadStatus: st
 
 export async function markReadAction(conversationId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     await markConversationRead(ctx, id(conversationId, "conversation"));
     return { ok: true as const };
@@ -330,6 +353,7 @@ export async function markReadAction(conversationId: string) {
  */
 export async function loadOlderMessagesAction(conversationId: string, beforeId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     const page = await getOlderMessages(ctx, id(conversationId, "conversation"), id(beforeId, "message"));
     return { ok: true as const, data: { messages: await withDeliveryDetail(ctx.user.id, page.messages), olderMessages: page.olderMessages ?? null } };
@@ -345,6 +369,7 @@ export async function loadOlderMessagesAction(conversationId: string, beforeId: 
  */
 export async function loadMessagesByIdAction(conversationId: string, messageIds: string[]) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("inbox.view");
     if (!Array.isArray(messageIds)) throw new AppError("invalid_input", "Choose valid messages.");
     const messages = await getMessagesByIds(ctx, id(conversationId, "conversation"), messageIds.map((m) => id(String(m), "message")));
@@ -356,6 +381,7 @@ export async function loadMessagesByIdAction(conversationId: string, messageIds:
 
 export async function addMemoryAction(contactId: string, kind: string, content: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("contacts.edit");
     if (kind !== "confirmed_fact" && kind !== "ai_summary") throw new AppError("invalid_input", "Choose a note type.");
     await addMemory(ctx, { contactId: id(contactId, "contact"), kind, content });
@@ -368,6 +394,7 @@ export async function addMemoryAction(contactId: string, kind: string, content: 
 
 export async function deleteMemoryAction(memoryId: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("contacts.edit");
     await deleteMemory(ctx, id(memoryId, "note"));
     refresh();
@@ -380,6 +407,7 @@ export async function deleteMemoryAction(memoryId: string) {
 /** Records a consent decision a person collected outside the conversation (for example, a web form or a phone call). */
 export async function recordConsentAction(contactId: string, channel: string, purpose: string, status: string, evidence: string) {
   try {
+    assertInboxEnabled();
     const ctx = await requireOrgContextOrThrow("consent.manage");
     if (!isChannel(channel) || !["service", "marketing"].includes(purpose) || !["granted", "revoked"].includes(status)) throw new AppError("invalid_input", "Check the consent details.");
     if (evidence.trim().length < 5) throw new AppError("invalid_input", "Record how this consent was given or withdrawn.");

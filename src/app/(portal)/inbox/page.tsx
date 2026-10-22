@@ -9,6 +9,8 @@ import { memberActor } from "@/server/crm/actor";
 import { cannedRepliesForConversation, sendableWhatsappTemplates } from "@/server/crm/message-templates";
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
+import { InboxUnavailable } from "@/components/inbox/inbox-unavailable";
+import { inboxEnabled } from "@/server/messaging/inbox-switch";
 import { isInboxSort, isInboxView, type InboxView } from "@/lib/inbox";
 import { isChannel, type Channel } from "@/lib/messaging";
 
@@ -27,6 +29,8 @@ function viewOf(sp: Search): InboxView {
 
 export default async function InboxPage({ searchParams }: { searchParams: Promise<Search> }) {
   const ctx = await requireOrgContext("inbox.view");
+  // Switched off by an operator (INBOX_DISABLED): after the sign-in and permission check, before a single inbox query.
+  if (!inboxEnabled()) return <InboxUnavailable />;
   const sp = await searchParams;
   const channel = isChannel(sp.channel) ? sp.channel : undefined;
   const view = viewOf(sp);
