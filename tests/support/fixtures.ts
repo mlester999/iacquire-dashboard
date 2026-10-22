@@ -32,6 +32,9 @@ export async function createOrg(opts: { name?: string; kind?: "agency" | "client
     await db.query("insert into usage_limits (org_id) values ($1)", [orgId]);
     await db.query("insert into billing_accounts (org_id) values ($1)", [orgId]);
     await ensureAgentInstances(orgId, db);
+    // A test matrix knob, never set in a normal run: INBOX_TEST_ROLLOUT=on switches the new inbox on for every workspace a test creates, so the rest of the
+    // suite can be run with it on (the inbox's own tests assume the default, off, and are left out of that run). See docs/unified-inbox/release-verification.md.
+    if (process.env.INBOX_TEST_ROLLOUT === "on") await db.query("insert into inbox_rollout (org_id, enabled, note, enabled_at) values ($1, true, 'Test matrix', now())", [orgId]);
     return { id: orgId, name, slug };
   });
 }

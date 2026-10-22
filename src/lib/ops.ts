@@ -56,9 +56,17 @@ const CUSTOMER_CONTENT_KINDS = new Set(["escalation_action_required", "escalatio
 /** Kinds that already send their own email (owner-first escalations honour the person's own alert settings; setup updates email from the setup engine; support updates follow the delivery rules the Super Admin chose). */
 export const emailedElsewhere = (kind: string) => kind.startsWith("escalation_") || kind.startsWith("setup_") || kind.startsWith("support_");
 
+/**
+ * Warnings that stay in the app unless the person chose to be emailed everything. The Unified Inbox raises one "customer is waiting" notice per customer
+ * message (at most ten a scan per workspace); a warning is emailed by default, so without this the first scheduler run in a workspace with the new
+ * inbox would email its team for each of them, and again each morning for ones held back by quiet hours.
+ */
+const IN_APP_BY_DEFAULT = new Set(["conversation_awaiting_reply"]);
+
 export function shouldEmail(kind: string, severity: string, preference: EmailPreference): boolean {
   if (preference === "off") return severity === "critical";
   if (preference === "all") return true;
+  if (IN_APP_BY_DEFAULT.has(kind) && severity !== "critical") return false;
   return severity === "critical" || severity === "warning" || IMPORTANT_KINDS.has(kind);
 }
 
