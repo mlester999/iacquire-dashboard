@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { withSystem } from "@/server/db";
+import { withSystem, withUser } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { createConfigVersion, editableSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
@@ -11,6 +11,10 @@ import { prepareConfigPreview } from "@/server/workforce/preview";
 import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
 import { configAttribution } from "@/lib/config-review";
 import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { getOnboardingSession } from "@/server/onboarding/service";
+import { confirmedAnswers, toLegacyData } from "@/lib/onboarding/engine";
+import { generateEmployeeSettings } from "@/server/onboarding/employee-generator";
+import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 
 async function resolve(role: string) {
   const ctx = await requireOrgContextOrThrow("agents.configure");
@@ -45,6 +49,31 @@ export async function saveAgentSettingsAction(role: string, input: unknown) {
     );
     revalidateAgent(role);
     return { ok: true as const, data: res };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Generates a read-only style suggestion. The client reviews a visible draft before any version is saved. */
+export async function regenerateEmployeeStyleAction(role: string) {
+  try {
+    const { ctx, agent } = await resolve(role);
+    const session = await getOnboardingSession(ctx);
+    if (session.status !== "submitted" || session.hasUnsubmittedChanges) throw new AppError("conflict", "Approve your latest company information before regenerating employee preferences.");
+    const limit = await consumeRateLimit(RATE_LIMITS.onboardingAssistByOrg, ctx.org.orgId);
+    if (!limit.allowed) throw new AppError("rate_limited", "AI suggestions are temporarily limited. Try again later.");
+    const confirmed = confirmedAnswers(session.answers);
+    const data = toLegacyData(confirmed, session.enabledRoles);
+    const knowledge = await withUser(ctx.user.id, async (db) => {
+      const { rows } = await db.query<{ content: string }>(
+        "select content from company_knowledge where org_id = $1 and review_status = 'approved' order by section limit 8",
+        [ctx.org.orgId],
+      );
+      return rows.map((row) => row.content);
+    });
+    const generated = (await generateEmployeeSettings(data, knowledge))[agent.role_key];
+    const { personality, characterTraits, communicationStyle, responseBehavior } = generated.settings;
+    return { ok: true as const, data: { personality, characterTraits, communicationStyle, responseBehavior, source: generated.source } };
   } catch (err) {
     return actionError(err);
   }

@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import {
   PORTAL_DISABLED_TOOLSETS,
   PORTAL_SAFE_TOOLSETS,
@@ -27,6 +28,7 @@ import { DEFAULT_BLOCKED_TOOLSETS, HERMES_BLOCKABLE_TOOLSETS } from "@/server/wo
 export interface ProvisioningBundle {
   profile: string;
   soul: string;
+  soulSha256: string;
   configYaml: string;
   envTemplate: string;
   steps: Array<{ title: string; command?: string; note?: string }>;
@@ -96,9 +98,12 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
   if (!row) throw new AppError("not_found", "AI employee not found.");
   const profile = row.hermes_profile ?? suggestedProfileName(row.slug, row.role_key);
   const meta = AGENT_BY_KEY[row.role_key];
+  const soul = buildSoul(row.role_key, row.org_name);
+  const soulSha256 = createHash("sha256").update(soul, "utf8").digest("hex");
   return {
     profile,
-    soul: buildSoul(row.role_key, row.org_name),
+    soul,
+    soulSha256,
     configYaml: row.kind === "client" ? buildConfigYaml(row.blocked_toolsets ?? DEFAULT_BLOCKED_TOOLSETS) : buildConfigYaml(),
     envTemplate: [
       "# ~/.hermes/profiles/" + profile + "/.env  (never paste these values into chat or tickets)",
@@ -110,13 +115,14 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
     steps: [
       {
         title: "Create a blank, dedicated profile (never clone an internal iacquire-* profile)",
-        command: `hermes profile create ${profile} --description "${meta.name} for ${sanitizeClientText(row.org_name, 80).replace(/"/g, "")}"`,
-        note: "A blank profile has its own empty memory, sessions and state. --clone would copy SOUL.md and MEMORY.md from the source profile.",
+        command: `hermes profile create ${profile} --no-alias --no-skills`,
+        note: `Create only if absent. If it exists, verify its tenant ownership before resuming. Never use --clone: that copies SOUL.md and memory from another profile. This profile belongs to ${meta.name} for this client only. Check the installed Hermes CLI supports these flags.`,
       },
-      { title: "Write SOUL.md", note: `Save the SOUL.md below to ~/.hermes/profiles/${profile}/SOUL.md.` },
+      { title: "Replace SOUL.md with the reviewed role template", note: `Write the complete SOUL.md below as UTF-8 to ~/.hermes/profiles/${profile}/SOUL.md; do not merge with any existing SOUL. Expected SHA-256: ${soulSha256}.` },
       { title: "Restrict tools", note: "Merge the config.yaml snippet below into the profile's config.yaml." },
       { title: "Set the profile's own API key and model provider", note: "Add the .env lines below. Each profile must have a distinct API_SERVER_KEY." },
-      { title: "Reload the multiplexed gateway", command: "hermes gateway restart", note: "The profile is then served under /p/" + profile + "/ on the existing API listener." },
+      { title: "Activate only this profile through the approved host procedure", note: "Confirm the installed Hermes container's profile-specific supervision and reload behavior first. Do not restart the whole gateway or container from this runbook. After approved activation, verify /p/" + profile + "/ on the existing API listener." },
+      { title: "Verify the deployed SOUL file", command: `sha256sum ~/.hermes/profiles/${profile}/SOUL.md`, note: `The host result must equal ${soulSha256}. Recheck after the gateway restart and before recording the profile as provisioned. This verifies the deployed file; a separate live role check is still needed to assess runtime behavior.` },
       {
         title: "Verify tool restrictions from the VPS",
         command: `curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8642/p/${profile}/v1/toolsets`,
@@ -125,6 +131,7 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
       { title: "Connect it in the portal", note: "Admin → Workforce → Connect profile: enter the HTTPS API URL, profile name and key. Then run the health check." },
     ],
     verification: [
+      `Host-side SOUL.md SHA-256 equals ${soulSha256}; no legacy profile was cloned.`,
       "Authenticated GET /p/<profile>/v1/capabilities succeeds with run_submission and run_events_sse.",
       row.kind === "client" ? `GET /p/<profile>/v1/toolsets lists no restricted tools. The portal does not apply this file remotely.` : "The existing internal profile identity and authenticated API contract are verified; tool inventory completeness remains unverified.",
       row.kind === "client" ? "A gateway administrator has applied this saved configuration and verified the profile-level restrictions." : "A Super Admin has acknowledged Full Hermes Capabilities for the verified internal profile; the tool inventory is still incomplete.",
@@ -137,9 +144,15 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
   const { rows } = await db.query<{ id: string; role_key: AgentRoleKey }>(
     `insert into agent_provisioning_jobs (org_id, agent_instance_id, kind, requested_by)
      select a.org_id, a.id, 'provision', $2 from agent_instances a
+     join organizations o on o.id = a.org_id
      where a.org_id = $1 and a.enabled and a.hermes_profile is null
-       and not exists (select 1 from agent_provisioning_jobs j where j.agent_instance_id = a.id
-                       and j.status in ('requested', 'in_progress', 'awaiting_health_check'))
+       and o.kind = 'client' and not o.is_demo and o.status = 'active' and o.onboarding_completed_at is not null
+       and exists (
+         select 1 from organization_memberships m join users u on u.id = m.user_id
+         where m.org_id = o.id and m.role = 'owner' and m.status = 'active' and u.email_verified_at is not null
+       )
+       and not exists (select 1 from agent_provisioning_jobs j where j.agent_instance_id = a.id and j.kind = 'provision')
+     on conflict do nothing
      returning agent_instance_id as id, (select role_key from agent_instances where id = agent_instance_id) as role_key`,
     [orgId, requestedBy],
   );
@@ -158,10 +171,46 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
 
 export async function updateProvisioningJob(agencyUserId: string, orgId: string, jobId: string, status: "in_progress" | "failed" | "cancelled", detail?: string) {
   await withSystem(async (db) => {
-    const res = await db.query(
-      "update agent_provisioning_jobs set status = $3, detail = $4, handled_by = $5 where id = $1 and org_id = $2 and status in ('requested', 'in_progress', 'awaiting_health_check')",
-      [jobId, orgId, status, detail?.slice(0, 1000) ?? null, agencyUserId],
+    const { rows: permission } = await db.query<{ allowed: boolean }>(
+      "select app.user_can_access_org($1,$2) and app.user_has_agency_permission($1,'agency.workforce.manage') as allowed",
+      [agencyUserId, orgId],
     );
-    if (!res.rowCount) throw new AppError("conflict", "This provisioning request is already closed.");
+    if (!permission[0]?.allowed) throw new AppError("forbidden", "Agency workforce management access is required.");
+    const { rows } = await db.query<{ status: string; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null; agent_instance_id: string }>(
+      "select status, attempt_count, next_retry_at, lease_expires_at, agent_instance_id from agent_provisioning_jobs where id = $1 and org_id = $2 for update",
+      [jobId, orgId],
+    );
+    const job = rows[0];
+    if (!job) throw new AppError("not_found", "Provisioning request not found in this workspace.");
+    if (status === "in_progress") {
+      if (job.attempt_count >= 3) throw new AppError("conflict", "Retry limit reached. Review the failure before a new deliberate request.");
+      if (job.status === "in_progress" && job.lease_expires_at && job.lease_expires_at > new Date()) throw new AppError("conflict", "This provisioning attempt is already in progress.");
+      if (!(["requested", "failed"].includes(job.status) || job.status === "in_progress")) throw new AppError("conflict", "This request cannot be retried from its current state.");
+      if (job.next_retry_at && job.next_retry_at > new Date()) throw new AppError("conflict", "Wait until the recorded retry time before trying again.");
+      await db.query(
+        `update agent_provisioning_jobs set status = 'in_progress', attempt_count = attempt_count + 1,
+           lease_token = gen_random_uuid(), lease_expires_at = now() + interval '5 minutes',
+           next_retry_at = null, detail = null, handled_by = $3 where id = $1 and org_id = $2`,
+        [jobId, orgId, agencyUserId],
+      );
+    } else if (status === "failed") {
+      if (!["in_progress", "awaiting_health_check"].includes(job.status)) throw new AppError("conflict", "Only a started provisioning attempt can be failed.");
+      await db.query(
+        `update agent_provisioning_jobs set status = 'failed', detail = $3, handled_by = $4,
+           lease_token = null, lease_expires_at = null,
+           next_retry_at = case when attempt_count < 3 then now() + make_interval(secs => 30 * (2 ^ greatest(attempt_count - 1, 0))::integer) else null end
+         where id = $1 and org_id = $2`,
+        [jobId, orgId, detail?.slice(0, 1000) || "Provisioning failed; review the host evidence before retrying.", agencyUserId],
+      );
+    } else {
+      if (!["requested", "in_progress", "awaiting_health_check", "failed"].includes(job.status)) throw new AppError("conflict", "This provisioning request is already closed.");
+      await db.query(
+        "update agent_provisioning_jobs set status = 'cancelled', detail = $3, handled_by = $4, lease_token = null, lease_expires_at = null, next_retry_at = null where id = $1 and org_id = $2",
+        [jobId, orgId, detail?.slice(0, 1000) || "Cancelled by the agency.", agencyUserId],
+      );
+    }
+    await recordAudit({ orgId, actorUserId: agencyUserId, actorKind: "agency", agentInstanceId: job.agent_instance_id,
+      action: "agent.provisioning_status_changed", targetType: "agent_provisioning_job", targetId: jobId, result: "success",
+      metadata: { status, attempt: status === "in_progress" ? job.attempt_count + 1 : job.attempt_count } }, db);
   });
 }

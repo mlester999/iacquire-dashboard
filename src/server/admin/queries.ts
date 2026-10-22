@@ -70,7 +70,7 @@ export interface TenantDetail {
   }>;
   heldVersions: ReviewVersionView[];
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
-  provisioning: Array<{ id: string; agent_role: AgentRoleKey; kind: string; status: string; detail: string | null; created_at: Date }>;
+  provisioning: Array<{ id: string; agent_role: AgentRoleKey; kind: string; status: string; detail: string | null; created_at: Date; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null }>;
   ghl: { location_id: string; location_name: string | null; pipeline_id: string | null; calendar_ids: string[]; status: string; verified_at: Date | null; has_credential: boolean } | null;
   integrations: Array<{ provider: string; status: string; detail: string | null; last_checked_at: Date | null }>;
   billing: { setup_fee_cents: number; currency: string; setup_payment_status: string; activation_status: string; invoice_url: string | null; receipt_url: string | null; paid_at: Date | null; service_terms: string | null } | null;
@@ -152,7 +152,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
         )
       : [];
     const provisioning = await db.query<TenantDetail["provisioning"][number]>(
-      `select j.id, a.role_key as agent_role, j.kind, j.status, j.detail, j.created_at
+      `select j.id, a.role_key as agent_role, j.kind, j.status, j.detail, j.created_at, j.attempt_count, j.next_retry_at, j.lease_expires_at
        from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id
        where j.org_id = $1 order by j.created_at desc limit 30`,
       [orgId],

@@ -313,7 +313,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
         <CardHeader>
           <div>
             <CardTitle>Provisioning requests</CardTitle>
-            <CardDescription>Opened automatically when onboarding completes. Close the loop with a successful health check.</CardDescription>
+            <CardDescription>Opened automatically for verified clients. Starting an attempt records agency ownership; follow the profile runbook, then connect and verify the live profile.</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -325,13 +325,14 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                 <li key={j.id} className="flex flex-wrap items-center gap-3 py-2.5 text-[13px]">
                   <span className="font-medium">{AGENT_BY_KEY[j.agent_role].shortName}</span>
                   <Badge tone={j.status === "succeeded" ? "success" : j.status === "failed" ? "danger" : j.status === "requested" ? "warning" : "primary"}>{sentenceCase(j.status)}</Badge>
-                  <span className="min-w-0 flex-1 truncate text-muted">{j.detail ?? ""}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{j.detail ?? ""}{j.attempt_count > 0 ? ` · Attempt ${j.attempt_count}/3` : ""}</span>
                   <span className="text-[12px] text-faint">{relativeTime(j.created_at)}</span>
-                  {j.status === "requested" && (
-                    <Button size="sm" variant="ghost" onClick={() => run(`job-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "in_progress"), "Marked in progress")}>
-                      <PlayCircle className="size-3.5" /> Start
+                  {(j.status === "requested" || (j.status === "failed" && j.attempt_count < 3 && (!j.next_retry_at || new Date(j.next_retry_at) <= new Date())) || (j.status === "in_progress" && j.lease_expires_at && new Date(j.lease_expires_at) <= new Date())) && (
+                    <Button size="sm" variant="ghost" onClick={() => run(`job-${j.id}`, () => updateProvisioningJobAction(data.org.id, j.id, "in_progress"), "Manual setup attempt recorded")}>
+                      <PlayCircle className="size-3.5" /> {j.status === "requested" ? "Begin manual setup" : "Retry manual setup"}
                     </Button>
                   )}
+                  {j.status === "failed" && j.attempt_count < 3 && j.next_retry_at && new Date(j.next_retry_at) > new Date() && <span className="text-[11px] text-muted">Retry {relativeTime(j.next_retry_at)}</span>}
                 </li>
               ))}
             </ul>

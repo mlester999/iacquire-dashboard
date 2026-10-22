@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { withServiceRole, withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -70,9 +71,13 @@ export function isReservedProfile(profile: string) {
   return RESERVED_PROFILES.has(profile) || profile.startsWith("iacquire-");
 }
 
-/** Suggested per-tenant profile name, e.g. "c-acme-dental-lead-hunter". */
+/** Stable per-tenant identity with room for the role and a slug digest even for long slugs. */
 export function suggestedProfileName(orgSlug: string, role: AgentRoleKey) {
-  return `c-${orgSlug}-${role.replace(/_/g, "-")}`.slice(0, 63).replace(/-+$/, "");
+  const rolePart = role.replace(/_/g, "-");
+  const digest = createHash("sha256").update(orgSlug).digest("hex").slice(0, 12);
+  const prefixLength = 63 - (2 + 1 + digest.length + 1 + rolePart.length);
+  const slugPart = orgSlug.slice(0, prefixLength).replace(/-+$/, "");
+  return `c-${slugPart}-${digest}-${rolePart}`;
 }
 
 export async function ensureAgentInstances(orgId: string, db: Queryable) {

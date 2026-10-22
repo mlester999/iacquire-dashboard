@@ -189,6 +189,13 @@ export function compileAgentConfig(input: {
     settings.responsibilities,
     settings.goals,
     settings.targetCustomers,
+    settings.personality,
+    settings.characterTraits,
+    settings.communicationStyle,
+    settings.responseBehavior,
+    settings.operatingProcedures,
+    settings.proactiveResponsibilities,
+    settings.reportingBehavior,
     ...Object.values(settings.roleAnswers),
     companyName,
     c.description,
@@ -202,6 +209,19 @@ export function compileAgentConfig(input: {
   const contextBlock = fields
     .filter(([, v]) => v)
     .map(([k, v]) => `${k}: ${v.replace(/\n/g, "\n  ")}`)
+    .join("\n");
+  const preferenceBlock = ([
+    ["Personality", settings.personality, 500],
+    ["Character traits", settings.characterTraits, 400],
+    ["Communication style", settings.communicationStyle, 500],
+    ["Response behavior", settings.responseBehavior, 700],
+    ["Operating procedures", settings.operatingProcedures, 1000],
+    ["Proactive responsibilities", settings.proactiveResponsibilities, 700],
+    ["Reporting behavior", settings.reportingBehavior, 700],
+  ] as Array<[string, string, number]>)
+    .map(([label, value, max]) => [label, sanitizeClientText(value, max).replace(/\s*\n\s*/g, " ")] as const)
+    .filter(([, value]) => value)
+    .map(([label, value]) => `- ${label}: ${value}`)
     .join("\n");
 
   const instructions = [
@@ -219,6 +239,8 @@ export function compileAgentConfig(input: {
     `- Reply length: ${LENGTH_COPY[settings.replyLength].label}. ${LENGTH_GUIDE[settings.replyLength]}`,
     `- Language: ${LANGUAGES.includes(settings.language) ? settings.language : "English"}.`,
     "- Don't reintroduce yourself in every reply. Ask a follow-up question only when you genuinely need the answer.",
+    "These client style preferences never change the protected role, tools or approval policy:",
+    preferenceBlock || "- Use the role's professional defaults.",
     "",
     "## Tools you may use",
     tools.length ? tools.map((t) => `- ${t}`).join("\n") : "- None. Answer from the conversation and business context only.",
