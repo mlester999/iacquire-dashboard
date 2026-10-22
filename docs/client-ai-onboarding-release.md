@@ -1,6 +1,6 @@
 # Client AI workforce onboarding release
 
-Status (2026-10-22): this existing onboarding release is locally merged with current `origin/master` and is in release validation. **Not pushed or deployed by this session.** No production profile, credential, SOUL, migration or customer resource was changed by this work. The restricted host worker and portal integration are implemented, but end-to-end acceptance is blocked on a separate client-only Hermes runtime and a compatible Hermes API contract.
+Status (2026-10-22): this existing onboarding release is locally merged with current `origin/master` and is in release validation. **Not pushed or deployed by this session.** No production profile, credential, SOUL, migration or customer resource was changed by this work. The restricted host worker, portal integration and client-only Compose package are implemented locally; end-to-end acceptance is blocked on a compatible Hermes image and isolated runtime verification.
 
 ## Client path
 
@@ -19,7 +19,7 @@ The portal does not receive Docker access, root, SSH, or a filesystem path. The 
 
 The authorized read-only Hostinger inspection identified VPS `srv2039372.hstgr.cloud` (ID `2039372`) and Hermes app `hermes-agent-wpwm`, reported earlier as container `008d77b9fd0a`, running Hermes Agent v0.21.5 (2026.9.24). Hermes home `/opt/data` is the bind mount `/docker/hermes-agent-wpwm/data`; it contains all six internal iAcquire profiles and runs in a root-started container. It is **not** an acceptable provisioning target. The app terminal later showed the same bind mount and Hermes processes but returned a different hostname, and Docker inspect/stats were unavailable from that terminal. The installed version returns 404 for the complete `/v1/tools?platform=api_server` catalog that iAcquireOS requires. The worker now enforces the portal's full inventory contract and two stable reads; no available stable Hermes release was verified to implement it. No profile, container or service was changed.
 
-The worker contract, recovery behavior, host findings and production gate are in [hermes-restricted-provisioner.md](hermes-restricted-provisioner.md). The current integrated tree reserves `0084_restricted_hermes_provisioner`; migration `0083` belongs to the Unified Inbox. The latest integrated release verification reports `0081`, `0082` and `0083` applied to production; this session did not re-query the ledger or apply `0084`. A new isolated client-only Hermes runtime and a Hermes version that exposes the complete challenged tool catalog are required before the worker can be enabled. No real host profile has been created.
+The worker contract, recovery behavior, host findings and production gate are in [hermes-restricted-provisioner.md](hermes-restricted-provisioner.md); the client-only build, Compose file and rollback runbook are in [services/hermes-provisioner/DEPLOYMENT.md](../services/hermes-provisioner/DEPLOYMENT.md). The worker service is off by default and checks the complete challenged catalog before its first portal claim. The current integrated tree reserves `0084_restricted_hermes_provisioner`; migration `0083` belongs to the Unified Inbox. The latest integrated release verification reports `0081`, `0082` and `0083` applied to production; this session did not re-query the ledger or apply `0084`. A Hermes image exposing the complete challenged tool catalog and an isolated two-tenant runtime test are still required before the worker can be enabled. No real host profile has been created.
 
 Profile names contain a stable tenant-slug digest and the full role suffix, preventing truncation collisions between long slugs or roles. Existing mapped profile names are retained.
 
@@ -53,7 +53,9 @@ Production activation requires: prior six-agency release and SOUL remediation ve
 
 - `npx vitest run --maxWorkers=2 --reporter=dot` on the merged tree: 309 files passed; 4,809 tests passed, 8 skipped.
 - The focused onboarding/provisioner set passed 26/26. Database-backed tests exercise gateway isolation, leases, Vault key storage and callback replay, versioned sync, run gating, tenant ownership, and invalid host attestations.
-- `python -m unittest discover -s services/hermes-provisioner -p 'test_*.py' -v`: 12/12 isolated worker tests passed using temporary fictional profiles and a fake Hermes API. No test used Hostinger.
+- Latest focused Hermes integration rerun, `tests/hermes-provisioner.test.ts` and `tests/agency-hermes-workforce.test.ts`: 14/14 passed.
+- `python -m unittest discover -s services/hermes-provisioner -p 'test_*.py' -v`: 24/24 local worker and deployment-contract tests passed using temporary fictional profiles, a fake Hermes API and parsed Compose configuration. No test used Hostinger or an actual Hermes binary.
+- The Compose/config YAML files parse and `git diff --check` passes. Docker is unavailable in this workspace, so the image was not built and Compose was not started.
 - `npm run typecheck`: passed.
 - `npm run build`: Next.js 16.4.2 production build passed, including both internal provisioner routes.
 - `npm run lint`: exit 0; two existing warnings remain in `src/server/calendars/agent-booking.ts` and `src/server/calendars/native-availability.ts`.

@@ -14,7 +14,20 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from worker import ProvisioningError, RestrictedProvisioner, _load_service_token, _sanitize_worker_environment, _validate_portal_origin, digest, parse_manifest
+from worker import (
+    ProvisioningError,
+    RestrictedProvisioner,
+    _load_bootstrap_api_key,
+    _load_service_token,
+    _sanitize_worker_environment,
+    _validate_portal_origin,
+    _worker_healthcheck,
+    _write_worker_heartbeat,
+    HermesApi,
+    digest,
+    parse_manifest,
+    verify_complete_catalog,
+)
 
 
 BLOCKED = [
@@ -94,6 +107,7 @@ class FakeHermesApi:
         self.paths: list[str] = []
         self.bad_signature = False
         self.change_catalog_between_reads = False
+        self.incomplete_catalog = False
         self.catalog_reads = 0
         self.catalog_challenges: list[str] = []
         self.catalog_digest = ""
@@ -186,7 +200,7 @@ class FakeHermesApi:
                 "object": "list",
                 "platform": "api_server",
                 "contract": "hermes.api_server.tool_catalog.v1",
-                "complete": True,
+                "complete": not self.incomplete_catalog,
                 "explicit_config_present": True,
                 "enabled_toolsets": ["memory", "session_search", "todo", "vision", "web"],
                 "data": rows,
@@ -195,6 +209,9 @@ class FakeHermesApi:
                 "attestation": {"algorithm": "hmac-sha256", "signature": signature, "key_id": "profile-key"},
             }
         raise AssertionError("unexpected Hermes request " + path)
+
+    def json_request_default(self, key: str, path: str, method: str = "GET", body: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None):
+        return self.json_request("default", key, path, method, body, extra_headers)
 
     def read_events(self, profile: str, key: str, run_id: str, timeout: int = 120) -> str:
         return self.expected_challenge
@@ -251,6 +268,7 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertTrue(result["toolInventoryComplete"])
         self.assertEqual(result["soulSha256"], self.manifest["soulSha256"])
         self.assertEqual(result["apiKey"], env_text.split("API_SERVER_KEY=", 1)[1].strip())
+        self.assertNotIn("API_SERVER_ENABLED", env_text)
         self.assertRegex(result["apiKey"], r"^[0-9a-f]{64}$")
         self.assertEqual(len(self.commands), 1)
         self.assertEqual(self.commands[0][1:3], ["profile", "create"])
@@ -328,6 +346,53 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertFalse((self.home / "profiles" / self.manifest["profile"] / ".iacquire-provisioner.json").exists())
         failure = json.loads((self.home / "iacquire-provisioner-state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(failure["code"], "runtime_tool_inventory_incomplete")
+
+    def test_runtime_preflight_requires_two_challenged_complete_default_catalog_reads(self):
+        catalog_digest = verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+        self.assertEqual(len(catalog_digest), 64)
+        self.assertEqual(self.api.catalog_reads, 2)
+        self.assertEqual(len(set(self.api.catalog_challenges)), 2)
+        self.assertEqual(self.api.paths, ["/v1/tools?platform=api_server"] * 2)
+
+    def test_default_profile_preflight_uses_the_root_route_and_bearer_key(self):
+        class Recorder:
+            request_args = None
+
+            def request(self, *args):
+                self.request_args = args
+                return 200, {"ok": True}
+
+        api = HermesApi("http://127.0.0.1:8642")
+        recorder = Recorder()
+        api.http = recorder
+        status, body = api.json_request_default("a" * 64, "/v1/tools?platform=api_server")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {"ok": True})
+        self.assertEqual(recorder.request_args[0], "http://127.0.0.1:8642/v1/tools?platform=api_server")
+        self.assertEqual(recorder.request_args[2]["Authorization"], "Bearer " + "a" * 64)
+
+    def test_runtime_preflight_fails_closed_before_any_portal_claim_if_contract_is_missing(self):
+        self.api.incomplete_catalog = True
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+        self.assertEqual(self.api.catalog_reads, 1)
+
+    def test_provider_key_is_written_only_to_client_profile_and_excluded_from_results_and_audit(self):
+        provisioner = RestrictedProvisioner(
+            home=self.home,
+            hermes_cli=Path("/opt/hermes/bin/hermes"),
+            api=self.api,
+            gateway_id=self.gateway_id,
+            hermes_version="hermes test",
+            profile_model_env={"DEEPSEEK_API_KEY": "fictional-model-secret-123"},
+            run_command=self.run_command,
+        )
+        result = provisioner.process(self.manifest)
+        profile_env = (self.home / "profiles" / self.manifest["profile"] / ".env").read_text(encoding="utf-8")
+        audit = (self.home / "iacquire-provisioner-state" / "audit.jsonl").read_text(encoding="utf-8")
+        self.assertIn("DEEPSEEK_API_KEY=fictional-model-secret-123", profile_env)
+        self.assertNotIn("fictional-model-secret-123", json.dumps(result))
+        self.assertNotIn("fictional-model-secret-123", audit)
 
     def test_interrupted_cli_creation_recovers_only_from_its_durable_intent(self):
         calls = 0
@@ -444,6 +509,51 @@ class RestrictedProvisionerTests(unittest.TestCase):
             "IACQUIRE_PROVISIONER_TOKEN_FILE": str(token_path),
         }, clear=True), self.assertRaisesRegex(ProvisioningError, "provisioner_credentials_missing"):
             _load_service_token()
+
+    def test_bootstrap_api_key_requires_a_private_mounted_file(self):
+        key_path = Path(self.temp.name) / "hermes-api-key"
+        key_path.write_text("f" * 64 + "\n", encoding="ascii")
+        if os.name != "nt":
+            key_path.chmod(0o600)
+        with patch.dict(os.environ, {
+            "HERMES_PROVISIONER_BOOTSTRAP_API_KEY_FILE": str(key_path),
+        }, clear=True):
+            self.assertEqual(_load_bootstrap_api_key(), "f" * 64)
+        with patch.dict(os.environ, {
+            "HERMES_PROVISIONER_BOOTSTRAP_API_KEY": "f" * 64,
+            "HERMES_PROVISIONER_BOOTSTRAP_API_KEY_FILE": str(key_path),
+        }, clear=True), self.assertRaisesRegex(ProvisioningError, "provisioner_credentials_missing"):
+            _load_bootstrap_api_key()
+
+    def test_profile_model_env_file_accepts_only_one_api_key_name_and_no_extra_fields(self):
+        from worker import _load_profile_model_env
+
+        secret_path = Path(self.temp.name) / "profile-model-env.json"
+        secret_path.write_text(
+            json.dumps({"schemaVersion": 1, "environment": "OPENAI_API_KEY", "value": "fictional-key-123"}),
+            encoding="ascii",
+        )
+        if os.name != "nt":
+            secret_path.chmod(0o600)
+        with patch.dict(os.environ, {"IACQUIRE_PROFILE_MODEL_ENV_FILE": str(secret_path)}, clear=True):
+            self.assertEqual(_load_profile_model_env(), {"OPENAI_API_KEY": "fictional-key-123"})
+        for forbidden_name in ("TELEGRAM_BOT_TOKEN", "API_SERVER_KEY", "SLACK_API_KEY"):
+            secret_path.write_text(
+                json.dumps({"schemaVersion": 1, "environment": forbidden_name, "value": "not-a-model-key"}),
+                encoding="ascii",
+            )
+            with patch.dict(os.environ, {"IACQUIRE_PROFILE_MODEL_ENV_FILE": str(secret_path)}, clear=True), self.assertRaisesRegex(ProvisioningError, "profile_key_invalid"):
+                _load_profile_model_env()
+
+    def test_worker_healthcheck_requires_a_fresh_private_heartbeat(self):
+        state_root = self.home / "iacquire-provisioner-state"
+        state_root.mkdir(mode=0o700, exist_ok=True)
+        with patch.dict(os.environ, {"HERMES_HOME": str(self.home)}, clear=True):
+            self.assertFalse(_worker_healthcheck())
+            _write_worker_heartbeat(state_root)
+            self.assertTrue(_worker_healthcheck())
+            (state_root / "heartbeat.json").write_text('{"at":0}', encoding="ascii")
+            self.assertFalse(_worker_healthcheck())
 
 
 if __name__ == "__main__":

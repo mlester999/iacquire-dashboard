@@ -66,6 +66,13 @@ MAX_CONFIG_BYTES = 24_000
 MAX_HTTP_BODY = 128_000
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
+MODEL_API_KEY_ENV_NAMES = {
+    "AI_GATEWAY_API_KEY", "ANTHROPIC_API_KEY", "DEEPINFRA_API_KEY", "DEEPSEEK_API_KEY",
+    "FIREWORKS_API_KEY", "GEMINI_API_KEY", "GLM_API_KEY", "GOOGLE_API_KEY",
+    "MISTRAL_API_KEY", "NEBIUS_API_KEY", "NVIDIA_API_KEY", "NOVITA_API_KEY",
+    "OPENAI_API_KEY", "OPENROUTER_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY",
+    "RAMP_ROUTER_API_KEY", "STEPFUN_API_KEY", "XAI_API_KEY", "ZAI_API_KEY",
+}
 REQUIRED_INVENTORY_TOOLS = {"memory", "session_search", "todo_list", "web_extract", "web_search"}
 OPTIONAL_INVENTORY_TOOLS = {"vision_analyze"}
 REVIEWED_TOOLSET_FOR_TOOL = {
@@ -502,6 +509,11 @@ class HermesApi:
             raise ProvisioningError("invalid_profile_route")
         return self.base + "/p/" + urllib.parse.quote(profile, safe="") + path
 
+    def _default_url(self, path: str) -> str:
+        if not path.startswith("/v1/"):
+            raise ProvisioningError("invalid_profile_route")
+        return self.base + path
+
     def json_request(self, profile: str, key: str, path: str, method: str = "GET", body: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None):
         headers = {"Authorization": "Bearer " + key, "Accept": "application/json"}
         if body is not None:
@@ -509,6 +521,15 @@ class HermesApi:
         if extra_headers:
             headers.update(extra_headers)
         status, data = self.http.request(self._url(profile, path), method, headers, body)
+        return status, data
+
+    def json_request_default(self, key: str, path: str, method: str = "GET", body: dict[str, Any] | None = None, extra_headers: dict[str, str] | None = None):
+        headers = {"Authorization": "Bearer " + key, "Accept": "application/json"}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        if extra_headers:
+            headers.update(extra_headers)
+        status, data = self.http.request(self._default_url(path), method, headers, body)
         return status, data
 
     def read_events(self, profile: str, key: str, run_id: str, timeout: int = 120) -> str:
@@ -566,6 +587,35 @@ class HermesApi:
         return output.strip()
 
 
+def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False) -> str:
+    """Prove this gateway supports the full challenged catalog before the worker can claim jobs."""
+    stable_digest: str | None = None
+    for _ in range(2):
+        challenge = secrets.token_urlsafe(24)
+        if default_profile:
+            status, catalog = api.json_request_default(
+                key,
+                "/v1/tools?platform=api_server",
+                extra_headers={"X-Hermes-Inventory-Challenge": challenge},
+            )
+        else:
+            status, catalog = api.json_request(
+                profile,
+                key,
+                "/v1/tools?platform=api_server",
+                extra_headers={"X-Hermes-Inventory-Challenge": challenge},
+            )
+        if status != 200:
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        current_digest = _catalog_snapshot(catalog, profile, challenge, key)
+        if stable_digest is not None and not hmac.compare_digest(stable_digest, current_digest):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        stable_digest = current_digest
+    if stable_digest is None:
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+    return stable_digest
+
+
 class RestrictedProvisioner:
     def __init__(
         self,
@@ -575,6 +625,7 @@ class RestrictedProvisioner:
         api: HermesApi,
         gateway_id: str,
         hermes_version: str,
+        profile_model_env: dict[str, str] | None = None,
         run_command: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     ):
         self.home = home.resolve()
@@ -584,6 +635,7 @@ class RestrictedProvisioner:
         self.api = api
         self.gateway_id = gateway_id
         self.hermes_version = hermes_version[:80]
+        self.profile_model_env = dict(profile_model_env or {})
         self.run_command = run_command
         if self.home == Path("/") or not self.profile_root.exists() or self.profile_root.is_symlink():
             raise ProvisioningError("unsafe_hermes_home")
@@ -816,6 +868,8 @@ class RestrictedProvisioner:
             key = self._read_api_key(env_path)
             if key is None:
                 raise ProvisioningError("profile_key_missing")
+            if self.profile_model_env:
+                _atomic_write(env_path, self._profile_env_text(key))
             return key
 
         if marker is not None:
@@ -830,6 +884,8 @@ class RestrictedProvisioner:
             key = self._read_api_key(profile_dir / ".env")
             if key is None:
                 raise ProvisioningError("profile_key_missing")
+            if self.profile_model_env:
+                _atomic_write(profile_dir / ".env", self._profile_env_text(key))
             return key
         if profile_dir.exists():
             if not journal or journal.get("jobId") != manifest.job_id or journal.get("orgId") != manifest.org_id or journal.get("agentId") != manifest.agent_id or journal.get("gatewayId") != manifest.gateway_id:
@@ -874,8 +930,7 @@ class RestrictedProvisioner:
         key = self._read_api_key(env_path) if journal and journal.get("apiKeyWritten") is True else None
         if key is None:
             key = secrets.token_hex(32)
-        env_text = "API_SERVER_ENABLED=true\nAPI_SERVER_KEY=" + key + "\n"
-        _atomic_write(env_path, env_text.encode("utf-8"))
+        _atomic_write(env_path, self._profile_env_text(key))
         journal = journal or {
             "schemaVersion": 1,
             "jobId": manifest.job_id,
@@ -888,6 +943,15 @@ class RestrictedProvisioner:
         _atomic_write(journal_path, json.dumps(journal, separators=(",", ":"), sort_keys=True).encode("utf-8"))
         os.chmod(profile_dir, 0o700)
         return key
+
+    def _profile_env_text(self, api_key: str) -> bytes:
+        # The default gateway owns the only API listener; named-profile keys only scope /p/<profile> routes.
+        rows = ["API_SERVER_KEY=" + api_key]
+        for name, value in sorted(self.profile_model_env.items()):
+            if name not in MODEL_API_KEY_ENV_NAMES or not value or any(ord(char) <= 0x20 or ord(char) >= 0x7f or char in "#'\"$\\" for char in value):
+                raise ProvisioningError("profile_key_invalid")
+            rows.append(name + "=" + value)
+        return ("\n".join(rows) + "\n").encode("ascii")
 
     def _read_api_key(self, path: Path) -> str | None:
         if path.is_symlink():
@@ -1000,24 +1064,7 @@ class RestrictedProvisioner:
         if enabled_names != SAFE_INVENTORY_TOOLSETS:
             raise ProvisioningError("runtime_tool_policy_unverified")
 
-        stable_digest: str | None = None
-        for _ in range(2):
-            challenge = secrets.token_urlsafe(24)
-            status, catalog = self.api.json_request(
-                manifest.profile,
-                key,
-                "/v1/tools?platform=api_server",
-                extra_headers={"X-Hermes-Inventory-Challenge": challenge},
-            )
-            if status != 200:
-                raise ProvisioningError("runtime_tool_inventory_incomplete")
-            current_digest = _catalog_snapshot(catalog, manifest.profile, challenge, key)
-            if stable_digest is not None and not hmac.compare_digest(stable_digest, current_digest):
-                raise ProvisioningError("runtime_tool_inventory_incomplete")
-            stable_digest = current_digest
-        if stable_digest is None:
-            raise ProvisioningError("runtime_tool_inventory_incomplete")
-        self._inventory_digest = stable_digest
+        self._inventory_digest = verify_complete_catalog(self.api, manifest.profile, key)
 
 
 def _load_service_token() -> str:
@@ -1069,7 +1116,84 @@ def _load_service_token() -> str:
     return token
 
 
-def _validate_runtime() -> tuple[Path, Path, str, str, str, str]:
+def _load_bootstrap_api_key() -> str:
+    """Read the client-only default profile key from a private mounted file, never an env value."""
+    if os.environ.get("HERMES_PROVISIONER_BOOTSTRAP_API_KEY"):
+        raise ProvisioningError("provisioner_credentials_missing")
+    value = os.environ.get("HERMES_PROVISIONER_BOOTSTRAP_API_KEY_FILE", "")
+    try:
+        path = Path(value)
+        if not path.is_absolute() or path.resolve(strict=True) != path:
+            raise OSError("unsafe key path")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path, flags)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
+                raise OSError("unsafe key file")
+            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                raise OSError("key file owner mismatch")
+            if os.name != "nt" and info.st_mode & 0o077:
+                raise OSError("key file permissions are too broad")
+            raw = os.read(fd, 4097)
+            if len(raw) > 4096:
+                raise OSError("key file too large")
+        finally:
+            os.close(fd)
+        key = raw.decode("ascii")
+        if key.endswith("\n"):
+            key = key[:-1]
+            if key.endswith("\r"):
+                key = key[:-1]
+        if "\n" in key or "\r" in key or not API_KEY_RE.fullmatch(key):
+            raise OSError("invalid key file")
+    except (OSError, UnicodeDecodeError, ValueError):
+        raise ProvisioningError("provisioner_credentials_missing") from None
+    return key
+
+
+def _load_profile_model_env() -> dict[str, str]:
+    """Load one platform model key from a private mount for profile-scoped Hermes credentials."""
+    if os.environ.get("IACQUIRE_PROFILE_MODEL_ENV"):
+        raise ProvisioningError("profile_key_invalid")
+    value = os.environ.get("IACQUIRE_PROFILE_MODEL_ENV_FILE", "")
+    try:
+        path = Path(value)
+        if not path.is_absolute() or path.resolve(strict=True) != path:
+            raise OSError("unsafe model key path")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path, flags)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 8192:
+                raise OSError("unsafe model key file")
+            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                raise OSError("model key owner mismatch")
+            if os.name != "nt" and info.st_mode & 0o077:
+                raise OSError("model key permissions are too broad")
+            raw = os.read(fd, 8193)
+            if len(raw) > 8192:
+                raise OSError("model key file too large")
+        finally:
+            os.close(fd)
+        parsed = json.loads(raw.decode("ascii"))
+        if not isinstance(parsed, dict) or set(parsed) != {"schemaVersion", "environment", "value"} or parsed.get("schemaVersion") != 1:
+            raise ValueError("invalid model key document")
+        name, secret = parsed.get("environment"), parsed.get("value")
+        if not isinstance(name, str) or name not in MODEL_API_KEY_ENV_NAMES:
+            raise ValueError("invalid model key name")
+        if not isinstance(secret, str) or not 1 <= len(secret) <= 4096 or any(ord(char) <= 0x20 or ord(char) >= 0x7f or char in "#'\"$\\" for char in secret):
+            raise ValueError("invalid model key value")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise ProvisioningError("profile_key_invalid") from None
+    return {name: secret}
+
+
+def _validate_runtime() -> tuple[Path, Path, str, str, str, str, str, dict[str, str]]:
     if hasattr(os, "getuid") and os.getuid() == 0:
         raise ProvisioningError("worker_must_not_run_as_root")
     home = Path(os.environ.get("HERMES_HOME", "/opt/data")).resolve()
@@ -1081,6 +1205,8 @@ def _validate_runtime() -> tuple[Path, Path, str, str, str, str]:
         raise ProvisioningError("hermes_cli_unavailable")
     portal_url = _validate_portal_origin(os.environ.get("IACQUIRE_PROVISIONER_URL", ""))
     token = _load_service_token()
+    bootstrap_api_key = _load_bootstrap_api_key()
+    profile_model_env = _load_profile_model_env()
     gateway_id = os.environ.get("IACQUIRE_PROVISIONER_GATEWAY_ID", "")
     api_base = os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642")
     if not _is_uuid(gateway_id):
@@ -1100,7 +1226,7 @@ def _validate_runtime() -> tuple[Path, Path, str, str, str, str]:
         raise ProvisioningError("hermes_cli_preflight_failed") from None
     if not all(flag in help_text for flag in ("--description", "--no-alias", "--no-skills")):
         raise ProvisioningError("unsupported_profile_create_cli")
-    return home, cli, portal_url, token, gateway_id, version
+    return home, cli, portal_url, token, gateway_id, version, bootstrap_api_key, profile_model_env
 
 
 def _hermes_cli_environment(home: Path) -> dict[str, str]:
@@ -1125,6 +1251,31 @@ def _sanitize_worker_environment(home: Path, api_base: str) -> None:
     })
     os.environ.clear()
     os.environ.update(clean)
+
+
+def _write_worker_heartbeat(state_root: Path) -> None:
+    payload = json.dumps({"at": int(time.time())}, separators=(",", ":")).encode("ascii")
+    _atomic_write(state_root / "heartbeat.json", payload)
+
+
+def _worker_healthcheck() -> bool:
+    home = Path(os.environ.get("HERMES_HOME", "/opt/data")).resolve()
+    path = home / "iacquire-provisioner-state" / "heartbeat.json"
+    if path.is_symlink():
+        return False
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            return False
+        if hasattr(os, "getuid") and info.st_uid != os.getuid():
+            return False
+        payload = json.loads(path.read_text(encoding="ascii"))
+        if not isinstance(payload, dict) or set(payload) != {"at"} or not isinstance(payload["at"], int):
+            return False
+        age = int(time.time()) - payload["at"]
+        return 0 <= age <= 600
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
 
 
 def _validate_portal_origin(value: str) -> str:
@@ -1154,13 +1305,18 @@ def _validate_portal_origin(value: str) -> str:
 
 
 def run_worker() -> None:
-    home, cli, portal_url, token, gateway_id, version = _validate_runtime()
+    home, cli, portal_url, token, gateway_id, version, bootstrap_api_key, profile_model_env = _validate_runtime()
+    api = HermesApi(os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642"))
+    # This read-only check happens before audit/heartbeat writes and before the first portal claim.
+    # The default profile belongs to this isolated runtime and is never an agency profile.
+    verify_complete_catalog(api, "default", bootstrap_api_key, default_profile=True)
     worker = RestrictedProvisioner(
         home=home,
         hermes_cli=cli,
-        api=HermesApi(os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642")),
+        api=api,
         gateway_id=gateway_id,
         hermes_version=version,
+        profile_model_env=profile_model_env,
     )
     http = JsonHttp(timeout=30)
     headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json"}
@@ -1174,6 +1330,7 @@ def run_worker() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     while not stopped:
+        _write_worker_heartbeat(worker.state_root)
         try:
             status, response = http.request(
                 base + "/claim",
@@ -1210,6 +1367,11 @@ def run_worker() -> None:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--healthcheck"]:
+        raise SystemExit(0 if _worker_healthcheck() else 1)
+    if sys.argv[1:] not in ([], ["--run"]):
+        print("Hermes provisioner stopped: invalid_worker_command", file=sys.stderr)
+        raise SystemExit(2)
     try:
         run_worker()
     except ProvisioningError as error:
