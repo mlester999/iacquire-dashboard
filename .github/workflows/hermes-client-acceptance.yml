@@ -328,9 +328,18 @@ jobs:
                   value = result.get(key)
                   if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10000:
                       print(f"{marker}: {value}")
-              audit_events = result.get("auditEventsObserved")
-              if isinstance(audit_events, int) and not isinstance(audit_events, bool) and 0 <= audit_events <= 10000:
-                  print(f"SANDBOX_DIAGNOSTIC_AUDIT_EVENTS: {audit_events}")
+              for key, marker in (
+                  ("auditEventsObserved", "SANDBOX_DIAGNOSTIC_AUDIT_EVENTS"),
+                  ("auditSucceededObserved", "SANDBOX_DIAGNOSTIC_AUDIT_SUCCEEDED"),
+                  ("auditFailedObserved", "SANDBOX_DIAGNOSTIC_AUDIT_FAILED"),
+                  ("auditRejectedObserved", "SANDBOX_DIAGNOSTIC_AUDIT_REJECTED"),
+                  ("auditProvisionObserved", "SANDBOX_DIAGNOSTIC_AUDIT_PROVISION"),
+                  ("auditSyncObserved", "SANDBOX_DIAGNOSTIC_AUDIT_SYNC"),
+                  ("auditRecoveryFailureObserved", "SANDBOX_DIAGNOSTIC_AUDIT_RECOVERY_FAILURE"),
+              ):
+                  value = result.get(key)
+                  if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10000:
+                      print(f"{marker}: {value}")
               raise SystemExit(1)
           expected = {
               "result": "SANDBOX_PASS",

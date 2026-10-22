@@ -154,6 +154,7 @@ class AcceptanceState:
         self.model_chat_calls = 0
         self.model_bad_auth = 0
         self.audit_events_observed: int | None = None
+        self.audit_event_summary_observed: dict[str, int] | None = None
         self.cross_tenant_denials = 0
         self.profile_key_denials = 0
         self.cross_tenant_successes = 0
@@ -387,6 +388,18 @@ class AcceptanceState:
         audit_text = audit_path.read_text(encoding="utf-8")
         audit_records = [json.loads(line) for line in audit_text.splitlines() if line.strip()]
         self.audit_events_observed = len(audit_records)
+        audit_rows = [row for row in audit_records if isinstance(row, dict)]
+        self.audit_event_summary_observed = {
+            "auditSucceededObserved": sum(row.get("outcome") == "succeeded" for row in audit_rows),
+            "auditFailedObserved": sum(row.get("outcome") == "failed" for row in audit_rows),
+            "auditRejectedObserved": sum(row.get("outcome") == "rejected" for row in audit_rows),
+            "auditProvisionObserved": sum(row.get("kind") == "provision" for row in audit_rows),
+            "auditSyncObserved": sum(row.get("kind") == "sync" for row in audit_rows),
+            "auditRecoveryFailureObserved": sum(
+                row.get("outcome") == "failed" and row.get("code") == "effective_soul_unverified"
+                for row in audit_rows
+            ),
+        }
         if len(audit_records) != 15:
             raise ValueError("audit_event_count_mismatch")
         if any("apiKey" in row or model_key in json.dumps(row) for row in audit_records):
@@ -753,10 +766,13 @@ def _synthetic_model_counters(state: AcceptanceState) -> dict[str, int]:
 
 
 def _audit_event_diagnostic(state: AcceptanceState) -> dict[str, int]:
-    """Return only the observed count; never include audit record contents in runner logs."""
+    """Return only bounded counts; never include audit record contents in runner logs."""
     if state.audit_events_observed is None:
         return {}
-    return {"auditEventsObserved": state.audit_events_observed}
+    result = {"auditEventsObserved": state.audit_events_observed}
+    if state.audit_event_summary_observed is not None:
+        result.update(state.audit_event_summary_observed)
+    return result
 
 
 if __name__ == "__main__":

@@ -19,7 +19,18 @@ class AcceptanceFixtureTests(unittest.TestCase):
     def test_audit_diagnostic_exposes_only_the_observed_record_count(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
         state.audit_events_observed = 16
-        self.assertEqual(_audit_event_diagnostic(state), {"auditEventsObserved": 16})
+        state.audit_event_summary_observed = {
+            "auditSucceededObserved": 14,
+            "auditFailedObserved": 1,
+            "auditRejectedObserved": 1,
+            "auditProvisionObserved": 14,
+            "auditSyncObserved": 2,
+            "auditRecoveryFailureObserved": 1,
+        }
+        self.assertEqual(
+            _audit_event_diagnostic(state),
+            {"auditEventsObserved": 16, **state.audit_event_summary_observed},
+        )
 
     def test_fixture_is_two_isolated_tenants_with_all_six_roles(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
