@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hermes-client-acceptance-${{ github.ref }}
+  group: hermes-client-acceptance-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
