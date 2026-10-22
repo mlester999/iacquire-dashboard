@@ -434,6 +434,15 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertEqual(unsafe_caught.exception.code, "canary_failed")
         self.assertNotIn("secret-value", str(unsafe_caught.exception))
 
+        classified_secret = "No API key found for openai: synthetic-provider-secret"
+        classified_response = EventResponse({"error": classified_secret})
+        with patch.object(api.http.opener, "open", return_value=classified_response):
+            with self.assertRaises(ProvisioningError) as classified_caught:
+                api.read_events("c-northwind-0123456789ab-lead-hunter", "synthetic-key", "run-3")
+        self.assertEqual(classified_caught.exception.code, "canary_failed_model_credentials_missing")
+        self.assertNotIn(classified_secret, str(classified_caught.exception))
+        self.assertNotIn("synthetic-provider-secret", str(classified_caught.exception))
+
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
         self.api.canary_policy_pending_reads = 2
         with patch("worker.time.sleep"):

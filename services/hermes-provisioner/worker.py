@@ -71,6 +71,21 @@ PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS = 1
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
 RUN_SUBMISSION_ERROR_CODE_RE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
+CANARY_ERROR_CLASSIFIERS = (
+    (
+        re.compile(
+            r"(?:\bno\b|\bmissing\b|\bunset\b|\bempty\b).{0,80}\b(?:api[ _-]?key|credentials?)\b"
+            r"|\b(?:api[ _-]?key|credentials?)\b.{0,80}\b(?:missing|unset|empty|not set|not found)\b",
+            re.I,
+        ),
+        "model_credentials_missing",
+    ),
+    (re.compile(r"\b(?:connection refused|connection reset|failed to connect|connecterror|timed out)\b", re.I), "model_endpoint_unreachable"),
+    (re.compile(r"\b(?:unauthorized|invalid api key|authentication failed|status code 401)\b", re.I), "model_authentication_failed"),
+    (re.compile(r"\b(?:unknown|unsupported) provider\b|\bprovider\b.{0,60}\b(?:unknown|unsupported)\b", re.I), "model_provider_unsupported"),
+    (re.compile(r"\bmodel\b.{0,80}\b(?:not found|unknown|unavailable)\b", re.I), "model_unavailable"),
+    (re.compile(r"\b(?:model|provider)\b.{0,80}\b(?:not configured|configuration missing|not set)\b", re.I), "model_configuration_missing"),
+)
 MODEL_API_KEY_ENV_NAMES = {
     "AI_GATEWAY_API_KEY", "ANTHROPIC_API_KEY", "DEEPINFRA_API_KEY", "DEEPSEEK_API_KEY",
     "FIREWORKS_API_KEY", "GEMINI_API_KEY", "GLM_API_KEY", "GOOGLE_API_KEY",
@@ -572,21 +587,7 @@ class HermesApi:
                             output = event.get("output") if isinstance(event, dict) else None
                             break
                         if name in {"run.failed", "failed", "run.cancelled", "run.interrupted"}:
-                            safe_code = None
-                            if isinstance(event, dict):
-                                candidates = [event.get("code"), event.get("error_code")]
-                                error = event.get("error")
-                                if isinstance(error, dict):
-                                    candidates.extend((error.get("code"), error.get("error_code")))
-                                safe_code = next(
-                                    (
-                                        candidate
-                                        for candidate in candidates
-                                        if isinstance(candidate, str)
-                                        and RUN_SUBMISSION_ERROR_CODE_RE.fullmatch(candidate)
-                                    ),
-                                    None,
-                                )
+                            safe_code = _safe_canary_error_code(event)
                             raise ProvisioningError(
                                 "canary_failed_" + safe_code if safe_code else "canary_failed"
                             )
@@ -607,6 +608,24 @@ class HermesApi:
         if output is None:
             raise ProvisioningError("canary_incomplete")
         return output.strip()
+
+
+def _safe_canary_error_code(event: Any) -> str | None:
+    if not isinstance(event, dict):
+        return None
+    candidates = [event.get("code"), event.get("error_code")]
+    detail = event.get("error", event.get("message"))
+    if isinstance(detail, dict):
+        candidates.extend((detail.get("code"), detail.get("error_code")))
+        detail = detail.get("message")
+    for candidate in candidates:
+        if isinstance(candidate, str) and RUN_SUBMISSION_ERROR_CODE_RE.fullmatch(candidate):
+            return candidate
+    if isinstance(detail, str):
+        for pattern, code in CANARY_ERROR_CLASSIFIERS:
+            if pattern.search(detail[:2048]):
+                return code
+    return None
 
 
 def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_profile: bool = False) -> str:
