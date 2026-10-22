@@ -95,6 +95,7 @@ export const CRM_NAV: CrmNavSection[] = [
       { path: "/settings/provider", label: "CRM Provider", icon: "plug", permission: "crm.view" },
       { path: "/settings/permissions", label: "Team & Permissions", icon: "shield-check", permission: "team.view" },
       { path: "/settings/assignment", label: "Lead Assignment", icon: "route", permission: "contacts.assign" },
+      { path: "/settings/lead-scoring", label: "Lead Scoring", icon: "gauge", permission: "contacts.view" },
       { path: "/settings/values", label: "Configuration Values", icon: "braces", permission: "crm.view" },
       { path: "/settings/blueprints", label: "Blueprints & setup", icon: "list-checks", permission: "crm.view" },
       { path: "/settings/data", label: "Imports & Exports", icon: "database", permission: "crm.view" },

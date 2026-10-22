@@ -2,6 +2,8 @@
 // the CRM. Pure functions over the definition and the workspace's names (tags, stages, people, templates), so the list, the canvas, the
 // approval dialog and the run timeline all describe a step the same way. Safe to call from server views and client components alike.
 import type { RunStatus } from "@/components/crm/workflows/parts";
+import { CALL_CLASS_LABELS } from "@/lib/missed-calls/state";
+import { LEAD_LABEL_TEXT } from "@/lib/lead-scoring/types";
 import { AGENT_ROLES } from "@/lib/agents";
 import { CHANNEL_LABELS } from "@/lib/messaging";
 import { idleLabel, OUTCOME_LABELS } from "@/lib/inbox";
@@ -10,7 +12,7 @@ import { CREATED_VIA_LABELS, LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS } from
 import { CALL_STATUS_LABELS } from "@/components/crm/calls/model";
 import {
   EFFECT_LABELS as SPEC_EFFECT_LABELS, isStepKind, isTriggerType, OPPORTUNITY_CONDITION_FIELDS, STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS,
-  type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationActionConfig, type CreateOpportunityConfig, type CreateTaskConfig, type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig,
+  type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationActionConfig, type CreateOpportunityConfig, type CreateTaskConfig, type HttpRequestConfig, type SetPriorityConfig, type InternalNoteConfig, type MoveStageConfig,
   type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TriggerConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 
@@ -340,6 +342,15 @@ export function stepSummary(step: Pick<WorkflowStep, "kind" | "config">, names: 
       if (!n.title?.trim()) return "Say what the notification is about";
       return `Notify ${who.join(", ") || "nobody yet"}: “${clip(n.title, 60)}”`;
     }
+    case "request_reassessment":
+      return "Check the lead's priority again";
+    case "set_priority": {
+      const n = step.config as SetPriorityConfig;
+      if (!n.reason?.trim()) return "Say why the priority is being set";
+      return `Mark the lead ${n.label} for ${n.days} day${n.days === 1 ? "" : "s"}: “${clip(n.reason, 50)}”`;
+    }
+    case "recovery_check":
+      return "Look at the contact's waiting missed call now";
     case "internal_note": {
       const n = step.config as InternalNoteConfig;
       if (!n.body?.trim()) return "Write the note";
@@ -423,6 +434,8 @@ export function triggerSummary(t: TriggerConfig | null | undefined, names: Names
   if (f.idleHours?.length) bits.push(`quiet for ${f.idleHours.map(idleLabel).join(", ")}`);
   if (f.callDirections?.length === 1) bits.push(f.callDirections[0] === "inbound" ? "incoming calls" : "outgoing calls");
   if (f.callStatuses?.length) bits.push(`ended as ${f.callStatuses.map((s) => CALL_STATUS_LABELS[s].toLowerCase()).join(", ")}`);
+  if (f.callClasses?.length) bits.push(`${f.callClasses.map((c) => CALL_CLASS_LABELS[c].toLowerCase()).join(" or ")}`);
+  if (f.leadLabels?.length) bits.push(`the lead is ${f.leadLabels.map((l) => LEAD_LABEL_TEXT[l]).join(" or ")}`);
   if (t.type === "schedule" && t.schedule) bits.push(`${t.schedule.frequency === "weekly" ? weekdaysText(t.schedule.weekdays) : "every day"} at ${clockText(t.schedule.time)}`);
   if (t.type === "inbound_webhook" && t.inbound) bits.push(t.inbound.match === "email_or_phone" ? `matched by email or phone${t.inbound.createContact ? ", adding new contacts" : ""}` : "without a contact");
   if (t.contactFilter?.conditions.length) bits.push(`only contacts where ${conditionsText(t.contactFilter, "contact", names)}`);

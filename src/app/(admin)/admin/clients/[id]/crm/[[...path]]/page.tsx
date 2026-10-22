@@ -27,6 +27,7 @@ import { FollowUpsView } from "@/components/crm/views/followups-view";
 import { ReviewsView } from "@/components/crm/views/reviews-view";
 import { CallsView } from "@/components/crm/views/calls-view";
 import { AssignmentView } from "@/components/crm/views/assignment-view";
+import { LeadScoringView } from "@/components/crm/views/lead-scoring-view";
 import { CustomValuesView } from "@/components/crm/views/custom-values-view";
 import { ReportsView } from "@/components/crm/views/reports-view";
 import { CampaignsView } from "@/components/crm/views/campaigns-view";
@@ -151,6 +152,10 @@ export default async function AgencyClientCrmPage({ params, searchParams }: { pa
       if (b === "assignment") {
         need("crm.view");
         return <AssignmentView actor={actor} scope={scope} searchParams={sp} />;
+      }
+      if (b === "lead-scoring") {
+        need("contacts.view");
+        return <LeadScoringView actor={actor} scope={scope} />;
       }
       if (b === "communications") {
         need("inbox.view");

@@ -1,4 +1,7 @@
 import "server-only";
+import { requestReassessment } from "@/server/lead-scoring/queue";
+import { applyOverrideInTx } from "@/server/lead-scoring/priority";
+import { ACTIVE_STATES } from "@/lib/missed-calls/state";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
@@ -26,7 +29,7 @@ import { zonedToInstant } from "@/lib/calendars/slots";
 import {
   STEP_KINDS, UPDATABLE_FIELDS, durationMinutes,
   type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationActionConfig, type CreateOpportunityConfig, type CreateTaskConfig, type InternalNoteConfig, type MoveStageConfig,
-  type HttpRequestConfig, type SlackMessageConfig, type N8nConfig, type NotifyTeamConfig, type RequestReviewConfig, type SendMessageConfig, type TagsConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
+  type HttpRequestConfig, type SlackMessageConfig, type N8nConfig, type NotifyTeamConfig, type SetPriorityConfig, type RequestReviewConfig, type SendMessageConfig, type TagsConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { describeMissing, renderMessage, renderTemplate } from "@/lib/messaging/tokens";
 import { normalizeContentType } from "@/lib/automation-studio/outbound";
@@ -395,6 +398,35 @@ async function execNote(sc: StepContext, c: InternalNoteConfig): Promise<StepOut
   return done({ noteId: rows[0].id });
 }
 
+async function execReassess(sc: StepContext): Promise<StepOutcome> {
+  const contact = await loadContact(sc.db, sc.org.id, sc.run.contactId);
+  if (!contact) return sc.dryRun ? wouldSkip(NO_CONTACT) : skipped(NO_CONTACT);
+  if (sc.dryRun) return would(`Would ask for ${contact.display_name || "the contact"} to be scored again.`);
+  await requestReassessment(sc.db, sc.org.id, contact.id, "workflow");
+  return done({ detail: "Asked for the lead to be scored again. It is checked within a few minutes, with everything known by then." });
+}
+
+async function execSetPriority(sc: StepContext, c: SetPriorityConfig): Promise<StepOutcome> {
+  const contact = await loadContact(sc.db, sc.org.id, sc.run.contactId, !sc.dryRun);
+  if (!contact) return sc.dryRun ? wouldSkip(NO_CONTACT) : skipped(NO_CONTACT);
+  const reason = `Automation "${sc.workflow.name.slice(0, 60)}": ${(await renderLoose(sc, c.reason)).slice(0, 160)}`;
+  if (sc.dryRun) return would(`Would mark ${contact.display_name || "the contact"} ${c.label} for ${c.days} day${c.days === 1 ? "" : "s"}.`, { label: c.label });
+  const now = new Date();
+  const r = await applyOverrideInTx(sc.db, sc.actor, contact.id, { label: c.label, reason, expiresAt: new Date(now.getTime() + c.days * 86_400_000).toISOString() }, now, { keepPeople: true });
+  if (!r.applied) return skipped(r.skipped === "person_override" ? "A teammate set this lead's priority by hand, so the workflow left it alone." : NO_CONTACT);
+  return done({ label: c.label, days: c.days });
+}
+
+async function execRecoveryCheck(sc: StepContext): Promise<StepOutcome> {
+  const contact = await loadContact(sc.db, sc.org.id, sc.run.contactId);
+  if (!contact) return sc.dryRun ? wouldSkip(NO_CONTACT) : skipped(NO_CONTACT);
+  const open = await sc.db.query<{ id: string }>("select id from missed_call_cases where org_id = $1 and contact_id = $2 and state = any($3::text[]) and paused_at is null", [sc.org.id, contact.id, ACTIVE_STATES]);
+  if (!open.rows.length) return sc.dryRun ? wouldSkip("This contact has no missed call waiting.") : skipped("This contact has no missed call waiting for a follow-up.");
+  if (sc.dryRun) return would("Would ask for the missed call to be looked at now.");
+  await sc.db.query("update missed_call_cases set next_action_at = now() where org_id = $1 and id = any($2::uuid[]) and (next_action_at is null or next_action_at > now())", [sc.org.id, open.rows.map((r) => r.id)]);
+  return done({ detail: "Asked for the missed call to be looked at now. Consent, opening hours and limits are checked again first.", cases: open.rows.length });
+}
+
 async function execNotify(sc: StepContext, c: NotifyTeamConfig): Promise<StepOutcome> {
   const { db } = sc;
   const orgId = sc.org.id;
@@ -761,6 +793,9 @@ export async function executeStep(sc: StepContext, step: WorkflowStep): Promise<
     case "request_review": return execRequestReview(sc, cfg as RequestReviewConfig);
     case "notify_team": return execNotify(sc, cfg as NotifyTeamConfig);
     case "internal_note": return execNote(sc, cfg as InternalNoteConfig);
+    case "request_reassessment": return execReassess(sc);
+    case "set_priority": return execSetPriority(sc, cfg as SetPriorityConfig);
+    case "recovery_check": return execRecoveryCheck(sc);
     case "webhook": return execWebhook(sc, cfg as WebhookConfig);
     case "n8n": return execN8n(sc, cfg as N8nConfig);
     case "http_request": return execHttpRequest(sc, cfg as HttpRequestConfig);

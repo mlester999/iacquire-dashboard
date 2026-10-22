@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-  ArrowRightLeft, Ban, BellRing, Bot, CircleCheck, CircleDashed, CircleX, Clock, FlaskConical, GitBranch, Globe, Handshake, Hourglass, Inbox, ListTodo, Loader2, MessageSquareText, OctagonX, PencilLine, Send, ShieldAlert,
+  Flame, Gauge, PhoneMissed, ArrowRightLeft, Ban, BellRing, Bot, CircleCheck, CircleDashed, CircleX, Clock, FlaskConical, GitBranch, Globe, Handshake, Hourglass, Inbox, ListTodo, Loader2, MessageSquareText, OctagonX, PencilLine, Send, ShieldAlert,
   SkipForward, Star, StickyNote, Tag, Tags, UserCheck, Webhook, Workflow, Zap, type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
@@ -94,6 +94,9 @@ export const STEP_ICONS: Record<string, LucideIcon> = {
   request_review: Star,
   notify_team: BellRing,
   internal_note: StickyNote,
+  request_reassessment: Gauge,
+  set_priority: Flame,
+  recovery_check: PhoneMissed,
   n8n: Workflow,
   webhook: Webhook,
   http_request: Globe,

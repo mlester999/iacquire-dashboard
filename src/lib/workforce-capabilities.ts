@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -94,6 +94,26 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "appointments.view",
     risk: "read_only",
     produces: "Real available start/end times with their time zone and appointment type, or an honest reason the calendar cannot offer slots.",
+    workBoardAction: true,
+  },
+  missed_call_review: {
+    key: "missed_call_review",
+    label: "Missed-call review",
+    description: "Read recorded missed calls, the follow-ups that were tried and the recovery policy, then say which callers still need a person. It never calls or texts anyone and changes nothing.",
+    allowedRoles: ["appointment_setter"],
+    requiredPermission: "calls.view",
+    risk: "read_only",
+    produces: "Findings about missed calls without an owner, drafts waiting for approval and follow-ups that failed, each with a link to the cases.",
+    workBoardAction: true,
+  },
+  lead_priority_review: {
+    key: "lead_priority_review",
+    label: "Lead priority review",
+    description: "Read the lead priorities the scoring rules already wrote and what happened to those leads since, then say which promising leads have not been followed up. It never scores, changes or contacts a lead.",
+    allowedRoles: ["sales_assistant"],
+    requiredPermission: "contacts.view",
+    risk: "read_only",
+    produces: "Findings about hot leads without a follow-up or an owner, and about how much of the book can be scored, with links to the contacts.",
     workBoardAction: true,
   },
   performance_snapshot: {

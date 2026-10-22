@@ -15,8 +15,19 @@ import { CALL_PROVIDER_LABELS, CALL_STATUS_LABELS, CALL_STATUS_TONES, dispositio
 import { LogCallDialog } from "@/components/crm/calls/log-call-dialog";
 import { CallDetailSheet } from "@/components/crm/calls/call-detail";
 import { VoiceConnections } from "@/components/crm/calls/voice-connections";
+import { RecoveryWorkspace } from "@/components/crm/recovery/recovery-workspace";
+import { RecoverySettings } from "@/components/crm/recovery/recovery-settings";
+import type { CaseDetail, CaseGroup, CaseView } from "@/server/missed-calls/ops";
+import type { RecoveryStats } from "@/server/missed-calls/analytics";
+import type { MissedCallPolicy } from "@/lib/missed-calls/policy";
+import type { ReadinessItem } from "@/server/missed-calls/policy";
 
-export type CallsTab = "calls" | "connections";
+export type CallsTab = "calls" | "recovery" | "recovery-settings" | "connections";
+
+/** What the Recovery tabs need, read on the server only when one of them is open. */
+export type RecoveryData =
+  | { stats: RecoveryStats; cases: { rows: CaseView[]; total: number; page: number; pageSize: number; counts: Record<CaseGroup, number> }; group: CaseGroup; selected: CaseDetail | null; policy: MissedCallPolicy; readiness: ReadinessItem[] }
+  | { policy: MissedCallPolicy; readiness: ReadinessItem[]; businessName: string };
 
 interface Filters {
   status: CallStatusFilter;
@@ -77,12 +88,15 @@ export function CallRow({ scope, call, onOpen, showContact = true }: { scope: Cr
 }
 
 /** CRM → Calls. The rules are in src/server/crm/calls.ts; the provider adapters in src/server/integrations/voice. */
-export function CallsWorkspace({ scope, tab, filters, calls, connections, members, canLog, canFollowUp, canConnect, vapiAuthModes }: {
+export function CallsWorkspace({ scope, tab, filters, calls, connections, recovery = null, canWorkCases = false, canConfigureRecovery = false, members, canLog, canFollowUp, canConnect, vapiAuthModes }: {
   scope: CrmScope;
   tab: CallsTab;
   filters: Filters;
   calls: { rows: CallRecordView[]; total: number; page: number; pageSize: number; counts: Record<CallStatusFilter, number> };
   connections: VoiceConnectionView[];
+  recovery?: RecoveryData | null;
+  canWorkCases?: boolean;
+  canConfigureRecovery?: boolean;
   members: Array<{ id: string; name: string }>;
   canLog: boolean;
   canFollowUp: boolean;
@@ -95,8 +109,10 @@ export function CallsWorkspace({ scope, tab, filters, calls, connections, member
   const href = (patch: Partial<Filters> & { tab?: CallsTab; page?: number }) => {
     const f = { ...filters, ...patch };
     const sp = new URLSearchParams();
-    if ((patch.tab ?? tab) === "connections") sp.set("tab", "connections");
-    else {
+    if ((patch.tab ?? tab) !== "calls") sp.set("tab", patch.tab ?? tab);
+    if ((patch.tab ?? tab) !== "calls") {
+      // The other tabs carry their own filters.
+    } else {
       if (f.status !== "all") sp.set("status", f.status);
       if (f.provider !== "all") sp.set("provider", f.provider);
       if (f.direction !== "all") sp.set("direction", f.direction);
@@ -118,7 +134,7 @@ export function CallsWorkspace({ scope, tab, filters, calls, connections, member
       />
 
       <nav aria-label="Calls sections" className="flex gap-1 border-b border-line">
-        {([["calls", "Calls"], ["connections", "Voice connections"]] as const).map(([k, label]) => (
+        {([["calls", "Calls"], ["recovery", "Missed-call recovery"], ["recovery-settings", "Recovery settings"], ["connections", "Voice connections"]] as const).map(([k, label]) => (
           <Link
             key={k}
             href={href({ tab: k })}
@@ -132,6 +148,24 @@ export function CallsWorkspace({ scope, tab, filters, calls, connections, member
 
       {tab === "connections" ? (
         <VoiceConnections scope={scope} connections={connections} canConnect={canConnect} vapiAuthModes={vapiAuthModes} />
+      ) : tab === "recovery" && recovery && "stats" in recovery ? (
+        <RecoveryWorkspace
+          scope={scope} stats={recovery.stats} cases={recovery.cases} group={recovery.group} policy={recovery.policy} readiness={recovery.readiness} members={members}
+          selected={recovery.selected} canWork={canWorkCases} canConfigure={canConfigureRecovery}
+          hrefFor={(p) => {
+            const sp = new URLSearchParams({ tab: p.tab ?? "recovery" });
+            if (!p.tab) {
+              const g = p.group ?? recovery.group;
+              if (g !== "needs_you") sp.set("group", g);
+              if (recovery.stats.periodDays !== 30) sp.set("days", String(recovery.stats.periodDays));
+              if (p.page && p.page > 1) sp.set("page", String(p.page));
+              if (p.case) sp.set("case", p.case);
+            }
+            return `${scope.base}/calls?${sp.toString()}`;
+          }}
+        />
+      ) : tab === "recovery-settings" && recovery && "businessName" in recovery ? (
+        <RecoverySettings scope={scope} policy={recovery.policy} readiness={recovery.readiness} members={members} businessName={recovery.businessName} canConfigure={canConfigureRecovery} />
       ) : (
         <section aria-label="Calls" className="space-y-4">
           <div className="space-y-2">

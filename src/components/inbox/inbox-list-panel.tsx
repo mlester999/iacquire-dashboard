@@ -3,11 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, Archive, Bot, Check, CheckCheck, ChevronDown, Clock, Inbox, Loader2, Mail, MessageCircle, MessageSquareText, PauseCircle, RotateCcw, Search, ShieldAlert, SquareCheckBig, UserRound, X } from "lucide-react";
+import { AlertTriangle, Archive, Bot, Check, CheckCheck, PhoneMissed, ChevronDown, Clock, Inbox, Loader2, Mail, MessageCircle, MessageSquareText, PauseCircle, RotateCcw, Search, ShieldAlert, SquareCheckBig, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlays";
 import { bulkConversationsAction } from "@/app/actions/inbox";
+import { PriorityBadge } from "@/components/crm/priority/priority-ui";
 import { AGENT_ROLES } from "@/lib/agents";
 import { ATTENTION_LABELS, CONVERSATION_OUTCOMES, INBOX_SORTS, INBOX_SORT_HELP, INBOX_SORT_LABELS, INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS, OUTCOME_LABELS, type InboxSort, type InboxView } from "@/lib/inbox";
 import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
@@ -95,6 +96,8 @@ function StatusChips({ c }: { c: ConversationListItem }) {
   if (c.attention.includes("send_failed")) chips.push(<Badge key="f" tone="danger"><AlertTriangle className="size-3" aria-hidden />Send failed</Badge>);
   if (c.attention.includes("urgent") && !c.attention.includes("needs_person")) chips.push(<Badge key="u" tone="danger">Urgent</Badge>);
   if (c.attention.includes("awaiting_reply")) chips.push(<Badge key="a" tone="warning"><Clock className="size-3" aria-hidden />Awaiting reply</Badge>);
+  if (c.missedCallOpen) chips.push(<Badge key="mc" tone="warning"><PhoneMissed className="size-3" aria-hidden />Missed call</Badge>);
+  if (c.lead && (c.lead.label === "hot" || c.lead.label === "warm")) chips.push(<PriorityBadge key="lead" label={c.lead.label} source={c.lead.source} className="h-5 px-2 text-[11px]" />);
   if (c.waitingOnCustomer && !chips.length) chips.push(<Badge key="w" tone="outline">Waiting on customer</Badge>);
   if (c.archivedAt) chips.push(<Badge key="x" tone="outline"><Archive className="size-3" aria-hidden />Archived</Badge>);
   else if (c.status === "closed") chips.push(<Badge key="r" tone="success"><Check className="size-3" aria-hidden />{c.outcome ? OUTCOME_LABELS[c.outcome] : "Resolved"}</Badge>);
@@ -178,7 +181,8 @@ function ViewTabs({ view, counts, onChange }: { view: InboxView; counts: ViewCou
   const moreActive = MORE_VIEWS.includes(view);
   return (
     // One scrolling row on a phone (three wrapped rows of tabs would push the list off the screen); wrapped from sm up.
-    <div className="scrollbar-thin -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+    // `relative` keeps the tabs' screen-reader-only text (absolutely positioned) inside this scroller; without it that text sits outside the clip and widens the page.
+    <div className="scrollbar-thin relative -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
       <div role="tablist" aria-label="Conversation views" onKeyDown={onKeyDown} className="flex shrink-0 items-center gap-1.5 sm:flex-wrap">
         {PRIMARY_VIEWS.map(tab)}
         {moreActive && tab(view)}

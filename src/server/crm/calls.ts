@@ -8,6 +8,7 @@ import { assertCan, auditActor, crmRead, crmWrite, systemActor, type CrmActor } 
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import { createTaskInTx } from "@/server/crm/tasks";
 import { assertAssignable } from "@/server/crm/contacts";
+import { syncCaseForCallSafely } from "@/server/missed-calls/sync";
 import {
   CALL_STATUSES, E164, e164, httpsUrl, isCallStatus, isFinalCallStatus, isVoiceProvider, providerId, VOICE_PROVIDER_LABELS,
   type CallStatus, type VoiceCallEvent, type VoiceProvider,
@@ -147,6 +148,8 @@ export async function recordVoiceEvent(db: Queryable, conn: { orgId: string; sto
   }
   const completed = !wasFinal && isFinalCallStatus(status);
   if (completed) await callCompleted(db, orgId, { recordId, provider: e.provider, direction, status, duration, disposition: e.disposition, contactId, now });
+  // Missed-call recovery: the case follows the call record (created, joined, or corrected). It runs in its own savepoint, so a problem there can never lose the call.
+  await syncCaseForCallSafely(db, orgId, recordId, now);
   return { outcome: ins.rows[0] ? "created" : "updated", recordId, completed, contactId };
 }
 
@@ -360,6 +363,7 @@ export async function logCall(actor: CrmActor, input: ManualCallInput, opts: { n
     );
     const id = rows[0].id;
     await callCompleted(db, actor.orgId, { recordId: id, provider: "manual", direction: input.direction, status: input.status, duration, disposition, contactId: contact.id, now, actor });
+    await syncCaseForCallSafely(db, actor.orgId, id, now);
     let taskId: string | null = null;
     if (input.followUp) taskId = await followUpTask(db, actor, id, contact, input.followUp);
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "crm.call_logged", targetType: "crm_call_record", targetId: id, result: "success", metadata: { direction: input.direction, status: input.status, recording: Boolean(recording), followUp: Boolean(taskId) } }, db);

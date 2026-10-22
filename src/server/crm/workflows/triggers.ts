@@ -187,6 +187,8 @@ export async function triggerMatches(db: Queryable, e: CrmEventRow, t: TriggerCo
   }
   if (f.channels?.length && !(f.channels as string[]).includes(str(p.channel) ?? "")) return false;
   if (f.callStatuses?.length && !(f.callStatuses as string[]).includes(str(p.status) ?? "")) return false;
+  if (f.callClasses?.length && !(f.callClasses as string[]).includes(str(p.class) ?? "")) return false;
+  if (f.leadLabels?.length && !(f.leadLabels as string[]).includes(str(p.label) ?? "")) return false;
   if (f.callDirections?.length && !(f.callDirections as string[]).includes(str(p.direction) ?? "")) return false;
   if (f.idleHours?.length && !f.idleHours.includes(Number(p.idleHours))) return false;
   if (f.consentPurpose && str(p.purpose) !== f.consentPurpose) return false;

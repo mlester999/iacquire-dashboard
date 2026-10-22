@@ -231,6 +231,11 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if (!conv) throw new AppError("not_found", "Conversation not found.");
   const channel = conv.channel;
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
+  // A missed-call follow-up (its key starts with "mcc:") is automation sent by the system, and a person who has taken the conversation over wins: it is
+  // refused when it is queued and again when it is about to be sent, so a takeover in between stops it.
+  if (req.actor.kind === "system" && req.dedupeKey?.startsWith("mcc:") && conv.owner_kind === "human") {
+    return deny("human_owner", "A person has taken over this conversation.", { permanent: true });
+  }
 
   if (req.actor.kind === "ai") {
     // A person owns the conversation: the AI never sends, and queued sends stay blocked after retries and restarts.
@@ -515,6 +520,7 @@ interface MessageRow {
   ownership_fence: number | null;
   attempt_count: number;
   created_at: Date;
+  dedupe_key: string | null;
   channel: Channel;
   subject: string | null;
   contact_id: string;
@@ -532,6 +538,7 @@ function requestFor(m: MessageRow, now: Date): SendRequest {
     now,
     hasReservation: Boolean(m.reservation_id),
     fenceVersion: m.author_kind === "ai" ? m.ownership_fence : null,
+    dedupeKey: m.dedupe_key,
   };
 }
 
@@ -726,7 +733,7 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
     const { rows } = await db.query<MessageRow>(
       `update conversation_messages set status = 'sending', attempt_count = attempt_count + 1, claimed_at = now()
        where id = $1 and status = 'queued' and send_after <= $2
-       returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, purpose, template_id, approval_id, followup_step_id, reservation_id, ownership_fence, attempt_count, created_at,
+       returning id, org_id, conversation_id, author_kind, author_user_id, agent_id, body, scope, purpose, template_id, approval_id, followup_step_id, reservation_id, ownership_fence, attempt_count, created_at, dedupe_key,
          (select channel from conversations where id = conversation_id) as channel, (select subject from conversations where id = conversation_id) as subject,
          (select contact_id from conversations where id = conversation_id) as contact_id`,
       [messageId, now.toISOString()],
@@ -992,7 +999,7 @@ export async function dispatchDue(deps: DispatchDeps & { limit?: number } = {}):
 export async function cancelPendingAiMessages(db: Queryable, orgId: string, conversationId: string, reason: string, opts: { queuedOnly?: boolean } = {}) {
   const { rows } = await db.query<{ id: string; reservation_id: string | null; followup_step_id: string | null }>(
     `update conversation_messages set status = 'blocked', blocked_reason = $3, status_detail = 'Stopped before sending.'
-     where org_id = $1 and conversation_id = $2 and author_kind = 'ai' and direction = 'outbound' and status = any($4::text[])
+     where org_id = $1 and conversation_id = $2 and (author_kind = 'ai' or dedupe_key like 'mcc:%') and direction = 'outbound' and status = any($4::text[])
      returning id, reservation_id, followup_step_id`,
     [orgId, conversationId, reason, opts.queuedOnly ? ["queued"] : ["draft", "queued"]],
   );

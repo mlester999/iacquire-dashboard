@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { PriorityBadge } from "@/components/crm/priority/priority-ui";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -147,6 +148,7 @@ export function ContactsWorkspace({
       case "source": return row.source || <span className="text-faint">—</span>;
       case "tags": return row.tags.length ? <div className="flex max-w-[240px] items-center gap-1 overflow-hidden">{row.tags.slice(0, 2).map((t) => <TagChip key={t.id} name={t.name} color={t.color} className="max-w-[110px]" />)}{row.tags.length > 2 && <span className="shrink-0 text-[12px] text-muted" title={row.tags.slice(2).map((t) => t.name).join(", ")}>+{row.tags.length - 2}</span>}</div> : <span className="text-faint">—</span>;
       case "lead_score": return row.leadScore ?? <span className="text-faint">—</span>;
+      case "priority": return <PriorityBadge label={row.priorityLabel} score={row.priorityScore} source={row.prioritySource} />;
       case "created_at": return <RelativeTime iso={row.createdAt} timezone={scope.timezone} />;
       case "last_activity_at": return row.lastActivityAt ? <RelativeTime iso={row.lastActivityAt} timezone={scope.timezone} /> : <span className="text-faint">—</span>;
       case "city": return row.city ?? <span className="text-faint">—</span>;

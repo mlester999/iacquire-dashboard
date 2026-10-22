@@ -87,6 +87,9 @@ export const CONTACT_FILTER_FIELDS: CatalogField[] = [
   { key: "tags", label: "Tags", kind: "tags", group: "Contact" },
   { key: "company", label: "Company", kind: "company", group: "Contact" },
   { key: "lead_score", label: "Lead score", kind: "number", group: "Contact" },
+  // Written by the scoring engine (or a person's override), never by hand-editing a contact. See src/server/lead-scoring.
+  { key: "priority_label", label: "Lead priority", kind: "enum", group: "Contact", options: [{ value: "hot", label: "Hot" }, { value: "warm", label: "Warm" }, { value: "cold", label: "Cold" }, { value: "insufficient_data", label: "Insufficient data" }] },
+  { key: "priority_score", label: "Priority score", kind: "number", group: "Contact" },
   { key: "created_at", label: "Created", kind: "date", group: "Activity" },
   { key: "updated_at", label: "Last updated", kind: "date", group: "Activity" },
   { key: "last_activity_at", label: "Last activity", kind: "date", group: "Activity" },
@@ -222,16 +225,16 @@ export function countConditions(group: FilterGroup): number {
 // Sorting and columns
 // ---------------------------------------------------------------------------
 
-export const CONTACT_SORTS = ["name", "created_at", "updated_at", "last_activity_at", "lead_score", "lead_status"] as const;
+export const CONTACT_SORTS = ["name", "created_at", "updated_at", "last_activity_at", "lead_score", "lead_status", "priority"] as const;
 export type ContactSort = (typeof CONTACT_SORTS)[number];
 export const CONTACT_SORT_LABELS: Record<ContactSort, string> = {
-  name: "Name", created_at: "Created", updated_at: "Last updated", last_activity_at: "Last activity", lead_score: "Lead score", lead_status: "Lead status",
+  name: "Name", created_at: "Created", updated_at: "Last updated", last_activity_at: "Last activity", lead_score: "Lead score", lead_status: "Lead status", priority: "Lead priority",
 };
 
-export const CONTACT_COLUMNS = ["email", "phone", "company", "owner", "lead_status", "source", "tags", "lead_score", "created_at", "last_activity_at", "city", "country", "created_via"] as const;
+export const CONTACT_COLUMNS = ["email", "phone", "company", "owner", "lead_status", "source", "tags", "lead_score", "priority", "created_at", "last_activity_at", "city", "country", "created_via"] as const;
 export type ContactColumn = (typeof CONTACT_COLUMNS)[number];
 export const CONTACT_COLUMN_LABELS: Record<ContactColumn, string> = {
-  email: "Email", phone: "Phone", company: "Company", owner: "Owner", lead_status: "Status", source: "Source", tags: "Tags", lead_score: "Score",
+  email: "Email", phone: "Phone", company: "Company", owner: "Owner", lead_status: "Status", source: "Source", tags: "Tags", lead_score: "Score", priority: "Priority",
   created_at: "Created", last_activity_at: "Last activity", city: "City", country: "Country", created_via: "Created via",
 };
 export const DEFAULT_CONTACT_COLUMNS: ContactColumn[] = ["phone", "company", "owner", "lead_status", "tags", "created_at"];

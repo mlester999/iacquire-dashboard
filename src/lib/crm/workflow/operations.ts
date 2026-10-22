@@ -75,7 +75,9 @@ export function parseOperations(input: unknown): { ok: true; operations: Workflo
   const first = r.error.issues[0];
   const index = typeof first.path[0] === "number" ? first.path[0] : 0;
   const where = first.path.length ? ` (change ${index + 1}${first.path.length > 1 ? `, ${first.path.slice(1).join(".")}` : ""})` : "";
-  return { ok: false, index, message: `${first.message.replace(/^Invalid input: /, "")}${where}`.slice(0, 300) };
+  // The message is cut, never the place: a long list of allowed values must not push "(change 2)" out of the reply.
+  const body = first.message.replace(/^Invalid input: /, "");
+  return { ok: false, index, message: `${body.slice(0, Math.max(40, 300 - where.length))}${where}` };
 }
 
 // ---------------------------------------------------------------------------

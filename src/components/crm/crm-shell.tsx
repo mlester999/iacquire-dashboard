@@ -11,7 +11,7 @@ import { Braces } from "lucide-react";
 import { BarChart3 } from "lucide-react";
 import { Megaphone } from "lucide-react";
 import { ClipboardList } from "lucide-react";
-import { Phone, Star } from "lucide-react";
+import { Gauge, Phone, Star } from "lucide-react";
 import { Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CrmNavSection } from "@/lib/crm/nav";
@@ -29,6 +29,7 @@ const ICONS: Record<string, LucideIcon> = {
   "clipboard-list": ClipboardList,
   star: Star,
   phone: Phone,
+  gauge: Gauge,
   rocket: Rocket,
 };
 

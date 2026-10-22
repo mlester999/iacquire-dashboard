@@ -12,6 +12,8 @@ import { customValueKeyOf, extractTokens, isTokenKey } from "@/lib/messaging/tok
 import { sha256Hex } from "@/lib/crm/workflow/sha256";
 import { HTTP_METHODS, cleanStepHeaders, pathProblem } from "@/lib/automation-studio/outbound";
 import { CONVERSATION_OUTCOMES } from "@/lib/inbox";
+import { CALL_CLASSES } from "@/lib/missed-calls/state";
+import { LEAD_LABELS } from "@/lib/lead-scoring/types";
 
 export type MessageChannel = "email" | "sms" | "whatsapp";
 
@@ -48,6 +50,9 @@ export const EVENT_TRIGGER_TYPES = [
   "conversation.message_received", "conversation.assigned", "conversation.resolved", "conversation.urgent", "conversation.handoff_requested", "conversation.idle",
   "form.submitted",
   "campaign.sent", "review.requested", "feedback.received", "call.completed",
+  // Missed-call recovery (src/server/missed-calls) and lead scoring (src/server/lead-scoring) announce themselves here once each.
+  "call.missed", "recovery.eligible", "recovery.failed", "recovery.responded", "recovery.completed",
+  "lead.score_updated", "lead.became_hot", "lead.label_changed", "lead.qualification_completed",
 ] as const;
 export type EventTriggerType = (typeof EVENT_TRIGGER_TYPES)[number];
 
@@ -64,6 +69,7 @@ export const TRIGGER_FILTER_KEYS = [
   "changedFields", "createdVia", "ignoreOptOutKeywords",
   "formIds",
   "callStatuses", "callDirections",
+  "callClasses", "leadLabels",
   "idleHours",
 ] as const;
 export type TriggerFilterKey = (typeof TRIGGER_FILTER_KEYS)[number];
@@ -105,6 +111,10 @@ export interface TriggerFilters {
   callStatuses?: CallTriggerStatus[];
   /** Call completed: only incoming or only outgoing calls. */
   callDirections?: Array<"inbound" | "outbound">;
+  /** Missed call: only these kinds of missed call (ring with no answer, voicemail, hung up, busy, failed to connect). */
+  callClasses?: Array<(typeof CALL_CLASSES)[number]>;
+  /** Lead score updated / label changed / became hot: only when the lead's label is one of these. */
+  leadLabels?: Array<(typeof LEAD_LABELS)[number]>;
   /** Conversation idle: after this many hours without a message (one of CONVERSATION_IDLE_HOURS). */
   idleHours?: number[];
 }
@@ -193,6 +203,15 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   // Deliberately no rating filter: every customer who answers is treated alike, so a workflow can't single out happy customers for public
   // reviews (review gating). Low ratings already create a follow-up task by themselves (src/server/crm/reviews.ts).
   "feedback.received": T("feedback.received", "Private feedback received", "A customer sends private feedback from their review request page. Every rating starts it the same way.", "Growth", "contact", CONTACT_ONLY),
+  "call.missed": T("call.missed", "Missed call", "A caller was missed: the provider reported no answer, a voicemail, a busy line or a failed connection, or the caller hung up within seconds. Announced once per call. It has a contact when the caller's number matches exactly one.", "Growth", "contact", { contact: "maybe", opportunity: "never" }, ["callClasses"]),
+  "recovery.eligible": T("recovery.eligible", "Follow-up allowed", "A missed caller passed every rule and a follow-up text may go out (or has been drafted for approval). Announced once per attempt.", "Growth", "contact", { contact: "maybe", opportunity: "never" }),
+  "recovery.failed": T("recovery.failed", "Follow-up failed", "A missed caller's follow-up text could not be sent, or the case could not be worked. A person has to call them back.", "Growth", "contact", { contact: "maybe", opportunity: "never" }),
+  "recovery.responded": T("recovery.responded", "Missed caller wrote back", "A caller who was missed replied after the call.", "Growth", "contact", { contact: "maybe", opportunity: "never" }),
+  "recovery.completed": T("recovery.completed", "Missed call settled", "A missed call is settled: the caller was reached, booked, or the case was closed or cancelled. Its details say which.", "Growth", "contact", { contact: "maybe", opportunity: "never" }),
+  "lead.score_updated": T("lead.score_updated", "Lead priority re-assessed", "A lead was assessed again and the result differs from the last one.", "Contacts", "contact", CONTACT_ONLY, ["leadLabels"]),
+  "lead.became_hot": T("lead.became_hot", "Lead became hot", "A lead's label turned Hot (by the scoring rules).", "Contacts", "contact", CONTACT_ONLY),
+  "lead.label_changed": T("lead.label_changed", "Lead label changed", "A lead's Hot / Warm / Cold / Insufficient data label changed, by the rules or by a person.", "Contacts", "contact", CONTACT_ONLY, ["leadLabels"]),
+  "lead.qualification_completed": T("lead.qualification_completed", "Lead qualified enough to score", "A lead went from Insufficient data to a scored label because enough became known.", "Contacts", "contact", CONTACT_ONLY),
   "call.completed": T("call.completed", "Call ended", "A call with your voice assistant ends, or someone in your team logs a call. It has a contact when the caller's number matches one.", "Growth", "contact", { contact: "maybe", opportunity: "never" }, ["callStatuses", "callDirections"]),
   schedule: T("schedule", "On a schedule", "Runs every day or on chosen weekdays at a set time in your workspace's time zone. A scheduled run has no contact.", "Other", "none", { contact: "never", opportunity: "never" }),
   inbound_webhook: T("inbound_webhook", "Inbound webhook", "Another system calls this workflow's private, signed URL. The body can be matched to a contact by email or phone.", "Other", "none", { contact: "maybe", opportunity: "never" }),
@@ -215,6 +234,8 @@ export const triggerFiltersSchema = z.strictObject({
   ignoreOptOutKeywords: z.boolean().optional(),
   formIds: z.array(uuid).min(1).max(50).optional(),
   callStatuses: z.array(z.enum(CALL_TRIGGER_STATUSES)).min(1).max(CALL_TRIGGER_STATUSES.length).optional(),
+  callClasses: z.array(z.enum(CALL_CLASSES)).min(1).max(CALL_CLASSES.length).optional(),
+  leadLabels: z.array(z.enum(LEAD_LABELS)).min(1).max(LEAD_LABELS.length).optional(),
   callDirections: z.array(z.enum(["inbound", "outbound"])).min(1).max(2).optional(),
   idleHours: z.array(z.number().int().refine((h) => (CONVERSATION_IDLE_HOURS as readonly number[]).includes(h), "Choose one of the listed times.")).min(1).max(CONVERSATION_IDLE_HOURS.length).optional(),
 });
@@ -247,6 +268,8 @@ export const triggerConfigSchema = z.strictObject({
 export const STEP_KIND_LIST = [
   "wait", "branch", "add_tag", "remove_tag", "assign", "create_task", "update_field", "create_opportunity", "move_stage", "send_message",
   "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review", "http_request", "slack_message", "conversation_action",
+  // Lead scoring and missed-call recovery. None of them contacts a customer: they ask for a new look at a lead, set a time-limited priority, or wake a case.
+  "request_reassessment", "set_priority", "recovery_check",
 ] as const;
 export type StepKind = (typeof STEP_KIND_LIST)[number];
 export const isStepKind = (k: unknown): k is StepKind => typeof k === "string" && (STEP_KIND_LIST as readonly string[]).includes(k);
@@ -407,6 +430,14 @@ const notifySchema = z.strictObject({
   body: z.string().trim().max(600).optional(),
 });
 
+const reassessSchema = z.strictObject({});
+const recoveryCheckSchema = z.strictObject({});
+const setPrioritySchema = z.strictObject({
+  label: z.enum(["hot", "warm", "cold"]),
+  reason: z.string().trim().min(3, "Say why.").max(200),
+  /** How long the priority holds before it goes back to the scoring rules. A workflow never sets one for ever. */
+  days: z.number().int().min(1).max(30),
+});
 const noteSchema = z.strictObject({ subject: z.enum(["contact", "opportunity"]), body: z.string().trim().min(1, "Write the note.").max(4000) });
 
 const n8nSchema = z.strictObject({
@@ -490,6 +521,7 @@ export type CreateOpportunityConfig = z.infer<typeof createOpportunitySchema>;
 export type MoveStageConfig = z.infer<typeof moveStageSchema>;
 export type SendMessageConfig = z.infer<typeof sendMessageSchema>;
 export type NotifyTeamConfig = z.infer<typeof notifySchema>;
+export type SetPriorityConfig = z.infer<typeof setPrioritySchema>;
 export type RequestReviewConfig = z.infer<typeof requestReviewSchema>;
 export type InternalNoteConfig = z.infer<typeof noteSchema>;
 export type N8nConfig = z.infer<typeof n8nSchema>;
@@ -520,6 +552,9 @@ export interface StepConfigMap {
   http_request: HttpRequestConfig;
   slack_message: SlackMessageConfig;
   conversation_action: ConversationActionConfig;
+  request_reassessment: Record<string, never>;
+  set_priority: SetPriorityConfig;
+  recovery_check: Record<string, never>;
 }
 
 export type Need = "required" | "optional" | "none";
@@ -621,6 +656,18 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
   internal_note: spec({
     kind: "internal_note", label: "Add internal note", description: "Add a note to the contact or deal that only your team sees.", group: "Tasks & notes", schema: noteSchema,
     branches: false, terminal: false, external: false, emitsEvents: true, approvable: true, needs: onSubject, effects: () => [], defaults: () => ({ subject: "contact", body: "" }),
+  }),
+  request_reassessment: spec({
+    kind: "request_reassessment", label: "Re-check lead priority", description: "Ask for the contact to be scored again (within a few minutes, with everything known by then).", group: "Contact", schema: reassessSchema,
+    branches: false, terminal: false, external: false, emitsEvents: false, approvable: true, needs: () => ({ contact: "required", opportunity: "none" }), effects: () => [], defaults: () => ({}),
+  }),
+  set_priority: spec({
+    kind: "set_priority", label: "Set lead priority", description: "Mark the contact Hot, Warm or Cold for a number of days, with a reason the team can read. A teammate's own choice is never replaced.", group: "Contact", schema: setPrioritySchema,
+    branches: false, terminal: false, external: false, emitsEvents: true, approvable: true, needs: () => ({ contact: "required", opportunity: "none" }), effects: () => [], defaults: () => ({ label: "hot", reason: "", days: 7 }),
+  }),
+  recovery_check: spec({
+    kind: "recovery_check", label: "Check missed-call follow-up", description: "Ask for the contact's waiting missed call to be looked at now. Every rule (consent, hours, limits) is checked again before anything happens.", group: "Contact", schema: recoveryCheckSchema,
+    branches: false, terminal: false, external: false, emitsEvents: false, approvable: true, needs: () => ({ contact: "required", opportunity: "none" }), effects: () => [], defaults: () => ({}),
   }),
   n8n: spec({
     kind: "n8n", label: "Run n8n automation", description: "Start an n8n automation your agency verified for this workspace.", group: "Integrations", schema: n8nSchema,

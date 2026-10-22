@@ -385,6 +385,10 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0083 extends notifications_kind_check from the live constraint. 0065 is the last migration that rewrites that constraint from a copied list, so it
   // must already be in: applied after 0083 (for example by --only), it would silently drop the inbox's three notification kinds.
   "0083_unified_inbox": ["0065_support_requests"],
+  // 0085 and 0086 extend notifications_kind_check from the live constraint, like 0083, so 0065 must already be in. 0085 also needs the Unified Inbox's
+  // conversation_events trail (the missed call is written to the conversation), and 0086 follows 0085 so the two never reach a database in the other order.
+  "0085_missed_call_recovery": ["0065_support_requests", "0083_unified_inbox"],
+  "0086_lead_scoring": ["0065_support_requests", "0085_missed_call_recovery"],
 };
 
 /**

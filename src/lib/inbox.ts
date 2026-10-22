@@ -1,6 +1,7 @@
 // Pure Unified Inbox vocabulary shared by the server and the interface. No I/O here.
 
 import type { AgentRoleKey } from "@/lib/agents";
+import { CALL_CLASS_LABELS, type CallClass } from "@/lib/missed-calls/state";
 
 // ---------------------------------------------------------------------------
 // Views (the tabs on the conversation list)
@@ -112,9 +113,19 @@ export const canHandleConversations = (role: string | null | undefined): role is
 
 export const CONVERSATION_EVENT_KINDS = [
   "assigned", "ai_assigned", "ai_paused", "ai_resumed", "status_changed", "priority_changed", "archived", "unarchived", "handoff_requested",
-  "task_linked", "opportunity_linked", "message_retried",
+  "task_linked", "opportunity_linked", "message_retried", "missed_call", "recovery_update",
 ] as const;
 export type ConversationEventKind = (typeof CONVERSATION_EVENT_KINDS)[number];
+
+const RECOVERY_UPDATE_TEXT: Record<string, string> = {
+  message_sent: "A follow-up message went to the caller",
+  draft_ready: "A follow-up message is waiting for approval",
+  recovered: "The caller was reached",
+  closed: "The missed-call follow-up was closed",
+  assigned: "The missed-call follow-up was assigned",
+  paused: "Automatic follow-up on the missed call was paused",
+  resumed: "Automatic follow-up on the missed call was resumed",
+};
 
 /** The sentence the thread shows for an event. `detail` holds ids and short enums only, so names are looked up by the caller and passed in. */
 export function describeConversationEvent(kind: string, detail: Record<string, unknown>, names: { actor: string; target?: string | null; agent?: string | null }): string {
@@ -145,6 +156,12 @@ export function describeConversationEvent(kind: string, detail: Record<string, u
       return `${who} created a deal from this conversation`;
     case "message_retried":
       return `${who} sent a failed message again`;
+    case "missed_call": {
+      const label = CALL_CLASS_LABELS[s("class") as CallClass];
+      return `Missed call${label ? `: ${label.toLowerCase()}` : ""}${detail.afterHours === true ? " (after hours)" : ""}`;
+    }
+    case "recovery_update":
+      return RECOVERY_UPDATE_TEXT[s("stage")] ?? "Missed-call follow-up updated";
     default:
       return `${who} updated this conversation`;
   }

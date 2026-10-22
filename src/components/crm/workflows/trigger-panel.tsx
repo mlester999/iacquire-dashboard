@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { CALL_CLASSES, CALL_CLASS_LABELS } from "@/lib/missed-calls/state";
+import { LEAD_LABELS, LEAD_LABEL_TEXT } from "@/lib/lead-scoring/types";
 import { AlertTriangle, Copy, RefreshCw, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -201,6 +203,16 @@ export function TriggerPanel({ trigger, options, issues, readOnly, inboundUrl, i
         {spec.filters.includes("callStatuses") && (
           <Field label="Only calls that ended as" optional error={errorAt("trigger.filters.callStatuses")} hint="None chosen means however the call ended. For missed calls choose No answer, Busy and Voicemail.">
             <MultiPick id="wf-tr-call-status" label="How the call ended" options={CALL_TRIGGER_STATUSES.map((s) => ({ id: s, label: CALL_STATUS_LABELS[s] }))} value={filters.callStatuses ?? []} onChange={(v) => setFilter("callStatuses", v as TriggerFilters["callStatuses"])} empty="" />
+          </Field>
+        )}
+        {spec.filters.includes("callClasses") && (
+          <Field label="Only these missed calls" optional error={errorAt("trigger.filters.callClasses")} hint="None chosen means every kind of missed call.">
+            <MultiPick id="wf-tr-call-class" label="Kind of missed call" options={CALL_CLASSES.map((c) => ({ id: c, label: CALL_CLASS_LABELS[c] }))} value={filters.callClasses ?? []} onChange={(v) => setFilter("callClasses", v as TriggerFilters["callClasses"])} empty="" />
+          </Field>
+        )}
+        {spec.filters.includes("leadLabels") && (
+          <Field label="Only when the lead is" optional error={errorAt("trigger.filters.leadLabels")} hint="None chosen means whatever the new label is.">
+            <MultiPick id="wf-tr-lead-label" label="Lead label" options={LEAD_LABELS.map((l) => ({ id: l, label: LEAD_LABEL_TEXT[l] }))} value={filters.leadLabels ?? []} onChange={(v) => setFilter("leadLabels", v as TriggerFilters["leadLabels"])} empty="" />
           </Field>
         )}
         {spec.filters.includes("callDirections") && (

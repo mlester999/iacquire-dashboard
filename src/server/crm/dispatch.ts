@@ -7,6 +7,8 @@ import { autoAssignForEvent } from "@/server/crm/assignment";
 import { followUpsOnEvent } from "@/server/messaging/followups";
 import { enqueueWebhookDeliveries } from "@/server/crm/webhooks";
 import { switchingSql } from "@/server/crm/provider-guard";
+import { missedCallsOnEvent } from "@/server/missed-calls/subscriber";
+import { leadScoringOnEvent } from "@/server/lead-scoring/subscriber";
 
 /**
  * The CRM event dispatcher (tick job "crmEventDispatch"): hands every event in the transactional outbox (crm_events) to its subscribers,
@@ -17,6 +19,8 @@ import { switchingSql } from "@/server/crm/provider-guard";
  *  2. Lead assignment: routes a new contact or deal through the workspace's assignment rules.
  *  3. Follow-ups: a booking or a withdrawn consent stops the contact's follow-up sequence.
  *  4. Outbound webhooks: queues a delivery for each subscription that asked for this event type.
+ *  5. Missed-call recovery: wakes an open case for the contact when something happened that could settle or stop it.
+ *  6. Lead scoring: asks for a new look at the contact's priority when something that could change it happened.
  *
  * Claiming: a batch is claimed with `for update skip locked` (dispatch_claimed_at, dispatch_attempts + 1), so two ticks never take the same
  * event; a claim older than five minutes counts as abandoned and is taken over. Each event is processed in its own transaction, and each
@@ -42,6 +46,10 @@ export const SUBSCRIBERS: readonly Subscriber[] = [
   { name: "assignment", run: (db, e, now) => autoAssignForEvent(db, e, { now }) },
   { name: "followups", run: (db, e) => followUpsOnEvent(db, e) },
   { name: "webhooks", run: (db, e) => enqueueWebhookDeliveries(db, e) },
+  // Wakes an open missed-call case when something happened to its contact that could settle or stop it (the worker re-reads the facts).
+  { name: "missedCalls", run: (db, e, now) => missedCallsOnEvent(db, e, now) },
+  // Asks for a new look at the contact's priority (debounced into one queue row); the scheduler's scoring job does the assessing.
+  { name: "leadScoring", run: (db, e, now) => leadScoringOnEvent(db, e, now) },
 ];
 
 export interface DispatchResult {

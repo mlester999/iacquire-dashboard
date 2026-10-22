@@ -15,7 +15,7 @@ import { CONVERSATION_OUTCOMES, OUTCOME_LABELS, type ConversationOutcome } from 
 import {
   CONVERSATION_ACTIONS, CONVERSATION_ACTION_LABELS, CONVERSATION_PRIORITIES, STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS, type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationAction, type ConversationActionConfig, type ConversationPriority,
   type CreateOpportunityConfig, type CreateTaskConfig,
-  type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig, type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TagsConfig, type UpdateFieldConfig,
+  type HttpRequestConfig, type InternalNoteConfig, type SetPriorityConfig, type MoveStageConfig, type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TagsConfig, type UpdateFieldConfig,
   type ValidationIssue, type WaitConfig, type WebhookConfig, type WorkflowDefinition, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 import { StepIcon, stepTone } from "@/components/crm/workflows/parts";
@@ -135,6 +135,12 @@ function KindFields(p: KindProps) {
       return <NotifyFields {...p} />;
     case "internal_note":
       return <NoteFields {...p} />;
+    case "request_reassessment":
+      return <p className="text-[13px] leading-relaxed text-muted">Asks for the contact to be scored again. It happens within a few minutes, using everything known by then. Nothing is sent to the customer.</p>;
+    case "recovery_check":
+      return <p className="text-[13px] leading-relaxed text-muted">Asks for the contact&apos;s waiting missed call to be looked at now instead of at its next check. Consent, opening hours and follow-up limits are checked again before anything is sent, so this can never skip a rule.</p>;
+    case "set_priority":
+      return <SetPriorityFields {...p} />;
     case "conversation_action":
       return <ConversationActionFields {...p} />;
     case "n8n":
@@ -486,6 +492,25 @@ function TaskFields({ step, options, errorAt, config, definition }: KindProps) {
         </Field>
       )}
       {hasDeal && <Toggle id="wf-task-deal" label="Link it to the deal too" checked={!!t.linkOpportunity} onChange={(v) => config({ linkOpportunity: v || undefined })} />}
+    </>
+  );
+}
+
+function SetPriorityFields({ step, errorAt, config }: KindProps) {
+  const n = step.config as SetPriorityConfig;
+  return (
+    <>
+      <Field label="Mark the lead" htmlFor="wf-prio-label">
+        <Select id="wf-prio-label" value={n.label ?? "hot"} onChange={(e) => config({ label: e.target.value })}>
+          <option value="hot">Hot</option><option value="warm">Warm</option><option value="cold">Cold</option>
+        </Select>
+      </Field>
+      <Field label="For how many days" htmlFor="wf-prio-days" error={errorAt("config.days")} hint="After that the scoring rules take over again. A teammate's own choice is never replaced.">
+        <Input id="wf-prio-days" type="number" min={1} max={30} value={n.days ?? 7} onChange={(e) => config({ days: Number(e.target.value) })} />
+      </Field>
+      <Field label="Why" htmlFor="wf-prio-reason" error={errorAt("config.reason")} hint="Shown to the team next to the label.">
+        <Input id="wf-prio-reason" maxLength={200} value={n.reason ?? ""} onChange={(e) => config({ reason: e.target.value })} />
+      </Field>
     </>
   );
 }

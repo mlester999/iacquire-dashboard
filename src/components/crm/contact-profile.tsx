@@ -27,6 +27,10 @@ import type { TaskView } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
 import type { CallRecordView } from "@/server/crm/calls";
 import { ContactCalls } from "@/components/crm/calls/contact-calls";
+import { PriorityCard } from "@/components/crm/priority/priority-ui";
+import { MissedCallBanner } from "@/components/crm/recovery/missed-call-banner";
+import type { PriorityView } from "@/server/lead-scoring/priority";
+import type { CaseView } from "@/server/missed-calls/ops";
 import { RelativeTime } from "@/components/crm/relative-time";
 
 type Opp = { id: string; name: string; status: string; value: number | null; currency: string; stageName: string; pipelineName: string };
@@ -34,7 +38,7 @@ type Opp = { id: string; name: string; status: string; value: number | null; cur
 const CHANNEL_LABEL: Record<string, string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
 
 export function ContactProfile({
-  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls,
+  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls, priority, missedCall,
 }: {
   scope: CrmScope;
   detail: ContactDetail;
@@ -49,6 +53,9 @@ export function ContactProfile({
   pipelines: Array<{ id: string; name: string; isDefault: boolean; stages: Array<{ id: string; name: string }> }>;
   /** Recent calls with this contact; absent when the viewer can't see call records. */
   calls?: CallRecordView[];
+  /** The contact's explained lead priority, and the missed call still waiting for an answer (absent when the viewer can't see them). */
+  priority?: PriorityView | null;
+  missedCall?: CaseView | null;
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
@@ -158,7 +165,8 @@ export function ContactProfile({
       </section>
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-4">
+          {missedCall && <MissedCallBanner scope={scope} view={missedCall} />}
           <Tabs id="contact-tabs" value={tab} onValueChange={setTab} items={tabs}>
             {tab === "activity" && <Timeline scope={scope} target={{ contactId: detail.id }} initial={timeline} />}
             {tab === "conversations" && (
@@ -223,6 +231,7 @@ export function ContactProfile({
         </div>
 
         <aside className="min-w-0 space-y-4">
+          {priority && <PriorityCard scope={scope} contactId={detail.id} view={priority} canEdit={canEdit} />}
           <SectionCard title="Contact details">
             <div className="space-y-4">
               <div>

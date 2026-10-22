@@ -9,6 +9,7 @@ import { Badge, Input, Select, Skeleton, Textarea } from "@/components/ui/primit
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { addContactNoteFromConversationAction, createDealFromConversationAction, createTaskFromConversationAction, setLeadStatusAction } from "@/app/actions/inbox";
 import { employeeShortName } from "@/components/inbox/inbox-list-panel";
+import { InboxMissedCallCard, InboxPriorityCard } from "@/components/inbox/priority-panel";
 import { LEAD_STATUSES } from "@/lib/crm/types";
 import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
@@ -86,6 +87,8 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
   return (
     <div className="space-y-4">
       <ContactCard d={d} conversationId={conversationId} onChanged={changed} />
+      {d.missedCall && <InboxMissedCallCard view={d.missedCall} timeZone={timeZone} />}
+      {d.priority && <InboxPriorityCard view={d.priority} contactHref={d.links.contact} timeZone={timeZone} />}
       <QuickActions d={d} conversationId={conversationId} onChanged={changed} />
       <Card title="Deals" icon={Handshake} action={<Link href={d.links.deals} className="inline-flex items-center gap-1 text-[12px] text-primary">Pipeline<ExternalLink className="size-3" aria-hidden /></Link>}>
         <SectionBody section={d.deals} empty="No deals for this customer yet." render={(items) => (

@@ -224,6 +224,7 @@ describe("the registered jobs", () => {
     inboxAttention: 5,
     whatsappTemplateSync: 180,
     aqiTutorialEventRetention: 1440,
+    phase2Retention: 1440,
   };
 
   it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {

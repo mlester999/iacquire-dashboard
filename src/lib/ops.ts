@@ -61,7 +61,7 @@ export const emailedElsewhere = (kind: string) => kind.startsWith("escalation_")
  * message (at most ten a scan per workspace); a warning is emailed by default, so without this the first scheduler run in a workspace with the new
  * inbox would email its team for each of them, and again each morning for ones held back by quiet hours.
  */
-const IN_APP_BY_DEFAULT = new Set(["conversation_awaiting_reply"]);
+const IN_APP_BY_DEFAULT = new Set(["conversation_awaiting_reply", "missed_call_follow_up", "hot_lead_detected"]);
 
 export function shouldEmail(kind: string, severity: string, preference: EmailPreference): boolean {
   if (preference === "off") return severity === "critical";
@@ -88,6 +88,9 @@ export const JOB_LABELS: Record<string, string> = {
   bookingHolds: "Release abandoned booking holds",
   appointmentReminders: "Queue appointment reminders",
   retentionPrograms: "Run customer retention programs",
+  missedCallRecovery: "Follow up missed calls",
+  phase2Retention: "Clear out old missed-call and lead-score records",
+  leadScoreReassessment: "Re-score leads whose details changed",
   messagesDispatched: "Send queued messages",
   websiteEnquiries: "Turn website enquiries into leads",
   domainRenewals: "Domain renewal reminders",

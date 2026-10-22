@@ -82,6 +82,10 @@ export interface ContactRow {
   phone: string | null;
   leadStatus: LeadStatus;
   leadScore: number | null;
+  /** The lead-scoring engine's label and score (or a person's override), null before the first assessment. */
+  priorityLabel: "hot" | "warm" | "cold" | "insufficient_data" | null;
+  priorityScore: number | null;
+  prioritySource: "engine" | "human" | null;
   source: string;
   createdVia: CreatedVia;
   city: string | null;
@@ -137,9 +141,10 @@ export async function listContacts(actor: CrmActor, q: ContactListQuery = {}, ex
     const searching = Boolean(q.search?.trim());
     const { rows } = await db.query<{
       id: string; display_name: string; email: string | null; phone: string | null; lead_status: LeadStatus; lead_score: number | null; source: string; created_via: CreatedVia;
+      priority_label: ContactRow["priorityLabel"]; priority_score: number | null; priority_source: ContactRow["prioritySource"];
       city: string | null; country: string | null; created_at: Date; last_activity_at: Date | null; archived_at: Date | null; assigned_user_id: string | null; owner_name: string | null; full_count?: string;
     }>(
-      `select c.id, c.display_name, c.email::text as email, c.phone, c.lead_status, c.lead_score, c.source, c.created_via, c.city, c.country, c.created_at, c.last_activity_at,
+      `select c.id, c.display_name, c.email::text as email, c.phone, c.lead_status, c.lead_score, c.priority_label, c.priority_score, c.priority_source, c.source, c.created_via, c.city, c.country, c.created_at, c.last_activity_at,
               c.archived_at, c.assigned_user_id, nullif(u.full_name, '') as owner_name${searching ? ", (count(*) over ())::text as full_count" : ""}
        from ${searching ? `(select * from contacts c where ${where} offset 0) c` : "contacts c"} left join users u on u.id = c.assigned_user_id
        where ${searching ? "true" : where} order by ${contactOrderBy(sort)} limit ${pageSize} offset ${(page - 1) * pageSize}`,
@@ -169,7 +174,7 @@ export async function listContacts(actor: CrmActor, q: ContactListQuery = {}, ex
     const companyBy = new Map(companies.rows.map((c) => [c.contact_id, { id: c.id, name: c.name }]));
     return {
       rows: rows.map((r) => ({
-        id: r.id, displayName: r.display_name, email: r.email, phone: r.phone, leadStatus: r.lead_status, leadScore: r.lead_score, source: r.source, createdVia: r.created_via,
+        id: r.id, displayName: r.display_name, email: r.email, phone: r.phone, leadStatus: r.lead_status, leadScore: r.lead_score, priorityLabel: r.priority_label, priorityScore: r.priority_score, prioritySource: r.priority_source, source: r.source, createdVia: r.created_via,
         city: r.city, country: r.country, createdAt: new Date(r.created_at).toISOString(), lastActivityAt: r.last_activity_at ? new Date(r.last_activity_at).toISOString() : null,
         archived: Boolean(r.archived_at), owner: r.assigned_user_id ? { id: r.assigned_user_id, name: r.owner_name ?? "Teammate" } : null,
         company: companyBy.get(r.id) ?? null, tags: tagsBy.get(r.id) ?? [], fields: fieldValues.get(r.id) ?? {},

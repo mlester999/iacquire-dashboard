@@ -28,6 +28,9 @@ const CRM_MIGRATION_NAMES = [
   // Workforce foundations are newer than 0060 and their policies reference app.permitted_orgs; roll them back before 0060.
   "0077_ai_work_jobs.sql", "0078_ai_work_schedules.sql", "0079_ai_work_triggers.sql", "0080_proactive_ai_employees.sql",
   "0081_ai_work_job_rls_hardening.sql",
+  // Missed-call recovery and lead scoring: read policies on app.permitted_orgs, and both rollbacks refuse while recovery cases or assessments exist (none do here).
+  // 0086 is rolled back before 0085, and both before 0060.
+  "0085_missed_call_recovery.sql", "0086_lead_scoring.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

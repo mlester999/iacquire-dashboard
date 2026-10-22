@@ -7,6 +7,9 @@ import { processDueFollowUps } from "@/server/messaging/followups";
 import { advanceEscalations } from "@/server/messaging/handoff";
 import { respondToPending } from "@/server/messaging/responder";
 import { scanInboxAttention } from "@/server/messaging/attention";
+import { processMissedCalls } from "@/server/missed-calls/engine";
+import { purgeExpiredPhase2Records } from "@/server/missed-calls/retention";
+import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
 import { checkLivePublications } from "@/server/websites/health";
@@ -88,6 +91,14 @@ export const JOBS: ScheduledJob[] = [
   { name: "crmFormSubmissions", run: async () => (await processFormSubmissions()).claimed },
   // Owner-approved campaigns: due ones start, and each queues at its approved pace through the same send rules (the dispatcher right after sends them).
   { name: "crmCampaigns", run: async () => { const r = await processCampaigns(); return r.queued + r.excluded + r.started + r.completed + r.stopped; } },
+  // Missed-call recovery: callers who were missed are worked under their workspace's policy, a few at a time per workspace. A call-back task and a notice
+  // are the team's part; a text is queued only through the ordinary send rules and goes out in the dispatcher run straight after (nothing leaves while a
+  // provider's write switch is off). Policy off, which is the default, means nothing happens except that cases are watched and expired.
+  // Lead scoring: contacts whose information changed are assessed again (debounced, a few per workspace per run, within a daily ceiling). Rules do the
+  // scoring; a model is asked only for workspaces that switched signal extraction on, within their daily limit.
+  { name: "leadScoreReassessment", run: async () => { const r = await processScoringQueue(); return r.claimed; } },
+  { name: "phase2Retention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredPhase2Records(); return r.cases + r.assessments + r.overrides + r.usage; } },
+  { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).
   { name: "crmWebhookDeliveries", run: () => deliverDueWebhooks() },

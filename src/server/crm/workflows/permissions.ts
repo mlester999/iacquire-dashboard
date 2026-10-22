@@ -51,6 +51,15 @@ export function permissionsNeeded(def: WorkflowDefinition): PermissionNeed[] {
       case "internal_note":
         need("notes.write", `${label} writes notes`);
         break;
+      case "request_reassessment":
+        need("contacts.view", `${label} asks for leads to be scored again`);
+        break;
+      case "set_priority":
+        need("contacts.edit", `${label} changes leads' priority`);
+        break;
+      case "recovery_check":
+        need("calls.view", `${label} looks at missed calls`);
+        break;
       case "create_opportunity":
         need("opportunities.edit", `${label} creates deals`);
         if (c.ownerFromContact) need("contacts.assign", `${label} gives deals an owner`);

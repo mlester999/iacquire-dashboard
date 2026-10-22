@@ -43,6 +43,8 @@ export type NotificationKind =
   | "conversation_assigned"
   | "conversation_new_inquiry"
   | "conversation_awaiting_reply"
+  | "missed_call_follow_up"
+  | "hot_lead_detected"
   | "website_published"
   | "website_publish_failed"
   | "domain_verified"

@@ -287,6 +287,13 @@ function contactCondition(c: FilterCondition, ctx: CompileContext): string {
     }
     case "lead_score":
       return numberCondition("c.lead_score", c.op, c.value, label, ctx);
+    case "priority_label": {
+      const v = strList(c.value, label, ["hot", "warm", "cold", "insufficient_data"]);
+      // A contact that has not been assessed yet has no label: "is not Hot" includes them, "is Hot" does not.
+      return c.op === "in" ? `c.priority_label = any(${bind(ctx, v)}::text[])` : `(c.priority_label is null or not (c.priority_label = any(${bind(ctx, v)}::text[])))`;
+    }
+    case "priority_score":
+      return numberCondition("c.priority_score", c.op, c.value, label, ctx);
     case "created_at":
     case "updated_at":
     case "last_activity_at":
@@ -446,6 +453,8 @@ const CONTACT_ORDER: Record<string, string> = {
   last_activity_at: "c.last_activity_at",
   lead_score: "c.lead_score",
   lead_status: "c.lead_status",
+  // Hot first, then Warm, then Cold, then everything else (insufficient data and not yet assessed), highest score first inside a label.
+  priority: "(case c.priority_label when 'hot' then 4 when 'warm' then 3 when 'cold' then 2 when 'insufficient_data' then 1 else 0 end) * 1000 + coalesce(c.priority_score, 0)",
 };
 
 export function contactOrderBy(sort: { by?: string; dir?: "asc" | "desc" } | undefined): string {

@@ -39,6 +39,10 @@ export interface ConversationListItem {
   attention: AttentionReason[];
   /** Bumped on every change to the conversation row; the live sync keeps the highest it has seen. */
   revision: number;
+  /** The contact's lead label (the scoring engine's, or a person's override), null before the first assessment. */
+  lead?: { label: "hot" | "warm" | "cold" | "insufficient_data"; score: number | null; source: "engine" | "human" | null } | null;
+  /** A missed call from this contact is still waiting for an answer (visible only to people who may see calls). */
+  missedCallOpen?: boolean;
 }
 
 export interface ConversationFilters {
@@ -145,6 +149,7 @@ type Row = {
   last_message_preview: string | null; last_inbound_at: Date | null; last_outbound_at: Date | null; esc_id: string | null; esc_status: string | null; esc_urgency: string | null;
   agent_id: string | null; agent_name: string | null; agent_role: string | null; ai_paused_at: Date | null; archived_at: Date | null; resolved_at: Date | null;
   outcome: ConversationOutcome | null; revision: string; needs_person: boolean; send_failed: boolean; awaiting_reply: boolean; waiting: boolean;
+  lead_label: "hot" | "warm" | "cold" | "insufficient_data" | null; lead_score: number | null; lead_source: "engine" | "human" | null; missed_call_open: boolean;
   sort_rank: number; sort_key: string;
 };
 
@@ -153,7 +158,9 @@ const iso = (d: Date | null) => (d ? new Date(d).toISOString() : null);
 export const LIST_COLUMNS = `c.id, c.contact_id, k.display_name, c.channel, c.status, c.owner_kind, u.full_name as owner_name, c.owner_user_id, c.assigned_user_id, c.priority, c.unread_count,
   c.last_message_at, c.last_message_preview, c.last_inbound_at, c.last_outbound_at, esc.id as esc_id, esc.status as esc_status, esc.urgency as esc_urgency,
   a.id as agent_id, a.display_name as agent_name, a.role_key as agent_role, c.ai_paused_at, c.archived_at, c.resolved_at, c.outcome, c.revision::text as revision,
-  coalesce(${NEEDS_PERSON}, false) as needs_person, ${SEND_FAILED} as send_failed, ${AWAITING_REPLY} as awaiting_reply, ${WAITING} as waiting`;
+  coalesce(${NEEDS_PERSON}, false) as needs_person, ${SEND_FAILED} as send_failed, ${AWAITING_REPLY} as awaiting_reply, ${WAITING} as waiting,
+  k.priority_label as lead_label, k.priority_score as lead_score, k.priority_source as lead_source,
+  exists (select 1 from missed_call_cases mc where mc.org_id = c.org_id and mc.contact_id = c.contact_id and mc.state not in ('recovered', 'completed_without_recovery', 'canceled', 'failed')) as missed_call_open`;
 
 export function toListItem(r: Row): ConversationListItem {
   const attention: AttentionReason[] = [];
@@ -187,6 +194,8 @@ export function toListItem(r: Row): ConversationListItem {
     waitingOnCustomer: open && r.waiting,
     attention: open ? attention : [],
     revision: Number(r.revision),
+    lead: r.lead_label ? { label: r.lead_label, score: r.lead_score, source: r.lead_source } : null,
+    missedCallOpen: Boolean(r.missed_call_open),
   };
 }
 

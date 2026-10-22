@@ -13,8 +13,8 @@ export const NOTIFICATION_GROUPS = [
   { key: "calendar", label: "Bookings", description: "New and confirmed bookings, and problems syncing a connected calendar.", kinds: ["booking_confirmed", "crm_booking_new", "crm_calendar_sync"] },
   { key: "projects", label: "Custom projects & maintenance", description: "Progress updates, messages and maintenance updates. Quotes and your decisions always notify you.", kinds: ["project_update", "project_message", "maintenance_update"] },
   { key: "billing", label: "Billing and credits", description: "Payments received, low balances and spending-limit warnings.", kinds: ["billing_payment_received", "billing_budget_warning", "billing_low_balance"] },
-  { key: "messaging", label: "Customer messaging", description: "FYI notices about conversations handled by your team, conversations assigned to you, new enquiries nobody has picked up, and messages that were held back.", kinds: ["escalation_fyi", "message_blocked", "conversation_assigned", "conversation_new_inquiry", "conversation_awaiting_reply"] },
-  { key: "crm", label: "CRM", description: "Records assigned to you, tasks coming due, and finished imports.", kinds: ["crm_assigned", "crm_task_due", "crm_import_finished"] },
+  { key: "messaging", label: "Customer messaging", description: "FYI notices about conversations handled by your team, conversations assigned to you, new enquiries nobody has picked up, and messages that were held back.", kinds: ["escalation_fyi", "message_blocked", "conversation_assigned", "conversation_new_inquiry", "conversation_awaiting_reply", "missed_call_follow_up"] },
+  { key: "crm", label: "CRM", description: "Records assigned to you, tasks coming due, and finished imports.", kinds: ["crm_assigned", "crm_task_due", "crm_import_finished", "hot_lead_detected"] },
   { key: "websites", label: "Website", description: "When your website is published or a domain is verified.", kinds: ["website_published", "domain_verified"] },
 ] as const;
 
