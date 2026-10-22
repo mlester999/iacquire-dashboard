@@ -45,6 +45,7 @@ export type NotificationKind =
   | "conversation_awaiting_reply"
   | "missed_call_follow_up"
   | "hot_lead_detected"
+  | "web_chat_lead"
   | "website_published"
   | "website_publish_failed"
   | "domain_verified"

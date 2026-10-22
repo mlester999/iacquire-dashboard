@@ -389,6 +389,9 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // conversation_events trail (the missed call is written to the conversation), and 0086 follows 0085 so the two never reach a database in the other order.
   "0085_missed_call_recovery": ["0065_support_requests", "0083_unified_inbox"],
   "0086_lead_scoring": ["0065_support_requests", "0085_missed_call_recovery"],
+  // 0087 extends notifications_kind_check from the live constraint (so 0065 must already be in) and adds a conversation channel and a created-via value
+  // to tables from 0019 and 0027.
+  "0087_website_chat": ["0065_support_requests"],
 };
 
 /**

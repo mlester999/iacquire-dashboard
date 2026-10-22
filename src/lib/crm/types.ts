@@ -51,7 +51,7 @@ export const PREFERRED_CHANNELS = ["email", "sms", "whatsapp", "phone"] as const
 export type PreferredChannel = (typeof PREFERRED_CHANNELS)[number];
 export const PREFERRED_CHANNEL_LABELS: Record<PreferredChannel, string> = { email: "Email", sms: "SMS", whatsapp: "WhatsApp", phone: "Phone call" };
 
-export const CREATED_VIA = ["inbound_message", "manual", "import", "website_form", "form", "booking", "api", "agent", "workflow", "ghl_migration", "call"] as const;
+export const CREATED_VIA = ["inbound_message", "manual", "import", "website_form", "form", "booking", "api", "agent", "workflow", "ghl_migration", "call", "website_chat"] as const;
 export type CreatedVia = (typeof CREATED_VIA)[number];
 export const CREATED_VIA_LABELS: Record<CreatedVia, string> = {
   inbound_message: "Inbound message",
@@ -65,6 +65,7 @@ export const CREATED_VIA_LABELS: Record<CreatedVia, string> = {
   workflow: "Automation",
   ghl_migration: "GoHighLevel migration",
   call: "Phone call",
+  website_chat: "Website chat",
 };
 
 export const FIELD_TYPES = ["text", "textarea", "number", "currency", "date", "datetime", "boolean", "select", "multiselect", "email", "phone", "url"] as const;

@@ -31,6 +31,8 @@ const CRM_MIGRATION_NAMES = [
   // Missed-call recovery and lead scoring: read policies on app.permitted_orgs, and both rollbacks refuse while recovery cases or assessments exist (none do here).
   // 0086 is rolled back before 0085, and both before 0060.
   "0085_missed_call_recovery.sql", "0086_lead_scoring.sql",
+  // Website chat: read policies on app.permitted_orgs; its rollback refuses while a widget is on or a chat exists (none do here).
+  "0087_website_chat.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

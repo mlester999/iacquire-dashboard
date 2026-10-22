@@ -35,7 +35,7 @@ const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 // Built-in criteria
 // ---------------------------------------------------------------------------
 
-const INBOUND_VIA = new Set(["inbound_message", "website_form", "form", "booking", "call"]);
+const INBOUND_VIA = new Set(["inbound_message", "website_form", "form", "booking", "call", "website_chat"]);
 const OUTBOUND_VIA = new Set(["manual", "import", "api", "agent", "workflow"]);
 
 const BUILTIN: CriterionDef[] = [

@@ -12,7 +12,7 @@ import type { AppointmentProvider } from "@/server/appointments/provider";
 import { detectBookingIntent, formatSlot } from "@/lib/appointments";
 import { queueOutbound } from "@/server/messaging/send";
 import { isEscalationCategory, type EscalationCategory } from "@/lib/escalation";
-import { withDisclosure, type Channel } from "@/lib/messaging";
+import { withDisclosure, type ConversationChannel } from "@/lib/messaging";
 
 export interface ReplyContext {
   orgId: string;
@@ -20,7 +20,9 @@ export interface ReplyContext {
   conversationId: string;
   contactId: string;
   inboundMessageId: string;
-  channel: Channel;
+  channel: ConversationChannel;
+  /** A website chat's widget may switch booking off; every other channel can always read the calendar. */
+  allowBooking?: boolean;
   businessName: string;
   customerMessage: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
@@ -51,7 +53,7 @@ export function customerInstructions(base: string, ctx: ReplyContext): string {
   return `${base}
 
 ## You are replying to a customer
-You are writing one ${ctx.channel === "email" ? "email" : ctx.channel === "whatsapp" ? "WhatsApp message" : "text message"} to a customer of ${ctx.businessName}. You are an AI assistant, not a person.
+You are writing one ${ctx.channel === "email" ? "email" : ctx.channel === "whatsapp" ? "WhatsApp message" : ctx.channel === "web_chat" ? "chat message on the business's website" : "text message"} to a customer of ${ctx.businessName}. You are an AI assistant, not a person.
 Be short, clear, natural and friendly. Use only information from the approved knowledge above and this conversation.
 Never invent prices, availability, bookings, policies, results or promises. Never offer discounts or commit to anything legal or financial.
 If you do not know, say you will check with the team.
@@ -67,7 +69,7 @@ Otherwise reply with the message text only, with no JSON, no preamble and no sig
  * What the model may say about appointments. The list is read from the real calendar a moment ago and is the only thing it may offer
  * or book. Without it, it is told plainly that it cannot see the calendar.
  */
-function bookingBlock(ctx: ReplyContext): string {
+export function bookingBlock(ctx: ReplyContext): string {
   const a = ctx.availability;
   if (!a) return "";
   if (a.state === "unknown") {
@@ -108,7 +110,14 @@ export function parseReply(raw: string): ReplyOutcome {
 
 export { withDisclosure };
 
-const MAX_LENGTH: Record<Channel, number> = { sms: 900, whatsapp: 1500, email: 4000 };
+const MAX_LENGTH: Record<ConversationChannel, number> = { sms: 900, whatsapp: 1500, email: 4000, web_chat: 1200 };
+
+/** The reply generator for a conversation's channel when the caller names none: a website chat is answered from the widget's own knowledge, every other channel by the employee's Hermes profile. */
+async function defaultGenerator(channel: ConversationChannel): Promise<ReplyGenerator> {
+  // Loaded on demand so the website chat module (which imports from this file) is not a static cycle.
+  if (channel === "web_chat") return (await import("@/server/webchat/generator")).webChatReplyGenerator;
+  return hermesReplyGenerator;
+}
 
 /** Generates a reply through the employee's own Hermes profile, waiting for the finished answer. */
 export const hermesReplyGenerator: ReplyGenerator = async (ctx) => {
@@ -157,9 +166,10 @@ export type RespondResult =
   | { status: "unavailable"; reason: string };
 
 async function loadContext(db: Queryable, orgId: string, conversationId: string): Promise<(ReplyContext & { aiDisclosure: string; aiMessageCount: number; ownerKind: string; ownershipVersion: number; aiPaused: boolean }) | null> {
-  const { rows } = await db.query<{ contact_id: string; channel: Channel; ai_agent_id: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null }>(
-    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure
-     from conversations c join organizations o on o.id = c.org_id left join messaging_settings s on s.org_id = c.org_id where c.id = $1 and c.org_id = $2`,
+  const { rows } = await db.query<{ contact_id: string; channel: ConversationChannel; ai_agent_id: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null; allow_booking: boolean | null }>(
+    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure, w.allow_booking
+     from conversations c join organizations o on o.id = c.org_id left join messaging_settings s on s.org_id = c.org_id left join web_chat_widgets w on w.org_id = c.org_id
+     where c.id = $1 and c.org_id = $2`,
     [conversationId, orgId],
   );
   const c = rows[0];
@@ -180,6 +190,7 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
     contactId: c.contact_id,
     inboundMessageId: last.rows[0].id,
     channel: c.channel,
+    allowBooking: c.channel === "web_chat" ? c.allow_booking !== false : true,
     businessName: c.name,
     customerMessage: last.rows[0].body,
     history: hist.rows.reverse().map((r) => ({ role: r.direction === "inbound" ? ("user" as const) : ("assistant" as const), content: r.body })),
@@ -198,7 +209,6 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
  * same rule chain as every other outbound message (drafts when approval is required, blocked when anything stops it).
  */
 export async function respondToConversation(orgId: string, conversationId: string, deps: { generate?: ReplyGenerator; now?: Date; provider?: AppointmentProvider } = {}): Promise<RespondResult> {
-  const generate = deps.generate ?? hermesReplyGenerator;
   const pre = await withSystem(async (db) => {
     const ctx = await loadContext(db, orgId, conversationId);
     if (!ctx) return { skip: "no_conversation" as const };
@@ -219,8 +229,9 @@ export async function respondToConversation(orgId: string, conversationId: strin
   const { ctx } = pre;
 
   // Only when the customer is talking about booking: read the real calendar so the employee can offer nothing else.
-  if (detectBookingIntent(ctx.customerMessage, ctx.history.map((h) => h.content))) ctx.availability = await readAvailability(ctx, deps);
+  if (ctx.allowBooking !== false && detectBookingIntent(ctx.customerMessage, ctx.history.map((h) => h.content))) ctx.availability = await readAvailability(ctx, deps);
 
+  const generate = deps.generate ?? (await defaultGenerator(ctx.channel));
   let outcome = await generate(ctx);
   let bookingNote: BookingResult | null = null;
   if (outcome.kind === "book") {

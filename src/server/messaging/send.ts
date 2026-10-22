@@ -15,6 +15,7 @@ import { buildUnsubscribeUrl } from "@/server/messaging/unsubscribe";
 import { transportFromProvider, type GhlTransportRequest } from "@/server/messaging/transports/ghl";
 import { isTransportName, transportFor } from "@/server/messaging/transports";
 import { TRANSPORT_LABELS, type ChannelTransport, type TransportName, type TransportResult, type TransportSender } from "@/server/messaging/transports/types";
+import { queueWebChatOutbound } from "@/server/messaging/web-chat-send";
 import {
   advancesDelivery,
   unconfirmedOutcome,
@@ -229,6 +230,8 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   );
   const conv = rows[0];
   if (!conv) throw new AppError("not_found", "Conversation not found.");
+  // A website chat is never sent through a provider; its replies take queueWebChatOutbound. Anything else that reaches this chain with one is refused.
+  if ((conv.channel as string) === "web_chat") return deny("channel_not_ready", "A website chat reply appears in the visitor's open chat window; it is not sent as a message.", { permanent: true });
   const channel = conv.channel;
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
   // A missed-call follow-up (its key starts with "mcc:") is automation sent by the system, and a person who has taken the conversation over wins: it is
@@ -414,6 +417,9 @@ export interface QueueResult {
  * cannot go is refused with an explanation instead of leaving a failed row behind.
  */
 export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?: string | null; approvalId?: string | null }): Promise<QueueResult> {
+  // A website chat has no provider: its reply is stored for the visitor's open widget (see web-chat-send.ts). Every other channel takes the chain below.
+  const kind = await db.query<{ channel: string }>("select channel from conversations where id = $1 and org_id = $2", [req.conversationId, req.orgId]);
+  if (kind.rows[0]?.channel === "web_chat") return queueWebChatOutbound(db, req);
   const decision = await evaluateSend(db, req);
   const messageId = crypto.randomUUID();
   const author = req.actor.kind === "ai" ? { kind: "ai", userId: null, agentId: req.actor.agentId } : { kind: req.actor.kind, userId: req.actor.userId, agentId: null };

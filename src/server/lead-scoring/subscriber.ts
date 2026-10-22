@@ -15,6 +15,8 @@ export const SCORING_TRIGGERS: ReadonlySet<string> = new Set([
   "opportunity.created", "opportunity.stage_changed", "opportunity.won", "opportunity.lost", "opportunity.reopened",
   "appointment.booked", "appointment.rescheduled", "appointment.cancelled", "appointment.no_show", "appointment.showed", "appointment.confirmed",
   "conversation.message_received", "call.completed", "call.missed", "form.submitted",
+  // A website chat visitor shared their details or answered the qualification questions.
+  "webchat.lead_captured", "webchat.qualification_completed",
 ]);
 
 /** Contact changes that cannot change a score (who owns the contact, the hand-entered score). */
