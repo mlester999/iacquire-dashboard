@@ -1054,7 +1054,10 @@ class RestrictedProvisioner:
             body={"input": CANARY_PROMPT, "session_id": "iacquire-verify-" + uuid.uuid4().hex},
             extra_headers={"Idempotency-Key": str(uuid.uuid4())},
         )
-        if status not in {200, 202} or not isinstance(run, dict) or not isinstance(run.get("run_id"), str):
+        if status not in {200, 202}:
+            safe_status = status if type(status) is int and 100 <= status <= 599 else "unavailable"
+            raise ProvisioningError(f"canary_submission_http_{safe_status}")
+        if not isinstance(run, dict) or not isinstance(run.get("run_id"), str):
             raise ProvisioningError("canary_submission_failed")
         output = self.api.read_events(manifest.profile, key, run["run_id"])
         if not secrets.compare_digest(output, manifest.soul_challenge):

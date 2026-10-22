@@ -123,6 +123,7 @@ class FakeHermesApi:
         self.toolset_reads = 0
         self.canary_policy_pending_reads = 0
         self.final_policy_pending_reads = 0
+        self.run_submission_status = 202
 
     def json_request(
         self,
@@ -177,7 +178,7 @@ class FakeHermesApi:
             return 200, final_toolsets
         if path == "/v1/runs" and method == "POST":
             self.challenge = body.get("session_id", "").split("-")[-1]
-            return 202, {"run_id": "run-test"}
+            return self.run_submission_status, {"run_id": "run-test"}
         if path.startswith("/v1/tools?platform=api_server"):
             challenge = (extra_headers or {}).get("X-Hermes-Inventory-Challenge", "")
             self.catalog_reads += 1
@@ -355,6 +356,11 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertTrue(result["effectiveSoulVerified"])
         self.assertEqual(self.api.profile_capability_reads, 5)
         self.assertEqual(sleep.call_count, 2)
+
+    def test_canary_submission_failure_reports_only_the_http_status(self):
+        self.api.run_submission_status = 403
+        with self.assertRaisesRegex(ProvisioningError, "canary_submission_http_403"):
+            self.provisioner.process(self.manifest)
 
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
         self.api.canary_policy_pending_reads = 2
