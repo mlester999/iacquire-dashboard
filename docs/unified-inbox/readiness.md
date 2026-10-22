@@ -20,7 +20,7 @@ allows: the whole suite is green apart from failures that already exist on maste
 2. **Migration 0083 has not been rehearsed on a production-sized copy.** Its number was moved from 0082 to 0083 because `codex/client-ai-onboarding` already has a 0082 (different table); it must still be re-checked against every branch at merge time.
 3. **The production scheduler was reported OFF** (Automation Studio state, 2026-10-22). The waiting notices and "went quiet" workflows run from the
    `inboxAttention` job, so they do nothing until the scheduler runs.
-4. **It must be merged with master's uncommitted AI-workforce work** (same job-list tests, same `src/server/messaging/*` neighbourhood) and re-tested.
+4. **It must be merged with master's uncommitted AI-workforce work** (same job-list tests, same `src/server/messaging/*` neighbourhood) and re-tested. **Rehearsed twice in a scratch worktree** (the second time with the rollout work, 2026-10-22): the same three files conflict and resolve trivially, and the merged tree passes with 0 failures (296 files, 4,706 tests). The real merge still waits for the workforce stream to commit (A1).
 
 Recommended order: merge and re-run the suite → apply 0083 to a staging copy with provider writes off → verify with provider sandbox accounts → enable the scheduler → production, each step on your approval.
 
@@ -28,8 +28,8 @@ Recommended order: merge and re-run the suite → apply 0083 to a staging copy w
 
 | | Estimate | Basis |
 | --- | --- | --- |
-| Feature completion against the directive | **about 90%** | Everything in phases 1A to 1F is built except what the audit marked out of scope: Website AI chat and social channels, attachments, per-user read state, websocket push, SLA timers and assignment rules for conversations. |
-| Production readiness | **about 65%** | Code, tests, security review and browser QA are done. Live provider verification, production-copy migration rehearsal, scheduler enablement, load measurement on hosted Postgres and the merge with master are not. |
+| Feature completion against the directive | **about 92%** (was 90%) | Everything in phases 1A to 1F is built, plus the per-workspace rollout with Super Admin controls (this pass). Not built, as the audit marked them out of scope: Website AI chat and social channels, attachments, per-user read state, websocket push, SLA timers and assignment rules for conversations; and search that stays fast in very large workspaces (row 1H). |
+| Production readiness | **about 70%** (was 65%) | Closed since the last estimate: a workspace-by-workspace exposure that cannot interrupt messaging (the largest single risk reducer), a numbering collision that would have skipped a migration silently, a scheduler weakness that let one workspace silence the rest, the merge with master's pending work re-rehearsed with zero failures, a production build, and a 30,000-conversation measurement. Still open and each needing your approval or a resource that does not exist yet: staging, live provider verification, real Hermes verification, production-copy migration rehearsal, scheduler enablement, hosted load measurement. **None of the open items is something local work can close.** |
 
 These are judgments, not measurements. The first is the share of the directive's feature list that exists and works; the second counts the
 gates in section 9 that are closed.
