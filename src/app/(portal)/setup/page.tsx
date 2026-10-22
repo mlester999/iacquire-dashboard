@@ -2,8 +2,9 @@ import { ClipboardCheck } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getClientSetupSnapshot } from "@/server/setup/snapshots";
 import { SetupCenter } from "@/components/setup/setup-center";
-import { OnboardedBanner } from "@/components/setup/onboarded-banner";
-import { withSystem } from "@/server/db";
+import { OnboardedBanner, type EmployeeProvisioningState } from "@/components/setup/onboarded-banner";
+import { withSystem, withUser } from "@/server/db";
+import { listAgents } from "@/server/workforce/service";
 import { crmOwners } from "@/server/setup/native-evidence";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
@@ -48,9 +49,21 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   // Who runs the CRM decides what the team does next: a Blueprint for iAcquire's own CRM (native or hybrid), the sub-account for GoHighLevel.
   // A trusted read of this workspace's own provider mode, only when the banner shows.
   const nativeCrm = onboarded === "1" ? (await withSystem((db) => crmOwners(db, ctx.org.orgId))).mode !== "ghl" : false;
+  const [agents, provisioning] = onboarded === "1" ? await Promise.all([
+    listAgents(ctx.user.id, ctx.org.orgId),
+    withUser(ctx.user.id, async (db) => {
+      const { rows } = await db.query<EmployeeProvisioningState>(
+        `select distinct on (a.role_key) a.role_key as role, j.status, j.detail
+         from agent_instances a left join agent_provisioning_jobs j on j.agent_instance_id = a.id and j.org_id = a.org_id
+         where a.org_id = $1 order by a.role_key, j.created_at desc nulls last`,
+        [ctx.org.orgId],
+      );
+      return rows;
+    }),
+  ]) : [[], []];
   return (
     <>
-      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} />}
+      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} />}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );

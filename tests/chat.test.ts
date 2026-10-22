@@ -28,6 +28,22 @@ async function waitForMessage(id: string, timeoutMs = 6000) {
   throw new Error("message did not settle");
 }
 
+async function waitForWorkJob(id: string, timeoutMs = 6000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const { rows } = await withSystem((db) =>
+      db.query<{ status: string; stage: string; result_summary: string | null }>(
+        "select status, stage, result_summary from ai_work_jobs where id = $1",
+        [id],
+      ),
+    );
+    const job = rows[0];
+    if (job && ["completed", "blocked", "failed", "cancelled"].includes(job.status)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("work job did not settle");
+}
+
 async function waitForMockRequest(startIndex: number, method: string, path: string, timeoutMs = 6000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -302,6 +318,62 @@ describe("conversation persistence", () => {
       { role: "assistant", content: "Hello from Hermes." },
     ]);
     await expect(sendChatMessage(ctx, { agentRole: "sales_assistant", conversationId, content: "Make it shorter", clientMessageId: "m-2" })).rejects.toThrow(/already sent/);
+  });
+
+  it("starts one exact persisted native review from employee chat without submitting a Hermes model run", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const requestStart = mock.requests.length;
+    const sent = await sendChatMessage(ctx, {
+      agentRole: "sales_assistant",
+      conversationId,
+      content: "Review our sales pipeline and prepare follow-ups for opportunities that need attention.",
+      clientMessageId: "sales-pipeline-chat-job",
+    });
+
+    expect(sent).toMatchObject({ runId: null, jobId: expect.any(String) });
+    const assistant = (await withSystem((db) => db.query<{ content: string; work_job_id: string | null }>(
+      "select content, work_job_id from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0];
+    expect(assistant.work_job_id).toBe(sent.jobId);
+    expect(assistant.content).toContain("does not prepare personalized message drafts");
+
+    const job = await waitForWorkJob(sent.jobId!);
+    expect(job).toMatchObject({ status: "completed", stage: "completed" });
+    expect(job.result_summary).toContain("Pipeline review");
+    const events = (await withSystem((db) => db.query<{ stage: string; kind: string }>(
+      "select stage, kind from ai_work_events where job_id = $1 order by created_at, id",
+      [sent.jobId],
+    ))).rows;
+    expect(events.map((event) => event.stage)).toEqual(expect.arrayContaining(["preparing", "scanning", "analyzing", "preparing_results", "completed"]));
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+  });
+
+  it("refuses outbound chat requests in application code and records the refusal without a Hermes run", async () => {
+    const requestStart = mock.requests.length;
+    const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "sales_assistant",
+      conversationId,
+      content: "Send an email to these prospects about our offer",
+      clientMessageId: "sales-outreach-chat-refusal",
+    });
+    expect(sent).toMatchObject({ runId: null, jobId: null });
+
+    const assistant = (await withSystem((db) => db.query<{ content: string; work_job_id: string | null; run_id: string | null }>(
+      "select content, work_job_id, run_id from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0];
+    expect(assistant).toMatchObject({ work_job_id: null, run_id: null });
+    expect(assistant.content).toContain("No message or campaign was sent or scheduled");
+
+    const audit = (await withSystem((db) => db.query<{ result: string; reason: string }>(
+      `select result, metadata->>'reason' as reason from audit_logs
+        where org_id = $1 and action = 'workforce.chat_request_refused' and target_id = $2
+        order by created_at desc limit 1`,
+      [org.id, sales],
+    ))).rows[0];
+    expect(audit).toEqual({ result: "denied", reason: "external_outreach" });
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
   });
 
   it("other tenants cannot read the conversation", async () => {

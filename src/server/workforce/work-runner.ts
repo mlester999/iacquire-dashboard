@@ -132,13 +132,6 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
   }
 }
 
-/** Starts work after the response without blocking it. The scheduler tick remains the recovery path. */
-export function kickWorkJob(jobId: string): void {
-  void runWorkJob(jobId).catch((err) => {
-    console.error(`[iacquire] could not start work job ${jobId}: ${err instanceof Error ? err.name : "unknown"}`);
-  });
-}
-
 /** Runs a small bounded batch of queued jobs. Used by the scheduler tick. */
 export async function processQueuedWorkJobs(limit = 2): Promise<{ claimed: number; ran: number }> {
   const jobs = await listRunnableWorkJobs(limit);

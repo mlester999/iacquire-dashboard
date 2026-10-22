@@ -7,7 +7,7 @@ import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import type { OrgContext } from "@/server/tenancy/context";
 import { createWorkJob } from "@/server/workforce/jobs";
-import { kickWorkJob } from "@/server/workforce/work-runner";
+import { kickWorkJob } from "@/server/workforce/work-kick";
 
 /**
  * The one server-side dispatcher for reviewed business capabilities.

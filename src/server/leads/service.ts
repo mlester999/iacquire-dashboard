@@ -7,10 +7,12 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { assertWithinLimits } from "@/server/usage";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkJob, getWorkJob, retryWorkJob, workJobStageLabel } from "@/server/workforce/jobs";
-import { kickWorkJob, runWorkJob } from "@/server/workforce/work-runner";
+import { runWorkJob } from "@/server/workforce/work-runner";
+import { kickWorkJob } from "@/server/workforce/work-kick";
 import { canChat, type AgentStatus } from "@/lib/agents";
 import { targetingSchema, type Targeting } from "@/lib/leads-targeting";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
+import { sanitizeQualificationSummary } from "@/server/leads/research-contract";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export { targetingSchema };
@@ -206,7 +208,14 @@ export async function listLeads(ctx: OrgContext, status: "pending" | "approved" 
        order by created_at desc limit 500`,
       [ctx.org.orgId, status],
     );
-    return rows;
+    // Older rows may contain model-authored claims about CRM checks, queue persistence, or page
+    // observation times. Those are application-owned facts, so suppress unsupported claims at
+    // read time as well as when new research is saved; the underlying evidence rows stay intact.
+    return rows.map((row) => ({
+      ...row,
+      qualification_summary: sanitizeQualificationSummary(row.qualification_summary),
+      evidence: Array.isArray(row.evidence) ? row.evidence.map((item) => ({ ...item, observed_at: null })) : [],
+    }));
   });
 }
 

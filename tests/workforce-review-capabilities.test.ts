@@ -126,6 +126,10 @@ beforeAll(async () => {
       "insert into leads (org_id, business_name, review_status, reviewed_at, created_at) values ($1, 'Perf Lead C', 'approved', now(), now())",
       [org.id],
     );
+    await db.query(
+      "insert into leads (org_id, business_name, review_status, created_at) values ($1, 'Previous Month Lead', 'pending', now() - interval '25 days')",
+      [org.id],
+    );
     for (let i = 0; i < 5; i += 1) {
       await db.query(
         `insert into agent_runs (org_id, agent_instance_id, user_id, purpose, idempotency_key, status, started_at)
@@ -314,13 +318,14 @@ describe("reusable read-only capabilities", () => {
     });
     const job = await waitForJob(dispatched.jobId);
     expect(job.status).toBe("completed");
-    const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; trend?: string; higherIsBetter?: boolean }>) ?? [];
+    const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; trend?: string; higherIsBetter?: boolean; period?: string }>) ?? [];
     const metric = (key: string) => metrics.find((item) => item.key === key);
     expect(metrics).toHaveLength(12);
-    expect(metric("leads_created")?.value).toBe(3);
+    expect(metric("leads_created")?.value).toBe(4);
     expect(metric("leads_created")?.previous).toBe(1);
+    expect(metric("leads_created")?.period).toBe("Last 30 days");
     expect(metric("leads_created")?.trend).toBe("up");
-    expect(metric("leads_pending")?.value).toBe(2);
+    expect(metric("leads_pending")?.value).toBe(3);
     expect(metric("leads_approved")?.value).toBe(1);
     expect(metric("appointments_booked")?.value).toBe(1);
     expect(metric("appointments_booked")?.previous).toBe(1);
@@ -335,6 +340,36 @@ describe("reusable read-only capabilities", () => {
     expect(keysOf(job.result)).not.toContain("no_lead_flow");
     const failure = (job.result.findings as Array<{ key: string; detail: string }>).find((item) => item.key === "ai_run_failure_rate");
     expect(failure?.detail).toMatch(/20% review threshold/i);
+  });
+
+  it("compares calendar months in the workspace time zone when the assignment asks for this month", async () => {
+    const monthStart = (await withSystem((db) => db.query<{ month_start: Date }>(
+      "select timezone('America/Los_Angeles', date_trunc('month', timezone('America/Los_Angeles', now()))) as month_start",
+    ))).rows[0].month_start;
+    await withSystem(async (db) => {
+      await db.query("update organizations set timezone = 'America/Los_Angeles' where id = $1", [org.id]);
+      await db.query(
+        `insert into leads (org_id, business_name, review_status, created_at)
+         values ($1, 'Before Local Month Boundary', 'pending', $2::timestamptz - interval '30 minutes'),
+                ($1, 'After Local Month Boundary', 'pending', $2::timestamptz + interval '30 minutes')`,
+        [org.id, monthStart],
+      );
+    });
+    try {
+      const dispatched = await dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
+        agentRole: "performance_analyst",
+        capability: "performance_snapshot",
+        title: "Current month performance snapshot",
+        input: { period: "current_month" },
+      });
+      const job = await waitForJob(dispatched.jobId);
+      expect(job.status).toBe("completed");
+      const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; period?: string; comparisonPeriod?: string }>) ?? [];
+      const leads = metrics.find((item) => item.key === "leads_created");
+      expect(leads).toMatchObject({ value: 4, previous: 3, period: "Current calendar month", comparisonPeriod: "Previous calendar month" });
+    } finally {
+      await withSystem((db) => db.query("update organizations set timezone = 'UTC' where id = $1", [org.id]));
+    }
   });
 
   it("refuses a review when the caller cannot use the AI workforce", async () => {

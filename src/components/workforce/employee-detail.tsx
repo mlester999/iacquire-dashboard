@@ -33,7 +33,7 @@ import { Tabs } from "@/components/ui/overlays";
 import { InfoChip } from "@/components/ui/status";
 import { GuidedChoiceField, GuidedField, GuidedSwitch, ChangeDecisionNotice, type FieldIssue } from "@/components/ui/guided-field";
 import { ConfigVersionHistory, type ConfigVersion } from "@/components/workforce/config-version-history";
-import { applyChangeAction, previewConfigAction, proposeChangeAction, saveAgentSettingsAction } from "@/app/actions/workforce";
+import { applyChangeAction, previewConfigAction, proposeChangeAction, regenerateEmployeeStyleAction, saveAgentSettingsAction } from "@/app/actions/workforce";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type Tone } from "@/lib/agent-settings";
 import { changeFixForReason, configFieldElementId, employeeFieldGuidance, ROLE_TOOL_GUIDANCE, TOOL_BOUNDARY_NOTE } from "@/lib/employee-field-guidance";
 import type { ReviewReasonView } from "@/lib/config-review";
@@ -374,6 +374,8 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
   const [result, setResult] = React.useState<SubmitResult | null>(null);
   const [nameTouched, setNameTouched] = React.useState(false);
   const [saveAttempted, setSaveAttempted] = React.useState(false);
+  const [regenerating, setRegenerating] = React.useState(false);
+  const [styleSuggestion, setStyleSuggestion] = React.useState<Pick<AgentSettings, "personality" | "characterTraits" | "communicationStyle" | "responseBehavior"> & { source: "ai" | "safe_defaults" } | null>(null);
   const statusRef = React.useRef<HTMLDivElement>(null);
   const previewSequence = React.useRef(0);
   const set = <K extends keyof AgentSettings>(k: K, v: AgentSettings[K]) => {
@@ -410,6 +412,25 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
     toast.success("Recommended role fields added", {
       description: "Only blank fields were filled. Company-specific facts are left for you to provide, then save to apply.",
     });
+  };
+  const regenerateStyle = async () => {
+    if (regenerating) return;
+    setRegenerating(true);
+    const result = await regenerateEmployeeStyleAction(meta.key);
+    setRegenerating(false);
+    if (!result.ok) return void toast.error(result.error);
+    setStyleSuggestion(result.data);
+  };
+  const acceptStyle = () => {
+    if (!styleSuggestion) return;
+    setS((previous) => ({ ...previous,
+      personality: styleSuggestion.personality, characterTraits: styleSuggestion.characterTraits,
+      communicationStyle: styleSuggestion.communicationStyle, responseBehavior: styleSuggestion.responseBehavior,
+    }));
+    setStyleSuggestion(null);
+    setJustSaved(false);
+    setCheck({ state: "checking" });
+    toast.success("Suggestions added to your draft", { description: "Review the fields, then save to create a new version." });
   };
 
   React.useEffect(() => {
@@ -613,6 +634,20 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
           </nav>
 
           <ConfigSection id="config-identity" step="01" title="Identity & communication" description={`How ${agent.displayName} introduces itself and sounds in conversation.`}>
+            <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="max-w-lg text-[12px] leading-relaxed text-muted">Generate fresh style suggestions from your approved company information. Your current fields stay as they are until you accept the preview.</p>
+                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateStyle()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : "Regenerate style"}</Button>
+              </div>
+              {styleSuggestion && <div className="mt-3 space-y-2 border-t border-line pt-3 text-[12px] text-ink-2">
+                <p className="font-semibold">Suggested style {styleSuggestion.source === "safe_defaults" ? "· safe role defaults" : "· AI draft"}</p>
+                <p><strong>Personality:</strong> {styleSuggestion.personality}</p>
+                <p><strong>Traits:</strong> {styleSuggestion.characterTraits}</p>
+                <p><strong>Communication:</strong> {styleSuggestion.communicationStyle}</p>
+                <p><strong>Responses:</strong> {styleSuggestion.responseBehavior}</p>
+                <div className="flex gap-2 pt-1"><Button type="button" size="sm" variant="brand" onClick={acceptStyle}>Use these in my draft</Button><Button type="button" size="sm" variant="ghost" onClick={() => setStyleSuggestion(null)}>Dismiss</Button></div>
+              </div>}
+            </div>
             <GuidedField
               id="cfg-name"
               label="Employee name"
@@ -654,6 +689,21 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                 })}
               </div>
             </GuidedChoiceField>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <GuidedField id="cfg-personality" label="Personality" guidance={{ description: "The employee's distinct professional character." }} optional issues={fieldIssues("personality")} charLimit={500} valueLength={s.personality.length}>
+                <Textarea rows={3} maxLength={500} value={s.personality} onChange={(e) => set("personality", e.target.value)} />
+              </GuidedField>
+              <GuidedField id="cfg-traits" label="Character traits" guidance={{ description: "Qualities the employee should show while working." }} optional issues={fieldIssues("characterTraits")} charLimit={400} valueLength={s.characterTraits.length}>
+                <Textarea rows={3} maxLength={400} value={s.characterTraits} onChange={(e) => set("characterTraits", e.target.value)} />
+              </GuidedField>
+            </div>
+            <GuidedField id="cfg-style" label="Communication style" guidance={{ description: "How this employee should explain its work." }} optional issues={fieldIssues("communicationStyle")} charLimit={500} valueLength={s.communicationStyle.length}>
+              <Textarea rows={2} maxLength={500} value={s.communicationStyle} onChange={(e) => set("communicationStyle", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-response" label="Response behavior" guidance={{ description: "How it should respond when facts are missing or a decision is needed." }} optional issues={fieldIssues("responseBehavior")} charLimit={700} valueLength={s.responseBehavior.length}>
+              <Textarea rows={3} maxLength={700} value={s.responseBehavior} onChange={(e) => set("responseBehavior", e.target.value)} />
+            </GuidedField>
 
             <div className="grid gap-5 sm:grid-cols-2">
               <GuidedChoiceField id="cfg-length" label="Reply length" guidance={employeeFieldGuidance(meta.key, "replyLength")} optional issues={fieldIssues("replyLength")}>
@@ -748,6 +798,15 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             </GuidedField>
             <GuidedField id="cfg-target" label="Target audience" guidance={employeeFieldGuidance(meta.key, "targetCustomers")} optional issues={fieldIssues("targetCustomers")} charLimit={1000} valueLength={s.targetCustomers.length}>
               <Textarea rows={3} maxLength={1000} value={s.targetCustomers} onChange={(e) => set("targetCustomers", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-procedures" label="Operating procedures" guidance={{ description: "The steps this employee should follow within its existing permissions." }} optional issues={fieldIssues("operatingProcedures")} charLimit={1000} valueLength={s.operatingProcedures.length}>
+              <Textarea rows={3} maxLength={1000} value={s.operatingProcedures} onChange={(e) => set("operatingProcedures", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-proactive" label="Proactive responsibilities" guidance={{ description: "Work to surface when a real authorized schedule or trigger is active." }} optional issues={fieldIssues("proactiveResponsibilities")} charLimit={700} valueLength={s.proactiveResponsibilities.length}>
+              <Textarea rows={3} maxLength={700} value={s.proactiveResponsibilities} onChange={(e) => set("proactiveResponsibilities", e.target.value)} />
+            </GuidedField>
+            <GuidedField id="cfg-reporting" label="Reporting behavior" guidance={{ description: "What evidence, uncertainty and next steps to include in reports." }} optional issues={fieldIssues("reportingBehavior")} charLimit={700} valueLength={s.reportingBehavior.length}>
+              <Textarea rows={3} maxLength={700} value={s.reportingBehavior} onChange={(e) => set("reportingBehavior", e.target.value)} />
             </GuidedField>
           </ConfigSection>
 

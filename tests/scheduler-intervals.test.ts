@@ -212,6 +212,9 @@ describe("overlap and crashes", () => {
 
 describe("the registered jobs", () => {
   const EXPECTED_SLOW: Record<string, number> = {
+    aiWorkRecovery: 5,
+    aiProactiveHeldReports: 5,
+    aiProactiveBriefings: 5,
     supportAutoClose: 60,
     supportAttachmentCleanup: 60,
     fairUseChecks: 60,
@@ -256,9 +259,14 @@ describe("the registered jobs", () => {
     expect(again.messagesDispatched).not.toBe("skipped");
     expect(again.studioEntitlementSweep).not.toBe("skipped");
     expect(again.aqiOperationsBriefings).not.toBe("skipped");
-    // Five minutes later only the five-minute job is due.
+    // Five minutes later only the five-minute jobs are due.
     const five = await runScheduledJobs(at(5));
-    expect(Object.keys(EXPECTED_SLOW).filter((name) => five[name] !== "skipped")).toEqual(["crmWorkflowRecovery"]);
+    expect(Object.keys(EXPECTED_SLOW).filter((name) => five[name] !== "skipped").sort()).toEqual([
+      "aiProactiveBriefings",
+      "aiProactiveHeldReports",
+      "aiWorkRecovery",
+      "crmWorkflowRecovery",
+    ]);
     // Sixty minutes later the jobs on an hour or faster are due, the longer ones are not. (A job that failed on the first pass is also
     // due: it is retried after fifteen minutes. On an empty database none is expected to fail, but the expectation does not depend on it.)
     const hour = await runScheduledJobs(at(60));

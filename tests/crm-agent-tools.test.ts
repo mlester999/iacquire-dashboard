@@ -343,6 +343,10 @@ describe("high-impact changes always wait for a person", () => {
     const close = await call(t.token, "move_opportunity_stage", { opportunityId: dealId, stageId: won.id });
     expect(close).toMatchObject({ ok: true, status: "pending_approval" });
     expect(await one("select status, stage_ref from crm_opportunities where id = $1", [dealId])).toEqual({ status: "open", stage_ref: second.id });
+    const closedApproval = close.ok ? (close.approvalId as string) : "";
+    const closed = await decideApproval(ctxFor(a.people.owner, a.org, "owner"), closedApproval, "approve");
+    expect(closed.outcome).toMatchObject({ status: "succeeded" });
+    expect(await one("select status, stage_ref from crm_opportunities where id = $1", [dealId])).toEqual({ status: "won", stage_ref: won.id });
   });
 });
 
@@ -565,6 +569,15 @@ describe("conversations, drafts and appointments", () => {
     expect(req).toMatchObject({ ok: true, status: "pending_approval", httpStatus: 202 });
     expect(await one("select kind from approval_requests where id = $1", [req.ok && req.approvalId])).toEqual({ kind: "appointment_booking" });
     expect(await count("select 1 from appointment_bookings where org_id = $1 and contact_id = $2 and status = 'awaiting_approval' and agent_id = $3", [s.org.id, c.id, agent])).toBe(1);
+
+    const approvalId = req.ok ? (req.approvalId as string) : "";
+    const approved = await decideApproval(ctxFor(s.people.owner, s.org, "owner"), approvalId, "approve");
+    expect(approved.outcome).toMatchObject({ status: "succeeded" });
+    const booking = await one<{ status: string; appointment_id: string }>("select status, appointment_id from appointment_bookings where approval_id = $1 and org_id = $2", [approvalId, s.org.id]);
+    expect(booking.status).toBe("booked");
+    expect(await one("select provider, origin, booked_via from appointment_refs where id = $1 and org_id = $2", [booking.appointment_id, s.org.id]))
+      .toEqual({ provider: "native", origin: "portal_ai", booked_via: "agent" });
+    expect(await count("select 1 from conversation_messages where org_id = $1 and status in ('queued', 'sending', 'sent')", [s.org.id])).toBe(0);
   });
 });
 

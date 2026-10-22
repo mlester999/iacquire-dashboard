@@ -5,7 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { appendWorkEvent, createWorkJob, type WorkJobStatus } from "@/server/workforce/jobs";
-import { kickWorkJob } from "@/server/workforce/work-runner";
+import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createScheduledResearchJob } from "@/server/leads/scheduled-research";
 import { parseResearchAssignment } from "@/lib/research-intent";
 import { isWithinBusinessHours, nextSendWindow, validateBusinessHours, type BusinessHours } from "@/lib/messaging";

@@ -21,6 +21,7 @@
   "exclude": [
     "node_modules",
     ".data",
-    "scripts"
+    "scripts",
+    "tests/**/*.tmp.test.ts"
   ]
 }

@@ -115,7 +115,7 @@ describe("scheduled jobs", () => {
     expect(names.indexOf("aqiOperationsRetention")).toBeGreaterThan(names.indexOf("aqiOperationsBriefings"));
   });
 
-  it("adds no other job than the AQi Operations pair (and the Automation Studio plan sweep) to the list the previous release shipped", () => {
+  it("keeps the shipped jobs, Automation Studio sweep, AQi Operations pair and gated workforce jobs registered", () => {
     const shipped = [
       "expiredReservations", "escalationsOpened", "followUpsPrepared", "repliesChecked", "approvalExpiry", "bookingHolds", "calendarBusySync", "calendarWriteBack",
       "appointmentReminders", "retentionPrograms", "crmEventDispatch", "crmWorkflowRuns", "crmFormSubmissions", "crmCampaigns", "messagesDispatched", "crmWebhookDeliveries",
@@ -125,6 +125,15 @@ describe("scheduled jobs", () => {
     ];
     // The Automation Studio plan sweep sits right after the workflow housekeeping it follows.
     const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : [name]));
-    expect(JOBS.map((job) => job.name)).toEqual([...withStudio, "aqiOperationsBriefings", "aqiOperationsRetention"]);
+    expect(JOBS.map((job) => job.name)).toEqual([
+      ...withStudio,
+      "aqiOperationsBriefings",
+      "aqiOperationsRetention",
+      "aiWorkRecovery",
+      "aiWorkSchedules",
+      "aiWorkTriggers",
+      "aiProactiveHeldReports",
+      "aiProactiveBriefings",
+    ]);
   });
 });

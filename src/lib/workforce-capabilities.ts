@@ -99,7 +99,7 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
   performance_snapshot: {
     key: "performance_snapshot",
     label: "Performance snapshot",
-    description: "Measure leads, appointments, pipeline outcomes and AI run reliability for a fixed period, then flag only anomalies that cross a stated review threshold.",
+    description: "Measure leads, appointments, pipeline outcomes and AI run reliability for the requested calendar month or last 30 days, then compare it with the matching prior period.",
     allowedRoles: ["performance_analyst"],
     requiredPermission: "analytics.view",
     risk: "read_only",

@@ -6,7 +6,7 @@ import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { TRIGGER_EVENT_CAPABILITIES } from "@/lib/workforce-triggers";
 import { appendWorkEvent, createWorkJob } from "@/server/workforce/jobs";
-import { kickWorkJob } from "@/server/workforce/work-runner";
+import { kickWorkJob } from "@/server/workforce/work-kick";
 import type { OrgContext } from "@/server/tenancy/context";
 
 /**

@@ -473,7 +473,7 @@ function allowedRoutes(viewer: AqiViewer): AqiRoute[] {
 
 /** Pages the signed-in person may open, in the shape the shared link normalizer needs. */
 export function aqiNavRoutes(viewer: AqiViewer): AqiNavRoute[] {
-  return allowedRoutes(viewer).map(({ path, label }) => ({ path, label }));
+  return aqiNavigationFor(viewer).map(({ path, label }) => ({ path, label }));
 }
 
 /**

@@ -8,6 +8,7 @@ const RENAMED = [
   "0078_ai_work_schedules",
   "0079_ai_work_triggers",
   "0080_proactive_ai_employees",
+  "0081_ai_work_job_rls_hardening",
 ];
 
 function baseVersions(): string[] {
@@ -20,7 +21,7 @@ function baseVersions(): string[] {
 }
 
 describe("AI workforce migration renumbering", () => {
-  it("applies the four renamed migrations without replaying the existing 0072 automation migration", async () => {
+  it("applies the workforce migrations without replaying the existing 0072 automation migration", async () => {
     const { PGlite } = await import("@electric-sql/pglite");
     const { citext } = await import("@electric-sql/pglite/contrib/citext");
     const { pg_trgm } = await import("@electric-sql/pglite/contrib/pg_trgm");
