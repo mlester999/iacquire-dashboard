@@ -10,7 +10,7 @@ import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from 
 import { ConfirmDialog, useCrmAction } from "@/components/crm/ui";
 import { RelativeTime } from "@/components/crm/relative-time";
 import { connectionCallsAction, createConnectionAction, revokeConnectionAction, rotateConnectionAction, testConnectionAction } from "@/app/actions/automation-studio";
-import { CONNECTION_KIND_LABELS, MAX_LIVE_CONNECTIONS, STATUS_LABELS, type ConnectionStatus, type ConnectionView, type HttpSettings } from "@/lib/automation-studio/connections";
+import { CONNECTION_KIND_LABELS, MAX_LIVE_CONNECTIONS, NOT_YET_AVAILABLE_CONNECTIONS, STATUS_LABELS, type ConnectionStatus, type ConnectionView, type HttpSettings } from "@/lib/automation-studio/connections";
 import { HTTP_METHODS } from "@/lib/automation-studio/outbound";
 
 const TONE: Record<ConnectionStatus, "success" | "warning" | "danger" | "neutral"> = { active: "success", unverified: "warning", needs_attention: "danger", revoked: "neutral" };
@@ -167,6 +167,24 @@ export function ConnectionsPanel({ connections, timezone, canManage, planReason 
           Slack works through incoming webhooks, which post to one channel. Signing in with Slack to pick channels isn’t available yet.
         </span>
       </p>
+
+      <section aria-labelledby="not-yet-title" className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <h2 id="not-yet-title" className="text-[14px] font-semibold text-ink">Not available yet</h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+          These need iAcquire to register an app with the provider first, so they can’t be connected from here today. Nothing below is half-connected.
+          Meanwhile an HTTP connection reaches any service that has a web API, and Zapier, Make or n8n can start your automations through a webhook.
+        </p>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {NOT_YET_AVAILABLE_CONNECTIONS.map((a) => (
+            <li key={a.key} className="min-w-0 rounded-xl bg-surface-2/70 p-3 ring-1 ring-inset ring-line">
+              <p className="text-[13px] font-medium text-ink">{a.name}</p>
+              <p className="mt-0.5 text-[12.5px] text-ink-2">{a.what}</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-muted">{a.needs}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-[12.5px] text-muted">Need one of these first? <Link href="/support" className="font-medium text-primary hover:underline">Tell support</Link> which, so it can be planned.</p>
+      </section>
 
       {revoked.length > 0 && (
         <details className="rounded-2xl border border-line bg-surface p-4">

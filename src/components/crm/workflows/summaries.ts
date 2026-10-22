@@ -4,12 +4,13 @@
 import type { RunStatus } from "@/components/crm/workflows/parts";
 import { AGENT_ROLES } from "@/lib/agents";
 import { CHANNEL_LABELS } from "@/lib/messaging";
+import { idleLabel, OUTCOME_LABELS } from "@/lib/inbox";
 import { CONTACT_FILTER_FIELDS, isGroup, OP_LABELS, type FilterCondition, type FilterGroup } from "@/lib/crm/filters";
 import { CREATED_VIA_LABELS, LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS } from "@/lib/crm/types";
 import { CALL_STATUS_LABELS } from "@/components/crm/calls/model";
 import {
   EFFECT_LABELS as SPEC_EFFECT_LABELS, isStepKind, isTriggerType, OPPORTUNITY_CONDITION_FIELDS, STEP_KINDS, TRIGGERS, UPDATABLE_FIELDS,
-  type AiTaskConfig, type AssignConfig, type BranchConfig, type CreateOpportunityConfig, type CreateTaskConfig, type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig,
+  type AiTaskConfig, type AssignConfig, type BranchConfig, type ConversationActionConfig, type CreateOpportunityConfig, type CreateTaskConfig, type HttpRequestConfig, type InternalNoteConfig, type MoveStageConfig,
   type N8nConfig, type NotifyTeamConfig, type SendMessageConfig, type SlackMessageConfig, type TriggerConfig, type UpdateFieldConfig, type WaitConfig, type WebhookConfig, type WorkflowStep,
 } from "@/lib/crm/workflow/spec";
 
@@ -369,6 +370,18 @@ export function stepSummary(step: Pick<WorkflowStep, "kind" | "config">, names: 
       if (!a.instruction?.trim()) return `Tell ${names.agent(a.roleKey)} what to do`;
       return `Ask ${names.agent(a.roleKey)}: “${clip(a.instruction)}”`;
     }
+    case "conversation_action": {
+      const c = step.config as ConversationActionConfig;
+      switch (c.action) {
+        case "resolve": return c.outcome ? `Resolve the conversation (${OUTCOME_LABELS[c.outcome]})` : "Resolve the conversation";
+        case "reopen": return "Reopen the conversation";
+        case "set_priority": return c.priority ? `Set the conversation's priority to ${c.priority}` : "Choose the priority";
+        case "assign_person": return c.userId ? `Assign the conversation to ${names.user(c.userId) ?? "a former teammate"}` : "Choose who gets the conversation";
+        case "assign_contact_owner": return "Assign the conversation to the contact's owner";
+        case "pause_ai": return "Pause the AI employee on the conversation";
+      }
+      return "Update the conversation";
+    }
     case "end":
       return "Stop the workflow here";
     default:
@@ -407,6 +420,7 @@ export function triggerSummary(t: TriggerConfig | null | undefined, names: Names
   if (f.formIds?.length) bits.push(`to ${listText(f.formIds, names.form ?? (() => undefined), ["form", "forms"])}`);
   if (f.consentStatus || f.consentPurpose) bits.push(`when they ${f.consentStatus === "granted" ? "give" : f.consentStatus === "revoked" ? "withdraw" : "give or withdraw"} ${f.consentPurpose ?? ""} consent`.replace(/\s+/g, " "));
   if (f.channels?.length) bits.push(`on ${f.channels.map((c) => CHANNEL_LABELS[c]).join(", ")}`);
+  if (f.idleHours?.length) bits.push(`quiet for ${f.idleHours.map(idleLabel).join(", ")}`);
   if (f.callDirections?.length === 1) bits.push(f.callDirections[0] === "inbound" ? "incoming calls" : "outgoing calls");
   if (f.callStatuses?.length) bits.push(`ended as ${f.callStatuses.map((s) => CALL_STATUS_LABELS[s].toLowerCase()).join(", ")}`);
   if (t.type === "schedule" && t.schedule) bits.push(`${t.schedule.frequency === "weekly" ? weekdaysText(t.schedule.weekdays) : "every day"} at ${clockText(t.schedule.time)}`);

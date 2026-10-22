@@ -1,7 +1,7 @@
 do $$
 begin
   if exists (select 1 from public.agent_provisioning_jobs where kind = 'sync') then
-    raise exception 'archive or resolve Hermes sync jobs before rolling back 0083';
+    raise exception 'archive or resolve Hermes sync jobs before rolling back 0084';
   end if;
 end $$;
 

@@ -1,10 +1,12 @@
 import "server-only";
 import { withSystem } from "@/server/db";
+import { env } from "@/server/env";
 import { expireStaleReservations } from "@/server/billing/ledger";
 import { dispatchDue } from "@/server/messaging/send";
 import { processDueFollowUps } from "@/server/messaging/followups";
 import { advanceEscalations } from "@/server/messaging/handoff";
 import { respondToPending } from "@/server/messaging/responder";
+import { scanInboxAttention } from "@/server/messaging/attention";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
 import { checkLivePublications } from "@/server/websites/health";
@@ -60,6 +62,8 @@ export const JOBS: ScheduledJob[] = [
   { name: "escalationsOpened", run: () => advanceEscalations() },
   { name: "followUpsPrepared", run: async () => (await processDueFollowUps()).processed },
   { name: "repliesChecked", run: async () => (await respondToPending()).checked },
+  // The inbox: customers who have waited for a reply are announced once each, and "went quiet" is announced to workflows that listen for it.
+  { name: "inboxAttention", everyMinutes: 5, run: async () => { const r = await scanInboxAttention(); return r.notified + r.idle; } },
   { name: "approvalExpiry", run: () => expireAllStaleApprovals() },
   { name: "bookingHolds", run: () => expireBookingHolds() },
   // Connected calendars: busy times are read before anything is offered or written, and bookings are written before reminders go out,
@@ -202,10 +206,26 @@ export async function finishSchedulerTick(ok: boolean, error: string | null = nu
 }
 
 /**
- * One pass over the jobs. `now` and `jobs` exist for tests (a simulated clock and a controlled job list); the endpoint passes neither.
- * A job that was not due is reported as "skipped" (running: another tick holds it) and leaves no trace in its heartbeat.
+ * The jobs a tick runs: all of them, unless SCHEDULER_JOBS_ONLY names some (comma separated, exact names, any order; the registry's order is kept). This is what
+ * lets the scheduler be switched on in stages instead of all at once. Whatever is not named does not run and leaves no heartbeat. A name that does not exist, or a
+ * value that names nothing, throws, so a typo can never silently run something other than what was approved.
  */
-export async function runScheduledJobs(now?: Date, jobs: readonly ScheduledJob[] = JOBS): Promise<Record<string, number | string>> {
+export function activeJobs(all: readonly ScheduledJob[] = JOBS, only: string | undefined = env().SCHEDULER_JOBS_ONLY): readonly ScheduledJob[] {
+  if (only === undefined) return all;
+  const names = only.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!names.length) throw new Error("SCHEDULER_JOBS_ONLY is set but names no job. Unset it to run every job.");
+  const known = new Set(all.map((j) => j.name));
+  const unknown = names.filter((n) => !known.has(n));
+  if (unknown.length) throw new Error(`SCHEDULER_JOBS_ONLY names a job that does not exist: ${unknown.join(", ")}.`);
+  const wanted = new Set(names);
+  return all.filter((j) => wanted.has(j.name));
+}
+
+/**
+ * One pass over the jobs. `now` and `jobs` exist for tests (a simulated clock and a controlled job list); the endpoint passes neither, so it runs
+ * activeJobs(). A job that was not due is reported as "skipped" (running: another tick holds it) and leaves no trace in its heartbeat.
+ */
+export async function runScheduledJobs(now?: Date, jobs: readonly ScheduledJob[] = activeJobs()): Promise<Record<string, number | string>> {
   const ran: Record<string, number | string> = {};
   const outcome = await runJob("tick", async () => {
     for (const job of jobs) {

@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-  ArrowRightLeft, Ban, BellRing, Bot, CircleCheck, CircleDashed, CircleX, Clock, FlaskConical, GitBranch, Globe, Handshake, Hourglass, ListTodo, Loader2, MessageSquareText, OctagonX, PencilLine, Send, ShieldAlert,
+  ArrowRightLeft, Ban, BellRing, Bot, CircleCheck, CircleDashed, CircleX, Clock, FlaskConical, GitBranch, Globe, Handshake, Hourglass, Inbox, ListTodo, Loader2, MessageSquareText, OctagonX, PencilLine, Send, ShieldAlert,
   SkipForward, Star, StickyNote, Tag, Tags, UserCheck, Webhook, Workflow, Zap, type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
@@ -99,6 +99,7 @@ export const STEP_ICONS: Record<string, LucideIcon> = {
   http_request: Globe,
   slack_message: MessageSquareText,
   ai_task: Bot,
+  conversation_action: Inbox,
   end: OctagonX,
 };
 
@@ -118,6 +119,7 @@ export function stepTone(kind: string): string {
     case "send_message":
     case "request_review":
     case "notify_team":
+    case "conversation_action":
       return "bg-primary-soft text-primary-ink";
     case "n8n":
     case "webhook":

@@ -480,6 +480,21 @@ export interface TemplateReadiness {
   notes: string[];
 }
 
+/**
+ * The templates that match what a person typed: every word they wrote has to appear in the template's name, description, category, what starts it, what it
+ * reaches outside iAcquire, or the first thing it asks for, in any order and ignoring case and accents ("slack new lead" finds the Slack alert for a new
+ * lead). An empty search matches everything. Pure, so the gallery and its test use the same rule.
+ */
+export function templateMatches<T extends Pick<StudioTemplate, "key" | "name" | "description" | "category" | "trigger" | "reach" | "before">>(list: readonly T[], query: string): T[] {
+  const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const words = norm(query).split(/[^a-z0-9]+/).filter(Boolean);
+  if (!words.length) return [...list];
+  return list.filter((t) => {
+    const haystack = norm([t.key.replace(/-/g, " "), t.name, t.description, t.category, t.trigger.replace(/[._]/g, " "), t.reach.map((r) => REACH_LABELS[r]).join(" "), t.before].join(" "));
+    return words.every((w) => haystack.includes(w));
+  });
+}
+
 /** Whether the workspace has what a template asks for, from the same lists the editor and the validator use. */
 export function templateReadiness(template: Pick<StudioTemplate, "inputs">, o: EditorOptions): TemplateReadiness {
   const missing: string[] = [];

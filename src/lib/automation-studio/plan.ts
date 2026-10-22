@@ -104,6 +104,18 @@ export function canTransition(from: PlanStatus, t: PlanTransition): boolean {
   return ALLOWED_FROM[t].includes(from);
 }
 
+/**
+ * Why the period a verified payment covers (a YYYY-MM-DD date it is paid through) can't be recorded, in words, or null when it can. A payment can't cover a
+ * period that already ended (a day of slack for time zones) or more than about a year ahead. Shared by activation and by recording a later payment.
+ */
+export function paidThroughProblem(value: string, now = new Date()): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) return "Use a valid date for the period the payment covers.";
+  const through = new Date(`${value}T00:00:00Z`).getTime();
+  if (through < now.getTime() - 86_400_000) return "A payment can't cover a period that has already ended.";
+  if (through > now.getTime() + 400 * 86_400_000) return "A payment can't cover more than about a year ahead.";
+  return null;
+}
+
 /** What lapsing does and doesn't do, in the words the upgrade page and the lapse notice use. Kept next to the behaviour it describes. */
 export const STUDIO_LAPSE_POLICY = {
   paused: "Workflows built in Automation Studio are paused. Runs already in progress wait; none is failed or cancelled because of the lapse.",

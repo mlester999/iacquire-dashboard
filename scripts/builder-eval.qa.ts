@@ -18,11 +18,16 @@ import { loadBuilderOptions } from "../src/server/crm/workflows/context";
 import { validateDefinition, validationContextFrom, type WorkflowDefinition } from "../src/lib/crm/workflow/spec";
 import type { BuilderEvent } from "../src/lib/automation-studio/types";
 import { studioWorkspace } from "../tests/support/studio-workspace";
-import { SCENARIOS, meetsExpectation, summarise, type Outcome } from "../tests/support/builder-eval";
+import { SCENARIOS, meetsExpectation, summarise, type EvalScenario, type Outcome } from "../tests/support/builder-eval";
+import { HELDOUT_SCENARIOS, type HeldOutScenario } from "../tests/support/builder-eval-heldout";
+import { HELDOUT_B } from "../tests/support/builder-eval-heldout-b";
 
 const baseUrl = process.env.EVAL_LLM_BASE_URL ?? "";
 const apiKey = process.env.EVAL_LLM_API_KEY ?? "";
 const model = process.env.EVAL_LLM_MODEL ?? "";
+/** EVAL_SET: "tuned" (the default, the set the prompt was developed against), "heldout" (everything in builder-eval-heldout.ts), or "heldout-A" / "heldout-B". */
+const evalSet = process.env.EVAL_SET ?? "tuned";
+const pool: Array<EvalScenario & { timezone?: string }> = evalSet === "tuned" ? SCENARIOS : ([...HELDOUT_SCENARIOS, ...HELDOUT_B] as HeldOutScenario[]).filter((s) => evalSet === "heldout" || evalSet === `heldout-${s.set}`);
 const only = (process.env.EVAL_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const repeat = Math.max(1, Math.min(5, Number(process.env.EVAL_REPEAT ?? 1) || 1));
 const OUT = path.resolve(".data/builder-eval");
@@ -36,6 +41,8 @@ interface CallRecord {
   failed: boolean;
   /** What the model wrote (kept short), for turns that did not pass. */
   text: string;
+  /** The last message the model was sent: for a correction call, why the server refused the call before it. */
+  lastSent: string;
 }
 
 function instrumented(config: LlmConfig) {
@@ -43,7 +50,7 @@ function instrumented(config: LlmConfig) {
   const port: LlmPort = {
     resolve: async () => ({ config, reason: "ready", connectionStatus: "connected", provider: "eval", model: config.model, host: new URL(config.baseUrl).host }),
     async *stream(c: LlmConfig, input: LlmStreamInput, signal?: AbortSignal): AsyncGenerator<LlmStreamEvent> {
-      const rec: CallRecord = { ms: 0, firstDeltaMs: null, inputTokens: null, outputTokens: null, outputChars: 0, failed: false, text: "" };
+      const rec: CallRecord = { ms: 0, firstDeltaMs: null, inputTokens: null, outputTokens: null, outputChars: 0, failed: false, text: "", lastSent: (input.messages[input.messages.length - 1]?.content ?? "").slice(0, 900) };
       const t0 = performance.now();
       calls.push(rec);
       try {
@@ -98,9 +105,9 @@ it("evaluates the AI Automation Builder against the configured model", async () 
   const results: Array<{ id: string; category: string; title: string; run: number; passed: boolean; turns: TurnResult[]; finalProblem: string | null }> = [];
 
   for (let run = 1; run <= repeat; run++) {
-    for (const scenario of SCENARIOS.filter((s) => !only.length || only.includes(s.id))) {
+    for (const scenario of pool.filter((s) => !only.length || only.includes(s.id))) {
      try {
-      const ws = await studioWorkspace({ injected: scenario.injected, connections: scenario.connections, name: `Eval ${scenario.id} ${run}` });
+      const ws = await studioWorkspace({ injected: scenario.injected, connections: scenario.connections, timezone: scenario.timezone, name: `Eval ${scenario.id} ${run}` });
       const actor = ws.o.actor("owner");
       const initial = scenario.initial?.(ws);
       const { id } = await startStudioWorkflow(actor, { name: scenario.title, ...(initial ? { definition: initial } : {}), label: "Evaluation fixture" });
@@ -144,7 +151,8 @@ it("evaluates the AI Automation Builder against the configured model", async () 
         const appliedEvent = events.find((e) => e.type === "applied") as Extract<BuilderEvent, { type: "applied" }> | undefined;
         turns.push({
           operations: appliedEvent?.operations ?? [],
-          rawOutputs: problems.length ? mine.map((c) => c.text) : undefined,
+          rawOutputs: problems.length ? mine.map((c, i) => (i > 0 ? `[sent to the model: ${c.lastSent}]
+` : "") + c.text) : undefined,
           say: turn.say, outcome, reply: reply.slice(0, 600), changed, passed: problems.length === 0, problems, providerCalls: mine.length, repairs: Math.max(0, mine.length - 1), latencyMs,
           firstDeltaMs: mine[0]?.firstDeltaMs ?? null,
           inputTokens: mine.reduce((n, c) => n + (c.inputTokens ?? 0), 0), outputTokens: mine.reduce((n, c) => n + (c.outputTokens ?? Math.ceil(c.outputChars / 4)), 0), tokensEstimated: estimated,
@@ -173,7 +181,7 @@ it("evaluates the AI Automation Builder against the configured model", async () 
     return [c, { scenarios: rs.length, passed: rs.filter((r) => r.passed).length }];
   }));
   const summary = {
-    model, endpointHost: new URL(baseUrl).host, finishedAt: new Date().toISOString(), repeat,
+    set: evalSet, model, endpointHost: new URL(baseUrl).host, finishedAt: new Date().toISOString(), repeat,
     scenarios: results.length, scenariosPassed: results.filter((r) => r.passed).length,
     turns: allTurns.length, turnsPassed: allTurns.filter((t) => t.passed).length,
     appliedTurns: applied.length, appliedFirstTry: applied.filter((t) => t.providerCalls === 1).length, appliedWithRepair: applied.filter((t) => t.providerCalls > 1).length,

@@ -3,14 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CircleAlert, Layers } from "lucide-react";
+import { CircleAlert, Layers, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Field, Select } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/overlays";
 import { isReviewTemplate } from "@/components/crm/reviews/model";
 import { cn } from "@/lib/utils";
 import { createFromStudioTemplateAction } from "@/app/actions/automation-studio";
-import { REACH_LABELS, STUDIO_TEMPLATES, STUDIO_TEMPLATE_CATEGORIES, templateReadiness, type StudioInputSpec, type StudioTemplate } from "@/lib/automation-studio/templates";
+import { REACH_LABELS, STUDIO_TEMPLATES, STUDIO_TEMPLATE_CATEGORIES, templateMatches, templateReadiness, type StudioInputSpec, type StudioTemplate } from "@/lib/automation-studio/templates";
 import type { EditorOptions } from "@/components/crm/workflows/types";
 
 /**
@@ -21,7 +21,8 @@ import type { EditorOptions } from "@/components/crm/workflows/types";
 export function TemplateGallery({ options, canBuild }: { options: EditorOptions; canBuild: boolean }) {
   const [category, setCategory] = React.useState<string | null>(null);
   const [setup, setSetup] = React.useState<StudioTemplate | null>(null);
-  const shown = STUDIO_TEMPLATES.filter((t) => !category || t.category === category);
+  const [query, setQuery] = React.useState("");
+  const shown = templateMatches(STUDIO_TEMPLATES.filter((t) => !category || t.category === category), query);
 
   return (
     <section aria-labelledby="studio-templates">
@@ -29,12 +30,25 @@ export function TemplateGallery({ options, canBuild }: { options: EditorOptions;
         <h2 id="studio-templates" className="text-[18px] font-semibold text-ink">Ready-made automations</h2>
         <p className="mt-1 max-w-3xl text-[13.5px] text-muted">Complete automations you set up in a minute. Each one opens in the editor, where you can change anything by chatting or by hand, test it with a real contact, and only then switch it on.</p>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Template categories">
+      <div className="relative mt-4 max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
+        <input
+          type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search, for example “slack new lead” or “review”" aria-label="Search ready-made automations"
+          className="h-10 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-[13.5px] text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Template categories">
         <button type="button" aria-pressed={category === null} onClick={() => setCategory(null)} className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors", category === null ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>All ({STUDIO_TEMPLATES.length})</button>
         {STUDIO_TEMPLATE_CATEGORIES.map((c) => (
           <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c === category ? null : c)} className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors", category === c ? "border-primary bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:border-line-strong")}>{c}</button>
         ))}
       </div>
+      <p className="sr-only" role="status" aria-live="polite">{shown.length === 1 ? "1 ready-made automation" : `${shown.length} ready-made automations`}</p>
+      {shown.length === 0 && (
+        <p className="mt-5 rounded-2xl border border-dashed border-line-strong bg-surface p-5 text-[13.5px] text-muted">
+          No ready-made automation matches{query.trim() ? ` “${query.trim()}”` : ""}. Clear the search, or describe what you want in the box above and the builder will make it.
+        </p>
+      )}
       <ul className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {shown.map((t) => {
           const ready = templateReadiness(t, options);

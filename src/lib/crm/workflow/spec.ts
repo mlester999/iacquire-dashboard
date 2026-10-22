@@ -11,6 +11,7 @@ import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { customValueKeyOf, extractTokens, isTokenKey } from "@/lib/messaging/tokens";
 import { sha256Hex } from "@/lib/crm/workflow/sha256";
 import { HTTP_METHODS, cleanStepHeaders, pathProblem } from "@/lib/automation-studio/outbound";
+import { CONVERSATION_OUTCOMES } from "@/lib/inbox";
 
 export type MessageChannel = "email" | "sms" | "whatsapp";
 
@@ -44,7 +45,7 @@ export const EVENT_TRIGGER_TYPES = [
   "opportunity.created", "opportunity.stage_changed", "opportunity.won", "opportunity.lost", "opportunity.reopened",
   "appointment.booked", "appointment.rescheduled", "appointment.cancelled", "appointment.no_show", "appointment.showed", "appointment.confirmed",
   "task.created", "task.completed", "task.due",
-  "conversation.message_received",
+  "conversation.message_received", "conversation.assigned", "conversation.resolved", "conversation.urgent", "conversation.handoff_requested", "conversation.idle",
   "form.submitted",
   "campaign.sent", "review.requested", "feedback.received", "call.completed",
 ] as const;
@@ -63,8 +64,12 @@ export const TRIGGER_FILTER_KEYS = [
   "changedFields", "createdVia", "ignoreOptOutKeywords",
   "formIds",
   "callStatuses", "callDirections",
+  "idleHours",
 ] as const;
 export type TriggerFilterKey = (typeof TRIGGER_FILTER_KEYS)[number];
+
+/** How long a conversation may go without a message before "conversation.idle" can start a workflow. Each is announced once per conversation and last message. */
+export const CONVERSATION_IDLE_HOURS = [1, 4, 24, 72, 168] as const;
 
 /** How a call can end (crm_call_records.status once final, FINAL_CALL_STATUSES in src/server/integrations/voice/types.ts). */
 export const CALL_TRIGGER_STATUSES = ["completed", "no_answer", "busy", "failed", "voicemail", "cancelled"] as const;
@@ -100,6 +105,8 @@ export interface TriggerFilters {
   callStatuses?: CallTriggerStatus[];
   /** Call completed: only incoming or only outgoing calls. */
   callDirections?: Array<"inbound" | "outbound">;
+  /** Conversation idle: after this many hours without a message (one of CONVERSATION_IDLE_HOURS). */
+  idleHours?: number[];
 }
 
 export interface ScheduleConfig {
@@ -170,6 +177,13 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "task.completed": T("task.completed", "Task completed", "A task is marked done.", "Tasks", "task", { contact: "maybe", opportunity: "maybe" }, ["assigneeIds"]),
   "task.due": T("task.due", "Task due", "An open task reaches its due time.", "Tasks", "task", { contact: "maybe", opportunity: "maybe" }, ["assigneeIds"]),
   "conversation.message_received": T("conversation.message_received", "Customer message received", "A customer sends a message on SMS, WhatsApp or email.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "ignoreOptOutKeywords"]),
+  // Lifecycle events of a conversation, recorded by src/server/messaging/events.ts in the same transaction as the change. They carry the customer
+  // (the conversation's contact), never the message text. "Idle" is announced by the inbox scan (src/server/messaging/attention.ts), not by a person.
+  "conversation.assigned": T("conversation.assigned", "Conversation assigned", "A conversation is assigned to a teammate, or handed to one.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "assigneeIds"]),
+  "conversation.resolved": T("conversation.resolved", "Conversation resolved", "A teammate resolves a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.urgent": T("conversation.urgent", "Conversation marked urgent", "A conversation's priority becomes urgent, by a person or because a person was asked for.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.handoff_requested": T("conversation.handoff_requested", "A person was asked to take over", "An AI employee (or a plain request for a person) asks for a teammate to take a conversation.", "Conversations", "conversation", CONTACT_ONLY, ["channels"]),
+  "conversation.idle": T("conversation.idle", "Conversation went quiet", "An open conversation has had no message for the time you choose. A customer who has since written again does not start it.", "Conversations", "conversation", CONTACT_ONLY, ["channels", "idleHours"]),
   // A submission to a native form or survey, once processed. It carries the contact when the form asked for an email or phone number,
   // and the deal when the form creates one.
   "form.submitted": T("form.submitted", "Form submitted", "Someone sends one of your forms or surveys (on your website or its own page).", "Contacts", "contact", { contact: "maybe", opportunity: "maybe" }, ["formIds"]),
@@ -185,7 +199,7 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   manual: T("manual", "Started by a person", "Someone in your team starts the workflow for a contact.", "Other", "contact", CONTACT_ONLY),
 };
 
-const triggerFiltersSchema = z.strictObject({
+export const triggerFiltersSchema = z.strictObject({
   tagIds: z.array(uuid).min(1).max(20).optional(),
   pipelineId: uuid.optional(),
   stageIds: z.array(uuid).min(1).max(50).optional(),
@@ -202,6 +216,7 @@ const triggerFiltersSchema = z.strictObject({
   formIds: z.array(uuid).min(1).max(50).optional(),
   callStatuses: z.array(z.enum(CALL_TRIGGER_STATUSES)).min(1).max(CALL_TRIGGER_STATUSES.length).optional(),
   callDirections: z.array(z.enum(["inbound", "outbound"])).min(1).max(2).optional(),
+  idleHours: z.array(z.number().int().refine((h) => (CONVERSATION_IDLE_HOURS as readonly number[]).includes(h), "Choose one of the listed times.")).min(1).max(CONVERSATION_IDLE_HOURS.length).optional(),
 });
 
 const scheduleSchema = z.strictObject({
@@ -231,7 +246,7 @@ export const triggerConfigSchema = z.strictObject({
 
 export const STEP_KIND_LIST = [
   "wait", "branch", "add_tag", "remove_tag", "assign", "create_task", "update_field", "create_opportunity", "move_stage", "send_message",
-  "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review", "http_request", "slack_message",
+  "notify_team", "internal_note", "n8n", "webhook", "ai_task", "end", "request_review", "http_request", "slack_message", "conversation_action",
 ] as const;
 export type StepKind = (typeof STEP_KIND_LIST)[number];
 export const isStepKind = (k: unknown): k is StepKind => typeof k === "string" && (STEP_KIND_LIST as readonly string[]).includes(k);
@@ -435,6 +450,34 @@ const aiTaskSchema = z.strictObject({
   instruction: z.string().trim().min(10, "Tell the AI employee what to do (at least a sentence).").max(2000),
 });
 
+/**
+ * What a workflow can do to the conversation that started it. Nothing here messages a customer, and nothing turns AI replies on: giving a
+ * conversation back to an AI employee stays a person's decision. Pausing the AI and handing a conversation to a teammate only ever make it
+ * quieter.
+ */
+export const CONVERSATION_ACTIONS = ["resolve", "reopen", "set_priority", "assign_person", "assign_contact_owner", "pause_ai"] as const;
+export type ConversationAction = (typeof CONVERSATION_ACTIONS)[number];
+export const CONVERSATION_ACTION_LABELS: Record<ConversationAction, string> = {
+  resolve: "Resolve it",
+  reopen: "Reopen it",
+  set_priority: "Set its priority",
+  assign_person: "Assign it to a person",
+  assign_contact_owner: "Assign it to the contact's owner",
+  pause_ai: "Pause the AI employee on it",
+};
+export const CONVERSATION_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export type ConversationPriority = (typeof CONVERSATION_PRIORITIES)[number];
+
+const conversationActionSchema = z.strictObject({
+  action: z.enum(CONVERSATION_ACTIONS),
+  /** resolve: how it ended (optional). */
+  outcome: z.enum(CONVERSATION_OUTCOMES).optional(),
+  /** set_priority. */
+  priority: z.enum(CONVERSATION_PRIORITIES).optional(),
+  /** assign_person. */
+  userId: uuid.optional(),
+});
+
 const endSchema = z.strictObject({});
 
 export type WaitConfig = z.infer<typeof waitSchema>;
@@ -454,6 +497,7 @@ export type WebhookConfig = z.infer<typeof webhookSchema>;
 export type AiTaskConfig = z.infer<typeof aiTaskSchema>;
 export type HttpRequestConfig = z.infer<typeof httpRequestSchema>;
 export type SlackMessageConfig = z.infer<typeof slackMessageSchema>;
+export type ConversationActionConfig = z.infer<typeof conversationActionSchema>;
 
 export interface StepConfigMap {
   wait: WaitConfig;
@@ -475,6 +519,7 @@ export interface StepConfigMap {
   end: Record<string, never>;
   http_request: HttpRequestConfig;
   slack_message: SlackMessageConfig;
+  conversation_action: ConversationActionConfig;
 }
 
 export type Need = "required" | "optional" | "none";
@@ -606,6 +651,13 @@ export const STEP_KINDS: { [K in StepKind]: StepSpec<K> } = {
     needs: () => ({ contact: "optional", opportunity: "optional" }), effects: () => ["slack"],
     defaults: () => ({ text: "" }),
   }),
+  conversation_action: spec({
+    kind: "conversation_action", label: "Update conversation",
+    description: "Resolve or reopen the conversation that started this workflow, set its priority, hand it to a teammate, or pause the AI employee on it. It never sends a message and never turns AI replies on.",
+    group: "Messages", schema: conversationActionSchema, branches: false, terminal: false, external: false, emitsEvents: true, approvable: true,
+    needs: (c) => ({ contact: c.action === "assign_contact_owner" ? "required" : "optional", opportunity: "none" }), effects: () => [],
+    defaults: () => ({ action: "resolve" as const }),
+  }),
   end: spec({
     kind: "end", label: "End", description: "Stop the workflow here.", group: "Flow", schema: endSchema as unknown as z.ZodType<Record<string, never>>, branches: false, terminal: true, external: false, emitsEvents: false, approvable: false,
     needs: none, effects: () => [], defaults: () => ({}),
@@ -691,6 +743,8 @@ export interface ValidationContext {
   forms?: ReadonlySet<string>;
   /** The workspace's configuration value keys ({{custom_values.<key>}} in a workflow's own texts). Absent: not checked. */
   customValues?: ReadonlySet<string>;
+  /** False: the workspace does not have the new inbox yet (the rollout), so the conversation triggers and the "Update conversation" step can't be published. Absent: not checked. */
+  inboxEnabled?: boolean;
 }
 
 export interface ParsedDefinition {
@@ -954,6 +1008,10 @@ function triggerIssues(t: TriggerConfig, ctx: ValidationContext | null): Validat
     if (filters[key] === undefined) continue;
     if (!ts.filters.includes(key)) out.push(issue("error", "invalid_trigger", `"${ts.label}" can't be filtered that way.`, { path: `trigger.filters.${key}` }));
   }
+  // The conversation triggers that exist because of the new inbox (customer message received is older and stays available to every workspace).
+  if (ctx?.inboxEnabled === false && NEW_INBOX_TRIGGERS.has(t.type)) out.push(issue("error", "inbox_not_enabled", INBOX_WORKFLOW_MESSAGE, { path: "trigger.type" }));
+  // Without a time, "went quiet" would start at every one of the times a conversation passes, so one is required.
+  if (t.type === "conversation.idle" && !filters.idleHours?.length) out.push(issue("error", "invalid_trigger", "Choose how long a conversation must be quiet.", { path: "trigger.filters.idleHours" }));
   if (t.type === "schedule") {
     if (!t.schedule) out.push(issue("error", "invalid_trigger", "Choose when the schedule runs.", { path: "trigger.schedule" }));
     else if (t.schedule.frequency === "weekly" && !t.schedule.weekdays?.length) out.push(issue("error", "invalid_trigger", "Choose at least one weekday.", { path: "trigger.schedule.weekdays" }));
@@ -1128,8 +1186,36 @@ function stepIssues(step: WorkflowStep, def: WorkflowDefinition, ctx: Validation
     case "ai_task":
       if (ctx && !ctx.agents.has((step.config as AiTaskConfig).roleKey)) out.push(issue("error", "missing_agent", "That AI employee isn't included in this workspace.", { ...base, path: "config.roleKey" }));
       break;
+    case "conversation_action":
+      out.push(...conversationActionIssues(step.config as ConversationActionConfig, def, ctx, base));
+      break;
     case "end":
       break;
+  }
+  return out;
+}
+
+/** The conversation triggers added with the new inbox. They can only be published in a workspace that has it. */
+const NEW_INBOX_TRIGGERS: ReadonlySet<string> = new Set(["conversation.assigned", "conversation.resolved", "conversation.urgent", "conversation.handoff_requested", "conversation.idle"]);
+export const INBOX_WORKFLOW_MESSAGE = "The new inbox isn't switched on for this workspace yet, so workflows can't use its conversation triggers or the Update conversation step.";
+
+function conversationActionIssues(c: ConversationActionConfig, def: WorkflowDefinition, ctx: ValidationContext | null, base: { stepKey: string }): ValidationIssue[] {
+  const out: ValidationIssue[] = [];
+  if (ctx?.inboxEnabled === false) out.push(issue("error", "inbox_not_enabled", INBOX_WORKFLOW_MESSAGE, base));
+  const trig = TRIGGERS[def.trigger.type];
+  // The step acts on the conversation that started the run. Only conversation triggers have one, so any other trigger would skip it every time.
+  if (trig.entity !== "conversation") {
+    out.push(issue("error", "needs_conversation", `"Update conversation" works on a conversation, and "${trig.label}" doesn't have one. Start the workflow from a conversation trigger, such as "Customer message received".`, base));
+  }
+  if (c.action === "set_priority" && !c.priority) out.push(issue("error", "invalid_config", "Choose the priority.", { ...base, path: "config.priority" }));
+  if (c.action === "assign_person") {
+    if (!c.userId) out.push(issue("error", "invalid_config", "Choose who gets it.", { ...base, path: "config.userId" }));
+    else if (ctx && !ctx.users.has(c.userId)) out.push(issue("error", "missing_user", "That person is no longer in the workspace or can't see contacts.", { ...base, path: "config.userId" }));
+  }
+  if (c.action === "resolve" && def.trigger.type === "conversation.resolved") out.push(issue("warning", "no_effect", "The conversation is already resolved when this workflow starts, so this step changes nothing.", base));
+  // Handing a conversation over announces "assigned" again, which can start this workflow again; the loop limit stops it, but say so.
+  if ((c.action === "assign_person" || c.action === "assign_contact_owner") && def.trigger.type === "conversation.assigned") {
+    out.push(issue("warning", "self_trigger", "Assigning a conversation starts any workflow that listens for assignments, this one included. The loop limit stops a loop, but check this is what you want.", base));
   }
   return out;
 }
@@ -1245,6 +1331,7 @@ export function validationContextFrom(o: {
   appointmentTypes: Array<{ id: string }>;
   forms?: Array<{ id: string }>;
   customValues?: Array<{ key: string }>;
+  inboxEnabled?: boolean;
 }): ValidationContext {
   return {
     tags: new Set(o.tags.map((t) => t.id)),
@@ -1261,6 +1348,7 @@ export function validationContextFrom(o: {
     appointmentTypes: new Set(o.appointmentTypes.map((t) => t.id)),
     ...(o.forms ? { forms: new Set(o.forms.map((f) => f.id)) } : {}),
     ...(o.customValues ? { customValues: new Set(o.customValues.map((v) => v.key)) } : {}),
+    ...(o.inboxEnabled !== undefined ? { inboxEnabled: o.inboxEnabled } : {}),
   };
 }
 

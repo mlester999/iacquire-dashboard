@@ -138,6 +138,18 @@ describe("Connections", () => {
     expect(actions.createConnectionAction.mock.calls[0][0]).toMatchObject({ kind: "http", name: "Orders", baseUrl: "https://api.example.com/v1", methods: ["GET", "POST"], auth: { type: "bearer" }, secret: SECRET });
   });
 
+  it("is honest about the apps it can't connect to yet: names them and the reason, offers no button that pretends to connect, and points to what works today", () => {
+    wrap(<ConnectionsPanel connections={[]} timezone="UTC" canManage planReason={null} />);
+    const region = screen.getByRole("region", { name: "Not available yet" });
+    for (const name of ["Gmail", "Google Sheets", "Outlook and Microsoft 365 email", "Sign in with Slack"]) expect(within(region).getByText(name)).toBeTruthy();
+    expect(region.textContent).toMatch(/register an app with Google/);
+    expect(region.textContent).toMatch(/register an app with Microsoft/);
+    expect(region.textContent).toMatch(/HTTP connection reaches any service that has a web API/);
+    expect(within(region).queryAllByRole("button")).toHaveLength(0);
+    expect(region.textContent).not.toMatch(/(?:is|are) connected|connect now|coming (?:soon|next)|available now/i);
+    expect(within(region).getByRole("link", { name: "Tell support" }).getAttribute("href")).toBe("/support");
+  });
+
   it("without the plan: explains why, blocks setup and tests, and still lets a credential be revoked", () => {
     wrap(<ConnectionsPanel connections={[conn()]} timezone="UTC" canManage planReason="Your plan has expired. Setting up, verifying and replacing connections needs the plan." />);
     expect(screen.getByRole("note").textContent).toMatch(/You can still revoke a connection/);
@@ -256,6 +268,30 @@ describe("Ready-made automations", () => {
     expect(within(card).getByRole("link", { name: "Add a connection" }).getAttribute("href")).toBe("/automation-studio/connections");
     expect((within(card).getByRole("button", { name: "Set up" }) as HTMLButtonElement).disabled).toBe(true);
     expect(card.textContent).toMatch(/Calls another system/);
+  });
+
+  it("is searchable by any words, in any order, together with the category, and says so when nothing matches", async () => {
+    wrap(<TemplateGallery options={options()} canBuild />);
+    const search = screen.getByRole("searchbox", { name: "Search ready-made automations" }) as HTMLInputElement;
+    const shown = () => [...document.querySelectorAll("[data-template]")].map((c) => c.getAttribute("data-template")).sort();
+    const all = shown().length;
+    fireEvent.change(search, { target: { value: "slack lead" } });
+    expect(shown()).toContain("new-lead-slack-alert");
+    expect(shown().length).toBeLessThan(all);
+    for (const key of shown()) expect(document.querySelector(`[data-template="${key}"]`)!.textContent!.toLowerCase()).toMatch(/slack/);
+    fireEvent.change(search, { target: { value: "LEAD   Slack" } });
+    expect(shown()).toContain("new-lead-slack-alert");
+    // With a category chosen, only the matches inside it.
+    fireEvent.change(search, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Other systems" }));
+    fireEvent.change(search, { target: { value: "booking" } });
+    expect(shown()).toEqual(["booking-sync-http"]);
+    expect(screen.getByRole("status").textContent).toBe("1 ready-made automation");
+    fireEvent.change(search, { target: { value: "zzzz nothing like this" } });
+    expect(shown()).toEqual([]);
+    expect(document.body.textContent).toMatch(/No ready-made automation matches “zzzz nothing like this”/);
+    fireEvent.change(search, { target: { value: "" } });
+    expect(shown().length).toBeGreaterThan(0);
   });
 
   it("sets up a template with only the workspace's own choices and opens the result", async () => {

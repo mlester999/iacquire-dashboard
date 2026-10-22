@@ -57,6 +57,13 @@ describe("plain helpers", () => {
     expect(shouldEmail("agent_status", "info", "all")).toBe(true);
     expect(shouldEmail("website_published", "success", "off")).toBe(false);
     expect(shouldEmail("system", "critical", "off")).toBe(true); // critical is never silenced
+    // The inbox's "customer is waiting" warning stays in the app by default; the people who asked for every email still get it, and critical is never held back.
+    expect(shouldEmail("conversation_awaiting_reply", "warning", "important")).toBe(false);
+    expect(shouldEmail("conversation_awaiting_reply", "warning", "off")).toBe(false);
+    expect(shouldEmail("conversation_awaiting_reply", "warning", "all")).toBe(true);
+    expect(shouldEmail("conversation_awaiting_reply", "critical", "important")).toBe(true);
+    expect(shouldEmail("conversation_new_inquiry", "info", "important")).toBe(false);
+    expect(shouldEmail("conversation_assigned", "info", "important")).toBe(false);
     expect(parseEmailPreference({ email: "all" })).toBe("all");
     expect(parseEmailPreference({ email: "nonsense" })).toBe("important");
     expect(parseEmailPreference(null)).toBe("important");

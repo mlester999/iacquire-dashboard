@@ -8,10 +8,11 @@ import { getStudioState, startStudioWorkflow, saveStudioDraft } from "@/server/a
 import { builderAvailability, runBuilderTurn, type LlmPort } from "@/server/automation-studio/builder/service";
 import { buildSystemPrompt, definitionForModel, repairMessage } from "@/server/automation-studio/builder/prompt";
 import { claimsChange } from "@/server/automation-studio/builder/claims";
+import { triggerCatalog, triggerFilterShapes } from "@/server/automation-studio/builder/catalog";
 import { cleanData, countSuspicious, dataRules, fenceData, modelEndpointProblem } from "@/server/automation-studio/builder/guard";
 import { loadBuilderOptions } from "@/server/crm/workflows/context";
 import { applyOperations } from "@/lib/crm/workflow/operations";
-import { validateDefinition, validationContextFrom, type WorkflowDefinition, type WorkflowStep } from "@/lib/crm/workflow/spec";
+import { TRIGGER_FILTER_KEYS, validateDefinition, validationContextFrom, type WorkflowDefinition, type WorkflowStep } from "@/lib/crm/workflow/spec";
 import type { LlmConfig, LlmResolution, LlmStreamEvent, LlmStreamInput } from "@/server/llm/client";
 import type { BuilderEvent } from "@/lib/automation-studio/types";
 import { studioWorkspace, type StudioWorkspace } from "./support/studio-workspace";
@@ -191,6 +192,24 @@ describe("a reply that claims a change nobody made", () => {
     ["Added an \"Add tag: Website lead\" step straight after the welcome task.", true],
     ["Renamed the step to \"Call within the hour\".", true],
     ["Added by hand last week, the tag is still on the first step.", true],
+    // Found by the held-out evaluation: reports of a change that opened with other words than the first list covered.
+    ["Put \"Tell the team\" back at the end, after the week-long wait. It sends an in-app notification to whoever owns the contact.", true],
+    ["The workflow now starts when a deal is marked lost. It waits 30 days, then emails the contact the approved \"Follow-up check-in\" template.", true],
+    ["I used the Sales Assistant as the sender and limited sending to business hours; change either on the step if you prefer.", true],
+    ["Restored the notification at the end.", true],
+    ["The wait is now 3 days.", true],
+    ["It now waits three days before the reminder.", true],
+    ["Now the task is created first and the message follows.", true],
+    ["Re-added the tag step right after the task.", true],
+    // ...and what must not be mistaken for one.
+    ["Set up a Slack connection under Connections first, then ask me again.", false],
+    ["A wait step pauses the workflow for a set time.", false],
+    ["Which message should it send: the Follow-up check-in or the Appointment reminder?", false],
+    ["The last run stopped at the reminder because the people to notify no longer exist in this workspace.", false],
+    ["I can make the wait three days if you like. Want that?", false],
+    ["You could now add a second reminder if you like.", false],
+    ["Right now it sends a text two days after the lead is created.", false],
+    ["Nothing was changed. The wait is now what you see on the canvas, so tell me the number of days you want.", false],
     ["This workflow creates a task for the owner and, two days later, notifies the team.", false],
     ["Each new lead gets a welcome task, which is created straight away.", false],
     ["The wait is set to 2 days and the task is assigned to the contact's owner.", false],
@@ -343,5 +362,48 @@ describe("the repair message", () => {
     expect(prompt).toContain("working copy revision 7");
     expect(prompt).toContain("#3 person: Renamed by hand");
     expect(validateDefinition(welcome(), validationContextFrom(options)).filter((i) => i.level === "error")).toEqual([]);
+  });
+});
+
+describe("what the builder is told about a trigger's filters", () => {
+  it("states the exact value of every filter from the schema the server validates with, so nothing has to be guessed", () => {
+    const shapes = triggerFilterShapes();
+    // The two the held-out evaluation showed being guessed (a word that doesn't exist, a list where one value is wanted):
+    expect(shapes).toContain('consentStatus: "granted"|"revoked"');
+    expect(shapes).toContain('consentPurpose: "service"|"marketing"');
+    expect(shapes).toContain('channels: ["email"|"sms"|"whatsapp", …]');
+    expect(shapes).toContain("tagIds: [<id>, …]");
+    expect(shapes).toContain("pipelineId: <id>");
+    expect(shapes).toContain("ignoreOptOutKeywords: true|false");
+    // Every filter that exists is described, and the catalogue that goes into the prompt carries it.
+    for (const key of TRIGGER_FILTER_KEYS) expect(shapes, key).toContain(`${key}: `);
+    expect(triggerCatalog()).toContain(shapes);
+  });
+
+  it("refuses a made-up filter value in the schema's own words, which the builder is shown (people see only the short reason)", () => {
+    const def: WorkflowDefinition = { trigger: { type: "contact.created" }, steps: [] };
+    const r = applyOperations(def, [{ op: "set_trigger", trigger: { type: "contact.consent_changed", filters: { consentStatus: "withdrawn" } } }], { mode: "strict" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error.code).toBe("invalid_trigger");
+    expect(r.error.message).toBe("That isn't a valid trigger (filters.consentStatus).");
+    expect(r.error.detail).toMatch(/filters\.consentStatus/);
+    expect(r.error.detail).toMatch(/granted/);
+    expect(r.error.detail).toMatch(/revoked/);
+    // A valid one is applied.
+    const ok = applyOperations(def, [{ op: "set_trigger", trigger: { type: "contact.consent_changed", filters: { consentStatus: "revoked", consentPurpose: "marketing" } } }], { mode: "strict" });
+    expect(ok.ok).toBe(true);
+  });
+
+  it("tells the builder not to act on a general wish such as 'make it better'", async () => {
+    const ws = await studioWorkspace({ name: "Vague" });
+    const options = await withSystem((db) => loadBuilderOptions(db, ws.o.org.id));
+    const prompt = buildSystemPrompt({ workflowName: "W", workflowStatus: "draft", definition: welcome(), issues: [], options, recentProblems: [], selectedKey: null, timezone: "UTC", nonce: "abc123def456" });
+    expect(prompt).toMatch(/"make it better"/);
+    expect(prompt).toMatch(/change nothing, write no operations, and ask what they would like improved/);
+    expect(prompt).toContain('consentStatus: "granted"|"revoked"');
+    // A time in another time zone is built as written, and the person is told the automation runs on the workspace's clock.
+    expect(prompt).toMatch(/use the time exactly as they wrote it/);
+    expect(prompt).toMatch(/runs on the workspace's clock, naming that time zone/);
   });
 });

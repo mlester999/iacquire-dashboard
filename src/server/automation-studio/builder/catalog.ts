@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { CONTACT_FILTER_FIELDS, OPS_BY_KIND } from "@/lib/crm/filters";
-import { EVENT_TRIGGER_TYPES, OTHER_TRIGGER_TYPES, STEP_KINDS, STEP_KIND_LIST, TRIGGERS, TRIGGER_FILTER_KEYS, WORKFLOW_LIMITS, type StepKind } from "@/lib/crm/workflow/spec";
+import { EVENT_TRIGGER_TYPES, OTHER_TRIGGER_TYPES, STEP_KINDS, STEP_KIND_LIST, TRIGGERS, TRIGGER_FILTER_KEYS, WORKFLOW_LIMITS, triggerFiltersSchema, type StepKind } from "@/lib/crm/workflow/spec";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS } from "@/lib/agents";
 import { TOKEN_KEYS } from "@/lib/messaging/tokens";
 import { LIMIT_LABELS } from "@/lib/automation-studio/plan";
@@ -37,6 +37,32 @@ export function stepCatalog(): string {
   }).join("\n");
 }
 
+/** A JSON Schema fragment written the way the builder should write the value: "a"|"b", ["a"|"b", …], <id>, true|false, <text>, <number>. */
+function shapeOf(schema: Record<string, unknown>): string {
+  if (Array.isArray(schema.enum)) return (schema.enum as unknown[]).map((v) => JSON.stringify(v)).join("|");
+  if (schema.type === "array") return `[${shapeOf((schema.items ?? {}) as Record<string, unknown>)}, …]`;
+  // An id: zod's own uuid carries format "uuid"; the workflow spec's uuid helper is a pattern of 8-4-4-4-12 hex digits.
+  if (schema.type === "string") return schema.format === "uuid" || (typeof schema.pattern === "string" && /\{8\}.*\{4\}.*\{12\}/.test(schema.pattern)) ? "<id>" : "<text>";
+  if (schema.type === "boolean") return "true|false";
+  if (schema.type === "number" || schema.type === "integer") return "<number>";
+  return "<value>";
+}
+
+/**
+ * The exact value each trigger filter takes, generated from the schema the server validates against (so a filter added or changed there is described
+ * here without anyone remembering to): without this the builder knows only the filters' names and has to guess whether "revoked" or "withdrawn" is the word.
+ */
+export function triggerFilterShapes(): string {
+  let properties: Record<string, Record<string, unknown>> = {};
+  try {
+    const js = z.toJSONSchema(triggerFiltersSchema, { unrepresentable: "any", io: "input" }) as { properties?: Record<string, Record<string, unknown>> };
+    properties = js.properties ?? {};
+  } catch {
+    return "";
+  }
+  return TRIGGER_FILTER_KEYS.filter((k) => properties[k]).map((k) => `${k}: ${shapeOf(properties[k])}`).join("; ");
+}
+
 export function triggerCatalog(): string {
   const groups = new Map<string, string[]>();
   for (const type of [...EVENT_TRIGGER_TYPES, ...OTHER_TRIGGER_TYPES]) {
@@ -46,7 +72,9 @@ export function triggerCatalog(): string {
   }
   return [...groups].map(([group, items]) => `${group}:\n${items.map((i) => `  - ${i}`).join("\n")}`).join("\n")
     + `\nTrigger shape: {"type": <one of the above>, "filters": {<only the listed filter keys>}, "reentry": "always"|"once"|"not_while_active", "contactFilter": <condition group, optional>, "schedule": {"frequency":"daily"|"weekly","time":"HH:MM","weekdays":[0-6]} (schedule only)}.`
-    + `\nAll filter keys that exist: ${TRIGGER_FILTER_KEYS.join(", ")}. To start a workflow from another system's webhook set only {"type":"inbound_webhook"}: the address, how the caller is matched to a contact and whether a contact is created are set by the person in the workflow's settings after the server generates the address, so never write an "inbound" setting; tell the person what to set there.`;
+    + `\nAll filter keys that exist: ${TRIGGER_FILTER_KEYS.join(", ")}.`
+    + `\nWrite each filter value exactly in this shape (an <id> is an id from the workspace lists; most filters take a list, a few take one value): ${triggerFilterShapes()}.`
+    + ` Only the filters a trigger lists apply to it. To start a workflow from another system's webhook set only {"type":"inbound_webhook"}: the address, how the caller is matched to a contact and whether a contact is created are set by the person in the workflow's settings after the server generates the address, so never write an "inbound" setting; tell the person what to set there.`;
 }
 
 /** The condition language of an if / else step and of a trigger's contact filter. */

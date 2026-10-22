@@ -55,7 +55,7 @@ bounded retries and backoff, dead state, retry/skip/cancel, loop and step limits
 ## Phase 4: AI Auto Mode
 
 - [x] AI Automation Builder service, separate from AQi: stored conversation, streamed reply, operations validated by `parseOperations` then strict mode in a locked transaction, repair loop, plan, rate limit, monthly allowance, token counters. → `tests/automation-studio-builder.test.ts` (26 tests, scripted model)
-- [x] Home screen ("What would you like to automate?"), 17 suggestions with workspace-readiness text, searchable categories; split-screen chat + live canvas that replays only operations the server accepted, resizable on desktop, tabs on a phone. → browser evidence below
+- [x] Home screen ("What would you like to automate?"), 17 suggestions with workspace-readiness text, searchable categories, **searchable ready-made automations**, a skip link past "Your automations"; split-screen chat + live canvas that replays only operations the server accepted, resizable on desktop, tabs on a phone. → browser evidence below
 - [x] Node-aware conversation (the selected step is sent with the message), failure explanations from recent run records.
 - [x] Evaluated with a real model (DeepSeek `deepseek-flash`): see [ai-evaluation.md](ai-evaluation.md).
 - [x] 20 executable templates now exist next to the 19 prompt starters. → [templates.md](templates.md)
@@ -66,7 +66,7 @@ bounded retries and backoff, dead state, retry/skip/cancel, loop and step limits
 - [x] HTTP request and Slack incoming webhook built (connections, verification by confirmed test, rotation, revocation, call log). → [connections-and-outbound.md](connections-and-outbound.md)
 - [!] Slack OAuth (designed, not built), Gmail and Google Sheets: need apps and verification only the founder can start.
 - [~] AI employee node exists (`ai_task`); [!] live runs stay off until tool inventories are verified.
-- [ ] Employee-node permission tests per role (a Receptionist-like role must not gain Lead Hunter tools through a workflow).
+- [ ] Employee-node permission tests per role (a Receptionist-like role must not gain Lead Hunter tools through a workflow). The step names a role and the request is made for that workspace and role only (`requestAgentTask`), by code reading; no test proves it per role, and live runs are off.
 
 ## Phase 6: templates and subscription experience
 
@@ -78,7 +78,13 @@ bounded retries and backoff, dead state, retry/skip/cancel, loop and step limits
 ## Phase 7: production hardening
 
 - [x] Browser E2E (Phase C: 62 checks; original: 46; real-model run: 17), accessibility (axe WCAG A/AA on the new screens, light and dark), tenant-isolation tests on the new tables, migrations 0069 to 0072 isolation and schema-drift test. → `tests/automation-studio-migrations.test.ts`
-- [ ] Hosted migration rehearsal (needs `ALLOW_REMOTE_DB_IN_DEV=true` and the user's approval), scheduler activation plan.
+- [x] Hosted migrations `0069` to `0072` are applied and were checked read-only on 2026-10-22 (applied, RLS on every table, secret column unreadable by the app role, no Studio data yet). → [production-audit-2026-10-22.md](production-audit-2026-10-22.md)
+- [x] Scheduler: controlled rehearsal through the real tick route and the real job list, two workspaces, simulated clock (`tests/automation-studio-scheduler-rehearsal.test.ts`), and the exact activation steps (`docs/production-scheduler.md`, section Automation Studio).
+- [!] Scheduler activation itself: the founder's call (Vercel plan tier, `CRON_SECRET`, `SCHEDULER_ENABLED`); off in production.
+- [x] Every template run end to end through the scheduler's runner (`tests/automation-studio-templates-run.test.ts`, 20 of 20).
+- [x] Activation of the plan needs a recorded payment verification (who, when, the period), not a click. → `tests/maintenance.test.ts`, `tests/maintenance-admin-activation.test.tsx`
+- [x] Held-out AI evaluation (two fresh sets, run once each) and the fixes it led to. → [ai-evaluation.md](ai-evaluation.md)
+- [x] Browser QA at desktop, tablet and phone sizes, light and dark, axe WCAG A/AA, on the production bundle. → `scripts/automation-browser-qa-d.mjs`
 
 ## Evidence log
 

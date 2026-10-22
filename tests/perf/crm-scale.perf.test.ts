@@ -27,6 +27,8 @@ import { getCrmReport } from "@/server/crm/reports/service";
 import { getCrmOverview } from "@/server/crm/overview";
 import { getDashboard } from "@/server/queries/dashboard";
 import { getConversationDetail, listConversations } from "@/server/messaging/inbox";
+import { inboxViewCounts, listConversationsPage, type ListPage } from "@/server/messaging/inbox-list";
+import { inboxSync } from "@/server/messaging/inbox-sync";
 import { crmOrg, type CrmOrg } from "../support/crm";
 import { ctxFor } from "../support/fixtures";
 import { analyzeAll, datasetCounts, NOISE, scaled, seedWorkspace, TARGET, TZ, type SeededWorkspace } from "./seed";
@@ -53,6 +55,7 @@ const NOW = new Date();
 const NOT_COMPARED = new Set([
   "compile + save a list (validation compiles the filter)", "CRM overview (home)", "portal dashboard", "board: default pipeline (counts + cards per stage)",
   "board: search 'deal 12'", "inbox: open one conversation",
+  "inbox page: Needs attention", "inbox page: Waiting, longest first", "inbox: counts for every tab", "inbox sync: the last minute, with counts",
 ]);
 
 let c: CrmOrg;
@@ -141,6 +144,24 @@ function scenarios(): Scenario[] {
     { group: "inbox", name: "inbox: search", fn: () => listConversations(ctx, { q: "viewing 12" }) },
     { group: "inbox", name: "inbox: open one conversation", fn: async () => getConversationDetail(ctx, await someConversation()) },
     { group: "inbox", name: "inbox: list as a sales rep (own + assigned only)", fn: () => listConversations(ctxFor(c.people.sales, c.org, "sales_rep"), {}) },
+    // The Unified Inbox's own reads (migration 0083): one page per view, the cursor's second page, the counts every tab shows, and the change poll.
+    // They filter on now() (waiting, attention, "since"), so their answers are not compared between phases.
+    { group: "inbox", name: "inbox page: All, first page", fn: () => listConversationsPage(ctx, { limit: 50 }), check: (r) => expect((r as ListPage).items.length).toBeLessThanOrEqual(50) },
+    { group: "inbox", name: "inbox page: Unread", fn: () => listConversationsPage(ctx, { view: "unread", limit: 50 }) },
+    { group: "inbox", name: "inbox page: Needs attention", fn: () => listConversationsPage(ctx, { view: "attention", limit: 50 }) },
+    { group: "inbox", name: "inbox page: Waiting, longest first", fn: () => listConversationsPage(ctx, { view: "waiting", sort: "waiting_longest", limit: 50 }) },
+    { group: "inbox", name: "inbox page: Resolved", fn: () => listConversationsPage(ctx, { view: "resolved", limit: 50 }) },
+    { group: "inbox", name: "inbox page: search 'viewing 12'", fn: () => listConversationsPage(ctx, { q: "viewing 12", limit: 50 }) },
+    {
+      group: "inbox", name: "inbox page: second page by cursor",
+      fn: async () => {
+        const first = await listConversationsPage(ctx, { limit: 50 });
+        return first.nextCursor ? listConversationsPage(ctx, { limit: 50, cursor: first.nextCursor }) : first;
+      },
+    },
+    { group: "inbox", name: "inbox page: as a sales rep (own + assigned only)", fn: () => listConversationsPage(ctxFor(c.people.sales, c.org, "sales_rep"), { limit: 50 }) },
+    { group: "inbox", name: "inbox: counts for every tab", fn: () => inboxViewCounts(ctx) },
+    { group: "inbox", name: "inbox sync: the last minute, with counts", fn: () => inboxSync(ctx, new Date(NOW.getTime() - 60_000).toISOString(), { counts: true }) },
     // --- Isolation: the same answers for other roles and another workspace in every phase -------------------------------------------
     { group: "isolation", name: "another workspace's owner: contacts total", fn: async () => (await listContacts(other.actor("owner"), { pageSize: 5 })).total },
     { group: "isolation", name: "viewer: contacts total + deals table total", fn: async () => [(await listContacts(c.actor("viewer"), { pageSize: 5 })).total, (await listOpportunities(c.actor("viewer"), { pageSize: 5 }).catch((e: Error) => ({ total: e.message }))).total] },

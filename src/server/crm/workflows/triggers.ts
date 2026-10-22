@@ -188,11 +188,12 @@ export async function triggerMatches(db: Queryable, e: CrmEventRow, t: TriggerCo
   if (f.channels?.length && !(f.channels as string[]).includes(str(p.channel) ?? "")) return false;
   if (f.callStatuses?.length && !(f.callStatuses as string[]).includes(str(p.status) ?? "")) return false;
   if (f.callDirections?.length && !(f.callDirections as string[]).includes(str(p.direction) ?? "")) return false;
+  if (f.idleHours?.length && !f.idleHours.includes(Number(p.idleHours))) return false;
   if (f.consentPurpose && str(p.purpose) !== f.consentPurpose) return false;
   if (f.consentStatus && str(p.status) !== f.consentStatus) return false;
   if (e.type === "conversation.message_received" && f.ignoreOptOutKeywords !== false && (p.keyword === "stop" || p.keyword === "start")) return false;
   if (f.assigneeIds?.length) {
-    let assignee = e.type === "contact.assigned" ? str(p.to) : str(p.assigneeId);
+    let assignee = e.type === "contact.assigned" || e.type === "conversation.assigned" ? str(p.to) : str(p.assigneeId);
     if (!assignee && records.taskId) assignee = (await db.query<{ a: string | null }>("select assigned_user_id as a from tasks where id = $1 and org_id = $2", [records.taskId, e.orgId])).rows[0]?.a ?? null;
     if (!assignee || !f.assigneeIds.includes(assignee)) return false;
   }

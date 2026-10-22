@@ -74,6 +74,9 @@ const schema = z.object({
   // Second, deliberate switch for the scheduled worker. Both this and CRON_SECRET must be set before any job can run, so deploying
   // the scheduler configuration cannot start outbound work by itself. Off unless explicitly enabled.
   SCHEDULER_ENABLED: bool,
+  // Staged activation: when set, a scheduler tick runs only the jobs named here (comma separated, exact names from src/server/ops/tick.ts) and no others.
+  // Unset (the default) runs every job. A name that does not exist makes the tick fail loudly. See docs/unified-inbox/scheduler-impact.md.
+  SCHEDULER_JOBS_ONLY: z.preprocess(blankToUndefined, z.string().max(2000).optional()),
   // The scheduler is reported as stopped when its last completed run is older than this. Set it to a few times the schedule interval.
   SCHEDULER_STALE_MINUTES: z.coerce.number().int().min(2).max(1440).default(20),
   // Automation Studio: days a workspace keeps the plan's features after a payment is recorded as failed, before the plan expires. An agency member
@@ -99,6 +102,9 @@ const schema = z.object({
   MICROSOFT_CALENDAR_TENANT: z.preprocess(blankToUndefined, z.string().regex(/^[A-Za-z0-9.-]{1,100}$/).default("common")),
   // Stops all background calendar sync and write-back (and "Sync now") without disconnecting anyone.
   CALENDAR_SYNC_DISABLED: bool,
+  // Switches the Unified Inbox off: the /inbox page, /api/inbox/* and the inbox's actions answer "temporarily unavailable", and the inbox's own
+  // notices stop. Receiving, storing and sending messages, the AI employees and workflows are not touched. Unset or false (the default) = on.
+  INBOX_DISABLED: bool,
   CALENDAR_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(2).max(1440).default(10),
   CALENDAR_ICS_POLL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 

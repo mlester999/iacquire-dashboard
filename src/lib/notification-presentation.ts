@@ -110,6 +110,7 @@ const PREFIX_CATEGORY: Array<[string, NotificationCategoryKey]> = [
   ["website_", "website"],
   ["domain_", "website"],
   ["crm_", "crm"],
+  ["conversation_", "messaging"],
   ["booking_", "calendar"],
   ["support_", "support"],
 ];

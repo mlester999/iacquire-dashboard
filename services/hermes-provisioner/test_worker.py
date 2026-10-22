@@ -93,6 +93,10 @@ class FakeHermesApi:
         self.challenge = ""
         self.paths: list[str] = []
         self.bad_signature = False
+        self.change_catalog_between_reads = False
+        self.catalog_reads = 0
+        self.catalog_challenges: list[str] = []
+        self.catalog_digest = ""
 
     def json_request(
         self,
@@ -125,6 +129,9 @@ class FakeHermesApi:
             return 202, {"run_id": "run-test"}
         if path == "/v1/tools?platform=api_server":
             challenge = (extra_headers or {}).get("X-Hermes-Inventory-Challenge", "")
+            self.catalog_reads += 1
+            self.catalog_challenges.append(challenge)
+            available: bool | None = None if self.change_catalog_between_reads and self.catalog_reads % 2 == 0 else True
             entries = [
                 ("memory", "memory"),
                 ("session_search", "session_search"),
@@ -136,7 +143,7 @@ class FakeHermesApi:
             rows = [
                 {
                     "function": {"name": name, "parameters": {}},
-                    "available": True,
+                    "available": available,
                     "provenance": {
                         "source": "configurable",
                         "toolset": toolset,
@@ -154,7 +161,7 @@ class FakeHermesApi:
                     "toolset": toolset,
                     "sourceServer": None,
                     "addedBelowExplicitConfig": False,
-                    "available": True,
+                    "available": available,
                 }
                 for name, toolset in entries
             ]
@@ -167,6 +174,7 @@ class FakeHermesApi:
                 "tools": sorted(canonical_tools, key=lambda row: row["name"]),
             }
             catalog_digest = digest(json.dumps(canonical, separators=(",", ":")).encode())
+            self.catalog_digest = catalog_digest
             signed_payload = json.dumps(
                 {"contract": "hermes.api_server.tool_catalog.v1", "profile": profile, "challenge": challenge, "digest": catalog_digest},
                 separators=(",", ":"),
@@ -258,6 +266,10 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertEqual(audit["outcome"], "succeeded")
         self.assertEqual(audit["effectiveConfigSha256"], result["effectiveConfigSha256"])
         self.assertEqual(audit["toolInventoryDigest"], result["toolInventoryDigest"])
+        self.assertEqual(result["toolInventoryDigest"], self.api.catalog_digest)
+        self.assertEqual(len(self.api.catalog_challenges), 2)
+        self.assertNotEqual(self.api.catalog_challenges[0], self.api.catalog_challenges[1])
+        self.assertRegex(result["toolInventoryDigest"], r"^[0-9a-f]{64}$")
         self.assertNotIn("IACQUIRE_PROVISIONER_TOKEN", self.command_envs[0])
         self.assertNotIn("OPENAI_API_KEY", self.command_envs[0])
         self.assertEqual(self.command_envs[0]["HERMES_HOME"], str(self.home))
@@ -307,6 +319,15 @@ class RestrictedProvisionerTests(unittest.TestCase):
         result = self.provisioner.process(self.manifest)
         self.assertTrue(result["toolInventoryComplete"])
         self.assertEqual(len(self.commands), 1)
+
+    def test_inventory_change_between_challenged_reads_fails_closed(self):
+        self.api.change_catalog_between_reads = True
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            self.provisioner.process(self.manifest)
+        self.assertEqual(len(self.api.catalog_challenges), 2)
+        self.assertFalse((self.home / "profiles" / self.manifest["profile"] / ".iacquire-provisioner.json").exists())
+        failure = json.loads((self.home / "iacquire-provisioner-state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(failure["code"], "runtime_tool_inventory_incomplete")
 
     def test_interrupted_cli_creation_recovers_only_from_its_durable_intent(self):
         calls = 0

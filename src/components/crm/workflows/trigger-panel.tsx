@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { CHANNEL_LABELS } from "@/lib/messaging";
+import { idleLabel } from "@/lib/inbox";
 import { EMPTY_FILTER } from "@/lib/crm/filters";
 import { CREATED_VIA, CREATED_VIA_LABELS } from "@/lib/crm/types";
-import { CALL_TRIGGER_STATUSES, TRIGGERS, TRIGGER_TYPES, type TriggerConfig, type TriggerFilters, type TriggerType, type ValidationIssue } from "@/lib/crm/workflow/spec";
+import { CALL_TRIGGER_STATUSES, CONVERSATION_IDLE_HOURS, TRIGGERS, TRIGGER_TYPES, type TriggerConfig, type TriggerFilters, type TriggerType, type ValidationIssue } from "@/lib/crm/workflow/spec";
 import { CALL_STATUS_LABELS } from "@/components/crm/calls/model";
 import { Choice, MultiPick, SinglePick, Toggle, WeekdayPick } from "@/components/crm/workflows/pickers";
 import { ConditionsEditor } from "@/components/crm/workflows/step-panel";
@@ -190,6 +191,11 @@ export function TriggerPanel({ trigger, options, issues, readOnly, inboundUrl, i
         {spec.filters.includes("channels") && (
           <Field label="Channels" optional error={errorAt("trigger.filters.channels")} hint="None chosen means any channel.">
             <MultiPick id="wf-tr-channels" label="Channels" options={(["sms", "whatsapp", "email"] as const).map((c) => ({ id: c, label: CHANNEL_LABELS[c] }))} value={filters.channels ?? []} onChange={(v) => setFilter("channels", v as TriggerFilters["channels"])} empty="" />
+          </Field>
+        )}
+        {spec.filters.includes("idleHours") && (
+          <Field label="Quiet for" error={errorAt("trigger.filters.idleHours")} hint="Starts once for each time you choose, when an open conversation has had no message for that long. A customer who writes again starts the count over.">
+            <MultiPick id="wf-tr-idle" label="Quiet for" options={CONVERSATION_IDLE_HOURS.map((h) => ({ id: String(h), label: idleLabel(h) }))} value={(filters.idleHours ?? []).map(String)} onChange={(v) => setFilter("idleHours", v.map(Number))} empty="" />
           </Field>
         )}
         {spec.filters.includes("callStatuses") && (

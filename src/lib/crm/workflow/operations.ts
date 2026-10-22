@@ -126,14 +126,14 @@ export type ApplyResult =
     }
   | { ok: false; error: OperationError; issues: ValidationIssue[] };
 
-const fail = (index: number, code: OperationErrorCode, message: string): { ok: false; error: OperationError; issues: ValidationIssue[] } => ({ ok: false, error: { index, code, message }, issues: [] });
+const fail = (index: number, code: OperationErrorCode, message: string, detail?: string): { ok: false; error: OperationError; issues: ValidationIssue[] } => ({ ok: false, error: { index, code, message, ...(detail ? { detail } : {}) }, issues: [] });
 class Refused extends Error {
-  constructor(readonly code: OperationErrorCode, message: string) {
+  constructor(readonly code: OperationErrorCode, message: string, readonly detail?: string) {
     super(message);
   }
 }
-const refuse = (code: OperationErrorCode, message: string): never => {
-  throw new Refused(code, message);
+const refuse = (code: OperationErrorCode, message: string, detail?: string): never => {
+  throw new Refused(code, message, detail);
 };
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -256,7 +256,15 @@ function applyOne(def: WorkflowDefinition, op: WorkflowOperation, mode: "draft" 
     case "patch_trigger": {
       const raw = op.op === "set_trigger" ? op.trigger : mergeTrigger(def.trigger, op.patch);
       const parsed = triggerConfigSchema.safeParse(raw);
-      if (!parsed.success) refuse("invalid_trigger", `That isn't a valid trigger${parsed.error.issues[0]?.path.length ? ` (${parsed.error.issues[0].path.join(".")})` : ""}.`);
+      if (!parsed.success) {
+        // People see which setting it was; the AI builder also gets the schema's own words (the allowed values), so a correction can be right.
+        const issues = parsed.error.issues;
+        refuse(
+          "invalid_trigger",
+          `That isn't a valid trigger${issues[0]?.path.length ? ` (${issues[0].path.join(".")})` : ""}.`,
+          issues.slice(0, 4).map((i) => `${i.path.length ? `${i.path.join(".")}: ` : ""}${i.message}`).join("; ").slice(0, 400),
+        );
+      }
       const next = parsed.data as TriggerConfig;
       // A webhook URL is minted by the server when the workflow is published, never chosen by whoever edits it: the AI can't pick or
       // change one, so it can't point a workflow at a URL it knows.
@@ -302,7 +310,7 @@ export function applyOperations(input: WorkflowDefinition, operations: readonly 
     try {
       applyOne(def, op, mode);
     } catch (err) {
-      if (err instanceof Refused) return fail(i, err.code, err.message);
+      if (err instanceof Refused) return fail(i, err.code, err.message, err.detail);
       throw err;
     }
     summary.push(sentenceFor(op, snapshot, def));

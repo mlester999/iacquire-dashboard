@@ -29,6 +29,14 @@ Setup Center backfill/evidence reconciliation. Both are idempotent and both are 
 
 Both are required. Deploying a cron definition cannot start work by itself; a person must also set `SCHEDULER_ENABLED=true`.
 
+### Starting with some jobs only: `SCHEDULER_JOBS_ONLY`
+
+Switching the scheduler on starts **every** registered job (45 on 2026-10-22). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
+(for example `aiWorkRecovery,crmWorkflowRecovery,inboxAttention`). A tick then runs only those, in the registry's order, and the others do not run and leave no heartbeat. Unset (the default) runs every job. A name that
+does not exist, or a value that names nothing, makes the tick fail with a 500 and run nothing, so a typo cannot start something that was not approved.
+**Order matters for messaging:** the dispatcher (`messagesDispatched`) turns a queued message into a final `blocked / provider_not_enabled` while a provider write switch is off, so keep it, `repliesChecked` and
+`followUpsPrepared` out of the list until the provider is switched on. The job inventory, what each can do, and a suggested order of steps are in [unified-inbox/scheduler-impact.md](unified-inbox/scheduler-impact.md).
+
 ## Authentication
 
 - The secret is compared with `crypto.timingSafeEqual`; length differences are rejected.
@@ -136,6 +144,52 @@ The tick still never runs provider work. It creates durable `ai_work_jobs` rows 
 research schedule also creates the linked `lead_research_requests` row. See
 [Proactive AI employees](proactive-ai-employees.md) for the delivery policy, safety boundaries and activation
 checkpoint.
+
+## Automation Studio and the scheduler (checked 2026-10-22)
+
+State in production (read-only checks: Vercel project settings and variable names, `worker_job_runs`, public `GET /api/health`, `GET /api/internal/tick`): there is **no `CRON_SECRET`**,
+no `SCHEDULER_ENABLED`, no `vercel.json`, the tick answers 503, `/api/health` reports `scheduler: "never_ran"`, and the hosted database holds no Automation Studio
+workflow, run, conversation, connection or usage row (so nothing is waiting for the scheduler yet).
+
+**What does and does not work while the scheduler is off**
+
+| Works at request time (no scheduler needed) | Needs the tick (does nothing until it runs) |
+| --- | --- |
+| Building and editing in Auto and Manual mode, the AI builder chat, undo and redo, versions, dry-run tests, publishing, requesting and giving owner approval, switching a workflow on or off, connection setup and its confirmed test, plan checks at every entry point, the inbound webhook **accepting** a call (it starts a run) | `crmEventDispatch` (CRM events reaching workflows), `crmWorkflowRuns` (every step after the first moment of a run: waits, delays, schedule triggers, Slack and HTTP calls, retries), `crmWebhookDeliveries`, `crmWorkflowRecovery`, `studioEntitlementSweep` (a past-due plan becoming expired, the 48-hour grace reminder, pausing a lapsed workspace's workflows, the "your workflows are waiting" notice) |
+
+A plan that is past due still stops being honoured the moment its grace period ends, because every entry point and the engine check the time themselves; what the scheduler adds is the
+status change, the notices and the pause. Core features (native CRM, AI employees and their schedules, n8n / Zapier / Make, webhooks, the API) do not depend on the plan either way.
+
+**Rehearsal evidence (local, isolated database, simulated clock; nothing hosted was touched)**
+
+- `tests/automation-studio-scheduler-rehearsal.test.ts`: the real `POST /api/internal/tick` with the bearer secret and `SCHEDULER_ENABLED=true` and the **real job list**
+  (every registered job ran, none failed). Two synthetic workspaces, one Studio workflow each (task, 2-day wait, team notice, Slack post) and a core CRM workflow in one of them.
+  Verified: events become runs and run once; repeated ticks and two overlapping ticks change nothing; the Slack post happens once per contact and only after the wait; a payment
+  failure with a one-day grace period expires the plan, pauses that workspace's Studio workflow, **holds** its run (never fails it) and leaves its core workflow running; a lapsed
+  workspace makes no outside call; a verified payment brings the plan back and nothing switches itself on; when a person turns the workflow back on, its held run is looked at
+  again immediately (found and fixed in this rehearsal: it used to wait out the one-hour hold) and finishes exactly once; no job ends with consecutive failures.
+- `tests/crm-fair-claiming.test.ts`: due runs are leased fairly across workspaces (oldest first, one per workspace per round, a lone workspace still gets the whole tick), a paused
+  workflow's runs are never leased, and two overlapping ticks never lease one run twice.
+- `tests/automation-studio-templates-run.test.ts`: all 20 templates, started through the same runner, run to completion (a 30-day wait finishes on the simulated clock), leave a
+  readable row for every step, and reach outside only as their card says.
+
+**Not yet proven, and why**: a tick against the hosted database (it would start every enabled job for real), the production Vercel cron cadence (needs the plan tier), and a real Slack delivery
+(needs a founder-provided test webhook).
+
+**Exact steps to switch the scheduler on for Automation Studio** (each one needs the founder's approval; none is done by the code)
+
+1. The Vercel team is on the **Hobby** plan (read from the team record on 2026-10-22), which allows a cron job to run only once a day: every wait would be up to a day late. Use Vercel Pro, or the Supabase `pg_cron` + `pg_net`
+   route described above, or an external cron that can POST every one to two minutes. (Also check the route's 120-second `maxDuration` against the plan's function limit.)
+2. Generate `CRON_SECRET` (at least 24 random characters) and add it to **Production** only. Add `vercel.json` with the `crons` entry above (path `/api/internal/tick`) in a reviewed commit. Leave
+   `SCHEDULER_ENABLED` unset. Deploy. Check: `GET https://www.iacquire.online/api/internal/tick` without the header answers 401 and with it answers 503 ("Scheduler is disabled").
+3. Confirm every provider kill switch is still `false` (`GHL_WRITES_ENABLED`, `RESEND_WRITES_ENABLED`, `TWILIO_WRITES_ENABLED`, `META_WHATSAPP_WRITES_ENABLED`, `N8N_ACTIONS_ENABLED`) and that
+   `WORKFORCE_SCHEDULES_ENABLED`, `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` are unset: switching the tick on starts **every** registered job, not only the Studio ones.
+4. Run the pending-work query from the release checklist; today it is expected to return zero rows for workflows, runs, messages and webhooks.
+5. Set `SCHEDULER_ENABLED=true`, redeploy, and watch the first three ticks in `/admin/health` (`scheduler` should read `fresh`; no job should show a failure).
+6. Pilot Automation Studio with **one synthetic workspace** that has the plan: build a template that stays inside iAcquire (for example *Speed to lead*), add a Slack connection with a webhook
+   you control and send its confirmed test, switch on the *New lead alert* template, create one contact, and confirm the Slack message arrives once and the run ends `completed`. Only then
+   invite a real client.
+7. Rollback at any time: set `SCHEDULER_ENABLED=false` (and redeploy) or delete `CRON_SECRET`. Runs wait; nothing is lost.
 
 ## Activation checklist (requires approval)
 
