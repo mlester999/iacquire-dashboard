@@ -8,7 +8,9 @@ commands, file paths, model credentials, or profile names outside the c- namespa
 from __future__ import annotations
 
 import contextlib
+import base64
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -62,6 +64,19 @@ CANARY_PROMPT = "Return only the iAcquire profile initialization marker in your 
 MAX_SOUL_BYTES = 48_000
 MAX_CONFIG_BYTES = 24_000
 MAX_HTTP_BODY = 128_000
+TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
+SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
+REQUIRED_INVENTORY_TOOLS = {"memory", "session_search", "todo_list", "web_extract", "web_search"}
+OPTIONAL_INVENTORY_TOOLS = {"vision_analyze"}
+REVIEWED_TOOLSET_FOR_TOOL = {
+    "memory": "memory",
+    "session_search": "session_search",
+    "todo_list": "todo",
+    "web_extract": "web",
+    "web_search": "web",
+    "vision_analyze": "vision",
+}
+MAX_AUDIT_BYTES = 10 * 1024 * 1024
 
 
 class ProvisioningError(Exception):
@@ -95,6 +110,123 @@ class Manifest:
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _catalog_snapshot(catalog: Any, profile: str, challenge: str, api_key: str) -> str:
+    """Validate the same complete tool-catalog contract used by iAcquireOS and return its stable digest."""
+    if not isinstance(catalog, dict):
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+    if (
+        catalog.get("object") != "list"
+        or catalog.get("platform") != "api_server"
+        or catalog.get("contract") != TOOL_CATALOG_CONTRACT
+        or catalog.get("complete") is not True
+        or catalog.get("explicit_config_present") is not True
+        or catalog.get("challenge") != challenge
+        or not isinstance(catalog.get("enabled_toolsets"), list)
+        or not isinstance(catalog.get("data"), list)
+        or not catalog["data"]
+    ):
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+
+    enabled = catalog["enabled_toolsets"]
+    if any(not isinstance(item, str) or not item for item in enabled) or len(set(enabled)) != len(enabled):
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+    if set(enabled) != SAFE_INVENTORY_TOOLSETS:
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+
+    tools: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    allowed_sources = {"configurable", "recently_shipped", "default_injected", "mcp", "unresolved"}
+    for row in catalog["data"]:
+        if not isinstance(row, dict):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        fn = row.get("function") if isinstance(row.get("function"), dict) else row
+        name = fn.get("name")
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", name) or name in seen:
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        seen.add(name)
+        if not isinstance(fn.get("parameters"), dict):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        provenance = row.get("provenance")
+        if not isinstance(provenance, dict):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        source = provenance.get("source")
+        toolset = provenance.get("toolset")
+        requested = provenance.get("requested_toolsets")
+        source_server = provenance.get("source_server")
+        injected = provenance.get("added_below_explicit_config")
+        available = row.get("available")
+        if (
+            not isinstance(source, str)
+            or source not in allowed_sources
+            or not isinstance(requested, list)
+            or any(not isinstance(item, str) for item in requested)
+            or len(set(requested)) != len(requested)
+            or not isinstance(injected, bool)
+            or not (source_server is None or isinstance(source_server, str))
+            or not (toolset is None or isinstance(toolset, str))
+            or not (available is None or isinstance(available, bool))
+        ):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        # Client profiles permit only explicitly configured, reviewed tools from their expected toolset.
+        if (
+            source != "configurable"
+            or source_server is not None
+            or injected
+            or available is False
+            or name not in REVIEWED_TOOLSET_FOR_TOOL
+            or toolset != REVIEWED_TOOLSET_FOR_TOOL[name]
+            or toolset not in SAFE_INVENTORY_TOOLSETS
+            or toolset not in requested
+        ):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        tools.append({
+            "name": name,
+            "source": source,
+            "toolset": toolset,
+            "sourceServer": source_server,
+            "addedBelowExplicitConfig": injected,
+            "available": available,
+        })
+
+    if not REQUIRED_INVENTORY_TOOLS.issubset(seen) or seen - REQUIRED_INVENTORY_TOOLS - OPTIONAL_INVENTORY_TOOLS:
+        raise ProvisioningError("runtime_tool_inventory_incomplete")
+
+    tools.sort(key=lambda item: item["name"])
+    canonical = {
+        "contract": TOOL_CATALOG_CONTRACT,
+        "profile": profile,
+        "platform": catalog["platform"],
+        "explicitConfigPresent": catalog["explicit_config_present"],
+        "enabledToolsets": sorted(enabled),
+        "tools": tools,
+    }
+    catalog_digest = digest(json.dumps(canonical, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+    expires_at = catalog.get("expires_at")
+    if expires_at is not None:
+        if not isinstance(expires_at, str):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        try:
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise ProvisioningError("runtime_tool_inventory_incomplete") from None
+        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+
+    attestation = catalog.get("attestation")
+    if attestation is not None:
+        if not isinstance(attestation, dict) or attestation.get("algorithm") != "hmac-sha256" or not isinstance(attestation.get("signature"), str):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+        payload = json.dumps(
+            {"contract": TOOL_CATALOG_CONTRACT, "profile": profile, "challenge": challenge, "digest": catalog_digest},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        expected = base64.urlsafe_b64encode(hmac.new(api_key.encode("utf-8"), payload, hashlib.sha256).digest()).decode("ascii").rstrip("=")
+        if not hmac.compare_digest(expected, attestation["signature"]):
+            raise ProvisioningError("runtime_tool_inventory_incomplete")
+    return catalog_digest
 
 
 def _is_uuid(value: Any) -> bool:
@@ -459,61 +591,183 @@ class RestrictedProvisioner:
             raise ProvisioningError("unsafe_hermes_home")
         self.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.state_root, 0o700)
+        self._inventory_digest = ""
         for entry in self.profile_root.iterdir():
-            if entry.is_symlink():
+            if entry.is_symlink() or not entry.is_dir():
                 raise ProvisioningError("unsafe_hermes_home")
-            if entry.is_dir() and entry.name.startswith("iacquire-"):
+            if entry.name == "default":
+                continue
+            if not PROFILE_RE.fullmatch(entry.name):
                 raise ProvisioningError("agency_profile_found")
+            marker = self._read_json_file(entry / ".iacquire-provisioner.json")
+            journal = self._read_json_file(self._journal_path(entry.name))
+            if not self._valid_profile_owner(marker, entry.name) and not self._valid_profile_journal(journal, entry.name):
+                raise ProvisioningError("agency_profile_found")
+            if marker is not None and journal is not None and (
+                marker.get("orgId") != journal.get("orgId")
+                or marker.get("agentId") != journal.get("agentId")
+                or marker.get("profile") != journal.get("profile")
+                or marker.get("gatewayId") != journal.get("gatewayId")
+                or marker.get("sourceProvisionJobId") != journal.get("jobId")
+            ):
+                raise ProvisioningError("profile_ownership_conflict")
 
     def process(self, raw_manifest: Any) -> dict[str, Any]:
-        manifest = parse_manifest(raw_manifest, self.gateway_id)
-        with _profile_lock(self.state_root / (manifest.profile + ".lock")):
-            profile_dir = self._profile_dir(manifest.profile)
-            policy = parse_policy_config(manifest.config_yaml)
-            key = self._prepare_profile(manifest, profile_dir)
-            self._write_soul(profile_dir, manifest.soul)
-            config_path = profile_dir / "config.yaml"
-            _atomic_write(config_path, render_config(config_path, policy, canary=True))
-            self._verify_api_and_soul(manifest, key)
-            deployed_config = render_config(config_path, policy, canary=False)
-            _atomic_write(config_path, deployed_config)
-            self._verify_final_policy(manifest, key)
-            effective_config_hash = digest(config_path.read_bytes())
-            self._write_marker(manifest, profile_dir, effective_config_hash)
-            result = {
-                "ok": True,
-                "jobId": manifest.job_id,
-                "leaseToken": manifest.lease_token,
-                "gatewayId": manifest.gateway_id,
-                "kind": manifest.kind,
-                "orgId": manifest.org_id,
-                "agentId": manifest.agent_id,
-                "profile": manifest.profile,
-                "sourceProvisionJobId": manifest.source_provision_job_id,
-                "configVersionId": manifest.config_version_id,
-                "configVersion": manifest.config_version,
-                "soulSha256": digest((profile_dir / "SOUL.md").read_bytes()),
-                "soulChallengeSha256": digest(manifest.soul_challenge.encode("utf-8")),
-                "policyConfigSha256": manifest.policy_config_sha256,
-                "effectiveConfigSha256": effective_config_hash,
-                "authenticated": True,
-                "identityVerified": True,
-                "effectiveSoulVerified": True,
-                "toolInventoryComplete": True,
-                "toolInventoryDigest": self._inventory_digest,
+        try:
+            manifest = parse_manifest(raw_manifest, self.gateway_id)
+        except ProvisioningError as error:
+            self._append_audit({
+                "at": datetime.now(timezone.utc).isoformat(),
+                "gatewayId": self.gateway_id,
                 "hermesVersion": self.hermes_version,
-            }
-            if manifest.kind == "provision":
-                result["apiKey"] = key
-            return result
+                "outcome": "rejected",
+                "code": error.code,
+            })
+            raise
+        try:
+            with _profile_lock(self.state_root / (manifest.profile + ".lock")):
+                result = self._process_manifest(manifest)
+        except ProvisioningError as error:
+            self._append_audit(self._audit_record(manifest, "failed", error.code))
+            raise
+        except Exception:
+            self._append_audit(self._audit_record(manifest, "failed", "worker_internal_error"))
+            raise ProvisioningError("worker_internal_error") from None
+        self._append_audit(self._audit_record(manifest, "succeeded", effective_config_hash=result["effectiveConfigSha256"]))
+        return result
+
+    def _process_manifest(self, manifest: Manifest) -> dict[str, Any]:
+        profile_dir = self._profile_dir(manifest.profile)
+        policy = parse_policy_config(manifest.config_yaml)
+        key = self._prepare_profile(manifest, profile_dir)
+        self._write_soul(profile_dir, manifest.soul)
+        config_path = profile_dir / "config.yaml"
+        _atomic_write(config_path, render_config(config_path, policy, canary=True))
+        self._verify_api_and_soul(manifest, key)
+        deployed_config = render_config(config_path, policy, canary=False)
+        _atomic_write(config_path, deployed_config)
+        self._verify_final_policy(manifest, key)
+        effective_config_hash = digest(config_path.read_bytes())
+        self._write_marker(manifest, profile_dir, effective_config_hash)
+        result = {
+            "ok": True,
+            "jobId": manifest.job_id,
+            "leaseToken": manifest.lease_token,
+            "gatewayId": manifest.gateway_id,
+            "kind": manifest.kind,
+            "orgId": manifest.org_id,
+            "agentId": manifest.agent_id,
+            "profile": manifest.profile,
+            "sourceProvisionJobId": manifest.source_provision_job_id,
+            "configVersionId": manifest.config_version_id,
+            "configVersion": manifest.config_version,
+            "soulSha256": digest((profile_dir / "SOUL.md").read_bytes()),
+            "soulChallengeSha256": digest(manifest.soul_challenge.encode("utf-8")),
+            "policyConfigSha256": manifest.policy_config_sha256,
+            "effectiveConfigSha256": effective_config_hash,
+            "authenticated": True,
+            "identityVerified": True,
+            "effectiveSoulVerified": True,
+            "toolInventoryComplete": True,
+            "toolInventoryDigest": self._inventory_digest,
+            "hermesVersion": self.hermes_version,
+        }
+        if manifest.kind == "provision":
+            result["apiKey"] = key
+        return result
+
+    def _audit_record(
+        self,
+        manifest: Manifest,
+        outcome: str,
+        code: str | None = None,
+        effective_config_hash: str | None = None,
+    ) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "gatewayId": manifest.gateway_id,
+            "jobId": manifest.job_id,
+            "orgId": manifest.org_id,
+            "agentId": manifest.agent_id,
+            "profile": manifest.profile,
+            "role": manifest.role,
+            "kind": manifest.kind,
+            "sourceProvisionJobId": manifest.source_provision_job_id,
+            "configVersionId": manifest.config_version_id,
+            "configVersion": manifest.config_version,
+            "soulSha256": manifest.soul_sha256,
+            "policyConfigSha256": manifest.policy_config_sha256,
+            "effectiveConfigSha256": effective_config_hash,
+            "hermesVersion": self.hermes_version,
+            "outcome": outcome,
+        }
+        if self._inventory_digest:
+            record["toolInventoryDigest"] = self._inventory_digest
+        if code:
+            record["code"] = code
+        return record
+
+    def _append_audit(self, record: dict[str, Any]) -> None:
+        path = self.state_root / "audit.jsonl"
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(path, flags, 0o600)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode):
+                    raise OSError("audit file is not regular")
+                if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                    raise OSError("audit file owner mismatch")
+                if info.st_size > MAX_AUDIT_BYTES:
+                    raise OSError("audit file size limit reached")
+                if hasattr(os, "fchmod"):
+                    os.fchmod(fd, 0o600)
+                payload = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8") + b"\n"
+                if info.st_size + len(payload) > MAX_AUDIT_BYTES:
+                    raise OSError("audit file size limit reached")
+                remaining = memoryview(payload)
+                while remaining:
+                    written = os.write(fd, remaining)
+                    if written <= 0:
+                        raise OSError("audit append failed")
+                    remaining = remaining[written:]
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            raise ProvisioningError("audit_log_unavailable") from None
 
     @property
     def _inventory_digest(self) -> str:
-        return getattr(self, "__inventory_digest", "")
+        return getattr(self, "_RestrictedProvisioner__inventory_digest", "")
 
     @_inventory_digest.setter
     def _inventory_digest(self, value: str) -> None:
         self.__inventory_digest = value
+
+    def _valid_profile_owner(self, marker: dict[str, Any] | None, profile: str) -> bool:
+        return bool(
+            marker
+            and marker.get("schemaVersion") == 1
+            and marker.get("profile") == profile
+            and marker.get("gatewayId") == self.gateway_id
+            and _is_uuid(marker.get("orgId"))
+            and _is_uuid(marker.get("agentId"))
+            and _is_uuid(marker.get("sourceProvisionJobId"))
+        )
+
+    def _valid_profile_journal(self, journal: dict[str, Any] | None, profile: str) -> bool:
+        return bool(
+            journal
+            and journal.get("schemaVersion") == 1
+            and journal.get("profile") == profile
+            and journal.get("gatewayId") == self.gateway_id
+            and _is_uuid(journal.get("jobId"))
+            and _is_uuid(journal.get("orgId"))
+            and _is_uuid(journal.get("agentId"))
+        )
 
     def _profile_dir(self, name: str) -> Path:
         if not PROFILE_RE.fullmatch(name):
@@ -529,6 +783,8 @@ class RestrictedProvisioner:
         return self.state_root / (profile + ".json")
 
     def _read_json_file(self, path: Path) -> dict[str, Any] | None:
+        if path.is_symlink():
+            raise ProvisioningError("unsafe_profile_path")
         if not path.exists():
             return None
         _require_regular_file(path)
@@ -552,6 +808,7 @@ class RestrictedProvisioner:
                 marker.get("orgId") != manifest.org_id
                 or marker.get("agentId") != manifest.agent_id
                 or marker.get("profile") != manifest.profile
+                or marker.get("gatewayId") != manifest.gateway_id
                 or marker.get("sourceProvisionJobId") != manifest.source_provision_job_id
             ):
                 raise ProvisioningError("profile_ownership_conflict")
@@ -566,6 +823,7 @@ class RestrictedProvisioner:
                 marker.get("orgId") != manifest.org_id
                 or marker.get("agentId") != manifest.agent_id
                 or marker.get("profile") != manifest.profile
+                or marker.get("gatewayId") != manifest.gateway_id
                 or marker.get("sourceProvisionJobId") != manifest.job_id
             ):
                 raise ProvisioningError("profile_ownership_conflict")
@@ -574,7 +832,7 @@ class RestrictedProvisioner:
                 raise ProvisioningError("profile_key_missing")
             return key
         if profile_dir.exists():
-            if not journal or journal.get("jobId") != manifest.job_id or journal.get("orgId") != manifest.org_id or journal.get("agentId") != manifest.agent_id:
+            if not journal or journal.get("jobId") != manifest.job_id or journal.get("orgId") != manifest.org_id or journal.get("agentId") != manifest.agent_id or journal.get("gatewayId") != manifest.gateway_id:
                 raise ProvisioningError("profile_conflict")
         else:
             if journal and journal.get("jobId") != manifest.job_id:
@@ -584,6 +842,7 @@ class RestrictedProvisioner:
                 "jobId": manifest.job_id,
                 "orgId": manifest.org_id,
                 "agentId": manifest.agent_id,
+                "gatewayId": manifest.gateway_id,
                 "profile": manifest.profile,
                 "createdAt": int(time.time()),
             }
@@ -622,6 +881,7 @@ class RestrictedProvisioner:
             "jobId": manifest.job_id,
             "orgId": manifest.org_id,
             "agentId": manifest.agent_id,
+            "gatewayId": manifest.gateway_id,
             "profile": manifest.profile,
         }
         journal["apiKeyWritten"] = True
@@ -630,6 +890,8 @@ class RestrictedProvisioner:
         return key
 
     def _read_api_key(self, path: Path) -> str | None:
+        if path.is_symlink():
+            raise ProvisioningError("unsafe_profile_path")
         if not path.exists():
             return None
         _require_regular_file(path)
@@ -652,6 +914,7 @@ class RestrictedProvisioner:
             "schemaVersion": 1,
             "orgId": manifest.org_id,
             "agentId": manifest.agent_id,
+            "gatewayId": manifest.gateway_id,
             "profile": manifest.profile,
             "sourceProvisionJobId": source_job,
             "lastJobId": manifest.job_id,
@@ -672,7 +935,7 @@ class RestrictedProvisioner:
             raise ProvisioningError("profile_authentication_failed")
         features = caps.get("features") if isinstance(caps.get("features"), dict) else {}
         auth = caps.get("auth") if isinstance(caps.get("auth"), dict) else {}
-        if auth.get("required") is not True or auth.get("type") != "bearer" or features.get("run_submission") is not True:
+        if caps.get("object") != "hermes.api_server.capabilities" or auth.get("required") is not True or auth.get("type") != "bearer" or features.get("run_submission") is not True:
             raise ProvisioningError("profile_api_contract_failed")
         status, models = self.api.json_request(manifest.profile, key, "/v1/models")
         if status != 200 or not isinstance(models, dict) or not isinstance(models.get("data"), list):
@@ -694,9 +957,9 @@ class RestrictedProvisioner:
                 raise ProvisioningError("canary_tool_isolation_failed")
             enabled = entry.get("enabled") is True
             tools = entry.get("tools")
-            if enabled and isinstance(tools, list) and tools:
+            if not isinstance(entry.get("name"), str) or not isinstance(entry.get("enabled"), bool) or not isinstance(tools, list) or any(not isinstance(tool, str) for tool in tools):
                 raise ProvisioningError("canary_tool_isolation_failed")
-            if enabled and tools is None:
+            if enabled and tools:
                 raise ProvisioningError("canary_tool_isolation_failed")
         status, run = self.api.json_request(
             manifest.profile,
@@ -719,34 +982,91 @@ class RestrictedProvisioner:
         entries = toolsets if isinstance(toolsets, list) else toolsets.get("data")
         if not isinstance(entries, list) or not entries:
             raise ProvisioningError("runtime_tool_policy_unverified")
+        enabled_names: set[str] = set()
         for entry in entries:
             if not isinstance(entry, dict):
                 raise ProvisioningError("runtime_tool_policy_unverified")
-            if entry.get("enabled") is True:
-                name = entry.get("name")
-                tools = entry.get("tools")
-                if name not in SAFE_TOOLSETS or not isinstance(tools, list) or not tools:
+            name = entry.get("name")
+            enabled = entry.get("enabled")
+            tools = entry.get("tools")
+            if not isinstance(name, str) or not isinstance(enabled, bool) or not isinstance(tools, list) or any(not isinstance(tool, str) for tool in tools):
+                raise ProvisioningError("runtime_tool_policy_unverified")
+            if enabled:
+                if name not in SAFE_TOOLSETS or not tools or name in enabled_names:
                     raise ProvisioningError("runtime_tool_policy_unverified")
-        challenge = secrets.token_hex(24)
-        status, catalog = self.api.json_request(
-            manifest.profile,
-            key,
-            "/v1/tools?platform=api_server",
-            extra_headers={"X-Hermes-Inventory-Challenge": challenge},
-        )
-        if status != 200 or not isinstance(catalog, dict):
+                enabled_names.add(name)
+                if any(tool not in REVIEWED_TOOLSET_FOR_TOOL for tool in tools):
+                    raise ProvisioningError("runtime_tool_policy_unverified")
+        if enabled_names != SAFE_INVENTORY_TOOLSETS:
+            raise ProvisioningError("runtime_tool_policy_unverified")
+
+        stable_digest: str | None = None
+        for _ in range(2):
+            challenge = secrets.token_urlsafe(24)
+            status, catalog = self.api.json_request(
+                manifest.profile,
+                key,
+                "/v1/tools?platform=api_server",
+                extra_headers={"X-Hermes-Inventory-Challenge": challenge},
+            )
+            if status != 200:
+                raise ProvisioningError("runtime_tool_inventory_incomplete")
+            current_digest = _catalog_snapshot(catalog, manifest.profile, challenge, key)
+            if stable_digest is not None and not hmac.compare_digest(stable_digest, current_digest):
+                raise ProvisioningError("runtime_tool_inventory_incomplete")
+            stable_digest = current_digest
+        if stable_digest is None:
             raise ProvisioningError("runtime_tool_inventory_incomplete")
-        if (
-            catalog.get("platform") != "api_server"
-            or catalog.get("complete") is not True
-            or catalog.get("explicit_config_present") is not True
-            or catalog.get("challenge") != challenge
-            or not isinstance(catalog.get("tools"), list)
-        ):
-            raise ProvisioningError("runtime_tool_inventory_incomplete")
-        self._inventory_digest = digest(
-            json.dumps(catalog, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        )
+        self._inventory_digest = stable_digest
+
+
+def _load_service_token() -> str:
+    token = os.environ.get("IACQUIRE_PROVISIONER_TOKEN", "")
+    token_file = os.environ.get("IACQUIRE_PROVISIONER_TOKEN_FILE", "")
+    if bool(token) == bool(token_file):
+        raise ProvisioningError("provisioner_credentials_missing")
+    if token_file:
+        path = Path(token_file)
+        try:
+            if not path.is_absolute() or path.resolve(strict=True) != path:
+                raise OSError("unsafe token path")
+            flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(path, flags)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_size > 4096:
+                    raise OSError("unsafe token file")
+                if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                    raise OSError("token file owner mismatch")
+                if os.name != "nt" and info.st_mode & 0o077:
+                    raise OSError("token file permissions are too broad")
+                chunks: list[bytes] = []
+                total = 0
+                while total <= 4096:
+                    chunk = os.read(fd, min(4097 - total, 1024))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    total += len(chunk)
+                raw = b"".join(chunks)
+                if len(raw) > 4096:
+                    raise OSError("token file too large")
+            finally:
+                os.close(fd)
+            token = raw.decode("ascii")
+            if token.endswith("\n"):
+                token = token[:-1]
+                if token.endswith("\r"):
+                    token = token[:-1]
+            if "\n" in token or "\r" in token:
+                raise OSError("invalid token file format")
+        except (OSError, UnicodeDecodeError, ValueError):
+            raise ProvisioningError("provisioner_credentials_missing") from None
+    if len(token) < 32 or len(token) > 512 or any(ord(char) < 0x21 or ord(char) > 0x7e for char in token):
+        raise ProvisioningError("provisioner_credentials_missing")
+    return token
 
 
 def _validate_runtime() -> tuple[Path, Path, str, str, str, str]:
@@ -760,10 +1080,10 @@ def _validate_runtime() -> tuple[Path, Path, str, str, str, str]:
     if not cli.is_absolute() or not cli.is_file():
         raise ProvisioningError("hermes_cli_unavailable")
     portal_url = _validate_portal_origin(os.environ.get("IACQUIRE_PROVISIONER_URL", ""))
-    token = os.environ.get("IACQUIRE_PROVISIONER_TOKEN", "")
+    token = _load_service_token()
     gateway_id = os.environ.get("IACQUIRE_PROVISIONER_GATEWAY_ID", "")
     api_base = os.environ.get("HERMES_PROVISIONER_API_BASE", "http://127.0.0.1:8642")
-    if len(token) < 32 or not _is_uuid(gateway_id):
+    if not _is_uuid(gateway_id):
         raise ProvisioningError("provisioner_credentials_missing")
     api = HermesApi(api_base)
     _sanitize_worker_environment(home, api_base)

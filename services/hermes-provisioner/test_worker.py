@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
+import hmac
 import os
 import subprocess
 import tempfile
@@ -11,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from worker import ProvisioningError, RestrictedProvisioner, _sanitize_worker_environment, _validate_portal_origin, digest, parse_manifest
+from worker import ProvisioningError, RestrictedProvisioner, _load_service_token, _sanitize_worker_environment, _validate_portal_origin, digest, parse_manifest
 
 
 BLOCKED = [
@@ -89,6 +92,7 @@ class FakeHermesApi:
         self.home = home
         self.challenge = ""
         self.paths: list[str] = []
+        self.bad_signature = False
 
     def json_request(
         self,
@@ -101,7 +105,7 @@ class FakeHermesApi:
     ):
         self.paths.append(path)
         if path == "/v1/capabilities":
-            return 200, {"auth": {"required": True, "type": "bearer"}, "features": {"run_submission": True}}
+            return 200, {"object": "hermes.api_server.capabilities", "auth": {"required": True, "type": "bearer"}, "features": {"run_submission": True}}
         if path == "/v1/models":
             return 200, {"data": [{"id": profile, "owned_by": "hermes", "parent": None, "root": profile}]}
         if path == "/v1/toolsets":
@@ -109,18 +113,78 @@ class FakeHermesApi:
             config_text = config.read_text(encoding="utf-8") if config.exists() else ""
             if "web" not in config_text:
                 return 200, [{"name": "no_mcp", "enabled": False, "tools": []}]
-            return 200, [{"name": "web", "enabled": True, "tools": ["web_search"]}]
+            return 200, [
+                {"name": "memory", "enabled": True, "tools": ["memory"]},
+                {"name": "session_search", "enabled": True, "tools": ["session_search"]},
+                {"name": "todo", "enabled": True, "tools": ["todo_list"]},
+                {"name": "vision", "enabled": True, "tools": ["vision_analyze"]},
+                {"name": "web", "enabled": True, "tools": ["web_extract", "web_search"]},
+            ]
         if path == "/v1/runs" and method == "POST":
             self.challenge = body.get("session_id", "").split("-")[-1]
             return 202, {"run_id": "run-test"}
         if path == "/v1/tools?platform=api_server":
             challenge = (extra_headers or {}).get("X-Hermes-Inventory-Challenge", "")
-            return 200, {
+            entries = [
+                ("memory", "memory"),
+                ("session_search", "session_search"),
+                ("todo_list", "todo"),
+                ("web_extract", "web"),
+                ("web_search", "web"),
+                ("vision_analyze", "vision"),
+            ]
+            rows = [
+                {
+                    "function": {"name": name, "parameters": {}},
+                    "available": True,
+                    "provenance": {
+                        "source": "configurable",
+                        "toolset": toolset,
+                        "requested_toolsets": [toolset],
+                        "source_server": None,
+                        "added_below_explicit_config": False,
+                    },
+                }
+                for name, toolset in entries
+            ]
+            canonical_tools = [
+                {
+                    "name": name,
+                    "source": "configurable",
+                    "toolset": toolset,
+                    "sourceServer": None,
+                    "addedBelowExplicitConfig": False,
+                    "available": True,
+                }
+                for name, toolset in entries
+            ]
+            canonical = {
+                "contract": "hermes.api_server.tool_catalog.v1",
+                "profile": profile,
                 "platform": "api_server",
+                "explicitConfigPresent": True,
+                "enabledToolsets": ["memory", "session_search", "todo", "vision", "web"],
+                "tools": sorted(canonical_tools, key=lambda row: row["name"]),
+            }
+            catalog_digest = digest(json.dumps(canonical, separators=(",", ":")).encode())
+            signed_payload = json.dumps(
+                {"contract": "hermes.api_server.tool_catalog.v1", "profile": profile, "challenge": challenge, "digest": catalog_digest},
+                separators=(",", ":"),
+            ).encode()
+            signature = base64.urlsafe_b64encode(hmac.new(key.encode(), signed_payload, hashlib.sha256).digest()).decode().rstrip("=")
+            if self.bad_signature:
+                signature = "invalid-signature"
+            return 200, {
+                "object": "list",
+                "platform": "api_server",
+                "contract": "hermes.api_server.tool_catalog.v1",
                 "complete": True,
                 "explicit_config_present": True,
+                "enabled_toolsets": ["memory", "session_search", "todo", "vision", "web"],
+                "data": rows,
                 "challenge": challenge,
-                "tools": [{"name": "web_search"}],
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+                "attestation": {"algorithm": "hmac-sha256", "signature": signature, "key_id": "profile-key"},
             }
         raise AssertionError("unexpected Hermes request " + path)
 
@@ -171,6 +235,9 @@ class RestrictedProvisionerTests(unittest.TestCase):
         env_text = (profile / ".env").read_text(encoding="utf-8")
         marker = json.loads((profile / ".iacquire-provisioner.json").read_text(encoding="utf-8"))
         config = (profile / "config.yaml").read_text(encoding="utf-8")
+        audit_path = self.home / "iacquire-provisioner-state" / "audit.jsonl"
+        audit_text = audit_path.read_text(encoding="utf-8")
+        audit = json.loads(audit_text.splitlines()[0])
 
         self.assertTrue(result["effectiveSoulVerified"])
         self.assertTrue(result["toolInventoryComplete"])
@@ -184,6 +251,13 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertIn("--no-skills", self.commands[0])
         self.assertNotIn("--clone", self.commands[0])
         self.assertNotIn("API_SERVER_KEY", json.dumps(marker))
+        self.assertEqual(marker["gatewayId"], self.gateway_id)
+        self.assertNotIn(result["apiKey"], audit_text)
+        self.assertNotIn(self.manifest["soul"], audit_text)
+        self.assertNotIn(self.manifest["leaseToken"], audit_text)
+        self.assertEqual(audit["outcome"], "succeeded")
+        self.assertEqual(audit["effectiveConfigSha256"], result["effectiveConfigSha256"])
+        self.assertEqual(audit["toolInventoryDigest"], result["toolInventoryDigest"])
         self.assertNotIn("IACQUIRE_PROVISIONER_TOKEN", self.command_envs[0])
         self.assertNotIn("OPENAI_API_KEY", self.command_envs[0])
         self.assertEqual(self.command_envs[0]["HERMES_HOME"], str(self.home))
@@ -192,6 +266,7 @@ class RestrictedProvisionerTests(unittest.TestCase):
         if os.name != "nt":
             self.assertEqual((profile / ".env").stat().st_mode & 0o777, 0o600)
             self.assertEqual(profile.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(audit_path.stat().st_mode & 0o777, 0o600)
 
     def test_retry_is_idempotent_and_does_not_rotate_the_profile_key(self):
         first = self.provisioner.process(self.manifest)
@@ -204,6 +279,34 @@ class RestrictedProvisionerTests(unittest.TestCase):
         with self.assertRaisesRegex(ProvisioningError, "profile_conflict"):
             self.provisioner.process(self.manifest)
         self.assertEqual(self.commands, [])
+
+    def test_runtime_home_rejects_unowned_and_internal_profiles(self):
+        (self.home / "profiles" / "operations-manager").mkdir()
+        with self.assertRaisesRegex(ProvisioningError, "agency_profile_found"):
+            RestrictedProvisioner(
+                home=self.home,
+                hermes_cli=Path("/opt/hermes/bin/hermes"),
+                api=self.api,
+                gateway_id=self.gateway_id,
+                hermes_version="hermes-test",
+                run_command=self.run_command,
+            )
+
+    def test_invalid_inventory_signature_fails_closed_and_is_audited_for_retry(self):
+        self.api.bad_signature = True
+        with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+            self.provisioner.process(self.manifest)
+        profile = self.home / "profiles" / self.manifest["profile"]
+        self.assertTrue(profile.exists())
+        self.assertFalse((profile / ".iacquire-provisioner.json").exists())
+        failure = json.loads((self.home / "iacquire-provisioner-state" / "audit.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(failure["outcome"], "failed")
+        self.assertEqual(failure["code"], "runtime_tool_inventory_incomplete")
+
+        self.api.bad_signature = False
+        result = self.provisioner.process(self.manifest)
+        self.assertTrue(result["toolInventoryComplete"])
+        self.assertEqual(len(self.commands), 1)
 
     def test_interrupted_cli_creation_recovers_only_from_its_durable_intent(self):
         calls = 0
@@ -228,7 +331,15 @@ class RestrictedProvisionerTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ProvisioningError, "profile_create_failed"):
             interrupted.process(self.manifest)
-        recovered = interrupted.process(self.manifest)
+        restarted = RestrictedProvisioner(
+            home=self.home,
+            hermes_cli=Path("/opt/hermes/bin/hermes"),
+            api=self.api,
+            gateway_id=self.gateway_id,
+            hermes_version="hermes v0.21.5-test",
+            run_command=create_then_interrupt,
+        )
+        recovered = restarted.process(self.manifest)
         self.assertTrue(recovered["effectiveSoulVerified"])
         self.assertEqual(calls, 1)
 
@@ -285,6 +396,7 @@ class RestrictedProvisionerTests(unittest.TestCase):
         with patch.dict(os.environ, {
             "PATH": "worker-path",
             "IACQUIRE_PROVISIONER_TOKEN": "portal-token",
+            "IACQUIRE_PROVISIONER_TOKEN_FILE": "C:\\secrets\\provisioner-token",
             "OPENAI_API_KEY": "model-key",
             "DATABASE_URL": "database-secret",
         }, clear=True):
@@ -293,8 +405,24 @@ class RestrictedProvisionerTests(unittest.TestCase):
             self.assertEqual(os.environ.get("HERMES_HOME"), str(self.home))
             self.assertEqual(os.environ.get("HERMES_PROVISIONER_API_BASE"), "http://127.0.0.1:8642")
             self.assertNotIn("IACQUIRE_PROVISIONER_TOKEN", os.environ)
+            self.assertNotIn("IACQUIRE_PROVISIONER_TOKEN_FILE", os.environ)
             self.assertNotIn("OPENAI_API_KEY", os.environ)
             self.assertNotIn("DATABASE_URL", os.environ)
+
+    def test_mounted_service_token_is_read_from_a_private_regular_file(self):
+        token_path = Path(self.temp.name) / "service-token"
+        token_path.write_text("mounted-service-token-abcdefghijklmnopqrstuvwxyz\n", encoding="ascii")
+        if os.name != "nt":
+            token_path.chmod(0o600)
+        with patch.dict(os.environ, {
+            "IACQUIRE_PROVISIONER_TOKEN_FILE": str(token_path),
+        }, clear=True):
+            self.assertEqual(_load_service_token(), "mounted-service-token-abcdefghijklmnopqrstuvwxyz")
+        with patch.dict(os.environ, {
+            "IACQUIRE_PROVISIONER_TOKEN": "environment-service-token-abcdefghijklmnopqrstuvwxyz",
+            "IACQUIRE_PROVISIONER_TOKEN_FILE": str(token_path),
+        }, clear=True), self.assertRaisesRegex(ProvisioningError, "provisioner_credentials_missing"):
+            _load_service_token()
 
 
 if __name__ == "__main__":

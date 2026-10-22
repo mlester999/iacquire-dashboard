@@ -28,6 +28,7 @@ const failureCodes = [
   "runtime_tool_inventory_incomplete", "invalid_profile", "invalid_profile_route",
   "unsafe_hermes_api_origin", "http_response_too_large", "http_unavailable",
   "stale_configuration", "identity_mismatch",
+  "audit_log_unavailable", "worker_internal_error",
 ] as const;
 
 const failureSchema = z.object({
