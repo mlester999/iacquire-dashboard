@@ -66,8 +66,8 @@ services:
     command:
       - >-
         mkdir -p /opt/data/iacquire-provisioner-state /opt/data/profiles;
-        chown 10000:10000 /opt/data /opt/data/iacquire-provisioner-state;
-        chmod 0700 /opt/data/iacquire-provisioner-state
+        chown 10000:10000 /opt/data /opt/data/iacquire-provisioner-state /opt/data/profiles;
+        chmod 0700 /opt/data/iacquire-provisioner-state /opt/data/profiles
     network_mode: none
     user: "0:0"
     read_only: true

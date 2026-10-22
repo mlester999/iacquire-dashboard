@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 import uuid
+import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -110,6 +111,7 @@ class FakeHermesApi:
         self.incomplete_catalog = False
         self.legacy_resolver_catalog = False
         self.advertise_tools_endpoint = True
+        self.tools_endpoint: Any = ["GET", "/v1/tools"]
         self.omit_tool: str | None = None
         self.catalog_reads = 0
         self.catalog_challenges: list[str] = []
@@ -118,6 +120,9 @@ class FakeHermesApi:
         self.catalog_digest = ""
         self.profile_discovery_pending = 0
         self.profile_capability_reads = 0
+        self.toolset_reads = 0
+        self.canary_policy_pending_reads = 0
+        self.final_policy_pending_reads = 0
 
     def json_request(
         self,
@@ -135,7 +140,7 @@ class FakeHermesApi:
                 if self.profile_discovery_pending > 0:
                     self.profile_discovery_pending -= 1
                     return 404, {"error": "profile_not_discovered_yet"}
-            endpoints = {"tools": ["GET", "/v1/tools"]} if self.advertise_tools_endpoint else {}
+            endpoints = {"tools": self.tools_endpoint} if self.advertise_tools_endpoint else {}
             return 200, {
                 "object": "hermes.api_server.capabilities",
                 "auth": {"required": True, "type": "bearer"},
@@ -145,17 +150,31 @@ class FakeHermesApi:
         if path == "/v1/models":
             return 200, {"data": [{"id": profile, "owned_by": "hermes", "parent": None, "root": profile}]}
         if path == "/v1/toolsets":
+            self.toolset_reads += 1
             config = self.home / "profiles" / profile / "config.yaml"
             config_text = config.read_text(encoding="utf-8") if config.exists() else ""
-            if "web" not in config_text:
-                return 200, [{"name": "no_mcp", "enabled": False, "tools": []}]
-            return 200, [
+            config_value = yaml.safe_load(config_text) if config_text else {}
+            configured_toolsets = (config_value or {}).get("platform_toolsets", {}).get("api_server", [])
+            is_canary = configured_toolsets == ["no_mcp"]
+            canary_toolsets = [{"name": "no_mcp", "enabled": False, "tools": []}]
+            final_toolsets = [
                 {"name": "memory", "enabled": True, "tools": ["memory"]},
                 {"name": "session_search", "enabled": True, "tools": ["session_search"]},
                 {"name": "todo", "enabled": True, "tools": ["todo_list"]},
                 {"name": "vision", "enabled": True, "tools": ["vision_analyze"]},
                 {"name": "web", "enabled": True, "tools": ["web_extract", "web_search"]},
             ]
+            if is_canary and self.canary_policy_pending_reads:
+                self.canary_policy_pending_reads -= 1
+                return 200, final_toolsets
+            if not is_canary and self.final_policy_pending_reads:
+                self.final_policy_pending_reads -= 1
+                return 200, canary_toolsets
+            if is_canary:
+                return 200, canary_toolsets
+            if "web" not in config_text:
+                return 200, [{"name": "no_mcp", "enabled": False, "tools": []}]
+            return 200, final_toolsets
         if path == "/v1/runs" and method == "POST":
             self.challenge = body.get("session_id", "").split("-")[-1]
             return 202, {"run_id": "run-test"}
@@ -336,6 +355,30 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertTrue(result["effectiveSoulVerified"])
         self.assertEqual(self.api.profile_capability_reads, 5)
         self.assertEqual(sleep.call_count, 2)
+
+    def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
+        self.api.canary_policy_pending_reads = 2
+        with patch("worker.time.sleep"):
+            result = self.provisioner.process(self.manifest)
+
+        self.assertTrue(result["effectiveSoulVerified"])
+        self.assertEqual(self.api.canary_policy_pending_reads, 0)
+        self.assertGreaterEqual(self.api.toolset_reads, 4)
+
+    def test_final_policy_waits_for_gateway_to_apply_generated_config(self):
+        self.api.final_policy_pending_reads = 2
+        with patch("worker.time.sleep"):
+            result = self.provisioner.process(self.manifest)
+
+        self.assertTrue(result["toolInventoryComplete"])
+        self.assertEqual(self.api.final_policy_pending_reads, 0)
+        self.assertGreaterEqual(self.api.toolset_reads, 4)
+
+    def test_final_policy_sync_timeout_fails_closed(self):
+        self.api.final_policy_pending_reads = 1
+        with patch("worker.PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS", 0):
+            with self.assertRaisesRegex(ProvisioningError, "runtime_tool_policy_unverified"):
+                self.provisioner.process(self.manifest)
         self.assertEqual(self.api.paths.count("/v1/runs"), 1)
 
     def test_profile_discovery_timeout_keeps_durable_creation_for_retry(self):
@@ -417,6 +460,26 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertEqual(self.api.paths[1:], [path for path in self.api.paths[1:] if path.startswith("/v1/tools?platform=api_server")])
         self.assertEqual(len(set(self.api.catalog_query_challenges)), 2)
         self.assertTrue(all("no-store" in value for value in self.api.catalog_cache_controls))
+
+    def test_runtime_preflight_accepts_v0223_object_endpoint_descriptor(self):
+        self.api.tools_endpoint = {"method": "GET", "path": "/v1/tools"}
+        catalog_digest = verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+        self.assertEqual(len(catalog_digest), 64)
+        self.assertEqual(self.api.catalog_reads, 2)
+
+    def test_runtime_preflight_rejects_malformed_endpoint_descriptors(self):
+        malformed = [
+            {"method": "POST", "path": "/v1/tools"},
+            {"method": "GET", "path": "/v1/tools", "extra": True},
+            {"method": "GET", "path": "/v1/toolsets"},
+            ["GET", "/v1/tools", "extra"],
+        ]
+        for endpoint in malformed:
+            with self.subTest(endpoint=endpoint):
+                self.api.tools_endpoint = endpoint
+                with self.assertRaisesRegex(ProvisioningError, "runtime_tool_inventory_incomplete"):
+                    verify_complete_catalog(self.api, "default", "a" * 64, default_profile=True)
+                self.assertEqual(self.api.catalog_reads, 0)
 
     def test_native_catalog_requires_advertised_route_challenge_contract_and_safe_inventory(self):
         self.api.advertise_tools_endpoint = False

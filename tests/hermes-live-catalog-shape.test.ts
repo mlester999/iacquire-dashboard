@@ -26,6 +26,7 @@ let server: http.Server;
 let baseUrl: string;
 let tools: Row[] = TOOLS;
 let advertiseToolsEndpoint = true;
+let toolsEndpoint: unknown = ["GET", "/v1/tools"];
 let echoChallenge = true;
 let completeCatalog = true;
 let omitNativeMetadata = false;
@@ -84,7 +85,7 @@ beforeAll(async () => {
         model: PROFILE,
         auth: { type: "bearer", required: true },
         features: { run_submission: true, run_status: true, run_events_sse: true },
-        endpoints: advertiseToolsEndpoint ? { tools: ["GET", "/v1/tools"] } : {},
+        endpoints: advertiseToolsEndpoint ? { tools: toolsEndpoint } : {},
       });
     }
     if (req.method === "GET" && path === "/v1/tools") {
@@ -166,6 +167,32 @@ describe("the deployed live catalog shape", () => {
       await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).rejects.toMatchObject({ code: "contract_unavailable" });
     } finally {
       advertiseToolsEndpoint = true;
+    }
+  });
+
+  it("accepts Hermes v0.22.3's exact object-form tools endpoint descriptor", async () => {
+    toolsEndpoint = { method: "GET", path: "/v1/tools" };
+    try {
+      const snapshot = await verifyToolInventory(conn(), { stabilityReads: 2 });
+      expect(snapshot.contract).toBe("hermes.api_server.tool_catalog.v1");
+      expect(snapshot.toolCount).toBe(6);
+    } finally {
+      toolsEndpoint = ["GET", "/v1/tools"];
+    }
+  });
+
+  it("rejects malformed object-form tools endpoint descriptors", async () => {
+    try {
+      for (const endpoint of [
+        { method: "POST", path: "/v1/tools" },
+        { method: "GET", path: "/v1/tools", extra: true },
+        { method: "GET", path: "/v1/toolsets" },
+      ]) {
+        toolsEndpoint = endpoint;
+        await expect(verifyToolInventory(conn(), { stabilityReads: 2 })).rejects.toMatchObject({ code: "contract_unavailable" });
+      }
+    } finally {
+      toolsEndpoint = ["GET", "/v1/tools"];
     }
   });
 

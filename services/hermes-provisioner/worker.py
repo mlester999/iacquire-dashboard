@@ -64,8 +64,10 @@ CANARY_PROMPT = "Return only the iAcquire profile initialization marker in your 
 MAX_SOUL_BYTES = 48_000
 MAX_CONFIG_BYTES = 24_000
 MAX_HTTP_BODY = 128_000
-PROFILE_DISCOVERY_TIMEOUT_SECONDS = 40
+PROFILE_DISCOVERY_TIMEOUT_SECONDS = 90
 PROFILE_DISCOVERY_RETRY_INTERVAL_SECONDS = 1
+PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS = 90
+PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS = 1
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
 MODEL_API_KEY_ENV_NAMES = {
@@ -606,7 +608,14 @@ def verify_complete_catalog(api: HermesApi, profile: str, key: str, *, default_p
         raise ProvisioningError("runtime_tool_inventory_incomplete")
     endpoints = capabilities.get("endpoints")
     tools_endpoint = endpoints.get("tools") if isinstance(endpoints, dict) else None
-    if tools_endpoint != ["GET", "/v1/tools"]:
+    array_endpoint = tools_endpoint == ["GET", "/v1/tools"]
+    object_endpoint = (
+        isinstance(tools_endpoint, dict)
+        and set(tools_endpoint) == {"method", "path"}
+        and tools_endpoint.get("method") == "GET"
+        and tools_endpoint.get("path") == "/v1/tools"
+    )
+    if not (array_endpoint or object_endpoint):
         raise ProvisioningError("runtime_tool_inventory_incomplete")
     stable_digest: str | None = None
     for _ in range(2):
@@ -1036,21 +1045,7 @@ class RestrictedProvisioner:
         ]
         if manifest.profile not in identities:
             raise ProvisioningError("profile_identity_failed")
-        status, toolsets = self.api.json_request(manifest.profile, key, "/v1/toolsets")
-        if status != 200 or not isinstance(toolsets, (list, dict)):
-            raise ProvisioningError("canary_tool_isolation_failed")
-        entries = toolsets if isinstance(toolsets, list) else toolsets.get("data")
-        if not isinstance(entries, list):
-            raise ProvisioningError("canary_tool_isolation_failed")
-        for entry in entries:
-            if not isinstance(entry, dict):
-                raise ProvisioningError("canary_tool_isolation_failed")
-            enabled = entry.get("enabled") is True
-            tools = entry.get("tools")
-            if not isinstance(entry.get("name"), str) or not isinstance(entry.get("enabled"), bool) or not isinstance(tools, list) or any(not isinstance(tool, str) for tool in tools):
-                raise ProvisioningError("canary_tool_isolation_failed")
-            if enabled and tools:
-                raise ProvisioningError("canary_tool_isolation_failed")
+        self._wait_for_effective_toolsets(manifest, key, expected=set(), failure_code="canary_tool_isolation_failed")
         status, run = self.api.json_request(
             manifest.profile,
             key,
@@ -1069,8 +1064,9 @@ class RestrictedProvisioner:
         """Wait for Hermes' shared multiplexer to discover a newly published profile directory.
 
         The worker deliberately has a separate Hermes home from the gateway, so the CLI's local
-        control-socket notification cannot reach that gateway. Hermes rescans profiles periodically;
-        poll the profile-scoped read-only capabilities route through that window before running checks.
+        control-socket notification cannot reach that gateway. Hermes' supported profile watcher
+        rescans every 30 seconds; poll the profile-scoped capabilities route through that window
+        before running checks.
         """
         deadline = time.monotonic() + PROFILE_DISCOVERY_TIMEOUT_SECONDS
         while True:
@@ -1111,31 +1107,82 @@ class RestrictedProvisioner:
                 raise ProvisioningError("profile_gateway_discovery_timeout")
             time.sleep(min(PROFILE_DISCOVERY_RETRY_INTERVAL_SECONDS, remaining))
 
-    def _verify_final_policy(self, manifest: Manifest, key: str) -> None:
-        status, toolsets = self.api.json_request(manifest.profile, key, "/v1/toolsets")
-        if status != 200 or not isinstance(toolsets, (list, dict)):
-            raise ProvisioningError("runtime_tool_policy_unverified")
-        entries = toolsets if isinstance(toolsets, list) else toolsets.get("data")
-        if not isinstance(entries, list) or not entries:
-            raise ProvisioningError("runtime_tool_policy_unverified")
-        enabled_names: set[str] = set()
-        for entry in entries:
-            if not isinstance(entry, dict):
-                raise ProvisioningError("runtime_tool_policy_unverified")
-            name = entry.get("name")
-            enabled = entry.get("enabled")
-            tools = entry.get("tools")
-            if not isinstance(name, str) or not isinstance(enabled, bool) or not isinstance(tools, list) or any(not isinstance(tool, str) for tool in tools):
-                raise ProvisioningError("runtime_tool_policy_unverified")
-            if enabled:
-                if name not in SAFE_TOOLSETS or not tools or name in enabled_names:
-                    raise ProvisioningError("runtime_tool_policy_unverified")
-                enabled_names.add(name)
-                if any(tool not in REVIEWED_TOOLSET_FOR_TOOL for tool in tools):
-                    raise ProvisioningError("runtime_tool_policy_unverified")
-        if enabled_names != SAFE_INVENTORY_TOOLSETS:
-            raise ProvisioningError("runtime_tool_policy_unverified")
+    def _wait_for_effective_toolsets(
+        self,
+        manifest: Manifest,
+        key: str,
+        expected: set[str],
+        failure_code: str,
+    ) -> None:
+        """Wait for the gateway's supported config watcher to apply the on-disk tool policy.
 
+        Profile creation and config writes happen in a sidecar with a separate Hermes home. It
+        cannot signal the gateway's private control socket, so a one-shot read can observe the
+        previous policy for up to the gateway's 30-second rescan interval. Only a well-formed,
+        safe subset of the reviewed toolsets is treated as propagation in progress; malformed or
+        unsafe runtime state fails immediately.
+        """
+        deadline = time.monotonic() + PROFILE_CONFIG_SYNC_TIMEOUT_SECONDS
+        while True:
+            status: int | None = None
+            toolsets: Any = None
+            try:
+                status, toolsets = self.api.json_request(manifest.profile, key, "/v1/toolsets")
+            except ProvisioningError as error:
+                if error.code != "http_unavailable":
+                    raise
+
+            pending = False
+            if status == 401:
+                raise ProvisioningError("profile_authentication_failed")
+            if status == 200:
+                entries = toolsets if isinstance(toolsets, list) else toolsets.get("data") if isinstance(toolsets, dict) else None
+                if not isinstance(entries, list):
+                    raise ProvisioningError(failure_code)
+                enabled_names: set[str] = set()
+                seen_names: set[str] = set()
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        raise ProvisioningError(failure_code)
+                    name = entry.get("name")
+                    enabled = entry.get("enabled")
+                    tools = entry.get("tools")
+                    if (
+                        not isinstance(name, str)
+                        or name in seen_names
+                        or not isinstance(enabled, bool)
+                        or not isinstance(tools, list)
+                        or any(not isinstance(tool, str) for tool in tools)
+                    ):
+                        raise ProvisioningError(failure_code)
+                    seen_names.add(name)
+                    if enabled and tools:
+                        if name not in SAFE_TOOLSETS or any(tool not in REVIEWED_TOOLSET_FOR_TOOL for tool in tools):
+                            raise ProvisioningError(failure_code)
+                        enabled_names.add(name)
+                if enabled_names == expected:
+                    return
+                if enabled_names.issubset(SAFE_TOOLSETS):
+                    pending = True
+                else:
+                    raise ProvisioningError(failure_code)
+            elif status in {None, 404, 502, 503, 504}:
+                pending = True
+            else:
+                raise ProvisioningError(failure_code)
+
+            remaining = deadline - time.monotonic()
+            if not pending or remaining <= 0:
+                raise ProvisioningError(failure_code)
+            time.sleep(min(PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS, remaining))
+
+    def _verify_final_policy(self, manifest: Manifest, key: str) -> None:
+        self._wait_for_effective_toolsets(
+            manifest,
+            key,
+            expected=SAFE_INVENTORY_TOOLSETS,
+            failure_code="runtime_tool_policy_unverified",
+        )
         self._inventory_digest = verify_complete_catalog(self.api, manifest.profile, key)
 
 

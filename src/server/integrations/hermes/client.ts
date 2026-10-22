@@ -69,6 +69,26 @@ export interface HermesCapabilities {
   supportsApproval: boolean;
 }
 
+function parseCapabilityEndpoint(raw: unknown): HermesCapabilityEndpoint | null {
+  let method: unknown;
+  let path: unknown;
+
+  if (Array.isArray(raw)) {
+    if (raw.length !== 2) return null;
+    [method, path] = raw;
+  } else if (raw && typeof raw === "object") {
+    const endpoint = raw as Record<string, unknown>;
+    if (Object.keys(endpoint).length !== 2 || !Object.hasOwn(endpoint, "method") || !Object.hasOwn(endpoint, "path")) return null;
+    method = endpoint.method;
+    path = endpoint.path;
+  } else {
+    return null;
+  }
+
+  if (typeof method !== "string" || typeof path !== "string" || !/^[A-Z]+$/.test(method) || !path.startsWith("/")) return null;
+  return { method, path };
+}
+
 export interface StartRunInput {
   input: string;
   instructions?: string;
@@ -154,9 +174,8 @@ export async function getCapabilities(conn: HermesConnection, timeoutMs = 8000):
   const endpoints: Record<string, HermesCapabilityEndpoint> = {};
   if (obj.endpoints && typeof obj.endpoints === "object") {
     for (const [name, raw] of Object.entries(obj.endpoints as Record<string, unknown>)) {
-      if (!Array.isArray(raw) || raw.length !== 2 || typeof raw[0] !== "string" || typeof raw[1] !== "string") continue;
-      if (!/^[A-Z]+$/.test(raw[0]) || !raw[1].startsWith("/")) continue;
-      endpoints[name] = { method: raw[0], path: raw[1] };
+      const endpoint = parseCapabilityEndpoint(raw);
+      if (endpoint) endpoints[name] = endpoint;
     }
   }
   return {
