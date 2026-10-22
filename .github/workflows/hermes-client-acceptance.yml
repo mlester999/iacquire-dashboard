@@ -273,8 +273,15 @@ jobs:
           fi
 
           python3 - "$HERMES_ACCEPTANCE_DIR/results/status.json" <<'PY'
-          import json, sys
+          import json, re, sys
           result = json.load(open(sys.argv[1], encoding="utf-8"))
+          if result.get("result") != "SANDBOX_PASS":
+              failure = result.get("failure")
+              if isinstance(failure, str) and re.fullmatch(r"[a-z0-9_]{1,80}", failure):
+                  print("SANDBOX_ACCEPTANCE_FAILURE_CODE: " + failure)
+              else:
+                  print("SANDBOX_ACCEPTANCE_FAILURE_CODE: unknown")
+              raise SystemExit(1)
           expected = {
               "result": "SANDBOX_PASS",
               "syntheticTenants": 2,
