@@ -3,7 +3,9 @@
 Branch `feat/unified-inbox` (worktree `.data/wt-unified-inbox`, based on master `22c68c2`). Written at the end of Phase 1; see
 [README.md](./README.md) for how it works and [audit.md](./audit.md) for the Phase 0 findings this closes.
 
-> **Nothing here has been pushed, deployed or run against production. Migration 0083 has not been applied to any hosted database. No real customer
+> **Production status (updated 2026-10-22, on the founder's instruction): migrations 0081, 0082 and 0083 were applied to the production database after a verified backup, and the integration branch was pushed to master. The new inbox is OFF
+> for every workspace (`inbox_rollout` is empty); every workspace keeps the previous inbox. See [integration-status.md](./integration-status.md) and [release-verification.md](./release-verification.md). The text below was written before that and describes
+> what was verified in an embedded database with simulated providers. No real customer
 > message was sent and no live provider or model was called at any point.** Everything below is verified in an embedded Postgres (PGlite) with
 > simulated providers and a simulated AI model, in an isolated local QA workspace, unless a row says otherwise.
 

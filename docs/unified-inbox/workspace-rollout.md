@@ -3,7 +3,7 @@
 How the new inbox reaches workspaces one at a time, what that does and does not touch, and how to turn it back. Companion to
 [rollout-plan.md](./rollout-plan.md) (the staged path and the approvals) and [README.md](./README.md) (how the inbox works).
 
-Nothing here has run on a hosted system. Migration `0083` (which adds the rollout table) is **not applied anywhere** and nothing is pushed or deployed.
+**Status (2026-10-22):** migration `0083` (which adds the rollout table) was applied to production, together with `0081` and `0082`, after a verified backup; the table is empty, so **no workspace has the new inbox**. Everything else in this document was verified locally.
 
 ## 1. What it is
 

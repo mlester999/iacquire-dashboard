@@ -6,6 +6,11 @@ It follows the conventions already in this repository: [staging-environment.md](
 [production-scheduler.md](../production-scheduler.md), [workforce-migration-and-release.md](../workforce-migration-and-release.md) and
 [aqi-phase3-staging-acceptance.md](../aqi-phase3-staging-acceptance.md).
 
+> **Update 2026-10-22 (founder instruction: "commit and push to master and do migrations"):** the staging stages (3 and 4) were **skipped by the founder's decision**. Stage 5 was done: a verified backup
+> (`pre-inbox-0081-0083-20261022T061107.dump`, 3,693 TOC entries), a read-only look at production (ledger through 0080, none of the new objects present, no duplicate open provisioning jobs, 3 workspaces and no conversations, nothing queued, no channel on),
+> then `0081`, `0082` and `0083` one at a time with checks after each. Production's ledger now ends at `0083` (78 rows), row counts are unchanged, `inbox_rollout` is empty and has no grants, every public table has row-level security.
+> The integration branch was then pushed to master. **The new inbox is off for every workspace**, so the first deployment is dark by construction (waves W1 to W4 in section 3 have not started). Sections below describe the original plan.
+
 ## 1. Where things stand
 
 | Fact | Source |
