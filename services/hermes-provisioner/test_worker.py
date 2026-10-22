@@ -362,8 +362,11 @@ class RestrictedProvisionerTests(unittest.TestCase):
 
     def test_canary_submission_failure_reports_only_the_http_status(self):
         self.api.run_submission_status = 403
-        with self.assertRaisesRegex(ProvisioningError, "canary_submission_http_403"):
+        self.api.run_submission_error_code = "a" * 64
+        with self.assertRaises(ProvisioningError) as caught:
             self.provisioner.process(self.manifest)
+        self.assertEqual(caught.exception.code, "canary_submission_http_403")
+        self.assertNotIn("a" * 64, str(caught.exception))
 
     def test_canary_submission_reports_only_allowlisted_gateway_error_code(self):
         self.api.run_submission_status = 409
