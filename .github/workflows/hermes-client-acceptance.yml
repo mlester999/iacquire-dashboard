@@ -195,15 +195,18 @@ jobs:
           client_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
-            -f services/hermes-provisioner/compose.acceptance.yaml ps -q hermes-client)"
+            -f services/hermes-provisioner/compose.acceptance.yaml \
+            --profile provisioner --profile acceptance ps -q hermes-client)"
           harness_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
-            -f services/hermes-provisioner/compose.acceptance.yaml ps -q acceptance-harness)"
+            -f services/hermes-provisioner/compose.acceptance.yaml \
+            --profile provisioner --profile acceptance ps -q acceptance-harness)"
           worker_id="$(docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
-            -f services/hermes-provisioner/compose.acceptance.yaml ps -q hermes-provisioner)"
+            -f services/hermes-provisioner/compose.acceptance.yaml \
+            --profile provisioner --profile acceptance ps -q hermes-provisioner)"
           [[ -n "$client_id" && -n "$harness_id" && -n "$worker_id" ]]
 
           python3 - "$client_id" "$harness_id" "$worker_id" "$HERMES_ACCEPTANCE_DIR" <<'PY'
