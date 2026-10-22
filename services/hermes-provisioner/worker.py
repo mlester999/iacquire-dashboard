@@ -613,8 +613,15 @@ class HermesApi:
 def _safe_canary_error_code(event: Any) -> str | None:
     if not isinstance(event, dict):
         return None
-    candidates = [event.get("code"), event.get("error_code")]
-    detail = event.get("error", event.get("message"))
+    fields = [event]
+    if isinstance(event.get("data"), dict):
+        fields.append(event["data"])
+    candidates: list[Any] = []
+    detail: Any = None
+    for row in fields:
+        candidates.extend((row.get("code"), row.get("error_code"), row.get("turn_exit_reason")))
+        if detail is None:
+            detail = row.get("error", row.get("message"))
     if isinstance(detail, dict):
         candidates.extend((detail.get("code"), detail.get("error_code")))
         detail = detail.get("message")

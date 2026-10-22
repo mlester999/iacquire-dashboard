@@ -443,6 +443,12 @@ class RestrictedProvisionerTests(unittest.TestCase):
         self.assertNotIn(classified_secret, str(classified_caught.exception))
         self.assertNotIn("synthetic-provider-secret", str(classified_caught.exception))
 
+        exit_response = EventResponse({"turn_exit_reason": "provider_resolution_failed"})
+        with patch.object(api.http.opener, "open", return_value=exit_response):
+            with self.assertRaises(ProvisioningError) as exit_caught:
+                api.read_events("c-northwind-0123456789ab-lead-hunter", "synthetic-key", "run-4")
+        self.assertEqual(exit_caught.exception.code, "canary_failed_provider_resolution_failed")
+
     def test_canary_waits_for_gateway_to_apply_disabled_tool_policy(self):
         self.api.canary_policy_pending_reads = 2
         with patch("worker.time.sleep"):
