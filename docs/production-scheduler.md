@@ -29,6 +29,14 @@ Setup Center backfill/evidence reconciliation. Both are idempotent and both are 
 
 Both are required. Deploying a cron definition cannot start work by itself; a person must also set `SCHEDULER_ENABLED=true`.
 
+### Starting with some jobs only: `SCHEDULER_JOBS_ONLY`
+
+Switching the scheduler on starts **every** registered job (45 on 2026-10-22). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
+(for example `aiWorkRecovery,crmWorkflowRecovery,inboxAttention`). A tick then runs only those, in the registry's order, and the others do not run and leave no heartbeat. Unset (the default) runs every job. A name that
+does not exist, or a value that names nothing, makes the tick fail with a 500 and run nothing, so a typo cannot start something that was not approved.
+**Order matters for messaging:** the dispatcher (`messagesDispatched`) turns a queued message into a final `blocked / provider_not_enabled` while a provider write switch is off, so keep it, `repliesChecked` and
+`followUpsPrepared` out of the list until the provider is switched on. The job inventory, what each can do, and a suggested order of steps are in [unified-inbox/scheduler-impact.md](unified-inbox/scheduler-impact.md).
+
 ## Authentication
 
 - The secret is compared with `crypto.timingSafeEqual`; length differences are rejected.
