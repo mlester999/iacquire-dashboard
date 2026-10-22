@@ -142,12 +142,13 @@ jobs:
             container_persistent: false
           YAML
 
-          sudo chown 10000:10000 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+          runner_uid="$(id -u)"
+          sudo chown "$runner_uid:10000" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
-          sudo chmod 0400 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
-            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" "$temp_dir/acceptance-key.pem"
-          sudo chmod 0444 "$temp_dir/acceptance-cert.pem"
+          sudo chmod 0440 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+            "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
+            "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
 
           cat > "$temp_dir/compose.env" <<EOF
           HERMES_BASE_IMAGE=$HERMES_BASE_IMAGE
