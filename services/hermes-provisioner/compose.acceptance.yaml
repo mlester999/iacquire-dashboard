@@ -1,0 +1,101 @@
+services:
+  hermes-client:
+    pull_policy: never
+    depends_on:
+      init-worker-home:
+        condition: service_completed_successfully
+
+  init-worker-home:
+    image: ${IACQUIRE_HERMES_IMAGE:?Build the candidate Hermes image first}
+    pull_policy: never
+
+  hermes-provisioner:
+    pull_policy: never
+    environment:
+      SSL_CERT_FILE: /run/secrets/acceptance-cert.pem
+    volumes:
+      - type: bind
+        source: ${ACCEPTANCE_CA_CERT_FILE:?Set the synthetic acceptance certificate}
+        target: /run/secrets/acceptance-cert.pem
+        read_only: true
+    depends_on:
+      acceptance-harness:
+        condition: service_healthy
+
+  acceptance-harness:
+    profiles: [acceptance]
+    image: ${IACQUIRE_PROVISIONER_IMAGE:?Build the candidate provisioner image first}
+    pull_policy: never
+    entrypoint: ["/opt/hermes/.venv/bin/python", "/opt/iacquire-hermes/acceptance_harness.py"]
+    command: ["serve"]
+    restart: "no"
+    user: "10000:10000"
+    read_only: true
+    init: true
+    network_mode: service:hermes-client
+    environment:
+      ACCEPTANCE_GATEWAY_ID: ${IACQUIRE_PROVISIONER_GATEWAY_ID:?Set a synthetic gateway UUID}
+      ACCEPTANCE_PORTAL_TOKEN_FILE: /run/secrets/provisioner_token
+      ACCEPTANCE_MODEL_ENV_FILE: /run/secrets/profile_model_env.json
+      ACCEPTANCE_HERMES_API_KEY_FILE: /run/secrets/hermes_api_key
+      ACCEPTANCE_PROFILE_ROOT: /profiles
+      ACCEPTANCE_STATE_ROOT: /worker-state/iacquire-provisioner-state
+      ACCEPTANCE_RESULTS_DIR: /results
+    depends_on:
+      hermes-client:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: ${ACCEPTANCE_HARNESS_FILE:?Set the synthetic acceptance harness path}
+        target: /opt/iacquire-hermes/acceptance_harness.py
+        read_only: true
+      - type: bind
+        source: ${IACQUIRE_PROVISIONER_TOKEN_FILE:?Set the synthetic provisioner token file}
+        target: /run/secrets/provisioner_token
+        read_only: true
+      - type: bind
+        source: ${HERMES_PROFILE_MODEL_ENV_FILE:?Set the synthetic model key file}
+        target: /run/secrets/profile_model_env.json
+        read_only: true
+      - type: bind
+        source: ${HERMES_API_KEY_FILE:?Set the synthetic Hermes API key file}
+        target: /run/secrets/hermes_api_key
+        read_only: true
+      - type: bind
+        source: ${ACCEPTANCE_CA_CERT_FILE:?Set the synthetic acceptance certificate}
+        target: /run/secrets/acceptance-cert.pem
+        read_only: true
+      - type: bind
+        source: ${ACCEPTANCE_TLS_KEY_FILE:?Set the synthetic acceptance private key}
+        target: /run/secrets/acceptance-key.pem
+        read_only: true
+      - type: bind
+        source: ${ACCEPTANCE_RESULT_DIR:?Set the synthetic acceptance result directory}
+        target: /results
+      - client_profiles:/profiles:ro
+      - worker_home:/worker-state:ro
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    pids_limit: 64
+    logging:
+      driver: local
+      options:
+        max-size: 2m
+        max-file: "2"
+    healthcheck:
+      test:
+        - CMD
+        - /opt/hermes/.venv/bin/python
+        - /opt/iacquire-hermes/acceptance_harness.py
+        - healthcheck
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+networks:
+  client_egress:
+    internal: true

@@ -19,6 +19,12 @@ The isolated acceptance image is pinned to the official Hermes v0.22.3 multi-pla
 
 The currently running production container is still Hermes v0.21.5. Its installed api_server.py, model_tools.py, and catalog helper SHA-256 values match the existing reviewed v0.21.5 overlay in this repository. This proves source parity only; no live API key was read and no authenticated inventory request was made. The v0.22.3 overlay remains an isolated acceptance candidate and is not a production upgrade authorization.
 
+## Temporary GitHub Actions acceptance branch
+
+`.github/workflows/hermes-client-acceptance.yml` is scoped to pushes on `codex/hermes-gha-acceptance` and uses GitHub-hosted `ubuntu-24.04`. It builds both pinned candidate targets with Buildx and never publishes either image. The acceptance Compose overlay turns off network egress, publishes no ports, uses only one-run synthetic credentials and a local synthetic OpenAI-compatible endpoint, and destroys its isolated containers, networks and volumes at job end.
+
+The local harness provisions the six role profiles for two synthetic tenants through the real worker and Hermes gateway. It verifies per-profile identities and keys, authenticated profile routes, cross-tenant rejection, effective SOUL canaries, configuration sync, a failed canary followed by recovery, an idempotent duplicate job, protected tool policy and secret-free audit records. This is a worker/runtime SANDBOX acceptance. The harness does not call iAcquireOS, Supabase, Hostinger, or any production endpoint and cannot establish a production onboarding pass.
+
 ## Read-only Hostinger inspection (2026-10-22)
 
 - The dashboard and host console identified the target as srv2039372, Hostinger plan KVM 2. The host reports 2 CPU cores, 7.8 GiB RAM (6.4 GiB available at inspection), no swap, and a 96 GiB filesystem with 7.9 GiB used and 88 GiB available. Dashboard usage was 2% CPU, 16% memory, and 8 GB of 100 GB disk.
