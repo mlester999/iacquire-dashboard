@@ -5,7 +5,7 @@ ARG HERMES_BASE_IMAGE
 RUN /opt/hermes/.venv/bin/python -c 'import re,sys; sys.exit(0 if re.fullmatch(r"(?:docker\.io/)?nousresearch/hermes-agent@sha256:[0-9a-f]{64}", sys.argv[1]) else 1)' "$HERMES_BASE_IMAGE"
 ARG HERMES_SOURCE_COMMIT=5b147ab036d6d19131bff8d20701b5001eab844a
 ARG HERMES_CATALOG_REVISION=v0223-catalog-v1
-RUN /opt/hermes/.venv/bin/python -c 'import pathlib,sys,tomllib; version=tomllib.loads(pathlib.Path("/opt/hermes/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]; sys.exit(0 if version == "0.22.3" else f"Expected Hermes 0.22.3 for the reviewed catalog overlay, got {version}")'
+RUN /opt/hermes/.venv/bin/python -c 'import re,subprocess,sys; p=subprocess.run(["/opt/hermes/bin/hermes","--version"],check=True,capture_output=True,text=True); output=p.stdout+p.stderr; sys.exit(0 if re.search(r"(?<![0-9.])v?0\.22\.3(?![0-9.])",output) else f"Expected Hermes CLI v0.22.3, got {output.strip()}")'
 RUN /opt/hermes/.venv/bin/python -c 'import yaml'
 
 USER root

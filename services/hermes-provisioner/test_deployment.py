@@ -112,7 +112,8 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
             self.assertEqual(actual, expected, path)
 
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-        self.assertIn('version == "0.22.3"', dockerfile)
+        self.assertIn('["/opt/hermes/bin/hermes","--version"]', dockerfile)
+        self.assertIn('v?0\\.22\\.3', dockerfile)
         self.assertIn("catalog-overlay-v0223", dockerfile)
         self.assertIn("verify_overlay.py", dockerfile)
         self.assertIn("verify_overlay.py", dockerfile)
