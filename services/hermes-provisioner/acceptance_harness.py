@@ -452,6 +452,20 @@ class AcceptanceState:
                 raise ValueError("profile_authentication_failed") from None
             if payload.get("auth", {}).get("required") is not True:
                 raise ValueError("profile_authentication_contract_failed")
+
+            models_request = urllib.request.Request(
+                f"{base}/p/{profile}/v1/models",
+                headers={"Authorization": "Bearer " + key},
+            )
+            try:
+                with urllib.request.urlopen(models_request, timeout=10) as response:
+                    if response.status != 200:
+                        raise ValueError("profile_identity_inventory_failed")
+                    models = json.loads(response.read(262_144).decode("utf-8"))
+            except Exception:
+                raise ValueError("profile_identity_inventory_failed") from None
+            if profile not in _hermes_model_identities(models):
+                raise ValueError("profile_identity_inventory_failed")
             self.profile_checks += 1
 
             tenant = self.profile_tenants.get(profile)
@@ -483,16 +497,22 @@ class AcceptanceState:
                 models = json.loads(response.read(262_144).decode("utf-8"))
         except Exception:
             raise ValueError("default_identity_inventory_failed") from None
-        identities = {
-            row.get("id")
-            for row in models.get("data", [])
-            if isinstance(row, dict)
-            and row.get("owned_by") == "hermes"
-            and row.get("parent") is None
-            and row.get("root") == row.get("id")
-        }
-        if not set(self.profile_keys).issubset(identities):
-            raise ValueError("gateway_profile_inventory_mismatch")
+        if not _hermes_model_identities(models):
+            raise ValueError("default_identity_inventory_failed")
+
+
+def _hermes_model_identities(payload: Any) -> set[str]:
+    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+        return set()
+    return {
+        row.get("id")
+        for row in payload["data"]
+        if isinstance(row, dict)
+        and isinstance(row.get("id"), str)
+        and row.get("owned_by") == "hermes"
+        and row.get("parent") is None
+        and row.get("root") == row.get("id")
+    }
 
 
 def read_secret(path_value: str, expected_name: str | None = None) -> str:
