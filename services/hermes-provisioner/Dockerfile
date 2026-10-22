@@ -7,9 +7,6 @@ ARG HERMES_SOURCE_COMMIT=5b147ab036d6d19131bff8d20701b5001eab844a
 ARG HERMES_CATALOG_REVISION=v0223-catalog-v1
 RUN /opt/hermes/.venv/bin/python -c 'import re,subprocess,sys; p=subprocess.run(["/opt/hermes/bin/hermes","--version"],check=True,capture_output=True,text=True); output=p.stdout+p.stderr; sys.exit(0 if re.search(r"(?<![0-9.])v?0\.22\.3(?![0-9.])",output) else f"Expected Hermes CLI v0.22.3, got {output.strip()}")'
 USER root
-COPY --chown=0:0 services/hermes-provisioner/requirements.txt /opt/iacquire-hermes/requirements.txt
-RUN /opt/hermes/.venv/bin/python -m pip install --no-cache-dir --requirement /opt/iacquire-hermes/requirements.txt
-RUN /opt/hermes/.venv/bin/python -c 'import yaml'
 COPY --chown=0:0 services/hermes-provisioner/catalog-overlay-v0223/ /opt/iacquire-hermes/catalog-overlay/
 RUN /opt/hermes/.venv/bin/python /opt/iacquire-hermes/catalog-overlay/verify_overlay.py /opt/hermes /opt/iacquire-hermes/catalog-overlay
 RUN test -x /opt/hermes/bin/hermes && test -x /opt/hermes/docker/entrypoint-dispatch.sh
@@ -30,11 +27,14 @@ LABEL com.iacquire.hermes.catalog-revision="${HERMES_CATALOG_REVISION}"
 
 FROM hermes-client AS provisioner
 USER root
+COPY --chown=0:0 services/hermes-provisioner/requirements.txt /opt/iacquire-hermes/requirements.txt
+RUN python3 -c 'import subprocess; from pm import installed_package; uv=str(installed_package("uv").binary); subprocess.run([uv, "venv", "--python", "/opt/hermes/.venv/bin/python", "/opt/iacquire-hermes/.venv"], check=True); subprocess.run([uv, "pip", "install", "--no-cache", "--python", "/opt/iacquire-hermes/.venv/bin/python", "--requirement", "/opt/iacquire-hermes/requirements.txt"], check=True)'
+RUN /opt/iacquire-hermes/.venv/bin/python -c 'import yaml'
 COPY --chown=0:0 services/hermes-provisioner/worker.py /opt/iacquire-hermes/worker.py
 RUN chmod 0444 /opt/iacquire-hermes/worker.py
 ENV HERMES_HOME=/opt/data \
     HERMES_CLI=/opt/hermes/bin/hermes \
     HERMES_PROVISIONER_API_BASE=http://127.0.0.1:8642
 USER 10000:10000
-ENTRYPOINT ["/opt/hermes/.venv/bin/python", "/opt/iacquire-hermes/worker.py"]
+ENTRYPOINT ["/opt/iacquire-hermes/.venv/bin/python", "/opt/iacquire-hermes/worker.py"]
 CMD ["--run"]

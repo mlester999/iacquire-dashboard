@@ -66,7 +66,7 @@ jobs:
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=64m \
             --env PYTHONDONTWRITEBYTECODE=1 \
             --mount "type=bind,source=$GITHUB_WORKSPACE/services/hermes-provisioner,target=/tests,readonly" \
-            --workdir /tests --entrypoint /opt/hermes/.venv/bin/python \
+            --workdir /tests --entrypoint /opt/iacquire-hermes/.venv/bin/python \
             "$IACQUIRE_PROVISIONER_IMAGE" -B -m unittest -q \
             test_worker test_deployment test_acceptance_harness >"$test_log" 2>&1; then
             summary="$(grep -E '^Ran [0-9]+ tests? ' "$test_log" | tail -n1 | sed -E 's/ in .*//')"

@@ -140,7 +140,7 @@ services:
         max-size: 5m
         max-file: "3"
     healthcheck:
-      test: ["CMD", "/opt/hermes/.venv/bin/python", "/opt/iacquire-hermes/worker.py", "--healthcheck"]
+      test: ["CMD", "/opt/iacquire-hermes/.venv/bin/python", "/opt/iacquire-hermes/worker.py", "--healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3

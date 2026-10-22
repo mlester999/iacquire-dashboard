@@ -161,7 +161,11 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
             self.assertTrue(path.exists(), source)
             self.assertIn(f"COPY --chown=0:0 {source}", dockerfile)
         self.assertIn("COPY --chown=0:0 services/hermes-provisioner/requirements.txt", dockerfile)
-        self.assertIn("-m pip install --no-cache-dir --requirement /opt/iacquire-hermes/requirements.txt", dockerfile)
+        self.assertIn('installed_package("uv").binary', dockerfile)
+        self.assertIn('"venv", "--python", "/opt/hermes/.venv/bin/python"', dockerfile)
+        self.assertIn('"pip", "install", "--no-cache"', dockerfile)
+        self.assertIn('"--python", "/opt/iacquire-hermes/.venv/bin/python"', dockerfile)
+        self.assertIn('ENTRYPOINT ["/opt/iacquire-hermes/.venv/bin/python"', dockerfile)
 
 
 if __name__ == "__main__":
