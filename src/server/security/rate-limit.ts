@@ -115,6 +115,10 @@ export const RATE_LIMITS = {
   studioConnectionByOrg: { name: "studio-connection:org", limit: 30, windowSeconds: 3600 },
   topupByOrg: { name: "billing:topup", limit: 10, windowSeconds: 3600 },
   inboxSendByUser: { name: "inbox:send", limit: 60, windowSeconds: 60 },
+  // AI summaries and suggested replies in the inbox. Each call reaches the AI provider, so it is separate from sending and from the support assistant.
+  inboxAiByUser: { name: "inbox:ai:user", limit: 40, windowSeconds: 3600 },
+  // Bulk actions on conversations (each handles up to 50), per person.
+  inboxBulkByUser: { name: "inbox:bulk:user", limit: 20, windowSeconds: 60 },
   onboardingAssistByOrg: { name: "onboarding:assist", limit: 25, windowSeconds: 3600 },
   onboardingSiteReadByOrg: { name: "onboarding:site", limit: 8, windowSeconds: 3600 },
   websiteAssistByOrg: { name: "website:assist", limit: 40, windowSeconds: 3600 },

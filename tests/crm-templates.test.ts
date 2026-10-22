@@ -652,15 +652,15 @@ describe("screens", () => {
     const detail: InboxDetail = {
       conversation: {
         id: "00000000-0000-4000-8000-000000000001", contactId: "c1", contactName: "Lea Reyes", channel: "sms", status: "open", ownerKind: "human", ownerName: "Owner Person", ownerUserId: "u1",
-        assignedUserId: null, priority: "normal", unread: 0, lastMessageAt: new Date().toISOString(), preview: "Hi", escalation: null, subject: null, lastInboundAt: new Date().toISOString(), whatsappWindowOpen: null,
+        assignedUserId: null, priority: "normal", unread: 0, lastMessageAt: new Date().toISOString(), preview: "Hi", escalation: null, aiAgent: null, aiPaused: false, archivedAt: null, resolvedAt: null, outcome: null, lastOutboundAt: null, waitingOnCustomer: false, attention: [], revision: 0, subject: null, lastInboundAt: new Date().toISOString(), whatsappWindowOpen: null,
       },
       contact: { id: "c1", name: "Lea Reyes", lifecycleStage: "lead_captured", temperature: null, source: "inbound_message", identities: [], consent: [] },
       messages: [{
         id: "m1", direction: "outbound", authorKind: "human", authorName: "Owner Person", body: "Hello", status: "failed", statusDetail: "Not delivered", blockedReason: null, scope: "human",
-        createdAt: new Date().toISOString(), sentAt: new Date().toISOString(), deliveredAt: null, provider: "twilio", providerLabel: "Twilio",
+        createdAt: new Date().toISOString(), sentAt: new Date().toISOString(), deliveredAt: null, provider: "twilio", providerLabel: "Twilio", failureKind: null, retryOf: null, retriedBy: null,
         deliveryEvents: [{ status: "undelivered", rawStatus: "undelivered", detail: "Carrier rejected the message (30007)", at: new Date().toISOString() }],
       }],
-      timeline: [], memories: [], followUp: null, escalation: null,
+      timeline: [], events: [], memories: [], followUp: null, escalation: null,
     };
     const html = renderToStaticMarkup(React.createElement(InboxWorkspace, {
       list: [detail.conversation], detail, escalations: [], me: { id: "u1", isOwner: true },

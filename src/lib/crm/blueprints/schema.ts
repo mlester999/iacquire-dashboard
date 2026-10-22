@@ -367,6 +367,7 @@ export const BLUEPRINT_STEP_CONFIG: Record<StepKind, z.ZodType> = {
   n8n: stepObject("n8n").extend({ mappingId: refTo("n8n") }),
   webhook: stepObject("webhook").extend({ subscriptionId: refTo("webhook") }),
   ai_task: STEP_KINDS.ai_task.schema,
+  conversation_action: stepObject("conversation_action").extend({ userId: refTo("member").optional() }),
   end: STEP_KINDS.end.schema,
   // Automation Studio's integration steps use a connection, which belongs to one workspace (and holds its credentials): a package can't carry them.
   http_request: z.custom(() => false, "Steps that use a connection (HTTP request, Slack) can't be part of a Blueprint: each workspace sets up its own connections."),

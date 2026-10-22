@@ -156,9 +156,9 @@ export type RespondResult =
   | { status: "skipped"; reason: string }
   | { status: "unavailable"; reason: string };
 
-async function loadContext(db: Queryable, orgId: string, conversationId: string): Promise<(ReplyContext & { aiDisclosure: string; aiMessageCount: number; ownerKind: string }) | null> {
-  const { rows } = await db.query<{ contact_id: string; channel: Channel; ai_agent_id: string | null; owner_kind: string; name: string; disclosure: string | null }>(
-    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, o.name, s.ai_disclosure as disclosure
+async function loadContext(db: Queryable, orgId: string, conversationId: string): Promise<(ReplyContext & { aiDisclosure: string; aiMessageCount: number; ownerKind: string; ownershipVersion: number; aiPaused: boolean }) | null> {
+  const { rows } = await db.query<{ contact_id: string; channel: Channel; ai_agent_id: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null }>(
+    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure
      from conversations c join organizations o on o.id = c.org_id left join messaging_settings s on s.org_id = c.org_id where c.id = $1 and c.org_id = $2`,
     [conversationId, orgId],
   );
@@ -187,6 +187,8 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
     aiDisclosure: c.disclosure ?? "I'm an AI assistant for {business}.",
     aiMessageCount: Number(aiCount.rows[0].n),
     ownerKind: c.owner_kind,
+    ownershipVersion: c.ownership_version,
+    aiPaused: c.ai_paused_at !== null,
   };
 }
 
@@ -201,6 +203,8 @@ export async function respondToConversation(orgId: string, conversationId: strin
     const ctx = await loadContext(db, orgId, conversationId);
     if (!ctx) return { skip: "no_conversation" as const };
     if (ctx.ownerKind !== "ai") return { skip: "human_owner" as const };
+    // Paused by a person: no reply is generated at all (it would only be refused, and the model call costs money).
+    if (ctx.aiPaused) return { skip: "ai_paused" as const };
     const done = await db.query("select 1 from conversation_messages where org_id = $1 and dedupe_key = $2", [orgId, `reply-to:${ctx.inboundMessageId}`]);
     if (done.rows[0]) return { skip: "already_answered" as const };
     const open = await db.query("select 1 from human_escalations where conversation_id = $1 and status in ('awaiting_owner', 'open', 'claimed')", [conversationId]);
@@ -238,7 +242,9 @@ export async function respondToConversation(orgId: string, conversationId: strin
   const result = await withSystem(async (db): Promise<RespondResult> => {
     // Re-check after the (possibly slow) generation: a person may have taken over meanwhile.
     const fresh = await loadContext(db, orgId, conversationId);
-    if (!fresh || fresh.ownerKind !== "ai" || fresh.inboundMessageId !== ctx.inboundMessageId) return { status: "skipped", reason: "conversation_changed" };
+    // The ownership revision is the fence: a takeover (even one handed straight back), a pause or another employee since the reply was
+    // prepared means it was written for a situation that no longer holds. Compared by revision, not by owner kind alone.
+    if (!fresh || fresh.ownerKind !== "ai" || fresh.ownershipVersion !== ctx.ownershipVersion || fresh.aiPaused || fresh.inboundMessageId !== ctx.inboundMessageId) return { status: "skipped", reason: "conversation_changed" };
     if (outcome.kind === "unavailable") {
       await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_unavailable')", [orgId, conversationId, ctx.agentId, `The AI employee could not prepare a reply: ${outcome.reason}`]);
       // Nobody should be left waiting unseen: ask a person to look.
@@ -260,7 +266,7 @@ export async function respondToConversation(orgId: string, conversationId: strin
         : { status: "blocked", messageId: "", reason: "booking_confirmation_not_sent" };
     }
     const text = withDisclosure(outcome.text, ctx.aiDisclosure, ctx.businessName, ctx.aiMessageCount === 0).slice(0, MAX_LENGTH[ctx.channel]);
-    const queued = await queueOutbound(db, { orgId, conversationId, scope: "reply", actor: { kind: "ai", agentId: ctx.agentId }, body: text, now: deps.now, dedupeKey: `reply-to:${ctx.inboundMessageId}` });
+    const queued = await queueOutbound(db, { orgId, conversationId, scope: "reply", actor: { kind: "ai", agentId: ctx.agentId }, body: text, now: deps.now, dedupeKey: `reply-to:${ctx.inboundMessageId}`, fenceVersion: ctx.ownershipVersion });
     // Meter the model's own usage when a rate has been published for it; otherwise there is nothing priced to charge.
     if (outcome.usage) await chargeModelUsage(db, orgId, queued.messageId, outcome.usage);
     return { status: queued.status, messageId: queued.messageId, reason: queued.reason };

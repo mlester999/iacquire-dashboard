@@ -11,6 +11,8 @@ export type ErrorCode =
   | "plan_required"
   | "budget_exhausted"
   | "billing_unavailable"
+  | "unavailable"
+  | "not_enabled"
   | "agent_unavailable"
   | "integration_unavailable"
   | "upstream_error"
@@ -28,6 +30,10 @@ const STATUS: Record<ErrorCode, number> = {
   plan_required: 403,
   budget_exhausted: 429,
   billing_unavailable: 503,
+  // A feature an operator switched off on purpose (INBOX_DISABLED). Temporary by intent, so clients retry later.
+  unavailable: 503,
+  // The workspace is not part of a staged rollout yet (the new inbox): a refusal, not an outage, so it is a 403 and does not look like a server error.
+  not_enabled: 403,
   agent_unavailable: 503,
   integration_unavailable: 503,
   upstream_error: 502,

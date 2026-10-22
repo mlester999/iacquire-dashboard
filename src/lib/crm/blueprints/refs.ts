@@ -307,6 +307,9 @@ function walkWorkflow(def: AnyDefinition, w: Walk, path: string): AnyDefinition 
       case "notify_team":
         w.list(c, "userIds", { path: `${sp}.userIds`, target: "member", encoding: "id", required: false });
         break;
+      case "conversation_action":
+        w.one(c, "userId", { path: `${sp}.userId`, target: "member", encoding: "id", required: c.action === "assign_person" });
+        break;
       case "n8n":
         w.one(c, "mappingId", { path: `${sp}.mappingId`, target: "n8n", encoding: "id", required: true });
         break;

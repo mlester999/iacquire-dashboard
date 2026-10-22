@@ -5,11 +5,13 @@ import { cancelFollowUps } from "@/server/messaging/followups";
 import { getConsent, KEYWORD_LIFTABLE_SUPPRESSIONS, liftSuppression, recordConsent, resolveContact, suppressAddress } from "@/server/messaging/contacts";
 import { applyDeliveryEvent, cancelPendingAiMessages } from "@/server/messaging/send";
 import { createEscalation } from "@/server/messaging/handoff";
+import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { fetchGhlContact, parseGhlMessageEvent, verifyGhlWebhook, type GhlContactInfo } from "@/server/messaging/provider";
 import { applyAppointmentEvent } from "@/server/appointments/ledger";
 import { parseGhlAppointmentEvent } from "@/lib/appointments";
 import { detectOptKeyword, normalizeEmail, normalizePhone, type Channel } from "@/lib/messaging";
 import { emitEvent } from "@/server/crm/events";
+import { notifyOrgRoles } from "@/server/notifications";
 import { systemActor } from "@/server/crm/actor";
 import type { EscalationCategory } from "@/lib/escalation";
 
@@ -225,6 +227,19 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
       [orgId, contactId, input.channel, thread, input.subject?.slice(0, 300) ?? null, agent.rows[0]?.id ?? null, agent.rows[0] ? "ai" : "unassigned", input.providerConversationId ?? null],
     );
     conv = created.rows[0];
+    // Nobody (no AI employee, no person) is set to handle this new conversation: the owners and managers hear about it once, without its content.
+    // (Only for a workspace that has the new inbox: the notice is the new inbox's, and would point at a screen the workspace is not on. The conversation itself
+    // is created and kept either way.)
+    if (conv.owner_kind === "unassigned" && (await inboxEnabledFor(orgId, db))) {
+      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+        kind: "conversation_new_inquiry",
+        severity: "info",
+        title: "A new inquiry has nobody handling it",
+        body: "No AI employee is switched on for this workspace. Open the conversation to take it or assign it.",
+        link: `/inbox?conversation=${conv.id}`,
+        dedupeKey: `inquiry:${conv.id}`,
+      });
+    }
   }
 
   // An inbound email keeps its own Message-ID, so the reply can carry In-Reply-To and References and stay in the customer's thread.

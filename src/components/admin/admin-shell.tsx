@@ -37,6 +37,7 @@ const NAV = [
   { href: "/admin/portfolio", label: "Portfolio", icon: Briefcase, superOnly: true, group: "Client experience" },
   { href: "/admin/setup-templates", label: "Setup templates", icon: ScrollText, superOnly: true, group: "Platform" },
   { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, superOnly: true, group: "Platform" },
+  { href: "/admin/inbox-rollout", label: "Inbox rollout", icon: Inbox, superOnly: true, group: "Platform" },
   { href: "/admin/health", label: "System health", icon: HeartPulse, group: "Platform" },
   { href: "/admin/billing", label: "Billing & finance", icon: Landmark, group: "Platform" },
   { href: "/admin/usage", label: "Usage & costs", icon: Wallet, group: "Platform" },

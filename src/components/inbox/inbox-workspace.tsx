@@ -1,20 +1,30 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, Bot, Check, CheckCheck, Clock, Hand, Inbox, Loader2, Lock, Mail, MessageCircle, MessageSquareQuote, MessageSquareText, Search, Send, ShieldAlert, Sparkles, StickyNote, UserRound, XCircle } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, Bot, Check, CheckCheck, Clock, EllipsisVertical, Inbox, Loader2, Lock, Mail, MessageCircle, MessageSquareQuote, MessageSquareText, PanelRightOpen, RotateCcw, Send, ShieldAlert, Sparkles, SquareCheckBig, StickyNote, UserRound, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Input, Select, Textarea } from "@/components/ui/primitives";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
-import { addMemoryAction, addNoteAction, approveDraftAction, assignConversationAction, claimEscalationAction, declineEscalationAction, deleteMemoryAction, discardDraftAction, loadMessagesByIdAction, loadOlderMessagesAction, markReadAction, resolveEscalationAction, resumeAiAction, sendReplyAction, setConversationStateAction, takeOverAction } from "@/app/actions/inbox";
+import { Badge, Input, Kbd, Select, Skeleton, Textarea } from "@/components/ui/primitives";
+import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Sheet } from "@/components/ui/overlays";
+import { addMemoryAction, addNoteAction, approveDraftAction, assignAiEmployeeAction, assignConversationAction, claimEscalationAction, declineEscalationAction, deleteMemoryAction, discardDraftAction, loadMessagesByIdAction, loadOlderMessagesAction, markReadAction, markUnreadAction, resolveEscalationAction, retryMessageAction, sendReplyAction, setConversationStateAction } from "@/app/actions/inbox";
+import { AiControls } from "@/components/inbox/ai-controls";
+import { AiAssistPanel } from "@/components/inbox/ai-assist-panel";
+import { requestSuggestedReply } from "@/components/inbox/assist-client";
+import { ChannelHealthBar } from "@/components/inbox/channel-health-bar";
+import { CrmContextPanel } from "@/components/inbox/crm-context-panel";
+import { InboxListPanel } from "@/components/inbox/inbox-list-panel";
+import { useInboxSync } from "@/components/inbox/use-inbox-sync";
 import { BLOCK_REASON_LABELS, CHANNEL_LABELS, MESSAGE_STATUS_LABELS, smsSegments, type Channel, type MessageStatus } from "@/lib/messaging";
 import { anyTokenLabel, customValueKeyOf, renderTemplate, type CustomValueTokenDef, type TokenValues } from "@/lib/messaging/tokens";
 import { pickFocusGuard } from "@/components/crm/templates/parts";
 import { ESCALATION_LABELS, type EscalationCategory } from "@/lib/escalation";
-import { cn, formatDateTime, initials, relativeTime, sentenceCase } from "@/lib/utils";
-import type { ConversationDetail, ConversationListItem, MessageView } from "@/server/messaging/inbox";
+import { CONVERSATION_OUTCOMES, OUTCOME_LABELS, isInboxSort, isInboxView, type InboxSort, type InboxView } from "@/lib/inbox";
+import { cn, formatDateTime, initials, sentenceCase } from "@/lib/utils";
+import type { ConversationDetail, MessageView } from "@/server/messaging/inbox";
+import type { ConversationListItem, ViewCounts } from "@/server/messaging/inbox-list";
+import type { ChannelHealth } from "@/server/messaging/channel-health";
+import type { ConversationAiEmployee } from "@/server/messaging/inbox-context";
 
 /** A message with the provider that carried it and its delivery events, as the inbox page loads them. */
 export type InboxMessage = MessageView & {
@@ -57,12 +67,26 @@ interface Props {
   cannedCustomValues?: CustomValueTokenDef[];
   escalations: EscalationCard[];
   me: { id: string; isOwner: boolean };
-  perms: { reply: boolean; assign: boolean; notes: boolean; resume: boolean; respond: boolean; editContacts: boolean };
+  /** `viewAll` false: the person sees only conversations they own or that are assigned to them (the empty states say so). Absent counts as true. */
+  perms: { reply: boolean; assign: boolean; notes: boolean; resume: boolean; respond: boolean; editContacts: boolean; viewAll?: boolean };
   team: Array<{ id: string; name: string; role: string }>;
   /** Approved WhatsApp templates of the provider that carries WhatsApp now, with their approved wording. */
   templates: Array<{ id: string; name: string; body: string }>;
   timeZone: string;
-  filters: { q: string; channel: string; owner: string; unread: boolean };
+  filters: { q: string; channel: string; owner: string; unread: boolean; view?: InboxView; sort?: InboxSort };
+  /** How many conversations each view holds, and where the list continues. */
+  counts?: ViewCounts | null;
+  nextCursor?: string | null;
+  /** What each channel can really do right now (see src/server/messaging/channel-health.ts). */
+  channelHealth?: ChannelHealth[];
+  /** The customer-facing AI employees a manager may attach to a conversation. */
+  aiEmployees?: ConversationAiEmployee[];
+  /** Whether this person may ask for AI summaries and suggested replies (and the workspace has them). */
+  aiAssist?: boolean;
+  /** The database time the page was read at; live updates ask for changes from here. */
+  syncFrom?: string | null;
+  /** Off in tests and previews: no polling. */
+  live?: boolean;
 }
 
 /**
@@ -97,142 +121,376 @@ function Countdown({ until }: { until: string }) {
   return <span className="tabular-nums" suppressHydrationWarning>{`${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`}</span>;
 }
 
-export function InboxWorkspace(props: Props) {
-  const { list, detail, escalations, filters } = props;
+/** What the child components call after they change something: re-read what is on screen, and let other tabs know. */
+const InboxActions = React.createContext<{ refresh: () => void } | null>(null);
+function useInboxRefresh(): () => void {
+  const ctx = React.useContext(InboxActions);
   const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  const selected = params.get("conversation");
-  const [q, setQ] = React.useState(filters.q);
-  const [needsOnly, setNeedsOnly] = React.useState(false);
+  return ctx ? ctx.refresh : () => router.refresh();
+}
 
-  // Live-ish updates: refresh the server data every 15 seconds while the tab is visible. Typing is never interrupted.
-  React.useEffect(() => {
-    const t = window.setInterval(() => {
-      if (document.visibilityState === "visible" && !document.querySelector("[data-composer-dirty='true']")) router.refresh();
-    }, 15000);
-    return () => window.clearInterval(t);
-  }, [router]);
+/** The view a link that predates views (owner / unread filters) means. */
+function legacyView(f: { owner: string; unread: boolean }): InboxView {
+  if (f.unread) return "unread";
+  if (f.owner === "mine") return "mine";
+  if (f.owner === "ai") return "ai";
+  if (f.owner === "unassigned") return "unassigned";
+  return "all";
+}
 
-  React.useEffect(() => {
-    if (detail && detail.conversation.unread > 0) void markReadAction(detail.conversation.id);
-  }, [detail?.conversation.id]); // eslint-disable-line react-hooks/exhaustive-deps
+interface Filters {
+  view: InboxView;
+  sort: InboxSort;
+  q: string;
+  channel: string;
+}
 
-  function go(next: Record<string, string | null>) {
-    const sp = new URLSearchParams(params.toString());
-    for (const [k, v] of Object.entries(next)) {
-      if (v === null || v === "") sp.delete(k);
-      else sp.set(k, v);
-    }
-    router.push(`${pathname}?${sp.toString()}`);
+const filterQuery = (f: Filters, extra: Record<string, string | null> = {}) => {
+  const sp = new URLSearchParams();
+  if (f.view !== "all") sp.set("view", f.view);
+  if (f.sort !== "priority") sp.set("sort", f.sort);
+  if (f.q) sp.set("q", f.q);
+  if (f.channel) sp.set("channel", f.channel);
+  for (const [k, v] of Object.entries(extra)) if (v) sp.set(k, v);
+  return sp;
+};
+
+type JsonResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
+type ListPage = { items: ConversationListItem[]; nextCursor: string | null };
+
+async function getJson<T>(url: string, signal?: AbortSignal): Promise<JsonResult<T>> {
+  try {
+    const res = await fetch(url, { cache: "no-store", credentials: "same-origin", signal });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, status: res.status, error: (body as { error?: string } | null)?.error ?? "That didn't work." };
+    return { ok: true, data: body as T };
+  } catch {
+    return { ok: false, status: 0, error: "The connection dropped. Check your internet and try again." };
   }
+}
 
-  const visible = needsOnly ? list.filter((c) => c.escalation && ["awaiting_owner", "open"].includes(c.escalation.status)) : list;
-  const waiting = escalations.filter((e) => ["awaiting_owner", "open"].includes(e.status));
-
-  return (
-    <div className="grid min-h-[calc(100dvh-9rem)] gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-      {!detail && <h1 className="sr-only">Inbox</h1>}
-      <section aria-label="Conversations" className={cn("min-w-0 flex-col gap-3", selected ? "hidden lg:flex" : "flex")}>
-        <form
-          role="search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            go({ q: q.trim() || null, conversation: null });
-          }}
-          className="relative"
-        >
-          <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" aria-hidden />
-          <label className="sr-only" htmlFor="inbox-search">Search conversations</label>
-          <Input id="inbox-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, number, email or message" className="pl-9" />
-        </form>
-        <div role="group" aria-label="Filter by channel" className="flex flex-wrap gap-1.5">
-          {[["", "All"], ["sms", "SMS"], ["whatsapp", "WhatsApp"], ["email", "Email"]].map(([value, label]) => (
-            <button key={value} aria-pressed={filters.channel === value} onClick={() => go({ channel: value || null })} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", filters.channel === value ? "bg-ink text-bg" : "bg-surface-2 text-muted hover:text-ink")}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div role="group" aria-label="Filter by owner" className="flex flex-wrap gap-1.5">
-          {[["", "Everyone"], ["mine", "Mine"], ["ai", "AI"], ["unassigned", "Unassigned"]].map(([value, label]) => (
-            <button key={value} aria-pressed={filters.owner === value && !needsOnly} onClick={() => { setNeedsOnly(false); go({ owner: value || null }); }} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", filters.owner === value && !needsOnly ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}>
-              {label}
-            </button>
-          ))}
-          <button aria-pressed={needsOnly} onClick={() => setNeedsOnly((v) => !v)} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", needsOnly ? "bg-warning-soft text-warning-ink" : "bg-surface-2 text-muted hover:text-ink")}>
-            Needs a person{waiting.length ? ` (${waiting.length})` : ""}
-          </button>
-          <button aria-pressed={filters.unread} onClick={() => go({ unread: filters.unread ? null : "1" })} className={cn("min-h-9 rounded-xl px-3 text-[12.5px] font-medium transition", filters.unread ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-muted hover:text-ink")}>
-            Unread
-          </button>
-        </div>
-
-        {waiting.length > 0 && <EscalationQueue items={waiting} me={props.me} canRespond={props.perms.respond} onOpen={(id) => go({ conversation: id })} />}
-
-        <ul className="flex flex-col gap-1.5" aria-label="Conversation list">
-          {visible.map((c) => (
-            <li key={c.id}>
-              <button
-                onClick={() => go({ conversation: c.id })}
-                aria-current={selected === c.id ? "true" : undefined}
-                className={cn("flex w-full gap-3 rounded-2xl border p-3 text-left transition", selected === c.id ? "border-primary/40 bg-primary-soft/40" : "border-line bg-surface hover:bg-surface-2")}
-              >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-violet/80 text-[12px] font-semibold text-white">{initials(c.contactName)}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2">
-                    <span className={cn("truncate text-[14px]", c.unread ? "font-semibold" : "font-medium")}>{c.contactName}</span>
-                    <span className="shrink-0 text-[11px] text-faint" suppressHydrationWarning>{c.lastMessageAt ? relativeTime(c.lastMessageAt) : ""}</span>
-                  </span>
-                  <span className="mt-0.5 block truncate text-[12.5px] text-muted">{c.preview ?? "No messages yet"}</span>
-                  <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <ChannelBadge channel={c.channel} provider={props.channelProviders?.[c.channel]} />
-                    <OwnerPill kind={c.ownerKind} name={c.ownerName} />
-                    {c.escalation && ["awaiting_owner", "open"].includes(c.escalation.status) && <Badge tone={c.escalation.urgency === "urgent" ? "danger" : "warning"}>Needs a person</Badge>}
-                    {c.priority === "urgent" && !c.escalation && <Badge tone="danger">Urgent</Badge>}
-                    {c.unread > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white" aria-label={`${c.unread} unread`}>{c.unread}</span>}
-                  </span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        {!visible.length && (
-          <div className="rounded-2xl border border-dashed border-line-strong p-8 text-center">
-            <Inbox className="mx-auto size-6 text-muted" aria-hidden />
-            <h2 className="mt-3 text-[15px] font-semibold">{list.length ? "Nothing matches these filters" : "No conversations yet"}</h2>
-            <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">
-              {list.length ? "Try a different channel or owner." : "Customer messages from SMS, WhatsApp and email appear here once a channel is verified and connected. Nothing is sent until you switch it on."}
-            </p>
-            {!list.length && <Link href="/settings/messaging" className="mt-3 inline-block text-[13px] font-medium text-primary">Check channel setup</Link>}
-          </div>
-        )}
-      </section>
-
-      <section aria-label="Conversation" className={cn("min-w-0", selected ? "block" : "hidden lg:block")}>
-        {detail ? (
-          <>
-            <Thread key={detail.conversation.id} {...props} detail={detail} onBack={() => go({ conversation: null })} />
-            <details className="mt-4 rounded-2xl border border-line bg-surface p-3 xl:hidden">
-              <summary className="min-h-10 cursor-pointer text-[13px] font-semibold">Customer details, consent and activity</summary>
-              <div className="mt-3">
-                <ContactPanel key={`m-${detail.conversation.id}`} {...props} detail={detail} inline />
-              </div>
-            </details>
-          </>
-        ) : (
-          <EmptyThread hasList={list.length > 0} />
-        )}
-      </section>
-
-      {detail && <ContactPanel key={`c-${detail.conversation.id}`} {...props} detail={detail} />}
-    </div>
+/** True on screens wide enough for the customer panel to sit beside the thread (the 2xl breakpoint: with the sidebar, anything narrower leaves the thread too thin). Server and first paint assume yes, as before. */
+function useIsWide(): boolean {
+  return React.useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia("(min-width: 1536px)");
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    () => window.matchMedia("(min-width: 1536px)").matches,
+    () => true,
   );
 }
 
-function OwnerPill({ kind, name }: { kind: "ai" | "human" | "unassigned"; name: string | null }) {
-  if (kind === "ai") return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />AI</span>;
-  if (kind === "human") return <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary-ink"><UserRound className="size-3" aria-hidden />{name?.split(" ")[0] ?? "Person"}</span>;
-  return <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-2">Unassigned</span>;
+export function InboxWorkspace(props: Props) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const wide = useIsWide();
+  const [filters, setFilters] = React.useState<Filters>({ view: props.filters.view ?? legacyView(props.filters), sort: props.filters.sort ?? "priority", q: props.filters.q, channel: props.filters.channel });
+  const [items, setItems] = React.useState<ConversationListItem[]>(props.list);
+  const [nextCursor, setNextCursor] = React.useState<string | null>(props.nextCursor ?? null);
+  const [counts, setCounts] = React.useState<ViewCounts | null>(props.counts ?? null);
+  const [detail, setDetail] = React.useState<InboxDetail | null>(props.detail);
+  const [selectedId, setSelectedId] = React.useState<string | null>(props.detail?.conversation.id ?? params.get("conversation"));
+  const [escalations, setEscalations] = React.useState(props.escalations);
+  const [list, setList] = React.useState({ loading: false, loadingMore: false, error: null as string | null });
+  const [thread, setThread] = React.useState({ loading: false, error: null as string | null });
+  const [panelOpen, setPanelOpen] = React.useState(false);
+  const live = props.live !== false;
+
+  // A new server render (a link that navigates here, or the router refreshing after a server action) is adopted as the latest known state.
+  const [seenProps, setSeenProps] = React.useState({ list: props.list, detail: props.detail, escalations: props.escalations });
+  if (seenProps.list !== props.list || seenProps.detail !== props.detail || seenProps.escalations !== props.escalations) {
+    setSeenProps({ list: props.list, detail: props.detail, escalations: props.escalations });
+    setItems(props.list);
+    setNextCursor(props.nextCursor ?? null);
+    if (props.counts) setCounts(props.counts);
+    setEscalations(props.escalations);
+    if (props.detail) {
+      setDetail(props.detail);
+      setSelectedId(props.detail.conversation.id);
+    }
+  }
+
+  const filtersRef = React.useRef(filters);
+  const selectedRef = React.useRef(selectedId);
+  const pages = React.useRef(1);
+  const listSeq = React.useRef(0);
+  const threadSeq = React.useRef(0);
+  React.useEffect(() => {
+    filtersRef.current = filters;
+    selectedRef.current = selectedId;
+  });
+
+  const loadList = React.useCallback(async (f: Filters, o: { pages?: number; silent?: boolean } = {}) => {
+    const mine = ++listSeq.current;
+    if (!o.silent) setList((s) => ({ ...s, loading: true, error: null }));
+    const want = Math.max(1, Math.min(o.pages ?? 1, 4));
+    let cursor: string | null = null;
+    const all: ConversationListItem[] = [];
+    let loaded = 0;
+    for (let i = 0; i < want; i += 1) {
+      const r: JsonResult<ListPage> = await getJson<ListPage>(`/api/inbox/conversations?${filterQuery(f, { cursor })}`);
+      if (mine !== listSeq.current) return; // a newer request (another view, another search) took over
+      if (!r.ok) {
+        setList((s) => ({ ...s, loading: false, error: r.error }));
+        return;
+      }
+      all.push(...r.data.items);
+      cursor = r.data.nextCursor;
+      loaded += 1;
+      if (!cursor) break;
+    }
+    const seen = new Set<string>();
+    setItems(all.filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true))));
+    setNextCursor(cursor);
+    pages.current = loaded;
+    setList({ loading: false, loadingMore: false, error: null });
+  }, []);
+
+  const loadThread = React.useCallback(async (id: string, o: { silent?: boolean } = {}) => {
+    const mine = ++threadSeq.current;
+    if (!o.silent) setThread({ loading: true, error: null });
+    const r = await getJson<InboxDetail>(`/api/inbox/conversations/${id}`);
+    if (mine !== threadSeq.current || selectedRef.current !== id) return;
+    if (!r.ok) {
+      if (r.status === 404 && o.silent) {
+        // It disappeared from under the person (resolved elsewhere into a view they cannot see, or access changed).
+        setDetail(null);
+        setSelectedId(null);
+      }
+      setThread({ loading: false, error: r.status === 404 ? "This conversation isn't available to you any more." : r.error });
+      return;
+    }
+    setDetail(r.data);
+    setThread({ loading: false, error: null });
+  }, []);
+
+  const loadEscalations = React.useCallback(async () => {
+    const r = await getJson<EscalationCard[]>("/api/inbox/escalations");
+    if (r.ok) setEscalations(r.data);
+  }, []);
+
+  const known = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of items) m.set(i.id, i.revision);
+    if (detail && detail.conversation.revision !== undefined) m.set(detail.conversation.id, detail.conversation.revision);
+    return m;
+  }, [items, detail]);
+  const knownRef = React.useRef(known);
+  React.useEffect(() => {
+    knownRef.current = known;
+  });
+
+  const sync = useInboxSync({
+    enabled: live,
+    initialServerTime: props.syncFrom ?? null,
+    openId: selectedId,
+    getKnown: () => knownRef.current,
+    onCounts: setCounts,
+    onRefreshList: async () => {
+      await Promise.all([loadList(filtersRef.current, { pages: pages.current, silent: true }), loadEscalations()]);
+    },
+    onRefreshThread: async () => {
+      if (selectedRef.current) await loadThread(selectedRef.current, { silent: true });
+    },
+  });
+
+  const refresh = React.useCallback(() => {
+    void loadList(filtersRef.current, { pages: pages.current, silent: true });
+    void loadEscalations();
+    if (selectedRef.current) void loadThread(selectedRef.current, { silent: true });
+    sync.poke();
+  }, [loadList, loadEscalations, loadThread, sync]);
+  const actions = React.useMemo(() => ({ refresh }), [refresh]);
+
+  const urlFor = (f: Filters, id: string | null) => {
+    const qs = filterQuery(f, { conversation: id }).toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  };
+
+  function changeFilters(next: Partial<Filters>) {
+    const f = { ...filtersRef.current, ...next };
+    setFilters(f);
+    filtersRef.current = f;
+    window.history.replaceState(null, "", urlFor(f, selectedRef.current));
+    pages.current = 1;
+    void loadList(f);
+  }
+
+  function openConversation(id: string) {
+    setSelectedId(id);
+    selectedRef.current = id;
+    setPanelOpen(false);
+    setDetail((d) => (d?.conversation.id === id ? d : null));
+    window.history.pushState(null, "", urlFor(filtersRef.current, id));
+    void loadThread(id);
+  }
+
+  function closeConversation() {
+    threadSeq.current += 1;
+    setSelectedId(null);
+    selectedRef.current = null;
+    setDetail(null);
+    setThread({ loading: false, error: null });
+    window.history.pushState(null, "", urlFor(filtersRef.current, null));
+  }
+
+  // Back and forward move between the conversations and views the person visited, without a page load.
+  React.useEffect(() => {
+    const onPop = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const view = sp.get("view");
+      const sort = sp.get("sort");
+      const f: Filters = { view: isInboxView(view) ? view : "all", sort: isInboxSort(sort) ? sort : "priority", q: sp.get("q") ?? "", channel: sp.get("channel") ?? "" };
+      setFilters(f);
+      filtersRef.current = f;
+      void loadList(f);
+      const id = sp.get("conversation");
+      setSelectedId(id);
+      selectedRef.current = id;
+      if (id) void loadThread(id);
+      else setDetail(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [loadList, loadThread]);
+
+  // Opening a conversation marks it read for the team (the unread count is shared), then everything else catches up.
+  const openedId = detail?.conversation.id ?? null;
+  const openedUnread = detail?.conversation.unread ?? 0;
+  React.useEffect(() => {
+    if (!openedId || openedUnread <= 0) return;
+    void markReadAction(openedId).then((r) => {
+      if (!r || !r.ok) return;
+      setItems((cur) => cur.map((i) => (i.id === openedId ? { ...i, unread: 0 } : i)));
+      sync.poke();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openedId]);
+
+  // j / k move through the list, Escape leaves a conversation on a phone. Never while typing.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || t?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return;
+      if (e.key === "j" || e.key === "k") {
+        const ids = items.map((i) => i.id);
+        const at = selectedRef.current ? ids.indexOf(selectedRef.current) : -1;
+        const next = ids[e.key === "j" ? Math.min(ids.length - 1, at + 1) : Math.max(0, at - 1)];
+        if (next && next !== selectedRef.current) {
+          e.preventDefault();
+          openConversation(next);
+        }
+      } else if (e.key === "Escape" && selectedRef.current && window.matchMedia("(max-width: 1279px)").matches) {
+        closeConversation();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
+  const waiting = escalations.filter((e) => ["awaiting_owner", "open"].includes(e.status));
+  const showDetail = detail && selectedId === detail.conversation.id ? detail : null;
+
+  return (
+    <InboxActions.Provider value={actions}>
+      <div className="space-y-3">
+        {props.channelHealth && <div className={cn(selectedId && "hidden xl:block")}><ChannelHealthBar channels={props.channelHealth} status={sync.status} lastSyncAt={sync.lastSyncAt} /></div>}
+        {/* One pane below xl (the list, or the open conversation, filling the height so the messages scroll above the composer); two columns from xl, three from 2xl. */}
+        <div className={cn("grid grid-rows-[minmax(0,1fr)] gap-4 xl:h-[calc(100dvh-13rem)] xl:min-h-[560px] xl:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)_340px]", selectedId && "h-[calc(100dvh-9rem)] min-h-[480px] xl:h-[calc(100dvh-13rem)]")}>
+          {!showDetail && <h1 className="sr-only">Inbox</h1>}
+          <div className={cn("min-w-0 xl:overflow-y-auto xl:pr-1", selectedId ? "hidden xl:block" : "block")}>
+            <InboxListPanel
+              items={items}
+              counts={counts}
+              view={filters.view}
+              sort={filters.sort}
+              q={filters.q}
+              channel={filters.channel}
+              selectedId={selectedId}
+              channelProviders={props.channelProviders}
+              loading={list.loading}
+              loadingMore={list.loadingMore}
+              error={list.error}
+              hasMore={nextCursor !== null}
+              perms={props.perms}
+              team={props.team}
+              onChange={changeFilters}
+              onOpen={openConversation}
+              onRetry={() => void loadList(filtersRef.current)}
+              onChanged={refresh}
+              onLoadMore={async () => {
+                if (!nextCursor) return;
+                setList((s) => ({ ...s, loadingMore: true }));
+                const r = await getJson<{ items: ConversationListItem[]; nextCursor: string | null }>(`/api/inbox/conversations?${filterQuery(filtersRef.current, { cursor: nextCursor })}`);
+                if (!r.ok) {
+                  setList((s) => ({ ...s, loadingMore: false }));
+                  toast.error(r.error);
+                  return;
+                }
+                setItems((cur) => {
+                  const have = new Set(cur.map((i) => i.id));
+                  return [...cur, ...r.data.items.filter((i) => !have.has(i.id))];
+                });
+                setNextCursor(r.data.nextCursor);
+                pages.current += 1;
+                setList((s) => ({ ...s, loadingMore: false }));
+              }}
+              aboveList={waiting.length > 0 ? <EscalationQueue items={waiting} me={props.me} canRespond={props.perms.respond} onOpen={openConversation} /> : undefined}
+            />
+          </div>
+
+          <section aria-label="Conversation" className={cn("min-h-0 min-w-0", selectedId ? "block" : "hidden xl:block")}>
+            {showDetail ? (
+              <Thread
+                key={showDetail.conversation.id}
+                {...props}
+                detail={showDetail}
+                onBack={closeConversation}
+                onOpenCustomer={() => setPanelOpen(true)}
+                aiEmployees={props.aiEmployees ?? []}
+                aiAssist={props.aiAssist ?? false}
+              />
+            ) : selectedId && thread.loading ? (
+              <div className="flex h-full min-h-72 flex-col gap-3 rounded-2xl border border-line bg-surface p-4" role="status" aria-busy="true" aria-label="Loading conversation">
+                <Skeleton className="h-10 w-2/5" />
+                <Skeleton className="h-16 w-3/5" />
+                <Skeleton className="ml-auto h-12 w-1/2" />
+                <Skeleton className="h-14 w-2/3" />
+              </div>
+            ) : selectedId && thread.error ? (
+              <div role="alert" className="flex h-full min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong p-10 text-center">
+                <ShieldAlert className="size-6 text-muted" aria-hidden />
+                <h2 className="mt-3 text-[15px] font-semibold">{thread.error}</h2>
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void loadThread(selectedId)}>Try again</Button>
+                  <Button size="sm" variant="ghost" onClick={closeConversation}>Back to the list</Button>
+                </div>
+              </div>
+            ) : (
+              <EmptyThread hasList={items.length > 0} />
+            )}
+          </section>
+
+          {showDetail && wide && (
+            <div className="min-w-0 xl:overflow-y-auto xl:pr-1">
+              <ContactPanel key={`c-${showDetail.conversation.id}`} {...props} detail={showDetail} aiAssist={props.aiAssist ?? false} timeZone={props.timeZone} />
+            </div>
+          )}
+        </div>
+        {showDetail && !wide && (
+          <Sheet open={panelOpen} onOpenChange={setPanelOpen} title="Customer details" description="CRM record, deals, tasks, consent and activity for this customer." side="right">
+            <div className="p-4">
+              <ContactPanel key={`m-${showDetail.conversation.id}`} {...props} detail={showDetail} aiAssist={props.aiAssist ?? false} timeZone={props.timeZone} inline />
+            </div>
+          </Sheet>
+        )}
+        <p className="hidden text-[11.5px] text-faint xl:block">Shortcuts: <Kbd>/</Kbd> search · <Kbd>J</Kbd> <Kbd>K</Kbd> next and previous conversation · <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> send</p>
+      </div>
+    </InboxActions.Provider>
+  );
 }
 
 function EmptyThread({ hasList }: { hasList: boolean }) {
@@ -246,7 +504,7 @@ function EmptyThread({ hasList }: { hasList: boolean }) {
 }
 
 function EscalationQueue({ items, me, canRespond, onOpen }: { items: EscalationCard[]; me: Props["me"]; canRespond: boolean; onOpen: (conversationId: string) => void }) {
-  const router = useRouter();
+  const refresh = useInboxRefresh();
   const [busy, setBusy] = React.useState<string | null>(null);
   async function run(key: string, fn: () => Promise<{ ok: boolean; error?: string }>, ok: string) {
     setBusy(key);
@@ -255,7 +513,7 @@ function EscalationQueue({ items, me, canRespond, onOpen }: { items: EscalationC
     if (!r.ok) toast.error(r.error ?? "That didn't work.");
     else {
       toast.success(ok);
-      router.refresh();
+      refresh();
     }
   }
   return (
@@ -477,14 +735,23 @@ export function restoreOlderFocus(hadFocus: boolean, button: Pick<HTMLElement, "
   (button ?? start)?.focus({ preventScroll: true });
 }
 
-function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
+function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpenCustomer: () => void; aiEmployees: ConversationAiEmployee[]; aiAssist: boolean }) {
   const { detail, me, perms, templates, timeZone } = props;
   const c = detail.conversation;
-  const router = useRouter();
+  const refresh = useInboxRefresh();
   const [text, setText] = React.useState("");
   const [mode, setMode] = React.useState<"reply" | "note">("reply");
   const [templateId, setTemplateId] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
+  // A reply the AI suggested on request. It is only ever offered here; the person decides whether it goes into the box, and then sends it.
+  const [suggestion, setSuggestion] = React.useState<{ text: string; warnings: string[] } | null>(null);
+  const [suggesting, setSuggesting] = React.useState(false);
+  const suggestAbort = React.useRef<AbortController | null>(null);
+  // A failed message the person is about to send again that may already have reached the customer (needs their confirmation).
+  const [confirmRetry, setConfirmRetry] = React.useState<InboxMessage | null>(null);
+  const [outcome, setOutcome] = React.useState("");
+  const [resolveOpen, setResolveOpen] = React.useState(false);
+  React.useEffect(() => () => suggestAbort.current?.abort(), []);
   // Gaps a canned reply left where the contact's details were missing ("[First name]"). Sending waits until the person fills them in.
   const [markers, setMarkers] = React.useState<string[]>([]);
   // The values a picked WhatsApp template still needs ({{1}}, {{2}} …). Sending waits until each is replaced.
@@ -651,8 +918,59 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
       return false;
     }
     if (ok) toast.success(ok);
-    router.refresh();
+    refresh();
     return true;
+  }
+
+  /** Asks for a suggested reply. It appears below the box as a draft; nothing is put in the box or sent until the person chooses to. */
+  async function suggest() {
+    suggestAbort.current?.abort();
+    const ac = new AbortController();
+    suggestAbort.current = ac;
+    setSuggesting(true);
+    setSuggestion(null);
+    const r = await requestSuggestedReply(c.id, ac.signal);
+    if (ac.signal.aborted) return;
+    setSuggesting(false);
+    if (!r.ok) toast.error(r.reason);
+    else setSuggestion({ text: r.data.text, warnings: r.data.warnings });
+  }
+
+  function acceptSuggestion() {
+    if (!suggestion) return;
+    setText(suggestion.text);
+    setMarkers([]);
+    setHoles([]);
+    setSuggestion(null);
+    setMode("reply");
+    requestAnimationFrame(() => composerRef.current?.focus());
+    toast.info("The AI's draft is in the box. Check it, change what you need to, then send it yourself.");
+  }
+
+  /** Sends a failed message again. If it may already have reached the customer, the person confirms first. */
+  async function retry(m: InboxMessage, acknowledged = false) {
+    if (m.failureKind === "unconfirmed" && !acknowledged) {
+      setConfirmRetry(m);
+      return;
+    }
+    setConfirmRetry(null);
+    await run(`retry${m.id}`, async () => {
+      const r = await retryMessageAction(m.id, acknowledged);
+      if (r.ok) {
+        followRef.current = true;
+        if (r.data.status === "blocked") toast.warning("It couldn't be sent yet. The new message shows why.");
+        else if (r.data.status === "sent") toast.success("Sent again. Delivery shows once the provider confirms.");
+      }
+      return r;
+    });
+  }
+
+  async function resolve() {
+    const ok = await run("state", () => setConversationStateAction(c.id, { status: "closed", outcome: outcome || null, seenInboundAt: c.lastInboundAt }), "Resolved.");
+    if (ok) {
+      setResolveOpen(false);
+      setOutcome("");
+    }
   }
 
   async function submit() {
@@ -700,7 +1018,9 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
       );
     }
     const out = m.direction === "outbound";
-    const reason = m.blockedReason ? (BLOCK_REASON_LABELS[m.blockedReason] ?? m.blockedReason) : null;
+    // "The provider rejected the message" is only true when it answered; a send nobody confirmed says what happened in its own detail.
+    const reason = m.blockedReason && !(m.status === "failed" && m.failureKind === "unconfirmed") ? (BLOCK_REASON_LABELS[m.blockedReason] ?? m.blockedReason) : null;
+    const canRetry = out && m.status === "failed" && !m.retriedBy && perms.reply && (m.scope === "human" || m.scope === "reply");
     return (
       <div key={m.id} className={cn("flex", out ? "justify-end" : "justify-start")}>
         <div className={cn("max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed", out ? (m.authorKind === "ai" ? "bg-violet-soft text-ink" : "bg-primary-soft text-ink") : "bg-surface-2", m.status === "draft" && "border border-dashed border-warning/60")}>
@@ -711,9 +1031,20 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
             {out && <StatusMark status={m.status} />}
             {out && (m.status === "blocked" || m.status === "failed" || m.status === "draft") && reason && <span>· {reason}</span>}
             {out && m.status === "failed" && m.statusDetail && <span>· {m.statusDetail}</span>}
-            {m.providerLabel && <span className="text-faint">· via {m.providerLabel}</span>}
+            {m.providerLabel && <span className="text-muted">· via {m.providerLabel}</span>}
           </p>
           {out && m.deliveryEvents.length > 0 && <DeliveryDetails events={m.deliveryEvents} timeZone={timeZone} failed={m.status === "failed"} />}
+          {out && m.status === "failed" && (
+            <div className="mt-2 space-y-1.5 text-[12px]">
+              {m.failureKind === "unconfirmed" && !m.retriedBy && <p className="text-warning-ink">The provider never confirmed this. The customer may already have it.</p>}
+              {m.failureKind === "rejected" && !m.retriedBy && <p className="text-muted">The provider refused it, so the customer did not get it.</p>}
+              {m.retriedBy && <p className="text-muted">Sent again as a new message below.</p>}
+              {canRetry && (
+                <Button size="sm" variant="secondary" loading={busy === `retry${m.id}`} onClick={() => retry(m)}><RotateCcw className="size-3.5" aria-hidden />Send again</Button>
+              )}
+            </div>
+          )}
+          {m.retryOf && <p className="mt-1 text-[11px] text-muted">Sent again after an earlier attempt failed.</p>}
           {m.status === "draft" && m.authorKind === "ai" && perms.reply && (
             <div className="mt-2 flex gap-2">
               <Button
@@ -747,19 +1078,86 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
     );
   }
 
+  /** A change of hands, an AI pause, a resolve: said once, in place, between the messages it happened between. */
+  function renderEvent(e: { id: string; at: string; text: string }) {
+    return (
+      <div key={e.id} role="note" className="flex items-center gap-2 text-[11.5px] text-faint">
+        <span aria-hidden className="h-px flex-1 bg-line" />
+        <span className="max-w-[80%] text-center"><span className="text-muted">{e.text}</span> · <span suppressHydrationWarning>{formatDateTime(e.at, timeZone)}</span></span>
+        <span aria-hidden className="h-px flex-1 bg-line" />
+      </div>
+    );
+  }
+
+  // Events sit among the messages by time. When only a page of the thread is shown, events from before the oldest shown message are left out.
+  const shownMessages = [...olderBlock, ...newestPage];
+  const floor = truncated && shownMessages.length ? shownMessages[0].createdAt : null;
+  const lifecycle = (detail.events ?? []).filter((e) => floor === null || e.at >= floor);
+  const newestStart = newestPage[0]?.createdAt ?? "";
+  // At the same moment (a database transaction has one clock): what a person changed comes before the message they sent, a request for a person after the message that caused it.
+  const merge = (msgs: InboxMessage[], evs: Array<{ id: string; at: string; text: string; after?: boolean }>) => {
+    const rows: Array<{ at: string; rank: number; node: React.ReactNode }> = [
+      ...msgs.map((m) => ({ at: m.createdAt, rank: 1, node: renderMessage(m) })),
+      ...evs.map((e) => ({ at: e.at, rank: e.after ? 2 : 0, node: renderEvent(e) })),
+    ];
+    return rows.map((r, i) => ({ r, i })).sort((a, b) => (a.r.at < b.r.at ? -1 : a.r.at > b.r.at ? 1 : a.r.rank - b.r.rank || a.i - b.i)).map((x) => x.r.node);
+  };
+  const olderRows = merge(olderBlock, lifecycle.filter((e) => e.at < newestStart));
+  const newestRows = merge(newestPage, lifecycle.filter((e) => e.at >= newestStart));
+  const archived = Boolean(c.archivedAt);
+
   return (
     <article className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-2xl border border-line bg-surface">
-      <header className="flex items-center gap-3 border-b border-line p-3 sm:p-4">
-        <button onClick={props.onBack} className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 lg:hidden" aria-label="Back to conversations"><ArrowLeft className="size-4" /></button>
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-violet/80 text-[12px] font-semibold text-white">{initials(detail.contact.name)}</span>
+      <header className="flex items-center gap-2 border-b border-line p-3 sm:gap-3 sm:p-4">
+        <button onClick={props.onBack} className="flex size-11 items-center justify-center rounded-lg text-muted hover:bg-surface-2 sm:size-9 xl:hidden" aria-label="Back to conversations"><ArrowLeft className="size-4" /></button>
+        <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/80 to-violet/80 text-[12px] font-semibold text-white sm:flex" aria-hidden>{initials(detail.contact.name)}</span>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[16px] font-semibold tracking-tight">{detail.contact.name}</h1>
-          <p className="flex flex-wrap items-center gap-2 text-[12px] text-muted"><ChannelBadge channel={c.channel} provider={props.channelProviders?.[c.channel]} /><span>{sentenceCase(detail.contact.lifecycleStage)}</span>{c.status === "closed" && <Badge>Closed</Badge>}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted">
+            <ChannelBadge channel={c.channel} provider={props.channelProviders?.[c.channel]} />
+            <span className="hidden sm:inline">{sentenceCase(detail.contact.lifecycleStage)}</span>
+            {archived ? <Badge tone="outline"><Archive className="size-3" aria-hidden />Archived</Badge> : c.status === "closed" ? <Badge tone="success"><Check className="size-3" aria-hidden />Resolved{c.outcome ? ` · ${OUTCOME_LABELS[c.outcome]}` : ""}</Badge> : null}
+            {c.priority === "urgent" && <Badge tone="danger">Urgent</Badge>}
+          </p>
         </div>
-        {perms.reply && <Button size="sm" variant="ghost" onClick={() => run("state", () => setConversationStateAction(c.id, { status: c.status === "closed" ? "open" : "closed" }), c.status === "closed" ? "Reopened." : "Closed.")}>{c.status === "closed" ? "Reopen" : "Close"}</Button>}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button size="sm" variant="ghost" className="2xl:hidden" onClick={props.onOpenCustomer} aria-label="Customer details"><PanelRightOpen className="size-4" aria-hidden /><span className="hidden sm:inline">Customer</span></Button>
+          {perms.reply && c.status !== "closed" && (
+            <Popover open={resolveOpen} onOpenChange={setResolveOpen}>
+              <PopoverTrigger asChild><Button size="sm" variant="secondary" aria-label="Resolve"><SquareCheckBig className="size-3.5" aria-hidden /><span className="hidden sm:inline">Resolve</span></Button></PopoverTrigger>
+              <PopoverContent align="end" className="w-[min(300px,calc(100vw-32px))] p-3">
+                <label htmlFor="resolve-outcome" className="text-[12.5px] font-medium">How did it end?</label>
+                <Select id="resolve-outcome" className="mt-1.5" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+                  <option value="">No outcome</option>
+                  {CONVERSATION_OUTCOMES.map((o) => <option key={o} value={o}>{OUTCOME_LABELS[o]}</option>)}
+                </Select>
+                <p className="mt-1.5 text-[11.5px] text-muted">A new message from the customer reopens it.</p>
+                <div className="mt-2 flex justify-end gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setResolveOpen(false)}>Cancel</Button>
+                  <Button size="sm" variant="brand" loading={busy === "state"} onClick={resolve}>Resolve</Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          {perms.reply && c.status === "closed" && (
+            <Button size="sm" variant="secondary" aria-label="Reopen" loading={busy === "state"} onClick={() => run("state", () => setConversationStateAction(c.id, { status: "open" }), "Reopened.")}><RotateCcw className="size-3.5" aria-hidden /><span className="hidden sm:inline">Reopen</span></Button>
+          )}
+          {perms.reply && (
+            <Menu>
+              <MenuTrigger asChild><Button size="icon-sm" variant="ghost" aria-label="More actions"><EllipsisVertical className="size-4" aria-hidden /></Button></MenuTrigger>
+              <MenuContent>
+                <MenuItem onSelect={() => void run("unread", () => markUnreadAction(c.id), "Marked unread.")}>Mark unread</MenuItem>
+                {c.status === "closed" && !archived && <MenuItem onSelect={() => void run("archive", () => setConversationStateAction(c.id, { archived: true }), "Archived.")}><Archive className="size-4" aria-hidden />Archive</MenuItem>}
+                {archived && <MenuItem onSelect={() => void run("unarchive", () => setConversationStateAction(c.id, { archived: false }), "Moved back to the inbox.")}>Move back to the inbox</MenuItem>}
+                <MenuSeparator />
+                <MenuItem onSelect={() => void run("priority", () => setConversationStateAction(c.id, { priority: c.priority === "urgent" ? "normal" : "urgent" }), c.priority === "urgent" ? "No longer urgent." : "Marked urgent.")}>{c.priority === "urgent" ? "Remove urgent" : "Mark urgent"}</MenuItem>
+              </MenuContent>
+            </Menu>
+          )}
+        </div>
       </header>
 
-      <OwnershipBar detail={detail} me={me} perms={perms} busy={busy} run={run} />
+      <AiControls c={c} me={me} perms={perms} team={props.team} aiEmployees={props.aiEmployees} busy={busy} run={run} />
       {detail.escalation && <EscalationBanner detail={detail} me={me} perms={perms} busy={busy} run={run} />}
 
       <div ref={logRef} onScroll={(e) => { followRef.current = isScrolledToEnd(e.currentTarget); }} className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4" role="log" aria-label="Messages" aria-live="polite">
@@ -767,10 +1165,10 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
           // Older messages arrive as a page at once: not announced one by one (the status line below says how many came in).
           <div aria-live="off" className="space-y-3">
             <OlderMessagesNotice nextBefore={nextBefore} shownCount={shownCount} loading={loadingOlder} onLoad={loadOlder} buttonRef={olderBtnRef} startRef={startRef} />
-            {olderBlock.map(renderMessage)}
+            {olderRows}
           </div>
         )}
-        {newestPage.map(renderMessage)}
+        {newestRows}
         <div ref={endRef} />
       </div>
       <p role="status" className="sr-only">{olderNote}</p>
@@ -797,7 +1195,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
             ) : <p className="mt-1">No templates are approved yet.</p>}
           </div>
         )}
-        {c.ownerKind === "ai" && perms.reply && mode === "reply" && <p className="mb-2 text-[12px] text-muted">The AI is handling this. Sending a reply takes over and stops the AI for this conversation.</p>}
+        {c.ownerKind === "ai" && perms.reply && mode === "reply" && <p className="mb-2 text-[12px] text-muted">{c.aiPaused ? "AI replies are paused here. " : "The AI is handling this. "}Sending a reply takes over and stops the AI for this conversation.</p>}
         {otherOwner && !perms.assign && <p className="mb-2 text-[12px] text-muted">{c.ownerName ?? "A teammate"} is handling this conversation.</p>}
         <div className="mb-2 flex flex-wrap items-center gap-1">
           <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Composer mode">
@@ -805,14 +1203,35 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
             {perms.notes && <button role="tab" aria-selected={mode === "note"} onClick={() => setMode("note")} className={cn("min-h-9 rounded-lg px-3 text-[12.5px] font-medium", mode === "note" ? "bg-warning-soft text-warning-ink" : "text-muted hover:bg-surface-2")}><StickyNote className="mr-1 inline size-3.5" aria-hidden />Internal note</button>}
           </div>
           {/* Outside the tablist: a tablist may only own tabs. */}
-          {mode === "reply" && canReply && replies.length > 0 && <CannedReplyPicker replies={replies} onPick={insertCanned} />}
+          <span className="ml-auto flex flex-wrap items-center gap-1">
+            {mode === "reply" && canReply && props.aiAssist && (
+              <button type="button" onClick={suggest} disabled={suggesting} aria-busy={suggesting || undefined} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-3 text-[12.5px] font-medium text-violet-ink hover:bg-violet-soft disabled:opacity-60">
+                {suggesting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />}<span className="hidden sm:inline">Suggest reply</span><span className="sr-only sm:hidden">Suggest reply</span>
+              </button>
+            )}
+            {mode === "reply" && canReply && replies.length > 0 && <CannedReplyPicker replies={replies} onPick={insertCanned} />}
+          </span>
         </div>
+        {suggestion && mode === "reply" && (
+          <div role="region" aria-label="Suggested reply" className="mb-2 rounded-xl border border-violet/30 bg-violet-soft/50 p-3 text-[13px]">
+            <p className="flex items-center gap-1.5 text-[11.5px] font-semibold text-violet-ink"><Sparkles className="size-3.5" aria-hidden />AI suggestion · not sent · not verified</p>
+            <p className="mt-1.5 whitespace-pre-wrap">{suggestion.text}</p>
+            {suggestion.warnings.length > 0 && (
+              <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[12px] text-warning-ink">{suggestion.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+            )}
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" variant="brand" onClick={acceptSuggestion}>Put it in the box</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSuggestion(null)}>Dismiss</Button>
+            </div>
+          </div>
+        )}
         <label className="sr-only" htmlFor="composer">{mode === "note" ? "Internal note" : `Reply by ${CHANNEL_LABELS[c.channel]}`}</label>
         <Textarea
           id="composer"
           ref={composerRef}
           data-composer-dirty={text.trim() ? "true" : "false"}
-          rows={3}
+          rows={2}
+          className="min-h-[64px]"
           value={text}
           maxLength={mode === "note" ? 2000 : 5000}
           disabled={mode === "reply" ? !canReply : !perms.notes}
@@ -825,11 +1244,28 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
         {mode === "reply" && openGaps.length > 0 && (
           <p role="status" className="mt-2 flex items-start gap-1.5 text-[12px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />Replace {openGaps.join(", ")} before sending. These details aren&apos;t on the contact&apos;s record.</p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2">
+        {/* On a phone the floating AQi launcher sits over the bottom-right corner: keep Send clear of it. */}
+        <div className="mt-2 flex items-center justify-between gap-2 max-sm:pb-3">
           <span className="text-[11.5px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? `Sends from your verified ${CHANNEL_LABELS[c.channel]} sender` : "Visible to your team only"}</span>
           <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
         </div>
       </footer>
+
+      <Dialog
+        open={confirmRetry !== null}
+        onOpenChange={(o) => { if (!o) setConfirmRetry(null); }}
+        title="Send this message again?"
+        description="The first attempt was never confirmed, so the customer may already have received it. Sending again could mean they get it twice."
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmRetry(null)}>Cancel</Button>
+            <Button variant="brand" onClick={() => confirmRetry && retry(confirmRetry, true)}>Send again anyway</Button>
+          </>
+        }
+      >
+        <blockquote className="whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-[13px]">{confirmRetry?.body}</blockquote>
+      </Dialog>
     </article>
   );
 }
@@ -902,22 +1338,6 @@ function StatusMark({ status }: { status: MessageStatus }) {
 
 type Run = (key: string, fn: () => Promise<{ ok: boolean; error?: string }>, ok?: string) => Promise<boolean>;
 
-function OwnershipBar({ detail, me, perms, busy, run }: { detail: InboxDetail; me: Props["me"]; perms: Props["perms"]; busy: string | null; run: Run }) {
-  const c = detail.conversation;
-  const mine = c.ownerKind === "human" && c.ownerUserId === me.id;
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface-2/60 px-3 py-2 text-[12.5px] sm:px-4">
-      <span className="flex items-center gap-2">
-        {c.ownerKind === "ai" ? <><Bot className="size-4 text-violet-ink" aria-hidden /><span><strong>AI is handling this.</strong> It follows your rules and hands off when a person is needed.</span></> : c.ownerKind === "human" ? <><UserRound className="size-4 text-primary" aria-hidden /><span><strong>{mine ? "You are" : `${c.ownerName ?? "A teammate"} is`} handling this.</strong> The AI will not reply.</span></> : <><Hand className="size-4 text-muted" aria-hidden /><span><strong>Nobody owns this yet.</strong> The AI will not reply.</span></>}
-      </span>
-      <span className="flex gap-2">
-        {c.ownerKind !== "human" && perms.reply && <Button size="sm" variant="secondary" loading={busy === "takeover"} onClick={() => run("takeover", () => takeOverAction(c.id), "You're handling this now.")}>Take over</Button>}
-        {c.ownerKind !== "ai" && perms.resume && (mine || perms.assign) && <Button size="sm" variant="soft" loading={busy === "resume"} onClick={() => run("resume", () => resumeAiAction(c.id), "Handed back to the AI.")}><Sparkles className="size-3.5" />Hand back to AI</Button>}
-      </span>
-    </div>
-  );
-}
-
 function EscalationBanner({ detail, me, perms, busy, run }: { detail: InboxDetail; me: Props["me"]; perms: Props["perms"]; busy: string | null; run: Run }) {
   const e = detail.escalation!;
   const [resolution, setResolution] = React.useState("");
@@ -946,9 +1366,9 @@ function EscalationBanner({ detail, me, perms, busy, run }: { detail: InboxDetai
   );
 }
 
-function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props & { detail: InboxDetail; inline?: boolean }) {
+function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false, ...props }: Props & { detail: InboxDetail; aiAssist: boolean; inline?: boolean }) {
   const idp = inline ? "m-" : "";
-  const router = useRouter();
+  const refresh = useInboxRefresh();
   const c = detail.conversation;
   const [fact, setFact] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -959,20 +1379,21 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
     if (!r.ok) toast.error(r.error ?? "That didn't work.");
     else {
       if (ok) toast.success(ok);
-      router.refresh();
+      refresh();
     }
     return r.ok;
   }
   const confirmed = detail.memories.filter((m) => m.kind === "confirmed_fact");
   const summaries = detail.memories.filter((m) => m.kind === "ai_summary");
   return (
-    <aside aria-label={inline ? "Customer details (compact)" : "Customer details"} className={cn("min-w-0 space-y-4", inline ? "block" : "hidden xl:block")}>
+    <aside aria-label={inline ? "Customer details (compact)" : "Customer details"} className="block min-w-0 space-y-4">
+      <AiAssistPanel conversationId={c.id} newestInboundId={[...detail.messages].reverse().find((m) => m.direction === "inbound")?.id ?? null} canUse={aiAssist} />
+      <CrmContextPanel conversationId={c.id} version={c.revision} timeZone={timeZone} onChanged={refresh} />
       <section className="rounded-2xl border border-line bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Customer</h2>
+        <h2 className="text-[13px] font-semibold">Identity and consent</h2>
         <dl className="mt-3 space-y-2 text-[12.5px]">
           <div className="flex justify-between gap-2"><dt className="text-muted">Stage</dt><dd>{sentenceCase(detail.contact.lifecycleStage)}</dd></div>
           {detail.contact.temperature && <div className="flex justify-between gap-2"><dt className="text-muted">Temperature</dt><dd>{sentenceCase(detail.contact.temperature)}</dd></div>}
-          <div className="flex justify-between gap-2"><dt className="text-muted">Source</dt><dd>{sentenceCase(detail.contact.source)}</dd></div>
         </dl>
         <ul className="mt-3 space-y-1.5 text-[12.5px]">
           {detail.contact.identities.map((i) => (
@@ -1005,6 +1426,15 @@ function ContactPanel({ detail, perms, team, timeZone, inline = false }: Props &
             <option value="">Unassigned</option>
             {team.map((t) => <option key={t.id} value={t.id}>{t.name} · {sentenceCase(t.role)}</option>)}
           </Select>
+          {(props.aiEmployees ?? []).length > 0 && (
+            <>
+              <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI employee on this conversation</label>
+              <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI employee updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
+                {!c.aiAgent && <option value="">AI employee: none chosen</option>}
+                {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>AI employee: {a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
+              </Select>
+            </>
+          )}
           <label className="sr-only" htmlFor={`${idp}priority`}>Priority</label>
           <Select id={`${idp}priority`} value={c.priority} onChange={(e) => run("priority", () => setConversationStateAction(c.id, { priority: e.target.value }), "Priority updated.")} className="mt-2" disabled={busy === "priority"}>
             {["low", "normal", "high", "urgent"].map((p) => <option key={p} value={p}>{sentenceCase(p)} priority</option>)}

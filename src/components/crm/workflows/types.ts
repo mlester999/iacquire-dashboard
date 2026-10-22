@@ -180,6 +180,8 @@ export interface EditorOptions {
   customValues?: Array<{ key: string; label: string }>;
   /** Connections to outside systems that aren't revoked (never their secrets), for HTTP request and Slack steps. */
   connections?: Array<{ id: string; name: string; kind: "http" | "slack_webhook"; status: string; host: string; methods: string[] }>;
+  /** False when the workspace does not have the new inbox yet (the rollout): its conversation triggers and the "Update conversation" step can't be published. */
+  inboxEnabled?: boolean;
   folders: FolderOption[];
 }
 

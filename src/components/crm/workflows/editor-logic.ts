@@ -31,6 +31,7 @@ export function validationContextOf(o: EditorOptions) {
     forms: o.forms,
     customValues: o.customValues,
     connections: o.connections ?? [],
+    inboxEnabled: o.inboxEnabled,
   });
 }
 
@@ -71,6 +72,7 @@ export function kindChoices(options: EditorOptions): KindChoice[] {
     if (k === "webhook" && !options.webhooks.some((w) => w.active)) return "Add a webhook endpoint first.";
     if (k === "http_request" && !(options.connections ?? []).some((c) => c.kind === "http")) return "Set up an HTTP connection first (Automation Studio → Connections).";
     if (k === "slack_message" && !(options.connections ?? []).some((c) => c.kind === "slack_webhook")) return "Set up a Slack connection first (Automation Studio → Connections).";
+    if (k === "conversation_action" && options.inboxEnabled === false) return "The new inbox isn't switched on for this workspace yet, so this step can't be published.";
     if (k === "ai_task" && !options.employees.length) return "No AI employees are included in your workspace.";
     if (k === "ai_task" && !options.employees.some((e) => aiTaskState(e).state !== "blocked")) {
       return options.employees.some((e) => e.liveRuns) ? "None of your AI employees can be reached yet, so this step would be skipped." : "AI employee runs are switched off for now, so this step would be skipped.";

@@ -95,6 +95,9 @@ const schema = z.object({
   MICROSOFT_CALENDAR_TENANT: z.preprocess(blankToUndefined, z.string().regex(/^[A-Za-z0-9.-]{1,100}$/).default("common")),
   // Stops all background calendar sync and write-back (and "Sync now") without disconnecting anyone.
   CALENDAR_SYNC_DISABLED: bool,
+  // Switches the Unified Inbox off: the /inbox page, /api/inbox/* and the inbox's actions answer "temporarily unavailable", and the inbox's own
+  // notices stop. Receiving, storing and sending messages, the AI employees and workflows are not touched. Unset or false (the default) = on.
+  INBOX_DISABLED: bool,
   CALENDAR_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(2).max(1440).default(10),
   CALENDAR_ICS_POLL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 

@@ -5,6 +5,7 @@ import { dispatchDue } from "@/server/messaging/send";
 import { processDueFollowUps } from "@/server/messaging/followups";
 import { advanceEscalations } from "@/server/messaging/handoff";
 import { respondToPending } from "@/server/messaging/responder";
+import { scanInboxAttention } from "@/server/messaging/attention";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
 import { checkLivePublications } from "@/server/websites/health";
@@ -60,6 +61,8 @@ export const JOBS: ScheduledJob[] = [
   { name: "escalationsOpened", run: () => advanceEscalations() },
   { name: "followUpsPrepared", run: async () => (await processDueFollowUps()).processed },
   { name: "repliesChecked", run: async () => (await respondToPending()).checked },
+  // The inbox: customers who have waited for a reply are announced once each, and "went quiet" is announced to workflows that listen for it.
+  { name: "inboxAttention", everyMinutes: 5, run: async () => { const r = await scanInboxAttention(); return r.notified + r.idle; } },
   { name: "approvalExpiry", run: () => expireAllStaleApprovals() },
   { name: "bookingHolds", run: () => expireBookingHolds() },
   // Connected calendars: busy times are read before anything is offered or written, and bookings are written before reminders go out,

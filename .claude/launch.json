@@ -61,6 +61,14 @@
         "scripts/ops-qa.mjs"
       ],
       "port": 3230
+    },
+    {
+      "name": "inbox-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/inbox-qa.mjs"
+      ],
+      "port": 3270
     }
   ]
 }
