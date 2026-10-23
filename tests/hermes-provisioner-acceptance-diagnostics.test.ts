@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { safeStartupFailureCode } from "../scripts/hermes-provisioner-acceptance-diagnostics";
+import {
+  safeAcceptanceSeedErrorCode,
+  safeAcceptanceSeedStage,
+  safeStartupFailureCode,
+} from "../scripts/hermes-provisioner-acceptance-diagnostics";
 
 describe("Hermes acceptance startup diagnostics", () => {
   it("reports known runtime codes without including their messages", () => {
@@ -19,5 +23,16 @@ describe("Hermes acceptance startup diagnostics", () => {
     expect(safeStartupFailureCode(new Error("Bearer sk-live-this-is-not-for-logs"))).toBe("ERROR");
     expect(safeStartupFailureCode({ code: "api_key_secret_value", message: "untrusted" }))
       .toBe("UNCLASSIFIED_STARTUP_ERROR");
+  });
+
+  it("keeps only allowlisted seed stages and application failure codes", () => {
+    expect(safeAcceptanceSeedStage("tenant_two_onboarding")).toBe("tenant_two_onboarding");
+    expect(safeAcceptanceSeedStage("secret-token-value")).toBe("unknown_seed_stage");
+    expect(safeAcceptanceSeedErrorCode(new Error("acceptance_onboarding_answers_rejected")))
+      .toBe("acceptance_onboarding_answers_rejected");
+    expect(safeAcceptanceSeedErrorCode(Object.assign(new Error("token=private"), { code: "42P01" })))
+      .toBe("DATABASE_TABLE_MISSING");
+    expect(safeAcceptanceSeedErrorCode(new Error("sk-live-do-not-log-this")))
+      .toBe("unclassified_seed_error");
   });
 });

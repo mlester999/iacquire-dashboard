@@ -1,7 +1,11 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
-import { safeStartupFailureCode } from "./hermes-provisioner-acceptance-diagnostics";
+import {
+  safeAcceptanceSeedErrorCode,
+  safeAcceptanceSeedStage,
+  safeStartupFailureCode,
+} from "./hermes-provisioner-acceptance-diagnostics";
 
 const reportStartupFailure = (reason: unknown): never => {
   process.stderr.write(`PORTAL_ACCEPTANCE_STARTUP_FAILURE=${safeStartupFailureCode(reason)}\n`);
@@ -73,6 +77,20 @@ const state: {
   syncVersionId: null,
   syncAgentId: null,
 };
+
+class AcceptanceSeedError extends Error {
+  constructor(readonly stage: string, readonly code: string) {
+    super("acceptance_seed_failed");
+  }
+}
+
+async function inSeedStage<T>(stage: string, action: () => Promise<T>): Promise<T> {
+  try {
+    return await action();
+  } catch (reason) {
+    throw new AcceptanceSeedError(safeAcceptanceSeedStage(stage), safeAcceptanceSeedErrorCode(reason));
+  }
+}
 
 const json = (res: import("node:http").ServerResponse, status: number, body: unknown) => {
   const text = JSON.stringify(body);
@@ -196,42 +214,47 @@ function safeGatewayUrl(raw: unknown): string {
 }
 
 async function seed(body: unknown) {
-  if (state.tenants.length) throw new Error("acceptance_already_seeded");
-  if (!body || typeof body !== "object" || !("gatewayBaseUrl" in body)) throw new Error("acceptance_seed_invalid");
-  const gatewayBaseUrl = safeGatewayUrl((body as { gatewayBaseUrl: unknown }).gatewayBaseUrl);
-  const tenantOne = await onboardSyntheticClient(
+  const { gatewayBaseUrl } = await inSeedStage("seed_validation", async () => {
+    if (state.tenants.length) throw new Error("acceptance_already_seeded");
+    if (!body || typeof body !== "object" || !("gatewayBaseUrl" in body)) throw new Error("acceptance_seed_invalid");
+    return { gatewayBaseUrl: safeGatewayUrl((body as { gatewayBaseUrl: unknown }).gatewayBaseUrl) };
+  });
+  const tenantOne = await inSeedStage("tenant_one_onboarding", () => onboardSyntheticClient(
     "Stonepath Roofing " + cryptoLabel(),
     "Repairs residential roofs after local storm damage.",
     "Roof repair and inspection",
     "Austin homeowners",
-  );
-  const tenantTwo = await onboardSyntheticClient(
+  ));
+  const tenantTwo = await inSeedStage("tenant_two_onboarding", () => onboardSyntheticClient(
     "Lakeview Plumbing " + cryptoLabel(),
     "Repairs plumbing systems for homes and small businesses.",
     "Pipe repair and drain cleaning",
     "Austin property owners",
-  );
-  const reviewer = await fixtureModule.createUser({ platformRole: "agency_super_admin" });
+  ));
+  const reviewer = await inSeedStage("reviewer_creation", () => fixtureModule.createUser({ platformRole: "agency_super_admin" }));
   const orgIds = [tenantOne.org.id, tenantTwo.org.id];
-  await dbModule.withSystem((db) => db.query(
+  await inSeedStage("gateway_registration", () => dbModule.withSystem((db) => db.query(
     "insert into hermes_gateways (id,label,environment,base_url,gateway_type,status,profile_creation_status,provisioner_isolation_verified_at) " +
     "values ($1,'Synthetic client-only acceptance runtime','development',$2,'multiplexed_profiles','connected','restricted_service_verified',now())",
     [gatewayId, gatewayBaseUrl],
-  ));
-  const heldReviewsApproved = await approveHeldConfigs(orgIds, reviewer.id);
-  const readyConfigs = await dbModule.withSystem((db) => db.query<{ count: number }>(
-    "select count(*)::int as count from agent_instances a " +
-    "join agent_config_versions v on v.id=a.active_config_version_id and v.org_id=a.org_id and v.agent_instance_id=a.id " +
-    "where (a.org_id=$1 or a.org_id=$2) and a.enabled and v.status='applied' and v.applied_at is not null",
-    orgIds,
-  ));
-  const requestedJobs = await dbModule.withSystem((db) => db.query<{ count: number }>(
-    "select count(*)::int as count from agent_provisioning_jobs where (org_id=$1 or org_id=$2) and kind='provision' and status='requested'",
-    orgIds,
-  ));
-  if (readyConfigs.rows[0]?.count !== 12 || requestedJobs.rows[0]?.count !== 12) {
-    throw new Error("acceptance_onboarding_not_provisionable");
-  }
+  )));
+  const heldReviewsApproved = await inSeedStage("held_config_review", () => approveHeldConfigs(orgIds, reviewer.id));
+  const requestedJobs = await inSeedStage("provisioning_validation", async () => {
+    const readyConfigs = await dbModule.withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from agent_instances a " +
+      "join agent_config_versions v on v.id=a.active_config_version_id and v.org_id=a.org_id and v.agent_instance_id=a.id " +
+      "where (a.org_id=$1 or a.org_id=$2) and a.enabled and v.status='applied' and v.applied_at is not null",
+      orgIds,
+    ));
+    const requestedJobs = await dbModule.withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from agent_provisioning_jobs where (org_id=$1 or org_id=$2) and kind='provision' and status='requested'",
+      orgIds,
+    ));
+    if (readyConfigs.rows[0]?.count !== 12 || requestedJobs.rows[0]?.count !== 12) {
+      throw new Error("acceptance_onboarding_not_provisionable");
+    }
+    return requestedJobs;
+  });
   state.tenants = [
     { orgId: tenantOne.org.id, name: tenantOne.org.name, ownerId: tenantOne.owner.id, ownerEmail: tenantOne.owner.email },
     { orgId: tenantTwo.org.id, name: tenantTwo.org.name, ownerId: tenantTwo.owner.id, ownerEmail: tenantTwo.owner.email },
@@ -452,7 +475,14 @@ const server = createServer({ cert, key }, async (req, res) => {
       if (path === "/__acceptance/seed") {
         let parsed: unknown;
         try { parsed = JSON.parse(body.toString("utf8")); } catch { return json(res, 400, { error: "invalid_json" }); }
-        return json(res, 200, await seed(parsed));
+        try {
+          return json(res, 200, await seed(parsed));
+        } catch (reason) {
+          if (reason instanceof AcceptanceSeedError) {
+            return json(res, 500, { error: "acceptance_seed_failed", stage: reason.stage, code: reason.code });
+          }
+          throw reason;
+        }
       }
       if (path === "/__acceptance/health-check") return json(res, 200, await runHealthChecks());
       if (path === "/__acceptance/sync") return json(res, 200, await createSync());

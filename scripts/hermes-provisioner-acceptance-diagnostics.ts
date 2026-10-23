@@ -30,6 +30,66 @@ const safeErrorNames = new Set([
   "URIError",
 ]);
 
+const safeSeedStages = new Set([
+  "seed_validation",
+  "tenant_one_onboarding",
+  "tenant_two_onboarding",
+  "reviewer_creation",
+  "gateway_registration",
+  "held_config_review",
+  "provisioning_validation",
+]);
+
+const safeSeedErrors = new Set([
+  "acceptance_already_seeded",
+  "acceptance_body_too_large",
+  "acceptance_employee_count_mismatch",
+  "acceptance_gateway_url_invalid",
+  "acceptance_onboarding_answers_rejected",
+  "acceptance_onboarding_not_provisionable",
+  "acceptance_seed_invalid",
+  "AGGREGATE_ERROR_SEED_ERROR",
+]);
+
+const safeDatabaseCodes = new Map([
+  ["22P02", "DATABASE_INVALID_VALUE"],
+  ["23503", "DATABASE_FOREIGN_KEY_VIOLATION"],
+  ["23505", "DATABASE_UNIQUE_VIOLATION"],
+  ["23514", "DATABASE_CHECK_VIOLATION"],
+  ["42P01", "DATABASE_TABLE_MISSING"],
+  ["42703", "DATABASE_COLUMN_MISSING"],
+  ["P0001", "DATABASE_RAISED_EXCEPTION"],
+]);
+
+export function safeAcceptanceSeedStage(stage: unknown): string {
+  return typeof stage === "string" && safeSeedStages.has(stage) ? stage : "unknown_seed_stage";
+}
+
+/** Keep only known fixture errors and database codes; never return arbitrary exception text. */
+export function safeAcceptanceSeedErrorCode(reason: unknown): string {
+  try {
+    if (typeof reason === "string" && safeSeedErrors.has(reason)) return reason;
+    if (!reason || typeof reason !== "object") return "unclassified_seed_error";
+
+    const candidate = reason as { message?: unknown; code?: unknown; name?: unknown };
+    if (typeof candidate.message === "string" && safeSeedErrors.has(candidate.message)) {
+      return candidate.message;
+    }
+    if (typeof candidate.code === "string") {
+      const databaseCode = safeDatabaseCodes.get(candidate.code);
+      if (databaseCode) return databaseCode;
+      if (safeNodeCodes.has(candidate.code)) return `NODE_${candidate.code}`;
+    }
+    if (candidate.name === "Error") return "unclassified_seed_error";
+    if (typeof candidate.name === "string" && safeErrorNames.has(candidate.name)) {
+      return `${candidate.name.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase()}_SEED_ERROR`;
+    }
+  } catch {
+    return "unclassified_seed_error";
+  }
+  return "unclassified_seed_error";
+}
+
 /** Return a bounded diagnostic label. Never include exception messages, paths, or secret values. */
 export function safeStartupFailureCode(reason: unknown): string {
   let name = "";
