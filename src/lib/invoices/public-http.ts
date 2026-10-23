@@ -1,4 +1,4 @@
-import { INVOICE_TOKEN_RE } from "@/lib/invoices/token";
+import { INVOICE_TOKEN_RE } from "@/lib/invoices/token-shape";
 import { REFERENCE_RE } from "@/lib/invoices/connection-rules";
 
 // What the customer's page and its server share about how they talk. Pure. The invoice's link is a bearer credential, so it travels in a request header, never in a

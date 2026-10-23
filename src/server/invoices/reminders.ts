@@ -15,9 +15,10 @@ import {
   AUTHORIZATION_PROBLEM_TEXT, decideReminder, planReminders, reminderReasonText, type AuthorizationProblem, type InvoiceFacts, type PlanOp, type ReminderRowStatus,
 } from "@/lib/invoices/reminder-rules";
 import {
-  normalizeSetup, phaseOfStepKey, previewReminderBody, REMINDER_AUTHORIZATION_DAYS, REMINDER_CHANNEL_LABELS, REMINDER_CHANNELS, REMINDER_WORDING_VERSION, reminderAuthorizationHash,
+  normalizeSetup, phaseOfStepKey, previewReminderBody, REMINDER_AUTHORIZATION_DAYS, REMINDER_CHANNEL_LABELS, REMINDER_CHANNELS, REMINDER_WORDING_VERSION,
   reminderTextProblem, renderReminder, type ReminderChannel,
 } from "@/lib/invoices/reminder-text";
+import { reminderAuthorizationHash } from "@/lib/invoices/reminder-hash";
 import { assertInvoicesAvailable } from "@/server/invoices/feature";
 import { invoiceLinkUrl, tokenForStoredHash } from "@/server/invoices/links";
 import { addInvoiceEvent, readSettings, toMinor, type SettingsRow } from "@/server/invoices/core";

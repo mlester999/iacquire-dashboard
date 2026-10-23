@@ -2,7 +2,7 @@ import "server-only";
 import type { Queryable } from "@/server/db";
 import { PERMISSION_MATRIX } from "@/lib/permissions";
 import { authorizationProblem, type AuthorizationProblem } from "@/lib/invoices/reminder-rules";
-import { reminderAuthorizationHash } from "@/lib/invoices/reminder-text";
+import { reminderAuthorizationHash } from "@/lib/invoices/reminder-hash";
 import type { SettingsRow } from "@/server/invoices/core";
 
 // Whether the owner's authorization of the invoice reminders still covers what would be sent. Kept apart from the reminders themselves (which pull in the whole send chain)

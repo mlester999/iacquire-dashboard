@@ -4,8 +4,9 @@ import { describe, expect, it } from "vitest";
 import { reminderSchedule, stepKeyFor } from "@/lib/invoices/reminders";
 import {
   INVOICE_LINK_PLACEHOLDER, MAX_REMINDER_LENGTH, REMINDER_AUTHORIZATION_DAYS, REMINDER_TEMPLATES, REMINDER_WORDING_VERSION, dayWords, linkPlaceholderCount, normalizeSetup, phaseOfStepKey,
-  previewReminderBody, reminderAuthorizationHash, reminderTextProblem, renderReminder,
+  previewReminderBody, reminderTextProblem, renderReminder,
 } from "@/lib/invoices/reminder-text";
+import { reminderAuthorizationHash } from "@/lib/invoices/reminder-hash";
 import {
   AUTHORIZATION_PROBLEM_TEXT, LATE_GRACE_HOURS, authorizationProblem, decideReminder, invoiceStopReason, planReminders, reminderReasonText, type AuthorizationProblem, type DecisionFacts,
   type ExistingReminder, type InvoiceFacts, type ReminderRowStatus,
