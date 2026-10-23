@@ -60,7 +60,7 @@ jobs:
 
           const log = fs.readFileSync(process.argv[2], 'utf8');
           const diagnosticLines = log.split(/\r?\n/)
-            .filter((line) => /npm (?:ERR!|error) (?:code|syscall|errno|network|path|command|enoent|invalid|eresolve|fetch|registry|timeout)/i.test(line))
+            .filter((line) => /npm (?:ERR!|error) (?:code|syscall|errno|network|path|command|enoent|invalid|eresolve|fetch|registry|timeout|missing|lock|in sync)/i.test(line))
             .slice(-12)
             .map((line) => line
               .replace(/(Bearer\s+)\S+/gi, '$1[REDACTED]')
