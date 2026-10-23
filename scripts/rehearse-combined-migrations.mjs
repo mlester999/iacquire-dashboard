@@ -63,7 +63,6 @@ const numOf = (f) => Number(prefix(f));
 const BASELINE = files.filter((f) => numOf(f) < 77);
 const HISTORY = files.filter((f) => numOf(f) >= 77);
 const HEAD = files[files.length - 1];
-const fileFor = (n) => files.find((f) => numOf(f) === n);
 if (!BASELINE.length || !HISTORY.length) throw new Error("This checkout has no migrations on both sides of 0077.");
 
 const t0All = Date.now();
@@ -141,7 +140,6 @@ const attempt = async (tx, sql, params) => {
     return { ok: false, message: String(e.message) };
   }
 };
-const accepts = (db, sql, params) => throwaway(db, (tx) => attempt(tx, sql, params)).then((r) => r.ok);
 
 // --------------------------------------------------------------------------------------------------------------------------------------------
 // The schema fingerprint: every fact a migration can change, as one text line each
@@ -761,7 +759,7 @@ SEEDS["0089_social_media_manager"] = async (db, ctx) => {
   });
 };
 CLEAN["0089_social_media_manager"] = {
-  guard: async (db, ctx) => {
+  guard: async (db) => {
     for (const t of ["social_post_metrics", "social_publish_jobs", "social_post_events", "social_posts", "social_ai_runs", "social_media_assets", "social_campaigns", "social_oauth_states", "social_accounts"]) await db.query(`delete from ${t}`);
     await db.query("delete from private_files where bucket = 'social-media'");
     await db.query("delete from notifications where kind = any($1::text[])", [SOCIAL_KINDS]);

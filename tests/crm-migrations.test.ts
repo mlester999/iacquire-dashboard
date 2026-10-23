@@ -38,6 +38,9 @@ const CRM_MIGRATION_NAMES = [
   // Social media manager: read policies on app.permitted_orgs, a new private-file bucket and permission rows; its rollback refuses while an account, post,
   // media file, campaign, AI run or job exists (none do here) and puts app.file_permission back to 0049's definition.
   "0089_social_media_manager.sql",
+  // Two more private-file buckets (proposal documents, staff message attachments) and 0089's app.file_permission with their two branches; its rollback refuses while a
+  // file is stored in either bucket (none is here) and is rolled back first, putting 0089's definition back before 0089's own rollback replaces it with 0049's.
+  "0090_document_buckets.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

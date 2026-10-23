@@ -395,6 +395,9 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0089 extends notifications_kind_check from the live constraint (0065 must already be in) and replaces app.file_permission with 0049's definition plus
   // one bucket, so 0049 must already be in: applied before it, 0089 would be overwritten by it and managed media would silently lose its access rule.
   "0089_social_media_manager": ["0049_aqi_attachments", "0065_support_requests"],
+  // 0090 replaces app.file_permission with 0089's definition plus two buckets: applied before 0089 (or before 0049), it would put back a definition that lacks the
+  // social-media rule (and every bucket added since 0049), so 0089 must already be in.
+  "0090_document_buckets": ["0049_aqi_attachments", "0089_social_media_manager"],
 };
 
 /**
