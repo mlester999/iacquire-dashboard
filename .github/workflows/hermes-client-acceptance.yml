@@ -503,8 +503,18 @@ jobs:
           done
 
           portal_failure_phase=portal_seed_request
-          compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs seed \
-            > "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json"
+          portal_seed_errors="$HERMES_ACCEPTANCE_DIR/results/portal-seed-diagnostics.log"
+          if ! compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs seed \
+            > "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json" 2> "$portal_seed_errors"; then
+            seed_diagnostic="$(grep -Eo 'PORTAL_ACCEPTANCE_SEED_FAILURE stage=[a-z_]+ code=[A-Za-z0-9_]+|PORTAL_ACCEPTANCE_REQUEST_FAILURE status=[1-5][0-9]{2}' \
+              "$portal_seed_errors" | head -n 1 || true)"
+            if [[ -n "$seed_diagnostic" ]]; then
+              echo "::error title=Portal seed diagnosis::${seed_diagnostic}"
+            else
+              echo '::error title=Portal seed diagnosis::PORTAL_ACCEPTANCE_SEED_DIAGNOSTIC_UNAVAILABLE'
+            fi
+            exit 1
+          fi
           portal_failure_phase=portal_seed_validation
           python3 - "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json" <<'PY'
           import json, sys
