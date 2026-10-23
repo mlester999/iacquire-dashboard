@@ -3,6 +3,7 @@ services:
     profiles: [acceptance]
     image: node:22-bookworm-slim
     pull_policy: never
+    network_mode: service:hermes-client
     restart: "no"
     user: "10000:10000"
     read_only: true
@@ -52,8 +53,6 @@ services:
         source: ${ACCEPTANCE_TLS_KEY_FILE:?Set the synthetic acceptance private key}
         target: /run/secrets/acceptance-key.pem
         read_only: true
-    networks:
-      - client_egress
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -80,7 +79,7 @@ services:
 
   hermes-provisioner:
     environment:
-      IACQUIRE_PROVISIONER_URL: https://portal-acceptance:18444
+      IACQUIRE_PROVISIONER_URL: https://127.0.0.1:18444
       ACCEPTANCE_RESULT_EVIDENCE_FILE: /run/acceptance-results/portal-evidence.json
     depends_on:
       portal-acceptance:
@@ -94,7 +93,3 @@ services:
         source: ./verify_portal_acceptance.py
         target: /opt/iacquire-hermes/verify_portal_acceptance.py
         read_only: true
-
-networks:
-  client_egress:
-    internal: true

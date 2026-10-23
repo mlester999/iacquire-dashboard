@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 const commands = new Map([
-  ["seed", { method: "POST", path: "/__acceptance/seed", body: { gatewayBaseUrl: "http://hermes-client:8642" } }],
+  ["seed", { method: "POST", path: "/__acceptance/seed", body: { gatewayBaseUrl: "http://127.0.0.1:8642" } }],
   ["status", { method: "GET", path: "/__acceptance/status" }],
   ["health-check", { method: "POST", path: "/__acceptance/health-check", body: {} }],
   ["sync", { method: "POST", path: "/__acceptance/sync", body: {} }],

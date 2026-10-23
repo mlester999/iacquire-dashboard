@@ -634,9 +634,12 @@ jobs:
               assert secret not in portal_env
           model = json.loads((pathlib.Path(os.environ["TEMP_DIR"]) / "profile-model-env.json").read_text(encoding="ascii"))["value"]
           assert model not in portal_env
-          network_names = set(portal["NetworkSettings"]["Networks"])
-          assert any("client_egress" in name for name in network_names)
-          for network_name in network_names:
+          portal_network_mode = portal["HostConfig"]["NetworkMode"]
+          assert portal_network_mode.startswith("container:")
+          assert portal_network_mode == worker["HostConfig"]["NetworkMode"]
+          client_networks = client["NetworkSettings"].get("Networks") or {}
+          assert client_networks
+          for network_name in client_networks:
               network = json.loads(subprocess.check_output(["docker", "network", "inspect", network_name], text=True))[0]
               assert network["Internal"] is True
           mounts = portal["Mounts"]

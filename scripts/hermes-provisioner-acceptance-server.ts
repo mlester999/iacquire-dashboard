@@ -206,7 +206,7 @@ async function onboardSyntheticClient(name: string, description: string, service
 function safeGatewayUrl(raw: unknown): string {
   if (typeof raw !== "string") throw new Error("acceptance_gateway_url_invalid");
   const url = new URL(raw);
-  if (url.protocol !== "http:" || url.hostname !== "hermes-client" || url.port !== "8642" ||
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.port !== "8642" ||
       url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
     throw new Error("acceptance_gateway_url_invalid");
   }
