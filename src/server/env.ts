@@ -98,6 +98,14 @@ const schema = z.object({
   MICROSOFT_CALENDAR_TENANT: z.preprocess(blankToUndefined, z.string().regex(/^[A-Za-z0-9.-]{1,100}$/).default("common")),
   // Stops all background calendar sync and write-back (and "Sync now") without disconnecting anyone.
   CALENDAR_SYNC_DISABLED: bool,
+
+  // Social media manager (Facebook Pages and Instagram professional accounts through Meta's Graph API). This is a different Meta app from the WhatsApp one
+  // above. Connecting is offered only when both the app ID and secret are set; nothing is ever posted unless META_SOCIAL_WRITES_ENABLED is true (a founder-approved
+  // switch, like the other provider write switches). GRAPH_VERSION is read from Meta's SDK at build time of this feature (v26.0) and can be changed without code.
+  META_SOCIAL_APP_ID: z.preprocess(blankToUndefined, z.string().max(100).optional()),
+  META_SOCIAL_APP_SECRET: z.preprocess(blankToUndefined, z.string().min(16).max(200).optional()),
+  META_GRAPH_VERSION: z.preprocess(blankToUndefined, z.string().regex(/^vd{1,2}.d$/).default("v26.0")),
+  META_SOCIAL_WRITES_ENABLED: bool,
   // Switches the Unified Inbox off: the /inbox page, /api/inbox/* and the inbox's actions answer "temporarily unavailable", and the inbox's own
   // notices stop. Receiving, storing and sending messages, the AI employees and workflows are not touched. Unset or false (the default) = on.
   INBOX_DISABLED: bool,

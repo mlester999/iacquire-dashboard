@@ -61,7 +61,7 @@ export const emailedElsewhere = (kind: string) => kind.startsWith("escalation_")
  * message (at most ten a scan per workspace); a warning is emailed by default, so without this the first scheduler run in a workspace with the new
  * inbox would email its team for each of them, and again each morning for ones held back by quiet hours.
  */
-const IN_APP_BY_DEFAULT = new Set(["conversation_awaiting_reply", "missed_call_follow_up", "hot_lead_detected", "web_chat_lead"]);
+const IN_APP_BY_DEFAULT = new Set(["conversation_awaiting_reply", "missed_call_follow_up", "hot_lead_detected", "web_chat_lead", "social_approval_requested", "social_approval_decided", "social_post_failed", "social_account_attention"]);
 
 export function shouldEmail(kind: string, severity: string, preference: EmailPreference): boolean {
   if (preference === "off") return severity === "critical";

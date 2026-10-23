@@ -35,6 +35,9 @@ const CRM_MIGRATION_NAMES = [
   "0087_website_chat.sql",
   // Lead touches and entered campaign costs: read policies on app.permitted_orgs; its rollback refuses while a touch or cost exists (none do here).
   "0088_lead_attribution.sql",
+  // Social media manager: read policies on app.permitted_orgs, a new private-file bucket and permission rows; its rollback refuses while an account, post,
+  // media file, campaign, AI run or job exists (none do here) and puts app.file_permission back to 0049's definition.
+  "0089_social_media_manager.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

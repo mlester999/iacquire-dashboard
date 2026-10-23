@@ -392,6 +392,9 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0087 extends notifications_kind_check from the live constraint (so 0065 must already be in) and adds a conversation channel and a created-via value
   // to tables from 0019 and 0027.
   "0087_website_chat": ["0065_support_requests"],
+  // 0089 extends notifications_kind_check from the live constraint (0065 must already be in) and replaces app.file_permission with 0049's definition plus
+  // one bucket, so 0049 must already be in: applied before it, 0089 would be overwritten by it and managed media would silently lose its access rule.
+  "0089_social_media_manager": ["0049_aqi_attachments", "0065_support_requests"],
 };
 
 /**

@@ -101,6 +101,15 @@ export const PERMISSION_MATRIX = {
   "website.publish": row("owner", "agency_manager", "agency_super_admin"),
   "website.archive": row("owner", "agency_super_admin"),
   // Designing and maintaining the agency template library, publishing a template to clients, and reviewing a client's site and leaving comments on it.
+  // Social media manager. Everyone on the team and the agency can see it; drafting (including AI drafts) is for people who write for the business; only the
+  // client's own owner and manager approve what goes out under their name; publishing an approved post is also open to the agency's managers; the account
+  // belongs to the client, so connecting it is theirs; the approval policy is the owner's.
+  "social.view": row(...CLIENT, ...STAFF),
+  "social.create": row("owner", "admin", "member", "sales_rep", ...STAFF),
+  "social.approve": row(...OWNER_ADMIN),
+  "social.publish": row(...OWNER_ADMIN, "agency_manager", "agency_super_admin"),
+  "social.connect": row(...OWNER_ADMIN),
+  "social.settings": row("owner"),
   "website.templates.design": row(...STAFF),
   "website.templates.publish": row("agency_super_admin"),
   "website.review": row(...STAFF),
@@ -470,6 +479,12 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "crm.blueprints.design": { label: "Design CRM Blueprints", group: "Native CRM", note: "Agency role control." },
   "crm.blueprints.publish": { label: "Publish CRM Blueprints", group: "Native CRM", note: "Super Admin only." },
   "crm.blueprints.apply": { label: "Apply CRM Blueprints to clients", group: "Native CRM", note: "Super Admin only." },
+  "social.view": { label: "View the social media manager", group: "Social media", note: "Client scope and resource access still apply." },
+  "social.create": { label: "Draft social media posts", group: "Social media", note: "Client scope still applies. An AI draft always needs the client's approval." },
+  "social.approve": { label: "Approve social media posts", group: "Social media", note: "Reserved for the client's owner and manager." },
+  "social.publish": { label: "Schedule and publish approved social posts", group: "Social media", note: "Only an approved version publishes; client scope still applies." },
+  "social.connect": { label: "Connect client social accounts", group: "Social media", note: "The account belongs to the client: owner or manager." },
+  "social.settings": { label: "Change social media approval settings", group: "Social media", note: "Reserved for the client owner." },
   "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", note: "Super Admin only." },
   "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", note: "Agency role control." },
   "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", note: "Super Admin only." },
