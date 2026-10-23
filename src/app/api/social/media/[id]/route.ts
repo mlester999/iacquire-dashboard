@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return Response.json({ error: "Not found." }, { status: 404 });
   try {
-    const ctx = await requireOrgContextOrThrow("social.view");
+    const ctx = await requireOrgContextOrThrow(); // readMediaForPreview checks the workspace kind and the permission itself
     const f = await readMediaForPreview(ctx, id);
     return new Response(new Uint8Array(f.bytes), {
       headers: {

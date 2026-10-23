@@ -34,14 +34,17 @@ export async function saveSocialSettings(ctx: OrgContext, patch: SettingsPatch, 
       defaultHashtags: patch.defaultHashtags !== undefined ? normalizeHashtags(patch.defaultHashtags, 10) : cur.defaultHashtags,
       brandVoiceNote: patch.brandVoiceNote !== undefined ? patch.brandVoiceNote?.replace(/\s+/g, " ").trim().slice(0, 600) || null : cur.brandVoiceNote,
     };
-    await db.query(
+    const saved = await db.query(
       `insert into social_settings (org_id, approval_for_publishers, ai_drafts_enabled, tracking_links, default_hashtags, brand_voice_note, version, updated_by)
        values ($1, $2, $3, $4, $5, $6, 1, $7)
        on conflict (org_id) do update set approval_for_publishers = excluded.approval_for_publishers, ai_drafts_enabled = excluded.ai_drafts_enabled, tracking_links = excluded.tracking_links,
          default_hashtags = excluded.default_hashtags, brand_voice_note = excluded.brand_voice_note, version = social_settings.version + 1, updated_by = excluded.updated_by, updated_at = now()
-       where social_settings.version = $8`,
+       where social_settings.version = $8
+       returning version`,
       [ctx.org.orgId, next.approvalForPublishers, next.aiDraftsEnabled, next.trackingLinks, next.defaultHashtags, next.brandVoiceNote, ctx.user.id, expectedVersion],
     );
+    // Two saves can pass the check above together; only one of them changes the row. The other changed nothing, so it must not say it did (or be audited as if).
+    if (!saved.rows[0]) throw new AppError("conflict", "Someone else changed these settings. Reload to see their changes, then try again.");
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.settings_saved", targetType: "social_settings", targetId: ctx.org.orgId, result: "success", metadata: { approvalForPublishers: next.approvalForPublishers, aiDraftsEnabled: next.aiDraftsEnabled } }, db);
     return readSettings(db, ctx.org.orgId);
   });

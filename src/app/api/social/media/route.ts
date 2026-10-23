@@ -13,7 +13,8 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     await assertSameOrigin();
-    const ctx = await requireOrgContextOrThrow("social.create");
+    // uploadMedia checks the workspace kind and the person's permission itself, in that order, each with its own plain message.
+    const ctx = await requireOrgContextOrThrow();
     const declared = Number(request.headers.get("content-length") ?? 0);
     if (declared > MEDIA_MAX_BYTES + 1_000_000) return NextResponse.json({ error: "Choose a file up to 50 MB." }, { status: 413 });
     const form = await request.formData();

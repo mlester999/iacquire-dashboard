@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { PLATFORM_LABELS, type Platform } from "@/lib/social/rules";
-import { STATUS_EXPLAIN, STATUS_LABELS, type PostStatus } from "@/lib/social/state";
+import { STATUS_LABELS, statusExplain, type ExplainFacts, type PostStatus } from "@/lib/social/state";
 
 type Tone = NonNullable<React.ComponentProps<typeof Badge>["tone"]>;
 
@@ -35,8 +35,9 @@ export const STATUS_EDGE: Record<PostStatus, string> = {
   rejected: "border-l-danger-ink",
 };
 
-export function StatusBadge({ status, className }: { status: PostStatus; className?: string }) {
-  return <Badge tone={STATUS_TONE[status]} className={className} title={STATUS_EXPLAIN[status]}>{STATUS_LABELS[status]}</Badge>;
+/** The tooltip is the same sentence the post page prints, so a post a person marked as published never reads "confirmed by the platform" anywhere. */
+export function StatusBadge({ status, className, ...facts }: { status: PostStatus; className?: string } & ExplainFacts) {
+  return <Badge tone={STATUS_TONE[status]} className={className} title={statusExplain(status, facts)}>{STATUS_LABELS[status]}</Badge>;
 }
 
 export function PlatformMark({ platform, className }: { platform: Platform; className?: string }) {

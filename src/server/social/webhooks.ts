@@ -36,8 +36,9 @@ export async function handleDeauthorize(raw: string, deps: { secret?: string } =
 }
 
 /**
- * The person asked for their data to be deleted: their accounts stop working and the tokens we held are deleted, exactly as for a deauthorization. The posts a
- * business published are the business's own content and stay. Returns what Meta requires: a status address and a confirmation code.
+ * The person asked for their data to be deleted: their accounts stop working and the tokens we held are deleted, exactly as for a deauthorization. Sign-ins
+ * they left unfinished are cleared and their platform user id is removed from every account row. The posts a business published are the business's own content
+ * and stay. Returns what Meta requires: a status address and a confirmation code.
  */
 export async function handleDataDeletion(raw: string, deps: { secret?: string } = {}): Promise<CallbackResult> {
   const r = readSigned(raw, deps.secret);
@@ -52,5 +53,5 @@ export async function handleDataDeletion(raw: string, deps: { secret?: string } 
 export async function deletionStatus(code: string | null): Promise<CallbackResult> {
   if (!code || !/^[0-9a-f]{24}$/.test(code)) return { status: 404, body: { status: "unknown" } };
   const found = await withSystem(async (db) => (await db.query("select 1 from audit_logs where action = 'social.data_deletion_requested' and metadata ->> 'code' = $1", [code])).rows.length > 0);
-  return found ? { status: 200, body: { status: "completed", detail: "The sign-in tokens held for this request were deleted." } } : { status: 404, body: { status: "unknown" } };
+  return found ? { status: 200, body: { status: "completed", detail: "The sign-in tokens, unfinished sign-ins and platform user id held for this request were deleted." } } : { status: 404, body: { status: "unknown" } };
 }

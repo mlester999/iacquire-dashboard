@@ -31,6 +31,9 @@ export function authorizeUrl(state: string, platform: Platform, s: MetaSettings 
   u.searchParams.set("state", state);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("scope", META_SCOPES[platform].join(","));
+  // A permission someone declined once is not offered again unless it is asked for again; without this, "reconnect and allow it" could loop. Harmless on a
+  // first connection, where nothing has been declined.
+  u.searchParams.set("auth_type", "rerequest");
   return u.toString();
 }
 

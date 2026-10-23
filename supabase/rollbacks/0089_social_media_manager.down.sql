@@ -41,7 +41,10 @@ drop table social_settings;
 
 delete from role_permissions where permission in ('social.view', 'social.create', 'social.approve', 'social.publish', 'social.connect', 'social.settings');
 
--- The bucket and its rule, back to 0049's.
+-- The bucket and its rule, back to 0049's. Hosted Supabase refuses a direct delete from its storage tables unless the transaction says it is intended; the
+-- setting lasts only for this transaction. The bucket is empty here: the guard above refused otherwise. (Not yet rehearsed on a hosted project: the embedded
+-- database has no such guard.)
+select set_config('storage.allow_delete_query', 'true', true);
 delete from storage.buckets where id = 'social-media';
 alter table private_files drop constraint if exists private_files_bucket_check;
 alter table private_files add constraint private_files_bucket_check

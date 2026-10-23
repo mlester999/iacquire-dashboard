@@ -7,7 +7,11 @@ import { decryptSecret, encryptSecret, randomToken, sha256 } from "@/server/secu
 import type { OrgContext } from "@/server/tenancy/context";
 import type { Platform } from "@/lib/social/rules";
 import { PLATFORMS } from "@/lib/social/rules";
+import { isRetryable } from "@/lib/social/errors";
 import { openCredentials, sealCredentials } from "@/server/social/credentials";
+import { socialOrgRunnableSql } from "@/server/social/org-gate";
+import { assertSocialWorkspace } from "@/server/social/workspace";
+import { SOCIAL_CLIENT_ONLY_MESSAGE } from "@/lib/social/workspace";
 import { providerFor, simulatedAllowed, type Adapter } from "@/server/social/providers";
 import { authorizeUrl, canPostTo, metaConfigured, resolveSignIn, type ConnectedPage } from "@/server/social/providers/meta-oauth";
 import { ProviderError, type AccountCapabilities, type HealthResult, type SocialProvider } from "@/server/social/providers/types";
@@ -58,11 +62,13 @@ const toView = (r: Row): AccountView => ({
 });
 
 function assertConnect(ctx: OrgContext) {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.connect")) throw new AppError("forbidden", "Only the business owner or a manager can connect social accounts.");
 }
 
 /** Connected and previously connected accounts, newest first. The token is never part of what is returned. */
 export async function listAccounts(ctx: OrgContext, opts: { includeDisconnected?: boolean } = {}): Promise<AccountView[]> {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.view")) throw new AppError("forbidden", "Your role can't see social media.");
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<Row>(
@@ -126,6 +132,12 @@ export async function completeMetaConnect(
   if (!row || row.user_id !== user.id || row.used_at || new Date(row.expires_at).getTime() < Date.now()) {
     throw new AppError("invalid_input", "That sign-in expired or was not started by you. Start the connection again.");
   }
+  // The workspace may have stopped being a client's since the sign-in started; nothing is connected to an agency workspace.
+  const kind = (await withSystem((db) => db.query<{ kind: "agency" | "client" }>("select kind from organizations where id = $1", [row.org_id]))).rows[0]?.kind;
+  if (kind !== "client") {
+    await withSystem((db) => db.query("update social_oauth_states set used_at = now() where id = $1", [row.id]));
+    throw new AppError("forbidden", SOCIAL_CLIENT_ONLY_MESSAGE);
+  }
   const allowed = await withUser(user.id, async (db) => (await db.query<{ ok: boolean }>("select app.has_permission($1, 'social.connect') as ok", [row.org_id])).rows[0]?.ok);
   if (!allowed) throw new AppError("forbidden", "Only the business owner or a manager can connect social accounts.");
   if (input.error || !input.code) {
@@ -144,7 +156,11 @@ export async function completeMetaConnect(
   return { outcome: "choose", stateId: row.id, returnPath: row.return_path };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function openPending(db: Queryable, ctx: OrgContext, stateId: string): Promise<{ platform: Platform; userId: string; pages: ConnectedPage[] }> {
+  // A mangled link (?choose=abc) is a connection that is gone, not a database error.
+  if (!UUID.test(stateId)) throw new AppError("not_found", "That connection expired. Start it again.");
   const { rows } = await db.query<{ org_id: string; user_id: string; platform: Platform; pending: string | null; expires_at: Date; used_at: Date | null }>(
     "select org_id, user_id, platform, pending, expires_at, used_at from social_oauth_states where id = $1", [stateId],
   );
@@ -176,9 +192,26 @@ export async function connectChosenPages(
   assertConnect(ctx);
   if (!picks.length) throw new AppError("invalid_input", "Choose at least one Page.");
   const pending = await withSystem((db) => openPending(db, ctx, stateId));
+  let result: { connected: string[]; skipped: Array<{ name: string; reason: string }> };
+  try {
+    result = await connectPicks(ctx, pending, picks, deps.provider ?? providerFor("meta"));
+  } finally {
+    // The sealed Pages and their tokens have done their job, or the attempt failed part-way: either way they are not kept. If this cannot be written, the
+    // expiry sweep (purgeSignInStates) clears them within minutes of the ten that the sign-in lasts.
+    await withSystem((db) => db.query("update social_oauth_states set used_at = coalesce(used_at, now()), pending = null where id = $1", [stateId])).catch(() => undefined);
+  }
+  const views = await listAccounts(ctx);
+  return { connected: views.filter((v) => result.connected.includes(v.id)), skipped: result.skipped };
+}
+
+async function connectPicks(
+  ctx: OrgContext,
+  pending: { platform: Platform; userId: string; pages: ConnectedPage[] },
+  picks: Array<{ pageId: string; includeInstagram?: boolean }>,
+  provider: SocialProvider,
+): Promise<{ connected: string[]; skipped: Array<{ name: string; reason: string }> }> {
   const connected: string[] = [];
   const skipped: Array<{ name: string; reason: string }> = [];
-  const provider = deps.provider ?? providerFor("meta");
   for (const pick of picks) {
     const page = pending.pages.find((g) => g.id === pick.pageId);
     if (!page) {
@@ -223,6 +256,7 @@ export async function connectChosenPages(
             [ctx.org.orgId, t.platform, t.externalId, t.name, t.username, sealed, health.expiresAt, health.dataAccessExpiresAt, health.scopes, pending.userId, ctx.user.id, JSON.stringify(health.capabilities), rate],
           );
           accountId = ins.rows[0].id;
+          await followReconnectedPage(db, ctx, accountId, t.platform, t.externalId);
         }
         await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.account_connected", targetType: "social_account", targetId: accountId, result: "success", metadata: { platform: t.platform } }, db);
         return accountId;
@@ -230,9 +264,29 @@ export async function connectChosenPages(
       connected.push(id);
     }
   }
-  await withSystem((db) => db.query("update social_oauth_states set used_at = now(), pending = null where id = $1", [stateId]));
-  const views = await listAccounts(ctx);
-  return { connected: views.filter((v) => connected.includes(v.id)), skipped };
+  return { connected, skipped };
+}
+
+/**
+ * A Page a person disconnected and then connected again comes back as a new account row (the old one is history). The posts that were waiting on the old row
+ * follow the Page, so the owner can schedule them again instead of finding them stuck on an account that no longer exists. Only posts that never went out
+ * move: published posts and their history stay with the old row, a post that may be live (outcome unknown) stays where it is, and nothing leaves this workspace.
+ */
+async function followReconnectedPage(db: Queryable, ctx: OrgContext, accountId: string, platform: Platform, externalId: string): Promise<void> {
+  const { rows } = await db.query<{ id: string; from_account: string }>(
+    `update social_posts p set account_id = $1
+       from social_accounts old
+      where p.org_id = $2 and old.org_id = $2 and p.account_id = old.id and old.id <> $1 and old.platform = $3 and old.external_id = $4 and old.status = 'disconnected'
+        and (p.status in ('draft', 'pending_approval', 'changes_requested', 'approved') or (p.status = 'failed' and p.failure_code = 'account_unavailable'))
+      returning p.id, old.id as from_account`,
+    [accountId, ctx.org.orgId, platform, externalId],
+  );
+  for (const r of rows) {
+    await db.query(
+      "insert into social_post_events (org_id, post_id, kind, actor_id, actor_kind, detail) values ($1, $2, 'account_reconnected', $3, 'user', $4::jsonb)",
+      [ctx.org.orgId, r.id, ctx.user.id, JSON.stringify({ from: r.from_account, to: accountId })],
+    );
+  }
 }
 
 /** A local stand-in account for tests and QA. Posts nothing anywhere, refused in production. */
@@ -249,6 +303,7 @@ export async function connectSimulatedAccount(ctx: OrgContext, input: { platform
        values ($1, $2, 'simulated', $3, $4, $5, $6, $7, 'connected', now(), now(), $8, $9::jsonb) returning id`,
       [ctx.org.orgId, input.platform, externalId, name, input.platform === "instagram" ? name.toLowerCase().replace(/[^a-z0-9]+/g, "") : null, sealCredentials({ accessToken: "sim_valid" }), health.scopes, ctx.user.id, JSON.stringify(health.capabilities)],
     );
+    await followReconnectedPage(db, ctx, rows[0].id, input.platform, externalId);
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.account_connected", targetType: "social_account", targetId: rows[0].id, result: "success", metadata: { platform: input.platform, adapter: "simulated" } }, db);
     return rows[0].id;
   });
@@ -266,13 +321,19 @@ const REASON_UNKNOWN = "The account was disconnected while this was being sent, 
 
 /**
  * Stops everything the account was about to publish. A job that had not started sending is cancelled and its post fails with a clear reason; a job that may
- * already have sent is NOT cancelled quietly: its post is marked failed with "not known whether it went out", never treated as "not posted". Returns how many posts were affected.
+ * already have sent is NOT cancelled quietly: its post is marked failed with "not known whether it went out", never treated as "not posted". A job that already
+ * holds the platform's answer is left alone: that post is live. Returns how many posts were affected.
  */
 export async function stopPublishingFor(db: Queryable, orgId: string, accountId: string): Promise<number> {
   const { rows } = await db.query<{ id: string; post_id: string; state: Record<string, unknown> }>(
     "select id, post_id, state from social_publish_jobs where org_id = $1 and account_id = $2 and status in ('queued', 'running', 'unknown')", [orgId, accountId],
   );
+  let stopped = 0;
   for (const j of rows) {
+    // The platform already answered and the answer is saved: the post is live. The publisher records it as published (publisher.ts finishes any job holding an
+    // answer), so failing or cancelling it here would show a live post as not published.
+    if (j.state?.done && j.state?.providerPostId) continue;
+    stopped += 1;
     const maybeSent = Boolean(j.state?.sendingAt) && !j.state?.providerPostId;
     await db.query(
       "update social_publish_jobs set status = $2, last_error = $3, last_error_kind = $4, lease_until = null, finished_at = now() where id = $1",
@@ -289,7 +350,13 @@ export async function stopPublishingFor(db: Queryable, orgId: string, accountId:
     "update social_posts set status = 'failed', failure_code = 'account_unavailable', failure_message = $3 where org_id = $1 and account_id = $2 and status = 'scheduled'",
     [orgId, accountId, REASON_FAILED],
   );
-  return rows.length;
+  return stopped;
+}
+
+/** What disconnecting does to an account, whoever asks: its token and the platform's id for the person who connected it are deleted, and publishing for it stops. */
+async function disconnectRow(db: Queryable, orgId: string, accountId: string, detail: string): Promise<number> {
+  await db.query("update social_accounts set status = 'disconnected', credentials = null, token_expires_at = null, provider_user_id = null, status_detail = $2, disconnected_at = now() where id = $1", [accountId, detail]);
+  return stopPublishingFor(db, orgId, accountId);
 }
 
 /** Disconnects an account: the token is deleted, publishing for it stops. The business's published posts stay where they are on the platform. */
@@ -298,75 +365,210 @@ export async function disconnectAccount(ctx: OrgContext, accountId: string): Pro
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; name: string; platform: Platform }>("select id, name, platform from social_accounts where id = $1 and org_id = $2 and status <> 'disconnected' for update", [accountId, ctx.org.orgId]);
     if (!rows[0]) throw new AppError("not_found", "That account was not found.");
-    await db.query("update social_accounts set status = 'disconnected', credentials = null, token_expires_at = null, status_detail = 'Disconnected by a person.', disconnected_at = now() where id = $1", [accountId]);
-    const stopped = await stopPublishingFor(db, ctx.org.orgId, accountId);
+    const stopped = await disconnectRow(db, ctx.org.orgId, accountId, "Disconnected by a person.");
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.account_disconnected", targetType: "social_account", targetId: accountId, result: "success", metadata: { platform: rows[0].platform, stopped } }, db);
     return { stopped };
   });
 }
 
 /**
+ * Disconnects every account a workspace still uses, for a workspace that is being closed (offboarding): no signed-in member is involved, and each account ends
+ * exactly as if its owner had disconnected it. One account failing does not stop the others; the failures are returned by name so they are reported, not hidden.
+ */
+export async function disconnectWorkspaceAccounts(orgId: string, actorUserId: string): Promise<{ disconnected: number; stopped: number; failed: string[] }> {
+  const accounts = (await withSystem((db) => db.query<{ id: string; name: string; platform: Platform }>(
+    "select id, name, platform from social_accounts where org_id = $1 and status in ('connected', 'needs_reauth', 'error') order by connected_at", [orgId],
+  ))).rows;
+  let disconnected = 0;
+  let stopped = 0;
+  const failed: string[] = [];
+  for (const a of accounts) {
+    try {
+      stopped += await withSystem(async (db) => {
+        const live = await db.query("select 1 from social_accounts where id = $1 and org_id = $2 and status in ('connected', 'needs_reauth', 'error') for update", [a.id, orgId]);
+        if (!live.rows[0]) return 0; // a person or the platform got there first
+        const n = await disconnectRow(db, orgId, a.id, "The workspace was closed.");
+        await recordAudit({ orgId, actorUserId, actorKind: "agency", action: "social.account_disconnected", targetType: "social_account", targetId: a.id, result: "success", metadata: { platform: a.platform, stopped: n, why: "workspace_closed" } }, db);
+        return n;
+      });
+      disconnected += 1;
+    } catch {
+      failed.push(a.name);
+    }
+  }
+  return { disconnected, stopped, failed };
+}
+
+/**
+ * Forgets the sign-ins a person left half-finished. The sealed list of Pages (with their tokens) of a sign-in that was never completed is cleared for the
+ * given platform user. The list is encrypted, so it is opened here to see whose it is. Returns how many were cleared.
+ */
+async function clearPendingSignIns(db: Queryable, providerUserId: string): Promise<number> {
+  let cleared = 0;
+  let after = "00000000-0000-0000-0000-000000000000";
+  for (;;) {
+    const { rows } = await db.query<{ id: string; pending: string }>("select id, pending from social_oauth_states where pending is not null and id > $1::uuid order by id limit 200 for update", [after]);
+    if (!rows.length) return cleared;
+    for (const r of rows) {
+      after = r.id;
+      let who: string | null = null;
+      try {
+        who = (JSON.parse(decryptSecret(r.pending)) as { userId?: string }).userId ?? null;
+      } catch {
+        who = null; // not readable (a key changed): the expiry sweep clears it
+      }
+      if (who !== providerUserId) continue;
+      await db.query("update social_oauth_states set pending = null, used_at = coalesce(used_at, now()) where id = $1", [r.id]);
+      cleared += 1;
+    }
+  }
+}
+
+/**
  * The platform told us a person removed the app (deauthorization) or asked for their data to be deleted: every account they authorized stops working here at
- * once, its token is deleted, and what it was about to publish is stopped. Returns the accounts affected.
+ * once, its token is deleted, and what it was about to publish is stopped. The sign-ins they left unfinished are cleared, and the platform's id for them is
+ * removed from every account row that carried it, disconnected and revoked ones included. Returns the accounts affected.
  */
 export async function revokeByProviderUser(providerUserId: string, why: "deauthorized" | "data_deletion"): Promise<number> {
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; org_id: string; name: string }>(
       "select id, org_id, name from social_accounts where provider_user_id = $1 and status in ('connected', 'needs_reauth', 'error') for update", [providerUserId],
     );
+    const at = new Date().toISOString();
     for (const a of rows) {
       await db.query("update social_accounts set status = 'revoked', credentials = null, token_expires_at = null, status_detail = $2, disconnected_at = now() where id = $1", [a.id, why === "deauthorized" ? "The person who connected this account removed the iAcquire app on the platform." : "Data deletion was requested on the platform."]);
       const stopped = await stopPublishingFor(db, a.org_id, a.id);
       await recordAudit({ orgId: a.org_id, actorKind: "system", action: "social.account_revoked", targetType: "social_account", targetId: a.id, result: "success", metadata: { why, stopped } }, db);
-      await notifyOrgRoles(db, a.org_id, ["owner", "admin"], { kind: "social_account_attention", severity: "warning", title: `${a.name} was disconnected`, body: "The platform reported that the app was removed from this account. Nothing more will be published to it until you reconnect.", link: "/social/accounts", dedupeKey: `social-revoked:${a.id}` });
+      // Keyed by the moment: an account that is connected again and revoked again is announced again.
+      await notifyOrgRoles(db, a.org_id, ["owner", "admin"], { kind: "social_account_attention", severity: "warning", title: `${a.name} was disconnected`, body: "The platform reported that the app was removed from this account. Nothing more will be published to it until you reconnect.", link: "/social/accounts", dedupeKey: `social-revoked:${a.id}:${at}` });
     }
+    await clearPendingSignIns(db, providerUserId);
+    await db.query("update social_accounts set provider_user_id = null where provider_user_id = $1", [providerUserId]);
     return rows.length;
   });
 }
 
-/** Checks one account with its provider and records what it said. A change for the worse is announced to the owner and managers once. */
-export async function checkAccountHealth(accountId: string, deps: { now?: Date } = {}): Promise<AccountStatus | null> {
-  const acc = await withSystem(async (db) => (await db.query<{ id: string; org_id: string; platform: Platform; adapter: Adapter; external_id: string; name: string; credentials: string | null; status: AccountStatus }>(
-    "select id, org_id, platform, adapter, external_id, name, credentials, status from social_accounts where id = $1 and status in ('connected', 'needs_reauth', 'error')", [accountId],
+/**
+ * The sign-in states that outlived their ten minutes: the sealed Pages and tokens of one that was never finished are cleared the moment it expires, and the
+ * state itself is deleted a day later. Returns how many sealed lists were cleared and how many states deleted.
+ */
+export async function purgeSignInStates(now: Date = new Date()): Promise<{ cleared: number; deleted: number }> {
+  return withSystem(async (db) => {
+    const cleared = await db.query("update social_oauth_states set pending = null where pending is not null and expires_at < $1 returning id", [now]);
+    const deleted = await db.query("delete from social_oauth_states where expires_at < $1::timestamptz - interval '1 day' returning id", [now]);
+    return { cleared: cleared.rows.length, deleted: deleted.rows.length };
+  });
+}
+
+/** Days before a sign-in (or the platform's access to the account's data) runs out that the owner and managers are first told. */
+export const EXPIRY_WARNING_DAYS = 7;
+
+/** The platform said when the sign-in or the access to the account's data ends, and it is close: tell the owner and managers once per account and date. */
+async function warnExpiring(db: Queryable, acc: { id: string; org_id: string; name: string }, ends: { signIn: Date | null; data: Date | null }, now: Date): Promise<void> {
+  const byDay = new Map<string, string[]>();
+  const add = (d: Date | null, what: string) => {
+    if (d === null) return;
+    const at = new Date(d).getTime();
+    if (at <= now.getTime() || at > now.getTime() + EXPIRY_WARNING_DAYS * 86_400_000) return;
+    const day = new Date(at).toISOString().slice(0, 10);
+    byDay.set(day, [...(byDay.get(day) ?? []), what]);
+  };
+  add(ends.signIn, "its sign-in runs out");
+  add(ends.data, "the platform's access to its data runs out");
+  for (const [day, what] of byDay) {
+    await notifyOrgRoles(db, acc.org_id, ["owner", "admin"], {
+      kind: "social_account_attention", severity: "warning", title: `${acc.name} needs to be reconnected before ${day}`,
+      body: `On ${day} ${what.join(" and ")}. Reconnect the account before then so scheduled posts keep going out; after that nothing more can be published to it until you do.`,
+      link: "/social/accounts", dedupeKey: `social-expiry:${acc.id}:${day}`,
+    });
+  }
+}
+
+interface HealthOutcome {
+  status: AccountStatus;
+  /** checked: the platform answered. unreachable: it could not be asked (a timeout, a server error, a limit), so the status is the one from before. changed: another change to the account (a disconnect, a revoke, a reconnect) landed first, and this result was dropped. */
+  outcome: "checked" | "unreachable" | "changed";
+}
+
+/** A refusal the platform means (as opposed to not being able to ask): only these change what an account is shown as. */
+const unanswered = (e: unknown) => !(e instanceof ProviderError) || isRetryable(e.kind) || e.kind === "unknown_outcome";
+
+async function runHealthCheck(accountId: string, now: Date): Promise<HealthOutcome | null> {
+  const acc = await withSystem(async (db) => (await db.query<{ id: string; org_id: string; platform: Platform; adapter: Adapter; external_id: string; name: string; credentials: string | null; status: AccountStatus; status_detail: string | null }>(
+    "select id, org_id, platform, adapter, external_id, name, credentials, status, status_detail from social_accounts where id = $1 and status in ('connected', 'needs_reauth', 'error')", [accountId],
   )).rows[0]);
   if (!acc) return null;
   const creds = openCredentials(acc.credentials);
-  let next: { status: AccountStatus; detail: string | null; health: HealthResult | null };
-  if (!creds) next = { status: "needs_reauth", detail: "The saved sign-in can no longer be used. Reconnect the account.", health: null };
+  let next: { status: AccountStatus; detail: string | null; health: HealthResult | null; answered: boolean };
+  if (!creds) next = { status: "needs_reauth", detail: "The saved sign-in can no longer be used. Reconnect the account.", health: null, answered: true };
   else {
     try {
       const h = await providerFor(acc.adapter).health(creds, { platform: acc.platform, externalId: acc.external_id });
-      next = { status: h.status, detail: h.status === "connected" ? null : h.detail, health: h };
+      next = { status: h.status, detail: h.status === "connected" ? null : h.detail, health: h, answered: true };
     } catch (e) {
-      const needsReauth = e instanceof ProviderError && e.needsReauth;
-      next = { status: needsReauth ? "needs_reauth" : "error", detail: e instanceof ProviderError ? e.message : "The platform could not be reached.", health: null };
+      const message = e instanceof ProviderError ? e.message : "The platform could not be reached.";
+      if (e instanceof ProviderError && e.needsReauth) next = { status: "needs_reauth", detail: message, health: null, answered: true };
+      // A timeout, a server error or a limit says nothing about the account: it keeps the status it had, with a note of why it was not re-checked. An account
+      // that needs reconnecting keeps the reason it already had.
+      else if (unanswered(e)) next = { status: acc.status, detail: acc.status === "needs_reauth" ? acc.status_detail : message, health: null, answered: false };
+      else next = { status: "error", detail: message, health: null, answered: true };
     }
   }
-  await withSystem(async (db) => {
-    const h = next.health;
-    await db.query(
+  const h = next.health;
+  const written = await withSystem(async (db) => {
+    // Guarded by the status read above: a disconnect, a revoke or a reconnect that landed while the platform was being asked wins, and this result is dropped.
+    const res = await db.query<{ token_expires_at: Date | null; data_access_expires_at: Date | null }>(
       `update social_accounts set status = $2, status_detail = $3, last_checked_at = $4,
-         last_success_at = case when $2 = 'connected' then $4 else last_success_at end,
+         last_success_at = case when $2 = 'connected' and $10::boolean then $4 else last_success_at end,
          scopes = coalesce($5, scopes), token_expires_at = coalesce($6, token_expires_at), data_access_expires_at = coalesce($7, data_access_expires_at),
-         capabilities = coalesce($8::jsonb, capabilities), rate_state = case when $9::jsonb is null then rate_state else $9::jsonb end
-       where id = $1`,
-      [acc.id, next.status, next.detail, deps.now ?? new Date(), h?.scopes ?? null, h?.expiresAt ?? null, h?.dataAccessExpiresAt ?? null, h ? JSON.stringify(h.capabilities) : null,
-        h?.quota ? JSON.stringify({ quotaUsage: h.quota.usage, quotaTotal: h.quota.total, checkedAt: (deps.now ?? new Date()).toISOString() }) : null],
+         capabilities = coalesce($8::jsonb, capabilities),
+         rate_state = case when $9::jsonb is null then rate_state else (rate_state - 'quotaUsage' - 'quotaTotal' - 'checkedAt') || $9::jsonb end
+       where id = $1 and status = $11
+       returning token_expires_at, data_access_expires_at`,
+      [acc.id, next.status, next.detail, now, h?.scopes ?? null, h?.expiresAt ?? null, h?.dataAccessExpiresAt ?? null, h ? JSON.stringify(h.capabilities) : null,
+        h?.quota ? JSON.stringify({ quotaUsage: h.quota.usage, quotaTotal: h.quota.total, checkedAt: now.toISOString() }) : null, next.answered, acc.status],
     );
+    const row = res.rows[0];
+    if (!row) return false;
     if (next.status === "needs_reauth" && acc.status !== "needs_reauth") {
       const stopped = await stopPublishingFor(db, acc.org_id, acc.id);
-      await notifyOrgRoles(db, acc.org_id, ["owner", "admin"], { kind: "social_account_attention", severity: "warning", title: `${acc.name} needs to be reconnected`, body: `${next.detail ?? "Its sign-in no longer works."}${stopped ? ` ${stopped} post${stopped === 1 ? "" : "s"} waiting to publish ${stopped === 1 ? "was" : "were"} stopped.` : ""}`, link: "/social/accounts", dedupeKey: `social-reauth:${acc.id}:${(deps.now ?? new Date()).toISOString().slice(0, 10)}` });
+      await notifyOrgRoles(db, acc.org_id, ["owner", "admin"], { kind: "social_account_attention", severity: "warning", title: `${acc.name} needs to be reconnected`, body: `${next.detail ?? "Its sign-in no longer works."}${stopped ? ` ${stopped} post${stopped === 1 ? "" : "s"} waiting to publish ${stopped === 1 ? "was" : "were"} stopped.` : ""}`, link: "/social/accounts", dedupeKey: `social-reauth:${acc.id}:${now.toISOString().slice(0, 10)}` });
     }
+    if (next.status === "connected") await warnExpiring(db, acc, { signIn: row.token_expires_at, data: row.data_access_expires_at }, now);
+    return true;
   });
-  return next.status;
+  if (!written) {
+    const current = (await withSystem((db) => db.query<{ status: AccountStatus }>("select status from social_accounts where id = $1", [acc.id]))).rows[0]?.status ?? next.status;
+    return { status: current, outcome: "changed" };
+  }
+  return { status: next.status, outcome: next.answered ? "checked" : "unreachable" };
 }
 
-/** The scheduler's sweep: every connected account, checked. Returns how many were checked. */
-export async function checkAllAccounts(deps: { now?: Date } = {}): Promise<number> {
-  const ids = await withSystem(async (db) => (await db.query<{ id: string }>("select id from social_accounts where status in ('connected', 'needs_reauth', 'error') order by last_checked_at nulls first limit 200")).rows.map((r) => r.id));
+/**
+ * Checks one account with its provider and records what it said. A change for the worse is announced to the owner and managers once. When the platform cannot
+ * be asked (a timeout, a server error, a limit) the account keeps the status it had and the note says so: only an answer changes what an account is shown as.
+ * Returns the account's status afterwards, or null when there is nothing to check.
+ */
+export async function checkAccountHealth(accountId: string, deps: { now?: Date } = {}): Promise<AccountStatus | null> {
+  return (await runHealthCheck(accountId, deps.now ?? new Date()))?.status ?? null;
+}
+
+/** How long the scheduler's health sweep may keep starting new checks in one run; the rest wait for the next. */
+export const HEALTH_SWEEP_BUDGET_MS = 20_000;
+
+/**
+ * The scheduler's sweep: every connected account of a workspace that may have social work done right now, the one checked longest ago first, until the time
+ * budget is spent (a slow platform must not hold up the rest of the scheduler). Returns how many were checked.
+ */
+export async function checkAllAccounts(deps: { now?: Date; budgetMs?: number } = {}): Promise<number> {
+  const started = Date.now();
+  const ids = await withSystem(async (db) => (await db.query<{ id: string }>(
+    `select a.id from social_accounts a where a.status in ('connected', 'needs_reauth', 'error') and ${socialOrgRunnableSql("a.org_id")} order by a.last_checked_at nulls first limit 200`,
+  )).rows.map((r) => r.id));
   let n = 0;
   for (const id of ids) {
-    if ((await checkAccountHealth(id, deps)) !== null) n += 1;
+    if (Date.now() - started >= (deps.budgetMs ?? HEALTH_SWEEP_BUDGET_MS)) break;
+    if ((await checkAccountHealth(id, { now: deps.now })) !== null) n += 1;
   }
   return n;
 }
@@ -392,7 +594,10 @@ export async function checkMyAccount(ctx: OrgContext, accountId: string): Promis
   assertConnect(ctx);
   const own = await withSystem(async (db) => (await db.query("select 1 from social_accounts where id = $1 and org_id = $2 and status in ('connected', 'needs_reauth', 'error')", [accountId, ctx.org.orgId])).rows.length > 0);
   if (!own) throw new AppError("not_found", "That account was not found.");
-  const status = await checkAccountHealth(accountId);
-  if (!status) throw new AppError("not_found", "That account was not found.");
-  return status;
+  const r = await runHealthCheck(accountId, new Date());
+  // Gone while the platform was being asked (disconnected, or the app removed): there is nothing to report on.
+  if (!r || r.status === "disconnected" || r.status === "revoked") throw new AppError("not_found", "That account was not found.");
+  // Say so rather than reporting the old status as if it had just been confirmed.
+  if (r.outcome === "unreachable") throw new AppError("upstream_error", "The platform could not be reached just now, so this account could not be checked. Nothing about it has changed. Try again in a few minutes.");
+  return r.status;
 }

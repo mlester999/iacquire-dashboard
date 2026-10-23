@@ -11,6 +11,9 @@ export interface StorageFacts {
   managedPlanActive: boolean;
   googleDriveConnected: boolean;
   onedriveConnected: boolean;
+  /** Managed media the workspace keeps now, and the most it may keep (bytes). Both default to "not measured" for callers that only ask what is allowed. */
+  usedBytes?: number;
+  limitBytes?: number;
 }
 
 export type MediaSource = "managed" | "google_drive" | "onedrive";
@@ -26,6 +29,10 @@ export interface SourceOption {
 export interface StoragePolicy {
   /** The person may upload files to managed storage. */
   managedUploadAllowed: boolean;
+  /** Bytes of managed media the workspace keeps now. */
+  usedBytes: number;
+  /** The most managed media it may keep. Null when managed upload is not allowed: there is nothing to measure against. */
+  limitBytes: number | null;
   options: SourceOption[];
   /** One honest sentence about what media can be used right now. */
   summary: string;
@@ -49,6 +56,8 @@ export function mediaStoragePolicy(f: StorageFacts): StoragePolicy {
   const any = options.find((o) => o.available);
   return {
     managedUploadAllowed: f.managedPlanActive,
+    usedBytes: f.usedBytes ?? 0,
+    limitBytes: f.managedPlanActive ? f.limitBytes ?? null : null,
     options,
     summary: any
       ? `Media can be added from ${options.filter((o) => o.available).map((o) => o.label).join(" and ")}.`

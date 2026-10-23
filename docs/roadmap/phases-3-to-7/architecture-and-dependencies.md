@@ -44,3 +44,23 @@ Phase 3 attribution reports must not claim revenue until Phase 5 supplies verifi
 * **Identity:** the tenant comes from the widget's public key plus the browser's Origin allowlist, never from the request body. A visitor is an opaque session; a typed email or phone number is unverified and never merges into an existing contact.
 * **Surfaces:** every site, external or Website Studio, loads `/widget/chat.js` from the portal and calls `/api/public/webchat/*` with CORS limited to the widget's allowlist. A published Website Studio site gets the script injected (nonce'd) and its CSP `connect-src` extended by the portal origin only; its restricted database role can only call `app.site_chat_widget(host)` (see decision D3).
 * **Attribution:** an append-only `lead_touches` history per contact (form, chat, call, manual, import) with known versus inferred marked, first-touch and latest-touch pointers on the contact, a manual cost table, and reports that show revenue and ROI only when verified inputs exist.
+
+## 4. Phase 4 architecture (built; see decisions D11 to D20)
+
+```
+Composer / AI helper ──► social_posts (draft, version n) ──► approval of version n ──► schedule ──► social_publish_jobs (one live job per post)
+        │                       │                                  │                                   │ lease, state, idempotency key
+        ▼                       ▼                                  ▼                                   ▼
+ company_knowledge       social_post_events                 notifications                  adapter: meta | simulated  ──► platform
+ (approved only)         (every action, actor)              (owners, admins, author)               │ lost answer: reconcile before any re-send
+                                                                                                   ▼
+Facebook login ─► social_oauth_states (hash + sealed Page choices, 10 min) ─► social_accounts (sealed credentials, honest status)
+Media: private_files bucket social-media ─► social_media_assets (per-platform validation)       Metrics: social_post_metrics (returned numbers only)
+Leads: tracked link (utm_content = post code) ─► Phase 3 lead_touches ─► per-post and per-campaign rollup (outcomes only after the visit)
+```
+
+* **Tables (0089):** `social_settings`, `social_accounts`, `social_oauth_states`, `social_campaigns`, `social_media_assets`, `social_ai_runs`, `social_posts`, `social_post_events`, `social_publish_jobs`, `social_post_metrics`. Every table is keyed by workspace with composite foreign keys, has row-level security, and gives the application role SELECT only (accounts: column-level, credentials excluded; sign-in state: nothing). All writes happen in server code after its own authorization check.
+* **Permissions:** `social.view` (workspace roles and agency), `social.create` (owner, admin, member, sales rep, agency), `social.approve` and `social.connect` (owner, admin), `social.publish` (owner, admin, agency managers), `social.settings` (owner).
+* **Reuse:** private-file service and `app.file_permission` (bucket `social-media`), notification service (five kinds), Automation Studio trigger spec (three triggers), scheduler registry (`src/server/ops/tick.ts`: three jobs plus a purge), Phase 3 attribution touches and Lead Sources report, `llmComplete` and company knowledge for drafting, the platform's outbound-automation gate (`org-gate.ts`), offboarding export and shutdown.
+* **Routes:** `/social` (calendar), `/social/posts/new`, `/social/posts/[id]`, `/social/approvals`, `/social/accounts`, `/social/media`, `/social/analytics`, `/social/settings`; `/api/social/oauth/meta/{start,callback}`, `/api/social/media[/id]`, `/api/webhooks/meta-social/{deauthorize,data-deletion,data-deletion-status}`.
+* **Not built, by decision:** Inbox conversations from Messenger or Instagram messages (needs messaging permissions), Drive and OneDrive media (needs OAuth apps), reach and impressions (needs insight permissions), an agency-side social screen.

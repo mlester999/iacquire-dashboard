@@ -118,6 +118,18 @@ async function newDb() {
   const db = new PGlite({ extensions: { citext, pg_trgm, btree_gist } });
   await db.waitReady;
   await db.transaction((tx) => tx.exec(fs.readFileSync(path.join(root, "supabase", "local-compat.sql"), "utf8")));
+  // A hosted Supabase project is reported to refuse a direct delete from its storage tables unless the transaction sets storage.allow_delete_query to 'true'.
+  // The embedded stand-in has no such guard, so one modelled on that report is added: a rollback that deletes a bucket without allowing it fails here. It is a
+  // model, not a copy of the hosted trigger; the rollback has not been run on a real project.
+  await db.exec(`
+    create function storage.zz_rehearsal_protect_delete() returns trigger language plpgsql as $$
+    begin
+      if current_setting('storage.allow_delete_query', true) is distinct from 'true' then
+        raise exception 'Direct deletion from storage tables is not allowed. Use the Storage API instead.';
+      end if;
+      return null;
+    end $$;
+    create trigger zz_rehearsal_protect_delete before delete on storage.buckets for each statement execute function storage.zz_rehearsal_protect_delete();`);
   await db.exec("create table if not exists schema_migrations (version text primary key, applied_at timestamptz not null default now())");
   return db;
 }
@@ -465,6 +477,12 @@ section("E", "Row-level security, credentials, permissions and the published-sit
     await db.query("insert into social_publish_jobs (org_id, post_id, account_id, post_version, idempotency_key) values ($1, $2, $3, 1, $4)", [o, post, account, `${post}:1:probe`]);
     await db.query("insert into social_post_metrics (org_id, post_id, metrics, source) values ($1, $2, '{\"likes\":1}'::jsonb, 'simulated')", [o, post]);
   }
+  // A post's link is https only, and the scheme may be written in any case (the application lower-cases it, and says why when it refuses a link).
+  const linkOk = (url) => db.query("insert into social_posts (org_id, account_id, kind, caption, link_url) select org_id, id, 'link', 'Link probe', $2 from social_accounts where org_id = $1 limit 1", [orgA, url]).then(() => true, () => false);
+  for (const url of ["https://example.test/a", "HTTPS://Example.test/a", "Https://example.test/a"]) if (!(await linkOk(url))) fail("E", `social_posts refuses the link ${url}`);
+  for (const url of ["http://example.test/a", "ftp://example.test/a", "//example.test/a", "javascript:alert(1)"]) if (await linkOk(url)) fail("E", `social_posts accepts the link ${url}`);
+  if (!result.sections.E.failures.length) finding("E", "a post's link must start with https:// in any letter case; http, ftp, scheme-less and script addresses are refused by the database");
+  await db.query("delete from social_posts where caption = 'Link probe'");
   const asUser = async (userId, sql) => {
     let rows = [];
     await db.transaction(async (tx) => {

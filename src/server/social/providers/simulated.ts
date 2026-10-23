@@ -113,6 +113,8 @@ export const simulatedProvider: SocialProvider = {
   },
 
   async step(creds, input, state): Promise<StepResult> {
+    // An answer that was already saved is final: a replayed job must not send again.
+    if (state.done && state.providerPostId) return { state };
     checkToken(creds);
     if (twoStep(input.kind)) {
       if (!state.objectId) {

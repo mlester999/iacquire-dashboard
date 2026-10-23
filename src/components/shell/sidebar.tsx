@@ -14,7 +14,7 @@ import { useShell } from "@/components/shell/shell-context";
 import { aqiNavTarget } from "@/lib/aqi/targets";
 import type { Permission } from "@/lib/permissions";
 
-interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox" | "requests"; tour?: string; /** Overrides the default "this path or anything under it" test for the active indicator. */ match?: (pathname: string) => boolean; }
+interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox" | "requests"; tour?: string; /** Belongs to a client's workspace only: not offered in an agency workspace (the pages and actions refuse there too). */ clientOnly?: boolean; /** Overrides the default "this path or anything under it" test for the active indicator. */ match?: (pathname: string) => boolean; }
 const MAIN: NavItem[] = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard, tour: "overview" },
   { href: "/inbox", label: "Inbox", icon: InboxIcon, permission: "inbox.view", badge: "inbox" },
@@ -26,7 +26,7 @@ const MAIN: NavItem[] = [
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals.view", badge: "approvals", tour: "approvals" },
   { href: "/knowledge", label: "Knowledge Center", icon: BookOpen, permission: "knowledge.view" },
   { href: "/website", label: "Website", icon: Globe, permission: "website.view" },
-  { href: "/social", label: "Social Media", icon: Share2, permission: "social.view" },
+  { href: "/social", label: "Social Media", icon: Share2, permission: "social.view", clientOnly: true },
   { href: "/activity", label: "Activity", icon: Activity },
 ];
 // Native CRM. "Sales Pipeline" (/sales) is the GoHighLevel read-only view and is shown only where GoHighLevel owns the pipeline; likewise
@@ -100,7 +100,7 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
   const [crmOpen, setCrmOpen] = React.useState(true);
   const crmMode = shell.crmMode;
   // Native CRM pipelines replace the GoHighLevel pipeline view; a hybrid workspace keeps both while it migrates.
-  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native");
+  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native") && !(i.clientOnly && shell.org.kind !== "client");
   // Automation Studio builds on the iAcquire workflow engine, so it is offered wherever that engine runs (not in a GoHighLevel-only workspace).
   const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar" || i.href === "/automation-studio") && crmMode === "ghl"));
   // "All CRM tools" is highlighted only for CRM pages that have no entry of their own here.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonth, anchorDay, formatTime, fromLocalInput, groupByDay, listRange, monthGrid, neighbours, parseView, toLocalInput, weekGrid } from "@/lib/social/calendar";
+import { addMonth, anchorDay, calendarScreen, composerDay, formatTime, fromLocalInput, groupByDay, listRange, monthGrid, neighbours, parseView, scheduleSuggestion, toLocalInput, weekGrid } from "@/lib/social/calendar";
 
 describe("the month grid", () => {
   it("shows whole weeks, Sunday first, with the neighbours' edges", () => {
@@ -98,5 +98,58 @@ describe("date and time inputs", () => {
     expect(fromLocalInput("2026-02-31T10:00", "UTC")).toBeNull();
     expect(fromLocalInput("2026-10-23T25:00", "UTC")).toBeNull();
     expect(fromLocalInput("2026-10-23T10:00", "Not/AZone")).toBeNull();
+  });
+});
+
+describe("the day carried from the calendar into the composer (#60)", () => {
+  const now = new Date("2026-10-23T16:30:00Z"); // 11:30 AM in Chicago, 12:30 AM on the 24th in Manila
+
+  it("accepts a real day that is today or later in the client's zone, and drops anything else", () => {
+    expect(composerDay("2026-10-30", now, "America/Chicago")).toBe("2026-10-30");
+    expect(composerDay("2026-10-23", now, "America/Chicago")).toBe("2026-10-23");
+    expect(composerDay("2026-10-22", now, "America/Chicago")).toBeNull();
+    // It is already the 24th in Manila, so the 23rd is the past there.
+    expect(composerDay("2026-10-23", now, "Asia/Manila")).toBeNull();
+    expect(composerDay("2026-10-24", now, "Asia/Manila")).toBe("2026-10-24");
+    expect(composerDay("2026-02-31", now, "UTC")).toBeNull();
+    expect(composerDay("tomorrow", now, "UTC")).toBeNull();
+    expect(composerDay(["2026-10-30"], now, "UTC")).toBeNull();
+    expect(composerDay(undefined, now, "UTC")).toBeNull();
+  });
+
+  it("starts the schedule box at nine o'clock on that day, and never schedules anything itself", () => {
+    expect(scheduleSuggestion("2026-10-30", now, "America/Chicago")).toBe("2026-10-30T09:00");
+    expect(scheduleSuggestion("2026-10-24", now, "Asia/Manila")).toBe("2026-10-24T09:00");
+  });
+
+  it("offers the next quarter hour when nine o'clock has passed today, or nothing when the day is over", () => {
+    // 11:30 AM in Chicago: nine has passed, and the next time far enough ahead (five minutes) is 11:45.
+    expect(scheduleSuggestion("2026-10-23", now, "America/Chicago")).toBe("2026-10-23T11:45");
+    // 11:57 PM in Chicago: the next usable quarter hour is on the next day, so today has no time left.
+    expect(scheduleSuggestion("2026-10-23", new Date("2026-10-24T04:57:00Z"), "America/Chicago")).toBeNull();
+  });
+
+  it("offers nothing beyond how far ahead a post can be planned", () => {
+    expect(scheduleSuggestion("2027-06-01", now, "UTC")).toBeNull();
+    expect(scheduleSuggestion("not-a-day", now, "UTC")).toBeNull();
+  });
+});
+
+describe("what the calendar page shows when accounts are disconnected (#57)", () => {
+  it("shows the connect prompt when there is no account at all", () => {
+    expect(calendarScreen([], false)).toBe("connect");
+    expect(calendarScreen([], true)).toBe("connect");
+  });
+
+  it("keeps the calendar while any account can still be used", () => {
+    expect(calendarScreen(["connected"], false)).toBe("calendar");
+    expect(calendarScreen(["disconnected", "needs_reauth"], false)).toBe("calendar");
+    expect(calendarScreen(["revoked"], false)).toBe("calendar");
+  });
+
+  it("keeps a workspace's history visible when every account was disconnected, and asks for a connection only when there is no history", () => {
+    expect(calendarScreen(["disconnected"], true)).toBe("calendar_without_account");
+    expect(calendarScreen(["disconnected", "disconnected"], true)).toBe("calendar_without_account");
+    expect(calendarScreen(["disconnected"], false)).toBe("connect");
   });
 });

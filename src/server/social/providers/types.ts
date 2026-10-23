@@ -85,6 +85,11 @@ export interface Reconciliation {
   found: boolean;
   providerPostId?: string;
   permalink?: string | null;
+  /**
+   * Only with `found: false`. The platform's answer cannot settle it: there is no text to match on, or several posts fit. "Not found" would be a guess that a
+   * live post is not live, so a person has to look at the Page; asking again will not change the answer.
+   */
+  uncertain?: boolean;
 }
 
 export interface SocialProvider {
@@ -94,8 +99,8 @@ export interface SocialProvider {
   health(creds: Credentials, account: AccountRef): Promise<HealthResult>;
   /** Performs the next step of the publication and returns the state after it. Throws ProviderError. */
   step(creds: Credentials, input: PublishInput, state: PublishState): Promise<StepResult>;
-  /** Asks the platform whether this publication exists. Used only when an answer was lost. */
-  reconcile(creds: Credentials, input: PublishInput, state: PublishState, since: Date): Promise<Reconciliation>;
+  /** Asks the platform whether this publication exists. Used only when an answer was lost. `exclude` lists post ids already recorded for other posts of the account, which can never be this one. */
+  reconcile(creds: Credentials, input: PublishInput, state: PublishState, since: Date, exclude?: readonly string[]): Promise<Reconciliation>;
   /** The numbers the provider returns for a published post. Only what it returned. */
   metrics(creds: Credentials, account: AccountRef, providerPostId: string): Promise<Record<string, number>>;
 }

@@ -118,6 +118,24 @@ describe("what a visitor can and cannot make the assistant do", () => {
     expect(ungroundedAmounts("Re-roofing starts at ₱8,500", "starts at 8500")).toEqual([]);
   });
 
+  it("grounds an amount only by the same whole number, never by digits inside another number", () => {
+    expect(ungroundedAmounts("Just $12.", "Tune-ups start at $120.")).toEqual(["$12"]);
+    expect(ungroundedAmounts("Only $20 to start.", "Established in 2020. Tune-ups start at $120.")).toEqual(["$20"]);
+    expect(ungroundedAmounts("About 20 USD", "Founded 2020")).toEqual(["20 USD"]);
+    expect(ungroundedAmounts("It is $1,200.", "Roof inspections 1200 per visit")).toEqual([]);
+    expect(ungroundedAmounts("It is $1200.", "Roof inspections from $1,200")).toEqual([]);
+    expect(ungroundedAmounts("It is $12.50.", "Parts 12.5 each")).toEqual([]);
+    expect(ungroundedAmounts("It is $12.", "Parts 12.00 each")).toEqual([]);
+    expect(ungroundedAmounts("Visits are $120, and filters are $15.", "Visits $120. Filters $15.")).toEqual([]);
+    expect(ungroundedAmounts("Visits are $120, and filters are $18.", "Visits $120. Filters $15.")).toEqual(["$18"]);
+  });
+
+  it("does not let an opening hour or a percentage stand in for a price", () => {
+    expect(ungroundedAmounts("Get $5 off your first visit.", "Open Monday to Friday, 9am-5pm.")).toEqual(["$5"]);
+    expect(ungroundedAmounts("Only $15 to start.", "Seniors save 15% on Tuesdays.")).toEqual(["$15"]);
+    expect(ungroundedAmounts("Open at $9.", "Open 9:00 to 17:00")).toEqual(["$9"]);
+  });
+
   it("says plainly there is no answer when no language model is connected", async () => {
     const offline = createWebChatGenerator({ complete: async () => ({ ok: true as const, text: "never" }), config: async () => null });
     const r = await embedCall(c, { action: "send", token: await start(c), body: { text: "Hi", clientMessageId: clientId() }, generate: offline });

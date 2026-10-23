@@ -41,3 +41,50 @@ Stored source names are lower case with hyphens. The display label raises the fi
 ## D10. QA findings are fixed where they are found, including in Phase 1 and 2 code that the new feature exposes
 
 Two small fixes landed in the Inbox thread. The scrollable message log was not keyboard-focusable (a gap already present in Phase 1; axe flagged it). System-authored messages were labelled "Teammate"; website chat adds system notices to the thread (for example "I've asked a team member to join"), so they now read "Automatic notice". One shell issue was found and left alone: the sidebar's AI-employee links have an accessible name that does not contain their visible text (axe `label-content-name-mismatch`, six or seven nodes on every portal page); it is not part of this work and is listed in `blockers.md`.
+
+# Phase 4: AI social media manager
+
+## D11. Meta first, behind an adapter, with a simulated twin that production refuses
+
+Facebook Pages and Instagram professional accounts (reached through their linked Page) are the only providers. Every provider call goes through one adapter interface (`providers/types.ts`): `meta` talks to the Graph API, `simulated` is an in-process platform used by tests and browser QA and is refused in production (`simulatedAllowed`). The Meta adapter has only ever run against a replaced HTTP layer; endpoint and permission names must be re-read against Meta's current documentation before the app is submitted for review (stated in `meta.ts` and `meta-oauth.ts`). A future provider is another adapter; none is claimed.
+
+## D12. An approval is of an exact version, and nothing the person did not read can go out
+
+`social_posts.version` bumps on every change to what will be posted; an approval stores `approved_version`; a scheduled post must have `approved_version = version`. Any edit to caption, hashtags, link, media or account voids it and returns the post to draft. AI drafts (origin `ai`) always need a person's approval, whatever the settings (`approval_for_publishers` only adds a second person for people who could publish anyway), and a duplicate of an AI draft stays an AI draft. Approve belongs to the client's owner and admin; the agency never approves what a client publishes. Every approval, edit, schedule, cancel, retry and publication is a row in `social_post_events` with its actor.
+
+## D13. Publishing is a leased, resumable, idempotent job with two write switches
+
+One live job per post (partial unique index), an idempotency key of post:version:instant, a lease a restarted worker takes over, and `state` that records each provider step (container created, publish sent, provider post id, done) so a resumed job continues instead of repeating. A lost answer becomes `needs_reconciliation`: the publisher asks the platform whether the post exists before anything is re-sent, and a person resolves what it cannot decide. Real publishing needs both the environment switch `META_SOCIAL_WRITES_ENABLED` and an account whose adapter is `meta`; the scheduler jobs are off in production until their stage is started. A job also checks the workspace gate (`org-gate.ts`, the platform's outbound-automation rule) so a suspended, paused or shut-down client's posts stop. A post more than six hours past its time when first claimed is not sent (D20), so switching publishing on later never posts stale content.
+
+## D14. Credentials are sealed server-side and never readable by the application role
+
+Account credentials are AES-GCM sealed JSON in `social_accounts.credentials`, a column the application role has no grant on (column-level grant list in 0089); the sign-in state table is server-only (no grant at all) and holds the encrypted Page choices for ten minutes only. Nothing sealed is returned to a browser, a server-action result, an audit row or a log. Deauthorize and data-deletion callbacks verify Meta's signed request (HMAC-SHA256, constant time) and revoke by provider user.
+
+## D15. Honest connection states and what stops publishing
+
+`connected`, `needs_reauth`, `error`, `revoked`, `disconnected`. Disconnect, revoke and needs-reauth cancel queued jobs and fail the affected scheduled posts with a plain message ("Reconnect it and schedule it again"); a post whose outcome is unknown stays flagged for a person. A transient health failure does not change an account's state (review finding). Reconnecting a Page moves its unfinished posts to the new connection.
+
+## D16. Media: managed storage with a cap, client drives as an honest "not available"
+
+Uploads go to the private bucket `social-media` through the existing private-file service; reading needs `social.view`, writing `social.create`. Only managed-plan workspaces may upload, and managed storage is not unlimited: a per-workspace cap (default 2048 MB, `SOCIAL_MEDIA_STORAGE_MB`; the default is a proposal the founder must confirm). Google Drive and OneDrive appear as "not available yet" because no OAuth app exists. Files are validated by content (magic bytes, dimensions, EXIF orientation) and per platform (Instagram: JPEG, 4:5 to 1.91:1).
+
+## D17. AI help is a user-invoked drafting helper, not a seventh employee
+
+Ideas and captions are generated from approved, non-risk-flagged company knowledge only, tone and brand-voice note included, and the output is filtered for invented prices, percentages, offers, testimonials and statistics. Every result is a normal editable draft. It is not an AI Employee: no employee identity, tool or memory is involved. The only employee involvement is the Performance Analyst's read-only social review (failed or unconfirmed posts, approval backlog, accounts needing reconnection, and engagement or campaign patterns only where enough returned numbers exist). A dedicated social-media specialist employee is a possible future product decision and is not created here.
+
+## D18. Analytics show only what the platform returned, and leads are tied to a post only by evidence
+
+A metric the platform did not return is absent, never zero. Reach, impressions and clicks are not collected (insight permissions are not requested). A lead is tied to a post only when its own recorded visit (a Phase 3 `lead_touches` row) carried the post's tracking code in `utm_content`, and an outcome counts only if it happened after that visit. Posts that cannot carry a code (no link, links off, Instagram captions) read "Not tracked". Likes and views are never described as sales.
+
+## D19. Social media belongs to the client workspace
+
+Accounts, approvals and publishing are the client's; the section is hidden from and refused in agency workspaces. An agency-side surface for working inside a client's calendar is a possible later task.
+
+## D20. Decisions taken after the Phase 4 review (summary of the fix brief)
+
+* Overdue posts: more than six hours late at first claim means "not sent" with a notice (one constant).
+* Links: https only, case-insensitive in the database, scheme lower-cased, validated before any write.
+* A tracked link always carries its own code in `utm_content`.
+* Token expiry: a warning to owners and admins seven days before a token or data-access expiry.
+* AI helper: per-user hourly and per-workspace daily rate limits.
+* Failure notifications and automation events are keyed per failed job, so a retry that fails again is announced again.

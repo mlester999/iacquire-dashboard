@@ -17,8 +17,11 @@ the agreed retention period; and every step is recorded (`offboarding_events`, a
 session, never the request. It contains readable JSON/CSV and files for: business profile, knowledge, onboarding answers and documents; team (without
 invitation tokens or alert phone numbers); contacts, consent history and suppressions; every conversation, message and delivery event; leads, CRM,
 notes and tasks; appointments, bookings, reminders; retention programs and history; the website (content, the latest 20 versions and publications, domains, enquiries and images);
-the AI team's setup and approvals; support conversations (not internal notes); custom-project records; and billing history. Files over a size cap are listed in the README
-rather than silently dropped. It **omits** passwords, connection secrets, internal dedupe keys and anything belonging to other
+the AI team's setup and approvals; social media (the connected Facebook and Instagram accounts by name and status, posts and their history, campaigns, media library records, AI
+suggestions, settings, the engagement numbers the platforms returned, and the pictures and videos in `files/social-media/`); support conversations (not internal notes);
+custom-project records; and billing history. Files over a size cap are listed in the README
+rather than silently dropped. It **omits** passwords, connection secrets (a social account's sign-in token, the platform's id for the person who connected it, the permissions
+granted and the token's dates are never exported; neither are publishing jobs or sign-in states), internal dedupe keys and anything belonging to other
 clients. It also includes a guide for moving each domain. Each download is audited and recorded against any open closing request.
 
 ## The process
@@ -26,7 +29,7 @@ clients. It also includes a guide for moving each domain. Each download is audit
 | Step | Who | What happens |
 | --- | --- | --- |
 | 1. Request | Owner (typed workspace name) or agency | Opens a request. **Nothing is switched off.** The owner can cancel any time before shutdown |
-| 2. Shutdown | Super admin | Pauses agency, messaging and outbound; sets every AI employee to Paused; cancels queued messages, follow-ups, reminders, bookings, program messages and pending approvals (releasing credit holds); disconnects messaging channels and connected services; removes team access (the owner keeps theirs); keeps or unpublishes the website as agreed; records the remaining prepaid balance; starts the retention clock (default 90 days, minimum 30). **Each step reports its own result**: a service that could not be disconnected is shown as failed with instructions to revoke it by hand |
+| 2. Shutdown | Super admin | Pauses agency, messaging and outbound; sets every AI employee to Paused; cancels queued messages, follow-ups, reminders, bookings, program messages and pending approvals (releasing credit holds); disconnects messaging channels and connected services; disconnects the client's Facebook Pages and Instagram accounts (their tokens are deleted and posts waiting to publish are stopped); removes team access (the owner keeps theirs); keeps or unpublishes the website as agreed; records the remaining prepaid balance; starts the retention clock (default 90 days, minimum 30). **Each step reports its own result**: a service that could not be disconnected is shown as failed with instructions to revoke it by hand |
 | 3. Billing | Super admin | Records how remaining credit and charges were settled (refund through PayMongo, waived, or none owed). A precondition for deletion |
 | 4. Reminders | Scheduler | The owner is reminded before deletion (`offboardingReminders`) |
 | 5. Plan | Super admin | "Show the deletion plan" counts rows per table, files, and what is kept |

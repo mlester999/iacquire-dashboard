@@ -98,7 +98,8 @@ create table social_oauth_states (
   -- sha256 of the state value handed to the provider; the value itself is not stored.
   state_hash text not null unique check (state_hash ~ '^[0-9a-f]{64}$'),
   return_path text not null default '/social/accounts' check (char_length(return_path) <= 200),
-  -- After the provider sends the person back: the Pages (and their tokens) they may choose from, encrypted, for ten minutes.
+  -- After the provider sends the person back: the Pages (and their tokens) they may choose from, encrypted, for ten minutes. The scheduler clears it once the
+  -- state has expired, and a deauthorization or data-deletion callback clears the ones that belong to that platform user.
   pending text,
   expires_at timestamptz not null,
   used_at timestamptz,
@@ -132,6 +133,7 @@ create table social_media_assets (
   org_id uuid not null references organizations(id) on delete cascade,
   -- managed: bytes in the workspace's private storage. google_drive / onedrive: a file in the client's own drive (reference only).
   source text not null default 'managed' check (source in ('managed', 'google_drive', 'onedrive')),
+  -- A removed asset keeps this until its stored file is really deleted (the scheduler retries a failed delete), then it is cleared.
   private_file_id uuid,
   external_ref text check (char_length(external_ref) <= 400),
   kind text not null check (kind in ('image', 'video')),
@@ -180,7 +182,8 @@ create table social_posts (
   kind text not null check (kind in ('text', 'link', 'image', 'video')),
   caption text not null default '' check (char_length(caption) <= 63206),
   hashtags text[] not null default '{}' check (cardinality(hashtags) <= 30),
-  link_url text check (link_url is null or (link_url ~ '^https://' and char_length(link_url) <= 1000)),
+  -- https only; the scheme may be written in any case (HTTPS://...), and the application lower-cases it on the way in.
+  link_url text check (link_url is null or (link_url ~* '^https://' and char_length(link_url) <= 1000)),
   -- A short code carried in the link as utm_content, so a lead that arrives from this post can be tied back to it.
   tracking_code text check (tracking_code is null or tracking_code ~ '^[a-z0-9]{8}$'),
   media_asset_ids uuid[] not null default '{}' check (cardinality(media_asset_ids) <= 10),

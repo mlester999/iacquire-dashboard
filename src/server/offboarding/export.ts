@@ -105,6 +105,16 @@ const TABLES: TableSpec[] = [
   { file: "website/publications.json", table: "website_publications", order: "number desc", limit: 20 },
   { file: "website/domains.json", table: "website_domains", omit: ["verification_token", "created_by", "purchase_approved_by"] },
   { file: "website/enquiries.json", table: "website_form_submissions", order: "created_at" },
+  // Social media. An account is exported by name and status only: never what signs in as it (the token), the platform's id for the person who connected it, the
+  // permissions granted, the platform's limits or the token's dates. Publishing jobs and sign-in states are internal working state and are not exported.
+  { file: "social/accounts.json", table: "social_accounts", pick: ["id", "platform", "adapter", "external_id", "name", "username", "avatar_url", "status", "status_detail", "capabilities", "connected_at", "disconnected_at", "created_at"], order: "created_at" },
+  { file: "social/posts.json", table: "social_posts", order: "created_at" },
+  { file: "social/post-history.json", table: "social_post_events", order: "at" },
+  { file: "social/post-metrics.json", table: "social_post_metrics", order: "fetched_at" },
+  { file: "social/campaigns.json", table: "social_campaigns", order: "created_at" },
+  { file: "social/media-library.json", table: "social_media_assets", order: "created_at" },
+  { file: "social/ai-suggestions.json", table: "social_ai_runs", order: "created_at" },
+  { file: "social/settings.json", table: "social_settings" },
   { file: "ai-team/employees.json", table: "agent_instances", omit: ["credential_id", "hermes_base_url", "hermes_profile"] },
   { file: "ai-team/employee-knowledge.json", table: "employee_knowledge_entries", order: "updated_at" },
   { file: "ai-team/configuration-versions.json", table: "agent_config_versions", order: "created_at" },
@@ -208,7 +218,7 @@ export async function buildExport(orgId: string, opts: { now?: Date } = {}): Pro
   // Uploaded files and website images, within a total size cap.
   const files = await withSystem((db) =>
     db.query<{ id: string; bucket: string; filename: string; mime_type: string; size_bytes: number }>(
-      "select id, bucket, filename, mime_type, size_bytes from private_files where org_id = $1 and status = 'ready' and visibility = 'client' and bucket in ('company-documents', 'brand-assets') order by created_at",
+      "select id, bucket, filename, mime_type, size_bytes from private_files where org_id = $1 and status = 'ready' and visibility = 'client' and bucket in ('company-documents', 'brand-assets', 'social-media') order by created_at",
       [orgId],
     ),
   );
@@ -262,7 +272,8 @@ Exported ${now.toISOString()}.
 - **ai-team/**: how your AI employees were set up (names, modes, configuration versions) and every approval request and decision.
 - **billing/**: payments, your credit ledger, usage and fees.
 - **support/**, **projects/**, **records/**: support conversations, custom projects and the activity history.
-- **files/**: documents and brand images you uploaded.
+- **social/**: your Facebook and Instagram accounts (never their sign-in tokens), posts and their history, campaigns, media library records, the numbers the platforms returned for your posts, and your social media settings.
+- **files/**: documents, brand images and social media pictures and videos you uploaded.
 - **DOMAINS.md**: where your domains are and how to move them.
 - **manifest.json**: counts for each file, and anything that could not be included.
 

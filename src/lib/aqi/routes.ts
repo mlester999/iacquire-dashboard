@@ -29,6 +29,9 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/automation-studio", label: "Automation Studio", description: "Describe an automation and watch the AI Automation Builder build it, or build it yourself on a visual canvas.", permission: "workflows.view" },
   { path: "/crm/calendar", label: "Calendar", description: "Bookings and availability.", permission: "appointments.view" },
   { path: "/inbox", label: "Inbox", description: "Conversations with your contacts.", permission: "inbox.view" },
+  // Kept among the client pages, ahead of the agency ones: aqiNavigationFor keeps only the first routes a person may open (AQI_NAVIGATION_LIMIT).
+  { path: "/social", label: "Social media", description: "Plan, draft and schedule Facebook and Instagram posts, and see connected accounts and results.", permission: "social.view" },
+  { path: "/social/approvals", label: "Social approvals", description: "Social posts waiting for a person's approval before they can be scheduled.", permission: "social.view" },
   { path: "/analytics", label: "Analytics", description: "Workspace reporting and performance.", permission: "analytics.view" },
   { path: "/approvals", label: "Approvals", description: "Actions waiting for a person's decision.", permission: "approvals.view" },
   { path: "/activity", label: "Activity", description: "What has happened in the workspace.", permission: "activity.view" },

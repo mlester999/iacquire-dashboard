@@ -60,8 +60,8 @@ export function AccountsPanel({ accounts, canConnect, metaReady, liveEnabled, tz
           </ul>
           <Button variant="brand" loading={busy("choose")} disabled={!Object.values(picked).some((x) => x.on)} onClick={async () => {
             const r = await run("choose", () => connectChosenAction(choose.stateId, Object.entries(picked).filter(([, v]) => v.on).map(([pageId, v]) => ({ pageId, includeInstagram: v.ig }))));
-            const out = r as { connected: AccountView[]; skipped: Array<{ name: string; reason: string }> } | null;
-            if (out) router.replace(out.skipped.length ? `/social/accounts?skipped=${encodeURIComponent(out.skipped.map((s) => `${s.name}: ${s.reason}`).join(" | ").slice(0, 600))}` : "/social/accounts");
+            // Which Pages were skipped, and why, is carried by the server's notice cookie: the address only drops the used sign-in and carries no text.
+            if (r) router.replace("/social/accounts");
           }}>Connect the chosen Pages</Button>
         </section>
       )}
@@ -90,8 +90,9 @@ export function AccountsPanel({ accounts, canConnect, metaReady, liveEnabled, tz
                   </div>
                   {canConnect && a.status !== "disconnected" && a.status !== "revoked" && (
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="secondary" loading={busy(`check-${a.id}`)} onClick={() => run(`check-${a.id}`, () => checkAccountAction(a.id), "Checked.")}>Test connection</Button>
-                      <Button size="sm" variant="outline" onClick={() => setConfirm(a)}>Disconnect</Button>
+                      {/* Every account has the same two buttons, so a screen reader needs the account in each name (the visible words stay first). */}
+                      <Button size="sm" variant="secondary" aria-label={`Test connection for ${a.name} (${PLATFORM_LABELS[a.platform]})`} loading={busy(`check-${a.id}`)} onClick={() => run(`check-${a.id}`, () => checkAccountAction(a.id), "Checked.")}>Test connection</Button>
+                      <Button size="sm" variant="outline" aria-label={`Disconnect ${a.name} (${PLATFORM_LABELS[a.platform]})`} onClick={() => setConfirm(a)}>Disconnect</Button>
                     </div>
                   )}
                 </div>

@@ -157,7 +157,9 @@ export const isTrackingCode = (v: unknown): v is string => typeof v === "string"
 
 /**
  * The link as posted: the page's own address with the source tags a lead's first visit will carry (`utm_source`, `utm_medium=social`, `utm_campaign`, and
- * `utm_content` = the post's tracking code). Tags already on the address are kept, never overwritten, so a link someone built by hand still means what they meant.
+ * `utm_content` = the post's tracking code). Source, medium and campaign already on the address are kept, so a link someone built by hand still means what they
+ * meant. The tracking code is always this post's own: it is the only thing that ties a lead back to the post, so a `utm_content` copied from another link (or an
+ * earlier post) is replaced rather than kept.
  */
 export function trackedLink(url: string, tags: { platform: Platform; campaign: string | null; trackingCode: string }): string | null {
   let u: URL;
@@ -173,7 +175,7 @@ export function trackedLink(url: string, tags: { platform: Platform; campaign: s
   set("utm_source", tags.platform);
   set("utm_medium", "social");
   set("utm_campaign", tags.campaign || "social");
-  set("utm_content", tags.trackingCode);
+  u.searchParams.set("utm_content", tags.trackingCode);
   return u.toString();
 }
 

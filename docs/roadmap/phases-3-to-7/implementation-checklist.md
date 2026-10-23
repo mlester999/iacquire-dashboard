@@ -30,7 +30,23 @@ States: Not Started, In Progress, Implemented, Verified Locally (tests on embedd
 
 | Id | Task | State |
 | --- | --- | --- |
-| 4.x | Everything (no social code exists in the tree) | Not Started |
+| 4.0 | Audit: nothing social existed (no tables, no Meta code, OAuth only for calendars) | Verified Locally (read of the tree) |
+| 4.1 | Migration 0089: ten tables, six `social.*` permissions, `social-media` bucket and file rule, five notification kinds, RLS select-only, credentials column ungranted | Verified Locally (`scripts/rehearse-phase4-migrations.mjs` A-E ok on embedded Postgres) |
+| 4.2 | Pure rules: platform limits, approval and scheduling rules, post state machine, media policy, calendar grids, image-size parsing | Verified Locally |
+| 4.3 | Providers: adapter interface, simulated platform, Meta Graph adapter | Verified Locally (Meta adapter against a replaced HTTP layer only); **no real provider** |
+| 4.4 | Accounts: Facebook login flow, Page chooser, health, revoke, disconnect, deauthorize and data-deletion callbacks | Verified Locally; not connectable until a Meta app exists (blocker) |
+| 4.5 | Posts and approvals: drafts, version-bound approval, request changes, reject, duplicate, cancel, retry, resolve unknown outcome | Verified Locally, Browser-QA'd (approve, edit voids approval, schedule, disconnect fails scheduled posts honestly, read-only role) |
+| 4.6 | Durable publisher: leased, resumable, idempotent jobs, reconciliation of lost answers, notifications | Verified Locally; the adversarial review found a crash-replay double-post (#1) and workspace-gate gaps: **fixes in progress** |
+| 4.7 | AI help: ideas and captions from approved knowledge, claim filter, always a draft | Verified Locally (simulated model), Browser-QA'd; **no real model evaluated** |
+| 4.8 | Media library: managed bucket, entitlement policy, per-platform validation, storage cap | Verified Locally, Browser-QA'd (page); Drive and OneDrive blocked-external |
+| 4.9 | Analytics: published posts, returned engagement only, leads by tracking code, per-campaign rollup | Verified Locally; campaign rollup and "Not tracked" in progress |
+| 4.10 | Automation Studio: three triggers (published, failed, approval requested); Performance Analyst read-only social review | Verified Locally; **editor UI not browser-checked** |
+| 4.11 | Screens: calendar (month, week, list, client time zone), composer with live checks and preview, approvals, post page, accounts, media, analytics, settings | Browser-QA'd at 375 and 1280 (light mode); dark mode and re-check after fixes pending |
+| 4.12 | Scheduler jobs `socialPublisher`, `socialAccountHealth`, `socialMetrics` (+ sign-in-state purge) | Verified Locally (injected clocks); never run live |
+| 4.13 | Adversarial review: 8 risk lenses, 82 agents, every finding verified by independent skeptics | Done: 66 confirmed (about 40 distinct), 3 refuted |
+| 4.14 | Review fixes (four file-disjoint implementers, then integration) | In Progress |
+| 4.15 | Full gates: suite, typecheck, lint, clean build, rehearsal re-run, browser re-check | Not Started |
+| 4.16 | Inbox for social inquiries (4H), Drive/OneDrive media, reach/impressions | Blocked (external accounts and permissions; see blockers.md) |
 
 ## Phase 5: sales closing and customer retention
 

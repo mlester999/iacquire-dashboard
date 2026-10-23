@@ -3,7 +3,8 @@
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import type { LlmConfig } from "@/server/llm/client";
-import { createDraftFromOption, extractJson, suggestCaptions, suggestIdeas, unsupportedClaims } from "@/server/social/ai";
+import { createDraftFromOption, extractJson, SOCIAL_AI_LIMITS, suggestCaptions, suggestIdeas, unsupportedClaims } from "@/server/social/ai";
+import { unsupportedHashtags } from "@/server/social/claims";
 import { decide, schedulePost, submitForApproval } from "@/server/social/posts";
 import { saveSocialSettings } from "@/server/social/settings";
 import { connect, LATER, NOW, rows, socialOrg, type SocialOrg } from "./support/social";
@@ -169,5 +170,203 @@ describe("what becomes of what it wrote", () => {
     const { runId } = await suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "x" }, model('{"options":[{"caption":"A fair caption.","hashtags":["hvac"]}]}').deps);
     const draft = await createDraftFromOption(s.sales, runId, 0, { accountId: acc.id, kind: "text" });
     expect(draft.hashtags).toEqual(["hvac", "HarborHome"]);
+  });
+});
+
+// What the business has approved to say. None of the claims below is in it.
+const KNOWLEDGE = "Harbor Home Services repairs heating and cooling systems in Austin. Open Monday to Friday, 9am-5pm. Tune-ups start at $120. Established 2012.";
+
+describe("claims the knowledge does not back", () => {
+  it("catches an invented price that a number elsewhere in the knowledge used to hide", () => {
+    expect(unsupportedClaims("Tune-ups for just $20 this month.", KNOWLEDGE)).toEqual(["$20"]); // 20 is inside 120 and 2012
+    expect(unsupportedClaims("Get $5 off your first visit.", KNOWLEDGE)).toEqual(["$5"]); // 5 is inside 5pm
+    expect(unsupportedClaims("Tune-ups from $12.", KNOWLEDGE)).toEqual(["$12"]);
+    expect(unsupportedClaims("Tune-ups start at $120.", KNOWLEDGE)).toEqual([]);
+  });
+
+  it.each([
+    "Over 500 happy customers trust us.",
+    "Trusted by 1,200 local families.",
+    "Rated 4.9 stars by homeowners.",
+    "Our clients love us.",
+    "Half off all repairs this weekend only.",
+    "Save 50 percent on your next service.",
+    "Free shipping on all parts.",
+    "Book now and get a free gift.",
+    "Voted Best HVAC company 2025.",
+    "9 out of 10 customers recommend us.",
+    "Two-for-one tune-ups this week.",
+    "Serving Austin since 2008.",
+    "We are licensed and insured.",
+    "20 years of experience you can trust.",
+    "Call 512-555-0199 to book.",
+    "Write to hello@harborhome.example.",
+    "A lifetime warranty on every repair.",
+    "No hidden fees, ever.",
+    "We are the best in the business.",
+    "Save $50 on your next visit.",
+    "Get 15% off this month.",
+  ])("drops: %s", (text) => {
+    expect(unsupportedClaims(text, KNOWLEDGE).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    "Spring is here. Is your air conditioner ready?",
+    "Replace your air filter every 3 months.",
+    "3 tips to get your furnace ready for winter.",
+    "Free time this weekend? Spend 10 minutes checking your thermostat.",
+    "Carefree comfort starts with a tune-up.",
+    "Rely on us for your next repair.",
+    "Save energy this summer with a quick tune-up.",
+    "Our team is ready to help you stay comfortable.",
+    "Our 2026 projects are booking up. Book early.",
+    "Check your warranty before you book a repair.",
+    "Tune-ups start at $120. Open Monday to Friday, 9am-5pm.",
+    "Established 2012 and still fixing furnaces.",
+    "Is your thermostat set to 68 degrees?",
+  ])("keeps: %s", (text) => {
+    expect(unsupportedClaims(text, KNOWLEDGE)).toEqual([]);
+  });
+
+  it("allows each of them once the business's own approved text says so", () => {
+    const stated = "We offer a free estimate on every job. We are licensed and insured. 20 years of experience. Call 512-555-0199 or email hello@harborhome.example. Seniors save 5% on Tuesdays. Over 500 customers served. Established 2012. Lifetime warranty on repairs.";
+    for (const text of ["Ask for a free estimate.", "We are licensed and insured.", "20 years of experience you can trust.", "Call 512-555-0199 to book.", "Write to hello@harborhome.example.", "Seniors save 5%.", "Over 500 happy customers served.", "Serving Austin since 2012.", "A lifetime warranty on every repair."]) {
+      expect(unsupportedClaims(text, stated), text).toEqual([]);
+    }
+    // A percentage is grounded only by the same percentage: 5% is not 15%.
+    expect(unsupportedClaims("Seniors save 5%.", "Seniors save 15% on Tuesdays.")).toContain("5%");
+  });
+
+  it("checks the hashtags too, in either capitalisation", () => {
+    for (const tags of [["AwardWinning"], ["BestInTown"], ["FreeQuote"], ["50PercentOff"], ["awardwinning"], ["freequote"], ["bestintown"], ["50percentoff"], ["Voted2025"]]) {
+      expect(unsupportedHashtags(tags, KNOWLEDGE).length, tags.join()).toBeGreaterThan(0);
+    }
+    expect(unsupportedHashtags(["HVAC", "Austin", "SpringTuneUp", "freedom", "carefree"], KNOWLEDGE)).toEqual([]);
+    expect(unsupportedHashtags(["FreeEstimate"], "We offer a free estimate on every job.")).toEqual([]);
+  });
+
+  it("drops an option whose hashtags make a claim, keeping the rest", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    await knowledge(s, "business_description", KNOWLEDGE);
+    const m = model(JSON.stringify({ options: [
+      { caption: "Spring tune-ups are open for booking.", hashtags: ["hvac", "AwardWinning"] },
+      { caption: "Keep your home cool this season.", hashtags: ["50PercentOff"] },
+      { caption: "Stay comfortable this spring.", hashtags: ["freequote"] },
+      { caption: "Stay comfortable all summer.", hashtags: ["Austin", "HVAC"] },
+    ] }));
+    const r = await suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "tune-ups", count: 3 }, m.deps);
+    expect(r.options.map((o) => o.caption)).toEqual(["Stay comfortable all summer."]);
+  });
+
+  it("removes bare web addresses, and drops an email address or phone number the knowledge does not give", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const m = model(JSON.stringify({ options: [
+      { caption: "Book at bit.ly/x or acme-hvac.com/book or ACME.io today.", hashtags: [] },
+      { caption: "Email hello@acme-hvac.com to book.", hashtags: [] },
+      { caption: "Call (512) 555-0100 to book.", hashtags: [] },
+    ] }));
+    const r = await suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "booking", count: 3 }, m.deps);
+    expect(r.options).toHaveLength(1);
+    expect(r.options[0].caption).not.toMatch(/bit\.ly|acme-hvac|acme\.io/i);
+    expect(r.options[0].caption).toMatch(/^Book at\b/);
+  });
+});
+
+describe("the business's industry", () => {
+  it("is given to the model as context, and never grounds a claim", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    await withSystem((db) => db.query("update organizations set industry = $2 where id = $1", [s.m.org.id, "Roofing and gutter cleaning"]));
+    await knowledge(s, "business_description", "Harbor Home Services repairs roofs in Austin.");
+    const m = model(JSON.stringify({ options: [{ caption: "Free estimates on every roof.", hashtags: [] }, { caption: "Gutters need a look before the rainy season.", hashtags: [] }] }));
+    const r = await suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "roofs", count: 2 }, m.deps);
+    expect(m.calls[0].system).toMatch(/## Industry \(context only\)\nRoofing and gutter cleaning\./);
+    expect(m.calls[0].system).toMatch(/not a source of facts/);
+    expect(r.options.map((o) => o.caption)).toEqual(["Gutters need a look before the rainy season."]); // the industry does not make "free estimates" true
+    const ideas = await suggestIdeas(s.sales, { accountId: acc.id }, model('{"ideas":[{"title":"Roof check","angle":"A seasonal reminder.","kind":"text","callToAction":"Book a visit."}]}').deps);
+    expect(ideas.ideas).toHaveLength(1);
+  });
+
+  it("is left out of the prompt when the workspace has none", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    await withSystem((db) => db.query("update organizations set industry = null where id = $1", [s.m.org.id]));
+    const m = model('{"ideas":[{"title":"A","angle":"B","kind":"text","callToAction":"C"}]}');
+    await suggestIdeas(s.sales, { accountId: acc.id }, m.deps);
+    expect(m.calls[0].system).not.toMatch(/Industry \(context only\)/);
+  });
+});
+
+describe("how much AI drafting one person and one workspace can ask for", () => {
+  const bucket = (rule: { name: string; windowSeconds: number }, key: string) => ({ key: `${rule.name}:${key}`, start: new Date(Math.floor(Date.now() / (rule.windowSeconds * 1000)) * rule.windowSeconds * 1000) });
+  const fill = (rule: { name: string; windowSeconds: number }, key: string, hits: number) => {
+    const b = bucket(rule, key);
+    return withSystem((db) => db.query("insert into rate_limit_buckets (bucket_key, window_start, hits) values ($1, $2, $3) on conflict (bucket_key, window_start) do update set hits = $3", [b.key, b.start, hits]));
+  };
+  const hitsOf = async (rule: { name: string; windowSeconds: number }, key: string) => {
+    const b = bucket(rule, key);
+    return (await rows<{ hits: number }>("select hits from rate_limit_buckets where bucket_key = $1 and window_start = $2", [b.key, b.start]))[0]?.hits ?? 0;
+  };
+  const ideas = '{"ideas":[{"title":"A","angle":"B","kind":"text","callToAction":"C"}]}';
+
+  it("stops a person past their hourly limit, before the model is asked, and says when to try again", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const m = model(ideas);
+    await fill(SOCIAL_AI_LIMITS.byUser, s.m.people.sales.id, SOCIAL_AI_LIMITS.byUser.limit);
+    const err = await suggestIdeas(s.sales, { accountId: acc.id }, m.deps).catch((e) => e);
+    expect(err).toMatchObject({ code: "rate_limited" });
+    expect(err.message).toMatch(/Try again in about (a minute|\d+ minutes|\d+ hours)/);
+    expect(err.retryAfterSeconds).toBeGreaterThan(0);
+    expect(m.calls).toHaveLength(0);
+    // Someone else in the same workspace is not held back by it.
+    await expect(suggestIdeas(s.owner, { accountId: acc.id }, m.deps)).resolves.toBeDefined();
+    await expect(suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "x" }, m.deps)).rejects.toMatchObject({ code: "rate_limited" });
+  });
+
+  it("stops a workspace past its daily limit", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const m = model(ideas);
+    await fill(SOCIAL_AI_LIMITS.byOrg, s.m.org.id, SOCIAL_AI_LIMITS.byOrg.limit);
+    const err = await suggestIdeas(s.owner, { accountId: acc.id }, m.deps).catch((e) => e);
+    expect(err).toMatchObject({ code: "rate_limited" });
+    expect(err.message).toMatch(/workspace has used today's allowance of \d+ AI drafting requests\. It renews in about/);
+    expect(m.calls).toHaveLength(0);
+  });
+
+  it("counts each request, and counts nothing for one that was refused before the model", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const m = model('{"options":[{"caption":"A fair caption.","hashtags":[]}]}');
+    await expect(suggestCaptions(s.sales, { accountId: acc.id, kind: "text" }, m.deps)).rejects.toThrow(/Say what the post is about/);
+    await saveSocialSettings(s.owner, { aiDraftsEnabled: false }, 0);
+    await expect(suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "x" }, m.deps)).rejects.toThrow(/switched off/);
+    expect(await hitsOf(SOCIAL_AI_LIMITS.byUser, s.m.people.sales.id)).toBe(0);
+    await saveSocialSettings(s.owner, { aiDraftsEnabled: true }, 1);
+    await suggestCaptions(s.sales, { accountId: acc.id, kind: "text", topic: "x" }, m.deps);
+    expect(await hitsOf(SOCIAL_AI_LIMITS.byUser, s.m.people.sales.id)).toBe(1);
+    expect(await hitsOf(SOCIAL_AI_LIMITS.byOrg, s.m.org.id)).toBe(1);
+  });
+
+  it("records each answered request as AI help used, and stops at the workspace's monthly allowance", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const m = model(ideas);
+    await withSystem((db) => db.query("insert into usage_limits (org_id, monthly_help_requests, hard_stop) values ($1, 2, true) on conflict (org_id) do update set monthly_help_requests = 2, hard_stop = true", [s.m.org.id]));
+    await suggestIdeas(s.sales, { accountId: acc.id }, m.deps);
+    // A model that does not answer costs nothing.
+    await expect(suggestIdeas(s.sales, { accountId: acc.id }, { complete: (async () => ({ ok: false })) as never, config: async () => CONFIG })).rejects.toThrow(/did not answer/);
+    await suggestCaptions(s.owner, { accountId: acc.id, kind: "text", topic: "x" }, model('{"options":[{"caption":"A fair caption.","hashtags":[]}]}').deps);
+    const used = await rows<{ kind: string; user_id: string }>("select kind, user_id from usage_events where org_id = $1", [s.m.org.id]);
+    expect(used).toHaveLength(2);
+    expect(used).toEqual(expect.arrayContaining([{ kind: "help_request", user_id: s.m.people.sales.id }, { kind: "help_request", user_id: s.m.people.owner.id }]));
+    const err = await suggestIdeas(s.sales, { accountId: acc.id }, m.deps).catch((e) => e);
+    expect(err).toMatchObject({ code: "usage_limit" });
+    expect(err.message).toMatch(/this month's AI help allowance, so post drafting is paused/);
+    expect(err.message).not.toMatch(/help assistant/);
+    expect(m.calls).toHaveLength(1); // only the first call reached the model
   });
 });

@@ -6,6 +6,7 @@ import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
 import { draftProblems, normalizeHashtags, type MediaFacts, type Platform, type PostKind, type Problem } from "@/lib/social/rules";
 import { approvalRequired, canTransition, scheduleProblem, selfApprovalAllowed, type PostStatus } from "@/lib/social/state";
+import { MAX_HASHTAGS } from "@/lib/social/limits";
 import { addEvent, announce, loadAccountRow, loadPostRow, newTrackingCode, POST_COLUMNS, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
 import { cancelQueuedJob, enqueueJob } from "@/server/social/publisher";
 
@@ -207,20 +208,55 @@ async function checkCampaign(db: Queryable, orgId: string, id: string | null | u
 
 const clean = (text: string | undefined) => (text ?? "").replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trimEnd();
 
-/** Inserts a draft. The caller has made its permission checks. `origin: "ai"` is only ever passed by the AI drafting path. */
-export async function insertDraft(db: Queryable, actor: { orgId: string; userId: string }, input: PostInput, origin: "human" | "ai", aiRunId: string | null = null): Promise<PostRow> {
+// What the database holds, checked here first so that a person who goes over a limit is told which one, in words, and not "something went wrong".
+const CAPTION_MAX = 63_206;
+const LINK_MAX = 1_000;
+const HASHTAGS_MAX = MAX_HASHTAGS;
+
+function cleanCaption(text: string | undefined): string {
+  const caption = clean(text);
+  if (caption.length > CAPTION_MAX) throw new AppError("invalid_input", `Captions can't be longer than ${CAPTION_MAX.toLocaleString("en-US")} characters. This one is ${caption.length.toLocaleString("en-US")}.`);
+  return caption;
+}
+
+function cleanHashtags(list: readonly string[] | undefined): string[] {
+  const tags = normalizeHashtags(list ?? [], 1_000);
+  if (tags.length > HASHTAGS_MAX) throw new AppError("invalid_input", `A post can carry at most ${HASHTAGS_MAX} hashtags. Remove ${tags.length - HASHTAGS_MAX}.`);
+  return tags;
+}
+
+/** The link as stored: https only, with the scheme in lower case so the rules and the database agree, a real address, and not longer than the database holds. */
+function cleanLink(raw: string | null | undefined): string | null {
+  const link = raw?.trim();
+  if (!link) return null;
+  if (!/^https:\/\//i.test(link)) throw new AppError("invalid_input", "Links must start with https://.");
+  if (link.length > LINK_MAX) throw new AppError("invalid_input", `Links can't be longer than ${LINK_MAX.toLocaleString("en-US")} characters.`);
+  try {
+    new URL(link);
+  } catch {
+    throw new AppError("invalid_input", "That link is not a web address. Check it and try again.");
+  }
+  return `https://${link.slice("https://".length)}`;
+}
+
+/** Inserts a draft. The caller has made its permission checks. `origin: "ai"` is only ever passed by the AI drafting path, or by a copy of an AI draft (`copy`). */
+export async function insertDraft(db: Queryable, actor: { orgId: string; userId: string }, input: PostInput, origin: "human" | "ai", aiRunId: string | null = null, opts: { copy?: boolean } = {}): Promise<PostRow> {
+  const caption = cleanCaption(input.caption);
+  const hashtags = cleanHashtags(input.hashtags);
+  const linkUrl = cleanLink(input.linkUrl);
   const account = await checkAccount(db, actor.orgId, input.accountId);
   const settings = await readSettings(db, actor.orgId);
   const media = await checkMedia(db, actor.orgId, input.mediaAssetIds ?? []);
   const campaignId = await checkCampaign(db, actor.orgId, input.campaignId);
-  const linkUrl = input.linkUrl?.trim() || null;
   const code = linkUrl && settings.trackingLinks ? newTrackingCode() : null;
   const { rows } = await db.query<PostRow>(
     `insert into social_posts (org_id, account_id, campaign_id, kind, caption, hashtags, link_url, tracking_code, media_asset_ids, origin, ai_run_id, author_id)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning ${POST_COLUMNS}`,
-    [actor.orgId, account.id, campaignId, input.kind, clean(input.caption), normalizeHashtags(input.hashtags ?? [], 30), linkUrl, code, media, origin, aiRunId, actor.userId],
+    [actor.orgId, account.id, campaignId, input.kind, caption, hashtags, linkUrl, code, media, origin, aiRunId, actor.userId],
   );
-  await addEvent(db, actor.orgId, rows[0].id, origin === "ai" ? "ai_drafted" : "created", { id: origin === "ai" ? null : actor.userId, kind: origin === "ai" ? "ai" : "user" }, origin === "ai" ? { aiRunId, requestedBy: actor.userId } : {});
+  // A copy of an AI draft is still AI-written (so it still needs a person's approval) but the model did not just write it: its history says it was copied.
+  const drafted = origin === "ai" && !opts.copy;
+  await addEvent(db, actor.orgId, rows[0].id, drafted ? "ai_drafted" : "created", { id: drafted ? null : actor.userId, kind: drafted ? "ai" : "user" }, drafted ? { aiRunId, requestedBy: actor.userId } : {});
   return rows[0];
 }
 
@@ -251,7 +287,8 @@ const CONTENT_KEYS = ["account_id", "campaign_id", "kind", "caption", "hashtags"
 
 /**
  * Changes a post. If what will be posted changes, the version goes up and any approval is void: an approved or scheduled post goes back to a draft, its queued
- * job is cancelled (a job already sending cannot be, and the edit is refused). `expectedVersion` stops two people overwriting each other.
+ * job is cancelled (a job already sending cannot be, and the edit is refused). A post waiting out a retry has a queued job and nothing in flight, so it can be
+ * changed too. `expectedVersion` stops two people overwriting each other.
  */
 export async function updatePost(ctx: OrgContext, id: string, patch: PostPatch, expectedVersion: number): Promise<PostView> {
   must(ctx, "social.create", "Your role can't write social posts.");
@@ -261,23 +298,23 @@ export async function updatePost(ctx: OrgContext, id: string, patch: PostPatch, 
     if (!canEditRow(ctx, row)) throw new AppError("forbidden", "Only the person who wrote this post, or a manager, can change it.");
     if (row.version !== expectedVersion) throw new AppError("conflict", "Someone changed this post. Reload to see their changes, then try again.");
     if (row.status === "failed" && row.failure_code === "unknown_outcome") throw new AppError("conflict", "The platform may already have this post. Look at the Page and say whether it was posted before changing it.");
-    if (!["draft", "pending_approval", "changes_requested", "approved", "scheduled", "failed"].includes(row.status)) throw new AppError("conflict", row.status === "published" ? "A published post cannot be edited. Duplicate it to post a new version." : "This post cannot be edited right now.");
+    if (!["draft", "pending_approval", "changes_requested", "approved", "scheduled", "publishing", "failed"].includes(row.status)) throw new AppError("conflict", row.status === "published" ? "A published post cannot be edited. Duplicate it to post a new version." : "This post cannot be edited right now.");
     const settings = await readSettings(db, ctx.org.orgId);
     const next = {
       account_id: patch.accountId !== undefined ? (await checkAccount(db, ctx.org.orgId, patch.accountId)).id : row.account_id,
       campaign_id: patch.campaignId !== undefined ? await checkCampaign(db, ctx.org.orgId, patch.campaignId) : row.campaign_id,
       kind: patch.kind ?? row.kind,
-      caption: patch.caption !== undefined ? clean(patch.caption) : row.caption,
-      hashtags: patch.hashtags !== undefined ? normalizeHashtags(patch.hashtags, 30) : row.hashtags,
-      link_url: patch.linkUrl !== undefined ? patch.linkUrl?.trim() || null : row.link_url,
+      caption: patch.caption !== undefined ? cleanCaption(patch.caption) : row.caption,
+      hashtags: patch.hashtags !== undefined ? cleanHashtags(patch.hashtags) : row.hashtags,
+      link_url: patch.linkUrl !== undefined ? cleanLink(patch.linkUrl) : row.link_url,
       media_asset_ids: patch.mediaAssetIds !== undefined ? await checkMedia(db, ctx.org.orgId, patch.mediaAssetIds) : row.media_asset_ids,
     };
     const changed = CONTENT_KEYS.filter((k) => JSON.stringify(next[k]) !== JSON.stringify(row[k]));
     const tz = patch.timezone !== undefined ? patch.timezone : row.timezone;
     if (!changed.length && tz === row.timezone) return (await viewsFor(db, ctx.org.orgId, [row]))[0];
-    const resets = changed.length > 0 && ["pending_approval", "approved", "scheduled", "failed"].includes(row.status);
-    if (changed.length && row.status === "scheduled") {
-      if (!(await cancelQueuedJob(db, row.id))) throw new AppError("conflict", "This post is being sent right now and cannot be changed.");
+    const resets = changed.length > 0 && ["pending_approval", "approved", "scheduled", "publishing", "failed"].includes(row.status);
+    if (changed.length && (row.status === "scheduled" || row.status === "publishing")) {
+      if (!(await cancelQueuedJob(db, row.id))) throw new AppError("conflict", row.status === "publishing" ? "This post is being sent or checked right now and cannot be changed." : "This post is being sent right now and cannot be changed.");
     }
     const code = next.link_url && settings.trackingLinks ? row.tracking_code ?? newTrackingCode() : next.link_url ? row.tracking_code : null;
     const nextStatus: PostStatus = resets ? "draft" : row.status;
@@ -406,7 +443,10 @@ export async function schedulePost(ctx: OrgContext, id: string, input: ScheduleI
   });
 }
 
-/** Moves a scheduled post to another time. The old job is cancelled first; if a worker already holds it, the move is refused rather than risk two. */
+/**
+ * Moves a scheduled post to another time. The old job is cancelled first; if a worker already holds it, the move is refused rather than risk two. A post waiting
+ * out a retry (nothing in flight) can be moved as well: it goes back to scheduled, and the new job starts from the beginning.
+ */
 export async function reschedulePost(ctx: OrgContext, id: string, input: { at: Date; timezone?: string | null }, deps: { now?: Date } = {}): Promise<PostView> {
   must(ctx, "social.publish", "Your role can't reschedule social posts.");
   const now = deps.now ?? new Date();
@@ -415,26 +455,32 @@ export async function reschedulePost(ctx: OrgContext, id: string, input: { at: D
   return withSystem(async (db) => {
     const row = await loadPostRow(db, ctx.org.orgId, id, true);
     if (!row) throw new AppError("not_found", "That post was not found.");
-    if (row.status !== "scheduled") throw new AppError("conflict", "Only a scheduled post can be moved.");
+    if (row.status !== "scheduled" && row.status !== "publishing") throw new AppError("conflict", "Only a scheduled post can be moved.");
     if (row.scheduled_at && new Date(row.scheduled_at).getTime() === input.at.getTime()) return (await viewsFor(db, ctx.org.orgId, [row]))[0];
     if (!(await cancelQueuedJob(db, id))) throw new AppError("conflict", "This post is being sent right now and cannot be moved.");
     const ordinal = Number((await db.query<{ n: string }>("select count(*)::text as n from social_publish_jobs where post_id = $1", [id])).rows[0].n);
-    await db.query("update social_posts set scheduled_at = $3, timezone = coalesce($4, timezone) where id = $1 and org_id = $2", [id, ctx.org.orgId, input.at, input.timezone ?? null]);
+    await db.query("update social_posts set status = 'scheduled', scheduled_at = $3, timezone = coalesce($4, timezone) where id = $1 and org_id = $2", [id, ctx.org.orgId, input.at, input.timezone ?? null]);
     await enqueueJob(db, { id, org_id: ctx.org.orgId, account_id: row.account_id, version: row.version }, input.at, ordinal);
     await addEvent(db, ctx.org.orgId, id, "rescheduled", { id: ctx.user.id, kind: "user" }, { from: iso(row.scheduled_at), to: input.at.toISOString() });
     return (await viewsFor(db, ctx.org.orgId, [(await loadPostRow(db, ctx.org.orgId, id)) as PostRow]))[0];
   });
 }
 
-/** Cancels a post that has not been published. A post being sent, or that may already have been sent, is never silently cancelled. */
+/**
+ * Cancels a post that has not been published. A post being sent, or that may already have been sent, is never silently cancelled. A post waiting out a retry
+ * (its job queued, nothing in flight) is not being sent, so it can be.
+ */
 export async function cancelPost(ctx: OrgContext, id: string): Promise<PostView> {
   must(ctx, "social.create", "Your role can't change social posts.");
   return withSystem(async (db) => {
     const row = await loadPostRow(db, ctx.org.orgId, id, true);
     if (!row) throw new AppError("not_found", "That post was not found.");
     if (!canEditRow(ctx, row)) throw new AppError("forbidden", "Only the person who wrote this post, or a manager, can cancel it.");
-    if (!canTransition(row.status, "cancelled")) throw new AppError("conflict", row.status === "publishing" || row.status === "needs_reconciliation" ? "This post is being sent or checked, so it cannot be cancelled now. If it appears on the Page, remove it there." : "This post cannot be cancelled.");
-    if (row.status === "scheduled" && !(await cancelQueuedJob(db, id))) throw new AppError("conflict", "This post is being sent right now and cannot be cancelled.");
+    // It may be live: only a person looking at the Page can say, and cancelling it would hide that from everyone.
+    if (row.status === "failed" && row.failure_code === "unknown_outcome") throw new AppError("conflict", "The platform may already have this post. Look at the Page and say whether it was posted before cancelling it.");
+    const retrying = row.status === "publishing";
+    if (!retrying && !canTransition(row.status, "cancelled")) throw new AppError("conflict", row.status === "needs_reconciliation" ? "This post is being sent or checked, so it cannot be cancelled now. If it appears on the Page, remove it there." : "This post cannot be cancelled.");
+    if ((row.status === "scheduled" || retrying) && !(await cancelQueuedJob(db, id))) throw new AppError("conflict", retrying ? "This post is being sent or checked, so it cannot be cancelled now. If it appears on the Page, remove it there." : "This post is being sent right now and cannot be cancelled.");
     await db.query("update social_posts set status = 'cancelled' where id = $1 and org_id = $2", [id, ctx.org.orgId]);
     await addEvent(db, ctx.org.orgId, id, "cancelled", { id: ctx.user.id, kind: "user" }, {});
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.post_cancelled", targetType: "social_post", targetId: id, result: "success" }, db);
@@ -464,6 +510,29 @@ export async function retryPost(ctx: OrgContext, id: string, deps: { now?: Date 
   });
 }
 
+// Where a post's own address can be, by platform. Checked only for real accounts: the simulated platform's links are on its own address.
+const PERMALINK_HOSTS: Record<Platform, readonly string[]> = { facebook: ["facebook.com", "fb.com"], instagram: ["instagram.com"] };
+
+/** The address a person pasted for a post they found on the Page: an https address, on the platform's own site for a real account, or nothing. */
+function cleanPermalink(raw: string | null | undefined, account: Pick<AccountRow, "platform" | "adapter">): string | null {
+  const text = raw?.trim();
+  if (!text) return null;
+  const bad = () => new AppError("invalid_input", "Paste the full link to the post, starting with https://.");
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw bad();
+  }
+  if (url.protocol !== "https:" || url.username || url.password) throw bad();
+  if (account.adapter === "meta") {
+    const host = url.hostname.toLowerCase();
+    if (!PERMALINK_HOSTS[account.platform].some((d) => host === d || host.endsWith(`.${d}`))) throw new AppError("invalid_input", `That link is not on ${PERMALINK_HOSTS[account.platform][0]}. Paste the link to the post from the Page.`);
+  }
+  if (url.href.length > 500) throw new AppError("invalid_input", "That link is too long. Paste the shorter link to the post.");
+  return url.href;
+}
+
 /** A person looked at the Page and says whether a post whose outcome could not be confirmed is there. It is recorded as their word, and audited. */
 export async function resolveUnknown(ctx: OrgContext, id: string, input: { outcome: "posted" | "not_posted"; permalink?: string | null }): Promise<PostView> {
   must(ctx, "social.publish", "Your role can't resolve social posts.");
@@ -472,9 +541,11 @@ export async function resolveUnknown(ctx: OrgContext, id: string, input: { outco
     if (!row) throw new AppError("not_found", "That post was not found.");
     const unresolved = row.status === "needs_reconciliation" || (row.status === "failed" && row.failure_code === "unknown_outcome");
     if (!unresolved) throw new AppError("conflict", "This post does not need checking.");
+    const account = input.outcome === "posted" ? await loadAccountRow(db, ctx.org.orgId, row.account_id) : null;
+    const permalink = account ? cleanPermalink(input.permalink, account) : null;
     await db.query("update social_publish_jobs set status = $2, finished_at = now(), lease_until = null where post_id = $1 and status in ('unknown', 'running', 'queued', 'failed') and finished_at is null", [id, input.outcome === "posted" ? "succeeded" : "failed"]);
     if (input.outcome === "posted") {
-      await db.query("update social_posts set status = 'published', provider_post_id = coalesce(provider_post_id, $3), permalink = $4, published_at = coalesce(published_at, now()), failure_code = null, failure_message = null where id = $1 and org_id = $2", [id, ctx.org.orgId, `manual:${id}`, input.permalink?.trim().slice(0, 500) || null]);
+      await db.query("update social_posts set status = 'published', provider_post_id = coalesce(provider_post_id, $3), permalink = $4, published_at = coalesce(published_at, now()), failure_code = null, failure_message = null where id = $1 and org_id = $2", [id, ctx.org.orgId, `manual:${id}`, permalink]);
     } else {
       await db.query("update social_posts set status = 'failed', failure_code = 'confirmed_not_posted', failure_message = 'A person confirmed this was not posted. You can try again.' where id = $1 and org_id = $2", [id, ctx.org.orgId]);
     }
@@ -484,14 +555,17 @@ export async function resolveUnknown(ctx: OrgContext, id: string, input: { outco
   });
 }
 
-/** A new draft with the same content: how a published post is posted again, or a good post is reused. */
+/**
+ * A new draft with the same content: how a published post is posted again, or a good post is reused. A copy of AI-written text is still AI-written: it keeps its
+ * origin and its AI run, so it still needs a person's approval and the always-approve rule cannot be sidestepped by copying.
+ */
 export async function duplicatePost(ctx: OrgContext, id: string): Promise<PostView> {
   must(ctx, "social.create", "Your role can't write social posts.");
   return withSystem(async (db) => {
     const row = await loadPostRow(db, ctx.org.orgId, id);
     if (!row) throw new AppError("not_found", "That post was not found.");
-    const copy = await insertDraft(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, { accountId: row.account_id, kind: row.kind, caption: row.caption, hashtags: row.hashtags, linkUrl: row.link_url, mediaAssetIds: row.media_asset_ids, campaignId: row.campaign_id }, "human");
-    await addEvent(db, ctx.org.orgId, copy.id, "duplicated", { id: ctx.user.id, kind: "user" }, { from: id });
+    const copy = await insertDraft(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, { accountId: row.account_id, kind: row.kind, caption: row.caption, hashtags: row.hashtags, linkUrl: row.link_url, mediaAssetIds: row.media_asset_ids, campaignId: row.campaign_id }, row.origin, row.origin === "ai" ? row.ai_run_id : null, { copy: true });
+    await addEvent(db, ctx.org.orgId, copy.id, "duplicated", { id: ctx.user.id, kind: "user" }, { from: id, origin: row.origin });
     return (await viewsFor(db, ctx.org.orgId, [copy]))[0];
   });
 }

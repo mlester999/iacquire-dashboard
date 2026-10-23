@@ -8,6 +8,7 @@ import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { cancelRetention } from "@/server/retention/cancel";
 import { releaseReservation } from "@/server/billing/ledger";
 import { disconnectIntegration } from "@/server/integrations/manager";
+import { disconnectWorkspaceAccounts } from "@/server/social/accounts";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -162,7 +163,7 @@ export async function cancelOffboarding(actor: { user: Pick<SessionUser, "id" | 
     }
     await addEvent(db, r.id, actor.orgId, "cancelled", why, actor.user.id);
     await recordAudit({ orgId: actor.orgId, actorUserId: actor.user.id, actorKind: actor.viaOwner ? "user" : "agency", action: "offboarding.cancelled", targetType: "offboarding_request", targetId: r.id, result: "success" }, db);
-    await notifyOrgRoles(db, actor.orgId, ["owner"], { kind: "offboarding_update", severity: "success", title: "Closing your workspace was cancelled", body: r.status === "requested" ? "Nothing changed." : "Automation stays paused until you switch it back on in Settings. Re-invite any staff whose access was removed.", link: "/overview", dedupeKey: `offboarding:${r.id}:cancelled` });
+    await notifyOrgRoles(db, actor.orgId, ["owner"], { kind: "offboarding_update", severity: "success", title: "Closing your workspace was cancelled", body: r.status === "requested" ? "Nothing changed." : "Automation stays paused until you switch it back on in Settings. Re-invite any staff whose access was removed, and connect your Facebook and Instagram accounts again in Social media.", link: "/overview", dedupeKey: `offboarding:${r.id}:cancelled` });
   });
 }
 
@@ -179,7 +180,7 @@ const shutdownSchema = z.object({ websitePlan: z.enum(["keep_until_deletion", "u
 
 /**
  * Closes the workspace down safely: customer-facing automation stops and everything already queued is cancelled, messaging is disconnected, staff
- * (not the owner) lose access, the services connected for this client are disconnected, and the retention clock starts. Each step is recorded
+ * (not the owner) lose access, the services and social media accounts connected for this client are disconnected, and the retention clock starts. Each step is recorded
  * with its outcome; a step that fails is shown as failed, never hidden. The owner keeps access, so they can still download their data.
  */
 export async function shutdownClient(user: SessionUser, requestId: string, input: z.input<typeof shutdownSchema> = {}): Promise<OffboardingView> {
@@ -227,6 +228,19 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
   }
   await record("integrations", failed.length === 0, failed.length ? `Could not disconnect: ${failed.join(", ")}. Disconnect these by hand and revoke their tokens at the provider.` : `Disconnected ${conns.rows.length} connected service${conns.rows.length === 1 ? "" : "s"}. Revoke any upstream tokens at the provider too.`);
 
+  // 2b. Facebook Pages and Instagram accounts. They are not integration connections, but they hold the same kind of live token (a Page's long-lived token) and
+  // have posts waiting to go out, so they are disconnected exactly as their owner would: the token is deleted and what was queued is stopped.
+  const social = await disconnectWorkspaceAccounts(orgId, user.id);
+  const socialOk = social.failed.length === 0;
+  await record(
+    "social", socialOk,
+    social.failed.length
+      ? `Could not disconnect social media accounts: ${social.failed.join(", ")}. Disconnect them by hand and have the iAcquire app removed on the platform.`
+      : social.disconnected
+        ? `Disconnected ${social.disconnected} social media account${social.disconnected === 1 ? "" : "s"} and deleted their sign-in tokens${social.stopped ? `; ${social.stopped} post${social.stopped === 1 ? "" : "s"} waiting to publish ${social.stopped === 1 ? "was" : "were"} stopped` : ""}. The app can also be removed on the platform.`
+        : "No social media accounts were connected.",
+  );
+
   // 3. Access: staff lose it, the owner keeps it to download their data.
   const revoked = await withSystem(async (db) => {
     const res = await db.query("update organization_memberships set status = 'revoked' where org_id = $1 and status = 'active' and role <> 'owner'", [orgId]);
@@ -253,7 +267,7 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     );
     await addEvent(db, requestId, orgId, "shutdown", `Workspace shut down. Data is kept for ${d.retentionDays} days. Remaining prepaid credit: $${(Number(bal) / 1_000_000).toFixed(2)}.`, user.id);
     await addEvent(db, requestId, orgId, "retention_started", `Deletion can be scheduled after ${d.retentionDays} days.`, user.id);
-    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed } }, db);
+    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length || !socialOk ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed, failedSocialDisconnects: social.failed } }, db);
     await notifyOrgRoles(db, orgId, ["owner"], {
       kind: "offboarding_update", severity: "info", title: "Your workspace has been closed down",
       body: `Automation and messaging are off. You can download your data until ${new Date(res.rows[0].delete_after!).toISOString().slice(0, 10)}. Your domains are yours to keep.`, link: "/settings/data", dedupeKey: `offboarding:${requestId}:shutdown`,

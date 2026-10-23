@@ -16,7 +16,7 @@ import type { CaptionOption, IdeaSuggestion } from "@/server/social/ai";
 // scheduled. It writes from your approved business knowledge and is told not to invent testimonials, results, prices or offers. Suggestions that do make such
 // claims are dropped, so you may get fewer than you asked for.
 
-export function AiHelper({ accounts, campaigns, enabled, defaultAccountId }: { accounts: AccountView[]; campaigns: CampaignView[]; enabled: boolean; defaultAccountId?: string | null }) {
+export function AiHelper({ accounts, campaigns, enabled, defaultAccountId, scheduleDay }: { accounts: AccountView[]; campaigns: CampaignView[]; enabled: boolean; defaultAccountId?: string | null; scheduleDay?: string | null }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
   const usable = accounts.filter((a) => a.status === "connected" || a.status === "needs_reauth" || a.status === "error");
@@ -47,7 +47,8 @@ export function AiHelper({ accounts, campaigns, enabled, defaultAccountId }: { a
   async function makeDraft(i: number) {
     if (!captions) return;
     const r = await run(`draft-${i}`, () => draftFromOptionAction(captions.runId, i, { accountId, kind: captions.kind, campaignId: campaignId || null }), "Saved as an AI-written draft.");
-    if (r) router.push(`/social/posts/${(r as { id: string }).id}`);
+    // The day chosen in the calendar only starts the schedule box on the draft's page; the page checks it again.
+    if (r) router.push(`/social/posts/${(r as { id: string }).id}${scheduleDay ? `?date=${scheduleDay}` : ""}`);
   }
 
   return (

@@ -26,6 +26,9 @@ export function useCrmAction() {
         const res = await fn();
         if (!res.ok) {
           toast.error(res.error);
+          // A conflict means the screen shows something that is no longer current (someone else changed the record). Reload its data, so the next click is about
+          // what is on screen and the message does not point at text the person cannot see.
+          if (res.code === "conflict") router.refresh();
           return null;
         }
         const msg = typeof success === "function" ? success(res.data) : success;

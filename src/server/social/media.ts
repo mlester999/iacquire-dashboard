@@ -1,11 +1,14 @@
 import "server-only";
 import crypto from "node:crypto";
-import { withSystem, withUser } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
+import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { readPrivateFile, removePrivateFile, uploadPrivateFile, validPrivateFileSignature } from "@/server/storage/private";
+import { readPrivateFile, removeStoredObjectTrusted, uploadPrivateFile, validPrivateFileSignature } from "@/server/storage/private";
+import { assertSocialWorkspace } from "@/server/social/workspace";
 import type { OrgContext } from "@/server/tenancy/context";
 import { draftProblems, IMAGE_MIMES, MEDIA_MAX_BYTES, PLATFORMS, VIDEO_MIMES, type MediaFacts, type Platform } from "@/lib/social/rules";
+import { formatMetricValue } from "@/lib/fair-use";
 import { imageSize } from "@/lib/social/image-size";
 import { mediaStoragePolicy, type StoragePolicy } from "@/lib/social/media-policy";
 
@@ -31,12 +34,30 @@ export interface MediaView {
 
 const MANAGED_STATUSES = ["active", "past_due", "cancel_requested"];
 
-/** Where this workspace's media may live right now. */
+/** The most managed media one workspace may keep (SOCIAL_MEDIA_STORAGE_MB, 2 GB until the founder says otherwise). */
+const storageLimitBytes = () => env().SOCIAL_MEDIA_STORAGE_MB * 1024 * 1024;
+
+/** Managed media the workspace keeps now: every library file that has not been removed. */
+async function usedBytes(db: Queryable, orgId: string): Promise<number> {
+  const { rows } = await db.query<{ n: string }>("select coalesce(sum(size_bytes), 0)::text as n from social_media_assets where org_id = $1 and source = 'managed' and status <> 'removed'", [orgId]);
+  return Number(rows[0].n);
+}
+
+function assertRoom(used: number, limit: number, adding: number) {
+  const f = (n: number) => formatMetricValue("storage_bytes", n);
+  if (used + adding > limit) throw new AppError("usage_limit", `This file doesn't fit in your social media storage: ${f(used)} of ${f(limit)} is used and it needs ${f(adding)}. Remove files you no longer need to free up space.`);
+}
+
+/** Where this workspace's media may live right now, and how much of the managed storage is used. */
 export async function getMediaPolicy(ctx: OrgContext): Promise<StoragePolicy> {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.view")) throw new AppError("forbidden", "Your role can't see social media.");
-  const managed = await withSystem(async (db) => (await db.query("select 1 from maintenance_subscriptions where org_id = $1 and status = any($2::text[]) limit 1", [ctx.org.orgId, MANAGED_STATUSES])).rows.length > 0);
+  const { managed, used } = await withSystem(async (db) => ({
+    managed: (await db.query("select 1 from maintenance_subscriptions where org_id = $1 and status = any($2::text[]) limit 1", [ctx.org.orgId, MANAGED_STATUSES])).rows.length > 0,
+    used: await usedBytes(db, ctx.org.orgId),
+  }));
   // Google Drive and OneDrive connections are not built (they need an OAuth app registered with each provider), so they are never reported as connected.
-  return mediaStoragePolicy({ managedPlanActive: managed, googleDriveConnected: false, onedriveConnected: false });
+  return mediaStoragePolicy({ managedPlanActive: managed, googleDriveConnected: false, onedriveConnected: false, usedBytes: used, limitBytes: storageLimitBytes() });
 }
 
 function platformValidation(facts: MediaFacts): Record<string, { ok: boolean; problems: string[] }> {
@@ -52,8 +73,24 @@ function platformValidation(facts: MediaFacts): Record<string, { ok: boolean; pr
 const SAFE_NAME = /[^A-Za-z0-9_. ()-]/g;
 const cleanName = (n: string) => n.normalize("NFKD").replace(SAFE_NAME, "_").replace(/\.{2,}/g, ".").replace(/^\.+/, "").slice(0, 120) || "file";
 
+/**
+ * Revokes reads of a library file, then deletes its stored object. Reads are revoked first so a failed delete never reopens access. Returns whether the object
+ * is gone; when it is not, the removed asset keeps its file reference and the scheduler's clean-up (finishPendingMediaRemovals) tries again.
+ */
+async function eraseStoredFile(orgId: string, fileId: string): Promise<boolean> {
+  const f = (await withSystem((db) => db.query<{ storage_key: string }>("update private_files set status = 'deleted' where id = $1 and org_id = $2 and bucket = 'social-media' returning storage_key", [fileId, orgId]))).rows[0];
+  if (!f) return true;
+  try {
+    await removeStoredObjectTrusted({ orgId, bucket: "social-media", storageKey: f.storage_key });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Adds a picture or video to the library. */
 export async function uploadMedia(ctx: OrgContext, input: { filename: string; contentType: string; bytes: Buffer; altText?: string | null }): Promise<MediaView> {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.create")) throw new AppError("forbidden", "Your role can't add media.");
   const policy = await getMediaPolicy(ctx);
   if (!policy.managedUploadAllowed) throw new AppError("forbidden", policy.summary);
@@ -64,6 +101,8 @@ export async function uploadMedia(ctx: OrgContext, input: { filename: string; co
   if (!validPrivateFileSignature(input.bytes, input.contentType)) throw new AppError("invalid_input", "That file's contents do not match its type. Choose the original picture or video.");
   const size = isImage ? imageSize(input.bytes, input.contentType) : null;
   if (isImage && !size) throw new AppError("invalid_input", "That picture could not be read. Choose another file.");
+  const limit = policy.limitBytes ?? storageLimitBytes();
+  assertRoom(policy.usedBytes, limit, input.bytes.length);
   const name = cleanName(input.filename);
   const fileKey = crypto.randomUUID();
   const stored = await uploadPrivateFile({
@@ -74,21 +113,32 @@ export async function uploadMedia(ctx: OrgContext, input: { filename: string; co
   const validation = platformValidation(facts);
   const sha = crypto.createHash("sha256").update(input.bytes).digest("hex");
   const alt = input.altText?.replace(/\s+/g, " ").trim().slice(0, 400) || null;
-  const id = await withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string }>(
-      `insert into social_media_assets (org_id, source, private_file_id, kind, filename, mime_type, size_bytes, width, height, sha256, alt_text, status, validation, uploaded_by)
-       values ($1, 'managed', $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ready', $11::jsonb, $12) returning id`,
-      [ctx.org.orgId, stored.id, facts.kind, name, input.contentType, input.bytes.length, facts.width, facts.height, sha, alt, JSON.stringify(validation), ctx.user.id],
-    );
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.media_added", targetType: "social_media_asset", targetId: rows[0].id, result: "success", metadata: { kind: facts.kind, bytes: input.bytes.length } }, db);
-    return rows[0].id;
-  });
+  let id: string;
+  try {
+    id = await withSystem(async (db) => {
+      // The check above ran before the bytes were stored; two uploads at once could both have passed it. The count is taken again here, one upload at a time.
+      await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`social-media:${ctx.org.orgId}`]);
+      assertRoom(await usedBytes(db, ctx.org.orgId), limit, input.bytes.length);
+      const { rows } = await db.query<{ id: string }>(
+        `insert into social_media_assets (org_id, source, private_file_id, kind, filename, mime_type, size_bytes, width, height, sha256, alt_text, status, validation, uploaded_by)
+         values ($1, 'managed', $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ready', $11::jsonb, $12) returning id`,
+        [ctx.org.orgId, stored.id, facts.kind, name, input.contentType, input.bytes.length, facts.width, facts.height, sha, alt, JSON.stringify(validation), ctx.user.id],
+      );
+      await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.media_added", targetType: "social_media_asset", targetId: rows[0].id, result: "success", metadata: { kind: facts.kind, bytes: input.bytes.length } }, db);
+      return rows[0].id;
+    });
+  } catch (e) {
+    // Nothing in the library points at the stored file: do not leave it behind.
+    await eraseStoredFile(ctx.org.orgId, stored.id).catch(() => undefined);
+    throw e;
+  }
   const v = (await listMedia(ctx)).find((m) => m.id === id);
   if (!v) throw new AppError("internal", "The file was saved but could not be read back.");
   return v;
 }
 
 export async function listMedia(ctx: OrgContext): Promise<MediaView[]> {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.view")) throw new AppError("forbidden", "Your role can't see social media.");
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{ id: string; filename: string; kind: "image" | "video"; mime_type: string; size_bytes: number; width: number | null; height: number | null; alt_text: string | null; status: "ready" | "invalid" | "removed"; validation: MediaView["validation"]; created_at: Date; used: string }>(
@@ -102,26 +152,44 @@ export async function listMedia(ctx: OrgContext): Promise<MediaView[]> {
 
 /** Removes a file from the library. A file a post still needs (one not yet published, cancelled or rejected) cannot be removed. */
 export async function removeMedia(ctx: OrgContext, id: string): Promise<void> {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.create")) throw new AppError("forbidden", "Your role can't remove media.");
-  const row = await withSystem(async (db) => {
-    const a = (await db.query<{ id: string; private_file_id: string | null }>("select id, private_file_id from social_media_assets where id = $1 and org_id = $2 and status <> 'removed'", [id, ctx.org.orgId])).rows[0];
+  // The file stops being offered first, in the same transaction that checks no post needs it. Deleting the stored object comes after and may fail: that never
+  // leaves a "ready" library file whose bytes are gone.
+  await withSystem(async (db) => {
+    const a = (await db.query<{ id: string }>("select id from social_media_assets where id = $1 and org_id = $2 and status <> 'removed' for update", [id, ctx.org.orgId])).rows[0];
     if (!a) throw new AppError("not_found", "That file was not found.");
     const inUse = await db.query<{ n: string }>("select count(*)::text as n from social_posts where org_id = $1 and $2::uuid = any(media_asset_ids) and status not in ('published', 'cancelled', 'rejected')", [ctx.org.orgId, id]);
     if (Number(inUse.rows[0].n) > 0) throw new AppError("conflict", `This file is used by ${inUse.rows[0].n} post${inUse.rows[0].n === "1" ? "" : "s"} that ${inUse.rows[0].n === "1" ? "has" : "have"} not been published yet. Change or cancel ${inUse.rows[0].n === "1" ? "it" : "them"} first.`);
-    return a;
-  });
-  if (row.private_file_id) {
-    const f = (await withSystem((db) => db.query<{ storage_key: string }>("select storage_key from private_files where id = $1 and org_id = $2", [row.private_file_id, ctx.org.orgId]))).rows[0];
-    if (f) await removePrivateFile({ userId: ctx.user.id, orgId: ctx.org.orgId, bucket: "social-media", path: f.storage_key });
-  }
-  await withSystem(async (db) => {
     await db.query("update social_media_assets set status = 'removed' where id = $1 and org_id = $2", [id, ctx.org.orgId]);
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "social.media_removed", targetType: "social_media_asset", targetId: id, result: "success" }, db);
   });
+  await finishRemoval(ctx.org.orgId, id);
+}
+
+/** Deletes the stored file of a removed library file and drops the asset's reference to it. Returns whether that is done. */
+async function finishRemoval(orgId: string, assetId: string): Promise<boolean> {
+  const a = (await withSystem((db) => db.query<{ private_file_id: string }>("select private_file_id from social_media_assets where id = $1 and org_id = $2 and status = 'removed' and private_file_id is not null", [assetId, orgId]))).rows[0];
+  if (!a) return true;
+  if (!(await eraseStoredFile(orgId, a.private_file_id))) return false;
+  await withSystem((db) => db.query("update social_media_assets set private_file_id = null where id = $1 and org_id = $2", [assetId, orgId]));
+  return true;
+}
+
+/**
+ * The scheduler's clean-up for removed library files whose stored object could not be deleted at the time (storage was unavailable): the removal is finished
+ * now. Bounded per run. Returns how many files were finished.
+ */
+export async function finishPendingMediaRemovals(limit = 50): Promise<number> {
+  const pending = (await withSystem((db) => db.query<{ id: string; org_id: string }>("select id, org_id from social_media_assets where status = 'removed' and private_file_id is not null order by created_at limit $1", [limit]))).rows;
+  let done = 0;
+  for (const a of pending) if (await finishRemoval(a.org_id, a.id)) done += 1;
+  return done;
 }
 
 /** The bytes of a library file for the person's own preview. Only a file of this workspace, only for someone who may see social media. */
 export async function readMediaForPreview(ctx: OrgContext, id: string): Promise<{ bytes: Buffer; mimeType: string; filename: string }> {
+  assertSocialWorkspace(ctx);
   if (!ctx.can("social.view")) throw new AppError("forbidden", "Your role can't see social media.");
   const a = (await withSystem((db) => db.query<{ private_file_id: string | null; mime_type: string; filename: string }>("select private_file_id, mime_type, filename from social_media_assets where id = $1 and org_id = $2 and status = 'ready'", [id, ctx.org.orgId]))).rows[0];
   if (!a?.private_file_id) throw new AppError("not_found", "That file was not found.");

@@ -1,4 +1,5 @@
 import { addDays, isValidTimeZone, weekdayOf, zonedDate, zonedToInstant } from "@/lib/calendars/slots";
+import { SCHEDULE_MIN_LEAD_MS, scheduleProblem } from "@/lib/social/state";
 
 // The content calendar's arithmetic: which days a month or week shows, which instants bound them, and which day a post sits on, all in the CLIENT's time zone
 // (a business in Manila must not see its 11pm post on the next day because the server is in UTC). Pure.
@@ -20,6 +21,37 @@ export const parseView = (v: unknown): CalendarView => (CALENDAR_VIEWS.includes(
 /** The anchor day for a view: the requested day, or today in the client's time zone. */
 export function anchorDay(requested: unknown, now: Date, tz: string): string {
   return isDay(requested) ? requested : zonedDate(now.getTime(), isValidTimeZone(tz) ? tz : "UTC");
+}
+
+/** A day carried from the calendar into the composer: a real day that is today or later in the client's zone. Anything else is dropped. */
+export function composerDay(requested: unknown, now: Date, tz: string): string | null {
+  return isDay(requested) && requested >= anchorDay(undefined, now, tz) ? requested : null;
+}
+
+/**
+ * Where the schedule box starts for a day the person chose: 9:00 that day in the client's zone, or when that has passed (today), the next quarter hour that is
+ * far enough ahead, if it is still that day. Null when no time on that day could be scheduled (too late today, or beyond how far ahead posts may be planned).
+ * It only fills the box; nothing is ever scheduled from it.
+ */
+export function scheduleSuggestion(day: string, now: Date, tz: string): string | null {
+  const nine = fromLocalInput(`${day}T09:00`, tz);
+  if (nine && !scheduleProblem(nine, now)) return `${day}T09:00`;
+  const quarter = 15 * 60_000;
+  const soon = new Date(Math.ceil((now.getTime() + SCHEDULE_MIN_LEAD_MS) / quarter) * quarter);
+  const local = toLocalInput(soon.toISOString(), tz);
+  return local.startsWith(day) && !scheduleProblem(soon, now) ? local : null;
+}
+
+export type CalendarScreen = "connect" | "calendar" | "calendar_without_account";
+
+/**
+ * What the calendar page shows, from the status of every account row (disconnected ones included) and whether any post exists at all. Posts outlive the
+ * account they were written for, so a workspace whose accounts were all disconnected still sees its history, with a prompt to connect one.
+ */
+export function calendarScreen(accountStatuses: readonly string[], hasPosts: boolean): CalendarScreen {
+  if (accountStatuses.length === 0) return "connect";
+  if (accountStatuses.some((s) => s !== "disconnected")) return "calendar";
+  return hasPosts ? "calendar_without_account" : "connect";
 }
 
 export interface Grid {

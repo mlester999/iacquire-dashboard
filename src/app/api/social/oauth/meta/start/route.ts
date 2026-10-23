@@ -25,7 +25,9 @@ export async function GET(req: NextRequest) {
   const site = req.headers.get("sec-fetch-site");
   if (site && site !== "same-origin" && site !== "none") return back("That sign-in didn't start from iAcquire, so it was ignored. Use the Connect button on this page.");
   try {
-    const ctx = await requireOrgContextOrThrow("social.connect");
+    // startMetaConnect makes the checks itself and in the right order: first that social media exists in this workspace at all (it does not in an agency's),
+    // then that this person may connect accounts, each with its own plain message.
+    const ctx = await requireOrgContextOrThrow();
     const { url } = await startMetaConnect(ctx, platform, returnPath);
     const res = NextResponse.redirect(url, { status: 302 });
     res.headers.set("Cache-Control", "no-store");

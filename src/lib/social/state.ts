@@ -32,6 +32,38 @@ export const STATUS_EXPLAIN: Record<PostStatus, string> = {
   rejected: "Rejected by a reviewer. It will not be published.",
 };
 
+/** The id a post carries when a person, not the platform, said it was published (src/server/social/posts.ts resolveUnknown). */
+export const MANUAL_PUBLISH_PREFIX = "manual:";
+export const isManualPublish = (providerPostId: string | null | undefined) => typeof providerPostId === "string" && providerPostId.startsWith(MANUAL_PUBLISH_PREFIX);
+
+export interface ExplainFacts {
+  providerPostId?: string | null;
+  /** Publishing to real accounts is switched off in this environment, so a scheduled post waits instead of going out. */
+  liveBlocked?: boolean;
+  /** The post belongs to a test account: nothing it "publishes" leaves the product. */
+  testAccount?: boolean;
+}
+
+/** STATUS_EXPLAIN, made true for this post: a published post a person marked by hand is not "confirmed by the platform", and a held or test post says so. */
+export function statusExplain(status: PostStatus, facts: ExplainFacts = {}): string {
+  if (status === "published") {
+    if (facts.testAccount) return "Recorded as published on a test account. Nothing was posted anywhere.";
+    if (isManualPublish(facts.providerPostId)) return "Marked as published by a person; the platform did not confirm it.";
+  }
+  if (status === "scheduled" && facts.liveBlocked) return "Waiting: publishing to real accounts is switched off in this environment, so nothing is sent until iAcquire switches it on.";
+  return STATUS_EXPLAIN[status];
+}
+
+/** A status filter from an address: one status or several separated by commas. Unknown words are dropped, repeats are kept once, the order given is kept. */
+export function parseStatusFilter(raw: string | null | undefined): PostStatus[] {
+  const out: PostStatus[] = [];
+  for (const part of (raw ?? "").slice(0, 400).split(",")) {
+    const s = part.trim() as PostStatus;
+    if (POST_STATUSES.includes(s) && !out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
 const NEXT: Record<PostStatus, readonly PostStatus[]> = {
   draft: ["pending_approval", "scheduled", "cancelled"],
   pending_approval: ["approved", "changes_requested", "rejected", "draft", "cancelled"],
@@ -76,6 +108,16 @@ export function approvalRequired(i: ApprovalInput): boolean {
 
 /** Whether the reviewer may be the person who wrote the post. Only when the workspace has not asked for a second pair of eyes. */
 export const selfApprovalAllowed = (approvalForPublishers: boolean) => !approvalForPublishers;
+
+/**
+ * Why this person cannot approve this post, or null when they can. The same two rules the server applies in `decide`, so the interface offers Approve only
+ * where it will be accepted: approving needs the approve permission, and a post's own author cannot approve it when the workspace asked for a second pair of eyes.
+ */
+export function approveBlockedReason(i: { canApprove: boolean; isAuthor: boolean; approvalForPublishers: boolean }): string | null {
+  if (!i.canApprove) return "Only the business owner or a manager can approve it.";
+  if (i.isAuthor && !selfApprovalAllowed(i.approvalForPublishers)) return "Your workspace asks for a second person to approve each post. Ask another owner or manager.";
+  return null;
+}
 
 export const SCHEDULE_MIN_LEAD_MS = 5 * 60_000;
 export const SCHEDULE_MAX_LEAD_MS = 180 * 86_400_000;

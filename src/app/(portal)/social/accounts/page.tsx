@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { PlugZap } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { AppError } from "@/server/errors";
+import { isUuid } from "@/lib/social/address";
 import { listAccounts, pendingChoices } from "@/server/social/accounts";
 import { livePublishingEnabled, simulatedAllowed } from "@/server/social/providers";
 import { metaConfigured } from "@/server/social/providers/meta-oauth";
@@ -21,14 +22,17 @@ export default async function SocialAccountsPage({ searchParams }: { searchParam
   let expired = false;
   const stateId = one(sp.choose);
   if (stateId && ctx.can("social.connect")) {
-    try {
-      choose = { stateId, choices: (await pendingChoices(ctx, stateId)).choices };
-    } catch (e) {
-      if (e instanceof AppError) expired = true;
-      else throw e;
+    // The address is the person's to edit, and the column is a uuid: anything else is an expired link, not a query for the database to choke on.
+    if (!isUuid(stateId)) expired = true;
+    else {
+      try {
+        choose = { stateId, choices: (await pendingChoices(ctx, stateId)).choices };
+      } catch (e) {
+        if (e instanceof AppError) expired = true;
+        else throw e;
+      }
     }
   }
-  const skipped = one(sp.skipped);
   return (
     <div className="space-y-5">
       <header>
@@ -37,7 +41,6 @@ export default async function SocialAccountsPage({ searchParams }: { searchParam
       </header>
       {notice && <p role="status" className={`rounded-2xl px-4 py-3 text-[13.5px] ${notice.kind === "error" ? "bg-danger-soft text-danger-ink" : notice.kind === "success" ? "bg-success-soft text-success-ink" : "bg-surface-2 text-ink-2"}`}>{notice.message}</p>}
       {expired && <p role="status" className="rounded-2xl bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink">That connection expired. Start it again.</p>}
-      {skipped && <p role="status" className="rounded-2xl bg-warning-soft px-4 py-3 text-[13.5px] text-warning-ink">Not connected: {skipped}</p>}
       <AccountsPanel
         accounts={accounts} canConnect={ctx.can("social.connect")} metaReady={metaConfigured()} liveEnabled={livePublishingEnabled()} tz={ctx.org.timezone || "UTC"}
         choose={choose} testAccounts={simulatedAllowed()}

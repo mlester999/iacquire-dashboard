@@ -9,14 +9,16 @@ import { Badge, Field, Input } from "@/components/ui/primitives";
 import { ConfirmDialog, useCrmAction } from "@/components/crm/ui";
 import { removeMediaAction } from "@/app/actions/social";
 import type { MediaView } from "@/server/social/media";
-import type { StoragePolicy } from "@/lib/social/media-policy";
+import { storageUse, type MediaPolicyView } from "@/lib/social/storage";
 
 // Pictures and videos for posts. Where they may be kept depends on the plan, and this page says so plainly rather than offering what is not available.
 
 const size = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
-export function MediaLibrary({ items, policy, canCreate }: { items: MediaView[]; policy: StoragePolicy; canCreate: boolean }) {
+export function MediaLibrary({ items, policy, canCreate }: { items: MediaView[]; policy: MediaPolicyView; canCreate: boolean }) {
   const router = useRouter();
+  // The managed plan is not unlimited: when the server reports a cap, the workspace sees where it stands before an upload is refused.
+  const use = storageUse(policy.usedBytes, policy.limitBytes);
   const { run, busy } = useCrmAction();
   const [uploading, setUploading] = React.useState(false);
   const [alt, setAlt] = React.useState("");
@@ -50,6 +52,16 @@ export function MediaLibrary({ items, policy, canCreate }: { items: MediaView[];
       <section aria-label="Where media is kept" className="rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[15px] font-semibold text-ink">Where your media is kept</h2>
         <p className="mt-1 text-[13.5px] text-ink-2">{policy.summary}</p>
+        {use && (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[13px] font-medium text-ink">{use.summary}</p>
+            <div role="progressbar" aria-label="Media storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={use.percent} aria-valuetext={`${use.percent}% used`} className="h-2 overflow-hidden rounded-full bg-surface-2">
+              <div className={use.level === "ok" ? "h-full rounded-full bg-primary" : use.level === "near" ? "h-full rounded-full bg-warning-ink" : "h-full rounded-full bg-danger-ink"} style={{ width: `${use.percent}%` }} />
+            </div>
+            {/* The live region is always there, so a warning that appears after an upload is announced. */}
+            <div role="status">{use.warning && <p className={`rounded-xl px-3 py-2 text-[12.5px] ${use.level === "full" ? "bg-danger-soft text-danger-ink" : "bg-warning-soft text-warning-ink"}`}>{use.warning}</p>}</div>
+          </div>
+        )}
         <ul className="mt-3 grid gap-2 sm:grid-cols-3">
           {policy.options.map((o) => (
             <li key={o.source} className="rounded-xl border border-line p-3 text-[13px]">
@@ -63,7 +75,7 @@ export function MediaLibrary({ items, policy, canCreate }: { items: MediaView[];
       {canCreate && policy.managedUploadAllowed && (
         <section aria-label="Add a file" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
           <h2 className="text-[15px] font-semibold text-ink">Add a picture or video</h2>
-          <p className="text-[12.5px] text-muted">JPEG, PNG or WebP pictures and MP4 videos, up to 50 MB. Instagram takes JPEG pictures only, between 4:5 and 1.91:1 in shape; each file is checked and shows what each platform will accept.</p>
+          <p className="text-[12.5px] text-muted">JPEG, PNG or WebP pictures and MP4 videos, up to 50 MB each.Instagram takes JPEG pictures only, between 4:5 and 1.91:1 in shape; each file is checked and shows what each platform will accept.</p>
           <Field label="Description for people who cannot see it" htmlFor="media-alt" optional>
             <Input id="media-alt" value={alt} maxLength={400} onChange={(e) => setAlt(e.target.value)} className="text-[16px] sm:text-[14px]" />
           </Field>

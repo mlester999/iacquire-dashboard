@@ -228,6 +228,7 @@ describe("the registered jobs", () => {
     webChatRetention: 1440,
     socialAccountHealth: 360,
     socialMetrics: 360,
+    socialCleanup: 15,
   };
 
   it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {

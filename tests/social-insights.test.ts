@@ -5,7 +5,9 @@ import { socialOverview, syncPostMetrics } from "@/server/social/analytics";
 import { deletionStatus, handleDataDeletion, handleDeauthorize } from "@/server/social/webhooks";
 import { signRequestForTests } from "@/server/social/providers/meta-oauth";
 import { simulated, simulatedProvider } from "@/server/social/providers/simulated";
+import { ProviderError } from "@/server/social/providers/types";
 import { connect, LATER, minutes, rows, scheduledPost, socialOrg, tick, type SocialOrg } from "./support/social";
+import { bookAppointment, DAY, daysAgo, leadWith, newCode, seedPublished, seedTracked, touch } from "./support/social-analytics";
 
 const SECRET = "test-app-secret-0123456789";
 const form = (signed: string) => new URLSearchParams({ signed_request: signed }).toString();
@@ -159,5 +161,238 @@ describe("leads tied to a post, only by evidence", () => {
     const s = await socialOrg();
     await expect(socialOverview({ ...s.viewer, can: () => false } as never, WINDOW)).rejects.toThrow(/can't see social media/);
     await expect(socialOverview(s.viewer, { startsAt: WINDOW.endsAt, endsAt: WINDOW.startsAt })).rejects.toThrow(/must end after/);
+  });
+});
+
+// Posts written straight into the tables (see support/social-analytics.ts), so the window is relative to the real clock.
+const RECENT = () => ({ startsAt: new Date(Date.now() - 120 * DAY), endsAt: new Date(Date.now() + DAY) });
+const providerIdOf = (postId: string) => rows<{ provider_post_id: string }>("select provider_post_id from social_posts where id = $1", [postId]).then((r) => r[0].provider_post_id);
+const readsOf = (postId: string) => rows<{ metrics: Record<string, number> }>("select metrics from social_post_metrics where post_id = $1 order by id", [postId]);
+
+describe("a post that cannot be measured is not a post that brought nothing", () => {
+  it("shows a post with no link, a link without tracking, and an Instagram post as not tracked, and ignores a code that could not have been in a clickable link", async () => {
+    const s = await socialOrg();
+    const fb = await connect(s);
+    const ig = await connect(s, "instagram", "Harbor Instagram");
+    const textOnly = await seedPublished(s, fb.id, { publishedAt: daysAgo(2) });
+    const linkNoCode = await seedPublished(s, fb.id, { kind: "link", linkUrl: "https://www.client-site.test/a", publishedAt: daysAgo(3) });
+    const instagramCode = newCode();
+    const instagram = await seedPublished(s, ig.id, { kind: "image", linkUrl: "https://www.client-site.test/b", trackingCode: instagramCode, publishedAt: daysAgo(4) });
+    const tracked = await seedTracked(s, fb.id, { publishedAt: daysAgo(5) });
+    await leadWith(s, instagramCode); // a visit that somehow carried the Instagram post's code is still not claimed: the link never rode with that post
+    await leadWith(s, tracked.code);
+    const o = await socialOverview(s.viewer, RECENT());
+    const by = (id: string) => o.posts.find((p) => p.postId === id)!;
+    expect([textOnly, linkNoCode, instagram, tracked.id].map((id) => by(id).tracked)).toEqual([false, false, false, true]);
+    expect(by(tracked.id)).toMatchObject({ leads: 1 });
+    expect(by(instagram)).toMatchObject({ tracked: false, leads: 0 }); // 0 here is "not measured", and the page says so
+    expect(o.leads).toMatchObject({ total: 1, trackedPosts: 1 });
+  });
+
+  it("says no post is tracked when none is, instead of presenting zero leads", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    await seedPublished(s, acc.id, { publishedAt: daysAgo(1) });
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.leads).toMatchObject({ total: 0, trackedPosts: 0 });
+    expect(o.campaigns).toEqual([expect.objectContaining({ name: "No campaign", posts: 1, trackedPosts: 0, tracked: false })]);
+  });
+});
+
+describe("each contact is counted once", () => {
+  it("counts a contact who came through two posts once in the totals and once in each post", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const a = await seedTracked(s, acc.id, { publishedAt: daysAgo(3) });
+    const b = await seedTracked(s, acc.id, { publishedAt: daysAgo(2) });
+    const both = await leadWith(s, a.code, { status: "qualified", visitAt: new Date(Date.now() - 120_000) });
+    await touch(s, both, b.code, new Date(Date.now() - 60_000));
+    await leadWith(s, b.code);
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.posts.find((p) => p.postId === a.id)).toMatchObject({ leads: 1, qualified: 1 });
+    expect(o.posts.find((p) => p.postId === b.id)).toMatchObject({ leads: 2, qualified: 1 });
+    expect(o.leads).toMatchObject({ total: 2, qualified: 1 }); // two people, not the three the rows add up to
+  });
+
+  it("leaves out a contact that was deleted or merged away", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const a = await seedTracked(s, acc.id, { publishedAt: daysAgo(2) });
+    await leadWith(s, a.code);
+    const gone = await leadWith(s, a.code);
+    await rows("update contacts set deleted_at = now() where id = $1", [gone]);
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.posts[0]).toMatchObject({ leads: 1 });
+    expect(o.leads.total).toBe(1);
+  });
+
+  it("covers every post of the period in the totals, and says when the table lists only the most recent", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const old = await seedTracked(s, acc.id, { publishedAt: daysAgo(100) });
+    await leadWith(s, old.code);
+    for (let i = 0; i < 200; i += 1) await seedPublished(s, acc.id, { publishedAt: new Date(Date.now() - (i + 1) * 3_600_000) });
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.posts).toHaveLength(200);
+    expect(o.counts.published).toBe(201);
+    expect(o.postsTruncated).toBe(true);
+    expect(o.posts.some((p) => p.postId === old.id)).toBe(false); // the oldest post is not listed, but its lead is in the total
+    expect(o.leads.total).toBe(1);
+  }, 60000);
+});
+
+describe("campaigns", () => {
+  const campaign = (s: SocialOrg, name: string) => rows<{ id: string }>("insert into social_campaigns (org_id, name, utm_campaign) values ($1, $2, $3) returning id", [s.m.org.id, name, name.toLowerCase().replace(/\W+/g, "-")]).then((r) => r[0].id);
+
+  it("rolls posts and the leads of their tracking codes up by campaign, with each contact counted once per campaign", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const spring = await campaign(s, "Spring tune-up");
+    const brand = await campaign(s, "Brand awareness");
+    const a1 = await seedTracked(s, acc.id, { publishedAt: daysAgo(4), campaignId: spring });
+    const a2 = await seedTracked(s, acc.id, { publishedAt: daysAgo(3), campaignId: spring });
+    await seedPublished(s, acc.id, { publishedAt: daysAgo(2), campaignId: brand }); // no link: cannot be measured
+    const loose = await seedTracked(s, acc.id, { publishedAt: daysAgo(1) });
+    const pat = await leadWith(s, a1.code, { status: "qualified", visitAt: new Date(Date.now() - 120_000) });
+    await touch(s, pat, a2.code, new Date(Date.now() - 60_000)); // the same person through the campaign's second post
+    await bookAppointment(s, pat, new Date());
+    await leadWith(s, a2.code);
+    await leadWith(s, loose.code);
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.campaigns.map((c) => c.name)).toEqual(["Spring tune-up", "Brand awareness", "No campaign"]);
+    expect(o.campaigns[0]).toMatchObject({ posts: 2, trackedPosts: 2, tracked: true, leads: 2, qualified: 1, appointments: 1 });
+    expect(o.campaigns[1]).toMatchObject({ posts: 1, trackedPosts: 0, tracked: false, leads: 0 });
+    expect(o.campaigns[2]).toMatchObject({ campaignId: null, posts: 1, tracked: true, leads: 1 });
+    expect(o.posts.find((p) => p.postId === a1.id)?.campaignName).toBe("Spring tune-up");
+  });
+
+  it("does not show another workspace's campaigns or leads", async () => {
+    const a = await socialOrg();
+    const b = await socialOrg();
+    const acc = await connect(a);
+    const mine = await seedTracked(a, acc.id, { publishedAt: daysAgo(1), campaignId: await campaign(a, "Mine") });
+    await leadWith(b, mine.code);
+    const o = await socialOverview(a.viewer, RECENT());
+    expect(o.campaigns).toEqual([expect.objectContaining({ name: "Mine", leads: 0 })]);
+    expect((await socialOverview(b.viewer, RECENT())).campaigns).toEqual([]);
+  });
+});
+
+describe("when the numbers are from", () => {
+  it("marks numbers as current, older than a day, or past the window in which they are read", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const fresh = await seedPublished(s, acc.id, { publishedAt: daysAgo(1), metrics: { likes: 4 } });
+    const aging = await seedPublished(s, acc.id, { publishedAt: daysAgo(10), metrics: { likes: 7 } });
+    const old = await seedPublished(s, acc.id, { publishedAt: daysAgo(60), metrics: { likes: 9 } });
+    const never = await seedPublished(s, acc.id, { publishedAt: daysAgo(2) });
+    // Each seeded post was read an hour after it went out. "Now" is two hours after the newest.
+    const now = new Date(daysAgo(1).getTime() + 2 * 3_600_000);
+    const o = await socialOverview(s.viewer, RECENT(), { now });
+    const by = (id: string) => o.posts.find((p) => p.postId === id)!;
+    expect(by(fresh)).toMatchObject({ metricsState: "current", metrics: { likes: 4 } });
+    expect(by(aging).metricsState).toBe("stale");
+    expect(by(old)).toMatchObject({ metricsState: "frozen", metrics: { likes: 9 } });
+    expect(by(old).metricsAt).not.toBeNull();
+    expect(by(never)).toMatchObject({ metricsState: null, metrics: null, metricsAt: null });
+    expect(o.engagement.outdatedPosts).toBe(2);
+  });
+
+  it("keeps showing earlier numbers when a later read found nothing", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const id = await seedPublished(s, acc.id, { publishedAt: daysAgo(2), metrics: { likes: 3, comments: 1 } });
+    await rows("insert into social_post_metrics (org_id, post_id, fetched_at, metrics, source) values ($1, $2, now(), '{}'::jsonb, 'simulated')", [s.m.org.id, id]);
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.posts[0]).toMatchObject({ metrics: { likes: 3, comments: 1 } });
+    expect(o.engagement.postsWithData).toBe(1);
+  });
+});
+
+describe("reading the platform's numbers fairly", () => {
+  const sync = (over: Parameters<typeof syncPostMetrics>[0] = {}) => syncPostMetrics({ provider: () => simulatedProvider, ...over });
+  const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
+
+  it("reads the post whose latest read is oldest first, and a post never read before any other", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const posts = [await seedPublished(s, acc.id, { publishedAt: daysAgo(5) }), await seedPublished(s, acc.id, { publishedAt: daysAgo(4) }), await seedPublished(s, acc.id, { publishedAt: daysAgo(3) })];
+    for (const [i, id] of posts.entries()) simulated.setMetrics(await providerIdOf(id), { likes: i + 1 });
+    const order: string[] = [];
+    for (let pass = 0; pass < 4; pass += 1) {
+      const before = await Promise.all(posts.map(async (id) => (await readsOf(id)).length));
+      expect(await sync({ orgId: s.m.org.id, limit: 1, now: hours(pass * 7) })).toBe(1);
+      const after = await Promise.all(posts.map(async (id) => (await readsOf(id)).length));
+      order.push(String(after.findIndex((n, i) => n > before[i])));
+    }
+    // Newest first among the never-read, then the one read longest ago, instead of the same newest post every time.
+    expect(order).toEqual(["2", "1", "0", "2"]);
+  });
+
+  it("takes one workspace's turn after another's, so a busy workspace does not starve a quiet one", async () => {
+    const busy = await socialOrg();
+    const quiet = await socialOrg();
+    await rows("update social_accounts set status = 'needs_reauth' where org_id not in ($1, $2)", [busy.m.org.id, quiet.m.org.id]);
+    const busyAcc = await connect(busy);
+    const quietAcc = await connect(quiet);
+    const ids: string[] = [];
+    for (const [i, d] of [1, 2, 3].entries()) ids.push(await seedPublished(busy, busyAcc.id, { publishedAt: daysAgo(d), caption: `busy ${i}` }));
+    const lone = await seedPublished(quiet, quietAcc.id, { publishedAt: daysAgo(10) });
+    for (const id of [...ids, lone]) simulated.setMetrics(await providerIdOf(id), { likes: 1 });
+    expect(await sync({ limit: 2 })).toBe(2);
+    const read = async (orgId: string) => Number((await rows<{ n: string }>("select count(*)::text as n from social_post_metrics where org_id = $1", [orgId]))[0].n);
+    expect(await read(busy.m.org.id)).toBe(1);
+    expect(await read(quiet.m.org.id)).toBe(1); // the older post of the quiet workspace is read in the same pass
+  });
+
+  it("stops when its time budget is spent and leaves the rest for the next pass", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const ids: string[] = [];
+    for (const d of [3, 2, 1]) ids.push(await seedPublished(s, acc.id, { publishedAt: daysAgo(d) }));
+    for (const id of ids) simulated.setMetrics(await providerIdOf(id), { likes: 2 });
+    const slow = { ...simulatedProvider, metrics: async (...a: Parameters<typeof simulatedProvider.metrics>) => { await new Promise((r) => setTimeout(r, 40)); return simulatedProvider.metrics(...a); } };
+    expect(await syncPostMetrics({ provider: () => slow, orgId: s.m.org.id, budgetMs: 10 })).toBe(1);
+    expect(await syncPostMetrics({ provider: () => slow, orgId: s.m.org.id })).toBe(2); // the two it did not reach, not the one it already read
+  });
+
+  it("moves a post the platform returns nothing for (or could not be read) to the back, without hiding earlier numbers", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const quiet = await seedPublished(s, acc.id, { publishedAt: daysAgo(2), metrics: { likes: 5 } });
+    const broken = await seedPublished(s, acc.id, { publishedAt: daysAgo(1) });
+    simulated.setMetrics(await providerIdOf(quiet), {}); // the platform now returns nothing
+    simulated.failNext("metrics", new ProviderError("transient", "The platform was busy."));
+    const calls = simulated.calls("metrics");
+    expect(await sync({ orgId: s.m.org.id, now: hours(0) })).toBe(0);
+    expect(simulated.calls("metrics") - calls).toBe(2);
+    expect((await readsOf(quiet)).map((r) => Object.keys(r.metrics).length)).toEqual([1, 0]);
+    expect((await readsOf(broken)).map((r) => Object.keys(r.metrics).length)).toEqual([0]);
+    // Neither is asked again within the hours it takes to be due, so they cannot keep crowding out posts that have numbers.
+    expect(await sync({ orgId: s.m.org.id, now: hours(2) })).toBe(0);
+    expect(simulated.calls("metrics") - calls).toBe(2);
+    const o = await socialOverview(s.viewer, RECENT());
+    expect(o.posts.find((p) => p.postId === quiet)).toMatchObject({ metrics: { likes: 5 } });
+    expect(o.posts.find((p) => p.postId === broken)).toMatchObject({ metrics: null });
+  });
+
+  it("does not read for a workspace that is suspended or paused, or a post whose id is not a readable one", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const post = await seedPublished(s, acc.id, { publishedAt: daysAgo(1) });
+    simulated.setMetrics(await providerIdOf(post), { likes: 1 });
+    await rows("update organizations set status = 'suspended' where id = $1", [s.m.org.id]);
+    const calls = simulated.calls("metrics");
+    expect(await sync({ orgId: s.m.org.id })).toBe(0);
+    await rows("update organizations set status = 'active' where id = $1", [s.m.org.id]);
+    await rows("insert into automation_pauses (org_id, scope, active, reason) values ($1, 'outbound', true, 'Paused for a test')", [s.m.org.id]);
+    expect(await sync({ orgId: s.m.org.id })).toBe(0);
+    await rows("update automation_pauses set active = false where org_id = $1", [s.m.org.id]);
+    await rows("update social_posts set provider_post_id = 'container:abc' where id = $1", [post]);
+    expect(await sync({ orgId: s.m.org.id })).toBe(0);
+    expect(simulated.calls("metrics")).toBe(calls);
+    await rows("update social_posts set provider_post_id = 'real_1' where id = $1", [post]);
+    simulated.setMetrics("real_1", { likes: 2 });
+    expect(await sync({ orgId: s.m.org.id })).toBe(1);
   });
 });

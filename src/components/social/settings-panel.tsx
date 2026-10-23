@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/primitives";
 import { ConfirmDialog, useCrmAction } from "@/components/crm/ui";
 import { archiveCampaignAction, createCampaignAction, saveSocialSettingsAction } from "@/app/actions/social";
+import { fieldsOfSettings, sameSettings, syncVersions, type SettingsFields } from "@/lib/social/edit-sync";
 import { normalizeHashtags } from "@/lib/social/rules";
 import type { CampaignView, SocialSettings } from "@/server/social/settings";
 
@@ -25,19 +26,46 @@ function Check({ id, checked, onChange, disabled, label, hint }: { id: string; c
 
 export function SettingsPanel({ settings, campaigns, canEdit, canCampaign }: { settings: SocialSettings; campaigns: CampaignView[]; canEdit: boolean; canCampaign: boolean }) {
   const { run, busy } = useCrmAction();
-  const [d, setD] = React.useState({ approvalForPublishers: settings.approvalForPublishers, aiDraftsEnabled: settings.aiDraftsEnabled, trackingLinks: settings.trackingLinks, hashtags: settings.defaultHashtags.map((h) => `#${h}`).join(" "), voice: settings.brandVoiceNote ?? "" });
+  // The saved settings the form started from. A save is checked against this version, so edits made on top of old settings can never overwrite newer ones.
+  const [loaded, setLoaded] = React.useState(settings);
+  const formOf = (s: SocialSettings) => ({ approvalForPublishers: s.approvalForPublishers, aiDraftsEnabled: s.aiDraftsEnabled, trackingLinks: s.trackingLinks, hashtags: s.defaultHashtags.map((h) => `#${h}`).join(" "), voice: s.brandVoiceNote ?? "" });
+  const [d, setD] = React.useState(() => formOf(settings));
   const [name, setName] = React.useState("");
   const [goal, setGoal] = React.useState("");
   const [archive, setArchive] = React.useState<CampaignView | null>(null);
-  const dirty = d.approvalForPublishers !== settings.approvalForPublishers || d.aiDraftsEnabled !== settings.aiDraftsEnabled || d.trackingLinks !== settings.trackingLinks || d.hashtags !== settings.defaultHashtags.map((h) => `#${h}`).join(" ") || d.voice !== (settings.brandVoiceNote ?? "");
+  const mine: SettingsFields = { approvalForPublishers: d.approvalForPublishers, aiDraftsEnabled: d.aiDraftsEnabled, trackingLinks: d.trackingLinks, hashtags: normalizeHashtags(d.hashtags.split(/[\s,]+/), 10), voice: d.voice };
+  const dirty = !sameSettings(mine, fieldsOfSettings(loaded));
+  // When the page brings newer settings (someone else saved, or a save was refused because they had), the form follows them if it has not been touched. With
+  // unsaved edits it keeps them, and says they cannot be saved over the newer settings.
+  const sync = syncVersions({ loadedVersion: loaded.version, currentVersion: settings.version, loaded: fieldsOfSettings(loaded), current: fieldsOfSettings(settings), mine, same: sameSettings });
+  function adopt(s: SocialSettings) {
+    setD(formOf(s));
+    setLoaded(s);
+  }
+  async function save() {
+    const saved = await run("save", () => saveSocialSettingsAction({ approvalForPublishers: d.approvalForPublishers, aiDraftsEnabled: d.aiDraftsEnabled, trackingLinks: d.trackingLinks, defaultHashtags: mine.hashtags, brandVoiceNote: d.voice || null }, loaded.version), "Settings saved.");
+    // What the server stored is the base for the next save.
+    if (saved && typeof saved === "object") setLoaded(saved as SocialSettings);
+  }
+  // Adjusting state while rendering is the pattern React documents for state that follows a prop: it re-renders at once, before anything is shown or painted,
+  // and only while the saved version moves ahead of the base (the next render is in sync).
+  if (sync === "mark_current") setLoaded(settings);
+  else if (sync === "adopt_current") adopt(settings);
 
   return (
     <div className="space-y-8">
       <section aria-label="Approval and AI" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[15px] font-semibold text-ink">Approval and AI</h2>
+        {sync === "conflict" && (
+          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+            <p className="font-medium">Someone else changed these settings while you were editing them.</p>
+            <p className="mt-0.5">Your changes are kept below, but they cannot be saved over the newer settings. Load the latest settings, then make your changes again.</p>
+            <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(settings)}>Load the latest settings</Button>
+          </div>
+        )}
         <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">A post written by AI always needs a person&apos;s approval before it can be scheduled. A post written by someone who cannot publish does too. There is no setting that changes this.</p>
         <Check id="ss-appr" checked={d.approvalForPublishers} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, approvalForPublishers: v }))} label="Ask for a second person's approval on every post" hint="Even a post written by an owner or manager is reviewed by someone else before it can be scheduled. Leave this off if you are the only person who manages social media." />
-        <Check id="ss-ai" checked={d.aiDraftsEnabled} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, aiDraftsEnabled: v }))} label="Let the AI suggest ideas and write draft captions" hint="It writes only from your approved business knowledge and never invents testimonials, results, prices or offers. What it writes is a draft for a person to edit." />
+        <Check id="ss-ai" checked={d.aiDraftsEnabled} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, aiDraftsEnabled: v }))} label="Let the AI suggest ideas and write draft captions" hint="It is told to write only from your approved business knowledge and not to invent testimonials, results, prices or offers, and suggestions that make claims the knowledge does not back are dropped. It can still get things wrong, so what it writes is a draft: a person edits it and approves it before anything is posted." />
         <Check id="ss-track" checked={d.trackingLinks} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, trackingLinks: v }))} label="Tag the links in posts so leads can be traced to them" hint="Adds source tags to a post's link. When a visitor arrives from it and leaves their details, the lead is recorded as coming from that post." />
         <Field label="Hashtags added to AI drafts" htmlFor="ss-tags" optional hint="Up to 10, separated by spaces.">
           <Input id="ss-tags" value={d.hashtags} disabled={!canEdit} onChange={(e) => setD((x) => ({ ...x, hashtags: e.target.value }))} placeholder="#HarborHome" className="text-[16px] sm:text-[14px]" />
@@ -46,7 +74,7 @@ export function SettingsPanel({ settings, campaigns, canEdit, canCampaign }: { s
           <Textarea id="ss-voice" rows={3} maxLength={600} value={d.voice} disabled={!canEdit} onChange={(e) => setD((x) => ({ ...x, voice: e.target.value }))} className="text-[16px] sm:text-[14px]" />
         </Field>
         {canEdit ? (
-          <Button variant="brand" loading={busy("save")} disabled={!dirty} onClick={() => run("save", () => saveSocialSettingsAction({ approvalForPublishers: d.approvalForPublishers, aiDraftsEnabled: d.aiDraftsEnabled, trackingLinks: d.trackingLinks, defaultHashtags: normalizeHashtags(d.hashtags.split(/[\s,]+/), 10), brandVoiceNote: d.voice || null }, settings.version), "Settings saved.")}>Save settings</Button>
+          <Button variant="brand" loading={busy("save")} disabled={!dirty || sync === "conflict"} onClick={save}>Save settings</Button>
         ) : <p className="text-[12.5px] text-muted">Only the business owner can change these.</p>}
       </section>
 

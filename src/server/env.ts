@@ -104,8 +104,10 @@ const schema = z.object({
   // switch, like the other provider write switches). GRAPH_VERSION is read from Meta's SDK at build time of this feature (v26.0) and can be changed without code.
   META_SOCIAL_APP_ID: z.preprocess(blankToUndefined, z.string().max(100).optional()),
   META_SOCIAL_APP_SECRET: z.preprocess(blankToUndefined, z.string().min(16).max(200).optional()),
-  META_GRAPH_VERSION: z.preprocess(blankToUndefined, z.string().regex(/^vd{1,2}.d$/).default("v26.0")),
+  META_GRAPH_VERSION: z.preprocess(blankToUndefined, z.string().regex(/^v\d{1,2}\.\d$/, "must look like v26.0").default("v26.0")),
   META_SOCIAL_WRITES_ENABLED: bool,
+  // How much managed media storage one workspace may use for social media posts, in megabytes. A proposed default (2 GB), pending the founder's confirmation.
+  SOCIAL_MEDIA_STORAGE_MB: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(1_048_576).default(2048)),
   // Switches the Unified Inbox off: the /inbox page, /api/inbox/* and the inbox's actions answer "temporarily unavailable", and the inbox's own
   // notices stop. Receiving, storing and sending messages, the AI employees and workflows are not touched. Unset or false (the default) = on.
   INBOX_DISABLED: bool,

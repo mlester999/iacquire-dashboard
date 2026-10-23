@@ -90,6 +90,26 @@ async function call(graph: GraphCall, req: GraphRequest): Promise<Record<string,
 
 const flag = (v: boolean) => (v ? "true" : "false");
 
+const squash = (v: unknown) => String(v ?? "").replace(/\s+/g, " ").trim();
+/** A caption shorter than this is not distinctive enough to be proof by its start: only the whole text matching counts. */
+const MIN_PREFIX_CHARS = 20;
+
+const sameText = (ours: string, theirs: unknown) => {
+  const t = squash(theirs);
+  return t === ours || (ours.length >= MIN_PREFIX_CHARS && t.startsWith(ours.slice(0, 80)));
+};
+
+/**
+ * Whether one of the platform's recent posts is ours. Only the text can prove it, and only when exactly one post carries it. Several fit, or there is no text
+ * to compare (a picture or video without a caption, where a post without one could be anyone's): that is "cannot tell", never "found" and never "not posted".
+ */
+function verdict<T>(recent: T[], ours: string, textOf: (p: T) => unknown): { hit: T } | { uncertain: true } | { none: true } {
+  if (!ours) return recent.some((p) => !squash(textOf(p))) ? { uncertain: true } : { none: true };
+  const fits = recent.filter((p) => sameText(ours, textOf(p)));
+  if (fits.length === 1) return { hit: fits[0] };
+  return fits.length ? { uncertain: true } : { none: true };
+}
+
 export function createMetaProvider(deps: { graph?: GraphCall; settings?: () => MetaSettings } = {}): SocialProvider {
   const settings = deps.settings ?? metaSettings;
   const graphFor = () => deps.graph ?? graphCall(settings().version);
@@ -151,6 +171,8 @@ export function createMetaProvider(deps: { graph?: GraphCall; settings?: () => M
     },
 
     async step(creds, input, state): Promise<StepResult> {
+      // An answer that was already saved is final: a replayed job must not send again (a second photo, or media_publish on a container that is already out).
+      if (state.done && state.providerPostId) return { state };
       assertWrites();
       const graph = graphFor();
       const t = creds.accessToken;
@@ -208,33 +230,38 @@ export function createMetaProvider(deps: { graph?: GraphCall; settings?: () => M
       return { state: { ...state, providerPostId: id, permalink: await permalinkOf(graph, t, id, "permalink"), done: true } };
     },
 
-    async reconcile(creds, input, state, since): Promise<Reconciliation> {
+    async reconcile(creds, input, state, since, exclude = []): Promise<Reconciliation> {
       const graph = graphFor();
       const t = creds.accessToken;
-      const text = input.message.slice(0, 80);
+      const ours = squash(input.message);
+      const skip = new Set(exclude);
       const sinceUnix = Math.floor((since.getTime() - 120_000) / 1000);
+      const records = (j: Record<string, unknown>) => (Array.isArray(j.data) ? j.data : []).filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null);
       if (input.platform === "facebook") {
         if (state.objectId) {
           const j = await call(graph, { method: "GET", path: state.objectId, params: { fields: "is_published,permalink_url" }, token: t, sent: false });
           return j.is_published === true ? { found: true, providerPostId: state.objectId, permalink: str(j.permalink_url) } : { found: false };
         }
         const j = await call(graph, { method: "GET", path: `${input.externalId}/published_posts`, params: { fields: "id,message,created_time,permalink_url", since: String(sinceUnix), limit: "25" }, token: t, sent: false });
-        const hit = (Array.isArray(j.data) ? j.data : []).find((p) => typeof p === "object" && p && String((p as Record<string, unknown>).message ?? "").startsWith(text)) as Record<string, unknown> | undefined;
-        return hit && str(hit.id) ? { found: true, providerPostId: str(hit.id) as string, permalink: str(hit.permalink_url) } : { found: false };
+        const v = verdict(records(j).filter((p) => str(p.id) && !skip.has(str(p.id) as string)), ours, (p) => p.message);
+        if ("hit" in v) return { found: true, providerPostId: str(v.hit.id) as string, permalink: str(v.hit.permalink_url) };
+        return "uncertain" in v ? { found: false, uncertain: true } : { found: false };
       }
-      // Instagram: a container that says PUBLISHED went out; its media id comes from the account's recent media.
-      let published = false;
+      // Instagram. When the container is known it is the proof: PUBLISHED went out, anything else did not, whatever the account's recent media says (a caption
+      // that happens to match belongs to some other post). The media id of a published container comes from the account's recent media when exactly one fits.
+      const recentMedia = async () => {
+        const j = await call(graph, { method: "GET", path: `${input.externalId}/media`, params: { fields: "id,caption,timestamp,permalink", limit: "25" }, token: t, sent: false });
+        return records(j).filter((r) => str(r.id) && !skip.has(str(r.id) as string) && typeof r.timestamp === "string" && Date.parse(r.timestamp) >= since.getTime() - 120_000);
+      };
       if (state.creationId) {
         const s = await call(graph, { method: "GET", path: state.creationId, params: { fields: "status_code" }, token: t, sent: false });
-        published = str(s.status_code) === "PUBLISHED";
+        if (str(s.status_code) !== "PUBLISHED") return { found: false };
+        const v = verdict(await recentMedia(), ours, (r) => r.caption);
+        return "hit" in v ? { found: true, providerPostId: str(v.hit.id) as string, permalink: str(v.hit.permalink) } : { found: true, providerPostId: `container:${state.creationId}`, permalink: null };
       }
-      const j = await call(graph, { method: "GET", path: `${input.externalId}/media`, params: { fields: "id,caption,timestamp,permalink", limit: "25" }, token: t, sent: false });
-      const hit = (Array.isArray(j.data) ? j.data : []).find((p) => {
-        const r = p as Record<string, unknown>;
-        return String(r.caption ?? "").startsWith(text) && typeof r.timestamp === "string" && Date.parse(r.timestamp) >= since.getTime() - 120_000;
-      }) as Record<string, unknown> | undefined;
-      if (hit && str(hit.id)) return { found: true, providerPostId: str(hit.id) as string, permalink: str(hit.permalink) };
-      return published && state.creationId ? { found: true, providerPostId: `container:${state.creationId}`, permalink: null } : { found: false };
+      const v = verdict(await recentMedia(), ours, (r) => r.caption);
+      if ("hit" in v) return { found: true, providerPostId: str(v.hit.id) as string, permalink: str(v.hit.permalink) };
+      return "uncertain" in v ? { found: false, uncertain: true } : { found: false };
     },
 
     async metrics(creds, account, providerPostId) {

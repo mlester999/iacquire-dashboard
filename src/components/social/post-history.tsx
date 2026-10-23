@@ -32,6 +32,15 @@ const LABELS: Record<string, string> = {
   ai_option_chosen: "Chosen from AI suggestions",
 };
 
+// A person's word is recorded as theirs: what they said happened is in the line, so the history never reads as if the platform confirmed it.
+const label = (e: PostEvent) => {
+  if (e.kind === "resolved_by_person") {
+    if (e.detail.outcome === "posted") return "A person checked the Page and said it was posted (the platform did not confirm it)";
+    if (e.detail.outcome === "not_posted") return "A person checked the Page and said it was not posted";
+  }
+  return LABELS[e.kind] ?? e.kind.replace(/_/g, " ");
+};
+
 export function PostHistory({ events, tz }: { events: PostEvent[]; tz: string }) {
   return (
     <section aria-label="History" className="rounded-2xl border border-line bg-surface p-4">
@@ -41,7 +50,7 @@ export function PostHistory({ events, tz }: { events: PostEvent[]; tz: string })
           <li key={e.id} className="flex gap-3 text-[13px]">
             <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-line-strong" />
             <div className="min-w-0">
-              <p className="text-ink">{LABELS[e.kind] ?? e.kind.replace(/_/g, " ")}</p>
+              <p className="text-ink">{label(e)}</p>
               <p className="text-[12px] text-muted">
                 {e.actorKind === "user" ? e.actorName ?? "A teammate" : e.actorKind === "ai" ? "AI" : "System"} · {formatWhen(e.at, tz)}
                 {typeof e.detail.note === "string" && e.detail.note ? ` · “${e.detail.note}”` : ""}

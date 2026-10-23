@@ -82,6 +82,20 @@ describe("tracked links", () => {
     expect(new URL(trackedLink("https://example.com", { platform: "facebook", campaign: null, trackingCode: "ab12cd34" })!).searchParams.get("utm_campaign")).toBe("social");
   });
 
+  it("always carries the post's own tracking code, replacing any utm_content already on the address", () => {
+    const tags = { platform: "facebook" as const, campaign: "spring", trackingCode: "ab12cd34" };
+    // A link copied from an earlier post keeps that post's code, so a lead from this post would be credited to the other one.
+    const copied = new URL(trackedLink("https://example.com/offer?utm_content=zz99yy88&utm_campaign=mine&ref=x", tags)!);
+    expect(copied.searchParams.getAll("utm_content")).toEqual(["ab12cd34"]);
+    expect(copied.searchParams.get("utm_campaign")).toBe("mine"); // the other tags still mean what the person meant
+    expect(copied.searchParams.get("ref")).toBe("x");
+    // Repeated, empty and differently cased tags end up as one: the post's own.
+    expect(new URL(trackedLink("https://example.com/?utm_content=a&utm_content=b", tags)!).searchParams.getAll("utm_content")).toEqual(["ab12cd34"]);
+    expect(new URL(trackedLink("https://example.com/?utm_content=", tags)!).searchParams.getAll("utm_content")).toEqual(["ab12cd34"]);
+    // A page address with a fragment keeps it after the tags, and the scheme is read case-insensitively.
+    expect(trackedLink("HTTPS://example.com/offer?utm_content=old#pricing", tags)).toBe("https://example.com/offer?utm_content=ab12cd34&utm_source=facebook&utm_medium=social&utm_campaign=spring#pricing");
+  });
+
   it("turns a campaign name into a tag", () => {
     expect(campaignTag("Spring Tune-Up!")).toBe("spring-tune-up");
     expect(campaignTag("  ")).toBe("");

@@ -18,9 +18,11 @@ export interface CalendarProps {
   tz: string;
   today: string;
   posts: PostView[];
+  /** Every account the workspace has had, disconnected ones included: their posts are still on the calendar and can still be filtered to. */
   accounts: AccountView[];
   accountId: string | null;
-  status: PostStatus | null;
+  /** The statuses being shown. Empty is any status; several come from a link such as the Performance Analyst's "failed or could not be confirmed". */
+  statuses: PostStatus[];
   canCreate: boolean;
 }
 
@@ -47,18 +49,21 @@ function Chip({ p, tz, compact }: { p: PostView; tz: string; compact?: boolean }
 }
 
 export function CalendarView(props: CalendarProps) {
-  const { view, anchor, tz, today, posts, accounts, accountId, status, canCreate } = props;
+  const { view, anchor, tz, today, posts, accounts, accountId, statuses, canCreate } = props;
   const grid = view === "week" ? weekGrid(anchor, tz) : view === "list" ? listRange(anchor, tz) : monthGrid(anchor, tz);
   const byDay = groupByDay(posts, tz);
   const nb = neighbours(view, anchor);
+  const statusValue = statuses.join(",");
   const href = (over: { view?: CalendarView; date?: string }) => {
     const q = new URLSearchParams();
     q.set("view", over.view ?? view);
     q.set("date", over.date ?? anchor);
     if (accountId) q.set("account", accountId);
-    if (status) q.set("status", status);
+    if (statusValue) q.set("status", statusValue);
     return `/social?${q.toString()}`;
   };
+  // A day in the past cannot be scheduled for, so it is not carried into the composer.
+  const newPostHref = (d: string) => (d >= today ? `/social/posts/new?date=${d}` : "/social/posts/new");
   const pill = (active: boolean) => cn("inline-flex min-h-11 items-center rounded-xl px-3 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-primary sm:min-h-9", active ? "bg-primary-soft text-primary-ink" : "text-ink-2 hover:bg-surface-2");
   const arrow = "inline-flex size-11 items-center justify-center rounded-xl border border-line text-ink-2 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary sm:size-9";
   const days = grid.weeks.flat().filter((d) => view !== "list" || grid.inMonth(d));
@@ -81,30 +86,33 @@ export function CalendarView(props: CalendarProps) {
       <form method="get" action="/social" className="flex flex-wrap items-end gap-3" aria-label="Filter the calendar">
         <input type="hidden" name="view" value={view} />
         <input type="hidden" name="date" value={anchor} />
-        <label className="text-[12.5px] text-muted">
+        {/* Native selects are as wide as their longest option, so a long Page name must be able to shrink to the phone's width instead of pushing the form out. */}
+        <label className="w-full min-w-0 max-w-full text-[12.5px] text-muted sm:w-auto">
           <span className="mb-1 block">Account</span>
-          <select name="account" defaultValue={accountId ?? ""} className="h-11 rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:text-[13px]">
+          <select name="account" defaultValue={accountId ?? ""} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:w-auto sm:max-w-sm sm:text-[13px]">
             <option value="">All accounts</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({platformName(a.platform)})</option>)}
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({platformName(a.platform)}){a.status === "disconnected" ? " (disconnected)" : ""}</option>)}
           </select>
         </label>
-        <label className="text-[12.5px] text-muted">
+        <label className="w-full min-w-0 max-w-full text-[12.5px] text-muted sm:w-auto">
           <span className="mb-1 block">Status</span>
-          <select name="status" defaultValue={status ?? ""} className="h-11 rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:text-[13px]">
+          <select name="status" defaultValue={statusValue} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-line-strong bg-surface px-3 text-[14px] text-ink sm:h-9 sm:w-auto sm:max-w-sm sm:text-[13px]">
             <option value="">Any status</option>
+            {/* A link can ask for several statuses at once; applying the form again keeps them unless another is chosen. */}
+            {statuses.length > 1 && <option value={statusValue}>{statuses.map((s) => STATUS_LABELS[s]).join(", ")}</option>}
             {POST_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
           </select>
         </label>
         <Button type="submit" variant="secondary" size="sm">Apply</Button>
-        {(accountId || status) && <Link href={`/social?view=${view}&date=${anchor}`} className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary-ink underline sm:min-h-9">Clear filters</Link>}
+        {(accountId || statuses.length > 0) && <Link href={`/social?view=${view}&date=${anchor}`} className="inline-flex min-h-11 items-center text-[13px] font-medium text-primary-ink underline sm:min-h-9">Clear filters</Link>}
         <p className="ml-auto text-[12px] text-muted">Times are shown in {tz.replace(/_/g, " ")}.</p>
       </form>
 
       {posts.length === 0 && (
         <EmptyState
-          compact title={status || accountId ? "No posts match these filters" : "Nothing planned in this period"}
+          compact title={statuses.length > 0 || accountId ? "No posts match these filters" : "Nothing planned in this period"}
           description="Drafts, scheduled posts, posts waiting for approval, failed posts and published posts all appear here."
-          action={canCreate ? <Link href={`/social/posts/new?date=${anchor}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[13px] font-medium text-white sm:min-h-9"><Plus className="size-4" aria-hidden />New post</Link> : undefined}
+          action={canCreate ? <Link href={newPostHref(anchor)} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl brand-gradient px-4 text-[13px] font-medium text-white sm:min-h-9"><Plus className="size-4" aria-hidden />New post</Link> : undefined}
         />
       )}
 
@@ -186,7 +194,7 @@ function Agenda({ days, byDay, tz, empty, detailed }: { days: string[]; byDay: M
                     <span className={cn("mt-0.5 block text-[13.5px] text-ink-2", detailed ? "line-clamp-2" : "truncate")}>{snippet(p)}</span>
                     {p.failureMessage && p.status === "failed" && <span className="mt-0.5 block text-[12px] text-danger-ink">{p.failureMessage}</span>}
                   </span>
-                  <StatusBadge status={p.status} className="shrink-0" />
+                  <StatusBadge status={p.status} providerPostId={p.providerPostId} className="shrink-0" />
                 </Link>
               </li>
             ))}

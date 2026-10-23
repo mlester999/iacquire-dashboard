@@ -210,6 +210,89 @@ describe("tracked links", () => {
   });
 });
 
+describe("a copy of an AI draft is still an AI draft", () => {
+  it("keeps its origin and its AI run, so it still needs a person's approval whoever copied it", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const run = (await rows<{ id: string }>("insert into social_ai_runs (org_id, user_id, kind, status) values ($1, $2, 'caption', 'succeeded') returning id", [s.m.org.id, s.m.people.owner.id]))[0].id;
+    const ai = await withSystem((db) => insertDraft(db, { orgId: s.m.org.id, userId: s.m.people.sales.id }, textPost(acc.id, { caption: "AI wrote this." }), "ai", run));
+    for (const who of [s.owner, s.manager]) {
+      const copy = await duplicatePost(who, ai.id);
+      expect(copy).toMatchObject({ origin: "ai", status: "draft", caption: "AI wrote this." });
+      expect((await rows("select origin, ai_run_id from social_posts where id = $1", [copy.id]))[0]).toMatchObject({ origin: "ai", ai_run_id: run });
+      // Copying does not buy a way around the approval: even a person who may publish cannot schedule it without one.
+      await expect(schedulePost(who, copy.id, { at: LATER }, { now: NOW })).rejects.toThrow(/needs to be approved/);
+      const kinds = (await rows<{ kind: string }>("select kind from social_post_events where post_id = $1 order by id", [copy.id])).map((e) => e.kind);
+      expect(kinds).toEqual(["created", "duplicated"]); // copied by a person, not drafted by the model again
+    }
+  });
+
+  it("leaves a copy of a person's own post a person's post", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const post = await createPost(s.owner, textPost(acc.id));
+    const copy = await duplicatePost(s.owner, post.id);
+    expect(copy.origin).toBe("human");
+    expect((await schedulePost(s.owner, copy.id, { at: LATER }, { now: NOW })).status).toBe("scheduled");
+  });
+});
+
+describe("a settings save that changed nothing is not reported as a save", () => {
+  it("says someone else changed them, and writes no audit record", async () => {
+    const s = await socialOrg();
+    await saveSocialSettings(s.owner, { aiDraftsEnabled: false }, 0);
+    const audits = () => rows("select 1 from audit_logs where org_id = $1 and action = 'social.settings_saved'", [s.m.org.id]);
+    expect(await audits()).toHaveLength(1);
+    // Another save landing between the version check and the write leaves this statement with no row to change. The trigger skips the update to stand in for it.
+    await withSystem(async (db) => {
+      await db.query("create function skip_settings_update() returns trigger language plpgsql as $$ begin return null; end $$");
+      await db.query("create trigger skip_settings_update before update on social_settings for each row execute function skip_settings_update()");
+    });
+    try {
+      await expect(saveSocialSettings(s.owner, { approvalForPublishers: true }, 1)).rejects.toMatchObject({ code: "conflict", message: expect.stringMatching(/Someone else changed these settings/) });
+      expect(await audits()).toHaveLength(1);
+    } finally {
+      await withSystem(async (db) => {
+        await db.query("drop trigger skip_settings_update on social_settings");
+        await db.query("drop function skip_settings_update()");
+      });
+    }
+    expect(await getSocialSettings(s.owner)).toMatchObject({ approvalForPublishers: false, aiDraftsEnabled: false, version: 1 });
+  });
+});
+
+describe("limits are explained in words, not by the database", () => {
+  const invalid = (text: RegExp) => ({ code: "invalid_input", message: expect.stringMatching(text) });
+
+  it("refuses a link that is not https, accepts any case of the scheme, and stores it in lower case", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    await expect(createPost(s.sales, textPost(acc.id, { kind: "link", linkUrl: "http://oldsite.test/offer" }))).rejects.toMatchObject(invalid(/must start with https:\/\//));
+    await expect(createPost(s.sales, textPost(acc.id, { kind: "link", linkUrl: "oldsite.test/offer" }))).rejects.toMatchObject(invalid(/must start with https:\/\//));
+    await expect(createPost(s.sales, textPost(acc.id, { kind: "link", linkUrl: "https://" }))).rejects.toMatchObject(invalid(/not a web address/));
+    await expect(createPost(s.sales, textPost(acc.id, { kind: "link", linkUrl: `https://shop.test/${"a".repeat(1000)}` }))).rejects.toMatchObject(invalid(/longer than 1,000/));
+    const ok = await createPost(s.sales, textPost(acc.id, { kind: "link", linkUrl: " HTTPS://Shop.test/Offer " }));
+    expect(ok.linkUrl).toBe("https://Shop.test/Offer");
+    await expect(updatePost(s.sales, ok.id, { linkUrl: "http://oldsite.test/offer" }, ok.version)).rejects.toMatchObject(invalid(/must start with https:\/\//));
+    const moved = await updatePost(s.sales, ok.id, { linkUrl: "Https://Other.test/a" }, ok.version);
+    expect(moved.linkUrl).toBe("https://Other.test/a");
+    expect((await updatePost(s.sales, ok.id, { linkUrl: null }, moved.version)).linkUrl).toBeNull();
+  });
+
+  it("refuses a caption past the limit and more hashtags than a post can carry, and accepts the limit itself", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    await expect(createPost(s.sales, textPost(acc.id, { caption: "x".repeat(63_207) }))).rejects.toMatchObject(invalid(/longer than 63,206 characters/));
+    const manyTags = Array.from({ length: 31 }, (_, i) => `tag${i}`);
+    await expect(createPost(s.sales, textPost(acc.id, { hashtags: manyTags }))).rejects.toMatchObject(invalid(/at most 30 hashtags/));
+    const edge = await createPost(s.sales, textPost(acc.id, { caption: "x".repeat(63_206), hashtags: manyTags.slice(0, 30) }));
+    expect(edge.caption).toHaveLength(63_206);
+    await expect(updatePost(s.sales, edge.id, { caption: "x".repeat(63_207) }, edge.version)).rejects.toMatchObject(invalid(/longer than 63,206 characters/));
+    await expect(updatePost(s.sales, edge.id, { hashtags: manyTags }, edge.version)).rejects.toMatchObject(invalid(/at most 30 hashtags/));
+    expect((await rows("select 1 from social_posts where id = $1 and version = $2", [edge.id, edge.version])).length).toBe(1); // nothing was half-written
+  });
+});
+
 describe("the calendar and history", () => {
   it("lists a day, a month and a status, and moves a scheduled post", async () => {
     const s = await socialOrg();

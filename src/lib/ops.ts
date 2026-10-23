@@ -94,6 +94,7 @@ export const JOB_LABELS: Record<string, string> = {
   socialPublisher: "Publish due social media posts",
   socialAccountHealth: "Check social media account connections",
   socialMetrics: "Read social media engagement numbers",
+  socialCleanup: "Clear out unfinished social media sign-ins and removed media files",
   leadScoreReassessment: "Re-score leads whose details changed",
   messagesDispatched: "Send queued messages",
   websiteEnquiries: "Turn website enquiries into leads",

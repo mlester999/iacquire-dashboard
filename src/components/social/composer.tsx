@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Field, Select, Textarea, Input } from "@/components/ui/primitives";
 import { useCrmAction } from "@/components/crm/ui";
 import { cn } from "@/lib/utils";
-import { composeCaption, draftProblems, hashtagsIn, normalizeHashtags, PLATFORM_LABELS, PLATFORM_LIMITS, type MediaFacts, type PostKind } from "@/lib/social/rules";
+import { composeCaption, draftProblems, hashtagsIn, normalizeHashtags, PLATFORM_LABELS, PLATFORM_LIMITS, type MediaFacts, type PostKind, type Problem } from "@/lib/social/rules";
 import { previewFold } from "@/lib/social/media-policy";
+import { formatDay } from "@/lib/social/calendar";
+import { fieldsOfPost, sameFields, syncEdit, type EditFields } from "@/lib/social/edit-sync";
+import { MAX_HASHTAGS } from "@/lib/social/limits";
 import { createPostAction, updatePostAction } from "@/app/actions/social";
 import type { AccountView } from "@/server/social/accounts";
 import type { MediaView } from "@/server/social/media";
@@ -33,11 +36,15 @@ export interface ComposerProps {
   trackingLinks: boolean;
   /** Why the file picker has nothing to offer, in words, when storage is not available. */
   mediaNote: string | null;
+  /** A day (YYYY-MM-DD) chosen in the calendar, already checked by the page. It only starts the schedule box on the next screen; nothing is scheduled from it. */
+  scheduleDay?: string | null;
 }
 
 export function PostComposer(p: ComposerProps) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
+  // The saved version these fields started from. A save is checked against it, so edits made on top of an old version can never overwrite a newer one.
+  const [loaded, setLoaded] = React.useState<PostView | undefined>(p.initial);
   const usable = p.accounts.filter((a) => a.status !== "revoked" && a.status !== "disconnected");
   const [accountId, setAccountId] = React.useState(p.initial?.accountId ?? p.defaultAccountId ?? usable[0]?.id ?? "");
   const account = usable.find((a) => a.id === accountId) ?? p.accounts.find((a) => a.id === accountId) ?? null;
@@ -52,13 +59,37 @@ export function PostComposer(p: ComposerProps) {
   // The kind must be one this account's platform can post: if the account changed to one that cannot post the chosen kind, the first it can is used.
   const kinds = lim.kinds.filter((k) => (account?.capabilities.contentTypes.length ? account.capabilities.contentTypes.includes(k) : true));
   const kind: PostKind = kinds.includes(kindChoice) || !kinds.length ? kindChoice : kinds[0];
-  const dirty = !p.initial || caption !== p.initial.caption || kind !== p.initial.kind || tags !== (p.initial.hashtags.map((h) => `#${h}`).join(" ")) || link !== (p.initial.linkUrl ?? "") || (campaignId || null) !== p.initial.campaignId || accountId !== p.initial.accountId || JSON.stringify(mediaIds) !== JSON.stringify(p.initial.media.map((m) => m.id));
 
-  const hashtags = React.useMemo(() => normalizeHashtags([...tags.split(/[\s,]+/), ...hashtagsIn(tags)], 60), [tags]);
+  // The cap is the server's: more tags than it keeps would be dropped on save without the author or the approver ever seeing which, so only the first MAX_HASHTAGS
+  // are used here (the preview shows what will be saved) and the rest are said out loud.
+  const enteredTags = React.useMemo(() => normalizeHashtags([...tags.split(/[\s,]+/), ...hashtagsIn(tags)], 1000), [tags]);
+  const hashtags = React.useMemo(() => enteredTags.slice(0, MAX_HASHTAGS), [enteredTags]);
+  const mine: EditFields = { accountId, kind, caption, hashtags, linkUrl: link, campaignId, mediaIds };
+  const dirty = !loaded || !sameFields(mine, fieldsOfPost(loaded));
+  // When the page brings a newer version of the post (a teammate saved, or a decision was refused because the post had moved on), the fields follow it if the
+  // person has not touched them. If they have unsaved edits, those are kept but cannot be saved over the newer text.
+  const sync = p.initial && loaded ? syncEdit({ loadedVersion: loaded.version, currentVersion: p.initial.version, loaded: fieldsOfPost(loaded), current: fieldsOfPost(p.initial), mine }) : "in_sync";
+  function adopt(post: PostView) {
+    setAccountId(post.accountId);
+    setKind(post.kind);
+    setCaption(post.caption);
+    setTags(post.hashtags.map((h) => `#${h}`).join(" "));
+    setLink(post.linkUrl ?? "");
+    setCampaignId(post.campaignId ?? "");
+    setMediaIds(post.media.map((m) => m.id));
+    setLoaded(post);
+  }
+  // Adjusting state while rendering is the pattern React documents for state that follows a prop: it re-renders at once, before anything is shown or painted,
+  // and only while the saved version moves ahead of the base (the next render is in sync).
+  if (p.initial && sync === "mark_current") setLoaded(p.initial);
+  else if (p.initial && sync === "adopt_current") adopt(p.initial);
   const library = [...p.media, ...(p.initial?.media.filter((m) => !p.media.some((x) => x.id === m.id)).map((m) => ({ ...m, sizeBytes: 0, altText: null, validation: {}, usedBy: 0, createdAt: "" } as MediaView)) ?? [])];
   const chosen = mediaIds.map((id) => library.find((m) => m.id === id)).filter((m): m is MediaView => Boolean(m));
   const facts: MediaFacts[] = chosen.map((m) => ({ id: m.id, kind: m.kind, mimeType: m.mimeType, sizeBytes: m.sizeBytes || 1, width: m.width, height: m.height, status: m.status }));
-  const problems = draftProblems(platform, { kind, caption, hashtags, linkUrl: link.trim() || null }, facts);
+  const problems: Problem[] = draftProblems(platform, { kind, caption, hashtags, linkUrl: link.trim() || null }, facts);
+  if (enteredTags.length > MAX_HASHTAGS) {
+    problems.push({ level: "warning", code: "hashtag_cap", message: `You entered ${enteredTags.length} hashtags. Only the first ${MAX_HASHTAGS} are kept; the rest are left out when you save.` });
+  }
   const composed = composeCaption(caption, hashtags);
   const fold = previewFold(platform, composed);
   const trackedNote = p.trackingLinks && link.trim() && platform === "facebook";
@@ -67,17 +98,27 @@ export function PostComposer(p: ComposerProps) {
 
   async function save() {
     const body = { accountId, kind, caption, hashtags, linkUrl: link.trim() || null, mediaAssetIds: mediaIds, campaignId: campaignId || null };
-    if (!p.initial) {
+    if (!p.initial || !loaded) {
       const r = await run("save", () => createPostAction(body), "Draft saved.");
-      if (r) router.push(`/social/posts/${(r as { id: string }).id}`);
+      // The day chosen in the calendar rides along only to start the schedule box there; the post page checks it again.
+      if (r) router.push(`/social/posts/${(r as { id: string }).id}${p.scheduleDay ? `?date=${p.scheduleDay}` : ""}`);
     } else {
-      await run("save", () => updatePostAction(p.initial!.id, body, p.initial!.version), "Changes saved.");
+      const r = await run("save", () => updatePostAction(loaded.id, body, loaded.version), "Changes saved.");
+      // What the server stored is the new base for the next save.
+      if (r && typeof r === "object") setLoaded(r as PostView);
     }
   }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void save(); }} aria-label={p.initial ? "Edit post" : "New post"}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (sync !== "conflict") void save(); }} aria-label={p.initial ? "Edit post" : "New post"}>
+        {sync === "conflict" && p.initial && (
+          <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+            <p className="font-medium">Someone changed this post while you were editing it.</p>
+            <p className="mt-0.5">Your edits are kept below, but they cannot be saved over the newer text. Copy anything you want to keep, then load the latest version.</p>
+            <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => adopt(p.initial!)}>Load the latest version</Button>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Account" htmlFor="sp-account">
             <Select id="sp-account" value={accountId} disabled={readOnly} onChange={(e) => { setAccountId(e.target.value); setMediaIds([]); }}>
@@ -96,7 +137,7 @@ export function PostComposer(p: ComposerProps) {
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Hashtags" htmlFor="sp-tags" optional hint={lim.hashtagMax ? `Instagram allows ${lim.hashtagMax}.` : "Separate with spaces."}>
+          <Field label="Hashtags" htmlFor="sp-tags" optional hint={lim.hashtagMax ? `Instagram allows ${lim.hashtagMax}.` : `Separate with spaces. Up to ${MAX_HASHTAGS} are kept.`}>
             <Input id="sp-tags" value={tags} disabled={readOnly} onChange={(e) => setTags(e.target.value)} placeholder="#spring #hvac" className="text-[16px] sm:text-[14px]" />
           </Field>
           <Field label="Campaign" htmlFor="sp-campaign" optional>
@@ -107,7 +148,7 @@ export function PostComposer(p: ComposerProps) {
           </Field>
         </div>
 
-        <Field label="Page to share" htmlFor="sp-link" optional hint={trackedNote ? "Visitors who arrive from this post are recorded as coming from it: the link gets tracking tags." : platform === "instagram" ? "Instagram captions do not make links clickable." : "Must start with https://."}>
+        <Field label="Page to share" htmlFor="sp-link" optional hint={trackedNote ? "Visitors who arrive from this post are recorded as coming from it: the link gets tracking tags, and a utm_content tag already on it is replaced by this post's own code." : platform === "instagram" ? "Instagram captions do not make links clickable." : "Must start with https://."}>
           <Input id="sp-link" type="url" inputMode="url" value={link} disabled={readOnly} onChange={(e) => setLink(e.target.value)} placeholder="https://" className="text-[16px] sm:text-[14px]" />
         </Field>
 
@@ -156,10 +197,13 @@ export function PostComposer(p: ComposerProps) {
 
         {!readOnly && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" variant="brand" loading={busy("save")} disabled={!account || (Boolean(p.initial) && !dirty)}>{p.initial ? "Save changes" : "Save draft"}</Button>
+            <Button type="submit" variant="brand" loading={busy("save")} disabled={!account || (Boolean(p.initial) && !dirty) || sync === "conflict"}>{p.initial ? "Save changes" : "Save draft"}</Button>
             {p.initial && dirty && <span className="text-[12.5px] text-muted">You have unsaved changes.</span>}
             {p.initial && p.initial.status !== "draft" && p.initial.status !== "changes_requested" && p.initial.status !== "failed" && dirty && <span className="text-[12.5px] text-warning-ink">Saving sends this back to a draft, because the approval was of the earlier text.</span>}
           </div>
+        )}
+        {!readOnly && !p.initial && p.scheduleDay && (
+          <p className="text-[12.5px] text-muted">You started this from {formatDay(p.scheduleDay)}. Once the draft is saved, the schedule box starts on that day. Nothing is scheduled automatically.</p>
         )}
       </form>
 

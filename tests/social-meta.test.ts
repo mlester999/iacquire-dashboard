@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createMetaProvider, type GraphCall, type GraphRequest, type GraphResponse, type MetaSettings } from "@/server/social/providers/meta";
 import { parseSignedRequest, resolveSignIn, signRequestForTests, canPostTo, authorizeUrl, META_SCOPES } from "@/server/social/providers/meta-oauth";
 import { ProviderError, type PublishInput } from "@/server/social/providers/types";
+import { simulated, simulatedProvider } from "@/server/social/providers/simulated";
 
 const SETTINGS: MetaSettings = { appId: "1234567890", appSecret: "app-secret-0123456789", version: "v26.0", writesEnabled: true };
 
@@ -160,6 +161,74 @@ describe("checking whether a post exists", () => {
   });
 });
 
+describe("checking when the caption is not enough to go on", () => {
+  const since = new Date("2026-10-23T12:00:00Z");
+  const listing = (data: unknown[]) => fake([() => ok({ data })]);
+  const fb = (message: string, kind: "image" | "text" = "image") => base({ kind, message, media: kind === "image" ? [img] : [] });
+
+  it("never takes an unrelated post for ours when the caption is empty", async () => {
+    // A picture with no caption: a manual post with text cannot be it, so nothing here is ours...
+    const unrelated = listing([{ id: "PAGE1_5", message: "A manual post about something else", created_time: "2026-10-23T12:00:30+0000" }]);
+    expect(await provider(unrelated.graph).reconcile(creds, fb(""), {}, since)).toEqual({ found: false });
+    // ...but another post with no caption could be, or not: the answer is "cannot tell", never "found" and never "not posted".
+    const bare = listing([{ id: "PAGE1_6", created_time: "2026-10-23T12:00:30+0000" }]);
+    expect(await provider(bare.graph).reconcile(creds, fb(""), {}, since)).toEqual({ found: false, uncertain: true });
+  });
+
+  it("needs the whole text to match when the caption is short, and one post only", async () => {
+    const longer = listing([{ id: "PAGE1_7", message: "Sale! Everything must go this week only." }]);
+    expect(await provider(longer.graph).reconcile(creds, fb("Sale!"), {}, since)).toEqual({ found: false });
+    const exact = listing([{ id: "PAGE1_8", message: "Sale!", permalink_url: "https://facebook.com/p/8" }]);
+    expect(await provider(exact.graph).reconcile(creds, fb("Sale!"), {}, since)).toEqual({ found: true, providerPostId: "PAGE1_8", permalink: "https://facebook.com/p/8" });
+    const twice = listing([{ id: "PAGE1_9", message: "Sale!" }, { id: "PAGE1_10", message: "Sale!" }]);
+    expect(await provider(twice.graph).reconcile(creds, fb("Sale!"), {}, since)).toEqual({ found: false, uncertain: true });
+  });
+
+  it("matches a long caption by its start, ignoring spacing, and skips posts already recorded for something else", async () => {
+    const caption = "Spring tune-up special: book this week and save on your first visit, and bring a friend.";
+    const posts = [{ id: "PAGE1_11", message: caption }, { id: "PAGE1_12", message: `Spring tune-up special: book this week and save on your first visit,\nand bring a friend.` }];
+    // Two posts carry the text: ambiguous, until one of them is known to belong to another post.
+    expect(await provider(listing(posts).graph).reconcile(creds, fb(caption), {}, since)).toEqual({ found: false, uncertain: true });
+    expect(await provider(listing(posts).graph).reconcile(creds, fb(caption), {}, since, ["PAGE1_11"])).toMatchObject({ found: true, providerPostId: "PAGE1_12" });
+  });
+
+  it("trusts an Instagram container over a caption that happens to match", async () => {
+    const wrong = fake([() => ok({ status_code: "FINISHED" }), () => ok({ data: [{ id: "M1", caption: "Hello there", timestamp: "2026-10-23T12:01:00+0000" }] })]);
+    const input = base({ platform: "instagram", externalId: "IG1", kind: "image", message: "Hello there", media: [img] });
+    expect(await provider(wrong.graph).reconcile(creds, input, { creationId: "C1" }, since)).toEqual({ found: false });
+    expect(wrong.seen).toHaveLength(1); // the container was enough
+    // Published, with no caption to pick the media out by: the container still proves it, and the media id is not guessed.
+    const bare = fake([() => ok({ status_code: "PUBLISHED" }), () => ok({ data: [{ id: "M2", timestamp: "2026-10-23T12:01:00+0000" }] })]);
+    expect(await provider(bare.graph).reconcile(creds, { ...input, message: "" }, { creationId: "C1" }, since)).toEqual({ found: true, providerPostId: "container:C1", permalink: null });
+  });
+
+  it("cannot tell an Instagram post without a container apart by an empty caption either", async () => {
+    const { graph } = fake([() => ok({ data: [{ id: "M3", timestamp: "2026-10-23T12:01:00+0000" }] })]);
+    expect(await provider(graph).reconcile(creds, base({ platform: "instagram", externalId: "IG1", kind: "image", message: "", media: [img] }), {}, since)).toEqual({ found: false, uncertain: true });
+  });
+});
+
+describe("an answer that was saved is final", () => {
+  it("makes no request when the platform already answered, on either platform", async () => {
+    const { graph, seen } = fake([]);
+    const p = provider(graph);
+    const done = { sendingAt: "2026-10-23T12:00:00.000Z", providerPostId: "PAGE1_9", permalink: null, done: true };
+    for (const input of [base({ kind: "image", media: [img] }), base({ platform: "instagram", externalId: "IG1", kind: "image", media: [img] }), base({})]) {
+      expect((await p.step(creds, input, done)).state).toEqual(done);
+    }
+    expect(seen).toHaveLength(0);
+  });
+
+  it("makes no second post on the simulated platform either", async () => {
+    simulated.reset();
+    const input = base({ kind: "image", media: [img] });
+    const first = await simulatedProvider.step(creds, input, {});
+    const again = await simulatedProvider.step(creds, input, first.state);
+    expect(again.state).toEqual(first.state);
+    expect(simulated.posts("PAGE1")).toHaveLength(1);
+  });
+});
+
 describe("connection health and metrics", () => {
   it("reads token validity, scopes and expiry, and calls a missing permission a connection that cannot publish", async () => {
     const good = fake([() => ok({ data: { is_valid: true, scopes: ["pages_manage_posts", "pages_read_engagement"], expires_at: 0, data_access_expires_at: 1_800_000_000 } })]);
@@ -219,6 +288,8 @@ describe("signing in and the platform's callbacks", () => {
     expect(u.searchParams.get("scope")?.split(",")).toEqual([...META_SCOPES.instagram]);
     expect(META_SCOPES.facebook).not.toContain("instagram_content_publish");
     expect(u.searchParams.get("client_secret")).toBeNull();
+    // A permission declined once is only asked for again when the request says so.
+    expect(u.searchParams.get("auth_type")).toBe("rerequest");
   });
 
   it("accepts a correctly signed callback and refuses a forged, altered or differently signed one", () => {

@@ -211,7 +211,7 @@ describe("shutting down", () => {
     expect(roles.filter((r) => r.role !== "owner").every((r) => r.status === "revoked")).toBe(true);
     // The connection is closed, and every step is on the record with its outcome.
     expect((await withSystem((db) => db.query("select status from integration_connections where org_id = $1 and provider = 'ghl'", [m.org.id]))).rows[0]).toMatchObject({ status: "disconnected" });
-    expect(view.steps.map((s) => s.key)).toEqual(["automation", "messaging", "integrations", "access", "website"]);
+    expect(view.steps.map((s) => s.key)).toEqual(["automation", "messaging", "integrations", "social", "access", "website"]);
     expect(view.steps.every((s) => s.ok)).toBe(true);
     // The owner is told, in plain words, that their data is theirs to download and their domains are theirs.
     const told = (await notes(m.people.owner.id, "offboarding_update")).at(-1)!;

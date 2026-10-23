@@ -73,11 +73,12 @@ export async function addEvent(db: Queryable, orgId: string, postId: string, kin
 
 /**
  * Announces what happened to a post to the automation event outbox, once per post and version (a redelivered or repeated call records nothing new). The event
- * carries no contact and no customer data: the post, the platform and the account, and for a failure the reason.
+ * carries no contact and no customer data: the post, the platform and the account, and for a failure the reason. `occurrence` makes the key finer than the
+ * version for things that can happen again to the same version: a failed post that is retried and fails again is announced again, once per failed job.
  */
-export async function announce(db: Queryable, orgId: string, type: "social.post_published" | "social.post_failed" | "social.approval_requested", post: Pick<PostRow, "id" | "version" | "kind">, detail: Record<string, unknown> = {}): Promise<void> {
+export async function announce(db: Queryable, orgId: string, type: "social.post_published" | "social.post_failed" | "social.approval_requested", post: Pick<PostRow, "id" | "version" | "kind">, detail: Record<string, unknown> = {}, occurrence?: string): Promise<void> {
   await emitEvent(db, systemActor({ id: orgId }), {
-    type, entityType: "social_post", entityId: post.id, payload: { postId: post.id, kind: post.kind, ...detail }, dedupeKey: `${type}:${post.id}:${post.version}`,
+    type, entityType: "social_post", entityId: post.id, payload: { postId: post.id, kind: post.kind, ...detail }, dedupeKey: `${type}:${post.id}:${post.version}${occurrence ? `:${occurrence}` : ""}`,
   });
 }
 
