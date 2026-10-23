@@ -103,7 +103,11 @@ describe("A. the suite runs on an in-memory embedded database, whatever the shel
     expect(block).not.toMatch(/DATABASE_URL|SUPABASE|INBOX_TEST_ROLLOUT|INBOX_DISABLED/);
     // A test file gets its own process (and so its own empty in-memory database): the default for the forks pool, and these would change it.
     expect(config).toContain('pool: "forks"');
-    expect(config).not.toMatch(/isolate\s*:\s*false|singleFork|poolOptions|pool:\s*"(threads|vmThreads|vmForks)"|dotenv|globalSetup|setupFiles/);
+    // The one setup file allowed is the guard that refuses connections to other machines; it must not read or set any environment value.
+    const guard = 'setupFiles: [path.resolve(import.meta.dirname, "tests/support/no-network.ts")],';
+    expect(config.split(guard).length - 1).toBeLessThanOrEqual(1);
+    expect(config.replace(guard, "")).not.toMatch(/isolate\s*:\s*false|singleFork|poolOptions|pool:\s*"(threads|vmThreads|vmForks)"|dotenv|globalSetup|setupFiles/);
+    expect(read("tests/support/no-network.ts")).not.toMatch(/process\.env|dotenv|DATABASE|INBOX_|SUPABASE/);
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
     expect(pkg.scripts.test).toBe("vitest run");
     for (const [name, command] of Object.entries(pkg.scripts)) {
