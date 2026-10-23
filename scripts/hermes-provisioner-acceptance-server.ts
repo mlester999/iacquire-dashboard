@@ -1,6 +1,15 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
+import { safeStartupFailureCode } from "./hermes-provisioner-acceptance-diagnostics";
+
+const reportStartupFailure = (reason: unknown): never => {
+  process.stderr.write(`PORTAL_ACCEPTANCE_STARTUP_FAILURE=${safeStartupFailureCode(reason)}\n`);
+  process.exit(1);
+};
+
+process.once("uncaughtException", reportStartupFailure);
+process.once("unhandledRejection", reportStartupFailure);
 
 const required = (name: string) => {
   const value = process.env[name]?.trim();

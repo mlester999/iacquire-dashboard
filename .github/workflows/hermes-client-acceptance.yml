@@ -491,6 +491,11 @@ jobs:
                   echo "::warning title=Portal error code::PORTAL_DIAGNOSTIC_ERROR_CODE=${marker}"
                 fi
               done
+              startup_failure="$(grep -Eo 'PORTAL_ACCEPTANCE_STARTUP_FAILURE=[A-Z0-9_]+' <<< "$portal_logs" | head -n 1 || true)"
+              if [[ -n "$startup_failure" ]]; then
+                echo "$startup_failure"
+                echo "::warning title=Portal startup failure::${startup_failure}"
+              fi
               echo "PORTAL_HERMES_E2E_FAIL: synthetic portal did not become healthy"
               exit 1
             fi
