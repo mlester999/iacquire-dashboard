@@ -61,6 +61,7 @@ Production activation requires: prior six-agency release and SOUL remediation ve
 - Final focused Hermes integration set: 71/71 passed across live-shape, tool inventory, contract, provisioner and agency workforce tests.
 - Current `python -m unittest discover -s services/hermes-provisioner -p 'test_*.py' -v`: 48/48 worker, deployment and synthetic-harness tests passed.
 - Current focused Vitest run for onboarding, client provisioning and Hermes integration: 29/29 passed across five test files.
+- After the Vitest 4.1.12 patch, the local Node 24 clean install passed with audit enabled; 19 onboarding/provisioning/Hermes files passed 208/208 tests, `npm run typecheck` and targeted ESLint passed. This is local verification only; the linked hosted Docker acceptance has not rerun.
 - The isolated Hermes 0.21.5 backport suite passed 23 tests in its separate source checkout. This validates the backport code; it did not build or start the client image.
 - `npm run typecheck`: passed at the current acceptance branch head. The previously recorded full regression/build gate predates only the acceptance-harness commit; the hosted Docker run exercised the provisioner and gateway images.
 - The Windows workspace has no local Docker CLI, so the client images were built and run on the authorized GitHub-hosted runner instead. Compose validation and teardown passed there.
