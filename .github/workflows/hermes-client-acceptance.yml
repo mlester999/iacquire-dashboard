@@ -37,6 +37,27 @@ jobs:
           docker buildx inspect --bootstrap >/dev/null
           docker compose version >/dev/null
 
+      - name: Install isolated app test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          npm ci
+
+      - name: Exercise real iAcquireOS onboarding and provisioner routes
+        shell: bash
+        env:
+          NODE_ENV: test
+          AUTH_PROVIDER: local
+          SECRET_STORE: test-memory
+          DATABASE_DRIVER: pglite-memory
+          APP_ENCRYPTION_KEY: test-only-key-0123456789abcdef0123456789abcdef
+          ALLOW_INSECURE_HERMES_URLS: "true"
+        run: |
+          set -euo pipefail
+          npm test -- tests/client-onboarding-acceptance.test.ts tests/hermes-provisioner-route-acceptance.test.ts
+
       - name: Build the pinned client Hermes images with Buildx
         shell: bash
         env:
