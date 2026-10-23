@@ -1,6 +1,8 @@
 import "server-only";
 import crypto from "node:crypto";
 import type { Queryable } from "@/server/db";
+import { systemActor } from "@/server/crm/actor";
+import { emitEvent } from "@/server/crm/events";
 import { composeCaption, trackedLink, type MediaFacts, type Platform, type PostKind } from "@/lib/social/rules";
 import type { PostStatus } from "@/lib/social/state";
 
@@ -67,6 +69,16 @@ export async function readSettings(db: Queryable, orgId: string): Promise<Settin
 
 export async function addEvent(db: Queryable, orgId: string, postId: string, kind: string, actor: { id: string | null; kind: "user" | "ai" | "system" }, detail: Record<string, unknown> = {}): Promise<void> {
   await db.query("insert into social_post_events (org_id, post_id, kind, actor_id, actor_kind, detail) values ($1, $2, $3, $4, $5, $6::jsonb)", [orgId, postId, kind.slice(0, 40), actor.id, actor.kind, JSON.stringify(detail)]);
+}
+
+/**
+ * Announces what happened to a post to the automation event outbox, once per post and version (a redelivered or repeated call records nothing new). The event
+ * carries no contact and no customer data: the post, the platform and the account, and for a failure the reason.
+ */
+export async function announce(db: Queryable, orgId: string, type: "social.post_published" | "social.post_failed" | "social.approval_requested", post: Pick<PostRow, "id" | "version" | "kind">, detail: Record<string, unknown> = {}): Promise<void> {
+  await emitEvent(db, systemActor({ id: orgId }), {
+    type, entityType: "social_post", entityId: post.id, payload: { postId: post.id, kind: post.kind, ...detail }, dedupeKey: `${type}:${post.id}:${post.version}`,
+  });
 }
 
 export interface AccountRow {

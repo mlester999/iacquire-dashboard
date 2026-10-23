@@ -179,7 +179,7 @@ describe("reusable read-only capabilities", () => {
     expect(capabilitiesForRole("crm_manager").map((definition) => definition.key)).toEqual(["crm_quality_review"]);
     expect(capabilitiesForRole("sales_assistant").map((definition) => definition.key)).toEqual(["pipeline_review", "lead_priority_review"]);
     expect(capabilitiesForRole("appointment_setter").map((definition) => definition.key)).toEqual(["appointment_review", "appointment_availability", "missed_call_review"]);
-    expect(capabilitiesForRole("performance_analyst").map((definition) => definition.key)).toEqual(["performance_snapshot"]);
+    expect(capabilitiesForRole("performance_analyst").map((definition) => definition.key)).toEqual(["social_performance_review", "performance_snapshot"]);
     expect(roleMayUseCapability("crm_manager", "pipeline_review")).toBe(false);
     expect(roleMayUseCapability("sales_assistant", "crm_quality_review")).toBe(false);
     expect(roleMayUseCapability("appointment_setter", "appointment_review")).toBe(true);

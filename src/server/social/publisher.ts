@@ -5,7 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { classifyProviderFailure, isRetryable, retryDelayMs, type FailureKind } from "@/lib/social/errors";
 import { signAuthorizedPrivateFile } from "@/server/storage/private";
 import { openCredentials } from "@/server/social/credentials";
-import { addEvent, loadAccountRow, loadPostRow, messageFor, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
+import { addEvent, announce, loadAccountRow, loadPostRow, messageFor, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
 import { livePublishingEnabled, providerFor } from "@/server/social/providers";
 import { ProviderError, type Credentials, type PublishInput, type PublishState, type SocialProvider } from "@/server/social/providers/types";
 import { markAccountNeedsReauth } from "@/server/social/accounts";
@@ -146,6 +146,7 @@ async function failJob(db: Queryable, job: JobRow, post: PostRow, code: string, 
   await db.query("update social_posts set status = 'failed', failure_code = $2, failure_message = $3 where id = $1 and org_id = $4 and status in ('scheduled', 'publishing', 'needs_reconciliation')", [post.id, code.slice(0, 60), message.slice(0, 400), post.org_id]);
   await addEvent(db, post.org_id, post.id, "publish_failed", { kind: "system", id: null }, { code, attempt: job.attempt });
   await recordAudit({ orgId: post.org_id, actorKind: "system", action: "social.publish_failed", targetType: "social_post", targetId: post.id, result: "failure", metadata: { code } }, db);
+  await announce(db, post.org_id, "social.post_failed", post, { code, reason: message.slice(0, 200), accountId: post.account_id });
   const title = "A social post could not be published";
   await notifyOrgRoles(db, post.org_id, ["owner", "admin"], { kind: "social_post_failed", severity: "warning", title, body: message.slice(0, 300), link: `/social/posts/${post.id}`, dedupeKey: `social-failed:${post.id}:${post.version}` });
   if (post.author_id) await notifyUser(db, post.author_id, post.org_id, { kind: "social_post_failed", severity: "warning", title, body: message.slice(0, 300), link: `/social/posts/${post.id}`, dedupeKey: `social-failed-author:${post.id}:${post.version}` });
@@ -158,6 +159,7 @@ async function succeedJob(db: Queryable, job: JobRow, post: PostRow, state: Publ
     [post.id, state.providerPostId, state.permalink ?? null, now, post.org_id],
   );
   await addEvent(db, post.org_id, post.id, via, { kind: "system", id: null }, { providerPostId: state.providerPostId, attempt: job.attempt });
+  await announce(db, post.org_id, "social.post_published", post, { accountId: post.account_id, providerPostId: state.providerPostId, permalink: state.permalink ?? null });
   await recordAudit({ orgId: post.org_id, actorKind: "system", action: "social.post_published", targetType: "social_post", targetId: post.id, result: "success", metadata: { providerPostId: state.providerPostId, approvedBy: post.approved_by } }, db);
 }
 

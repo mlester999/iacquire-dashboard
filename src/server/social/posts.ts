@@ -6,7 +6,7 @@ import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
 import { draftProblems, hasBlocking, normalizeHashtags, type MediaFacts, type Platform, type PostKind, type Problem } from "@/lib/social/rules";
 import { approvalRequired, canTransition, scheduleProblem, selfApprovalAllowed, type PostStatus } from "@/lib/social/state";
-import { addEvent, loadAccountRow, loadPostRow, mediaFactsFor, newTrackingCode, POST_COLUMNS, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
+import { addEvent, announce, loadAccountRow, loadPostRow, newTrackingCode, POST_COLUMNS, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
 import { cancelQueuedJob, enqueueJob } from "@/server/social/publisher";
 
 // Writing a post, getting it approved, scheduling it, and every way it can be stopped or retried. The server decides everything here; the interface only reads
@@ -308,6 +308,7 @@ export async function submitForApproval(ctx: OrgContext, id: string): Promise<Po
     if (blocking.length) throw new AppError("invalid_input", blocking[0].message);
     await db.query("update social_posts set status = 'pending_approval', decision_note = null where id = $1 and org_id = $2", [id, ctx.org.orgId]);
     await addEvent(db, ctx.org.orgId, id, "submitted", { id: ctx.user.id, kind: "user" }, { version: row.version });
+    await announce(db, ctx.org.orgId, "social.approval_requested", row, { accountId: row.account_id, origin: row.origin });
     await notifyOrgRoles(db, ctx.org.orgId, ["owner", "admin"], { kind: "social_approval_requested", title: "A social post is waiting for your approval", body: `${v.accountName}: ${v.caption.slice(0, 140) || "(picture or video)"}`, link: `/social/posts/${id}`, dedupeKey: `social-approval:${id}:${row.version}` });
     const after = await loadPostRow(db, ctx.org.orgId, id);
     return (await viewsFor(db, ctx.org.orgId, [after as PostRow]))[0];

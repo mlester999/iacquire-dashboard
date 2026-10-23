@@ -55,6 +55,8 @@ export const EVENT_TRIGGER_TYPES = [
   "lead.score_updated", "lead.became_hot", "lead.label_changed", "lead.qualification_completed",
   // The website chat (src/server/webchat) and lead attribution (src/server/attribution), announced once each.
   "webchat.started", "webchat.lead_captured", "webchat.qualification_completed", "webchat.booking_requested", "lead.source_recorded",
+  // The social media manager (src/server/social): a post was published, failed, or is waiting for approval. Announced once per post and version.
+  "social.post_published", "social.post_failed", "social.approval_requested",
 ] as const;
 export type EventTriggerType = (typeof EVENT_TRIGGER_TYPES)[number];
 
@@ -219,6 +221,9 @@ export const TRIGGERS: Record<TriggerType, TriggerSpec> = {
   "webchat.qualification_completed": T("webchat.qualification_completed", "Website visitor answered your questions", "A visitor answers every required qualification question in the website chat's details form.", "Contacts", "contact", CONTACT_ONLY),
   "webchat.booking_requested": T("webchat.booking_requested", "Website visitor asked to book", "The website assistant took a booking request from a visitor. Whether it was booked, is waiting for approval or needs a person is in the booking itself.", "Conversations", "contact", CONTACT_ONLY),
   "lead.source_recorded": T("lead.source_recorded", "Lead source recorded", "Where a contact came from was recorded: a form, a website chat, a call or a person's choice. Its details say what was recorded and how sure it is.", "Contacts", "contact", CONTACT_ONLY),
+  "social.post_published": T("social.post_published", "Social post published", "A social media post was confirmed published by the platform. It has no contact; its details name the post, the platform and the account. Announced once per post.", "Growth", "none", { contact: "never", opportunity: "never" }),
+  "social.post_failed": T("social.post_failed", "Social post failed", "A social media post could not be published, or the platform could not confirm whether it went out. A person has to look. Announced once per post and version.", "Growth", "none", { contact: "never", opportunity: "never" }),
+  "social.approval_requested": T("social.approval_requested", "Social post waiting for approval", "A social media post was sent for approval (an AI draft or a teammate's post). Announced once per version of the post.", "Growth", "none", { contact: "never", opportunity: "never" }),
   "call.completed": T("call.completed", "Call ended", "A call with your voice assistant ends, or someone in your team logs a call. It has a contact when the caller's number matches one.", "Growth", "contact", { contact: "maybe", opportunity: "never" }, ["callStatuses", "callDirections"]),
   schedule: T("schedule", "On a schedule", "Runs every day or on chosen weekdays at a set time in your workspace's time zone. A scheduled run has no contact.", "Other", "none", { contact: "never", opportunity: "never" }),
   inbound_webhook: T("inbound_webhook", "Inbound webhook", "Another system calls this workflow's private, signed URL. The body can be matched to a contact by email or phone.", "Other", "none", { contact: "maybe", opportunity: "never" }),

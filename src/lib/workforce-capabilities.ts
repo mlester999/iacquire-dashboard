@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review" | "social_performance_review";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -114,6 +114,16 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "contacts.view",
     risk: "read_only",
     produces: "Findings about hot leads without a follow-up or an owner, and about how much of the book can be scored, with links to the contacts.",
+    workBoardAction: true,
+  },
+  social_performance_review: {
+    key: "social_performance_review",
+    label: "Social media review",
+    description: "Read stored social posts, the numbers the platforms returned and the leads that arrived through posts' tracked links, then say what needs a person and what the evidence supports. It never drafts, publishes, contacts anyone or changes anything.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "social.view",
+    risk: "read_only",
+    produces: "Findings about failed or unconfirmed posts, approvals waiting, accounts that need reconnecting and, only with enough returned numbers, which post types or weekdays did better; plus tracked leads, each with a link.",
     workBoardAction: true,
   },
   performance_snapshot: {
