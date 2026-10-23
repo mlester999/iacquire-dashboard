@@ -8,6 +8,8 @@ import os
 import re
 import stat
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +86,7 @@ def main() -> dict[str, int | str]:
     expected_jobs: set[str] = set()
     audit_profiles: set[str] = set()
     api_keys: list[str] = []
+    profile_keys: list[tuple[str, str, str]] = []
 
     for row in rows:
         require(isinstance(row, dict), "profile_evidence_invalid")
@@ -142,6 +145,7 @@ def main() -> dict[str, int | str]:
         require(key_hash not in seen_keys, "duplicate_profile_key")
         seen_keys.add(key_hash)
         api_keys.append(key)
+        profile_keys.append((org_id, profile, key))
 
         source_job = row.get("sourceProvisionJobId")
         current_job = row.get("jobId")
@@ -153,6 +157,34 @@ def main() -> dict[str, int | str]:
     require(len(org_names) == 2 and all(roles == ROLES for roles in roles_by_org.values()), "tenant_role_matrix_mismatch")
     require(len(seen_profiles) == 12 and len(seen_agents) == 12 and len(seen_keys) == 12, "isolation_count_mismatch")
     require(sum(1 for row in rows if row.get("jobKind") == "sync") == 1, "configuration_sync_missing")
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def profile_route_status(profile: str, key: str) -> int:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:8642/p/{profile}/v1/capabilities",
+            headers={"Authorization": "Bearer " + key, "Accept": "application/json"},
+        )
+        try:
+            with opener.open(request, timeout=5) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+        except Exception:
+            raise VerificationError("profile_route_probe_failed") from None
+
+    wrong_profile_key_denials = 0
+    cross_tenant_denials = 0
+    for org_id, profile, key in profile_keys:
+        require(profile_route_status(profile, key) == 200, "profile_key_authentication_failed")
+        for other_org_id, other_profile, other_key in profile_keys:
+            if other_profile == profile:
+                continue
+            require(profile_route_status(profile, other_key) in {401, 403, 404}, "profile_key_scope_failed")
+            wrong_profile_key_denials += 1
+            if other_org_id != org_id:
+                cross_tenant_denials += 1
+    require(wrong_profile_key_denials == 132 and cross_tenant_denials == 72, "profile_key_isolation_count_mismatch")
 
     model_config = json.loads(read_private_text(Path("/run/secrets/profile_model_env.json")))
     secret_values = [
@@ -186,6 +218,8 @@ def main() -> dict[str, int | str]:
         "rolesPerTenant": len(ROLES),
         "effectiveSoulsVerified": len(seen_profiles),
         "isolatedProfileKeys": len(seen_keys),
+        "crossTenantDenials": cross_tenant_denials,
+        "wrongProfileKeyDenials": wrong_profile_key_denials,
         "portalHealthChecksOnline": len(rows),
         "configurationSyncChecks": 1,
         "idempotentCallbackReplays": evidence["duplicateCallbackReplays"],
