@@ -115,6 +115,24 @@ const TABLES: TableSpec[] = [
   { file: "social/media-library.json", table: "social_media_assets", order: "created_at" },
   { file: "social/ai-suggestions.json", table: "social_ai_runs", order: "created_at" },
   { file: "social/settings.json", table: "social_settings" },
+  // Reputation: the workspace's settings. Private feedback (with its follow-up, acknowledgement and resolution) is retention/feedback.json above.
+  { file: "reputation/settings.json", table: "reputation_settings" },
+  // Review request batches: each batch (who it was for, the pace, what the owner approved and when) and the customers in it with what became of each.
+  { file: "reputation/review-request-batches.json", table: "review_request_batches", order: "created_at" },
+  { file: "reputation/review-request-batch-customers.json", table: "review_request_batch_items", order: "updated_at" },
+  // Proposals. A customer's link is exported without the hash of its address (a credential); the emailed-code challenges and the customer's sessions are working state and are not
+  // exported; the address and browser hashes of a recorded answer are left out. Each version's PDF is among the files below.
+  { file: "proposals/proposals.json", table: "proposals", order: "created_at" },
+  { file: "proposals/versions.json", table: "proposal_versions", order: "created_at" },
+  { file: "proposals/answers.json", table: "proposal_decisions", omit: ["ip_hash", "ua_hash"], order: "decided_at" },
+  { file: "proposals/history.json", table: "proposal_events", order: "id" },
+  { file: "proposals/links.json", table: "proposal_share_links", pick: ["id", "proposal_id", "version", "recipient_email", "recipient_name", "expires_at", "revoked_at", "delivery_channel", "first_opened_at", "last_opened_at", "open_count", "first_viewed_at", "viewed_count", "verified_at", "downloaded_at", "created_at"], order: "created_at" },
+  { file: "proposals/price-book.json", table: "proposal_catalog_items", order: "created_at" },
+  { file: "proposals/tax-rates.json", table: "proposal_tax_rates", order: "created_at" },
+  { file: "proposals/templates.json", table: "proposal_templates", order: "created_at" },
+  { file: "proposals/template-versions.json", table: "proposal_template_versions", order: "created_at" },
+  { file: "proposals/settings.json", table: "proposal_settings" },
+  { file: "proposals/ai-suggestions.json", table: "proposal_ai_runs", order: "created_at" },
   { file: "ai-team/employees.json", table: "agent_instances", omit: ["credential_id", "hermes_base_url", "hermes_profile"] },
   { file: "ai-team/employee-knowledge.json", table: "employee_knowledge_entries", order: "updated_at" },
   { file: "ai-team/configuration-versions.json", table: "agent_config_versions", order: "created_at" },
@@ -220,7 +238,7 @@ export async function buildExport(orgId: string, opts: { now?: Date } = {}): Pro
   // Uploaded files and website images, within a total size cap.
   const files = await withSystem((db) =>
     db.query<{ id: string; bucket: string; filename: string; mime_type: string; size_bytes: number }>(
-      "select id, bucket, filename, mime_type, size_bytes from private_files where org_id = $1 and status = 'ready' and visibility = 'client' and bucket in ('company-documents', 'brand-assets', 'social-media') order by created_at",
+      "select id, bucket, filename, mime_type, size_bytes from private_files where org_id = $1 and status = 'ready' and visibility = 'client' and bucket in ('company-documents', 'brand-assets', 'social-media', 'proposal-documents') order by created_at",
       [orgId],
     ),
   );
@@ -269,7 +287,9 @@ Exported ${now.toISOString()}.
 
 - **business/**: your profile, knowledge, onboarding answers and messaging settings.
 - **customers/** and **conversations/**: your contacts, their consent history, and every conversation and message, as readable JSON.
-- **sales/**, **appointments/**, **retention/**: leads, pipeline, appointments, reminders and customer programs.
+- **sales/**, **appointments/**, **retention/**: leads, pipeline, appointments, reminders and customer programs, and the private feedback your customers gave you (with how your team followed it up).
+- **reputation/**: your reputation settings (what counts as low feedback, how long your team has to acknowledge it).
+- **proposals/**: your proposals, every saved version of each, the answers customers gave and how each was recorded, each proposal's history, your price book, tax rates and templates. The PDF of each version is in files/proposal-documents.
 - **website/**: your website's content, every published version, your domains and enquiries, and the images, as files.
 - **ai-team/**: how your AI employees were set up (names, modes, configuration versions) and every approval request and decision.
 - **billing/**: payments, your credit ledger, usage and fees.

@@ -65,6 +65,12 @@ const schema = z.object({
   PAYMONGO_WEBHOOK_SECRET: z.preprocess(blankToUndefined, z.string().min(8).optional()),
   // Comma-separated payment_method_types enabled on the merchant account. Cards only until the approved list is confirmed.
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
+  // Customer payments: the business's OWN PayMongo (or PayPal) account, used to collect on invoices it sends to its customers. Nothing here touches iAcquire's own billing above.
+  // CUSTOMER_PAYMENTS_WRITES_ENABLED is the master switch for any call to a real payment provider (checking a pasted key, starting a checkout, reading a payment back); off,
+  // only the simulated provider works, and a received webhook is still recorded because money that arrived is recorded whatever a switch says. CUSTOMER_PAYMENTS_LIVE_ENABLED
+  // is the global kill switch for real money: off, no live-mode checkout is started anywhere and no workspace can confirm live. Both are founder-approved switches.
+  CUSTOMER_PAYMENTS_WRITES_ENABLED: bool,
+  CUSTOMER_PAYMENTS_LIVE_ENABLED: bool,
   // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
   CRON_SECRET: z.preprocess(blankToUndefined, z.string().min(24).optional()),
   // Second, deliberate switch for the scheduled worker. Both this and CRON_SECRET must be set before any job can run, so deploying
@@ -110,11 +116,34 @@ const schema = z.object({
   META_SOCIAL_APP_SECRET: z.preprocess(blankToUndefined, z.string().min(16).max(200).optional()),
   META_GRAPH_VERSION: z.preprocess(blankToUndefined, z.string().regex(/^v\d{1,2}\.\d$/, "must look like v26.0").default("v26.0")),
   META_SOCIAL_WRITES_ENABLED: bool,
+  // Public reviews read from review sites (CRM -> Reviews -> Public reviews). Every switch is off by default and a founder-approved step: nothing reads or posts to a real
+  // site until the matching approval exists. GOOGLE_BUSINESS_API_APPROVED says Google approved iAcquire's Cloud project for the Business Profile APIs (and verified the
+  // consent screen for business.manage); the client ID and secret belong to that project. Replies are a separate switch from reading. Facebook reads through the Page
+  // connected for Social media and needs Meta's review permissions; META_REVIEWS_REPLIES_ENABLED is the separate switch for replying there.
+  GOOGLE_BUSINESS_API_APPROVED: bool,
+  GOOGLE_BUSINESS_CLIENT_ID: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  GOOGLE_BUSINESS_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  GOOGLE_BUSINESS_REPLIES_ENABLED: bool,
+  META_REVIEWS_ENABLED: bool,
+  META_REVIEWS_REPLIES_ENABLED: bool,
   // How much managed media storage one workspace may use for social media posts, in megabytes. A proposed default (2 GB), pending the founder's confirmation.
   SOCIAL_MEDIA_STORAGE_MB: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(1_048_576).default(2048)),
   // Switches the Unified Inbox off: the /inbox page, /api/inbox/* and the inbox's actions answer "temporarily unavailable", and the inbox's own
   // notices stop. Receiving, storing and sending messages, the AI employees and workflows are not touched. Unset or false (the default) = on.
   INBOX_DISABLED: bool,
+  // Switches the public website chat off for every workspace at once: the widget's API answers "unavailable" and the widget leaves the page alone. Chats already
+  // stored, the Inbox and the AI employees are not touched. Unset or false (the default) = each workspace follows its own widget settings.
+  WEBCHAT_PUBLIC_DISABLED: bool,
+  // Switches the customer-facing side of proposals off for every workspace at once: /proposal/<token>, its PDF and its API answer "temporarily unavailable" before any database
+  // read, and no emailed code is sent. Proposals the team is writing are not touched. Unset or false (the default) = each workspace follows its own switch.
+  PROPOSALS_PUBLIC_DISABLED: bool,
+  // The master switch for anything that creates or sends a signing request at a REAL signing service (PandaDoc): off (the default), a request for a real connection waits
+  // untouched and nothing leaves the machine. Reading what a service reports (checking a pasted key, a request's status, fetching a signed copy) is not a write and is not
+  // held by it. The simulated service reaches nothing and is not affected; it is refused in production. A founder-approved switch, like the other provider write switches.
+  ESIGN_WRITES_ENABLED: bool,
+  // How many AI replies the website chat may write for one workspace per UTC day. Past it, visitors are told a team member will follow up and a person is asked to
+  // reply. 500 is a PROPOSED default, pending the founder's confirmation; 0 stops the assistant's replies altogether without closing the chat.
+  WEBCHAT_DAILY_AI_REPLIES: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).max(100_000).default(500)),
   CALENDAR_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(2).max(1440).default(10),
   CALENDAR_ICS_POLL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 

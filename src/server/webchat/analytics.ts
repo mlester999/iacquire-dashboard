@@ -6,6 +6,7 @@ import { getBalance } from "@/server/billing/ledger";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { sourceLabel } from "@/lib/attribution/model";
 import { getWidgetByOrg } from "@/server/webchat/config";
+import { dailyAiReplyRule, dailyAiRepliesReached, webchatPublicDisabled } from "@/server/webchat/switch";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // What the website chat has done, counted from stored records, and whether it can work right now. Nothing here is estimated: a figure is a count of rows,
@@ -132,6 +133,10 @@ export async function chatHealth(ctx: OrgContext): Promise<HealthCheck[]> {
   out.push(w.enabled
     ? { key: "widget", state: "ok", label: "The chat is switched on", detail: "Visitors on an allowed website can open it." }
     : { key: "widget", state: "off", label: "The chat is switched off", detail: "Visitors do not see it. Switch it on when you are ready." });
+  // The platform-wide emergency switch beats the widget's own setting, so a workspace that is switched on here can still be closed to visitors.
+  if (w.enabled && webchatPublicDisabled()) {
+    out.push({ key: "platform", state: "attention", label: "The chat is paused for every workspace", detail: "iAcquire has switched the public website chat off platform-wide. Visitors see nothing until it is switched back on. Your chats and settings are untouched." });
+  }
   const siteHosts = await withSystem(async (db) => (await db.query<{ n: string }>("select count(*)::text as n from website_domains where org_id = $1 and removed_at is null", [orgId])).rows[0].n);
   const places = w.allowedOrigins.length + (w.autoInstallSites ? Number(siteHosts) : 0);
   out.push(places > 0
@@ -156,6 +161,11 @@ export async function chatHealth(ctx: OrgContext): Promise<HealthCheck[]> {
     out.push(llm.config
       ? { key: "model", state: "ok", label: "The AI language model is connected", detail: "The assistant can answer from the knowledge you chose." }
       : { key: "model", state: "attention", label: "The AI language model is not connected", detail: "Until it is, visitors are told a team member will follow up, and a person is asked to reply." });
+    const capReached = await withSystem((db) => dailyAiRepliesReached(db, orgId));
+    if (capReached) {
+      const cap = dailyAiReplyRule().limit;
+      out.push({ key: "daily", state: "attention", label: "The assistant reached today's reply limit", detail: `It writes at most ${cap} ${cap === 1 ? "reply" : "replies"} a day. Until midnight UTC, visitors are told a team member will follow up and your team is asked to reply.` });
+    }
     const bal = await withSystem((db) => getBalance(db, orgId));
     out.push(bal.availableMicros > 0
       ? { key: "credits", state: "ok", label: "Service credits are available", detail: "The assistant does not answer when credits run out; a person is asked to reply instead." }

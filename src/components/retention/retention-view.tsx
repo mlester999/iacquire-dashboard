@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, CalendarClock, Clock, HeartHandshake, HeartPulse, MessageSquareQuote, Plus, Repeat, Search, Star, UserPlus } from "lucide-react";
@@ -33,6 +34,8 @@ interface Data {
   history: Array<{ id: string; account_id: string; event: string; occurred_at: string }>;
   tasks: Array<{ id: string; title: string; due_at: string | null; related_id: string | null }>;
   openIssues: number;
+  /** Low private feedback from review requests that still waits for a person (listed under CRM > Reviews). */
+  lowFeedbackOpen?: number;
 }
 
 const HEALTH: Record<Account["health"], { label: string; dot: string; tone: StatusTone }> = {
@@ -252,6 +255,12 @@ export function RetentionView({ data, canEdit, canTask, timeZone }: { data: Data
                   </li>
                 ))}
               </ul>
+            )}
+            {(data.lowFeedbackOpen ?? 0) > 0 && (
+              <p role="status" className="mt-3 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] leading-snug text-warning-ink">
+                {data.lowFeedbackOpen} piece{data.lowFeedbackOpen === 1 ? "" : "s"} of low private feedback from customers {data.lowFeedbackOpen === 1 ? "is" : "are"} waiting for a follow-up.{" "}
+                <Link href="/crm/reviews?tab=feedback" className="font-medium underline underline-offset-2">Open it in CRM &rarr; Reviews</Link>
+              </p>
             )}
           </Panel>
           <Panel icon={<Repeat />} tone="success" title="Repeat business">

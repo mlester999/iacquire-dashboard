@@ -162,6 +162,10 @@ async function eventRecords(db: Queryable, e: CrmEventRow): Promise<{ contactId:
   } else if (e.entityType === "conversation") out.conversationId = e.entityId;
   // A form submission's deal (when the form creates one), so deal steps can act on it.
   else if (e.entityType === "form") out.opportunityId = str(e.payload?.opportunityId);
+  // A proposal's deal, when it was written for one, so deal steps can act on it (the contact rides on the event itself).
+  else if (e.entityType === "proposal") out.opportunityId = str(e.payload?.opportunityId);
+  // An invoice's or a payment's deal, when the invoice was written for one (the contact rides on the event itself).
+  else if (e.entityType === "invoice") out.opportunityId = str(e.payload?.opportunityId);
   // A review request asked about a deal or an appointment: the run gets them too (the contact rides on the event itself).
   else if (e.entityType === "review_request") {
     out.opportunityId = str(e.payload?.opportunityId);

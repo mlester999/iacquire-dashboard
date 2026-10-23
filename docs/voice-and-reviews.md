@@ -10,13 +10,15 @@ Both work only on the workspace's own data. Neither uses GoHighLevel.
 | Area | Code |
 |---|---|
 | Reviews service | `src/server/crm/reviews.ts` |
+| Low-feedback follow-up, settings, reminders, erasure | `src/server/reputation/` (`feedback.ts`, `settings.ts`, `jobs.ts`, `erasure.ts`, `task-link.ts`) and the pure rules in `src/lib/reputation/` |
+| Surveys: scores, the Satisfaction view, program links, survey forms | `src/lib/reputation/` (`scores.ts`, `satisfaction.ts`, `incentives.ts`), `src/server/reputation/` (`analytics.ts`, `program-link.ts`, `survey-feedback.ts`), `src/lib/retention.ts`, `src/server/retention/engine.ts`, `src/lib/crm/forms/` (`spec.ts`, `mapping.ts`), `src/server/crm/forms/process.ts` |
 | Calls service | `src/server/crm/calls.ts` |
 | Voice adapters | `src/server/integrations/voice/` (`vapi.ts`, `retell.ts`, `types.ts`, `handler.ts`) |
 | Webhook routes | `/api/webhooks/vapi`, `/api/webhooks/retell` |
 | Customer page | `/r/<token>`, which posts to `/api/public/reviews/feedback` and `/api/public/reviews/click` |
 | Screens | CRM → Growth → **Reviews** (`/crm/reviews`) and **Calls** (`/crm/calls`); the **Calls** tab on a contact; agency mirror `/admin/clients/<id>/crm/reviews` and `/calls` |
-| Workflow step | **Request a review** (`request_review`) |
-| Tests | `tests/crm-reviews.test.ts`, `tests/crm-calls.test.ts` |
+| Workflow step and triggers | **Request a review** (`request_review`, optionally a survey); triggers `feedback.escalated` and `review.external_received` |
+| Tests | `tests/crm-reviews.test.ts`, `tests/crm-calls.test.ts`, `tests/reputation-*.test.ts` |
 
 ## Reviews
 
@@ -37,6 +39,10 @@ Both work only on the workspace's own data. Neither uses GoHighLevel.
    - A request is a service message (`purpose: service`), sent through the same gated outbound path as every message (`evaluateSend` / `queueOutbound`).
    - It is **refused with the reason** unless the contact has *granted* service consent on that channel. "Unknown" is not enough.
    - Opt-outs, quiet hours, the program-message frequency limit (`scope: retention`), the channel being enabled, and credits are all checked by the send path.
+5. **Nothing is offered in return, and no rating is asked for.**
+   - Wording that carries the customer's review link may not offer anything for feedback or a review (a discount, a coupon, a free item, a gift, a reward, "in exchange", "off your next") or ask for a particular rating ("a 5-star review", "a positive review"). `reviewIncentiveFindings` (`src/lib/reputation/incentives.ts`) **blocks**, it does not warn.
+   - It is applied where wording is made and where it is sent: a template with the link can't be saved or approved with such words (`validateTemplate`), a retention program step with the feedback link can't be saved or switched on, and a request is refused (`incentive_wording`) if wording that got in some other way reaches `prepareRequest` or the program step.
+   - The word list is deliberately blunt and is a proposal for counsel to confirm. It does not mistake "feel free to reply" or "hassle-free" for an offer.
 
 ### Review links (`crm_review_destinations`)
 
@@ -60,22 +66,24 @@ Both work only on the workspace's own data. Neither uses GoHighLevel.
 **Before anything is created**, the request is refused (with the reason) when any of these apply:
 - The template doesn't contain `{{review.link}}`.
 - The template's purpose is marketing.
-- No review link is switched on.
+- The template's wording offers something in return for feedback or a review, or asks for a particular rating (rule 5).
+- No review link is switched on. (A **survey** may be sent to a business with no review link yet: its page then shows only the questions.)
 - The contact is archived.
 - The contact has no address on the template's channel.
 - The address is suppressed.
 - Consent is not granted.
-- The contact was asked in the last **30 days**, on any channel. Requests that never reached them don't count: cancelled ones, and ones whose message failed or was blocked.
+- The contact was asked in the last **30 days**, on any channel, by anything: a person, a workflow, a retention program, a review request or a survey. Requests that never reached them don't count: cancelled ones, and ones whose message failed or was blocked.
+- The ask is **automatic** (a workflow, a program or the API) and a person on the team excluded the contact from automatic messages (`contacts.retention_paused`, set on the Retention page, for example during a dispute). This is that person's explicit choice: nothing sets it from a rating, a comment or a complaint. A person pressing Send is not stopped by it. Each stopped ask is audited (`crm.review_request_held`).
 
 **Preview.** The request dialog runs the same checks first (`previewReviewRequest`). It shows:
 - the exact message, with `[review link]` where the customer's link goes
 - each check, with whether it passed
 
 **Token.**
-- 32 random bytes, base64url, 43 characters.
+- 43 characters, base64url. It is derived from the request's id with a server key (HMAC-SHA256 over a key made from `APP_ENCRYPTION_KEY`), so it is never stored and the same request always yields the same link. Links made with a retired key (`APP_ENCRYPTION_KEY_PREVIOUS`) still match.
 - Only its **sha256** is stored (`crm_review_requests.token_hash`). The application role can't read that column.
-- The link `<APP_URL>/r/<token>` is rendered into the message when it is queued.
-- The message body therefore contains the link. Every place that shows message text to the team masks it as `[customer review link]` (`maskCustomerLinks` in `src/server/messaging/redact.ts`). That covers the inbox, the timeline, AI tools and exports.
+- The queued message does **not** contain the link. It keeps the placeholder `{{review.link}}`. The dispatcher derives the token again, checks it against the stored hash, and puts `<APP_URL>/r/<token>` into the text for the provider call only (`reviewLinkForMessage`, called from `src/server/messaging/send.ts`).
+- So `conversation_messages.body` never holds a working link. Everywhere the team reads message text the placeholder (and any `/r/<token>` link) is shown as `[customer review link]` (`maskCustomerLinks` in `src/server/messaging/redact.ts`): the inbox, the timeline, AI tools and exports. A queued message whose request is gone or cancelled is blocked (`review_link_unavailable`) instead of being sent with a raw placeholder.
 
 **How the message is queued.**
 - A `system` send acting on the person's decision, or on the owner's approval of a workflow version. It never goes through the AI gate.
@@ -102,9 +110,11 @@ Both work only on the workspace's own data. Neither uses GoHighLevel.
    - redirects to the URL from the business's own list, by id. It never redirects to a URL taken from the request.
    - sends `Referrer-Policy: no-referrer`, so the review site never sees the private address
 2. **Send private feedback.**
-   - an optional 1–5 rating and an optional comment (at most 2,000 characters, control characters removed)
-   - at least one of the two is required
+   - an optional score and an optional comment (at most 2,000 characters, control characters removed). The score is **1–5** ("How was your experience?") or, on a request made with the zero-to-ten scale, **0–10** ("How likely are you to recommend X to a friend or colleague?", with only the two ends named). Both are plain radio buttons with the same field name; **the request decides which scale applies**, never the form, so a posted 7 on a one-to-five request is refused
+   - at least one of the two is required (a 0 is an answer, not "nothing chosen")
    - posted to `/api/public/reviews/feedback`
+
+The public-links panel is left out in exactly one case: a **survey** (below) for a business that has no active review link at all. Nothing else removes or reorders it, whatever the answer.
 
 **Other behaviour:**
 - Works without JavaScript.
@@ -113,13 +123,75 @@ Both work only on the workspace's own data. Neither uses GoHighLevel.
 - Rate-limited per token: 60 page views, 10 feedback posts and 60 clicks an hour.
 - The proxy allows `/r/` without sign-in.
 
-**Escalation.** A rating of **2 or less**:
-- creates a high-priority task due in one day, for the contact's owner (or unassigned)
-- includes the comment in the task
-- sets `customer_feedback.follow_up_status = 'escalated'` and `escalated_task_id`
-- notifies the owner and managers
+**Low feedback and the follow-up.** Feedback is **low** when its rating is at or below the workspace's level (2 of 5 by default; owners and managers can choose 1 to 3 under CRM → Reviews → Settings), when its recommend score is at or below the workspace's detractor level (6 of 10 by default; owners and managers can choose 4 to 7 in the same place), or when it is a comment with no rating that plainly raises a complaint (the same blunt words the inbox acts on; "no complaints at all" does not count). Whether it was low is decided when it arrives and stored (`customer_feedback.low_score`), so changing the level later never rewrites history. A comment next to a rating is judged by the rating alone. Low feedback **adds** a private follow-up, in one transaction with the feedback itself:
+- a high-priority task for the contact's owner (or unassigned), due when the acknowledgement time ends (24 hours by default), with the comment in the task (tasks are read inside the portal)
+- `customer_feedback.follow_up_status = 'escalated'`, `escalated_task_id` and `escalation_id`
+- a notice to the owner and managers with the customer's name and score, never their words (notices can be emailed)
+- an inbox escalation (`human_escalations`, category complaint, urgent) in the conversation the review request lives in, reopened if it was resolved or archived. The summary holds the score, never the customer's words. The escalation's emails are sent only after the transaction commits. If raising it fails, the task and notice still exist and the failure is audited (`crm.feedback_escalation_failed`)
+- the customer's remaining **automatic retention program messages stop** (reason `negative_feedback`), so an unhappy customer is not sent a cheerful check-in the next day. This stops program messages only
+- a `feedback.escalated` event (no rating, no comment in its payload) and a timeline entry
 
-It changes nothing the customer sees.
+It changes nothing the customer sees, except that the thank-you says a person will follow up privately. The public review links, their order and the wording around them are identical for every rating (tests/reputation-feedback.test.ts compares the page for a 1 and a 5). Who is asked for a review never depends on a rating, a comment, an escalation or a feedback status (tests/reputation-gating-guard.test.ts).
+
+**Acknowledging and resolving.** Owners and managers, and the person the follow-up task is assigned to, mark feedback acknowledged or resolved; who and when are recorded. Finishing the follow-up task resolves the feedback by itself. If nobody has acknowledged low feedback within the workspace's time, the scheduler's `feedbackSla` job reminds the owner, the managers and the task's assignee **once** (not when someone acknowledged or resolved it, finished its task, or took its inbox escalation; items older than 14 days are left alone).
+
+### Surveys: CSAT and NPS
+
+**Dormant until switched on.** Everything in this section that is new (a request of kind survey, the Satisfaction view, a program's feedback link, a survey form's answers saved as private feedback, the survey mode of the workflow step, the check-in template) is off in every workspace until a Super Admin switches it on: `org_features`, feature `reputation_surveys`; no row means off (`src/server/reputation/entitlement.ts`, one seam, no price: where surveys sit relative to the implementation fee and the monthly plan is the founder's decision). Off, a survey is refused with the reason in the preview and when sending, a program can't be saved or approved with the link (and a step that was approved earlier is held back with `surveys_not_enabled`), a survey form can't be published with a feedback question (and answers to one published earlier are kept with the submission, not saved as feedback, with a note), the workflow step can't be published in survey mode (and a published one is skipped with the same reason), and the Reviews screen shows no Satisfaction tab and no survey choice. Review requests, the page for a request that already exists, private feedback and its follow-up do not depend on the switch, and turning it off never withdraws or hides an answer a customer already gave.
+
+A request has a **kind**: a *review request* (the default) or a *satisfaction survey*, and a **scale**: one to five (`csat5`) or zero to ten (`nps10`). Both are columns of `crm_review_requests` (migration 0094), chosen in the request dialog or on the workflow step, and both use exactly the same page, template mechanism (`{{review.link}}`), send path, consent rules, 30-day cool-down and low-feedback follow-up. A survey is a review request whose question is the point.
+
+**Answers** are stored in `customer_feedback`: a one-to-five answer in `rating`, a zero-to-ten answer in `nps_score` (never both), with `scale`. A low answer is decided on arrival from the workspace's settings and stored (`low_score`).
+
+**Scores** (`src/lib/reputation/scores.ts`, shown under CRM → Reviews → **Satisfaction**):
+- **CSAT** is the share of answers that are 4 or 5, and the average.
+- **NPS** is the share of promoters (9–10) minus the share of detractors (0–6). These are the standard groups, whatever follow-up level the workspace chose.
+- **A score is shown only for enough answers**: 10 on the one-to-five scale, 30 on the zero-to-ten scale (proposals; the owner of the product confirms them). Below that the screen says how many answers there are and how many are needed, never a number. The same gate applies to the whole period, to each week, and to each appointment type and calendar.
+- Answers a customer gave through their own link, or in a survey form that knew who they were, are one group. Answers to an **anonymous** survey form are reported on their own and are not mixed in. Feedback recorded by hand (the Retention page) or imported is counted and **never scored**, because it is not the customer's own answer on a scale.
+- The view also shows the share of sent requests that got an answer (review requests and surveys apart; a percentage only for enough requests), a weekly trend (weeks start on the workspace's own Monday), and how the team is doing with low feedback (open, past the acknowledgement time, and a typical time to acknowledge once there are 5 examples).
+
+### Retention programs that carry the link
+
+The "Ask for feedback" and "Follow up after an appointment" programs (both service messages) can put the customer's own private link in a message with `{feedback_link}`. The standard wording of every program has no link; nothing changes until an owner or manager edits the wording and the **owner approves the new words** (the approval is bound to a hash of the exact wording, so changing the text around the link withdraws it, as for any program). `{feedback_link}` is refused in every other program, in promotional messages, more than once in a message, and next to an offer (rule 5).
+
+When such a step comes due (`src/server/reputation/program-link.ts`, called from `prepareDueSteps`):
+- **Channel.** It goes only by a channel the customer agreed to service messages on (consent exactly *granted*, not merely allowed by the send rules), to an address that has not opted out, preferring the channel they wrote on lately. With no such channel the step is held back with a reason (`link_needs_consent`, `no_contact_channel`); if an address opted out and no other channel was agreed to, the customer's program ends (`suppressed`).
+- **Cool-down.** Nobody who was asked for a review or a survey in the last 30 days (by anyone) gets a second link: the step is held back (`recently_requested`) and the rest of the program carries on.
+- **The request exists with the message.** The request (kind survey, scale one to five, `requested_via = 'program'`, the attended appointment attached) is created in the same transaction as the queued message, so the message can never be dispatched without its link. A message the send path refuses leaves nothing behind. The stored message keeps `{{review.link}}`; the link is put in for the provider call only, as for every request.
+- **Withdrawing.** When a queued message is withdrawn (the customer replied, a person excluded them, low feedback came in, the program was switched off), its request is cancelled with it and the link stops taking answers.
+- **A person's hold.** Customers excluded by a person (`retention_paused`) are not enrolled, and their planned messages are cancelled; the exclusion is audited with the reason given.
+- The shared frequency limit applies as to every program message: a second program message for the same customer waits out the minimum spacing, and a step stopped by the limit is shown as held back by the limit, not as not sent.
+
+### Surveys built as forms
+
+A native form of kind *survey* can save its answers as private feedback. The question editor offers, under "Private feedback (surveys only)": **rating from 1 to 5**, **how likely to recommend, 0 to 10**, and **comment**. A number question must accept exactly the scale's whole numbers (smallest and largest set, whole numbers only), and a choice question's choices must have stored values that are those numbers; only one score per survey. A form that is not a survey can't be published with one.
+
+When the scheduler processes a submission (`processSubmissionInTx`), the feedback is saved once per submission (`customer_feedback.form_submission_id`, unique):
+- **A survey that asked for an email or phone** and matched or made a contact attributes the answer to that contact and, if it is low, opens the same follow-up as a link (task, notice, `feedback.escalated`, the customer's program messages stop). A form identifies people only by what they typed, so the task says to check it is really them. There is no conversation to escalate in, so there is no inbox escalation.
+- **A survey that asked for nothing identifying** stores the answer attached to no one. It is counted and flagged as low, appears in the private feedback list as "No name attached", and is reported apart in the Satisfaction view. Nobody is told to follow up with no one.
+
+### Batches: asking many customers at once
+
+**Dormant until switched on.** `org_features`, feature `reputation_batches` (one seam in `src/server/reputation/entitlement.ts`, no price). Off, a batch can't be made, prepared, approved or resumed and the scheduler does not touch one; a workspace that already has batches keeps seeing them (and can pause or cancel them). Nothing in this section has run against a real provider; the scheduler has never run in production, and the job `reviewRequestBatches` does nothing until a staged start names it.
+
+**Who is in a batch (rule 2).** Only customers a service was **completed** for, in a window of up to 366 days that has already happened (a day in the workspace's own time zone): *appointments marked attended* (optionally only some calendars or appointment types), *deals marked won* (optionally one pipeline) or *customers since* a date. Each customer appears once, with the most recent such service attached to their request. The criteria are a strict object of six keys (`source`, `from`, `to`, `calendarIds`, `appointmentTypeIds`, `pipelineId`); any other key is refused by name, and the column's check constraint repeats the list, so no rating, score, comment, status, escalation or tag can be stored as a way to choose people. `tests/reputation-gating-guard.test.ts` reads every batch file whole to keep it so.
+
+**Who is then left out**, by the first rule that applies, in the order the send path checks them: no address on the channel, opted out or bounced, consent withdrawn, no consent exactly *granted* for service messages on that channel, asked in the last 30 days (by anyone), or a person's own hold on automatic messages (`contacts.retention_paused`). The preview counts them by reason and names some; each is checked again, by `queueReviewRequestInTx` itself, when it is their turn (`tests/reputation-batches.test.ts` keeps the preview and the single request in step). Each customer a hold keeps out is audited (`crm.review_request_held`, which the Reviews numbers count) and shown as *held back by a person*; a person pressing Send is not stopped by it.
+
+**Approval.** Owners and managers prepare a batch (draft). The preview shows who would be asked, who would not and why, and the message as the first customer would get it. A manager asks the owner; **only the owner approves** (`campaigns.send`, in the client's own workspace; iAcquire support can look, never prepare or approve). The approval is a hash (`approved_hash`) of the template's approved wording and version, the criteria, the channel, the kind and scale, the pace and the business details the wording uses, plus the stored binding that explains a change. It is recorded as a standing authorization that lapses after 14 days. Approving sends nothing.
+
+**Pace and sending.** The scheduler starts an approved batch: it re-checks the approval (still standing, approver still the owner, nothing in the hash changed), reads the people once and records each as waiting or left out, then asks at most `rate_per_minute` (1 to 60, default 10) in any minute, each in its own transaction through the ordinary review request (consent, opt-outs, cool-down, hold, quiet hours, frequency limit, credits), with the message dedupe key `batch:<batch>:<customer>`. The pace is spent inside the batch's row lock, so two turns at once share it. A customer's own address, consent or hold leaves just that customer out; credits, the budget, the channel, a missing public review link or surveys switched off **pause** the batch for a person; an approved wording that can no longer be sent, or any change to what the owner approved, **stops** it for good (queued messages not yet sent are stopped, their requests cancelled, the approval withdrawn; copy the batch to start again). A paused workspace holds the batch and what it queued. A batch finishes when nobody is waiting.
+
+**Pause, resume, cancel.** A person's pause holds what was queued and not sent; resuming lets it go and re-checks the approval. Cancelling (or closing the workspace) stops what was not sent and asks nobody else; messages already sent stay sent.
+
+**What it does not do.** No scheduling for later (approval starts it), no customer-facing text beyond the template, no result counted against how people answered (the batch reports sent, opened and not sent from the requests and messages), no AI.
+
+### Automation Studio
+
+- **Request a review** step: *a request for a review* (default; nothing new is stored, so versions published earlier keep their exact content) or *a short satisfaction survey* (`mode: "survey"`, with `scale: "csat5"` or `"nps10"`).
+- **Trigger `feedback.escalated`** ("Low private feedback needs a follow-up"): fires once per piece of low feedback, with the customer and no rating or comment. A workflow it starts may notify people and create tasks. It **may not contain a request-a-review step (either mode) or a message whose approved wording carries `{{review.link}}`**: who is asked never depends on how they felt (checked when a workflow is saved and published). It has no filters.
+- **Trigger `review.external_received`** ("New public review"): defined, with no contact and no filters, for the day a review site is connected. Nothing starts it today.
+- **Template "Check in after a visit, then ask how it went"**: a day after someone is marked as having attended, an approved check-in message; three days later, an approved survey message with the survey link.
 
 ### Statuses and reporting
 
@@ -135,14 +207,15 @@ This means no background job is needed to copy delivery updates across.
 
 **Reports** (CRM → Reviews):
 - **Requests:** created, waiting, sent, opened, opened a review site, gave feedback, not sent. All for requests created in the period (7, 30, 90 days or 12 months).
-- **Private feedback:** count, average rating, ratings by score, low ratings, and how many still need a follow-up.
+- **Private feedback:** count, average rating (one to five answers only), the number of recommend scores, ratings by score, low answers, and how many still need a follow-up.
+- **Satisfaction** (own tab): CSAT and NPS with sample gates, response rates, weekly trend, by appointment type and calendar, anonymous survey answers apart, and the team's follow-up (see "Surveys: CSAT and NPS").
 - **Review sites opened, by site:** counted from `review.link_clicked` timeline entries.
 
 **Caveats shown on screen:**
 - "Opened" counts link opens. Email security scanners also open links.
 - "Opened a review site" doesn't mean a review was posted.
 
-Owners and managers mark feedback **new**, **acknowledged** or **resolved**. **Escalated** is set by the escalation itself.
+Owners and managers (and the assignee of the follow-up task) mark feedback **new**, **acknowledged** or **resolved**. **Escalated** is set by the escalation itself.
 
 ### Google Business Profile: **Blocked**
 
@@ -358,7 +431,9 @@ The call completes at once: `call.completed` is emitted and a `call.logged` time
 |---|---|
 | See Reviews (links, requests, feedback, numbers) | `contacts.view` (every client role; agency read sessions) |
 | Manage review links, send and cancel requests | `reviews.manage` (owners and managers, delegable), client members only |
-| Mark feedback acknowledged or resolved | `reviews.manage` (agency write sessions included) |
+| Mark feedback acknowledged or resolved | `reviews.manage` (agency write sessions included), or being the person the feedback's follow-up task is assigned to |
+| Change the reputation settings (low-feedback level, acknowledgement time, optional assists) | `reviews.manage`, client members only |
+| `reviews.view`, `reviews.respond`, `reviews.reply_publish` | Defined for the public-review features that come next (reading, drafting and approving replies); nothing uses them for private feedback yet. `reviews.reply_publish` is the client's owner and manager only: the agency never approves or posts a reply |
 | See calls and connection status | `calls.view` (everyone who works with customers; not read-only viewers, because calls can carry recording links) |
 | Log calls, add notes, link a call to a contact | `calls.view` + `contacts.edit` |
 | Create a follow-up task from a call | `calls.view` + `tasks.manage` |
@@ -403,8 +478,7 @@ These are in the outbox, so the dispatcher hands them to subscribers, and both c
 - **Google Business Profile:** Blocked (see above).
 - **Automatic follow-ups for provider calls:** there is no built-in follow-up per connection. A workflow does it: "Call ended", narrowed to
   incoming calls that ended as No answer, Busy or Voicemail, with a "Create task" step.
-- **The link is stored in the message:** the review link is rendered into the queued message, so `conversation_messages.body` holds it. It is masked everywhere the team reads message text.
-  - Filling it in only at dispatch, as appointment manage links are, would need a change to `src/server/messaging/send.ts`.
+- **The link is not stored in the message:** the queued message holds `{{review.link}}` and the link is filled in at dispatch, for the provider call only (see "Token" above). The provider and the customer's own phone or inbox hold the working link; nothing the team can read does.
 - **Template previews:** the template editor previews `{{review.link}}` as the labelled sample link (sample values) or as `[review link]`
   (a real contact). Only a real review request has a value for it: any other send of such a template is refused as missing a value.
 - **Asking from a contact:** the contact profile's "Request a review" (owners and managers of the client's own workspace) opens

@@ -3,7 +3,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import { renderEmail } from "@/server/email-render";
 
-export type EmailTemplate = "invitation" | "verify_email" | "password_reset" | "support_reply" | "staff_invitation" | "setup_update" | "escalation_alert" | "notification";
+export type EmailTemplate = "invitation" | "verify_email" | "password_reset" | "support_reply" | "staff_invitation" | "setup_update" | "escalation_alert" | "notification" | "proposal_code";
 
 export interface OutgoingEmail {
   to: string;

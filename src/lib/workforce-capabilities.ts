@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review" | "social_performance_review";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review" | "social_performance_review" | "receivables_review";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -124,6 +124,16 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "social.view",
     risk: "read_only",
     produces: "Findings about failed or unconfirmed posts, approvals waiting, accounts that need reconnecting and, only with enough returned numbers, which post types or weekdays did better; plus tracked leads, each with a link.",
+    workBoardAction: true,
+  },
+  receivables_review: {
+    key: "receivables_review",
+    label: "Receivables review",
+    description: "Read issued customer invoices, the payments and refunds recorded against them, the payment provider's deliveries and the payment account's connection, then say which unpaid invoices are overdue and which payments need a person. It never issues, sends, voids, records or refunds anything, and never contacts a customer or a payment provider.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "invoices.view",
+    risk: "read_only",
+    produces: "Findings about overdue invoices, failed or held payments, deliveries that were not applied, a payment account that needs attention, reminders on hold and reminders that could not be sent, each with a link; plus counts of open, overdue and recently paid invoices.",
     workBoardAction: true,
   },
   performance_snapshot: {

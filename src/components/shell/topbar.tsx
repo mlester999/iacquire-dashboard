@@ -36,6 +36,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/leads/, "Leads"],
   [/^\/appointments/, "Appointments"],
   [/^\/sales/, "Sales Pipeline"],
+  [/^\/proposals/, "Proposals"],
   [/^\/retention/, "Customer Retention"],
   [/^\/analytics/, "Analytics"],
   [/^\/approvals/, "Approval Center"],
@@ -99,7 +100,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [search, setSearch] = React.useState("");
   const { resolved, setTheme } = useTheme();
   const title = TITLES.find(([re]) => re.test(pathname))?.[1] ?? "iAcquire";
-  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && n.label.toLowerCase().includes(search.toLowerCase()));
+  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && !(n.feature && !(shell.features ?? []).includes(n.feature)) && n.label.toLowerCase().includes(search.toLowerCase()));
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setNavigationOpen((s) => !s); } };
     document.addEventListener("keydown", key);

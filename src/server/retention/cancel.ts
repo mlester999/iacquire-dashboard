@@ -3,6 +3,15 @@ import type { Queryable } from "@/server/db";
 import { releaseReservation } from "@/server/billing/ledger";
 
 /**
+ * A message withdrawn before it went out takes its private feedback link with it: the customer never received the link, so the request behind it is cancelled and stops taking
+ * answers. A message with no request (every plain program message) changes nothing here.
+ */
+export async function cancelLinkRequests(db: Queryable, orgId: string, messageIds: string[]): Promise<void> {
+  if (!messageIds.length) return;
+  await db.query("update crm_review_requests set status = 'cancelled' where org_id = $1 and message_id = any($2::uuid[]) and status in ('pending', 'queued')", [orgId, messageIds]);
+}
+
+/**
  * Stops a customer's program messages that have not gone out yet: the steps still waiting, and any message already queued or held
  * for approval. Called from the same place that stops sales follow-ups, so one stop condition (the customer replied, opted out, a
  * person took over, messaging was paused) ends both.
@@ -27,6 +36,7 @@ export async function cancelRetention(db: Queryable, orgId: string, contactId: s
     [orgId, ids, reason.slice(0, 60)],
   );
   for (const m of pending.rows) if (m.reservation_id) await releaseReservation(db, { orgId, reservationId: m.reservation_id, reason: `Stopped: ${reason}` });
+  await cancelLinkRequests(db, orgId, pending.rows.map((m) => m.id));
   await db.query("update retention_steps set status = 'cancelled', reason = $3 where org_id = $1 and enrollment_id = any($2::uuid[]) and status = 'queued' and message_id = any($4::uuid[])", [orgId, ids, reason.slice(0, 200), pending.rows.map((m) => m.id)]);
   return { enrollments: ids.length, messages: pending.rows.length };
 }

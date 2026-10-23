@@ -62,10 +62,12 @@ const requestSchema = z.object({
   templateId: uuid,
   contentHash: z.string().regex(/^[0-9a-f]{64}$/, { error: "Choose an approved template." }),
   businessHoursOnly: z.boolean().optional(),
+  kind: z.enum(["review", "survey"]).optional(),
+  scale: z.enum(["csat5", "nps10"]).optional(),
 });
 
-export async function previewReviewRequestAction(orgId: string | null, input: { contactId: string; templateId: string }) {
-  return act(orgId, "reviews.manage", (actor) => previewReviewRequest(actor, { contactId: uuid.parse(input.contactId), templateId: uuid.parse(input.templateId) }), { refresh: false });
+export async function previewReviewRequestAction(orgId: string | null, input: { contactId: string; templateId: string; kind?: "review" | "survey" }) {
+  return act(orgId, "reviews.manage", (actor) => previewReviewRequest(actor, { contactId: uuid.parse(input.contactId), templateId: uuid.parse(input.templateId), kind: z.enum(["review", "survey"]).optional().parse(input.kind) }), { refresh: false });
 }
 
 export async function requestReviewAction(orgId: string | null, input: z.input<typeof requestSchema>) {
@@ -76,6 +78,7 @@ export async function cancelReviewRequestAction(orgId: string | null, id: string
   return act(orgId, "reviews.manage", (actor) => cancelReviewRequest(actor, uuid.parse(id)));
 }
 
-export async function setFeedbackFollowUpAction(orgId: string | null, id: string, status: "new" | "acknowledged" | "resolved") {
-  return act(orgId, "reviews.manage", (actor) => setFeedbackFollowUp(actor, uuid.parse(id), z.enum(["new", "acknowledged", "resolved"]).parse(status)));
+// Opened to everyone who can see contacts: the service decides who may change this piece of feedback (owners and managers, or the person its follow-up task is assigned to).
+export async function setFeedbackFollowUpAction(orgId: string | null, id: string, status: "new" | "acknowledged" | "resolved", note?: string | null) {
+  return act(orgId, "contacts.view", (actor) => setFeedbackFollowUp(actor, uuid.parse(id), z.enum(["new", "acknowledged", "resolved"]).parse(status), z.string().max(600).nullish().parse(note)));
 }

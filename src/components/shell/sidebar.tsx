@@ -4,7 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
+import { FileText, Receipt, Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
 import { AvatarTile } from "@/components/ui/status";
@@ -14,13 +14,15 @@ import { useShell } from "@/components/shell/shell-context";
 import { aqiNavTarget } from "@/lib/aqi/targets";
 import type { Permission } from "@/lib/permissions";
 
-interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox" | "requests"; tour?: string; /** Belongs to a client's workspace only: not offered in an agency workspace (the pages and actions refuse there too). */ clientOnly?: boolean; /** Overrides the default "this path or anything under it" test for the active indicator. */ match?: (pathname: string) => boolean; }
+interface NavItem { href: string; label: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; badge?: "approvals" | "projects" | "inbox" | "requests"; tour?: string; /** Belongs to a client's workspace only: not offered in an agency workspace (the pages and actions refuse there too). */ clientOnly?: boolean; /** A module a Super Admin switches on per workspace (an org_features name): not offered until it is on. The pages and actions check the switch again. */ feature?: string;/** Overrides the default "this path or anything under it" test for the active indicator. */ match?: (pathname: string) => boolean; }
 const MAIN: NavItem[] = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard, tour: "overview" },
   { href: "/inbox", label: "Inbox", icon: InboxIcon, permission: "inbox.view", badge: "inbox" },
   { href: "/leads", label: "Leads", icon: Radar, permission: "leads.view" },
   { href: "/appointments", label: "Appointments", icon: CalendarDays, permission: "appointments.view" },
   { href: "/sales", label: "Sales Pipeline", icon: KanbanSquare, permission: "sales.view" },
+  { href: "/proposals", label: "Proposals", icon: FileText, permission: "proposals.view", clientOnly: true, feature: "proposals" },
+  { href: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices.view", clientOnly: true, feature: "invoices" },
   { href: "/retention", label: "Customer Retention", icon: HeartHandshake, permission: "retention.view" },
   { href: "/analytics", label: "Analytics", icon: BarChart3, permission: "analytics.view" },
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals.view", badge: "approvals", tour: "approvals" },
@@ -100,7 +102,7 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
   const [crmOpen, setCrmOpen] = React.useState(true);
   const crmMode = shell.crmMode;
   // Native CRM pipelines replace the GoHighLevel pipeline view; a hybrid workspace keeps both while it migrates.
-  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native") && !(i.clientOnly && shell.org.kind !== "client");
+  const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native") && !(i.clientOnly && shell.org.kind !== "client") && !(i.feature && !(shell.features ?? []).includes(i.feature));
   // Automation Studio builds on the iAcquire workflow engine, so it is offered wherever that engine runs (not in a GoHighLevel-only workspace).
   const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar" || i.href === "/automation-studio") && crmMode === "ghl"));
   // "All CRM tools" is highlighted only for CRM pages that have no entry of their own here.

@@ -122,6 +122,13 @@ export const CRM_QA_ENV = {
   META_SOCIAL_APP_SECRET: "",
   META_GRAPH_VERSION: "",
   META_SOCIAL_WRITES_ENABLED: "false",
+  // Public reviews: no review site is approved or reachable. The simulated stand-in is what QA uses.
+  GOOGLE_BUSINESS_API_APPROVED: "false",
+  GOOGLE_BUSINESS_CLIENT_ID: "",
+  GOOGLE_BUSINESS_CLIENT_SECRET: "",
+  GOOGLE_BUSINESS_REPLIES_ENABLED: "false",
+  META_REVIEWS_ENABLED: "false",
+  META_REVIEWS_REPLIES_ENABLED: "false",
   CALENDAR_SYNC_INTERVAL_MINUTES: "10",
   CALENDAR_ICS_POLL_MINUTES: "30",
 
@@ -137,6 +144,14 @@ export const CRM_QA_ENV = {
   // exported INBOX_DISABLED=true for a rollout rehearsal, or an env file that names it, cannot change what a browser run is looking at (it would otherwise show
   // the previous inbox everywhere and answer 503 on /api/inbox/*, and the run could be recorded as having verified the new inbox).
   INBOX_DISABLED: "false",
+  // The same for the public website chat: its global switch is pinned off and its daily AI reply cap is the default, so a stray value in the shell cannot make a run
+  // look at a chat that answers 503 or stops answering after a few replies.
+  WEBCHAT_PUBLIC_DISABLED: "false",
+  WEBCHAT_DAILY_AI_REPLIES: "",
+  // And for the customer's proposal pages: the global switch is pinned off so a run never looks at a page that answers "temporarily unavailable".
+  PROPOSALS_PUBLIC_DISABLED: "false",
+  // Electronic signatures: no real signing service is ever reached in a QA run; the simulated one is what QA uses.
+  ESIGN_WRITES_ENABLED: "false",
 };
 
 /** Variables that must stay empty: hosted database, Supabase, and every provider secret, key and URL. */
@@ -148,13 +163,13 @@ export const MUST_BE_BLANK = [
   "LLM_BASE_URL", "LLM_API_KEY", "N8N_BASE_URL", "N8N_API_KEY", "SLACK_SUPPORT_WEBHOOK_URL",
   "PAYMONGO_SECRET_KEY", "PAYMONGO_WEBHOOK_SECRET",
   "GOOGLE_CALENDAR_CLIENT_ID", "GOOGLE_CALENDAR_CLIENT_SECRET", "MICROSOFT_CALENDAR_CLIENT_ID", "MICROSOFT_CALENDAR_CLIENT_SECRET",
-  "META_SOCIAL_APP_ID", "META_SOCIAL_APP_SECRET",
+  "META_SOCIAL_APP_ID", "META_SOCIAL_APP_SECRET", "GOOGLE_BUSINESS_CLIENT_ID", "GOOGLE_BUSINESS_CLIENT_SECRET",
   "SITES_CNAME_TARGET", "SITES_PROBE_ORIGIN",
 ];
 
 /** Kill switches that must stay off. */
 export const MUST_BE_FALSE = [
-  "GHL_WRITES_ENABLED", "RESEND_WRITES_ENABLED", "TWILIO_WRITES_ENABLED", "META_WHATSAPP_WRITES_ENABLED", "META_SOCIAL_WRITES_ENABLED", "N8N_ACTIONS_ENABLED",
+  "GHL_WRITES_ENABLED", "RESEND_WRITES_ENABLED", "TWILIO_WRITES_ENABLED", "META_WHATSAPP_WRITES_ENABLED", "META_SOCIAL_WRITES_ENABLED", "GOOGLE_BUSINESS_API_APPROVED", "GOOGLE_BUSINESS_REPLIES_ENABLED", "META_REVIEWS_ENABLED", "META_REVIEWS_REPLIES_ENABLED", "N8N_ACTIONS_ENABLED", "ESIGN_WRITES_ENABLED",
   "OFFBOARDING_PURGE_ENABLED", "ALLOW_INSECURE_HERMES_URLS", "ALLOW_LEGACY_CREDENTIAL_READS",
 ];
 

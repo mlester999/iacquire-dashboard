@@ -1,6 +1,10 @@
 import "server-only";
 import { eraseRecoveryAndScoring } from "@/server/missed-calls/erasure";
 import { eraseWebChatAndAttribution } from "@/server/webchat/retention";
+import { eraseReputationRecords } from "@/server/reputation/erasure";
+import { eraseInvoiceCustomerDetails } from "@/server/invoices/erasure";
+import { eraseProposalsForContact } from "@/server/proposals/erase";
+import { cancelRetention } from "@/server/retention/cancel";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -225,16 +229,33 @@ export async function mergeContactsInTx(db: Queryable, who: Principal | OrgConte
 }
 
 /**
- * References to a contact from records added by later CRM phases (opportunities, tasks, bookings). Each statement only runs when its
- * column exists, so this stays correct as the schema grows.
+ * References to a contact from records added by later CRM phases (opportunities, tasks, review requests, private feedback, call records). Each statement only runs when
+ * its column exists, so this stays correct as the schema grows. Every name below is a real table with a contact_id column (tests/reputation-contacts.test.ts keeps it so).
  */
+export const MOVED_CONTACT_TABLES = ["crm_opportunities", "tasks", "crm_review_requests", "customer_feedback", "crm_form_submissions", "crm_call_records", "crm_campaign_recipients", "customer_invoices"] as const;
+
 async function moveContactReferences(db: Queryable, orgId: string, fromId: string, toId: string) {
   const { rows } = await db.query<{ table_name: string }>(
     `select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'contact_id' and table_name = any($1::text[])`,
-    [["crm_opportunities", "tasks", "crm_bookings", "crm_call_logs", "crm_review_requests", "crm_form_submissions", "crm_sequence_enrollments", "crm_campaign_recipients"]],
+    [[...MOVED_CONTACT_TABLES]],
   );
   for (const r of rows) await db.query(`update "${r.table_name}" set contact_id = $3 where org_id = $1 and contact_id = $2`, [orgId, fromId, toId]);
+  await moveRetentionEnrollments(db, orgId, fromId, toId);
+}
+
+/**
+ * Retention program enrollments follow the person, with two guards. The merged record's still-running programs are cancelled (the kept record keeps its own), so the same
+ * customer never gets a program twice; and an enrollment the kept record already has for the same program and cause (an enrollment is unique per program, contact and cause)
+ * stays behind on the merged record instead of colliding. What moves is history the kept record's activity list should show.
+ */
+async function moveRetentionEnrollments(db: Queryable, orgId: string, fromId: string, toId: string) {
+  await cancelRetention(db, orgId, fromId, "contact_merged");
+  await db.query(
+    `update retention_enrollments e set contact_id = $3 where e.org_id = $1 and e.contact_id = $2
+       and not exists (select 1 from retention_enrollments k where k.program_id = e.program_id and k.contact_id = $3 and k.trigger_ref = e.trigger_ref)`,
+    [orgId, fromId, toId],
+  );
 }
 
 /** Privacy request: removes personal details and identifiers, keeps non-identifying counts and the audit trail. */
@@ -255,6 +276,13 @@ export async function redactContact(who: OrgContext | CrmActor, contactId: strin
     // Missed-call cases (the caller's number, drafted texts) and lead scores about this person go with them.
     await eraseRecoveryAndScoring(db, ctx.org.orgId, contactId);
     await eraseWebChatAndAttribution(db, ctx.org.orgId, contactId);
+    // Private feedback comments, survey answers, review requests still waiting and customer programs still running go with them (the scores stay, with no person attached).
+    await eraseReputationRecords(db, ctx.org.orgId, contactId);
+    // Invoices that were never issued go; issued ones keep their numbers and amounts but lose the customer's details and the link to the contact.
+    await eraseInvoiceCustomerDetails(db, ctx.org.orgId, contactId);
+    // Proposals still open are withdrawn and their links stop working; the person's name and address leave the working copies. Frozen versions and recorded answers are records and
+    // stay until the retention policy is decided (src/server/proposals/erase.ts).
+    await eraseProposalsForContact(db, ctx.org.orgId, contactId);
     await db.query("delete from contact_identities where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
     await db.query("update contact_memories set deleted_at = now() where org_id = $1 and contact_id = $2 and deleted_at is null", [ctx.org.orgId, contactId]);
     // CRM details about the person go too: custom field values, tags, company links, and the text of notes about them.

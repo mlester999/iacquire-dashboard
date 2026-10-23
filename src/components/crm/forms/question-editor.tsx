@@ -9,7 +9,7 @@ import { Badge, Field, Input, Select } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, Segmented, Switch } from "@/components/ui/overlays";
 import { cn } from "@/lib/utils";
 import {
-  CONDITION_OP_LABELS, CONTACT_TARGET_KEYS, CONTACT_TARGETS, CUSTOM_FIELD_ACCEPTS, FORM_LIMITS, newQuestion, opsFor, QUESTION_TYPE_HINTS, QUESTION_TYPE_LABELS, QUESTION_TYPES,
+  CONDITION_OP_LABELS, CONTACT_TARGET_KEYS, CONTACT_TARGETS, CUSTOM_FIELD_ACCEPTS, FEEDBACK_TARGET_KEYS, FEEDBACK_TARGETS, FORM_LIMITS, newQuestion, opsFor, QUESTION_TYPE_HINTS, QUESTION_TYPE_LABELS, QUESTION_TYPES,
   slugValue, type ChoiceOption, type Condition, type ConditionOp, type FormIssue, type FormQuestion, type HiddenSource, type QuestionType, type QuestionValidation,
 } from "@/lib/crm/forms/spec";
 import { ATTRIBUTION_PARAMS } from "@/lib/crm/forms/logic";
@@ -20,16 +20,18 @@ export const TYPE_ICON: Record<QuestionType, React.ComponentType<{ className?: s
   short_text: Type, long_text: AlignLeft, email: AtSign, phone: Phone, number: Hash, date: Calendar, single_choice: CircleDot, multiple_choice: ListChecks, checkbox: CheckSquare, hidden: EyeOff,
 };
 
-/** Where an answer can be saved, for a question of this type: the contact's own fields and custom fields of a fitting type. */
+/** Where an answer can be saved, for a question of this type: the contact's own fields, custom fields of a fitting type, and (in a survey) private feedback. */
 export function mapTargets(type: QuestionType, fields: FormBuilderOptions["contactFields"]): Array<{ value: string; label: string; group: string }> {
   const out: Array<{ value: string; label: string; group: string }> = [];
   for (const key of CONTACT_TARGET_KEYS) if ((CONTACT_TARGETS[key].accepts as readonly string[]).includes(type)) out.push({ value: key, label: CONTACT_TARGETS[key].label, group: "Contact" });
   for (const f of fields) if (CUSTOM_FIELD_ACCEPTS[f.type].includes(type)) out.push({ value: `custom:${f.key}`, label: f.label, group: "Custom fields" });
+  for (const key of FEEDBACK_TARGET_KEYS) if ((FEEDBACK_TARGETS[key].accepts as readonly string[]).includes(type)) out.push({ value: key, label: FEEDBACK_TARGETS[key].label, group: "Feedback" });
   return out;
 }
 
 export function targetLabel(map: string | null | undefined, fields: FormBuilderOptions["contactFields"]): string | null {
   if (!map) return null;
+  if (map in FEEDBACK_TARGETS) return FEEDBACK_TARGETS[map as keyof typeof FEEDBACK_TARGETS].label;
   if (map in CONTACT_TARGETS) return `Contact: ${CONTACT_TARGETS[map as keyof typeof CONTACT_TARGETS].label}`;
   if (map.startsWith("custom:")) return fields.find((f) => f.key === map.slice(7))?.label ?? "A custom field that no longer exists";
   return null;
@@ -234,13 +236,17 @@ export function QuestionPanel({
 
         {q.type !== "hidden" && <ConditionEditor q={q} earlier={earlier} id={id} onChange={(v) => set("visibleWhen", v)} />}
 
-        <Field label="Save the answer to" htmlFor={id("map")} hint={q.map?.startsWith("custom:") ? "Checked with the field's own rules when a submission is processed." : "Answers are always kept with the submission. Saving one to the contact also fills in their record."}>
+        <Field
+          label="Save the answer to"
+          htmlFor={id("map")}
+          hint={q.map?.startsWith("custom:") ? "Checked with the field's own rules when a submission is processed." : q.map?.startsWith("feedback.") ? "Only a survey can save private feedback. A low score opens a follow-up for your team when we know who answered." : "Answers are always kept with the submission. Saving one to the contact also fills in their record."}
+        >
           <Select id={id("map")} value={q.map ?? ""} onChange={(e) => set("map", e.target.value || null)}>
             <option value="">Only keep it with the submission</option>
-            {(["Contact", "Custom fields"] as const).map((g) => {
+            {(["Contact", "Custom fields", "Feedback"] as const).map((g) => {
               const list = targets.filter((t) => t.group === g);
               return list.length ? (
-                <optgroup key={g} label={g === "Contact" ? "Contact" : "Contact custom fields"}>
+                <optgroup key={g} label={g === "Contact" ? "Contact" : g === "Custom fields" ? "Contact custom fields" : "Private feedback (surveys only)"}>
                   {list.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </optgroup>
               ) : null;

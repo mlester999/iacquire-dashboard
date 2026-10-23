@@ -35,6 +35,11 @@ export interface ShellData {
    * decides whether the menu item shows a lock, and every page and action checks the plan again. Absent where the person can't see automations.
    */
   automationStudio?: { entitled: boolean };
+  /**
+   * The modules a Super Admin has switched on for this workspace (the enabled rows of org_features, such as "proposals"). Navigation only: it decides whether a menu item is
+   * offered, and every page and action checks the switch again. Modules that are off for a workspace are simply absent.
+   */
+  features?: string[];
 }
 
 export async function getShellData(ctx: OrgContext): Promise<ShellData> {
@@ -97,6 +102,7 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
       requests_attention: number;
       crm_mode: ShellData["crmMode"];
       studio_plan: { id: string; status: PlanStatus; grace_ends_at: string | null; paid_through_on: string | null; created_at: string } | null;
+      features: string[];
     }>(
       `with preferences as (
          select prefs from notification_preferences where user_id=$2 and org_id=$1 limit 1
@@ -124,7 +130,8 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
          ${inboxProjection},
          ${requestsProjection},
          ${crmProjection},
-         ${studioProjection}`,
+         ${studioProjection},
+         (select coalesce(json_agg(f.feature order by f.feature), '[]'::json) from org_features f where f.org_id=$1 and f.enabled) as features`,
       [ctx.org.orgId, ctx.user.id],
     );
     return rows[0];
@@ -163,5 +170,6 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
     requestsAttention,
     crmMode,
     automationStudio,
+    features: data?.features ?? [],
   };
 }

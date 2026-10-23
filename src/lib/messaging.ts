@@ -62,6 +62,7 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   agent_not_ready: "The AI employee has not passed its connection check",
   suppressed: "The customer opted out or the address is suppressed",
   no_consent: "No consent on record for this kind of message",
+  identity_unverified: "The visitor typed this number or address and it has not been confirmed",
   channel_not_ready: "This channel is not verified or enabled",
   whatsapp_window_closed: "WhatsApp's reply window has closed; an approved template is required",
   template_mismatch: "The message doesn't match its WhatsApp template's approved wording",
@@ -76,6 +77,8 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   provider_error: "The provider rejected the message",
   test_destination_required: "Test messages can only go to approved test destinations",
   contact_unreachable: "The contact has no address for this channel",
+  invoice_link_unavailable: "The invoice can no longer be paid online, so its reminder was not sent",
+  invoice_changed: "The invoice was paid, voided or written off before this reminder was sent",
 };
 
 // ---------------------------------------------------------------------------

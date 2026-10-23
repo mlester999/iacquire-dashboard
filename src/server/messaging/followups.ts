@@ -46,7 +46,7 @@ export type StopReason =
   | "followups_turned_off"
   | string;
 
-const STOP_ON_BLOCK = new Set(["human_owner", "suppressed", "no_consent", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable", "credits", "budget"]);
+const STOP_ON_BLOCK = new Set(["human_owner", "suppressed", "no_consent", "identity_unverified", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable", "credits", "budget"]);
 
 /** Cancels the contact's active plan, its scheduled steps and any follow-up message that has not been sent yet. */
 export async function cancelFollowUps(db: Queryable, input: { orgId: string; contactId: string; reason: StopReason }): Promise<{ cancelledPlans: number; cancelledMessages: number }> {

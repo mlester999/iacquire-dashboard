@@ -12,7 +12,7 @@ import { IconTile } from "@/components/overview/panel";
 import { SectionLabel } from "@/components/ui/workspace";
 import { Dialog, Switch } from "@/components/ui/overlays";
 import { cn, formatDate, relativeTime } from "@/lib/utils";
-import { MAX_BODY, PROGRAM_STATE_LABEL, reasonText, type ProgramStep, type StepIssue } from "@/lib/retention";
+import { hasFeedbackLink, MAX_BODY, PROGRAM_STATE_LABEL, programMayCarryLink, reasonText, type ProgramStep, type StepIssue } from "@/lib/retention";
 import type { LifecycleOverview, ProgramView, RetentionActivityRow } from "@/server/retention/service";
 
 const STATE_TONE = { off: "neutral", needs_approval: "warning", on: "success", lapsed: "warning" } as const;
@@ -71,7 +71,13 @@ function ProgramEditor({ program, onClose }: { program: ProgramView; onClose: ()
                 label={`Message ${i + 1}: wording`}
                 htmlFor={`body-${s.key}`}
                 error={own[0]?.message ?? null}
-                hint={<>Use <code>{"{name}"}</code> for their first name and <code>{"{business}"}</code> for your business. {s.body.length}/{MAX_BODY}</>}
+                hint={
+                  <>
+                    Use <code>{"{name}"}</code> for their first name and <code>{"{business}"}</code> for your business.
+                    {programMayCarryLink(program.kind, program.purpose) && <> Put <code>{"{feedback_link}"}</code> where the customer&apos;s own private feedback link goes. It is sent only to people who agreed to service messages on that channel, and never offers anything in return.</>}
+                    {" "}{s.body.length}/{MAX_BODY}
+                  </>
+                }
               >
                 <Textarea id={`body-${s.key}`} rows={3} value={s.body} maxLength={MAX_BODY + 40} aria-invalid={own.length > 0} onChange={(e) => setSteps(steps.map((x, j) => (j === i ? { ...x, body: e.target.value } : x)))} />
               </Field>
@@ -149,6 +155,7 @@ function ProgramCard({ program, canEdit, canActivate }: { program: ProgramView; 
             <li key={s.key} className="rounded-xl bg-surface-2 px-3.5 py-2.5">
               <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted"><Clock className="size-3" aria-hidden />{s.delayDays === 0 ? "Right away" : `${s.delayDays} day${s.delayDays === 1 ? "" : "s"} later`}</p>
               <p className="mt-1 text-[13.5px] leading-relaxed">{s.body}</p>
+              {hasFeedbackLink(s.body) && <p className="mt-1 text-[12px] text-muted">Each customer gets their own private link here, once every 30 days at most.</p>}
             </li>
           ))}
         </ol>
@@ -226,6 +233,8 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
   const [query, setQuery] = React.useState("");
   const [found, setResults] = React.useState<Array<{ id: string; name: string; detail: string; stage: string }>>([]);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [excluding, setExcluding] = React.useState<{ id: string; name: string } | null>(null);
+  const [reason, setReason] = React.useState("");
 
   React.useEffect(() => {
     if (!canEdit || query.trim().length < 2) return;
@@ -280,7 +289,24 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
                   </div>
                 </div>
                 {canEdit && (
-                  <Button size="sm" variant="secondary" loading={busy === c.id} onClick={async () => { setBusy(c.id); const res = await setRetentionPausedAction(c.id, !c.paused); setBusy(null); if (!res.ok) return void toast.error(res.error); toast.success(c.paused ? "Included again" : "Excluded. Anything planned was stopped."); router.refresh(); }}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={busy === c.id}
+                    onClick={async () => {
+                      // Excluding someone is a deliberate choice with a reason of your own; including them again is not.
+                      if (!c.paused) {
+                        setReason("");
+                        return void setExcluding({ id: c.id, name: c.name });
+                      }
+                      setBusy(c.id);
+                      const res = await setRetentionPausedAction(c.id, false);
+                      setBusy(null);
+                      if (!res.ok) return void toast.error(res.error);
+                      toast.success("Included again");
+                      router.refresh();
+                    }}
+                  >
                     {c.paused ? <><Play className="size-3.5" /> Include again</> : <><Pause className="size-3.5" /> Exclude</>}
                   </Button>
                 )}
@@ -289,6 +315,39 @@ function Customers({ data, canEdit }: { data: LifecycleOverview; canEdit: boolea
           </ul>
         )}
       </CardContent>
+      <Dialog
+        open={Boolean(excluding)}
+        onOpenChange={(o) => !o && setExcluding(null)}
+        size="sm"
+        title={`Exclude ${excluding?.name ?? "this customer"} from automatic messages?`}
+        description="Customer programs stop for them, and so do automatic review requests from workflows and the API. A teammate can still message them or ask them for a review by hand. You can include them again at any time."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setExcluding(null)}>Cancel</Button>
+            <Button
+              variant="brand"
+              loading={Boolean(excluding && busy === excluding.id)}
+              disabled={reason.trim().length < 5}
+              onClick={async () => {
+                if (!excluding) return;
+                setBusy(excluding.id);
+                const res = await setRetentionPausedAction(excluding.id, true, reason.trim());
+                setBusy(null);
+                if (!res.ok) return void toast.error(res.error);
+                toast.success("Excluded. Anything planned was stopped.");
+                setExcluding(null);
+                router.refresh();
+              }}
+            >
+              Exclude
+            </Button>
+          </>
+        }
+      >
+        <Field label="Why are you excluding them?" htmlFor="exclude-reason" hint="At least a few words. It is kept in the audit trail and nothing is sent to the customer.">
+          <Textarea id="exclude-reason" rows={3} maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} className="text-[16px] sm:text-[14px]" />
+        </Field>
+      </Dialog>
     </Card>
   );
 }

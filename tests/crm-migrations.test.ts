@@ -41,6 +41,21 @@ const CRM_MIGRATION_NAMES = [
   // Two more private-file buckets (proposal documents, staff message attachments) and 0089's app.file_permission with their two branches; its rollback refuses while a
   // file is stored in either bucket (none is here) and is rolled back first, putting 0089's definition back before 0089's own rollback replaces it with 0049's.
   "0090_document_buckets.sql",
+  // Proposals: read policies on app.permitted_orgs, eight permission rows and nine notification kinds; its rollback refuses while a proposal, price book entry, tax rate,
+  // template, AI run or stored proposal document exists (none does here). It is rolled back before 0090 and leaves 0090's bucket and file rule alone.
+  "0091_proposals.sql",
+  // E-signatures for proposals: three tables with read policies on app.permitted_orgs, one permission row and a key from proposal_decisions to the signature request that
+  // made it; its rollback refuses while a connection, a signature request or its history exists (none does here) and is rolled back before 0091, whose tables it hangs off.
+  "0092_esign.sql",
+  // Reputation follow-through: columns on customer_feedback and crm_review_requests, a settings table and three permissions; its rollback refuses while a survey answer,
+  // an escalation, an acknowledgement or a resolution exists (none does here).
+  "0094_reputation_followthrough.sql",
+  // Public reviews read from a review site and replies to them: five tables with read policies on app.permitted_orgs (a connection's credentials stay unreadable); its rollback
+  // refuses while a connection, a mirrored review or a reply exists (none does here) and is rolled back before 0094, whose permissions its policies use.
+  "0095_external_reviews.sql",
+  // Customer invoices and payments: ten tables with read policies on app.permitted_orgs, seventeen invoices.* permission rows, eight notification kinds and the 'billing' message
+  // scope; its rollback refuses while an invoice, payment, refund, connection, receipt or reminder exists (none does here).
+  "0093_customer_invoices_payments.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

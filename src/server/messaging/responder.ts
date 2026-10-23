@@ -2,7 +2,8 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { automationGate } from "@/server/automation/gate";
-import { chargeUsage, getBalance } from "@/server/billing/ledger";
+import { getBalance } from "@/server/billing/ledger";
+import { chargeModelUsage } from "@/server/llm/meter";
 import { buildRunInstructions, loadConnection } from "@/server/workforce/service";
 import { HermesError, startAgentRun, streamRunEvents } from "@/server/integrations/hermes/client";
 import { createEscalation } from "@/server/messaging/handoff";
@@ -284,21 +285,6 @@ export async function respondToConversation(orgId: string, conversationId: strin
   });
   await Promise.all(emails.map((e) => sendEmail(e)));
   return result;
-}
-
-async function chargeModelUsage(db: Queryable, orgId: string, messageId: string, usage: { inputTokens: number | null; outputTokens: number | null }) {
-  for (const [unit, tokens] of [["ai_tokens_in", usage.inputTokens], ["ai_tokens_out", usage.outputTokens]] as const) {
-    if (!tokens || tokens <= 0) continue;
-    const rate = await db.query<{ w: string }>(
-      `select r.wholesale_micros_per_unit::text as w from usage_unit_rates r join usage_rate_versions v on v.id = r.rate_version_id
-       where r.provider = 'llm' and r.unit_type = $1 order by v.version desc limit 1`,
-      [unit],
-    );
-    if (!rate.rows[0]) continue;
-    // Rates are per 1,000 tokens.
-    const wholesale = Math.ceil((Number(rate.rows[0].w) * tokens) / 1000);
-    await chargeUsage(db, { orgId, usage: { provider: "llm", unitType: unit, quantity: tokens, wholesaleMicros: wholesale, providerReference: `reply:${messageId}:${unit}`, messageId } });
-  }
 }
 
 /**

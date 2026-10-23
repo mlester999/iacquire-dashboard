@@ -38,7 +38,9 @@ async function conversationsFor(db: Queryable, req: OutreachRequest): Promise<Ar
     "select id, channel, subject from conversations where org_id = $1 and contact_id = $2 and status <> 'closed' order by last_inbound_at desc nulls last, created_at",
     [req.orgId, req.contactId],
   );
-  const out = existing.rows.filter((c) => !req.channel || c.channel === req.channel);
+  // A website chat is not a channel a provider carries (its replies stay in the visitor's open window), so it is never a place to reach someone: counting it here would
+  // also make it the reason given when the customer's real channels are refused.
+  const out = existing.rows.filter((c) => (c.channel as string) !== "web_chat" && (!req.channel || c.channel === req.channel));
   for (const channel of req.channel ? [req.channel] : CHANNEL_ORDER) {
     if (out.some((c) => c.channel === channel)) continue;
     if (!(await contactAddress(db, req.orgId, req.contactId, channel))) continue;

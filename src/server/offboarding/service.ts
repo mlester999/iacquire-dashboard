@@ -6,9 +6,11 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { cancelRetention } from "@/server/retention/cancel";
+import { endWorkspaceBatches } from "@/server/reputation/batch-state";
 import { releaseReservation } from "@/server/billing/ledger";
 import { disconnectIntegration } from "@/server/integrations/manager";
 import { disconnectWorkspaceAccounts } from "@/server/social/accounts";
+import { revokeWorkspaceConnections } from "@/server/customer-payments/connections";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -198,6 +200,8 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
       await db.query("insert into automation_pauses (org_id, scope, active, reason, set_by, set_at) values ($1, $2, true, null, $3, now()) on conflict (org_id, scope) do update set active = true, set_by = $3, set_at = now()", [orgId, scope, user.id]);
     }
     await db.query("update agent_instances set mode = 'paused', mode_changed_by = $2, mode_changed_at = now(), mode_reason = 'Workspace is closing.' where org_id = $1", [orgId, user.id]);
+    // Review request batches first, so the requests behind their queued messages are cancelled with them, before every queued message is stopped below.
+    await endWorkspaceBatches(db, orgId, user.id);
     const msgs = await db.query<{ reservation_id: string | null }>(
       "update conversation_messages set status = 'blocked', blocked_reason = 'offboarding', status_detail = 'Stopped before sending.' where org_id = $1 and direction = 'outbound' and status in ('draft', 'queued') returning reservation_id",
       [orgId],
@@ -241,6 +245,18 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
         : "No social media accounts were connected.",
   );
 
+  // 2c. The business's own payment accounts (customer invoices). Their keys can move money, so they are deleted exactly as the owner's own disconnect would; the invoices and
+  // payments already recorded are the client's data and stay for the export. Recorded only when there was something to disconnect.
+  const payments = await revokeWorkspaceConnections(orgId, user.id);
+  if (payments.revoked > 0 || payments.failed.length > 0) {
+    await record(
+      "payments", payments.failed.length === 0,
+      payments.failed.length
+        ? `Could not disconnect payment accounts: ${payments.failed.join(", ")}. Remove the saved keys by hand and revoke them at the provider.`
+        : `Disconnected ${payments.revoked} payment account${payments.revoked === 1 ? "" : "s"} and deleted the saved keys${payments.cancelledCheckouts ? `; ${payments.cancelledCheckouts} checkout${payments.cancelledCheckouts === 1 ? "" : "s"} waiting to be paid ${payments.cancelledCheckouts === 1 ? "was" : "were"} cancelled` : ""}. Revoke the keys at the provider too.`,
+    );
+  }
+
   // 3. Access: staff lose it, the owner keeps it to download their data.
   const revoked = await withSystem(async (db) => {
     const res = await db.query("update organization_memberships set status = 'revoked' where org_id = $1 and status = 'active' and role <> 'owner'", [orgId]);
@@ -267,7 +283,7 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     );
     await addEvent(db, requestId, orgId, "shutdown", `Workspace shut down. Data is kept for ${d.retentionDays} days. Remaining prepaid credit: $${(Number(bal) / 1_000_000).toFixed(2)}.`, user.id);
     await addEvent(db, requestId, orgId, "retention_started", `Deletion can be scheduled after ${d.retentionDays} days.`, user.id);
-    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length || !socialOk ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed, failedSocialDisconnects: social.failed } }, db);
+    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length || !socialOk || payments.failed.length ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed, failedSocialDisconnects: social.failed, failedPaymentDisconnects: payments.failed } }, db);
     await notifyOrgRoles(db, orgId, ["owner"], {
       kind: "offboarding_update", severity: "info", title: "Your workspace has been closed down",
       body: `Automation and messaging are off. You can download your data until ${new Date(res.rows[0].delete_after!).toISOString().slice(0, 10)}. Your domains are yours to keep.`, link: "/settings/data", dedupeKey: `offboarding:${requestId}:shutdown`,

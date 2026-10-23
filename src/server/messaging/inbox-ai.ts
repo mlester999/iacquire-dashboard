@@ -4,7 +4,8 @@ import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { llmComplete, resolveLlmConfig, type LlmUsage } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { assertConversationVisible } from "@/server/messaging/access";
 import { cleanText } from "@/lib/support/content";
@@ -30,16 +31,23 @@ const NOT_CONFIGURED = "AI help isn't set up for this workspace yet.";
 const UNAVAILABLE = "The AI service couldn't answer just now. Try again in a moment.";
 const NOTHING = "There is nothing in this conversation to work from yet.";
 
-export type Complete = (input: { system: string; user: string; maxTokens: number }) => Promise<{ ok: true; text: string } | { ok: false }>;
+export type Complete = (input: { system: string; user: string; maxTokens: number }) => Promise<{ ok: true; text: string; usage?: LlmUsage } | { ok: false; usage?: LlmUsage }>;
 
 async function defaultComplete(): Promise<Complete | null> {
   const config = await resolveLlmConfig();
   if (!config) return null;
   return async (input) => {
     const r = await llmComplete(config, { ...input, temperature: 0.2, timeoutMs: 25_000 });
-    return r.ok ? { ok: true, text: r.text } : { ok: false };
+    return r.ok ? { ok: true, text: r.text, usage: r.usage } : { ok: false, usage: r.usage };
   };
 }
+
+/** Every model call made for a conversation is counted against the workspace, whatever the parse of its answer turns out to be. Metering never fails the call. */
+const metered = (ctx: OrgContext, complete: Complete): Complete => async (input) => {
+  const r = await complete(input);
+  await meterModelUse({ orgId: ctx.org.orgId, feature: "inbox_ai", key: modelCallKey(ctx.user.id), usage: r.usage });
+  return r;
+};
 
 interface Line {
   who: "CUSTOMER" | "TEAM" | "AI EMPLOYEE" | "TEAM NOTE";
@@ -98,10 +106,10 @@ async function prepare(ctx: OrgContext, conversationId: string, override?: Compl
   const limit = await consumeRateLimit(RATE_LIMITS.inboxAiByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You've used AI help a lot recently. Please try again later.", { retryAfterSeconds: limit.retryAfterSeconds });
   await assertWithinLimits(ctx.org.orgId, "help_request");
-  if (override) return override;
+  if (override) return metered(ctx, override);
   const complete = await defaultComplete();
   if (!complete) throw new AppError("integration_unavailable", NOT_CONFIGURED);
-  return complete;
+  return metered(ctx, complete);
 }
 
 async function finish(ctx: OrgContext, conversationId: string, kind: string) {

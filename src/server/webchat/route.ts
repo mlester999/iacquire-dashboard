@@ -1,5 +1,6 @@
 import "server-only";
 import { handleWebChat, type ChatResponse, type ChatSurface } from "@/server/webchat/http";
+import { UNAVAILABLE_MESSAGE, webchatPublicDisabled } from "@/server/webchat/switch";
 
 // The Request/Response edge of the website chat: reads the body (bounded), the bearer token and the visitor's address, calls the adapter, and writes
 // the answer with the headers a public JSON endpoint needs. Used by the external-site route and by the Website Studio site route.
@@ -35,10 +36,22 @@ function addressOf(req: Request): string | null {
   return forwarded || req.headers.get("x-real-ip") || null;
 }
 
+/**
+ * What every request gets while WEBCHAT_PUBLIC_DISABLED is on. It is the same for everyone and says nothing about any workspace, so it may be read from any
+ * website (the widget has to be able to read "unavailable" and leave the page alone instead of failing noisily): no credentials are ever sent to this API.
+ */
+function unavailable(method: string): Response {
+  const open = { ...baseHeaders, "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, content-type", "Access-Control-Max-Age": "60" };
+  if (method === "OPTIONS") return new Response(null, { status: 204, headers: open });
+  return Response.json({ ok: false, error: { code: "unavailable", message: UNAVAILABLE_MESSAGE } }, { status: 503, headers: { ...open, "Retry-After": "300" } });
+}
+
 export async function chatRoute(req: Request, surface: ChatSurface, action: string): Promise<Response> {
   if (!ACTIONS.has(action)) return notFound();
   const method = req.method.toUpperCase();
   if (!["GET", "POST", "OPTIONS"].includes(method)) return Response.json({ ok: false, error: { code: "method", message: "Not allowed." } }, { status: 405, headers: { ...baseHeaders, Allow: "GET, POST, OPTIONS" } });
+  // The emergency switch is checked before the body is read or the database is touched.
+  if (webchatPublicDisabled()) return unavailable(method);
 
   let body: unknown = {};
   if (method === "POST") {

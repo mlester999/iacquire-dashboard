@@ -34,13 +34,19 @@ import { MissedCallBanner } from "@/components/crm/recovery/missed-call-banner";
 import type { PriorityView } from "@/server/lead-scoring/priority";
 import type { CaseView } from "@/server/missed-calls/ops";
 import { RelativeTime } from "@/components/crm/relative-time";
+import { ContactFeedbackCard } from "@/components/reputation/contact-feedback-card";
+import type { ContactReputationView } from "@/server/reputation/feedback";
+import { ProposalsPanel } from "@/components/proposals/crm-panel";
+import type { ProposalSummary } from "@/server/proposals/view";
+import { InvoicesPanel } from "@/components/invoices/crm-panel";
+import type { InvoiceView } from "@/server/invoices/views";
 
 type Opp = { id: string; name: string; status: string; value: number | null; currency: string; stageName: string; pipelineName: string };
 
 const CHANNEL_LABEL: Record<string, string> = { sms: "SMS", whatsapp: "WhatsApp", email: "Email" };
 
 export function ContactProfile({
-  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls, priority, missedCall, attribution,
+  scope, detail, timeline, notes, tasks, opportunities, conversations, appointments, tags, members, pipelines, calls, priority, missedCall, attribution, reputation, proposals, invoices,
 }: {
   scope: CrmScope;
   detail: ContactDetail;
@@ -60,6 +66,12 @@ export function ContactProfile({
   missedCall?: CaseView | null;
   /** Where the contact came from: first and latest touch and the history (absent when the viewer can't see it). */
   attribution?: { first: TouchRecord | null; latest: TouchRecord | null; history: TouchRecord[] } | null;
+  /** What the contact privately told the business: their latest feedback and any low feedback still waiting for a follow-up (absent when it could not be loaded). */
+  reputation?: ContactReputationView | null;
+  /** This person's proposals; absent when proposals are not switched on for the workspace, the viewer can't see them, or an agency person is looking. */
+  proposals?: ProposalSummary[] | null;
+  /** This person's invoices; absent when invoicing is not switched on for the workspace, the viewer can't see them, or an agency person is looking. */
+  invoices?: InvoiceView[] | null;
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
@@ -85,6 +97,8 @@ export function ContactProfile({
     { value: "notes", label: "Notes", count: notes.length },
     { value: "tasks", label: "Tasks", count: openTasks.length },
     ...(calls ? [{ value: "calls", label: "Calls", count: calls.length }] : []),
+    ...(proposals ? [{ value: "proposals", label: "Proposals", count: proposals.length }] : []),
+    ...(invoices ? [{ value: "invoices", label: "Invoices", count: invoices.length }] : []),
   ];
 
   return (
@@ -225,6 +239,8 @@ export function ContactProfile({
             )}
             {tab === "notes" && <NotesPanel scope={scope} type="contact" recordId={detail.id} notes={notes} />}
             {tab === "calls" && calls && <ContactCalls scope={scope} contact={{ id: detail.id, name }} calls={calls} members={members} />}
+            {tab === "proposals" && proposals && <ProposalsPanel rows={proposals} newHref={`/proposals/new?contact=${detail.id}`} canCreate={Boolean(scope.can["proposals.create"]) && !scope.readOnly && !detail.archivedAt} />}
+            {tab === "invoices" && invoices && <InvoicesPanel rows={invoices} newHref={`/invoices/new?contact=${detail.id}`} canCreate={Boolean(scope.can["invoices.create"]) && !scope.readOnly && !detail.archivedAt} />}
             {tab === "tasks" && (
               <div className="space-y-3">
                 <QuickTask scope={scope} members={members} link={{ contactId: detail.id }} />
@@ -237,6 +253,7 @@ export function ContactProfile({
         <aside className="min-w-0 space-y-4">
           {priority && <PriorityCard scope={scope} contactId={detail.id} view={priority} canEdit={canEdit} />}
           {attribution && <AttributionCard {...attribution} edit={canEdit ? { orgId: scope.orgId, contactId: detail.id } : undefined} />}
+          {reputation && <ContactFeedbackCard scope={scope} view={reputation} />}
           <SectionCard title="Contact details">
             <div className="space-y-4">
               <div>

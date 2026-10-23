@@ -18,6 +18,7 @@ import {
 } from "@/lib/webchat/rules";
 import type { WidgetSettings } from "@/server/webchat/config";
 import { recordChatTouch } from "@/server/attribution/touches";
+import { TYPED_CONSENT_SOURCE, typedConsentEvidence } from "@/lib/webchat/identity";
 
 // ---------------------------------------------------------------------------
 // Limits (abuse controls). Counted in Postgres so they hold across server instances. Keys are hashed, never a raw address.
@@ -365,15 +366,17 @@ export async function captureLead(input: {
       await db.query("update contacts set phone = $3, version = version + 1 where id = $2 and org_id = $1 and phone is null", [s.orgId, conv.contactId, phone]);
     }
 
-    // Consent to be contacted at the details given, with the wording the visitor saw. Only for an address that is now on this contact.
-    const evidence = `${LEAD_NOTICE} Website chat form on ${s.originHost}.`;
+    // What the visitor agreed to, with the wording they saw, for an address that is now on this contact. The record says in so many words that the visitor typed the
+    // address and nobody has checked it: it is the visitor's word, not the address owner's. The send chain reads that (src/lib/webchat/identity.ts): until the address is
+    // confirmed it is reachable only by a person's own reply, and a promotional tick made here never counts on its own.
+    const evidence = typedConsentEvidence(LEAD_NOTICE, s.originHost);
     const channels: Array<"email" | "sms"> = [...(email && !emailTaken ? ["email" as const] : []), ...(phone && !phoneTaken ? ["sms" as const] : [])];
     for (const channel of channels) {
       if ((await getConsent(db, s.orgId, conv.contactId, channel, "service")) !== "granted") {
-        await recordConsent(db, { orgId: s.orgId, contactId: conv.contactId, channel, purpose: "service", status: "granted", source: "website_chat_form", evidence });
+        await recordConsent(db, { orgId: s.orgId, contactId: conv.contactId, channel, purpose: "service", status: "granted", source: TYPED_CONSENT_SOURCE, evidence });
       }
       if (input.widget.offerMarketingOptIn && input.marketingOptIn === true && (await getConsent(db, s.orgId, conv.contactId, channel, "marketing")) !== "granted") {
-        await recordConsent(db, { orgId: s.orgId, contactId: conv.contactId, channel, purpose: "marketing", status: "granted", source: "website_chat_form", evidence: `${evidence} The visitor ticked the box to receive offers.` });
+        await recordConsent(db, { orgId: s.orgId, contactId: conv.contactId, channel, purpose: "marketing", status: "granted", source: TYPED_CONSENT_SOURCE, evidence: `${evidence} The visitor ticked the box to receive offers.` });
       }
     }
 

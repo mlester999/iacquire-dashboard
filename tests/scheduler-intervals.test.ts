@@ -229,6 +229,13 @@ describe("the registered jobs", () => {
     socialAccountHealth: 360,
     socialMetrics: 360,
     socialCleanup: 15,
+    proposalExpiry: 60,
+    proposalHousekeeping: 1440,
+    feedbackSla: 15,
+    appointmentOutcomeNudge: 1440,
+    customerPaymentReconcile: 15,
+    invoiceOverdueSweep: 60,
+    invoiceReminders: 15,
   };
 
   it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {

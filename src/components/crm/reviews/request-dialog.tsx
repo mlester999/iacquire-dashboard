@@ -22,7 +22,7 @@ type Picked = { id: string; name: string };
  * (with "[review link]" where their own private link goes) and every check the request must pass (review links, address, opt-outs,
  * consent, not asked recently) before Send is possible. Quiet hours, limits and credits are checked again when it sends.
  */
-export function RequestReviewDialog({ scope, open, onOpenChange, templates, initialContact, cooldownDays }: {
+export function RequestReviewDialog({ scope, open, onOpenChange, templates, initialContact, cooldownDays, surveysEnabled = false }: {
   scope: CrmScope;
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -30,17 +30,23 @@ export function RequestReviewDialog({ scope, open, onOpenChange, templates, init
   /** Opened from a contact (/crm/reviews?contact=<id>): that contact, already chosen. */
   initialContact?: Picked | null;
   cooldownDays: number;
+  /** Surveys are dormant until a Super Admin switches them on for the workspace: without it the dialog sends review requests only. */
+  surveysEnabled?: boolean;
 }) {
   const { run, busy } = useCrmAction();
   const ids = React.useId();
   const [contact, setContact] = React.useState<Picked | null>(initialContact ?? null);
   const [templateId, setTemplateId] = React.useState<string>(templates.length === 1 ? templates[0].id : "");
   const [businessHoursOnly, setBusinessHoursOnly] = React.useState(true);
-  // The preview belongs to one contact and template: a result for an earlier choice is never shown for the current one.
+  // A review request is the default; a survey asks one question first (one to five, or how likely they are to recommend) on the same page, with the same review links.
+  const [chosenKind, setKind] = React.useState<"review" | "survey">("review");
+  const kind = surveysEnabled ? chosenKind : "review";
+  const [scale, setScale] = React.useState<"csat5" | "nps10">("csat5");
+  // The preview belongs to one contact, template and kind: a result for an earlier choice is never shown for the current one.
   const [result, setResult] = React.useState<{ key: string; preview: ReviewRequestPreview | null; error: string | null } | null>(null);
   const template = templates.find((t) => t.id === templateId) ?? null;
   const contactId = contact?.id ?? null;
-  const key = open && contactId && templateId ? `${contactId}:${templateId}` : null;
+  const key = open && contactId && templateId ? `${contactId}:${templateId}:${kind}` : null;
   const current = key && result?.key === key ? result : null;
   const preview = current?.preview ?? null;
   const previewError = current?.error ?? null;
@@ -54,7 +60,7 @@ export function RequestReviewDialog({ scope, open, onOpenChange, templates, init
   React.useEffect(() => {
     if (!key || !contactId || !templateId) return;
     let live = true;
-    previewReviewRequestAction(scope.orgId, { contactId, templateId })
+    previewReviewRequestAction(scope.orgId, { contactId, templateId, kind })
       .then((r) => {
         if (!live) return;
         setResult({ key, preview: r.ok ? r.data : null, error: r.ok ? null : r.error });
@@ -64,11 +70,15 @@ export function RequestReviewDialog({ scope, open, onOpenChange, templates, init
     return () => {
       live = false;
     };
-  }, [key, contactId, templateId, scope.orgId]);
+  }, [key, contactId, templateId, kind, scope.orgId]);
 
   const send = async () => {
     if (!contact || !template || !preview?.canSend) return;
-    const ok = await run("send-review", () => requestReviewAction(scope.orgId, { contactId: contact.id, templateId: template.id, contentHash: template.contentHash, businessHoursOnly }), `Review request for ${preview.contact.name} queued.`);
+    const ok = await run(
+      "send-review",
+      () => requestReviewAction(scope.orgId, { contactId: contact.id, templateId: template.id, contentHash: template.contentHash, businessHoursOnly, kind, ...(kind === "survey" ? { scale } : {}) }),
+      `${kind === "survey" ? "Survey" : "Review request"} for ${preview.contact.name} queued.`,
+    );
     if (ok) {
       onOpenChange(false);
       setContact(null);
@@ -86,11 +96,27 @@ export function RequestReviewDialog({ scope, open, onOpenChange, templates, init
       footer={
         <>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button loading={busy("send-review")} disabled={!preview?.canSend || loading} onClick={send}><Send className="size-4" aria-hidden />Send request</Button>
+          <Button loading={busy("send-review")} disabled={!preview?.canSend || loading} onClick={send}><Send className="size-4" aria-hidden />{kind === "survey" ? "Send survey" : "Send request"}</Button>
         </>
       }
     >
       <div className="space-y-4">
+        {surveysEnabled && (
+          <Field label="What to send" htmlFor={`${ids}-kind`} hint="Both use the same private page, with the same public review links for everyone.">
+            <Select id={`${ids}-kind`} value={kind} onChange={(e) => setKind(e.target.value === "survey" ? "survey" : "review")}>
+              <option value="review">A request for a review</option>
+              <option value="survey">A short satisfaction survey</option>
+            </Select>
+          </Field>
+        )}
+        {kind === "survey" && (
+          <Field label="The survey's question" htmlFor={`${ids}-scale`}>
+            <Select id={`${ids}-scale`} value={scale} onChange={(e) => setScale(e.target.value === "nps10" ? "nps10" : "csat5")}>
+              <option value="csat5">How was your experience? (1 to 5)</option>
+              <option value="nps10">How likely are you to recommend us? (0 to 10)</option>
+            </Select>
+          </Field>
+        )}
         <Field label="Customer" htmlFor={`${ids}-contact`}>
           <RecordPicker<{ id: string; name: string; email: string | null; phone: string | null }>
             id={`${ids}-contact`}

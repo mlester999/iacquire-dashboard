@@ -3,14 +3,16 @@ import crypto from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
-import { automationGate } from "@/server/automation/gate";
+import { automationGate, checkOrgAutomation } from "@/server/automation/gate";
 import { createApproval } from "@/server/approvals/service";
 import { BillingBlockedError, chargeUsage, reserveCredits, releaseReservation, settleReservation, monthToDateSpendMicros, getBalance } from "@/server/billing/ledger";
 import { isSwitching } from "@/server/crm/workspace";
 import { nativeAutomationRefusal } from "@/server/crm/provider-guard";
 import { contactAddress, getConsent, isSuppressed, suppressAddress } from "@/server/messaging/contacts";
+import { identityVerified, latestConsentSource } from "@/server/messaging/consent-identity";
+import { TYPED_CONSENT_SOURCE, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
 import type { ChannelProvider } from "@/server/messaging/provider";
-import { fillManageLink, fillReviewLink, hasManageLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
+import { fillInvoiceLink, fillManageLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
 import { buildUnsubscribeUrl } from "@/server/messaging/unsubscribe";
 import { transportFromProvider, type GhlTransportRequest } from "@/server/messaging/transports/ghl";
 import { isTransportName, transportFor } from "@/server/messaging/transports";
@@ -34,8 +36,10 @@ import type { UnitType } from "@/lib/billing";
  * reminder: a service message about an appointment the customer already has. Not a reply, and not counted against the follow-up allowance.
  * retention: an approved program message to an existing customer (welcome, check-in, feedback request, re-engagement). It has its own frequency
  * limit, counted across every channel and program for the contact.
+ * billing: a reminder about an invoice the business has already sent the customer (src/server/invoices/reminders.ts). A service message the owner authorized in its exact
+ * wording; it stops at once for a paused or suspended workspace and waits out quiet hours like a reminder does.
  */
-export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention";
+export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention" | "billing";
 /** service: about something the customer has or asked for. marketing: promotional, and needs the customer's explicit marketing consent. */
 export type SendPurpose = "service" | "marketing";
 /**
@@ -209,6 +213,7 @@ interface ConversationRow {
   last_inbound_at: Date | null;
   subject: string | null;
   contact_deleted: Date | null;
+  contact_created_via: string | null;
   ghl_contact_id: string | null;
   contact_tz: string | null;
   org_tz: string;
@@ -223,7 +228,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   const now = req.now ?? new Date();
   const { rows } = await db.query<ConversationRow>(
     `select c.id, c.contact_id, c.channel, c.owner_kind, c.owner_user_id, c.ownership_version, c.ai_paused_at, c.last_inbound_at, c.subject,
-            k.deleted_at as contact_deleted, k.ghl_contact_id, k.timezone as contact_tz, o.timezone as org_tz, o.name as org_name
+            k.deleted_at as contact_deleted, k.created_via as contact_created_via, k.ghl_contact_id, k.timezone as contact_tz, o.timezone as org_tz, o.name as org_name
      from conversations c join contacts k on k.id = c.contact_id and k.org_id = c.org_id join organizations o on o.id = c.org_id
      where c.id = $1 and c.org_id = $2`,
     [req.conversationId, req.orgId],
@@ -234,6 +239,14 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if ((conv.channel as string) === "web_chat") return deny("channel_not_ready", "A website chat reply appears in the visitor's open chat window; it is not sent as a message.", { permanent: true });
   const channel = conv.channel;
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
+  // An invoice reminder is automatic and goes to the business's customer about money: a pause or a suspension of the workspace stops it, both when it is queued and right
+  // before it is sent. (Other system sends are held to the same rule by the caller that starts them; this one is held here so no caller can forget.)
+  if (req.scope === "billing") {
+    for (const gateScope of ["messaging", "outbound"] as const) {
+      const gate = await checkOrgAutomation(db, req.orgId, gateScope);
+      if (!gate.allowed) return deny(gate.reason === "org_inactive" ? "org_inactive" : "automation_paused", gate.detail, { permanent: true });
+    }
+  }
   // A missed-call follow-up (its key starts with "mcc:") is automation sent by the system, and a person who has taken the conversation over wins: it is
   // refused when it is queued and again when it is about to be sent, so a takeover in between stops it.
   if (req.actor.kind === "system" && req.dedupeKey?.startsWith("mcc:") && conv.owner_kind === "human") {
@@ -278,11 +291,26 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   // A WhatsApp template is looked up with the provider carrying the channel. Its category can make the message marketing.
   const waTemplate = channel === "whatsapp" && req.templateId ? await loadWhatsappTemplate(db, req.orgId, req.templateId, provider) : null;
   const purpose: SendPurpose = purposeWith(req.purpose, waTemplate);
+  // A number or address that only a website visitor typed is not reachable by anything automated or promotional until it is confirmed (see src/lib/webchat/identity.ts).
+  // Only contacts a website chat created can hold one, so every other message skips the extra lookup.
+  const fromChat = conv.contact_created_via === "website_chat";
+  if (fromChat) {
+    const refusal = unverifiedIdentityRefusal(
+      { createdVia: conv.contact_created_via, verified: await identityVerified(db, req.orgId, conv.contact_id, channel, address) },
+      { actor: req.actor.kind, approvedByPerson: req.actor.kind === "ai" && Boolean(req.actor.approvalId), scope: req.scope, purpose },
+    );
+    if (refusal) return deny(refusal.reason, refusal.detail, { permanent: true });
+  }
   const consent = await getConsent(db, req.orgId, conv.contact_id, channel, purpose);
   if (consent === "revoked") return deny("no_consent", "This customer withdrew consent on this channel.", { permanent: true });
   // Promotional messages need an explicit yes. Anything else needs one on record, or the customer having written to us first.
   if (purpose === "marketing" && consent !== "granted") {
     return deny("no_consent", waTemplate?.category === "marketing" && req.purpose !== "marketing" ? "This WhatsApp template is a marketing template, and this customer has not agreed to promotional messages on WhatsApp." : "This customer has not agreed to promotional messages on this channel.", { permanent: true });
+  }
+  // The box offering promotional messages was ticked by whoever typed the details, possibly before the address was confirmed as theirs. Confirming the address later does not
+  // make that tick the customer's own, so it does not count until the customer or a person of the business records the agreement again.
+  if (purpose === "marketing" && fromChat && (await latestConsentSource(db, req.orgId, conv.contact_id, channel, "marketing")) === TYPED_CONSENT_SOURCE) {
+    return deny("no_consent", "The only promotional agreement on record was ticked in the website chat, before this customer confirmed the address. It needs to be recorded again.", { permanent: true });
   }
   if (consent === "unknown" && (req.scope === "followup" || !conv.last_inbound_at)) return deny("no_consent", "There is no consent on record to message this person.", { permanent: true });
 
@@ -363,7 +391,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
 
   // Time rules last: everything else is already known to pass, so waiting is meaningful.
   const tz = conv.contact_tz ?? conv.org_tz;
-  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention") {
+  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention" || req.scope === "billing") {
     const { rows: s } = await db.query<{ business_hours: unknown }>("select business_hours from messaging_settings where org_id = $1", [req.orgId]);
     const hours = validateBusinessHours(s[0]?.business_hours ?? {});
     // Follow-ups and program messages default to business hours. A reminder about a booked appointment is useful at any waking hour, so only quiet hours hold it back.
@@ -548,7 +576,7 @@ function requestFor(m: MessageRow, now: Date): SendRequest {
   };
 }
 
-const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
+const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "identity_unverified", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
 
 async function finishBlocked(db: Queryable, m: Pick<MessageRow, "id" | "org_id" | "reservation_id" | "followup_step_id">, reason: string, detail: string) {
   await db.query("update conversation_messages set status = 'blocked', blocked_reason = $2, status_detail = $3 where id = $1", [m.id, reason, detail.slice(0, 300)]);
@@ -814,6 +842,17 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
         return { done: "blocked" };
       }
       body = fillReviewLink(body, link);
+    }
+    // An invoice reminder's link to the customer's invoice page is a bearer secret as well. It is derived again here, from the invoice the reminder belongs to, and only while that
+    // invoice can still be paid online (issued, owing, not written off). Any other message that carries the placeholder, or a reminder for an invoice paid in the meantime, is not sent.
+    if (hasInvoiceLinkPlaceholder(body)) {
+      const { invoiceLinkForMessage } = await import("@/server/invoices/reminders");
+      const link = await invoiceLinkForMessage(db, m.org_id, m.id);
+      if (!link) {
+        await finishBlocked(db, { ...m, reservation_id: reservationId }, "invoice_link_unavailable", "The invoice can no longer be paid online (it was paid, voided or written off), so the reminder was not sent.");
+        return { done: "blocked" };
+      }
+      body = fillInvoiceLink(body, link);
     }
     // Billing follows what is actually sent: a filled-in link can add an SMS segment.
     const quantity = m.channel === "sms" ? Math.max(1, smsSegments(body)) : decision.quantity;

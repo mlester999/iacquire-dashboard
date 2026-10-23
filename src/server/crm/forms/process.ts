@@ -11,6 +11,7 @@ import { applyContactTags } from "@/server/crm/tags";
 import { createOpportunityInTx } from "@/server/crm/opportunities";
 import { assignWithRule } from "@/server/crm/assignment";
 import { getConsent, recordConsent } from "@/server/messaging/contacts";
+import { saveSurveyFeedback } from "@/server/reputation/survey-feedback";
 import { coerceFieldValue } from "@/lib/crm/fields";
 import { composeDisplayName } from "@/lib/crm/types";
 import { consentChannels, renderDealName, spamReason, type Attribution } from "@/lib/crm/forms/logic";
@@ -345,6 +346,13 @@ export async function processSubmissionInTx(db: Queryable, id: string, orgId: st
         opportunityId = opp.id;
       }
     }
+  }
+
+  // A survey's answers saved as private feedback: attributed to the contact this submission made or matched, or to nobody when it gave neither (the score and the follow-up of a
+  // low one are those of an answer given through a review request's link: src/server/reputation/survey-feedback.ts). Keyed to the submission, so a retry saves nothing twice.
+  if (mapped.feedback && form.kind === "survey") {
+    const saved = await saveSurveyFeedback(db, actor, { submissionId: s.id, formName: form.name, contactId, feedback: mapped.feedback, receivedAt: new Date(s.created_at), now });
+    notes.push(...saved.notes);
   }
 
   // The event workflows and webhooks start from. Its dedupe key is the submission, so it is recorded exactly once.

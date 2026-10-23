@@ -55,6 +55,8 @@ const META: Record<EmailTemplate, { tag: string; cta: string; headline: string }
   setup_update: { tag: "Setup", cta: "Open your Setup Center", headline: "An update on your setup" },
   escalation_alert: { tag: "Needs a person", cta: "Open the conversation", headline: "A conversation needs a person" },
   notification: { tag: "Notification", cta: "Open in iAcquire", headline: "You have a new notification" },
+  // Sent to a business's customer, not to an iAcquire user: it carries a one-time code and no link.
+  proposal_code: { tag: "Your code", cta: "Open in iAcquire", headline: "Your code" },
 };
 
 const SETTINGS_LINK_TEMPLATES = new Set<EmailTemplate>(["notification", "escalation_alert", "setup_update", "support_reply"]);
@@ -345,6 +347,7 @@ export function renderEmail(email: OutgoingEmail, opts: RenderOptions): Rendered
       staff_invitation: `You received this email because someone invited ${email.to} to join the iAcquire team.`,
       verify_email: `You received this email because an iAcquire account was set up with ${email.to}.`,
       password_reset: `You received this email because a password reset was requested for ${email.to}.`,
+      proposal_code: `You received this email because a code was asked for to answer a proposal sent to ${email.to}.`,
     }[email.template as string] ?? `You received this email because of activity on the iAcquire account for ${email.to}.`;
   const footerLinks =
     `<a class="em-muted" href="${esc(base)}" target="_blank" rel="noopener noreferrer" style="color:${C.muted};text-decoration:underline;">iAcquire</a>` +
@@ -421,7 +424,7 @@ export function renderEmail(email: OutgoingEmail, opts: RenderOptions): Rendered
   } else {
     // Generic layout for the passthrough templates: headline from the sender's title, details, one button, closing notes.
     const paragraphs = [...parsed.paragraphs];
-    const titled = email.template === "notification" || email.template === "setup_update";
+    const titled = email.template === "notification" || email.template === "setup_update" || email.template === "proposal_code";
     let headline = meta.headline;
     if (titled && paragraphs[0] && paragraphs[0].length <= 140 && !paragraphs[0].includes("\n")) headline = paragraphs.shift() as string;
     else if (email.template === "escalation_alert") headline = email.subject.replace(/^\[Urgent\]\s*/i, "").replace(/^FYI:\s*/i, "");

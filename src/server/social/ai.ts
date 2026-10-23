@@ -3,9 +3,9 @@ import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { getBalance } from "@/server/billing/ledger";
 import { llmComplete, resolveLlmConfig, type LlmConfig } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { consumeRateLimit, type RateLimitRule } from "@/server/security/rate-limit";
 import type { OrgContext } from "@/server/tenancy/context";
-import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { widgetKnowledge } from "@/server/webchat/generator";
 import { normalizeHashtags, PLATFORM_LIMITS, type Platform, type PostKind } from "@/lib/social/rules";
 import { unsupportedClaims, unsupportedHashtags } from "@/server/social/claims";
@@ -94,19 +94,15 @@ function waitPhrase(seconds: number): string {
   return `${Math.ceil(seconds / 3600)} hours`;
 }
 
-/** The checks every model call starts with: a connected model, credits, the monthly allowance, and the hourly and daily limits. Nothing is counted for a call that is refused. */
+/**
+ * The checks every model call starts with: a connected model, credits, and the hourly and daily limits. Nothing is counted for a call that is refused. The call itself is
+ * metered afterwards (see meterCall): its tokens are recorded and, where a rate is published, charged to the workspace's credits.
+ */
 async function ready(ctx: OrgContext, deps: AiDeps): Promise<{ config: LlmConfig; complete: typeof llmComplete }> {
   const config = await (deps.config ?? resolveLlmConfig)();
   if (!config) throw new AppError("unavailable", "The AI language model is not connected, so nothing can be drafted yet.");
   const balance = await withSystem((db) => getBalance(db, ctx.org.orgId));
   if (balance.availableMicros <= 0) throw new AppError("usage_limit", "Your service credits have run out, so the AI cannot draft right now.");
-  try {
-    // The monthly allowance is shared with the inbox's AI help, so its message is reworded to say what ran out here.
-    await assertWithinLimits(ctx.org.orgId, "help_request");
-  } catch (e) {
-    if (e instanceof AppError && e.code === "usage_limit") throw new AppError("usage_limit", "Your workspace has used this month's AI help allowance, so post drafting is paused until it renews. Contact iAcquire if you need more capacity.");
-    throw e;
-  }
   const person = await consumeRateLimit(SOCIAL_AI_LIMITS.byUser, ctx.user.id);
   if (!person.allowed) throw new AppError("rate_limited", `You have asked for AI drafts ${SOCIAL_AI_LIMITS.byUser.limit} times in the last hour. Try again in about ${waitPhrase(person.retryAfterSeconds)}.`, { retryAfterSeconds: person.retryAfterSeconds });
   const workspace = await consumeRateLimit(SOCIAL_AI_LIMITS.byOrg, ctx.org.orgId);
@@ -114,8 +110,8 @@ async function ready(ctx: OrgContext, deps: AiDeps): Promise<{ config: LlmConfig
   return { config, complete: deps.complete ?? llmComplete };
 }
 
-/** One model answer received: it counts toward the workspace's monthly AI help allowance, whatever becomes of what it wrote. */
-const countUsage = (ctx: OrgContext) => withSystem((db) => recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, kind: "help_request" }));
+/** One model call made: its tokens are recorded (and charged where a rate is published) whatever becomes of what it wrote. Never fails the request. */
+const meterCall = (ctx: OrgContext, res: Awaited<ReturnType<typeof llmComplete>>) => meterModelUse({ orgId: ctx.org.orgId, feature: "social_ai", key: modelCallKey(ctx.user.id), usage: res.usage });
 
 function systemPrompt(input: { business: string; platform: Platform; knowledge: string; industry: string | null; voiceNote: string | null; campaign: { name: string; goal: string | null } | null; tone: Tone }): string {
   return `You help ${input.business} write social media posts for its ${input.platform === "instagram" ? "Instagram" : "Facebook"} account. You only draft: a person reads, edits and approves every post before anything is published.
@@ -155,11 +151,11 @@ export async function suggestIdeas(ctx: OrgContext, input: { accountId: string; 
     user: `Suggest ${count} different post ideas${topic ? ` about: ${topic}` : ""}. Allowed kinds: ${platformKinds.join(", ")}.\nReply as JSON: {"ideas":[{"title":"","angle":"","kind":"","callToAction":""}]}. The title is under 80 characters, the angle one or two sentences, the callToAction one short sentence.`,
     maxTokens: 900, temperature: 0.7, timeoutMs: 30_000,
   });
+  await meterCall(ctx, res);
   if (!res.ok) {
     await recordRun(ctx, "ideas", brief, null, "failed", "The AI language model did not answer.");
     throw new AppError("upstream_error", "The AI language model did not answer. Try again in a moment.");
   }
-  await countUsage(ctx);
   const parsed = extractJson(res.text) as { ideas?: unknown } | unknown[] | null;
   const list = Array.isArray(parsed) ? parsed : Array.isArray((parsed as { ideas?: unknown })?.ideas) ? ((parsed as { ideas: unknown[] }).ideas) : [];
   const ideas: IdeaSuggestion[] = [];
@@ -206,11 +202,11 @@ export async function suggestCaptions(
     user: `Write ${count} different captions for a ${input.kind} post about: ${about}\nEach is at most ${Math.min(limit, 900)} characters, ends with one clear call to action, and has up to 6 hashtags listed separately.\nReply as JSON: {"options":[{"caption":"","hashtags":[""]}]}.`,
     maxTokens: 1200, temperature: 0.7, timeoutMs: 30_000,
   });
+  await meterCall(ctx, res);
   if (!res.ok) {
     await recordRun(ctx, "caption", brief, null, "failed", "The AI language model did not answer.");
     throw new AppError("upstream_error", "The AI language model did not answer. Try again in a moment.");
   }
-  await countUsage(ctx);
   const parsed = extractJson(res.text) as { options?: unknown } | unknown[] | null;
   const list = Array.isArray(parsed) ? parsed : Array.isArray((parsed as { options?: unknown })?.options) ? ((parsed as { options: unknown[] }).options) : [];
   const options: CaptionOption[] = [];

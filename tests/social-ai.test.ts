@@ -2,6 +2,9 @@
 // becomes of its output), not how good a real model is. No real model has been evaluated.
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { currentRate, getBalance } from "@/server/billing/ledger";
+import { publishUnitRate } from "@/server/billing/service";
+import { applyMarkup } from "@/lib/billing";
 import type { LlmConfig } from "@/server/llm/client";
 import { createDraftFromOption, extractJson, SOCIAL_AI_LIMITS, suggestCaptions, suggestIdeas, unsupportedClaims } from "@/server/social/ai";
 import { unsupportedHashtags } from "@/server/social/claims";
@@ -11,11 +14,11 @@ import { connect, LATER, NOW, rows, socialOrg, type SocialOrg } from "./support/
 
 const CONFIG: LlmConfig = { baseUrl: "https://llm.example.test/v1", format: "openai", model: "stub", apiKey: "stub-key", source: "environment" };
 
-function model(text: string | ((system: string, user: string) => string)) {
+function model(text: string | ((system: string, user: string) => string), usage?: { inputTokens: number | null; outputTokens: number | null }) {
   const calls: Array<{ system: string; user: string }> = [];
   const complete = async (_c: LlmConfig, input: { system: string; user: string }) => {
     calls.push({ system: input.system, user: input.user });
-    return { ok: true as const, text: typeof text === "function" ? text(input.system, input.user) : text };
+    return { ok: true as const, text: typeof text === "function" ? text(input.system, input.user) : text, ...(usage ? { usage } : {}) };
   };
   return { deps: { complete: complete as never, config: async () => CONFIG }, calls };
 }
@@ -351,22 +354,53 @@ describe("how much AI drafting one person and one workspace can ask for", () => 
     expect(await hitsOf(SOCIAL_AI_LIMITS.byOrg, s.m.org.id)).toBe(1);
   });
 
-  it("records each answered request as AI help used, and stops at the workspace's monthly allowance", async () => {
+  // Replaces the earlier test that recorded each drafting request as a "help request" and stopped at the monthly help allowance. That was a stand-in for metering the
+  // model: drafting is now metered like every other model call (src/server/llm/meter.ts), and no longer draws on the allowance the help assistant and the inbox's AI share.
+  it("meters each answered request as model usage, bounded by the hourly and daily limits and the credit balance, not by the help allowance", async () => {
     const s = await socialOrg();
     const acc = await connect(s);
-    const m = model(ideas);
-    await withSystem((db) => db.query("insert into usage_limits (org_id, monthly_help_requests, hard_stop) values ($1, 2, true) on conflict (org_id) do update set monthly_help_requests = 2, hard_stop = true", [s.m.org.id]));
-    await suggestIdeas(s.sales, { accountId: acc.id }, m.deps);
-    // A model that does not answer costs nothing.
-    await expect(suggestIdeas(s.sales, { accountId: acc.id }, { complete: (async () => ({ ok: false })) as never, config: async () => CONFIG })).rejects.toThrow(/did not answer/);
-    await suggestCaptions(s.owner, { accountId: acc.id, kind: "text", topic: "x" }, model('{"options":[{"caption":"A fair caption.","hashtags":[]}]}').deps);
-    const used = await rows<{ kind: string; user_id: string }>("select kind, user_id from usage_events where org_id = $1", [s.m.org.id]);
-    expect(used).toHaveLength(2);
-    expect(used).toEqual(expect.arrayContaining([{ kind: "help_request", user_id: s.m.people.sales.id }, { kind: "help_request", user_id: s.m.people.owner.id }]));
-    const err = await suggestIdeas(s.sales, { accountId: acc.id }, m.deps).catch((e) => e);
-    expect(err).toMatchObject({ code: "usage_limit" });
-    expect(err.message).toMatch(/this month's AI help allowance, so post drafting is paused/);
-    expect(err.message).not.toMatch(/help assistant/);
-    expect(m.calls).toHaveLength(1); // only the first call reached the model
+    const withUsage = (usage = { inputTokens: 700, outputTokens: 250 }) => model(ideas, usage);
+    await withSystem((db) => db.query("insert into usage_limits (org_id, monthly_help_requests, hard_stop) values ($1, 1, true) on conflict (org_id) do update set monthly_help_requests = 1, hard_stop = true", [s.m.org.id]));
+    await suggestIdeas(s.sales, { accountId: acc.id }, withUsage().deps);
+    await suggestCaptions(s.owner, { accountId: acc.id, kind: "text", topic: "x" }, model('{"options":[{"caption":"A fair caption.","hashtags":[]}]}', { inputTokens: 300, outputTokens: 120 }).deps);
+    // The help allowance is not used up by it, whatever it is set to.
+    await suggestIdeas(s.sales, { accountId: acc.id }, withUsage().deps);
+    expect(await rows("select 1 from usage_events where org_id = $1", [s.m.org.id])).toHaveLength(0);
+    const lines = await rows<{ unit_type: string; quantity: string; job_reference: string; provider_reference: string }>("select unit_type, quantity::text, job_reference, provider_reference from metered_usage_events where org_id = $1 order by id", [s.m.org.id]);
+    expect(lines).toHaveLength(6);
+    expect(lines.every((l) => l.job_reference === "ai:social_ai" && (l.provider_reference.startsWith(`ai:social_ai:${s.m.people.sales.id}`) || l.provider_reference.startsWith(`ai:social_ai:${s.m.people.owner.id}`)))).toBe(true);
+    expect(new Set(lines.map((l) => l.provider_reference)).size).toBe(6); // one reference per call and unit
+    expect(lines.map((l) => `${l.unit_type} ${l.quantity}`).sort()).toEqual([
+      "ai_tokens_in 300.000000", "ai_tokens_in 700.000000", "ai_tokens_in 700.000000", "ai_tokens_out 120.000000", "ai_tokens_out 250.000000", "ai_tokens_out 250.000000",
+    ]);
+  });
+
+  it("meters a call that came back unusable (the tokens were spent) and records nothing for a model that never answered", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const empty = { complete: (async () => ({ ok: false, status: 0, usage: { inputTokens: 90, outputTokens: 0 } })) as never, config: async () => CONFIG };
+    await expect(suggestIdeas(s.sales, { accountId: acc.id }, empty)).rejects.toThrow(/did not answer/);
+    const silent = { complete: (async () => ({ ok: false, status: 500 })) as never, config: async () => CONFIG };
+    await expect(suggestIdeas(s.sales, { accountId: acc.id }, silent)).rejects.toThrow(/did not answer/);
+    const lines = await rows<{ unit_type: string; quantity: string }>("select unit_type, quantity::text from metered_usage_events where org_id = $1", [s.m.org.id]);
+    expect(lines).toEqual([{ unit_type: "ai_tokens_in", quantity: "90.000000" }]);
+  });
+
+  it("charges the workspace's credits for the tokens once an AI usage rate is published, and stops when they run out", async () => {
+    const s = await socialOrg({ credits: 20 });
+    const acc = await connect(s);
+    await publishUnitRate(s.m.superAdmin, { provider: "llm", unitType: "ai_tokens_in", wholesaleMicrosPerUnit: 3_000 });
+    await publishUnitRate(s.m.superAdmin, { provider: "llm", unitType: "ai_tokens_out", wholesaleMicrosPerUnit: 9_000 });
+    const bps = (await withSystem((db) => currentRate(db))).markupBps;
+    const expected = applyMarkup(Math.ceil((3_000 * 2000) / 1000), bps) + applyMarkup(Math.ceil((9_000 * 500) / 1000), bps);
+    const before = (await withSystem((db) => getBalance(db, s.m.org.id))).availableMicros;
+    await suggestIdeas(s.sales, { accountId: acc.id }, model(ideas, { inputTokens: 2000, outputTokens: 500 }).deps);
+    expect(before - (await withSystem((db) => getBalance(db, s.m.org.id))).availableMicros).toBe(expected);
+    // Out of credits: refused before the model is asked.
+    const broke = await socialOrg({ credits: 0 });
+    const brokeAcc = await connect(broke);
+    const m = model(ideas, { inputTokens: 1, outputTokens: 1 });
+    await expect(suggestIdeas(broke.sales, { accountId: brokeAcc.id }, m.deps)).rejects.toThrow(/credits have run out/);
+    expect(m.calls).toHaveLength(0);
   });
 });

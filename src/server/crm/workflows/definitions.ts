@@ -634,9 +634,9 @@ async function describeEffects(db: Queryable, orgId: string, steps: WorkflowStep
       const t = (await db.query<{ name: string }>("select name from crm_message_templates where id = $1 and org_id = $2", [c.templateId, orgId])).rows[0];
       out.push(`Sends the ${c.channel === "sms" ? "SMS" : c.channel === "whatsapp" ? "WhatsApp" : "email"} template "${t?.name ?? "a template"}" (its approved wording) as the ${c.sendAs.replace(/_/g, " ")}.`);
     } else if (s.kind === "request_review") {
-      const c = s.config as { templateId: string; channel: string };
+      const c = s.config as { templateId: string; channel: string; mode?: "review" | "survey" };
       const t = (await db.query<{ name: string }>("select name from crm_message_templates where id = $1 and org_id = $2", [c.templateId, orgId])).rows[0];
-      out.push(`Asks the contact for a review with the ${c.channel === "sms" ? "SMS" : c.channel === "whatsapp" ? "WhatsApp" : "email"} template "${t?.name ?? "a template"}" (its approved wording), only if they agreed to messages on that channel.`);
+      out.push(`${c.mode === "survey" ? "Sends the contact a short satisfaction survey" : "Asks the contact for a review"} with the ${c.channel === "sms" ? "SMS" : c.channel === "whatsapp" ? "WhatsApp" : "email"} template "${t?.name ?? "a template"}" (its approved wording), only if they agreed to messages on that channel.`);
     } else if (s.kind === "webhook") {
       const h = (await db.query<{ name: string }>("select name from crm_webhook_subscriptions where id = $1 and org_id = $2", [(s.config as { subscriptionId: string }).subscriptionId, orgId])).rows[0];
       out.push(`Sends a signed webhook to "${h?.name ?? "an endpoint"}"${(s.config as { includeContact: boolean }).includeContact ? " with the contact's name, email and phone" : ""}.`);

@@ -766,6 +766,176 @@ CLEAN["0089_social_media_manager"] = {
     // The default settings row of workspace a stays: configuration, not history.
   },
 };
+const PROPOSAL_KINDS = ["proposal_approval_requested", "proposal_approval_decided", "proposal_viewed", "proposal_accepted", "proposal_declined", "proposal_changes_requested", "proposal_expiring", "signature_completed", "signature_failed"];
+SEEDS["0091_proposals"] = async (db, ctx) => {
+  await db.query("insert into proposal_settings (org_id) values ($1)", [ctx.orgs.a.id]);
+  await forOrgs(ctx, async (org, key, owner) => {
+    const contact = (await one(db, "select id from contacts where org_id = $1 order by id limit 1", [org])).id;
+    const tax = (await one(db, "insert into proposal_tax_rates (org_id, name, rate_bps) values ($1, 'Seed tax', 1200) returning id", [org])).id;
+    await db.query("insert into proposal_catalog_items (org_id, name, unit_price_minor, currency, tax_rate_id) values ($1, 'Seed item', 150000, 'USD', $2)", [org, tax]);
+    const template = (await one(db, "insert into proposal_templates (org_id, key, name) values ($1, 'seed-template', 'Seed template') returning id", [org])).id;
+    await db.query("insert into proposal_template_versions (org_id, template_id, version, doc, content_hash) values ($1, $2, 1, '{\"v\":1,\"sections\":[],\"lines\":[],\"terms\":\"\"}'::jsonb, repeat('a', 64))", [org, template]);
+    const run = (await one(db, "insert into proposal_ai_runs (org_id, status) values ($1, 'succeeded') returning id", [org])).id;
+    await db.query("insert into proposal_counters (org_id, last_number) values ($1, 1)", [org]);
+    // A sent proposal: the database insists that a sent version is approved, names who approved and sent it, and is the current version.
+    const proposal = (await one(db, `insert into proposals (org_id, number, title, status, contact_id, template_id, template_version, owner_user_id, currency, client_name, client_email, doc, one_time_total_minor, ai_run_id,
+        origin, version, approved_version, approved_by, approved_at, sent_version, sent_at, sent_by, created_by)
+      values ($1, 'P-0001', 'Seed proposal', 'sent', $2, $3, 1, $4, 'USD', 'Seed Customer', 'seed@example.test', '{"v":1,"sections":[],"lines":[],"terms":""}'::jsonb, 150000, $5, 'ai', 1, 1, $4, now(), 1, now(), $4, $4) returning id`,
+      [org, contact, template, owner, run])).id;
+    await db.query("insert into proposal_versions (org_id, proposal_id, version, snapshot, content_hash, source_hash, one_time_total_minor, created_by) values ($1, $2, 1, '{\"v\":1}'::jsonb, repeat('e', 64), repeat('f', 64), 150000, $3)", [org, proposal, owner]);
+    await db.query("insert into proposal_events (org_id, proposal_id, version, kind, actor_id) values ($1, $2, 1, 'created', $3)", [org, proposal, owner]);
+    // Token and session hashes are unique across workspaces, so each is made from the workspace id.
+    const link = (await one(db, "insert into proposal_share_links (org_id, proposal_id, version, token_hash, expires_at) values ($1, $2, 1, md5($3::text) || md5($3::text || 't'), now() + interval '7 days') returning id", [org, proposal, org])).id;
+    await db.query("insert into proposal_link_challenges (link_id, org_id, code_hash, expires_at) values ($1, $2, repeat('c', 64), now() + interval '10 minutes')", [link, org]);
+    await db.query("insert into proposal_link_sessions (link_id, org_id, session_hash, verified_email, expires_at, max_expires_at) values ($1, $2, md5($3::text) || md5($3::text || 's'), 'seed@example.test', now() + interval '30 minutes', now() + interval '8 hours')", [link, org, org]);
+    await db.query("insert into proposal_decisions (org_id, proposal_id, version, content_hash, decision, method, decided_name, recorded_by) values ($1, $2, 1, repeat('e', 64), 'accepted', 'recorded_by_staff', 'Seed Customer', $3)", [org, proposal, owner]);
+    await db.query("insert into private_files (org_id, bucket, storage_key, filename, mime_type, size_bytes, status) values ($1, 'proposal-documents', $2, 'p.pdf', 'application/pdf', 100, 'ready')", [org, `${org}/proposals/p.pdf`]);
+    await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'proposal_accepted', 'Seed proposal accepted')", [org, owner]);
+  });
+};
+// Decisions and events are append-only by design, so removing them (what an operator exports first) means switching their append-only triggers off for the clean-up.
+// The default settings row of workspace a and the number counters are configuration, not history: they stay and go with their tables.
+CLEAN["0091_proposals"] = {
+  guard: async (db) => {
+    await db.query("alter table proposal_events disable trigger proposal_events_immutable");
+    await db.query("alter table proposal_decisions disable trigger proposal_decisions_append_only");
+    await db.query("delete from proposals");
+    await db.query("alter table proposal_events enable trigger proposal_events_immutable");
+    await db.query("alter table proposal_decisions enable trigger proposal_decisions_append_only");
+    for (const t of ["proposal_ai_runs", "proposal_templates", "proposal_catalog_items", "proposal_tax_rates"]) await db.query(`delete from ${t}`);
+    await db.query("delete from private_files where bucket = 'proposal-documents'");
+    await db.query("delete from notifications where kind = any($1::text[])", [PROPOSAL_KINDS]);
+  },
+};
+
+// A simulated connection with a signature request out for the seeded proposal, and one delivery on its history. The history is append-only, so the clean-up switches its trigger off.
+SEEDS["0092_esign"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key, owner) => {
+    const connection = (await one(db, "insert into esign_connections (org_id, provider, mode, webhook_token_hash, credentials, status, connected_by) values ($1, 'simulated', 'simulated', md5($2::text) || md5($2::text || 'w'), 'sealed-seed', 'connected', $3) returning id", [org, org, owner])).id;
+    const proposal = (await one(db, "select id from proposals where org_id = $1 and number = 'P-0001'", [org])).id;
+    const request = (await one(db, `insert into signature_requests (org_id, proposal_id, proposal_version, version_hash, pdf_sha256, connection_id, provider, mode, status, signer_name, signer_email, provider_document_id, idempotency_key, sent_at, created_by)
+      values ($1, $2, 1, repeat('e', 64), repeat('d', 64), $3, 'simulated', 'simulated', 'sent', 'Seed Customer', 'seed@example.test', $4, $5, now(), $6) returning id`, [org, proposal, connection, `seed-doc-${key}`, `proposal:${proposal}:1:0`, owner])).id;
+    await db.query("insert into signature_events (org_id, request_id, kind, source, provider_event_id) values ($1, $2, 'sent', 'provider_webhook', $3)", [org, request, `seed-event-${key}`]);
+  });
+};
+CLEAN["0092_esign"] = {
+  guard: async (db) => {
+    await db.query("alter table signature_events disable trigger signature_events_immutable");
+    await db.query("delete from signature_requests");
+    await db.query("alter table signature_events enable trigger signature_events_immutable");
+    await db.query("delete from esign_connections");
+  },
+};
+
+const REPUTATION_KINDS = ["feedback_follow_up_overdue", "review_needs_reply", "review_reply_requested", "review_reply_decided", "review_reply_failed", "review_connection_attention"];
+SEEDS["0094_reputation_followthrough"] = async (db, ctx) => {
+  // Workspace a changed its settings; workspace b's row holds only the defaults.
+  await db.query("insert into reputation_settings (org_id, escalate_at_or_below, acknowledge_within_hours, outcome_nudges_enabled) values ($1, 3, 12, true)", [ctx.orgs.a.id]);
+  await db.query("insert into reputation_settings (org_id) values ($1)", [ctx.orgs.b.id]);
+  await forOrgs(ctx, async (org, key, owner) => {
+    const contact = await seedContact(db, org, `Seed-0094 customer ${key}`);
+    // A satisfaction survey that began from a program, answered on the zero-to-ten scale, found low, acknowledged and then resolved.
+    const request = (await one(db, `insert into crm_review_requests (org_id, contact_id, channel, token_hash, status, requested_via, kind, scale, expires_at)
+      values ($1, $2, 'sms', md5($3::text) || md5($3::text || 'x'), 'feedback_received', 'program', 'survey', 'nps10', now() + interval '60 days') returning id`, [org, contact, `0094-${key}`])).id;
+    await db.query(`insert into customer_feedback (org_id, contact_id, review_request_id, source, scale, nps_score, comment, low_score, follow_up_status, acknowledged_at, acknowledged_by,
+        resolved_at, resolved_by, resolution_note, sla_notified_at)
+      values ($1, $2, $3, 'review_request', 'nps10', 4, 'Seed answer', true, 'resolved', now(), $4, now(), $4, 'Called back', now())`, [org, contact, request, owner]);
+    // An answer to a survey form that knew who the customer was: it keeps the link to the submission it came from.
+    const form = (await one(db, "insert into crm_forms (org_id, key, name, kind, purpose) values ($1, $2, 'Seed survey', 'survey', 'survey') returning id", [org, `seed-0094-${key}`])).id;
+    const version = (await one(db, "insert into crm_form_versions (org_id, form_id, version, fields, content_hash) values ($1, $2, 1, '[]'::jsonb, repeat('a', 64)) returning id", [org, form])).id;
+    const submission = (await one(db, `insert into crm_form_submissions (org_id, form_id, version_id, source, answers, dedupe_key, contact_id)
+      values ($1, $2, $3, 'hosted', '{"score":4}'::jsonb, $4, $5) returning id`, [org, form, version, `seed-0094-${key}-submission`, contact])).id;
+    await db.query("insert into customer_feedback (org_id, contact_id, source, scale, rating, comment, form_submission_id) values ($1, $2, 'survey', 'csat5', 4, 'Seed answer', $3)", [org, contact, submission]);
+    // A finished review request batch with the request it made and the customer row that points at it.
+    const batch = (await one(db, `insert into review_request_batches (org_id, name, status, kind, channel, criteria, rate_per_minute, approved_hash, approved_binding, approved_by, approved_at, created_by, started_at, completed_at)
+      values ($1, 'Seed-0094 batch', 'completed', 'review', 'sms', '{"source":"appointments_showed","from":"2026-01-01","to":"2026-01-31"}'::jsonb, 10, repeat('a', 64), '{"v":1}'::jsonb, $2, now(), $2, now(), now()) returning id`, [org, owner])).id;
+    const batchRequest = (await one(db, `insert into crm_review_requests (org_id, contact_id, channel, token_hash, status, requested_via, batch_id, expires_at)
+      values ($1, $2, 'sms', md5($3::text) || md5($3::text || 'y'), 'sent', 'batch', $4, now() + interval '60 days') returning id`, [org, contact, `0094-batch-${key}`, batch])).id;
+    await db.query("insert into review_request_batch_items (org_id, batch_id, contact_id, status, request_id, queued_at) values ($1, $2, $3, 'queued', $4, now())", [org, batch, contact, batchRequest]);
+    await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'feedback_follow_up_overdue', 'Seed feedback reminder')", [org, owner]);
+  });
+};
+// The settings of both workspaces are configuration, not history: they stay and go with the table. Everything the rollback guards is removed first (the feedback, then the
+// seeded customers with the requests that hang off them).
+CLEAN["0094_reputation_followthrough"] = {
+  guard: async (db) => {
+    await db.query("delete from notifications where kind = any($1::text[])", [REPUTATION_KINDS]);
+    await db.query("delete from customer_feedback where comment = 'Seed answer'");
+    // The seeded batches (their customer rows go with them), then the survey forms the seed made (their versions and submissions go with them), then the seeded customers with
+    // the requests that hang off them.
+    await db.query("delete from review_request_batches where name like 'Seed-0094 %'");
+    await db.query("delete from crm_forms where key like 'seed-0094-%'");
+    await db.query("delete from contacts where display_name like 'Seed-0094 %'");
+  },
+};
+
+// A simulated Google connection with its sealed credentials, two mirrored reviews (one linked by hand to a customer), a reply draft with its history and a pending sign-in state.
+SEEDS["0095_external_reviews"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key, owner) => {
+    const contact = await seedContact(db, org, `Seed-0095 reviewer ${key}`);
+    const connection = (await one(db, `insert into review_connections (org_id, provider, adapter, external_account_id, external_location_id, name, credentials, status, can_reply, connected_by)
+      values ($1, 'google', 'simulated', 'accounts/seed', $2, 'Seed Location', 'sealed-seed', 'connected', true, $3) returning id`, [org, `locations/0095-${key}`, owner])).id;
+    const review = (await one(db, `insert into external_reviews (org_id, connection_id, provider_review_id, rating, reviewer_name, comment, provider_created_at, simulated, contact_id, contact_linked_by, contact_linked_at)
+      values ($1, $2, $3, 2, 'Seed Reviewer', 'Seed review', now(), true, $4, $5, now()) returning id`, [org, connection, `seed-0095-${key}-1`, contact, owner])).id;
+    await db.query("insert into external_reviews (org_id, connection_id, provider_review_id, rating, reviewer_anonymous, provider_created_at, simulated) values ($1, $2, $3, 5, true, now(), true)", [org, connection, `seed-0095-${key}-2`]);
+    const reply = (await one(db, "insert into review_replies (org_id, review_id, body, origin, author_id) values ($1, $2, 'Thank you for telling us. Please get in touch so we can put this right.', 'human', $3) returning id", [org, review, owner])).id;
+    await db.query("insert into review_reply_events (org_id, reply_id, kind, actor_id) values ($1, $2, 'created', $3)", [org, reply, owner]);
+    await db.query("insert into review_oauth_states (org_id, user_id, provider, state_hash, expires_at, pending) values ($1, $2, 'google', md5($3::text) || md5($3::text || 'x'), now() + interval '10 minutes', 'encrypted-locations')", [org, owner, `0095-${key}`]);
+  });
+};
+CLEAN["0095_external_reviews"] = {
+  guard: async (db) => {
+    for (const t of ["review_reply_events", "review_replies", "external_reviews", "review_oauth_states", "review_connections"]) await db.query(`delete from ${t}`);
+    await db.query("delete from contacts where display_name like 'Seed-0095 %'");
+  },
+};
+
+const INVOICE_KINDS = ["invoice_approval_requested", "invoice_approval_decided", "invoice_paid", "invoice_payment_failed", "invoice_overdue", "invoice_refund_recorded", "payment_connection_attention", "payment_review_needed"];
+SEEDS["0093_customer_invoices_payments"] = async (db, ctx) => {
+  // Workspace a changed its invoice settings (an owner's configuration); workspace b never opened them.
+  await db.query("insert into customer_invoice_settings (org_id, legal_name, number_prefix) values ($1, 'Seed Plumbing Co', 'SEED-')", [ctx.orgs.a.id]);
+  await forOrgs(ctx, async (org, key, owner) => {
+    await db.query("insert into org_features (org_id, feature, enabled) values ($1, 'invoices', true) on conflict do nothing", [org]);
+    const contact = await seedContact(db, org, `Seed-0093 customer ${key}`);
+    const connection = (await one(db, "insert into customer_payment_connections (org_id, provider, mode, public_key, credentials, status) values ($1, 'simulated', 'test', 'cpk_' || substr(md5($2::text), 1, 20), 'sealed-secret', 'connected') returning id", [org, `0093-${key}`])).id;
+    // An invoice is written as a draft with its lines, then issued: the database insists the totals equal the lines, and that an issued invoice has its number, hash and approval.
+    const invoice = (await one(db, "insert into customer_invoices (org_id, contact_id, currency, subtotal_minor, tax_minor, total_minor, due_on, created_by) values ($1, $2, 'PHP', 10000, 0, 10000, '2026-12-01', $3) returning id", [org, contact, owner])).id;
+    await db.query(`insert into customer_invoice_lines (org_id, invoice_id, position, description, quantity_milli, unit_price_minor, gross_minor, discount_minor, net_minor, tax_minor, total_minor, ex_tax_minor)
+      values ($1, $2, 1, 'Seed line', 1000, 10000, 10000, 0, 10000, 0, 10000, 10000)`, [org, invoice]);
+    await db.query(`update customer_invoices set status = 'issued', number = $3, issue_on = '2026-11-01', due_on = '2026-12-01', content_hash = repeat('a', 64), approved_version = 1, approved_by = $4, approved_at = now(),
+      issued_at = now(), issued_by = $4, public_token_hash = md5($1::text) || md5($2::text) where id = $1 and org_id = $2`, [invoice, org, `SEED-${key.toUpperCase()}-0001`, owner]);
+    // A payment of 40.00 confirmed in test mode, 10.00 of it refunded: the invoice's paid and refunded amounts must equal what these rows add up to.
+    const payment = (await one(db, `insert into customer_payments (org_id, invoice_id, connection_id, provider, provider_payment_id, amount_minor, currency, livemode, verification, status, received_at)
+      values ($1, $2, $3, 'simulated', $4, 4000, 'PHP', false, 'provider_confirmed', 'succeeded', now()) returning id`, [org, invoice, connection, `pay_seed_${key}`])).id;
+    await db.query("insert into customer_refunds (org_id, payment_id, invoice_id, currency, amount_minor, status, source, reason, recorded_by) values ($1, $2, $3, 'PHP', 1000, 'succeeded', 'manual_record', 'Seed refund', $4)", [org, payment, invoice, owner]);
+    await db.query("update customer_payments set status = 'partially_refunded' where id = $1 and org_id = $2", [payment, org]);
+    await db.query("update customer_invoices set paid_minor = 4000, refunded_minor = 1000, payment_status = 'partially_paid' where id = $1 and org_id = $2", [invoice, org]);
+    await db.query("insert into customer_payment_attempts (org_id, invoice_id, connection_id, currency, amount_minor, reference, status) values ($1, $2, $3, 'PHP', 6000, 'CP-' || substr(md5($4::text), 1, 24), 'expired')", [org, invoice, connection, `0093-${key}`]);
+    await db.query("insert into customer_payment_events (org_id, connection_id, provider_event_id, event_type, livemode, outcome, payload_sha256) values ($1, $2, $3, 'payment.paid', false, 'processed', repeat('c', 64))", [org, connection, `evt_seed_${key}`]);
+    await db.query("insert into customer_invoice_reminders (org_id, invoice_id, step_key, due_at, status) values ($1, $2, 'on_due:0', '2026-12-01T01:00:00Z', 'scheduled')", [org, invoice]);
+    await db.query("insert into customer_invoice_events (org_id, invoice_id, kind, actor_kind, actor_id) values ($1, $2, 'issued', 'user', $3)", [org, invoice, owner]);
+    const conv = (await one(db, "insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'sms', 'open', 'unassigned') returning id", [org, contact])).id;
+    await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, failed_at, failure_kind, scope) values ($1, $2, 'outbound', 'human', 'Seed invoice reminder', 'failed', now(), 'rejected', 'billing')", [org, conv]);
+    await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'invoice_paid', 'Seed invoice paid')", [org, owner]);
+  });
+};
+// Financial rows cannot be deleted by anything but a purge of a departed client's data, which declares itself with iaq.purge: the clean-up (what an operator exports first)
+// does the same for the length of the removal. The settings of workspace a and the invoicing switches are configuration, not history: they go with their table, and the
+// rollback deletes the switches.
+CLEAN["0093_customer_invoices_payments"] = {
+  guard: async (db) => {
+    await db.query("select set_config('iaq.purge', 'on', false)");
+    try {
+      for (const t of ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"]) await db.query(`delete from ${t}`);
+    } finally {
+      await db.query("select set_config('iaq.purge', '', false)");
+    }
+    await db.query("delete from conversation_messages where scope = 'billing'");
+    await db.query("delete from notifications where kind = any($1::text[])", [INVOICE_KINDS]);
+    await db.query("delete from conversations where contact_id in (select id from contacts where display_name like 'Seed-0093 %')");
+    await db.query("delete from contacts where display_name like 'Seed-0093 %'");
+  },
+};
 
 // Tenant isolation across the whole populated database: through the application role, the owner of workspace A sees rows of workspace A only, the owner of B rows of
 // B only, a signed-in stranger and a request with no user see none. Every public table with an org_id column that the role can read and that holds rows is swept.
@@ -1485,14 +1655,14 @@ async function runF() {
   const rangeEnd = scope("0087_website_chat").filter((v) => !cur.ledger.includes(v));
   if (JSON.stringify(rangeEnd) !== JSON.stringify(["0087_website_chat"])) fail("F", `--through 0087 from the 0086 ledger lists ${rangeEnd.join(", ")}`);
   finding("F", "the runner's own refusals hold on this database: an unknown version and a version named twice are refused before anything is applied, and --through 0087 from the 0086 ledger lists exactly 0087_website_chat");
-  // A ledger that lacks a prerequisite: through 0064, 0065 (support requests) is not in. The runner must refuse 0083, 0085 and 0089, which all extend
+  // A ledger that lacks a prerequisite: through 0064, 0065 (support requests) is not in. The runner must refuse 0083, 0085, 0089 and 0094, which all extend
   // notifications_kind_check from the live constraint and would otherwise be overwritten by 0065's copied list, and must apply nothing.
   {
     const early = await newDb();
     await runnerApply(early, scope("0064_aqi_feature_tours"));
     const before = (await applied(early)).size;
     const refused = [];
-    for (const v of ["0083_unified_inbox", "0085_missed_call_recovery", "0086_lead_scoring", "0087_website_chat", "0089_social_media_manager"]) {
+    for (const v of ["0083_unified_inbox", "0085_missed_call_recovery", "0086_lead_scoring", "0087_website_chat", "0089_social_media_manager", "0091_proposals", "0094_reputation_followthrough"]) {
       if (!files.map(name).includes(v)) continue;
       try {
         await runnerApply(early, [v]);

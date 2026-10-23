@@ -17,6 +17,7 @@ import { loadApprovedTemplate, tokenValuesFor } from "@/server/crm/message-templ
 import { queueOutreach } from "@/server/messaging/outreach";
 import { hasReviewLinkToken, queueReviewRequestInTx, reviewRequestProblem } from "@/server/crm/reviews";
 import { contactAddress, getConsent, isSuppressed } from "@/server/messaging/contacts";
+import { typedByVisitorAddress } from "@/server/messaging/consent-identity";
 import { assignWithRule } from "@/server/crm/assignment";
 import { applyConversationAction } from "@/server/messaging/workflow-actions";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
@@ -536,6 +537,8 @@ async function execSendMessage(sc: StepContext, c: SendMessageConfig): Promise<S
     const address = await contactAddress(db, orgId, contact.id, c.channel);
     if (!address) return wouldSkip(`${contact.display_name} has no ${c.channel === "email" ? "email address" : "phone number"} on file, so it would be blocked.`, { reason: "contact_unreachable" });
     if (await isSuppressed(db, orgId, c.channel, address)) return wouldSkip(`${address} opted out or bounced, so it would be blocked.`, { reason: "suppressed" });
+    // A workflow's message is automatic, so it never goes to an address a website visitor typed and nobody has confirmed (evaluateSend refuses it the same way).
+    if (await typedByVisitorAddress(db, orgId, contact.id, c.channel, address)) return wouldSkip("The visitor typed this number or address and it has not been confirmed, so it would be blocked.", { reason: "identity_unverified" });
     const consent = await getConsent(db, orgId, contact.id, c.channel, template.purpose);
     if (consent === "revoked") return wouldSkip(`${contact.display_name} withdrew consent on ${channelLabel}, so it would be blocked.`, { reason: "no_consent" });
     if (consent !== "granted") return wouldSkip(`There is no consent on record to send ${contact.display_name} ${template.purpose === "marketing" ? "promotional " : ""}messages on ${channelLabel}, so it would be blocked.`, { reason: "no_consent" });
@@ -578,15 +581,15 @@ async function execRequestReview(sc: StepContext, c: RequestReviewConfig): Promi
   if (!hasReviewLinkToken(template)) throw new StepFailure("The review request template doesn't contain {{review.link}}, so the customer would get no link. Add it, approve the template again and republish.");
   const channelLabel = c.channel === "sms" ? "SMS" : c.channel === "whatsapp" ? "WhatsApp" : "email";
   if (sc.dryRun) {
-    const problem = await reviewRequestProblem(db, orgId, { contactId: contact.id, templateId: c.templateId, contentHash: c.contentHash, now: sc.now });
+    const problem = await reviewRequestProblem(db, orgId, { contactId: contact.id, templateId: c.templateId, contentHash: c.contentHash, kind: c.mode ?? "review", now: sc.now });
     if (problem) return wouldSkip(`${problem.detail} It would be skipped.`, { reason: problem.reason });
     if (!sc.version.authorized) return wouldSkip("An owner must approve this version before it sends anything.", { reason: "authorization_needed" });
-    return would(`Would ask ${contact.display_name} for a review with the ${channelLabel} template "${template.name}" (v${template.version}), subject to quiet hours, limits and credits when it sends.`);
+    return would(`Would ${c.mode === "survey" ? "send" : "ask"} ${contact.display_name} ${c.mode === "survey" ? "a survey" : "for a review"} with the ${channelLabel} template "${template.name}" (v${template.version}), subject to quiet hours, limits and credits when it sends.`);
   }
   assertAuthorized(sc);
   const r = await queueReviewRequestInTx(db, sc.actor, {
     contactId: contact.id, templateId: c.templateId, contentHash: c.contentHash, businessHoursOnly: c.businessHoursOnly, opportunityId: sc.run.opportunityId,
-    appointmentId: typeof sc.run.context.appointmentId === "string" ? sc.run.context.appointmentId : null,
+    appointmentId: typeof sc.run.context.appointmentId === "string" ? sc.run.context.appointmentId : null, kind: c.mode ?? "review", scale: c.scale ?? "csat5",
   }, { via: "workflow", requestedBy: null, dedupeKey: sc.effectKey, causedBy: sc.causedBy, now: sc.now });
   if (r.status === "blocked") return blocked(r.reason, `${r.detail} It wasn't sent.`);
   return done({

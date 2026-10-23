@@ -14,6 +14,7 @@ import { processDueSocialPosts, PUBLISH_BUDGET_MS } from "@/server/social/publis
 import { checkAllAccounts, purgeSignInStates } from "@/server/social/accounts";
 import { finishPendingMediaRemovals } from "@/server/social/media";
 import { syncPostMetrics } from "@/server/social/analytics";
+import { expireDueProposals, proposalHousekeeping } from "@/server/proposals/jobs";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
@@ -26,6 +27,8 @@ import { sendDueReminders } from "@/server/appointments/reminders";
 import { expireBookingHolds } from "@/server/appointments/holds";
 import { expireAllStaleApprovals } from "@/server/approvals/service";
 import { enrollEligible, prepareDueSteps } from "@/server/retention/engine";
+import { runFeedbackSla, runOutcomeNudge } from "@/server/reputation/jobs";
+import { processReviewBatches } from "@/server/reputation/batch-job";
 import { runFairUseChecks } from "@/server/fairuse/service";
 import { runInactivityReview } from "@/server/inactivity/service";
 import { sendDeletionReminders } from "@/server/offboarding/service";
@@ -49,6 +52,9 @@ import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
 import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
+import { runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
+import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
+import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
 
 export interface ScheduledJob {
   name: string;
@@ -88,6 +94,14 @@ export const JOBS: ScheduledJob[] = [
       return e.enrolled + r.queued + r.blocked;
     },
   },
+  // Reputation, internal only (nothing here writes to a customer). Low private feedback nobody acknowledged in the workspace's time is announced to the team once; and, only for
+  // workspaces that switched it on, a daily notice counts finished appointments with no recorded outcome. Neither marks anything attended or contacts anyone.
+  { name: "feedbackSla", everyMinutes: 15, run: () => runFeedbackSla() },
+  { name: "appointmentOutcomeNudge", everyMinutes: 1440, run: () => runOutcomeNudge() },
+  // Review request batches: an owner-approved ask to many customers, only in workspaces a Super Admin switched batches on for. Each approved batch starts (its approval is checked
+  // against what would be sent now; any change stops it) and its customers are asked at the batch's pace, through the same checks as one review request. The messages it queues go
+  // out in the dispatcher run straight after. Nothing happens for a batch nobody approved, and a staged start must name this job to run it.
+  { name: "reviewRequestBatches", run: async () => { const r = await processReviewBatches(); return r.started + r.queued + r.excluded + r.failed + r.paused + r.stopped + r.completed; } },
   // Native CRM automation: the event outbox is handed to workflows, lead assignment, follow-ups and webhooks; then due workflow runs
   // advance (a message step queues its message, which the dispatcher right after sends in the same run).
   { name: "crmEventDispatch", run: async () => (await crmEventDispatch()).claimed },
@@ -113,6 +127,10 @@ export const JOBS: ScheduledJob[] = [
   // library file whose stored copy could not be deleted at the time is finished. Like every job here it runs only when the scheduler does, and in a staged start
   // only when named in SCHEDULER_JOBS_ONLY.
   { name: "socialCleanup", everyMinutes: 15, run: async () => { const r = await purgeSignInStates(); return r.cleared + r.deleted + (await finishPendingMediaRemovals()); } },
+  // Proposals (only workspaces a Super Admin switched them on for). Sent proposals past their valid-until date, in the workspace's own calendar, are closed and their links stop
+  // opening; the owner is warned two days ahead. The daily clean-up removes spent emailed codes, sessions and the outbox copies of code emails. Neither contacts a customer.
+  { name: "proposalExpiry", everyMinutes: 60, run: async () => { const r = await expireDueProposals(); return r.expired + r.warned; } },
+  { name: "proposalHousekeeping", everyMinutes: 1440, run: async () => { const r = await proposalHousekeeping(); return r.challenges + r.sessions + r.codeEmails; } },
   { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).
@@ -194,6 +212,17 @@ export const JOBS: ScheduledJob[] = [
     const r = await runProactiveBriefings();
     return r.generated + r.suppressed + r.held + r.failed;
   } },
+  // Customer payments (a business's own PayMongo account, for its own invoices). Deliveries that were received and never applied are applied again, stale checkouts are closed,
+  // open checkouts are read back so a lost webhook still settles, each connection is checked once a day, and deal rules an interrupted payment skipped run now. No real provider
+  // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. Like every job here it runs only when the scheduler does, and in a staged start
+  // only when named in SCHEDULER_JOBS_ONLY.
+  { name: "customerPaymentReconcile", everyMinutes: 15, run: () => runCustomerPaymentReconcile() },
+  // Customer invoices. The overdue sweep notices an unpaid invoice past its due date (one history line, one notice to the owner and one announcement per invoice and due date) and
+  // sends nothing to anyone. The reminders job takes the reminders that have come due and hands each to the consent-gated send chain (scope "billing"); it does nothing for a workspace
+  // whose owner has not authorized the exact wording, and a reminder is never sent more than a day late. Like every job here they run only when the scheduler does, and in a staged
+  // start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "invoiceOverdueSweep", everyMinutes: 60, run: async () => (await runInvoiceOverdueSweep()).marked },
+  { name: "invoiceReminders", everyMinutes: 15, run: () => runInvoiceRemindersJob() },
 ];
 
 /**

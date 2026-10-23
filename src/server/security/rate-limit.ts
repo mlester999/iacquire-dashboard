@@ -143,4 +143,21 @@ export const RATE_LIMITS = {
   // hashed client address. Past the limit, that address's requests for that connection are refused before the vault is read. Requests that
   // authenticate never count, so a provider's own traffic (from its own addresses) isn't held back by someone else's forged requests.
   voiceWebhookAuthFailure: { name: "voice-webhook:auth-fail", limit: 20, windowSeconds: 600 },
+  // The customer's proposal page (/proposal/<token>) and its API. The per-address rule is checked on every request BEFORE any token is looked up, so a flood of made-up tokens is
+  // stopped without a database read per guess. The per-token rules hold an address that has the link to a sensible pace. Keys are hashed addresses, hashed tokens and link ids.
+  proposalPublicByIp: { name: "proposal:public:ip", limit: 120, windowSeconds: 60 },
+  proposalPageByToken: { name: "proposal:page:token", limit: 60, windowSeconds: 3600 },
+  proposalViewByToken: { name: "proposal:view:token", limit: 30, windowSeconds: 3600 },
+  proposalPdfByToken: { name: "proposal:pdf:token", limit: 30, windowSeconds: 3600 },
+  // Emailed codes: per link, and per recipient address across links so one mailbox is never flooded. Wrong entries: per hashed address (a code also allows only five tries).
+  proposalCodeByLink: { name: "proposal:code:link", limit: 5, windowSeconds: 3600 },
+  proposalCodeByEmail: { name: "proposal:code:email", limit: 10, windowSeconds: 3600 },
+  proposalVerifyByIp: { name: "proposal:verify:ip", limit: 20, windowSeconds: 600 },
+  proposalDecideByLink: { name: "proposal:decide:link", limit: 20, windowSeconds: 3600 },
+  // Signing (src/server/esign). The webhook route answers a signing service, not a person: the per-address rule is checked before the secret in the address is looked up, so a flood
+  // of made-up addresses is stopped without a database read per guess, and is wide enough for a service that delivers from a few addresses. Asking someone to sign sends an email
+  // from the signing service, so it is held to a pace per workspace; checking a pasted key calls the service, so that is too.
+  esignWebhookByIp: { name: "esign:webhook:ip", limit: 300, windowSeconds: 60 },
+  esignRequestByOrg: { name: "esign:request:org", limit: 20, windowSeconds: 3600 },
+  esignConnectByOrg: { name: "esign:connect:org", limit: 10, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

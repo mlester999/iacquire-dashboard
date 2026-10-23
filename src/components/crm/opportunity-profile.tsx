@@ -23,6 +23,10 @@ import type { NoteView } from "@/server/crm/notes";
 import type { TaskView } from "@/server/crm/tasks";
 import type { CrmScope } from "@/server/crm/page";
 import { RelativeTime } from "@/components/crm/relative-time";
+import { ProposalsPanel } from "@/components/proposals/crm-panel";
+import type { ProposalSummary } from "@/server/proposals/view";
+import { InvoicesPanel } from "@/components/invoices/crm-panel";
+import type { InvoiceView } from "@/server/invoices/views";
 
 function duration(seconds: number | null) {
   if (seconds === null) return null;
@@ -34,7 +38,7 @@ function duration(seconds: number | null) {
 }
 
 export function OpportunityProfile({
-  scope, detail, pipeline, timeline, notes, tasks, members, tags,
+  scope, detail, pipeline, timeline, notes, tasks, members, tags, proposals, invoices,
 }: {
   scope: CrmScope;
   detail: OpportunityDetail;
@@ -44,6 +48,10 @@ export function OpportunityProfile({
   tasks: TaskView[];
   members: Array<{ id: string; name: string }>;
   tags: Array<{ id: string; name: string; color: string }>;
+  /** This deal's proposals; absent when proposals are not switched on for the workspace, the viewer can't see them, or an agency person is looking. */
+  proposals?: ProposalSummary[] | null;
+  /** This deal's invoices; absent when invoicing is not switched on for the workspace, the viewer can't see them, or an agency person is looking. */
+  invoices?: InvoiceView[] | null;
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
@@ -136,8 +144,12 @@ export function OpportunityProfile({
               { value: "notes", label: "Notes", count: notes.length },
               { value: "tasks", label: "Tasks", count: tasks.filter((t) => t.status === "open" || t.status === "in_progress").length },
               { value: "history", label: "Stage history", count: detail.history.length },
+              ...(proposals ? [{ value: "proposals", label: "Proposals", count: proposals.length }] : []),
+              ...(invoices ? [{ value: "invoices", label: "Invoices", count: invoices.length }] : []),
             ]}
           >
+            {tab === "proposals" && proposals && <ProposalsPanel rows={proposals} newHref={`/proposals/new?deal=${detail.id}`} canCreate={Boolean(scope.can["proposals.create"]) && !scope.readOnly && detail.status === "open"} />}
+            {tab === "invoices" && invoices && <InvoicesPanel rows={invoices} newHref={`/invoices/new?deal=${detail.id}`} canCreate={Boolean(scope.can["invoices.create"]) && !scope.readOnly && detail.status !== "lost"} />}
             {tab === "activity" && <Timeline scope={scope} target={{ opportunityId: detail.id }} initial={timeline} />}
             {tab === "notes" && <NotesPanel scope={scope} type="opportunity" recordId={detail.id} notes={notes} />}
             {tab === "tasks" && (

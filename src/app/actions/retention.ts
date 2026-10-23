@@ -44,10 +44,10 @@ export async function setProgramEnabledAction(kind: string, enabled: boolean) {
   }
 }
 
-export async function setRetentionPausedAction(contactId: string, paused: boolean) {
+export async function setRetentionPausedAction(contactId: string, paused: boolean, reason?: string | null) {
   try {
     const ctx = await requireOrgContextOrThrow("retention.view");
-    await setRetentionPaused(ctx, uuid.parse(contactId), z.boolean().parse(paused));
+    await setRetentionPaused(ctx, uuid.parse(contactId), z.boolean().parse(paused), z.string().max(400).nullish().parse(reason));
     revalidatePath("/retention");
     return { ok: true as const };
   } catch (err) {

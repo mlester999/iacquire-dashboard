@@ -1,6 +1,7 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { llmComplete, resolveLlmConfig, type LlmConfig } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { SYSTEM_PROMPT, buildSignalPrompt, parseSignals } from "@/lib/lead-scoring/ai-signals";
 import type { AiSignals } from "@/lib/lead-scoring/types";
 
@@ -54,6 +55,8 @@ export async function extractSignals(
   let reply: string | null = null;
   for (let attempt = 1; attempt <= MAX_TRIES && reply === null; attempt += 1) {
     const r = await complete(config, { system: SYSTEM_PROMPT, user: prompt.user, maxTokens: 300, temperature: 0, timeoutMs: 20_000 });
+    // The provider's own token counts are recorded (and charged where a rate is published) per call; the estimates below stay as the daily tally. Never fails the scoring.
+    await meterModelUse({ orgId, feature: "lead_scoring", key: modelCallKey(orgId), usage: r.usage });
     if (r.ok) reply = r.text;
     // Only a timeout, a rate limit or a server error is worth a second try; anything else (a bad key, a refused request) would fail the same way.
     else if (attempt < MAX_TRIES && (r.status === 0 || r.status === 429 || r.status >= 500)) await new Promise((res) => setTimeout(res, deps.backoffMs ?? 400));

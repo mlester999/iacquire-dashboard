@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { assertWithinLimits, recordUsage } from "@/server/usage";
 import { searchHelp } from "@/server/help/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -42,6 +43,8 @@ async function ask(c: Call): Promise<Assist<string>> {
   if (!config) return { ok: false, reason: NOT_CONFIGURED };
   if (c.orgId) await assertWithinLimits(c.orgId, "help_request");
   const reply = await llmComplete(config, { system: c.system, user: c.user, maxTokens: c.maxTokens, temperature: 0.2, timeoutMs: 20_000 });
+  // Counted against the workspace the request belongs to (agency staff working without one have no workspace to charge). Metering never fails the answer.
+  if (c.orgId) await meterModelUse({ orgId: c.orgId, feature: "support_ai", key: modelCallKey(c.userId), usage: reply.usage });
   if (!reply.ok) return { ok: false, reason: UNAVAILABLE };
   if (c.orgId) await withSystem((db) => recordUsage(db, { orgId: c.orgId!, userId: c.userId, kind: "help_request" }));
   if (c.audit) await withSystem((db) => recordAudit({ orgId: c.audit!.orgId, actorUserId: c.userId, actorKind: c.orgId ? "user" : "agency", action: "support.ai_assist", targetType: "support_ticket", targetId: c.audit!.ticketId, result: "success", metadata: { kind: c.audit!.kind } }, db));

@@ -9,6 +9,7 @@ import {
   type Refusal, type SessionRow, type VisitorView,
 } from "@/server/webchat/visitor";
 import { replyToVisitor } from "@/server/webchat/respond";
+import { dailyAiRepliesReached, UNAVAILABLE_MESSAGE, webchatPublicDisabled } from "@/server/webchat/switch";
 import type { ReplyGenerator } from "@/server/messaging/responder";
 import type { AppointmentProvider } from "@/server/appointments/provider";
 
@@ -73,11 +74,12 @@ export interface PublicConfig {
   messageMaxLength: number;
 }
 
-function publicConfig(w: WidgetSettings, open: boolean): PublicConfig {
+function publicConfig(w: WidgetSettings, open: boolean, capReached: boolean): PublicConfig {
   return {
     title: w.title, welcomeMessage: w.welcomeMessage, offlineMessage: w.offlineMessage, brandColor: w.brandColor, position: w.position, launcherLabel: w.launcherLabel, leadForm: w.leadForm,
     privacyNotice: w.privacyNotice, privacyUrl: w.privacyUrl, offerMarketingOptIn: w.offerMarketingOptIn, questions: w.qualificationQuestions,
-    aiAvailable: w.aiEnabled && !(w.offlineBehavior === "leave_message" && !open), open, messageMaxLength: 1000,
+    // Said honestly: once today's AI reply allowance is used up, the widget tells the visitor a team member will reply and puts the details form first.
+    aiAvailable: w.aiEnabled && !capReached && !(w.offlineBehavior === "leave_message" && !open), open, messageMaxLength: 1000,
   };
 }
 
@@ -99,6 +101,8 @@ async function resolve(req: ChatRequest): Promise<{ widget: WidgetSettings; host
 const asRecord = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 export async function handleWebChat(req: ChatRequest): Promise<ChatResponse> {
+  // The platform-wide emergency switch answers before any widget, session or database is looked at. (chatRoute answers it even earlier, with the headers a browser needs.)
+  if (webchatPublicDisabled()) return fail(503, "unavailable", UNAVAILABLE_MESSAGE, { retryAfterSeconds: 300 });
   const resolved = await resolve(req);
   if ("status" in resolved) return resolved;
   const { widget, host, surface, cors } = resolved;
@@ -109,11 +113,11 @@ export async function handleWebChat(req: ChatRequest): Promise<ChatResponse> {
   switch (req.action) {
     case "config": {
       if (req.method !== "GET") return fail(405, "method", "Use GET.", { corsOrigin: cors });
-      const open = await withSystem(async (db) => {
+      const state = await withSystem(async (db) => {
         await recordWidgetSeen(db, widget.orgId, host);
-        return businessOpen(db, widget.orgId, req.now ?? new Date());
+        return { open: await businessOpen(db, widget.orgId, req.now ?? new Date()), capReached: widget.aiEnabled && (await dailyAiRepliesReached(db, widget.orgId)) };
       });
-      return ok({ config: publicConfig(widget, open) });
+      return ok({ config: publicConfig(widget, state.open, state.capReached) });
     }
 
     case "session": {

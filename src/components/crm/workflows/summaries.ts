@@ -327,10 +327,11 @@ export function stepSummary(step: Pick<WorkflowStep, "kind" | "config">, names: 
       return `Send ${ch} “${t?.name ?? "a template that's no longer approved"}” as ${names.agent(s.sendAs)}${s.businessHoursOnly ? ", in business hours" : ""}`;
     }
     case "request_review": {
-      const r = step.config as { templateId?: string; channel?: keyof typeof CHANNEL_LABELS; businessHoursOnly?: boolean };
+      const r = step.config as { templateId?: string; channel?: keyof typeof CHANNEL_LABELS; businessHoursOnly?: boolean; mode?: "review" | "survey"; scale?: "csat5" | "nps10" };
       if (!r.templateId) return "Choose a review request template";
       const t = names.template(r.templateId);
-      return `Ask for a review by ${r.channel ? CHANNEL_LABELS[r.channel] : "message"} with “${t?.name ?? "a template that's no longer approved"}”${r.businessHoursOnly ? ", in business hours" : ""}`;
+      const what = r.mode === "survey" ? `Send a ${r.scale === "nps10" ? "0 to 10 recommend" : "1 to 5"} survey` : "Ask for a review";
+      return `${what} by ${r.channel ? CHANNEL_LABELS[r.channel] : "message"} with “${t?.name ?? "a template that's no longer approved"}”${r.businessHoursOnly ? ", in business hours" : ""}`;
     }
     case "notify_team": {
       const n = step.config as NotifyTeamConfig;

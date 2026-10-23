@@ -398,6 +398,22 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0090 replaces app.file_permission with 0089's definition plus two buckets: applied before 0089 (or before 0049), it would put back a definition that lacks the
   // social-media rule (and every bucket added since 0049), so 0089 must already be in.
   "0090_document_buckets": ["0049_aqi_attachments", "0089_social_media_manager"],
+  // 0091 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
+  // nine proposal kinds). It does not replace app.file_permission: the proposal-documents rule is 0090's, so 0090 must be in for the permission names to mean anything.
+  "0091_proposals": ["0065_support_requests", "0090_document_buckets"],
+  // 0092 hangs signature requests off proposals and links proposal_decisions to them, so 0091 must already be in. It extends no notification list (the signature kinds came
+  // with 0091) and does not replace app.file_permission.
+  "0092_esign": ["0091_proposals"],
+  // 0094 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
+  // six reputation kinds). It also alters customer_feedback and crm_review_requests (0033) and points at human_escalations (0019).
+  "0094_reputation_followthrough": ["0033_crm_growth", "0065_support_requests"],
+  // 0093 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
+  // eight invoice and payment kinds). It also adds the 'billing' message scope by reading the live conversation_messages_scope_check (0024), and hangs invoices off
+  // contacts (0027), companies and deals (0028).
+  "0093_customer_invoices_payments": ["0028_crm_sales", "0065_support_requests"],
+  // 0095 points at social_accounts (0089: a Facebook review connection reads through the Page connected for Social media) and relies on 0094's three reviews.* permissions and
+  // six notification kinds. It extends no notification list and does not replace app.file_permission.
+  "0095_external_reviews": ["0089_social_media_manager", "0094_reputation_followthrough"],
 };
 
 /**

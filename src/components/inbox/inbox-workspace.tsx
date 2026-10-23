@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Badge, Input, Kbd, Select, Skeleton, Textarea } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, Popover, PopoverContent, PopoverTrigger, Sheet } from "@/components/ui/overlays";
 import { addMemoryAction, addNoteAction, approveDraftAction, assignAiEmployeeAction, assignConversationAction, claimEscalationAction, declineEscalationAction, deleteMemoryAction, discardDraftAction, loadMessagesByIdAction, loadOlderMessagesAction, markReadAction, markUnreadAction, resolveEscalationAction, retryMessageAction, sendReplyAction, setConversationStateAction } from "@/app/actions/inbox";
+import { confirmIdentityAction } from "@/app/actions/contact-identity";
 import { AiControls } from "@/components/inbox/ai-controls";
+import { IdentityList } from "@/components/inbox/identity-list";
 import { AiAssistPanel } from "@/components/inbox/ai-assist-panel";
 import { requestSuggestedReply } from "@/components/inbox/assist-client";
 import { ChannelHealthBar } from "@/components/inbox/channel-health-bar";
@@ -1395,14 +1397,7 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
           <div className="flex justify-between gap-2"><dt className="text-muted">Stage</dt><dd>{sentenceCase(detail.contact.lifecycleStage)}</dd></div>
           {detail.contact.temperature && <div className="flex justify-between gap-2"><dt className="text-muted">Temperature</dt><dd>{sentenceCase(detail.contact.temperature)}</dd></div>}
         </dl>
-        <ul className="mt-3 space-y-1.5 text-[12.5px]">
-          {detail.contact.identities.map((i) => (
-            <li key={`${i.kind}-${i.value}`} className="flex items-center justify-between gap-2">
-              <span className="truncate">{i.value}</span>
-              <Badge tone={i.verified ? "success" : "neutral"}>{i.verified ? "Verified" : "Unverified"}</Badge>
-            </li>
-          ))}
-        </ul>
+        <IdentityList identities={detail.contact.identities} canConfirm={perms.editContacts} idPrefix={idp} onConfirm={(identityId, how) => run("identity", () => confirmIdentityAction(identityId, how), "Confirmed as theirs.")} />
         <h3 className="mt-4 text-[12px] font-semibold uppercase tracking-wider text-muted">Consent</h3>
         <ul className="mt-1.5 space-y-1 text-[12.5px]">
           {detail.contact.consent.length ? detail.contact.consent.map((x) => (

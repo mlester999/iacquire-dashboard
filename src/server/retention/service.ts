@@ -5,9 +5,10 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { createStandingAuthorization } from "@/server/approvals/service";
 import { ensureDefaultPrograms, programHash, type ProgramRow } from "@/server/retention/engine";
-import { cancelRetention } from "@/server/retention/cancel";
+import { cancelLinkRequests, cancelRetention } from "@/server/retention/cancel";
 import { releaseReservation } from "@/server/billing/ledger";
-import { defaultFor, isProgramKind, MAX_BODY, MAX_STEPS, validateSteps, type ProgramKind, type ProgramState, type ProgramStep, type StepIssue } from "@/lib/retention";
+import { assertSurveysEnabled } from "@/server/reputation/entitlement";
+import { defaultFor, hasFeedbackLink, isProgramKind, MAX_BODY, MAX_STEPS, validateSteps, type ProgramKind, type ProgramState, type ProgramStep, type StepIssue } from "@/lib/retention";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export interface ProgramStats {
@@ -92,8 +93,10 @@ export async function saveProgram(ctx: OrgContext, kindRaw: string, input: z.inp
     const p = rows[0];
     if (!p) throw new AppError("not_found", "Program not found.");
     const steps = data.steps.map((s) => ({ key: s.key, delayDays: s.delayDays, body: s.body.trim() }));
-    const issues = validateSteps(steps, p.purpose);
+    const issues = validateSteps(steps, p.purpose, kind);
     if (issues.length) return { ok: false as const, issues };
+    // The feedback link starts a survey, which a Super Admin switches on for the workspace first.
+    if (steps.some((s) => hasFeedbackLink(s.body))) await assertSurveysEnabled(db, ctx.org.orgId);
     const businessHoursOnly = data.businessHoursOnly ?? p.business_hours_only;
     const inactiveDays = p.trigger === "inactive" ? (data.inactiveDays ?? p.inactive_days) : null;
     const hash = programHash({ kind, trigger: p.trigger, purpose: p.purpose, steps, businessHoursOnly, inactiveDays });
@@ -115,6 +118,7 @@ async function stopProgramWork(db: Parameters<Parameters<typeof withSystem>[0]>[
     [programId, orgId],
   );
   for (const m of pending.rows) if (m.reservation_id) await releaseReservation(db, { orgId, reservationId: m.reservation_id, reason: "Program switched off" });
+  await cancelLinkRequests(db, orgId, pending.rows.map((m) => m.id));
 }
 
 /**
@@ -138,8 +142,9 @@ export async function setProgramEnabled(ctx: OrgContext, kindRaw: string, enable
       await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "retention.program_off", targetType: "retention_program", targetId: p.id, result: "success", metadata: { kind } }, db);
       return;
     }
-    const issues = validateSteps(p.steps, p.purpose);
+    const issues = validateSteps(p.steps, p.purpose, kind);
     if (issues.length) throw new AppError("invalid_input", issues[0].message);
+    if (p.steps.some((s) => hasFeedbackLink(s.body))) await assertSurveysEnabled(db, ctx.org.orgId);
     const approvalId = await createStandingAuthorization(db, {
       orgId: ctx.org.orgId, userId: ctx.user.id, scopeKey: `retention:${kind}`, days: 90, title: `Send "${p.name}" to customers`,
       reason: `The owner approved the wording of "${p.name}" and switched it on.`,
@@ -190,14 +195,23 @@ export async function markCustomer(ctx: OrgContext, contactId: string): Promise<
   });
 }
 
-/** Keeps one customer out of every automated program, and stops anything already planned for them. */
-export async function setRetentionPaused(ctx: OrgContext, contactId: string, paused: boolean): Promise<void> {
+/**
+ * Keeps one customer out of every automated program, and stops anything already planned for them. It is a person's own, explicit choice (for example during a dispute): nothing sets
+ * it from a rating, a complaint or an escalation. It also stops automatic review asks (a workflow, a program, the API) but never a person pressing Send. The reason a person gives
+ * is kept in the audit trail, and the Reviews numbers count the asks it held back, so a pattern of exclusions is visible.
+ */
+export async function setRetentionPaused(ctx: OrgContext, contactId: string, paused: boolean, reason?: string | null): Promise<void> {
   if (!ctx.can("contacts.edit")) throw new AppError("forbidden", "You can't change contacts.");
+  const why = (reason ?? "").replace(/\s+/g, " ").trim();
+  if (why.length > 200) throw new AppError("invalid_input", "Keep the reason to 200 characters.");
   await withSystem(async (db) => {
     const res = await db.query("update contacts set retention_paused = $3 where id = $1 and org_id = $2 and deleted_at is null", [contactId, ctx.org.orgId, paused]);
     if (!res.rowCount) throw new AppError("not_found", "Contact not found.");
     if (paused) await cancelRetention(db, ctx.org.orgId, contactId, "contact_excluded");
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: paused ? "contact.retention_paused" : "contact.retention_resumed", targetType: "contact", targetId: contactId, result: "success" }, db);
+    await recordAudit({
+      orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: paused ? "contact.retention_paused" : "contact.retention_resumed", targetType: "contact", targetId: contactId, result: "success",
+      metadata: why ? { reason: why } : undefined,
+    }, db);
   });
 }
 
@@ -231,11 +245,16 @@ export async function searchNonCustomers(ctx: OrgContext, query: string): Promis
   if (!ctx.can("contacts.edit")) throw new AppError("forbidden", "You can't change contacts.");
   const q = query.trim().slice(0, 80);
   if (q.length < 2) return [];
+  // The search characters of LIKE are plain characters here: "%%" is not "everyone". What is left must still be a real search of two characters.
+  const text = q.replace(/[%_\\]/g, "");
+  if (text.length < 2) return [];
+  // Digits only count as a phone search from three on: two typed letters (no digits at all) must not match every phone number on file.
+  const digits = q.replace(/[^0-9+]/g, "");
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{ id: string; display_name: string; email: string | null; phone: string | null; lifecycle_stage: string }>(
       `select id, display_name, email::text, phone, lifecycle_stage from contacts
        where org_id = $1 and deleted_at is null and lifecycle_stage not in ('customer', 'retention') and (display_name ilike $2 or email::text ilike $2 or phone like $3) order by display_name limit 8`,
-      [ctx.org.orgId, `%${q.replace(/[%_\]/g, "")}%`, `%${q.replace(/[^0-9+]/g, "")}%`],
+      [ctx.org.orgId, `%${text}%`, digits.length >= 3 ? `%${digits}%` : null],
     );
     return rows.map((r) => ({ id: r.id, name: r.display_name || "Unnamed contact", detail: r.phone ? `Phone ending ${r.phone.slice(-3)}` : (r.email ?? "No phone or email"), stage: STAGE_LABEL[r.lifecycle_stage as keyof typeof STAGE_LABEL] ?? r.lifecycle_stage }));
   });

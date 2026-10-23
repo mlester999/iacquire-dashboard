@@ -38,10 +38,15 @@ const PUBLIC = [
   /^\/f\//,
   // A customer's review request page. The random token in the URL is the only authorization; it can only add feedback to its own request.
   /^\/r\//,
+  // A customer's proposal page and its PDF. The random token in the URL is the only authorization; answering needs a code emailed to the customer's address.
+  /^\/proposal\//,
+  // A customer's invoice page and the page a payment provider sends them back to. The invoice's private link (or a checkout's reference) in the URL is the only authorization;
+  // the page can start a payment for the invoice's balance and show where it stands, nothing else.
+  /^\/pay\//,
 ];
 
 /** Pages whose URL carries a customer's manage secret: never cached, indexed, or sent on as a referrer. */
-const SECRET_URL = /^\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)/;
+const SECRET_URL = /^(?:\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)|\/proposal\/|\/api\/public\/proposals\/|\/pay\/|\/api\/public\/invoices\/|\/api\/webhooks\/esign\/)/;
 
 function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null, framable = false) {
   const dev = process.env.NODE_ENV !== "production";

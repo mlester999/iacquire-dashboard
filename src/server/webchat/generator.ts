@@ -1,6 +1,8 @@
 import "server-only";
 import { withSystem } from "@/server/db";
 import { llmComplete, resolveLlmConfig, type LlmConfig } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
+import { noteDailyCapReached, takeDailyAiReply } from "@/server/webchat/switch";
 import { customerInstructions, parseReply, type ReplyContext, type ReplyGenerator } from "@/server/messaging/responder";
 import { getWidgetByOrg } from "@/server/webchat/config";
 import { KNOWLEDGE_SECTION_KEYS, type KnowledgeSectionKey } from "@/lib/webchat/rules";
@@ -115,11 +117,22 @@ export function createWebChatGenerator(deps: GeneratorDeps = {}): ReplyGenerator
     const knowledge = await widgetKnowledge(ctx.orgId, widget.knowledgeSections);
     const config = await loadConfig();
     if (!config) return { kind: "unavailable", reason: "The AI language model is not connected, so the website assistant cannot answer." };
+    // Every reply reaches a model iAcquire pays for, and the widget key is public: the workspace's daily allowance is taken before the model is asked. Past it, nobody
+    // is left waiting unseen: the caller records why, asks a person to reply and tells the visitor so (the chat itself keeps working).
+    const allowance = await takeDailyAiReply(ctx.orgId);
+    if (!allowance.allowed) {
+      await noteDailyCapReached(ctx.orgId, allowance.cap);
+      return { kind: "unavailable", reason: `The website assistant reached today's limit of ${allowance.cap} ${allowance.cap === 1 ? "reply" : "replies"}, so a person needs to reply. The allowance renews at midnight UTC.` };
+    }
+    const callKey = modelCallKey(ctx.inboundMessageId);
 
     const system = customerInstructions(systemBase({ businessName: ctx.businessName, knowledge: knowledge.text, hasPricing: knowledge.used.includes("approved_pricing"), widgetTitle: widget.title }), ctx);
     const transcript = ctx.history.map((h) => `${h.role === "user" ? "Visitor" : "Assistant"}: ${h.content}`).join("\n");
     const user = `<conversation>\n${transcript}${transcript ? "\n" : ""}Visitor: ${ctx.customerMessage}\n</conversation>\n\nWrite the assistant's next reply to the visitor's last message, following the rules above.`;
     const res = await complete(config, { system, user, maxTokens: 500, temperature: 0.3, timeoutMs: 25_000 });
+    // Metered whatever becomes of the answer (a reply the guards below refuse still cost what the provider says). The reply itself carries no usage, so the
+    // responder does not charge it a second time. Metering never fails the reply.
+    await meterModelUse({ orgId: ctx.orgId, feature: "webchat_reply", key: callKey, usage: res.usage });
     if (!res.ok) return { kind: "unavailable", reason: "The AI language model did not answer." };
     const outcome = parseReply(res.text);
     if (outcome.kind === "reply") {
