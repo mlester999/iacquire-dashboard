@@ -8,7 +8,7 @@ import { AppError } from "@/server/errors";
 import { requireOrgContextOrThrow, type OrgContext } from "@/server/tenancy/context";
 import type { Permission } from "@/lib/permissions";
 import { fromLocalInput } from "@/lib/social/calendar";
-import { MAX_HASHTAGS } from "@/lib/social/limits";
+import { MAX_CAPTION, MAX_HASHTAGS } from "@/lib/social/limits";
 import { httpsUrl, LINK_NOT_HTTPS } from "@/lib/social/links";
 import { skippedNotice, type SkippedAccount } from "@/lib/social/notices";
 import { POST_KINDS } from "@/lib/social/rules";
@@ -41,7 +41,7 @@ async function act<T>(permission: Permission, fn: (ctx: OrgContext) => Promise<T
 }
 
 const postInput = z.object({
-  accountId: uuid, kind: z.enum(POST_KINDS), caption: z.string().max(70_000).optional(),
+  accountId: uuid, kind: z.enum(POST_KINDS), caption: z.string().max(MAX_CAPTION, { error: `Captions can't be longer than ${MAX_CAPTION.toLocaleString("en-US")} characters.` }).optional(),
   hashtags: z.array(z.string().max(120)).max(MAX_HASHTAGS, { error: `A post can carry at most ${MAX_HASHTAGS} hashtags.` }).optional(),
   linkUrl: z.string().max(1000).nullish(), mediaAssetIds: z.array(uuid).max(10).optional(), campaignId: uuid.nullish(),
 });

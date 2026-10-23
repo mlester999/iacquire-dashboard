@@ -100,11 +100,19 @@ export async function loadAccountRow(db: Queryable, orgId: string, id: string): 
   return rows[0] ?? null;
 }
 
+/**
+ * A library file is usable only while its stored copy is. A managed file whose stored copy is not ready (deleted, or being removed) counts as removed, so a post
+ * that uses it is refused when it is sent for approval, with the same message as when it is published, and not first on the day it should have gone out.
+ * Written for `social_media_assets a left join private_files f on f.id = a.private_file_id and f.org_id = a.org_id`.
+ */
+export const USABLE_ASSET_STATUS_SQL = "case when a.status = 'ready' and a.source = 'managed' and f.status is distinct from 'ready' then 'removed' else a.status end";
+export const ASSET_FILE_JOIN_SQL = "left join private_files f on f.id = a.private_file_id and f.org_id = a.org_id";
+
 /** The files of a post as the checks see them. An id that is not this workspace's (or is gone) comes back as removed, so it can never be used or even detected. */
 export async function mediaFactsFor(db: Queryable, orgId: string, ids: readonly string[]): Promise<MediaFacts[]> {
   if (!ids.length) return [];
   const { rows } = await db.query<{ id: string; kind: "image" | "video"; mime_type: string; size_bytes: number; width: number | null; height: number | null; status: "ready" | "invalid" | "removed" }>(
-    "select id, kind, mime_type, size_bytes, width, height, status from social_media_assets where org_id = $1 and id = any($2::uuid[])", [orgId, ids as string[]],
+    `select a.id, a.kind, a.mime_type, a.size_bytes, a.width, a.height, ${USABLE_ASSET_STATUS_SQL} as status from social_media_assets a ${ASSET_FILE_JOIN_SQL} where a.org_id = $1 and a.id = any($2::uuid[])`, [orgId, ids as string[]],
   );
   const by = new Map(rows.map((r) => [r.id, r]));
   return ids.map((id): MediaFacts => {

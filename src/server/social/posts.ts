@@ -6,8 +6,8 @@ import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
 import { draftProblems, normalizeHashtags, type MediaFacts, type Platform, type PostKind, type Problem } from "@/lib/social/rules";
 import { approvalRequired, canTransition, scheduleProblem, selfApprovalAllowed, type PostStatus } from "@/lib/social/state";
-import { MAX_HASHTAGS } from "@/lib/social/limits";
-import { addEvent, announce, loadAccountRow, loadPostRow, newTrackingCode, POST_COLUMNS, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
+import { MAX_CAPTION, MAX_HASHTAGS } from "@/lib/social/limits";
+import { addEvent, announce, ASSET_FILE_JOIN_SQL, loadAccountRow, loadPostRow, newTrackingCode, POST_COLUMNS, readSettings, USABLE_ASSET_STATUS_SQL, type AccountRow, type PostRow } from "@/server/social/post-core";
 import { cancelQueuedJob, enqueueJob } from "@/server/social/publisher";
 
 // Writing a post, getting it approved, scheduling it, and every way it can be stopped or retried. The server decides everything here; the interface only reads
@@ -71,7 +71,8 @@ const canEditRow = (ctx: OrgContext, row: PostRow) => ctx.can("social.create") &
 // Reading
 // ---------------------------------------------------------------------------
 
-async function viewsFor(db: Queryable, orgId: string, rows: PostRow[]): Promise<PostView[]> {
+/** `storedFiles` also checks that each managed file's stored copy is still there. Reads under a person's own row-level security leave it off: they cannot see every stored file, and a file they cannot see must not look removed. */
+async function viewsFor(db: Queryable, orgId: string, rows: PostRow[], storedFiles = true): Promise<PostView[]> {
   if (!rows.length) return [];
   const accountIds = [...new Set(rows.map((r) => r.account_id))];
   const accounts = new Map((await db.query<{ id: string; name: string; platform: Platform; capabilities: { contentTypes?: PostKind[] } | null }>("select id, name, platform, capabilities from social_accounts where org_id = $1 and id = any($2::uuid[])", [orgId, accountIds])).rows.map((a) => [a.id, a]));
@@ -81,7 +82,7 @@ async function viewsFor(db: Queryable, orgId: string, rows: PostRow[]): Promise<
   const users = new Map((userIds.length ? (await db.query<{ id: string; full_name: string }>("select id, full_name from users where id = any($1::uuid[])", [userIds])).rows : []).map((u) => [u.id, u.full_name]));
   const assetIds = [...new Set(rows.flatMap((r) => r.media_asset_ids))];
   const assets = new Map((assetIds.length ? (await db.query<{ id: string; filename: string; kind: "image" | "video"; mime_type: string; width: number | null; height: number | null; size_bytes: number; status: "ready" | "invalid" | "removed" }>(
-    "select id, filename, kind, mime_type, width, height, size_bytes, status from social_media_assets where org_id = $1 and id = any($2::uuid[])", [orgId, assetIds])).rows : []).map((a) => [a.id, a]));
+    `select a.id, a.filename, a.kind, a.mime_type, a.width, a.height, a.size_bytes, ${storedFiles ? USABLE_ASSET_STATUS_SQL : "a.status"} as status from social_media_assets a ${storedFiles ? ASSET_FILE_JOIN_SQL : ""} where a.org_id = $1 and a.id = any($2::uuid[])`, [orgId, assetIds])).rows : []).map((a) => [a.id, a]));
   return rows.map((r) => {
     const acc = accounts.get(r.account_id);
     const platform = acc?.platform ?? "facebook";
@@ -128,7 +129,7 @@ export async function listPosts(ctx: OrgContext, f: PostFilter = {}): Promise<Po
     if (f.accountId) add("account_id = ?", f.accountId);
     if (f.statuses?.length) add("status = any(?::text[])", f.statuses);
     const { rows } = await db.query<PostRow>(`select ${POST_COLUMNS} from social_posts where ${where.join(" and ")} order by coalesce(published_at, scheduled_at, created_at) desc limit ${Math.min(f.limit ?? 500, 1000)}`, params);
-    return viewsFor(db, ctx.org.orgId, rows);
+    return viewsFor(db, ctx.org.orgId, rows, false);
   });
 }
 
@@ -155,7 +156,7 @@ export async function getPostDetail(ctx: OrgContext, id: string): Promise<{ post
   return withUser(ctx.user.id, async (db) => {
     const row = await loadPostRow(db, ctx.org.orgId, id);
     if (!row) throw new AppError("not_found", "That post was not found.");
-    const [post] = await viewsFor(db, ctx.org.orgId, [row]);
+    const [post] = await viewsFor(db, ctx.org.orgId, [row], false);
     const ev = await db.query<{ id: string; at: Date; kind: string; actor_kind: "user" | "ai" | "system"; detail: Record<string, unknown>; full_name: string | null }>(
       "select e.id::text as id, e.at, e.kind, e.actor_kind, e.detail, u.full_name from social_post_events e left join users u on u.id = e.actor_id where e.post_id = $1 and e.org_id = $2 order by e.id", [id, ctx.org.orgId],
     );
@@ -209,7 +210,7 @@ async function checkCampaign(db: Queryable, orgId: string, id: string | null | u
 const clean = (text: string | undefined) => (text ?? "").replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trimEnd();
 
 // What the database holds, checked here first so that a person who goes over a limit is told which one, in words, and not "something went wrong".
-const CAPTION_MAX = 63_206;
+const CAPTION_MAX = MAX_CAPTION;
 const LINK_MAX = 1_000;
 const HASHTAGS_MAX = MAX_HASHTAGS;
 

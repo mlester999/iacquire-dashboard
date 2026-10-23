@@ -148,7 +148,7 @@ export function PostComposer(p: ComposerProps) {
           </Field>
         </div>
 
-        <Field label="Page to share" htmlFor="sp-link" optional hint={trackedNote ? "Visitors who arrive from this post are recorded as coming from it: the link gets tracking tags, and a utm_content tag already on it is replaced by this post's own code." : platform === "instagram" ? "Instagram captions do not make links clickable." : "Must start with https://."}>
+        <Field label="Page to share" htmlFor="sp-link" optional hint={trackedNote ? "Visitors who arrive from this post are recorded as coming from it: the link gets tracking tags, and a utm_content tag already on it is replaced by this post's own code." : platform === "instagram" ? "Instagram captions do not make links clickable, and this link is not tracked: visitors cannot be traced back to the post." : "Must start with https://."}>
           <Input id="sp-link" type="url" inputMode="url" value={link} disabled={readOnly} onChange={(e) => setLink(e.target.value)} placeholder="https://" className="text-[16px] sm:text-[14px]" />
         </Field>
 

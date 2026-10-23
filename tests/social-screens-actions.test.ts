@@ -3,7 +3,7 @@
 // replaced by a fixture's context; nothing else is mocked except the framework's cache and cookie store.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SOCIAL_CLIENT_ONLY_MESSAGE } from "@/lib/social/workspace";
-import { MAX_HASHTAGS } from "@/lib/social/limits";
+import { MAX_CAPTION, MAX_HASHTAGS } from "@/lib/social/limits";
 import { LINK_NOT_HTTPS } from "@/lib/social/links";
 import { decodeSocialNotice, SOCIAL_NOTICE_COOKIE } from "@/server/social/notice";
 import { createPost } from "@/server/social/posts";
@@ -80,6 +80,17 @@ describe("what the actions check before the server does", () => {
     expect(await createPostAction({ ...textPost(acc.id), hashtags: tags })).toEqual({ ok: false, error: `A post can carry at most ${MAX_HASHTAGS} hashtags.`, code: "invalid_input" });
     const fine = await createPostAction({ ...textPost(acc.id), hashtags: tags.slice(0, MAX_HASHTAGS) });
     expect(fine.ok).toBe(true);
+  });
+
+  it("refuses a caption over the length the database holds, at the same number the service uses", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    asClient(s);
+    const limit = MAX_CAPTION.toLocaleString("en-US");
+    // 63,207 characters used to pass the action (which allowed 70,000) and then fail in the service.
+    expect(await createPostAction({ ...textPost(acc.id), caption: "x".repeat(MAX_CAPTION + 1) })).toEqual({ ok: false, error: `Captions can't be longer than ${limit} characters.`, code: "invalid_input" });
+    expect((await createPostAction({ ...textPost(acc.id), caption: "x".repeat(MAX_CAPTION) })).ok).toBe(true);
+    await expect(createPost(s.owner, { ...textPost(acc.id), caption: "x".repeat(MAX_CAPTION + 1) })).rejects.toThrow(`Captions can't be longer than ${limit} characters`);
   });
 
   it("uses the number the server keeps, so the composer never offers more than is saved (#66)", async () => {

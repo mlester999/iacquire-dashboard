@@ -12,6 +12,9 @@ import { PostComposer } from "@/components/social/composer";
 import { disconnectAccount } from "@/server/social/accounts";
 import { createPost } from "@/server/social/posts";
 import { encodeSocialNotice, SOCIAL_NOTICE_COOKIE } from "@/server/social/notice";
+import { withSystem } from "@/server/db";
+import { failedPosts } from "@/server/workforce/social-review";
+import type { WorkJobRow } from "@/server/workforce/jobs";
 import { connect, rows, scheduledPost, socialOrg, textPost, type SocialOrg } from "./support/social";
 
 const mocks = vi.hoisted(() => ({
@@ -133,6 +136,22 @@ describe("the calendar page's status filter (#44)", () => {
     expect(shown(await SocialCalendarPage(params({ status: "failed,<script>" })))).toEqual([failed.id]);
     expect(shown(await SocialCalendarPage(params({ status: "nonsense" })))).toEqual([failed.id, unconfirmed.id, fine.id].sort());
   });
+
+  it("opens, from the address the Performance Analyst's failed-posts finding gives, exactly the posts that finding counted", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const { failed, unconfirmed, fine } = await postsByStatus(s, acc.id);
+    // The address carries no date, so the list opens on this month: the posts are placed in it.
+    await rows("update social_posts set scheduled_at = now() where id = any($1::uuid[])", [[failed.id, unconfirmed.id, fine.id]]);
+    const finding = await withSystem((db) => failedPosts(db, { org_id: s.m.org.id } as unknown as WorkJobRow));
+    expect(finding?.count).toBe(2);
+    const link = new URL(finding!.evidenceHref!, "https://app.example.test");
+    expect(link.pathname).toBe("/social");
+    asClient(s);
+    const tree = await SocialCalendarPage({ searchParams: Promise.resolve(Object.fromEntries(link.searchParams)) });
+    expect(find(tree, CalendarView)!.props.view).toBe("list");
+    expect(shown(tree)).toEqual([failed.id, unconfirmed.id].sort());
+  });
 });
 
 describe("the accounts page and its address (#52, #53, #62)", () => {
@@ -197,6 +216,9 @@ describe("the tracking code on a post's page", () => {
     // Instagram captions do not make links clickable, so the link never rides along and nothing can be traced to the post.
     const insta = await createPost(s.owner, textPost(ig.id, { kind: "image", linkUrl: "https://example.com/spring" }));
     expect(await page(insta.id)).not.toContain("Tracking code");
+    // With tracking links switched off the posted link carries no code, so the page does not say it does.
+    await rows("insert into social_settings (org_id, tracking_links) values ($1, false) on conflict (org_id) do update set tracking_links = false", [s.m.org.id]);
+    expect(await page(withLink.id)).not.toContain("Tracking code");
   });
 });
 

@@ -64,6 +64,20 @@ describe("an answer that was saved is never sent again", () => {
     expect(await postRow(post.id)).toMatchObject({ status: "published", provider_post_id: state.providerPostId });
   });
 
+  it("records the publication once when a slow worker and the one that took over its job both reach it", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const { post, state } = await answerSaved(s, acc, "running");
+    const job = await jobRow(post.id);
+    const first = await runClaimedJob(job, { now: () => LATER, workerId: "busy-worker" });
+    const second = await runClaimedJob(job, { now: () => minutes(LATER, 3), workerId: "the-one-that-took-over" });
+    expect([first, second]).toEqual(["succeeded", "succeeded"]);
+    expect(await postRow(post.id)).toMatchObject({ status: "published", provider_post_id: state.providerPostId });
+    expect(await rows("select 1 from social_post_events where post_id = $1 and kind = 'published'", [post.id])).toHaveLength(1);
+    expect(await rows("select 1 from audit_logs where target_id = $1 and action = 'social.post_published'", [post.id])).toHaveLength(1);
+    expect(simulated.published(acc.externalId)).toHaveLength(1);
+  });
+
   it("finishes the record on the next pass when recording the publication failed once", async () => {
     const s = await socialOrg();
     const acc = await connect(s);
@@ -422,6 +436,27 @@ describe("an account that is disconnected while the platform's answer is saved b
     expect(await tick(s, minutes(LATER, 5))).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(await postRow(post.id)).toMatchObject({ status: "published", provider_post_id: state.providerPostId });
     expect(simulated.published(acc.externalId)).toHaveLength(1);
+  });
+
+  it("records it even while the workspace is stopped, because recording sends nothing", async () => {
+    const { s, acc, post, state } = await answered("queued");
+    await disconnectAccount(s.owner, acc.id);
+    await withSystem((db) => db.query("insert into automation_pauses (org_id, scope, active) values ($1, 'agency', true)", [s.m.org.id]));
+    await withSystem((db) => db.query("update organizations set status = 'suspended' where id = $1", [s.m.org.id]));
+    expect(await tick(s, minutes(LATER, 5))).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(await postRow(post.id)).toMatchObject({ status: "published", provider_post_id: state.providerPostId, failure_code: null });
+    expect((await jobRow(post.id)).status).toBe("succeeded");
+    expect(simulated.published(acc.externalId)).toHaveLength(1); // the one the platform made before the worker was lost, and no second
+  });
+
+  it("records it for a real account while publishing to real accounts is switched off, and an unanswered job still waits", async () => {
+    const { s, acc, post, state } = await answered("queued");
+    const waiting = await scheduledPost(s, acc.id, { caption: "Not sent yet" }, minutes(LATER, 1));
+    await withSystem((db) => db.query("update social_accounts set adapter = 'meta' where id = $1", [acc.id]));
+    expect(await tick(s, minutes(LATER, 5))).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(await postRow(post.id)).toMatchObject({ status: "published", provider_post_id: state.providerPostId });
+    expect(await postRow(waiting.id)).toMatchObject({ status: "scheduled" });
+    expect((await jobRow(waiting.id)).status).toBe("queued");
   });
 });
 

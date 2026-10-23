@@ -155,6 +155,29 @@ describe("a post must be publishable before it asks for approval", () => {
     await expect(submitForApproval(s.sales, empty.id)).rejects.toThrow(/Write something/);
   });
 
+  it("refuses a picture whose stored file is gone at approval, not on the day it should have gone out", async () => {
+    const s = await socialOrg();
+    const acc = await connect(s);
+    const asset = await addAsset(s);
+    const gone = () => withSystem((db) => db.query("update private_files set status = 'deleted' where id = (select private_file_id from social_media_assets where id = $1)", [asset]));
+    const draft = await createPost(s.sales, textPost(acc.id, { kind: "image", mediaAssetIds: [asset] }));
+    // While the file is there a person with only the view permission sees it as ready: reading under row-level security must not make a file look removed.
+    expect((await listPosts(s.viewer))[0]).toMatchObject({ media: [{ status: "ready" }], problems: [] });
+    expect((await getPostDetail(s.viewer, draft.id)).post.problems).toEqual([]);
+    await gone();
+    await expect(submitForApproval(s.sales, draft.id)).rejects.toThrow(/no longer available/);
+    // An approval that was waiting is refused the same way.
+    const asset2 = await addAsset(s);
+    const waiting = await submitForApproval(s.sales, (await createPost(s.sales, textPost(acc.id, { kind: "image", mediaAssetIds: [asset2] }))).id);
+    await withSystem((db) => db.query("update private_files set status = 'deleted' where id = (select private_file_id from social_media_assets where id = $1)", [asset2]));
+    await expect(decide(s.manager, waiting.id, { decision: "approve", version: waiting.version })).rejects.toThrow(/no longer available/);
+    // A file taken out of the library while a post still holds it is refused too.
+    const asset3 = await addAsset(s);
+    const third = await createPost(s.sales, textPost(acc.id, { kind: "image", mediaAssetIds: [asset3] }));
+    await withSystem((db) => db.query("update social_media_assets set status = 'removed' where id = $1", [asset3]));
+    await expect(submitForApproval(s.sales, third.id)).rejects.toThrow(/no longer available/);
+  });
+
   it("refuses to attach another workspace's file, and cannot tell whether it exists", async () => {
     const a = await socialOrg();
     const b = await socialOrg();

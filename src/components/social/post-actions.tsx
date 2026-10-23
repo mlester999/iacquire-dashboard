@@ -115,7 +115,10 @@ export function PostActions({ post, job, tz, can, needsApproval, defaultWhen, de
               {scheduleControls("Schedule")}
             </>
           ) : (
-            <Button variant="brand" loading={busy("submit")} disabled={blocking.length > 0 || !accountReady} onClick={() => run("submit", () => submitForApprovalAction(post.id), "Sent for approval.")}>Send for approval</Button>
+            <>
+              <Button variant="brand" loading={busy("submit")} disabled={blocking.length > 0 || !accountReady} onClick={() => run("submit", () => submitForApprovalAction(post.id), "Sent for approval.")}>Send for approval</Button>
+              {!accountReady && <p className="text-[12.5px] text-warning-ink">This account needs to be reconnected before the post can be sent for approval.</p>}
+            </>
           )}
         </div>
       )}

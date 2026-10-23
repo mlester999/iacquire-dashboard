@@ -31,7 +31,7 @@ Both are required. Deploying a cron definition cannot start work by itself; a pe
 
 ### Starting with some jobs only: `SCHEDULER_JOBS_ONLY`
 
-Switching the scheduler on starts **every** registered job (45 on 2026-10-22). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
+Switching the scheduler on starts **every** registered job (53 on 2026-10-23; it was 45 on 2026-10-22, before the missed-call, lead-scoring, website-chat and social media jobs). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
 (for example `aiWorkRecovery,crmWorkflowRecovery,inboxAttention`). A tick then runs only those, in the registry's order, and the others do not run and leave no heartbeat. Unset (the default) runs every job. A name that
 does not exist, or a value that names nothing, makes the tick fail with a 500 and run nothing, so a typo cannot start something that was not approved.
 **Order matters for messaging:** the dispatcher (`messagesDispatched`) turns a queued message into a final `blocked / provider_not_enabled` while a provider write switch is off, so keep it, `repliesChecked` and
@@ -144,6 +144,26 @@ The tick still never runs provider work. It creates durable `ai_work_jobs` rows 
 research schedule also creates the linked `lead_research_requests` row. See
 [Proactive AI employees](proactive-ai-employees.md) for the delivery policy, safety boundaries and activation
 checkpoint.
+
+## Social media jobs
+
+Four jobs belong to the social media manager. None runs until the scheduler does, and in a staged start each runs only when it is named in `SCHEDULER_JOBS_ONLY`.
+
+- `socialPublisher` (every tick) takes over jobs a dead worker left, publishes approved posts that are due, and checks every post whose outcome was unknown. A job for a real Facebook or Instagram account is not even
+  picked up while `META_SOCIAL_WRITES_ENABLED` is not `true` (it waits in the queue); simulated accounts reach nothing. A workspace that is suspended, archived or paused (iAcquire's pause, the agency-wide pause or the workspace's
+  outbound pause) has its jobs held and not failed, and they resume when it is active again. **A post is not sent late:** when a job is first picked up more than 6 hours after the post's scheduled time (`MISSED_WINDOW_MS` in
+  `src/server/social/publisher.ts`), the post fails with the code `missed_window`, the owner is told, and a person schedules it again. So switching publishing on, or ending an outage, does not send a burst of old posts. A job that
+  is already retrying keeps retrying within its attempts. One pass is budgeted 20 seconds (`PUBLISH_BUDGET_MS`): it takes no new post after 15 seconds, so that checking unknown outcomes always has at least 5
+  seconds, and what it did not reach stays queued for the next tick. A request to the platform already under way is not cut off (each has its own timeout).
+- `socialAccountHealth` (every 6 hours) asks the platform whether each connected account of an active workspace still works (read only), the one checked longest ago first, and starts no new check after 20 seconds. A platform that
+  cannot be reached does not change an account's status. Owners and admins are warned once, per account and date, when a sign-in or the platform's access to the account's data ends within 7 days.
+- `socialMetrics` (every 6 hours) reads the likes, comments and shares the platform returns for posts published in the last 30 days (read only), the post read longest ago first and one workspace's turn after another's, and starts no
+  new read after 40 seconds. Numbers the platform does not return are left absent, never filled with zero.
+- `socialCleanup` (every 15 minutes) clears the sealed Pages and tokens of a sign-in nobody finished once its ten minutes are up (the sign-in record itself is deleted a day later) and finishes deleting stored copies of media
+  files a person removed when the storage delete failed at the time.
+
+The three budgets (20, 20 and 40 seconds) add up to 80 of the tick's 120 seconds before any request already under way finishes, and these jobs run before the message dispatcher in `src/server/ops/tick.ts`. With no
+real account connected they find nothing to do; keep that in mind before connecting many accounts. Go-live steps for live publishing are in [roadmap/phases-3-to-7/blockers.md](roadmap/phases-3-to-7/blockers.md).
 
 ## Automation Studio and the scheduler (checked 2026-10-22)
 

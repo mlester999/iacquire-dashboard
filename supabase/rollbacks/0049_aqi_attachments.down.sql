@@ -8,6 +8,8 @@ begin
 end $$;
 
 drop table if exists aqi_attachments;
+-- Hosted Supabase refuses a direct delete from its storage tables unless the transaction says it is intended; the setting lasts only for this transaction.
+select set_config('storage.allow_delete_query', 'true', true);
 delete from storage.buckets where id = 'aqi-attachments';
 alter table private_files drop constraint if exists private_files_bucket_check;
 alter table private_files add constraint private_files_bucket_check

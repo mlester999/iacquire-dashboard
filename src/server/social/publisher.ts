@@ -149,12 +149,14 @@ async function recoverOne(db: Queryable, j: JobRow, now: Date): Promise<void> {
 }
 
 async function claimNext(db: Queryable, workerId: string, now: Date, live: boolean, orgId: string | null): Promise<JobRow | null> {
+  // A stopped workspace, and the write switch for real accounts, hold back everything that would reach the platform. A job that already holds the platform's
+  // answer sends nothing (only its record is left to make), so it is never held: a live post must not stay "being sent" for as long as a pause lasts.
   const { rows } = await db.query<JobRow>(
     `update social_publish_jobs j set status = 'running', attempt = j.attempt + 1, lease_until = $2, claimed_by = $1, started_at = coalesce(j.started_at, $3)
      where j.id = (
        select q.id from social_publish_jobs q join social_accounts a on a.id = q.account_id and a.org_id = q.org_id
-       where q.status = 'queued' and q.run_at <= $3 and (a.adapter = 'simulated' or $4::boolean) and ($5::uuid is null or q.org_id = $5)
-         and ${socialOrgRunnableSql("q.org_id")}
+       where q.status = 'queued' and q.run_at <= $3 and ($5::uuid is null or q.org_id = $5)
+         and ((q.state ->> 'done' = 'true' and coalesce(q.state ->> 'providerPostId', '') <> '') or ((a.adapter = 'simulated' or $4::boolean) and ${socialOrgRunnableSql("q.org_id")}))
        order by q.run_at, q.created_at limit 1 for update of q skip locked
      )
      returning ${JOB_COLUMNS.split(", ").map((c) => `j.${c}`).join(", ")}`,
@@ -208,7 +210,10 @@ async function succeedJob(db: Queryable, job: JobRow, post: PostRow, state: Publ
  * the request was sent, not when a recovered worker got round to recording it.
  */
 async function finishAnswered(db: Queryable, job: JobRow, post: PostRow, state: PublishState, now: Date): Promise<void> {
-  const at = state.sendingAt && !Number.isNaN(Date.parse(state.sendingAt)) ? new Date(state.sendingAt) : now;
+  // Two workers can reach this for one job (the first was slow, and its lease was taken over): the second finds it done, and does not record it twice.
+  const cur = await db.query<{ status: string }>("select status from social_publish_jobs where id = $1 for update", [job.id]);
+  if (cur.rows[0]?.status === "succeeded") return;
+  const at =state.sendingAt && !Number.isNaN(Date.parse(state.sendingAt)) ? new Date(state.sendingAt) : now;
   await succeedJob(db, job, post, state, at, "published");
   await db.query("update social_accounts set last_success_at = $2 where id = $1 and org_id = $3", [job.account_id, at, job.org_id]);
 }

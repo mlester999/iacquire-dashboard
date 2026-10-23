@@ -8,11 +8,11 @@ What I could not read from here (and you or I must re-read, read-only, before an
 
 * `POST` or `GET /api/internal/tick` exists. It needs **two** switches: `CRON_SECRET` (24+ characters, bearer token) and `SCHEDULER_ENABLED=true`. As of 2026-10-20 production had neither, `worker_job_runs` had no `tick` row (the scheduler
   has never run), no cron is configured, and every provider write switch was `false` (**verify**: re-read before relying on any of this).
-* One tick runs **all 45 registered jobs in order**, each isolated (a failure in one is recorded and the rest still run), with a heartbeat per job and a tick lease so overlapping calls do nothing. Slow jobs declare `everyMinutes` and are skipped between slots.
-* **There is no per-job switch.** Today "enable the scheduler" means "start all 45 jobs". Only some jobs have their own feature switch (listed below). This pass adds one (`SCHEDULER_JOBS_ONLY`, section 5) so activation can be staged job by job; it is
+* One tick runs **all 53 registered jobs in order** (45 when this was first written on 2026-10-22; section 2g covers the eight added since), each isolated (a failure in one is recorded and the rest still run), with a heartbeat per job and a tick lease so overlapping calls do nothing. Slow jobs declare `everyMinutes` and are skipped between slots.
+* **There is no per-job switch.** Today "enable the scheduler" means "start all 53 jobs". Only some jobs have their own feature switch (listed below). This pass adds one (`SCHEDULER_JOBS_ONLY`, section 5) so activation can be staged job by job; it is
   unset (all jobs) unless someone sets it.
 
-## 2. The 45 jobs, by what they can do
+## 2. The 53 jobs, by what they can do
 
 Cadence is every tick (the runbook recommends 1 to 2 minutes) unless a slot is given. "Outside" means anything that leaves iAcquire: an email, a message to a customer, a call to a provider or a customer's own site.
 
@@ -73,6 +73,20 @@ The workforce jobs never run provider (Hermes) work themselves; the separate wor
 
 `expiredReservations` (release expired credit holds), `approvalExpiry`, `bookingHolds`, `supportAutoClose` (60 min, off until the Super Admin enables it), `supportAttachmentCleanup` (60), `fairUseChecks` (60), `setupEvidence` (own 15-minute lease; records evidence, contacts no provider).
 
+### 2g. Added since (2026-10-23): missed calls, lead scoring, website chat, social media
+
+| Job | Slot | What it does | Safeguard that holds today |
+| --- | --- | --- | --- |
+| `missedCallRecovery` | tick | Works callers who were missed under their workspace's policy: a call-back task and a notice for the team, and a text only through the ordinary send rules | The policy is off by default, so cases are only watched and expired; the text goes out in the dispatcher run straight after and is blocked while a provider write switch is off |
+| `leadScoreReassessment` | tick | Scores contacts whose details changed again, a few per workspace per run, within a daily ceiling | Rules do the scoring; a model is asked only for workspaces that switched signal extraction on |
+| `phase2Retention`, `webChatRetention` | 1440 min | Delete old missed-call cases, lead-score records and website chats past their retention | Housekeeping; `webChatRetention` has never run live |
+| `socialPublisher` | tick | Publishes approved social posts that are due, takes over jobs a dead worker left, and checks posts whose outcome was unknown | A real Facebook or Instagram account is posted to only while `META_SOCIAL_WRITES_ENABLED=true`: until then its jobs wait in the queue, and simulated accounts reach nothing. A suspended, archived or paused workspace's jobs wait too. **A post more than 6 hours past its scheduled time when its job is first picked up is not sent**: it fails with `missed_window` and its owner is told, so switching publishing on does not release a burst of old posts. One pass is budgeted 20 seconds |
+| `socialAccountHealth` | 360 min | Asks the platform whether each connected account of an active workspace still works (read only); warns owners 7 days before a sign-in or data access runs out | Does nothing until an account is connected; stops starting checks after 20 seconds |
+| `socialMetrics` | 360 min | Reads the likes, comments and shares the platform returns for posts published in the last 30 days (read only) | Does nothing until a post has been published to a connected account (test accounts are read from the simulated platform); stops starting reads after 40 seconds; an absent number stays absent |
+| `socialCleanup` | 15 min | Clears the sealed Pages and tokens of sign-ins nobody finished (deletes the record a day later) and finishes deleting stored media files a person removed | Housekeeping; touches only social sign-in states and removed media |
+
+The three social jobs with budgets can spend 80 seconds of the tick's 120 between them (20, 20 and 40) and run before the message dispatcher. With no real account connected they find nothing to do.
+
 ## 3. What the first tick would do in production today
 
 With the facts as of 2026-10-20 (**verify**): no queued messages, email, reminders, workflow runs, campaigns, imports, switches or webhooks, and every provider write switch off, so **most jobs find nothing to do**. The ones that can act on state that already exists:
@@ -89,7 +103,7 @@ With the facts as of 2026-10-20 (**verify**): no queued messages, email, reminde
 2. **Order of activation for messages.** The dispatcher (`messagesDispatched`) turns a queued message into **`blocked` with the reason `provider_not_enabled`, which is final** (code: `finishBlocked`; only `queued` messages are ever picked up). So running the dispatcher while a provider write switch is still off does not leave messages waiting: it burns them, customers get no answer, and turning the switch on later does not release them (a person can use "Send again" in the inbox). The same tick also runs `repliesChecked` and `followUpsPrepared`, which make **model calls and charge usage** for each pending conversation. Therefore: keep `messagesDispatched`, `repliesChecked` and `followUpsPrepared` out of the first activation steps (section 5), and switch each provider on, supervised, before its dispatcher runs.
 3. **`calendarWriteBack` and `calendarBusySync`** touch customers' real calendars as soon as any are connected. `CALENDAR_SYNC_DISABLED=true` is the off switch.
 4. **No per-job switch** (section 1): the whole list starts together. This is the reason for `SCHEDULER_JOBS_ONLY`.
-5. **Database load**: 45 jobs every minute or two. The inbox's share is small; the Studio rehearsal and the new tick rehearsal run the real list on synthetic data without failures, but real concurrency on hosted Postgres is unmeasured (staging).
+5. **Database load**: 53 jobs every minute or two. The inbox's share is small; the Studio rehearsal and the new tick rehearsal run the real list on synthetic data without failures, but real concurrency on hosted Postgres is unmeasured (staging).
 6. A tick that overlaps the next is harmless (lease, idempotent jobs), and a stopped scheduler opens a critical incident after `SCHEDULER_STALE_MINUTES` (20).
 
 ## 5. Staged activation (needs your approval at each step)
@@ -101,6 +115,7 @@ read-only watch of `worker_job_runs` and the health page:
 2. **The inbox** (once workspace W1 is on): add `inboxAttention, crmEventDispatch, crmWorkflowRuns`.
 3. **Notices and checks:** add `notificationEmails` only after confirming `EMAIL_PROVIDER` and who would be emailed; `incidentChecks, incidentEscalations, websiteHealth, fairUseChecks`.
 4. **The rest of the CRM and messaging jobs** with each provider write switch decision made separately: `messagesDispatched, repliesChecked, followUpsPrepared, appointmentReminders, retentionPrograms, crmCampaigns, crmWebhookDeliveries, the calendar jobs`, then unset `SCHEDULER_JOBS_ONLY`.
+5. **Social media** (once migration 0089 is applied and a Meta app exists; see the go-live checklist in `docs/roadmap/phases-3-to-7/blockers.md`): add `socialCleanup` first, then `socialAccountHealth, socialMetrics`, and `socialPublisher` last. With `META_SOCIAL_WRITES_ENABLED` unset the publisher cannot post to a real account whatever the list says.
 
 ## 6. Evidence
 

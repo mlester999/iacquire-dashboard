@@ -162,6 +162,13 @@ describe("buttons the server would refuse are not offered (#61)", () => {
     cleanup();
     actions({ can: { create: true, approve: false, publish: false, edit: true } });
     expect(screen.getByRole("button", { name: "Send for approval" })).toBeTruthy();
+    expect(screen.queryByText(/needs to be reconnected/)).toBeNull();
+  });
+
+  it("says why 'Send for approval' is switched off when the account has to be reconnected first", () => {
+    actions({ accountReady: false });
+    expect((screen.getByRole("button", { name: "Send for approval" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("This account needs to be reconnected before the post can be sent for approval.")).toBeTruthy();
   });
 
   it("does not offer a post's author the Approve button when the workspace wants a second person, but keeps Request changes and Reject", () => {
@@ -389,6 +396,27 @@ describe("the composer", () => {
     const sent = mocks.createPostAction.mock.calls[0][0] as { hashtags: string[] };
     expect(sent.hashtags).toHaveLength(MAX_HASHTAGS);
     expect(sent.hashtags[MAX_HASHTAGS - 1]).toBe(`tag${MAX_HASHTAGS - 1}`);
+  });
+
+  it("says what tracking does for the link, only where it does it", () => {
+    const hint = () => document.body.textContent ?? "";
+    // Facebook with tracking on and a link: the link gets the post's own code, and a utm_content already on it is replaced.
+    render(<PostComposer {...base} trackingLinks />);
+    expect(hint()).toMatch(/Must start with https:\/\//);
+    fireEvent.change(screen.getByLabelText(/^Page to share/), { target: { value: "https://example.com/offer?utm_content=old" } });
+    expect(hint()).toMatch(/recorded as coming from it/);
+    expect(hint()).toMatch(/utm_content tag already on it is replaced by this post's own code/);
+    cleanup();
+    // Tracking switched off: nothing is promised.
+    render(<PostComposer {...base} />);
+    fireEvent.change(screen.getByLabelText(/^Page to share/), { target: { value: "https://example.com/offer" } });
+    expect(hint()).not.toMatch(/recorded as coming from it/);
+    cleanup();
+    // Instagram: the link is not clickable and not tracked, whatever the setting.
+    render(<PostComposer {...base} trackingLinks accounts={[account({ platform: "instagram", name: "Harbor on Instagram", capabilities: { contentTypes: ["image", "video"], insights: false } })]} />);
+    fireEvent.change(screen.getByLabelText(/^Page to share/), { target: { value: "https://example.com/offer" } });
+    expect(hint()).toMatch(/not tracked/);
+    expect(hint()).not.toMatch(/recorded as coming from it/);
   });
 
   it("does not warn at the cap", () => {
