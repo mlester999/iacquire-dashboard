@@ -16,7 +16,7 @@ jobs:
   build-and-accept:
     name: Build and provision two synthetic tenants
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Check out the branch-scoped candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -74,6 +74,10 @@ jobs:
             --file services/hermes-provisioner/Dockerfile \
             --build-arg "HERMES_BASE_IMAGE=$HERMES_BASE_IMAGE" \
             --target provisioner --tag "$IACQUIRE_PROVISIONER_IMAGE" .
+
+      - name: Pull the isolated Node acceptance runtime
+        shell: bash
+        run: docker pull node:22-bookworm-slim
 
       - name: Run compatibility and worker security tests in the candidate image
         shell: bash
@@ -156,11 +160,13 @@ jobs:
 
           hermes_api_key="$(openssl rand -hex 32)"
           provisioner_token="$(openssl rand -hex 32)"
+          portal_token="$(openssl rand -hex 32)"
           model_key="$(openssl rand -hex 32)"
           gateway_id="$(python3 -c 'import uuid; print(uuid.uuid4())')"
-          printf '::add-mask::%s\n' "$hermes_api_key" "$provisioner_token" "$model_key"
+          printf '::add-mask::%s\n' "$hermes_api_key" "$provisioner_token" "$portal_token" "$model_key"
           printf '%s\n' "$hermes_api_key" > "$temp_dir/hermes-api-key"
           printf '%s\n' "$provisioner_token" > "$temp_dir/provisioner-token"
+          printf '%s\n' "$portal_token" > "$temp_dir/portal-admin-token"
           MODEL_KEY="$model_key" TEMP_DIR="$temp_dir" python3 - <<'PY'
           import json, os
           with open(os.environ["TEMP_DIR"] + "/profile-model-env.json", "w", encoding="ascii") as output:
@@ -172,7 +178,7 @@ jobs:
             -keyout "$temp_dir/acceptance-key.pem" \
             -out "$temp_dir/acceptance-cert.pem" \
             -subj "/CN=127.0.0.1" \
-            -addext "subjectAltName=IP:127.0.0.1" \
+            -addext "subjectAltName=IP:127.0.0.1,DNS:portal-acceptance" \
             -addext "basicConstraints=critical,CA:TRUE" \
             -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
 
@@ -200,12 +206,15 @@ jobs:
           YAML
 
           sudo chown "10000:10000" "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+            "$temp_dir/portal-admin-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
           sudo chmod 0400 "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+            "$temp_dir/portal-admin-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"
           for private_file in "$temp_dir/hermes-api-key" "$temp_dir/provisioner-token" \
+            "$temp_dir/portal-admin-token" \
             "$temp_dir/profile-model-env.json" "$temp_dir/client-config.yaml" \
             "$temp_dir/acceptance-key.pem" "$temp_dir/acceptance-cert.pem"; do
             [[ "$(stat -c '%u:%g:%a' "$private_file")" == "10000:10000:400" ]]
@@ -219,6 +228,7 @@ jobs:
           HERMES_API_KEY_FILE=$temp_dir/hermes-api-key
           HERMES_PROFILE_MODEL_ENV_FILE=$temp_dir/profile-model-env.json
           IACQUIRE_PROVISIONER_TOKEN_FILE=$temp_dir/provisioner-token
+          PORTAL_ACCEPTANCE_ADMIN_TOKEN_FILE=$temp_dir/portal-admin-token
           IACQUIRE_PROVISIONER_URL=https://127.0.0.1:18443
           IACQUIRE_PROVISIONER_GATEWAY_ID=$gateway_id
           IACQUIRE_HERMES_PRIVATE_NETWORK=iacquire-hermes-private-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
@@ -242,6 +252,7 @@ jobs:
             --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
             -f services/hermes-provisioner/compose.client.yaml \
             -f services/hermes-provisioner/compose.acceptance.yaml \
+            -f services/hermes-provisioner/compose.portal-acceptance.yaml \
             --profile provisioner --profile acceptance config --quiet
 
       - name: Run the candidate gateway and synthetic provisioner
@@ -386,6 +397,155 @@ jobs:
           print("SANDBOX_PASS: " + json.dumps(result, sort_keys=True, separators=(",", ":")))
           PY
 
+      - name: Provision through real iAcquireOS routes and verify Hermes state
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose() {
+            docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
+              --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
+              -f services/hermes-provisioner/compose.client.yaml \
+              -f services/hermes-provisioner/compose.acceptance.yaml \
+              -f services/hermes-provisioner/compose.portal-acceptance.yaml \
+              --profile provisioner --profile acceptance "$@"
+          }
+
+          compose up -d --no-build portal-acceptance
+          portal_id="$(compose ps -q portal-acceptance)"
+          [[ -n "$portal_id" ]]
+          deadline=$((SECONDS + 180))
+          while true; do
+            portal_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$portal_id")"
+            if [[ "$portal_health" == healthy ]]; then break; fi
+            if [[ "$portal_health" == unhealthy || "$portal_health" == exited || "$SECONDS" -ge "$deadline" ]]; then
+              echo "PORTAL_HERMES_E2E_FAIL: synthetic portal did not become healthy"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs seed \
+            > "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json"
+          python3 - "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json" <<'PY'
+          import json, sys
+          result = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert result == {"createdTenants": 2, "rolesPerTenant": 6, "requestedProvisionJobs": 12, "heldReviewsApproved": result["heldReviewsApproved"]}
+          assert isinstance(result["heldReviewsApproved"], int) and result["heldReviewsApproved"] >= 0
+          print("PORTAL_SEED_PASS: two synthetic organizations, twelve pending profile jobs, held configs reviewed")
+          PY
+
+          # The first sandbox already completed on this isolated Hermes home. Point the same restricted worker
+          # at the actual test Route Handlers and let the real worker create a second, tenant-unique set of profiles.
+          compose up -d --no-build --force-recreate hermes-provisioner
+          deadline=$((SECONDS + 2100))
+          while true; do
+            status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
+            provision_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("mappedProfiles")==12 and s.get("provisionAwaitingHealthCheck")==12 else "waiting")')"
+            if [[ "$provision_state" == failed ]]; then
+              echo "PORTAL_HERMES_E2E_FAIL: a synthetic profile provisioning job failed"
+              exit 1
+            fi
+            if [[ "$provision_state" == ready ]]; then break; fi
+            if [[ "$SECONDS" -ge "$deadline" ]]; then
+              echo "PORTAL_HERMES_E2E_FAIL: provisioning did not reach health verification"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          health_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs health-check)"
+          HEALTH_JSON="$health_json" python3 - <<'PY'
+          import json, os
+          result = json.loads(os.environ["HEALTH_JSON"])
+          assert result.get("checked") == 12 and result.get("online") == 12
+          PY
+
+          compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs sync >/dev/null
+          deadline=$((SECONDS + 900))
+          while true; do
+            status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
+            sync_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("syncAwaitingHealthCheck")==1 else "waiting")')"
+            if [[ "$sync_state" == failed ]]; then
+              echo "PORTAL_HERMES_E2E_FAIL: synthetic profile configuration sync failed"
+              exit 1
+            fi
+            if [[ "$sync_state" == ready ]]; then break; fi
+            if [[ "$SECONDS" -ge "$deadline" ]]; then
+              echo "PORTAL_HERMES_E2E_FAIL: configuration sync did not reach health verification"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          sync_health="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs health-check)"
+          SYNC_HEALTH="$sync_health" python3 - <<'PY'
+          import json, os
+          result = json.loads(os.environ["SYNC_HEALTH"])
+          assert result.get("checked") == 12 and result.get("online") == 12
+          PY
+
+          final_status="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
+          FINAL_STATUS="$final_status" python3 - <<'PY'
+          import json, os
+          status = json.loads(os.environ["FINAL_STATUS"])
+          assert status.get("employees") == 12
+          assert status.get("onlineEmployees") == 12
+          assert status.get("profileVersionsMatch") == 12
+          assert status.get("provisionSucceeded") == 12
+          assert status.get("syncSucceeded") == 1
+          assert status.get("failedJobs") == 0
+          assert status.get("duplicateCallbackReplays") == 1
+          print("PORTAL_JOB_STATE_PASS: 12 profiles online, twelve provisions and one approved configuration sync succeeded")
+          PY
+
+          compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs evidence \
+            > "$HERMES_ACCEPTANCE_DIR/results/portal-evidence.json"
+          chmod 0444 "$HERMES_ACCEPTANCE_DIR/results/portal-evidence.json"
+          compose exec -T hermes-provisioner /opt/iacquire-hermes/.venv/bin/python -B /opt/iacquire-hermes/verify_portal_acceptance.py
+
+          portal_id="$(compose ps -q portal-acceptance)"
+          client_id="$(compose ps -q hermes-client)"
+          worker_id="$(compose ps -q hermes-provisioner)"
+          PORTAL_ID="$portal_id" CLIENT_ID="$client_id" WORKER_ID="$worker_id" \
+            TEMP_DIR="$HERMES_ACCEPTANCE_DIR" REPO_DIR="$GITHUB_WORKSPACE" python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          def inspect(name):
+              return json.loads(subprocess.check_output(["docker", "inspect", os.environ[name]], text=True))[0]
+          portal, client, worker = (inspect(name) for name in ("PORTAL_ID", "CLIENT_ID", "WORKER_ID"))
+          for item in (portal, client, worker):
+              assert item["HostConfig"]["Privileged"] is False
+              assert all("docker.sock" not in mount["Source"] for mount in item["Mounts"])
+              assert all("/docker/hermes-agent-wpwm" not in mount["Source"] for mount in item["Mounts"])
+              ports = item["NetworkSettings"].get("Ports") or {}
+              assert not any(ports.values())
+          assert portal["Config"]["User"] == "10000:10000"
+          assert portal["HostConfig"]["ReadonlyRootfs"] is True
+          assert "ALL" in portal["HostConfig"]["CapDrop"]
+          assert worker["Config"]["User"] == "10000:10000"
+          assert worker["HostConfig"]["ReadonlyRootfs"] is True
+          assert "ALL" in worker["HostConfig"]["CapDrop"]
+          portal_env = "\n".join(portal["Config"]["Env"])
+          for name in ("DATABASE_URL=", "SUPABASE_SECRET_KEY=", "OPENAI_API_KEY=", "HERMES_PROVISIONER_TOKEN="):
+              assert name not in portal_env
+          assert "DATABASE_DRIVER=pglite-memory" in portal_env
+          assert "NODE_ENV=test" in portal_env
+          for filename in ("hermes-api-key", "provisioner-token", "portal-admin-token"):
+              secret = (pathlib.Path(os.environ["TEMP_DIR"]) / filename).read_text(encoding="ascii").strip()
+              assert secret not in portal_env
+          model = json.loads((pathlib.Path(os.environ["TEMP_DIR"]) / "profile-model-env.json").read_text(encoding="ascii"))["value"]
+          assert model not in portal_env
+          network_names = set(portal["NetworkSettings"]["Networks"])
+          assert any("client_egress" in name for name in network_names)
+          for network_name in network_names:
+              network = json.loads(subprocess.check_output(["docker", "network", "inspect", network_name], text=True))[0]
+              assert network["Internal"] is True
+          mounts = portal["Mounts"]
+          allowed_roots = {os.path.realpath(os.environ["TEMP_DIR"]), os.path.realpath(os.environ["REPO_DIR"])}
+          assert all(os.path.realpath(mount["Source"]) in allowed_roots for mount in mounts)
+          assert all(mount["RW"] is False for mount in mounts)
+          print("PORTAL_SECURITY_BOUNDARY_PASS: isolated test database, non-root/read-only app, internal networks, read-only synthetic inputs, no published ports or production mounts")
+          PY
+
       - name: Remove all synthetic containers, networks, volumes, and credentials
         if: always()
         shell: bash
@@ -403,6 +563,7 @@ jobs:
                 --env-file "$candidate_dir/compose.env" \
                 -f services/hermes-provisioner/compose.client.yaml \
                 -f services/hermes-provisioner/compose.acceptance.yaml \
+                -f services/hermes-provisioner/compose.portal-acceptance.yaml \
                 --profile provisioner --profile acceptance down --volumes --remove-orphans --timeout 15 >/dev/null 2>&1 || \
                 echo "SANDBOX_CLEANUP_WARNING: Compose teardown failed; the hosted runner will be discarded"
             fi
