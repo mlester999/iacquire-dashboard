@@ -65,3 +65,17 @@ States: Not Started, In Progress, Implemented, Verified Locally (tests on embedd
 | Id | Task | State |
 | --- | --- | --- |
 | 7.x | Integration audit, employee verification, onboarding, demo funnel (absent from this tree), billing, storage, super admin, scenarios, performance, security, UX, launch operations | Not Started |
+
+## Release checks (before the final GO / NO-GO report)
+
+| Id | Task | State |
+| --- | --- | --- |
+| R.1 | Scheduler job allowlist is explicit and fails closed | Verified Locally, two defects fixed |
+| R.2 | Inbox search optimization preserves tenant isolation | Verified Locally, one defect fixed; performance follow-ups recorded |
+| R.3 | All-workspaces rollout test is isolated and touches no production setting | Verified Locally, two defects fixed |
+| R.4 | AI Workforce and Inbox commits and the dirty master tree are preserved | Verified (forensic, read-only); the Phase 3 and 4 commits are not pushed |
+| R.5 | Combined migration rehearsal over 0001 to 0090 incl. 0081 to 0083 | Verified Locally (embedded Postgres 18.3) |
+| R.6 | Report separates code readiness from rollout readiness | Done: `evidence-report-2026-10-23.md` |
+| R.7 | Export leak of staff-only project notes; stale-quote revival | Verified Locally, fixed with tests |
+| R.8 | Migration 0090, the shared document buckets | Verified Locally |
+
