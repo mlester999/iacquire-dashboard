@@ -459,13 +459,17 @@ jobs:
               portal_state="$(docker inspect -f '{{.State.Status}}/exit={{.State.ExitCode}}/oom={{.State.OOMKilled}}/health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$portal_id")"
               health_exit_codes="$(docker inspect -f '{{range .State.Health.Log}}{{.ExitCode}} {{end}}' "$portal_id" | tr -cd '0-9 -')"
               echo "PORTAL_DIAGNOSTIC_STATE=${portal_state}"
+              echo "::warning title=Portal health state::PORTAL_DIAGNOSTIC_STATE=${portal_state}"
               echo "PORTAL_DIAGNOSTIC_HEALTH_EXIT_CODES=${health_exit_codes:-none}"
+              echo "::warning title=Portal health probes::PORTAL_DIAGNOSTIC_HEALTH_EXIT_CODES=${health_exit_codes:-none}"
               health_output="$(docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' "$portal_id" 2>/dev/null || true)"
               portal_logs="$(docker logs "$portal_id" 2>&1 || true)"
               if grep -Fq 'PORTAL_ACCEPTANCE_READY' <<< "$portal_logs"; then
                 echo 'PORTAL_DIAGNOSTIC_READY_MARKER=present'
+                echo '::warning title=Portal startup marker::PORTAL_DIAGNOSTIC_READY_MARKER=present'
               else
                 echo 'PORTAL_DIAGNOSTIC_READY_MARKER=absent'
+                echo '::warning title=Portal startup marker::PORTAL_DIAGNOSTIC_READY_MARKER=absent'
               fi
               for marker in \
                 ERR_TLS_CERT_ALTNAME_INVALID UNABLE_TO_VERIFY_LEAF_SIGNATURE \
@@ -474,6 +478,7 @@ jobs:
                 EACCES ENOENT ECONNREFUSED ECONNRESET ETIMEDOUT; do
                 if grep -Fq "$marker" <<< "$health_output$portal_logs"; then
                   echo "PORTAL_DIAGNOSTIC_ERROR_CODE=${marker}"
+                  echo "::warning title=Portal error code::PORTAL_DIAGNOSTIC_ERROR_CODE=${marker}"
                 fi
               done
               echo "PORTAL_HERMES_E2E_FAIL: synthetic portal did not become healthy"
