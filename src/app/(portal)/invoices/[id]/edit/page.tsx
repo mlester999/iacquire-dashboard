@@ -9,7 +9,8 @@ import { toDecimalString } from "@/lib/money";
 import { canEditDraft } from "@/lib/invoices/state";
 import { getInvoiceDetail } from "@/server/invoices/invoices";
 import { getInvoiceSettings } from "@/server/invoices/settings";
-import { InvoiceForm, emptyFormState } from "@/components/invoices/invoice-form";
+import { InvoiceForm } from "@/components/invoices/invoice-form";
+import { emptyFormState } from "@/lib/invoices/form-state";
 
 export const metadata = { title: "Edit invoice" };
 

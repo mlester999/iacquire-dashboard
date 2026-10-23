@@ -32,7 +32,8 @@ import { PaymentsPanel } from "@/components/invoices/payments-panel";
 import { InvoiceActions } from "@/components/invoices/invoice-actions";
 import { InvoiceSettingsPanel, RemindersPanel } from "@/components/invoices/settings-panel";
 import { ConnectionsPanel } from "@/components/invoices/connections-panel";
-import { InvoiceForm, emptyFormState } from "@/components/invoices/invoice-form";
+import { InvoiceForm } from "@/components/invoices/invoice-form";
+import { emptyFormState } from "@/lib/invoices/form-state";
 import { invoiceOrg, type InvoiceOrg } from "./support/invoices";
 
 const html = (el: React.ReactElement) => renderToStaticMarkup(el);

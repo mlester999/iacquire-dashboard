@@ -10,25 +10,12 @@ import { searchContactsAction } from "@/app/actions/crm";
 import { createInvoiceDraftAction, searchInvoiceDealsAction, updateInvoiceDraftAction } from "@/app/actions/invoices";
 import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from "@/lib/money";
 import type { LineFormInput } from "@/lib/invoices/lines";
+import type { InvoiceFormState } from "@/lib/invoices/form-state";
 import { blankLine, filledLines, previewLines } from "@/lib/invoices/screens";
 import { money } from "@/lib/invoices/labels";
 
 // Writing an invoice. Everything a person types stays text until the server reads it with the same money rules this screen previews with: the totals shown here are a
 // preview, and the server works the real ones out again. Saving makes (or updates) a draft; nothing is sent to anyone, and nothing can be paid until it is issued.
-
-export interface InvoiceFormState {
-  contact: { id: string; name: string } | null;
-  deal: { id: string; name: string } | null;
-  currency: CurrencyCode;
-  taxInclusive: boolean;
-  lines: LineFormInput[];
-  dueOn: string;
-  billTo: { name: string; company: string; email: string; phone: string; address: string; taxId: string };
-  paymentInstructions: string;
-  notes: string;
-  terms: string;
-  closesDeal: boolean;
-}
 
 export type InvoiceFormMode = { kind: "new" } | { kind: "edit"; id: string; version: number };
 
@@ -36,13 +23,6 @@ interface ContactChoice { id: string; name: string; email: string | null; phone:
 interface DealPick { id: string; name: string; contactId: string | null; contactName: string | null; currency: string | null }
 
 const input16 = "text-[16px] sm:text-[14px]";
-
-export function emptyFormState(over: Partial<InvoiceFormState> & { currency: CurrencyCode }): InvoiceFormState {
-  return {
-    contact: null, deal: null, taxInclusive: false, lines: [{ description: "", quantity: "1", unitPrice: "", discountPercent: "", discountAmount: "", taxPercent: "" }], dueOn: "",
-    billTo: { name: "", company: "", email: "", phone: "", address: "", taxId: "" }, paymentInstructions: "", notes: "", terms: "", closesDeal: false, ...over,
-  };
-}
 
 /** The request body for the server, from the form. Empty optional fields are sent as empty so a cleared field is cleared. */
 export function formPayload(s: InvoiceFormState) {

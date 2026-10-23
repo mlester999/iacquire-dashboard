@@ -8,7 +8,8 @@ import { getOpportunityDetail } from "@/server/crm/opportunities";
 import { isCurrency } from "@/lib/money";
 import { isUuid } from "@/lib/social/address";
 import { getInvoiceSettings } from "@/server/invoices/settings";
-import { InvoiceForm, emptyFormState } from "@/components/invoices/invoice-form";
+import { InvoiceForm } from "@/components/invoices/invoice-form";
+import { emptyFormState } from "@/lib/invoices/form-state";
 
 export const metadata = { title: "New invoice" };
 
