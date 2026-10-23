@@ -454,7 +454,7 @@ jobs:
             echo "::error title=Synthetic model fixture unavailable::MODEL_FIXTURE_LIFECYCLE_FAIL"
             exit 1
           fi
-          if ! docker exec "$client_id" /opt/hermes/bin/python -c \
+          if ! docker exec "$client_id" /opt/hermes/.venv/bin/python -c \
             'import urllib.request; r=urllib.request.urlopen("http://127.0.0.1:19000/healthz", timeout=5); raise SystemExit(0 if r.status == 200 else 1)'; then
             echo "::error title=Synthetic model fixture unavailable::MODEL_FIXTURE_HEALTH_FAIL"
             exit 1
