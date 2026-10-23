@@ -429,6 +429,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          portal_failure_phase=portal_startup
+          portal_report_failure() {
+            local status=$?
+            if [[ "$status" -ne 0 ]]; then
+              echo "::error title=Portal Hermes acceptance failed::PORTAL_FAILURE_PHASE=${portal_failure_phase}"
+            fi
+          }
+          trap portal_report_failure EXIT
+
           compose() {
             docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
               --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
@@ -439,6 +448,7 @@ jobs:
           }
 
           compose up -d --no-build portal-acceptance
+          portal_failure_phase=portal_health
           portal_id="$(compose ps -q portal-acceptance)"
           [[ -n "$portal_id" ]]
           deadline=$((SECONDS + 180))
@@ -452,8 +462,10 @@ jobs:
             sleep 5
           done
 
+          portal_failure_phase=portal_seed_request
           compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs seed \
             > "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json"
+          portal_failure_phase=portal_seed_validation
           python3 - "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json" <<'PY'
           import json, sys
           result = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -464,7 +476,9 @@ jobs:
 
           # The first sandbox already completed on this isolated Hermes home. Point the same restricted worker
           # at the actual test Route Handlers and let the real worker create a second, tenant-unique set of profiles.
+          portal_failure_phase=portal_worker_restart
           compose up -d --no-build --force-recreate hermes-provisioner
+          portal_failure_phase=portal_provisioning
           deadline=$((SECONDS + 2100))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
@@ -481,6 +495,7 @@ jobs:
             sleep 5
           done
 
+          portal_failure_phase=portal_health_check
           health_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs health-check)"
           HEALTH_JSON="$health_json" python3 - <<'PY'
           import json, os
@@ -488,7 +503,9 @@ jobs:
           assert result.get("checked") == 12 and result.get("online") == 12
           PY
 
+          portal_failure_phase=portal_sync_request
           compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs sync >/dev/null
+          portal_failure_phase=portal_sync_poll
           deadline=$((SECONDS + 900))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
@@ -505,6 +522,7 @@ jobs:
             sleep 5
           done
 
+          portal_failure_phase=portal_sync_health_check
           sync_health="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs health-check)"
           SYNC_HEALTH="$sync_health" python3 - <<'PY'
           import json, os
@@ -512,6 +530,7 @@ jobs:
           assert result.get("checked") == 12 and result.get("online") == 12
           PY
 
+          portal_failure_phase=portal_final_status
           final_status="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
           FINAL_STATUS="$final_status" python3 - <<'PY'
           import json, os
@@ -526,11 +545,14 @@ jobs:
           print("PORTAL_JOB_STATE_PASS: 12 profiles online, twelve provisions and one approved configuration sync succeeded")
           PY
 
+          portal_failure_phase=portal_runtime_evidence
           compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs evidence \
             > "$HERMES_ACCEPTANCE_DIR/results/portal-evidence.json"
           chmod 0444 "$HERMES_ACCEPTANCE_DIR/results/portal-evidence.json"
+          portal_failure_phase=portal_runtime_verification
           compose exec -T hermes-provisioner /opt/iacquire-hermes/.venv/bin/python -B /opt/iacquire-hermes/verify_portal_acceptance.py
 
+          portal_failure_phase=portal_security_checks
           portal_id="$(compose ps -q portal-acceptance)"
           client_id="$(compose ps -q hermes-client)"
           worker_id="$(compose ps -q hermes-provisioner)"
@@ -573,6 +595,7 @@ jobs:
           assert all(mount["RW"] is False for mount in mounts)
           print("PORTAL_SECURITY_BOUNDARY_PASS: isolated test database, non-root/read-only app, internal networks, read-only synthetic inputs, no published ports or production mounts")
           PY
+          portal_failure_phase=portal_acceptance_complete
 
       - name: Remove all synthetic containers, networks, volumes, and credentials
         if: always()
