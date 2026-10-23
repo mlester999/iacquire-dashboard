@@ -449,13 +449,22 @@ jobs:
 
           compose up -d --no-build portal-acceptance
           portal_failure_phase=portal_health
-          portal_id="$(compose ps -q portal-acceptance)"
-          [[ -n "$portal_id" ]]
+          # Include stopped containers: an early Node startup failure makes plain `ps -q`
+          # return an empty ID, which otherwise hides the useful exit and health evidence.
+          portal_id="$(compose ps --all -q portal-acceptance | head -n 1)"
+          if [[ -z "$portal_id" ]]; then
+            portal_compose_state="$(compose ps --all --format '{{.Service}}={{.State}}' portal-acceptance 2>/dev/null \
+              | tr -cd '[:alnum:]_.=() -\n' | head -n 1 || true)"
+            echo "PORTAL_DIAGNOSTIC_CONTAINER_STATE=${portal_compose_state:-missing}"
+            echo "::warning title=Portal container state::PORTAL_DIAGNOSTIC_CONTAINER_STATE=${portal_compose_state:-missing}"
+            echo "PORTAL_HERMES_E2E_FAIL: synthetic portal container was not found"
+            exit 1
+          fi
           deadline=$((SECONDS + 180))
           while true; do
             portal_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$portal_id")"
             if [[ "$portal_health" == healthy ]]; then break; fi
-            if [[ "$portal_health" == unhealthy || "$portal_health" == exited || "$SECONDS" -ge "$deadline" ]]; then
+            if [[ "$portal_health" == unhealthy || "$portal_health" == exited || "$portal_health" == dead || "$SECONDS" -ge "$deadline" ]]; then
               portal_state="$(docker inspect -f '{{.State.Status}}/exit={{.State.ExitCode}}/oom={{.State.OOMKilled}}/health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$portal_id")"
               health_exit_codes="$(docker inspect -f '{{range .State.Health.Log}}{{.ExitCode}} {{end}}' "$portal_id" | tr -cd '0-9 -')"
               echo "PORTAL_DIAGNOSTIC_STATE=${portal_state}"
@@ -475,7 +484,8 @@ jobs:
                 ERR_TLS_CERT_ALTNAME_INVALID UNABLE_TO_VERIFY_LEAF_SIGNATURE \
                 DEPTH_ZERO_SELF_SIGNED_CERT SELF_SIGNED_CERT_IN_CHAIN \
                 ERR_MODULE_NOT_FOUND ERR_PACKAGE_PATH_NOT_EXPORTED MODULE_NOT_FOUND \
-                EACCES ENOENT ECONNREFUSED ECONNRESET ETIMEDOUT; do
+                EACCES ENOENT ECONNREFUSED ECONNRESET ETIMEDOUT EADDRINUSE \
+                acceptance_fixture_missing acceptance_test_environment_required; do
                 if grep -Fq "$marker" <<< "$health_output$portal_logs"; then
                   echo "PORTAL_DIAGNOSTIC_ERROR_CODE=${marker}"
                   echo "::warning title=Portal error code::PORTAL_DIAGNOSTIC_ERROR_CODE=${marker}"
