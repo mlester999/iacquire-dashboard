@@ -51,6 +51,20 @@ const safeSeedErrors = new Set([
   "AGGREGATE_ERROR_SEED_ERROR",
 ]);
 
+const safeProvisioningFailureCodes = new Set([
+  "invalid_manifest", "lease_expired", "soul_digest_mismatch", "policy_digest_mismatch",
+  "unsafe_model_config", "invalid_policy_config", "invalid_profile_config", "unsafe_profile_path",
+  "profile_file_missing", "unsafe_hermes_home", "agency_profile_found", "profile_state_invalid",
+  "profile_ownership_missing", "profile_ownership_conflict", "profile_key_missing", "profile_key_invalid",
+  "profile_create_failed", "profile_conflict", "profile_authentication_failed", "profile_api_contract_failed",
+  "profile_identity_failed", "canary_tool_isolation_failed", "canary_submission_failed",
+  "canary_events_unavailable", "canary_event_invalid", "canary_tool_invoked", "canary_failed",
+  "canary_incomplete", "effective_soul_unverified", "runtime_tool_policy_unverified",
+  "runtime_tool_inventory_incomplete", "invalid_profile", "invalid_profile_route",
+  "unsafe_hermes_api_origin", "http_response_too_large", "http_unavailable",
+  "stale_configuration", "identity_mismatch", "audit_log_unavailable", "worker_internal_error",
+]);
+
 const safeDatabaseCodes = new Map([
   ["22P02", "DATABASE_INVALID_VALUE"],
   ["23503", "DATABASE_FOREIGN_KEY_VIOLATION"],
@@ -88,6 +102,18 @@ export function safeAcceptanceSeedErrorCode(reason: unknown): string {
     return "unclassified_seed_error";
   }
   return "unclassified_seed_error";
+}
+
+/** Extract only the worker's persisted allowlisted failure code from its fixed detail template. */
+export function safeProvisioningFailureCode(detail: unknown): string {
+  if (typeof detail !== "string") return "unclassified_provisioner_failure";
+  const match = /^Restricted Hermes profile setup failed \(([a-z_]{1,64})\)\. Review the isolated host result before retrying\.$/.exec(detail);
+  return match && safeProvisioningFailureCodes.has(match[1]) ? match[1] : "unclassified_provisioner_failure";
+}
+
+/** Keep only bounded failure labels; never return the persisted detail text. */
+export function safeProvisioningFailureCodeList(details: unknown[]): string[] {
+  return [...new Set(details.map(safeProvisioningFailureCode))].sort().slice(0, 12);
 }
 
 /** Return a bounded diagnostic label. Never include exception messages, paths, or secret values. */

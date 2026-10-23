@@ -447,6 +447,28 @@ jobs:
               --profile provisioner --profile acceptance "$@"
           }
 
+          report_portal_status() {
+            local status_json="$1"
+            local diagnostic
+            diagnostic="$(STATUS_JSON="$status_json" python3 - <<'PY'
+          import json, os, re
+          status = json.loads(os.environ["STATUS_JSON"])
+          keys = ("mappedProfiles", "provisionRequested", "provisionInProgress", "provisionAwaitingHealthCheck", "provisionSucceeded", "failedJobs")
+          counts = {}
+          for key in keys:
+              value = status.get(key)
+              counts[key] = value if isinstance(value, int) and value >= 0 else -1
+          raw_codes = status.get("failedCodes")
+          codes = sorted({code for code in raw_codes if isinstance(code, str) and re.fullmatch(r"[a-z_]{1,64}", code)}) if isinstance(raw_codes, list) else []
+          if counts["failedJobs"] > 0 and not codes:
+              codes = ["unclassified_provisioner_failure"]
+          print("PORTAL_PROVISIONING_DIAGNOSTIC=" + json.dumps({**counts, "failedCodes": codes[:12]}, separators=(",", ":")))
+          PY
+          )"
+            echo "$diagnostic"
+            echo "::warning title=Portal provisioning state::${diagnostic}"
+          }
+
           compose up -d --no-build portal-acceptance
           portal_failure_phase=portal_health
           # Include stopped containers: an early Node startup failure makes plain `ps -q`
@@ -534,11 +556,13 @@ jobs:
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
             provision_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("mappedProfiles")==12 and s.get("provisionAwaitingHealthCheck")==12 else "waiting")')"
             if [[ "$provision_state" == failed ]]; then
+              report_portal_status "$status_json"
               echo "PORTAL_HERMES_E2E_FAIL: a synthetic profile provisioning job failed"
               exit 1
             fi
             if [[ "$provision_state" == ready ]]; then break; fi
             if [[ "$SECONDS" -ge "$deadline" ]]; then
+              report_portal_status "$status_json"
               echo "PORTAL_HERMES_E2E_FAIL: provisioning did not reach health verification"
               exit 1
             fi
@@ -561,11 +585,13 @@ jobs:
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
             sync_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("syncAwaitingHealthCheck")==1 else "waiting")')"
             if [[ "$sync_state" == failed ]]; then
+              report_portal_status "$status_json"
               echo "PORTAL_HERMES_E2E_FAIL: synthetic profile configuration sync failed"
               exit 1
             fi
             if [[ "$sync_state" == ready ]]; then break; fi
             if [[ "$SECONDS" -ge "$deadline" ]]; then
+              report_portal_status "$status_json"
               echo "PORTAL_HERMES_E2E_FAIL: configuration sync did not reach health verification"
               exit 1
             fi

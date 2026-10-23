@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   safeAcceptanceSeedErrorCode,
   safeAcceptanceSeedStage,
+  safeProvisioningFailureCode,
+  safeProvisioningFailureCodeList,
   safeStartupFailureCode,
 } from "../scripts/hermes-provisioner-acceptance-diagnostics";
 
@@ -34,5 +36,15 @@ describe("Hermes acceptance startup diagnostics", () => {
       .toBe("DATABASE_TABLE_MISSING");
     expect(safeAcceptanceSeedErrorCode(new Error("sk-live-do-not-log-this")))
       .toBe("unclassified_seed_error");
+  });
+
+  it("exposes only allowlisted restricted-worker failure codes", () => {
+    const detail = "Restricted Hermes profile setup failed (runtime_tool_policy_unverified). Review the isolated host result before retrying.";
+    expect(safeProvisioningFailureCode(detail)).toBe("runtime_tool_policy_unverified");
+    expect(safeProvisioningFailureCode("Restricted Hermes profile setup failed (sk-live-secret). Review the isolated host result before retrying."))
+      .toBe("unclassified_provisioner_failure");
+    expect(safeProvisioningFailureCode("Bearer sk-live-secret")).toBe("unclassified_provisioner_failure");
+    expect(safeProvisioningFailureCodeList([detail, detail, "Bearer sk-live-secret"]))
+      .toEqual(["runtime_tool_policy_unverified", "unclassified_provisioner_failure"]);
   });
 });

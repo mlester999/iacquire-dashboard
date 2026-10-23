@@ -4,6 +4,7 @@ import { createServer } from "node:https";
 import {
   safeAcceptanceSeedErrorCode,
   safeAcceptanceSeedStage,
+  safeProvisioningFailureCodeList,
   safeStartupFailureCode,
 } from "./hermes-provisioner-acceptance-diagnostics";
 
@@ -288,8 +289,8 @@ async function readStatus() {
     orgIds,
   ));
   const mappedProfiles = agents.filter((agent) => Boolean(agent.hermes_profile)).length;
-  const latestJobs = await dbModule.withSystem((db) => db.query<{ kind: string; status: string }>(
-    "select kind,status from agent_provisioning_jobs where org_id=$1 or org_id=$2",
+  const latestJobs = await dbModule.withSystem((db) => db.query<{ kind: string; status: string; detail: string | null }>(
+    "select kind,status,detail from agent_provisioning_jobs where org_id=$1 or org_id=$2",
     orgIds,
   ));
   const jobs = latestJobs.rows;
@@ -309,6 +310,7 @@ async function readStatus() {
     syncAwaitingHealthCheck: jobs.filter((job) => job.kind === "sync" && job.status === "awaiting_health_check").length,
     syncSucceeded: jobs.filter((job) => job.kind === "sync" && job.status === "succeeded").length,
     failedJobs: jobs.filter((job) => job.status === "failed").length,
+    failedCodes: safeProvisioningFailureCodeList(jobs.filter((job) => job.status === "failed").map((job) => job.detail)),
     profileVersionsMatch: agents.filter((agent) => agent.hermes_profile_config_version_id === agent.active_config_version_id).length,
     duplicateCallbackReplays: state.duplicateCallbackReplays,
     syncVersionCreated: Boolean(state.syncVersionId),
