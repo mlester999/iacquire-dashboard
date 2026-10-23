@@ -50,7 +50,7 @@ jobs:
           node --version
           npm --version
           install_log="$RUNNER_TEMP/npm-ci-${GITHUB_RUN_ID}.log"
-          if npm ci --no-audit --no-fund --fetch-retries=5 \
+          if npm ci --no-fund --fetch-retries=5 \
             --fetch-retry-mintimeout=10000 --fetch-retry-maxtimeout=120000 \
             --fetch-timeout=300000 >"$install_log" 2>&1; then
             tail -n 8 "$install_log"
