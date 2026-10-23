@@ -109,11 +109,14 @@ export interface CompletionFacts {
 
 /**
  * Whether a completion is applied to the proposal. The first rule that does not hold wins, and its reason is what a person is shown. Applied only when the request was still
- * out, the proposal is still sent on the very version the signer was asked to sign, nobody answered it, and it is not past its date.
+ * out (queued, being sent, sent, opened or being checked), the proposal is still sent on the very version the signer was asked to sign, nobody answered it, and it is not past
+ * its date.
  */
 export function completionVerdict(f: CompletionFacts): { apply: true } | { apply: false; reason: NotAppliedReason } {
   if (f.requestStatus === "superseded" || f.proposalVersion !== f.requestVersion) return { apply: false, reason: "superseded" };
-  if (f.requestStatus === "voided") return { apply: false, reason: "voided" };
+  // A request that had already ended (withdrawn, closed, could not be sent, ran out) is not revived by a late word from the service: the business was told it was over.
+  if (f.requestStatus === "completed") return { apply: false, reason: "already_answered" };
+  if (!isLive(f.requestStatus)) return { apply: false, reason: "voided" };
   if (f.alreadyAnswered || f.proposalStatus === "accepted" || f.proposalStatus === "declined") return { apply: false, reason: "already_answered" };
   if (f.proposalStatus === "expired" || (f.proposalStatus === "sent" && f.pastDate)) return { apply: false, reason: "expired" };
   if (f.proposalStatus !== "sent" || f.sentVersion !== f.requestVersion) return { apply: false, reason: "proposal_closed" };
@@ -123,7 +126,7 @@ export function completionVerdict(f: CompletionFacts): { apply: true } | { apply
 
 export const NOT_APPLIED_TEXT: Record<NotAppliedReason, string> = {
   superseded: "The signer signed an older version. The proposal was revised after the request was sent, so this signature was not applied to the new version.",
-  voided: "The signer signed after the request was withdrawn, so this signature was not applied to the proposal.",
+  voided: "The signing request had already ended (it was withdrawn, closed, could not be sent or ran out) when the signature arrived, so this signature was not applied to the proposal.",
   proposal_closed: "The proposal was no longer open when the signature arrived (it was withdrawn or taken back), so this signature was not applied to it.",
   expired: "The proposal's valid-until date had passed when the signature arrived, so this signature was not applied to it.",
   already_answered: "The proposal already had an answer recorded for this version, so this signature was not applied to it.",

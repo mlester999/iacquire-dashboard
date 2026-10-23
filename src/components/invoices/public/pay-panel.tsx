@@ -18,7 +18,10 @@ function remember() {
   }
 }
 
-export function PayPanel({ token, canPay, balanceMinor, currency }: { token: string; canPay: boolean; balanceMinor: number; currency: CurrencyCode }) {
+/** Where the browser goes. A seam so the page's behaviour can be tested without a real navigation. */
+const goTo = (url: string) => window.location.assign(url);
+
+export function PayPanel({ token, canPay, balanceMinor, currency, navigate = goTo }: { token: string; canPay: boolean; balanceMinor: number; currency: CurrencyCode; navigate?: (url: string) => void }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -31,7 +34,7 @@ export function PayPanel({ token, canPay, balanceMinor, currency }: { token: str
       if (res.ok && body.url) {
         remember();
         // Navigation, not a form post: the site's policy lets forms post to this site only.
-        window.location.assign(body.url);
+        navigate(body.url);
         return;
       }
       setError(body.message ?? "The payment page could not be opened just now. Nothing was charged. Please try again in a few minutes.");

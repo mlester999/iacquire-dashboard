@@ -1,12 +1,12 @@
 import "server-only";
-import { withSystem, type Queryable } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
 import { decryptSecret, encryptSecret, randomToken, sha256 } from "@/server/security/crypto";
 import { assertCan, auditActor, crmRead, type CrmActor } from "@/server/crm/actor";
 import { openCredentials as openSocialCredentials } from "@/server/social/credentials";
-import { assertExternalReviewsEnabled, externalReviewsEnabledIn } from "@/server/reputation/entitlement";
+import { REVIEWS_CLIENT_ONLY_MESSAGE, REVIEWS_NOT_ENABLED_MESSAGE, assertExternalReviewsEnabled, externalReviewsEnabledIn } from "@/server/reputation/entitlement";
 import { reviewProviderFor, simulatedAllowed, siteEnvironment } from "@/server/reputation/providers";
 import { createGoogleProvider, googleReviewProvider } from "@/server/reputation/providers/google";
 import { META_READ_SCOPE } from "@/server/reputation/providers/meta-reviews";
@@ -173,6 +173,25 @@ export async function loadConnection(db: Queryable, orgId: string, id: string, l
 
 export const locationOf = (c: Pick<ConnectionRow, "provider" | "external_account_id" | "external_location_id">): LocationRef => ({ provider: c.provider, accountId: c.external_account_id, locationId: c.external_location_id });
 
+/**
+ * Whether a reply can be posted from here through this connection right now, and if not, why in plain words. Three things must hold: the connection works, posting replies is
+ * switched on for iAcquire (an environment switch, off by default) and the access that was granted lets it post. A reply that cannot be posted from here can still be written and
+ * approved, and a person can then post it on the review site themselves and say so.
+ */
+export function replyPostable(c: Pick<ConnectionRow, "adapter" | "provider" | "status" | "can_reply">): { ok: true } | { ok: false; reason: string } {
+  if (c.status !== "connected") return { ok: false, reason: "The connection to the review site needs attention. Reconnect it in Settings first." };
+  let provider: ReviewProvider;
+  try {
+    provider = reviewProviderFor(c.adapter);
+  } catch {
+    return { ok: false, reason: "This kind of connection can't post replies here." };
+  }
+  const support = provider.replySupport();
+  if (!support.ok) return support;
+  if (!c.can_reply) return { ok: false, reason: `The access given to ${PROVIDER_LABELS[c.provider]} doesn't let iAcquire post replies. Reconnect it and allow replies, or post the reply there yourself.` };
+  return { ok: true };
+}
+
 const sealReview = (c: ReviewCredentials): string => encryptSecret(JSON.stringify(c));
 function openReview(sealed: string | null): ReviewCredentials | null {
   if (!sealed) return null;
@@ -193,7 +212,8 @@ export async function connectionCredentials(db: Queryable, c: ConnectionRow): Pr
     const creds = openReview(c.credentials);
     return creds ? { ok: true, creds } : { ok: false, reason: "The saved Google sign-in can no longer be used. Reconnect your Google location." };
   }
-  if (!c.social_account_id) return { ok: true, creds: { accessToken: "sim_valid" } };
+  // A test connection made without a Social media Page has nothing to borrow; a real one always has a Page, and without it there is nothing to read with.
+  if (!c.social_account_id) return c.adapter === "simulated" ? { ok: true, creds: { accessToken: "sim_valid" } } : { ok: false, reason: "The Facebook Page is no longer connected in Social media. Reconnect it there, then connect it here again." };
   const { rows } = await db.query<{ credentials: string | null; status: string }>("select credentials, status from social_accounts where id = $1 and org_id = $2", [c.social_account_id, c.org_id]);
   const social = rows[0];
   const token = social && social.status === "connected" ? openSocialCredentials(social.credentials)?.accessToken : null;
@@ -346,22 +366,21 @@ export async function completeGoogleConnect(
   deps: { google?: GoogleProvider } = {},
 ): Promise<{ outcome: "choose" | "denied"; stateId: string | null; returnPath: string }> {
   if (!input.state) throw new AppError("invalid_input", "That sign-in did not start from iAcquire, so it was ignored.");
-  const row = await withSystem(async (db) => (await db.query<{ id: string; org_id: string; user_id: string; return_path: string; expires_at: Date; used_at: Date | null; code_verifier: string | null }>(
-    "select id, org_id, user_id, return_path, expires_at, used_at, code_verifier from review_oauth_states where state_hash = $1", [sha256(input.state as string)],
+  const row = await withSystem(async (db) => (await db.query<{ id: string; org_id: string; user_id: string; return_path: string; expires_at: Date; used_at: Date | null; code_verifier: string | null; exchanged: boolean }>(
+    "select id, org_id, user_id, return_path, expires_at, used_at, code_verifier, (pending is not null) as exchanged from review_oauth_states where state_hash = $1", [sha256(input.state as string)],
   )).rows[0] ?? null);
-  if (!row || row.user_id !== user.id || row.used_at || new Date(row.expires_at).getTime() < Date.now()) throw new AppError("invalid_input", "That sign-in expired or was not started by you. Start the connection again.");
+  // A sign-in comes back once: after its code was exchanged (its choices are waiting) the same address does nothing more.
+  if (!row || row.user_id !== user.id || row.used_at || row.exchanged || new Date(row.expires_at).getTime() < Date.now()) throw new AppError("invalid_input", "That sign-in expired or was not started by you. Start the connection again.");
   const used = () => withSystem((db) => db.query("update review_oauth_states set used_at = now(), pending = null where id = $1", [row.id]));
-  const allowed: { client: boolean; on: boolean; may: boolean } = { ...(await withSystem(async (db) => {
+  const workspace = await withSystem(async (db) => {
     const kind = (await db.query<{ kind: string }>("select kind from organizations where id = $1", [row.org_id])).rows[0]?.kind;
-    const on = await externalReviewsEnabledIn(db, row.org_id);
-    return { client: kind === "client", on };
+    return { client: kind === "client", on: await externalReviewsEnabledIn(db, row.org_id) };
   });
   // The person's own permission, asked under their own session (row-level security), as the social sign-in does.
   const may = await withUser(user.id, async (db) => (await db.query<{ ok: boolean }>("select app.has_permission($1, 'reviews.manage') as ok", [row.org_id])).rows[0]?.ok === true);
-  allowed.may = may;
-  if (!allowed.client || !allowed.may || !allowed.on) {
+  if (!workspace.client || !workspace.on || !may) {
     await used();
-    throw new AppError("forbidden", !allowed.client ? "Public reviews belong to a client's own workspace." : !allowed.on ? "Public reviews aren't switched on for this workspace." : "Only the business owner or a manager can connect review sites.");
+    throw new AppError("forbidden", !workspace.client ? REVIEWS_CLIENT_ONLY_MESSAGE : !workspace.on ? REVIEWS_NOT_ENABLED_MESSAGE : "Only the business owner or a manager can connect review sites.");
   }
   if (input.error || !input.code) {
     await used();

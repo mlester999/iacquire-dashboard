@@ -105,6 +105,37 @@ export const PUBLIC_STATE_TEXT: Record<Exclude<PublicState, "open" | "answered">
   disabled: { title: "Proposals are temporarily unavailable", body: "Please try again later, or contact the business directly." },
 };
 
+/**
+ * Where the signing of a proposal that asks for a signature stands, as far as the customer may be told. none: no signing request exists for this version. preparing: it is being
+ * handed to the signing service. sent: the service was asked to email the signer. viewed: the service reports the signer opened it. ended: a request existed and is over without
+ * a signature the business accepted (withdrawn, declined, ran out, could not be sent): nothing is waiting for the customer.
+ */
+export type PublicSigningState = "none" | "preparing" | "sent" | "viewed" | "ended";
+
+export interface PublicSigning {
+  state: PublicSigningState;
+  /** The signing service's name, as the customer will see it in the email. */
+  providerLabel: string | null;
+  /** The address the signing service was asked to write to, masked. It can differ from the address the customer confirms with a code. */
+  signerEmailMasked: string | null;
+  /** A stand-in used in tests and demonstrations: nothing was sent and nothing is binding. */
+  simulated: boolean;
+}
+
+/** What the customer is told about signing. Never says the proposal is signed (that is the answer panel's job, from a recorded answer) and never invites a signature on this page. */
+export function publicSigningText(business: string, s: PublicSigning): string {
+  const via = s.providerLabel ?? "a signing service";
+  const to = s.signerEmailMasked ? ` (to ${s.signerEmailMasked})` : "";
+  const prefix = s.simulated ? "Simulated, for testing: no real document was sent and nothing here is binding. " : "";
+  switch (s.state) {
+    case "preparing": return `${prefix}${business} is sending a document for you to sign through ${via}${to}. Signing that document is how this proposal is accepted. It can't be accepted on this page.`;
+    case "sent": return `${prefix}${business} asked ${via} to email a document for you to sign${to}. Signing that document is how this proposal is accepted. It can't be accepted on this page. If you can't find the email, check your spam folder or contact ${business}.`;
+    case "viewed": return `${prefix}${via} reports that the document ${business} sent${to} was opened. Signing it is how this proposal is accepted. It can't be accepted on this page.`;
+    case "ended": return `${prefix}No signing document is waiting for you at the moment. Contact ${business} if you want to go ahead.`;
+    default: return `${prefix}This proposal is accepted by signing a document, which ${business} sends you. They haven't sent it yet. It can't be accepted on this page. Contact ${business} to go ahead.`;
+  }
+}
+
 export type DecideOutcome =
   | "accepted" | "declined" | "changes_requested"
   | "already" | "conflict" | "not_verified" | "unavailable" | "expired" | "stale" | "needs_signature" | "needs_note" | "ack_required" | "no_email" | "rate_limited" | "invalid";
@@ -119,7 +150,7 @@ export const DECIDE_TEXT: Record<DecideOutcome, { tone: "ok" | "error"; text: st
   unavailable: { tone: "error", text: "This proposal can't be answered right now. Contact the business." },
   expired: { tone: "error", text: "This proposal has expired, so it can no longer be answered." },
   stale: { tone: "error", text: "The proposal changed since you opened this page. Reload to see the current version." },
-  needs_signature: { tone: "error", text: "This proposal needs a signature, which the business arranges separately. It can't be accepted here." },
+  needs_signature: { tone: "error", text: "This proposal is accepted by signing the document the business sends you, so it can't be accepted on this page." },
   needs_note: { tone: "error", text: "Say what you would like changed." },
   ack_required: { tone: "error", text: "Tick the box to confirm before accepting." },
   no_email: { tone: "error", text: "The business has no email address on file for you, so this can't be answered here. Contact them." },

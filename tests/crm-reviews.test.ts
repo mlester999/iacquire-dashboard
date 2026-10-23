@@ -36,6 +36,7 @@ import {
   listReviewTemplates, loadReviewPage, moveReviewDestination, newReviewToken, previewReviewRequest, recordReviewClick, requestReview, REVIEW_TOKEN_RE, reviewTokenFor,
   setFeedbackFollowUp, setReviewDestinationActive, submitReviewFeedback, validateDestinationUrl,
 } from "@/server/crm/reviews";
+import { getSites } from "@/server/reputation/connections";
 import { createWorkflow, publishWorkflow, requestWorkflowApproval } from "@/server/crm/workflows/definitions";
 import { startManualRun, startTestRun } from "@/server/crm/workflows/runs";
 import { processWorkflowRuns } from "@/server/crm/workflows/runner";
@@ -602,7 +603,7 @@ describe("the request_review workflow step", () => {
 // ---------------------------------------------------------------------------
 
 describe("the Reviews screen", () => {
-  it("renders the links, the numbers, the Google Business Profile status and the rules", async () => {
+  it("renders the links, the numbers, the public review sites' honest state and the rules", async () => {
     const scope = await scopeFor(a.owner, "/crm");
     const [stats, destinations, templates, requests, feedback] = await Promise.all([
       getReviewStats(a.owner, { days: 30 }), listReviewDestinations(a.owner), listReviewTemplates(a.owner), listReviewRequests(a.owner, { pageSize: 5 }), listFeedback(a.owner, { filter: "open", pageSize: 5 }),
@@ -612,14 +613,20 @@ describe("the Reviews screen", () => {
       canManageLinks: true, canSend: true, canFollowUp: true, contactsLinked: true,
       limits: { cooldownDays: 30, linkDays: 60, escalateAtOrBelow: 2, maxActive: 6, maxTotal: 10 }, initialContact: null,
       settings: DEFAULT_REPUTATION_SETTINGS, canEditSettings: true, surveysEnabled: true, satisfaction: null,
+      publicReviews: { sites: await getSites(a.owner), enabled: false, any: false, data: null, filter: "all", focusId: null, pending: null, pendingStateId: null, notice: null, canManageSites: true },
     }));
     expect(html).toContain("Public review links");
     expect(html).toContain("tab=satisfaction");
     expect(html).toContain("A survey goes the same way and opens the same page, with the same review links.");
     expect(html).toContain("Nothing is offered in return for a review or feedback");
     expect(html).toContain("Review us on Facebook");
-    expect(html).toContain("Blocked");
-    expect(html).toContain("Business Profile API");
+    // The old static "Blocked" card is a status card now: each site says where it stands, in words, and nothing claims a connection that does not exist.
+    expect(html).toContain("Public reviews in iAcquire");
+    expect(html).toContain("Not available yet");
+    expect(html).toContain("Business Profile reviews");
+    expect(html).toContain("Public reviews aren&#x27;t switched on for this workspace yet");
+    expect(html).not.toContain("Blocked");
+    expect(html).not.toContain("Public reviews</a>");
     expect(html).toContain("whatever rating they give you privately");
     expect(html).toContain("Request a review");
     expect(html).toContain("tab=settings");

@@ -9,6 +9,7 @@ import { approvalReasons, isEditable, type ApprovalReason, type ProposalStatus }
 import { shareViewFor, type ShareView } from "@/server/proposals/share";
 import { checkProposal } from "@/server/proposals/versions";
 import { authorCanSend, iso, loadVersionRow, money, readSettings, rowDoc, type ProposalRow } from "@/server/proposals/core";
+import { signatureTabIn, type SignatureTab } from "@/server/esign/requests";
 
 // What the screens read. A summary is a row of a list; a detail is one proposal with its problems, approval need, saved versions, recorded answers and history.
 
@@ -107,6 +108,8 @@ export interface ProposalDetail extends ProposalSummary {
   viewer: { userId: string | null; canEdit: boolean; isAuthor: boolean };
   /** For an AI-written draft: what the checks removed from the model's answer, so the person knows the draft is not everything it wrote. Null for a proposal a person started. */
   ai: { droppedCount: number; dropped: Array<{ field: string; reason: string; text: string; detail: string }>; rejectedItems: number } | null;
+  /** The Signature tab: the signing service connection, the requests made for this proposal and whether another can be made now. Cheap, and empty, while signing is not switched on. */
+  signature: SignatureTab;
 }
 
 export const LIST_COLUMNS_SQL = (columns: string): string => columns.replace("client_email::text as client_email, doc,", "client_email::text as client_email, '{}'::jsonb as doc,");
@@ -195,5 +198,6 @@ export async function buildDetail(db: Queryable, actor: CrmActor, row: ProposalR
     createdById: row.created_by,
     viewer,
     ai,
+    signature: await signatureTabIn(db, actor, row, now),
   };
 }

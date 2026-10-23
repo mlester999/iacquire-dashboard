@@ -13,7 +13,7 @@ import { validityOn } from "@/lib/proposals/validity";
 import { addEvent as addProposalEvent, loadProposalRow, loadVersionRow, memberUserId, type ProposalRow } from "@/server/proposals/core";
 import { ensureVersionPdf } from "@/server/proposals/documents";
 import { assertProposalsEnabled, ESIGN_FEATURE, featureOn } from "@/server/proposals/features";
-import { refreshSignatureState } from "@/server/esign/apply";
+import { refreshSignatureState } from "@/server/esign/lifecycle";
 import { connectionViewIn, type ConnectionView } from "@/server/esign/connections";
 import { addSigEvent, loadRequest, REQUEST_COLUMNS, type RequestRow } from "@/server/esign/core";
 import { liveEsignWritesEnabled } from "@/server/esign/providers";
@@ -96,7 +96,7 @@ function toRequestView(r: RequestRow, events: EventLine[], proposal: Pick<Propos
     explain: statusExplain(r.status, { signerName: r.signer_name, mode: r.mode, providerLabel: label }), signerName: r.signer_name, signerEmail: r.signer_email, provider: r.provider,
     providerLabel: label, mode: r.mode, createdAt: new Date(r.created_at).toISOString(), sentAt: iso(r.sent_at), completedAt: iso(r.completed_at), applied: r.applied_at !== null,
     notAppliedReason: r.not_applied_reason, notAppliedText: r.not_applied_reason ? NOT_APPLIED_TEXT[r.not_applied_reason] : null, signedFileId: r.signed_file_id,
-    certificateFileId: r.certificate_file_id, copyPending: r.status === "completed" && !r.signed_file_id, copyGaveUp: r.copy_gave_up_at !== null, lastError: r.last_error,
+    certificateFileId: r.certificate_file_id, copyPending: r.status === "completed" && !r.signed_file_id && r.copy_gave_up_at === null, copyGaveUp: r.copy_gave_up_at !== null && !r.signed_file_id, lastError: r.last_error,
     voidReason: r.void_reason, cancelNote: r.provider_document_id || r.cancel_state !== "none" ? CANCEL_NOTE[r.cancel_state](label) : null,
     canVoid: canSend && isLive(r.status), events,
   };

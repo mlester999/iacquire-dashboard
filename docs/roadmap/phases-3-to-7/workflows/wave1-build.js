@@ -7,7 +7,6 @@ export const meta = {
 }
 
 const WT = 'C:\\Users\\ZEPHY\\Documents\\Marky Files\\Programming Projects\\iAcquire-dashboard\\.data\\wt-phases-3-7'
-const SCR = ''  // unused here: the line-ending checker is scripts/eol-scan.py in the worktree
 const EOL = WT + '\\scripts\\eol-scan.py'
 const BASE = (args && args.base) || 'HEAD'
 const AUD = 'docs/roadmap/phases-3-to-7/audit'

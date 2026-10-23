@@ -192,7 +192,8 @@ export async function cancelWithdrawn(o: Opts): Promise<number> {
     } catch {
       const attempts = r.cancel_attempts + 1;
       await withSystem(async (db) => {
-        await db.query("update signature_requests set cancel_attempts = $2, cancel_state = case when $2 >= $3 then 'manual' else cancel_state end where id = $1", [r.id, attempts, MAX_CANCEL_ATTEMPTS]);
+        // (The casts are needed: the same number is both stored and compared, and the database cannot settle on one type for it otherwise.)
+        await db.query("update signature_requests set cancel_attempts = $2::integer, cancel_state = case when $2::integer >= $3::integer then 'manual' else cancel_state end where id = $1", [r.id, attempts, MAX_CANCEL_ATTEMPTS]);
         await addSigEvent(db, r.org_id, r.id, attempts >= MAX_CANCEL_ATTEMPTS ? "cancel_manual" : "cancel_failed", "system", { attempts });
       });
     }

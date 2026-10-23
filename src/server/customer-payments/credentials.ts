@@ -42,7 +42,7 @@ export const credentialVault: CredentialVault = {
       const j = JSON.parse(decryptSecret(sealed)) as { apiKey?: unknown; apiSecret?: unknown; webhookSecret?: unknown; settings?: { paymentMethods?: unknown; environment?: unknown } };
       if (typeof j.apiKey !== "string" || !j.apiKey) return null;
       const methods = j.settings?.paymentMethods;
-      const environment = j.settings?.environment === "sandbox" || j.settings?.environment === "live" ? j.settings.environment : undefined;
+      const environment: "sandbox" | "live" | undefined = j.settings?.environment === "sandbox" ? "sandbox" : j.settings?.environment === "live" ? "live" : undefined;
       const settings = { ...(isStrings(methods) && methods.length ? { paymentMethods: methods } : {}), ...(environment ? { environment } : {}) };
       return {
         apiKey: j.apiKey, apiSecret: typeof j.apiSecret === "string" && j.apiSecret ? j.apiSecret : null, webhookSecret: typeof j.webhookSecret === "string" && j.webhookSecret ? j.webhookSecret : null,

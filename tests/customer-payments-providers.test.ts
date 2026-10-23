@@ -2,6 +2,7 @@
 // documentation as remembered, not recorded from PayMongo: these tests prove the adapter does what it says with those bodies, not that PayMongo sends them.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPaymongoProvider, paymongoHttp, CHECKOUT_PATH } from "@/server/customer-payments/providers/paymongo";
+import { paypalProvider } from "@/server/customer-payments/providers/paypal";
 import { SIGNATURE_HEADER, signSimulatedBody, simulatedBody, simulatedPlatform, simulatedProvider } from "@/server/customer-payments/providers/simulated";
 import { providerFor } from "@/server/customer-payments/providers";
 import { ProviderCallError } from "@/server/customer-payments/providers/types";
@@ -264,10 +265,12 @@ describe("the simulated provider", () => {
     expect(await simulatedProvider.verifyCredentials({ apiKey: "wrong", webhookSecret: null }, { webhookUrl: "x" })).toMatchObject({ ok: false, reason: "rejected" });
   });
 
-  it("is what the registry returns outside production, PayPal is honestly absent, and PayMongo is the real adapter", () => {
+  it("is what the registry returns outside production, and PayMongo and PayPal are the real adapters, both unverified against their providers", () => {
     expect(providerFor("simulated")).toBe(simulatedProvider);
     expect(providerFor("paymongo").id).toBe("paymongo");
     expect(providerFor("paymongo").contractVerified).toBe(false);
-    expect(() => providerFor("paypal")).toThrow(/PayPal is not available in this release/);
+    expect(providerFor("paypal").id).toBe("paypal");
+    expect(providerFor("paypal").contractVerified).toBe(false);
+    expect(providerFor("paypal")).toBe(paypalProvider);
   });
 });

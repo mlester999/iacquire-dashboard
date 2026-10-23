@@ -15,7 +15,21 @@ import { SeenBadge } from "@/components/proposals/status";
 // How a sent proposal reaches the customer, what is known about it, and what the customer answered. Nothing here sends anything: the team copies the link. The three levels of
 // "seen" are shown in their own words, because a page request alone can be an email scanner.
 
-export function DeliveryPanel({ detail, canSend, tz }: { detail: ProposalDetail; canSend: boolean; tz: string }) {
+/** What stands in the way of, or follows from, a proposal that asks for a signature. The signing itself is on the Signature tab. */
+function SigningNote({ detail, onOpenTab }: { detail: ProposalDetail; onOpenTab?: (tab: string) => void }) {
+  const sig = detail.signature;
+  const tab = onOpenTab ? <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("signature")}>Signature tab</button> : <>Signature tab</>;
+  let text: React.ReactNode;
+  if (detail.signatureState === "recorded_offline") text = "The signing was recorded as done offline by a person. It was not verified by a signing service.";
+  else if (detail.signatureState === "completed") text = <>A signing service reported that the customer signed. See the {tab}.</>;
+  else if (detail.signatureState === "requested") text = <>A signing request is out. The customer signs at the signing service, not on their proposal page. Follow it on the {tab}.</>;
+  else if (detail.signatureState === "failed") text = <>The last signing request ended without a signature. See the {tab}; you can ask again.</>;
+  else if (!sig.enabled || !sig.connection) text = "This proposal needs a signature. No signing service is connected, so the customer cannot sign online. Record the signing as done offline when it happens, or turn the requirement off and send a new version.";
+  else text = <>This proposal needs a signature. The customer signs at your signing service, not on the proposal page: ask for it on the {tab}.</>;
+  return <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">{text}</p>;
+}
+
+export function DeliveryPanel({ detail, canSend, tz, onOpenTab }: { detail: ProposalDetail; canSend: boolean; tz: string; onOpenTab?: (tab: string) => void }) {
   const { run, busy } = useCrmAction();
   const [shown, setShown] = React.useState<{ url: string; expiresAt: string } | null>(null);
   const [copied, setCopied] = React.useState(false);
@@ -99,12 +113,7 @@ export function DeliveryPanel({ detail, canSend, tz }: { detail: ProposalDetail;
             ))}
           </ul>
         )}
-        {detail.requiresSignature && (
-          <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">
-            {detail.signatureState === "recorded_offline" ? "The signing was recorded as done offline by a person. It was not verified by a signing service."
-              : "This proposal needs a signature. No signing service is connected yet, so the customer cannot accept it online. Record the signing as done offline when it happens, or turn the requirement off and send a new version."}
-          </p>
-        )}
+        {detail.requiresSignature && <SigningNote detail={detail} onOpenTab={onOpenTab} />}
       </section>
 
       <ConfirmDialog

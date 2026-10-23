@@ -27,7 +27,7 @@ export function statusesFor(key: ListFilterKey): ProposalStatus[] | undefined {
   return f && f.statuses.length ? [...f.statuses] : undefined;
 }
 
-export const WORKSPACE_TABS = ["edit", "preview", "versions", "activity", "delivery"] as const;
+export const WORKSPACE_TABS = ["edit", "preview", "versions", "activity", "delivery", "signature"] as const;
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
 /** The tab named in the address ("?tab=delivery", which a notification can link to); anything else opens the editor. */

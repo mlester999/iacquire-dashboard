@@ -673,9 +673,9 @@ describe("report export", () => {
     expect(lines[0]).toBe("Section,Measure,Breakdown,Item,Value,Currency");
     expect(lines).toContain(`Report,Time zone,,${TZ},,`);
     expect(lines).toContain("Leads & sources,New contacts,,,3,");
-    expect(lines).toContain("Deals & revenue,Won value,,,50000,PHP");
-    expect(lines).toContain("Deals & revenue,Won value,,,1000,USD");
-    expect(lines).toContain("Deals & revenue,Lost,Lost reason,'=Price too high,1,");
+    expect(lines).toContain("Deals and deal value,Won value,,,50000,PHP");
+    expect(lines).toContain("Deals and deal value,Won value,,,1000,USD");
+    expect(lines).toContain("Deals and deal value,Lost,Lost reason,'=Price too high,1,");
     expect(lines).toContain("Integration health,Scope,,Current state (not limited to the period),,");
     expect(csv).not.toMatch(/Synthetic message body|@example\.test/);
     const audit = await withSystem((db) =>
@@ -694,7 +694,7 @@ describe("report export", () => {
       sections: [{ section: "deals", data: {} as SectionPayloads["deals"], empty: true, ignored: [], notes: [] }],
     };
     const csv = reportToCsv(report, "Acme");
-    expect(csv).toContain("Deals & revenue,No data yet,,No records for this period and these filters.,,");
+    expect(csv).toContain("Deals and deal value,No data yet,,No records for this period and these filters.,,");
     expect(csv).toContain("Report,Not included,,Usage costs: Needs the “x” permission.,,");
   });
 
@@ -708,7 +708,7 @@ describe("report export", () => {
     const bytes = new Uint8Array(await ok.clone().arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]); // a byte order mark, so spreadsheets read UTF-8
     const body = await ok.text();
-    expect(body).toContain("Deals & revenue,Won,,,2,");
+    expect(body).toContain("Deals and deal value,Won,,,2,");
     expect(body).not.toContain("Leads & sources");
     who.actor = a.actor("sales");
     const denied = await exportRoute(new Request("http://localhost/api/crm/reports/export?range=30d"));

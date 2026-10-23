@@ -6,7 +6,7 @@ import { sanitizeErrorText } from "@/lib/ops";
 import { systemActor, type CrmActor } from "@/server/crm/actor";
 import { emitEvent, recordActivity } from "@/server/crm/events";
 import {
-  applyFact, completionVerdict, maskedEmail, NOT_APPLIED_TEXT, PROVIDER_CAN_CANCEL, PROVIDER_LABELS, type NotAppliedReason, type ProviderFact, type RequestStatus,
+  applyFact, completionVerdict, maskedEmail, NOT_APPLIED_TEXT, PROVIDER_LABELS, type NotAppliedReason, type ProviderFact, type RequestStatus,
 } from "@/lib/esign/state";
 import type { FailureKind } from "@/lib/esign/errors";
 import { contentHash } from "@/lib/proposals/hash";
@@ -14,6 +14,7 @@ import { validityOn } from "@/lib/proposals/validity";
 import { addEvent as addProposalEvent, loadProposalRow, loadVersionRow, readSettings, type ProposalRow } from "@/server/proposals/core";
 import { applyEffects } from "@/server/proposals/crm-effects";
 import { addSigEvent, loadRequest, type EventSource, type RequestRow } from "@/server/esign/core";
+import { refreshSignatureState } from "@/server/esign/lifecycle";
 
 // What the signing service's word does to a request and to the proposal. Everything here runs in the caller's transaction, takes the proposal's row lock before the request's
 // (the order every writer uses), and is idempotent: a delivery that was already recorded changes nothing, and a fact that would move a request backwards is recorded and ignored.
@@ -57,21 +58,7 @@ async function guarded(db: Queryable, req: Pick<RequestRow, "id" | "org_id">, ef
   }
 }
 
-/**
- * Brings the proposal's signature_state into line with its requests: requested while one is out, failed when the latest ended without a signature, none otherwise. A signature that
- * was applied (completed) and a signing recorded by a person (recorded_offline) are never moved by this.
- */
-export async function refreshSignatureState(db: Queryable, orgId: string, proposalId: string): Promise<void> {
-  await db.query(
-    `update proposals p set signature_state = case
-       when p.signature_state in ('completed', 'recorded_offline') then p.signature_state
-       when exists (select 1 from signature_requests r where r.proposal_id = p.id and r.org_id = p.org_id and r.status in ('queued', 'sending', 'sent', 'viewed', 'unknown')) then 'requested'
-       when (select r.status from signature_requests r where r.proposal_id = p.id and r.org_id = p.org_id order by r.created_at desc, r.id desc limit 1) in ('failed', 'declined', 'expired') then 'failed'
-       else 'none' end
-     where p.id = $1 and p.org_id = $2`,
-    [proposalId, orgId],
-  );
-}
+export { refreshSignatureState, voidLiveRequestsInTx, type VoidKind } from "@/server/esign/lifecycle";
 
 // ---------------------------------------------------------------------------
 // The service's word
@@ -227,8 +214,8 @@ async function completeRequest(db: Queryable, proposal: ProposalRow, req: Reques
     await refreshSignatureState(db, orgId, proposal.id);
     return { kind: "changed", status: "completed", applied: false, notApplied: "already_answered" };
   }
+  // The customer's link is left as it is, like an acceptance on the page: it now shows their answer ("signed through a signing service") instead of "no longer active".
   await db.query("update proposals set status = 'accepted', closed_at = $3::timestamptz, signature_state = 'completed' where id = $1 and org_id = $2", [proposal.id, orgId, o.now.toISOString()]);
-  await db.query("update proposal_share_links set revoked_at = $3::timestamptz where proposal_id = $1 and org_id = $2 and revoked_at is null", [proposal.id, orgId, o.now.toISOString()]);
   await db.query(`update signature_requests set ${common}, applied_at = $3::timestamptz where id = $1 and org_id = $2`, [req.id, orgId, o.now.toISOString()]);
   await addSigEvent(db, orgId, req.id, "signature_applied", "system", { version: req.proposal_version });
   await addProposalEvent(db, orgId, proposal.id, req.proposal_version, "accepted", { id: null, kind: "provider" }, { method: "provider_signature", requestId: req.id, provider: req.provider, signer: maskedEmail(req.signer_email) });
@@ -236,37 +223,4 @@ async function completeRequest(db: Queryable, proposal: ProposalRow, req: Reques
   const after = (await loadProposalRow(db, orgId, proposal.id)) as ProposalRow;
   await applyEffects(db, systemActor({ id: orgId, name: org.name, timezone: org.timezone }, label), after, "accepted", await readSettings(db, orgId), { viaSignature: { requestId: req.id, providerLabel: label }, byName: label, byCustomer: true });
   return { kind: "changed", status: "completed", applied: true };
-}
-
-// ---------------------------------------------------------------------------
-// Withdrawing
-// ---------------------------------------------------------------------------
-
-export type VoidKind = "voided" | "superseded";
-
-/**
- * Ends every request still out for a proposal (a revision, a withdrawal, an answer recorded by hand, an expiry, the customer's own decline). The caller already holds the proposal's
- * row lock. A request that reached the signing service is marked for withdrawal there (`wanted`) when the service allows it, and otherwise for the business to do by hand
- * (`manual`): iAcquire says so and ignores any signature that arrives later. A request that never reached it has nothing to withdraw. Returns how many were ended.
- */
-export async function voidLiveRequestsInTx(
-  db: Queryable, orgId: string, proposalId: string, kind: VoidKind, reason: string, o: { userId: string | null; now?: Date },
-): Promise<number> {
-  const now = (o.now ?? new Date()).toISOString();
-  const { rows } = await db.query<RequestRow>(
-    `select id, provider, provider_document_id, provider_state from signature_requests where proposal_id = $1 and org_id = $2 and status in ('queued', 'sending', 'sent', 'viewed', 'unknown') for update`,
-    [proposalId, orgId],
-  );
-  for (const r of rows) {
-    // A document may exist at the service even when its id was not saved yet (a step in flight); the worker adopts it afterwards (see worker.ts).
-    const hasDocument = Boolean(r.provider_document_id || r.provider_state?.documentId);
-    const cancel = !hasDocument ? "none" : PROVIDER_CAN_CANCEL[r.provider] ? "wanted" : "manual";
-    await db.query(
-      "update signature_requests set status = $3, void_reason = $4, cancel_state = $5, finished_at = $6::timestamptz, lease_until = null, claimed_by = null where id = $1 and org_id = $2",
-      [r.id, orgId, kind, reason.slice(0, 200), cancel, now],
-    );
-    await addSigEvent(db, orgId, r.id, kind, o.userId ? "user" : "system", { reason: reason.slice(0, 200), cancel });
-  }
-  if (rows.length) await refreshSignatureState(db, orgId, proposalId);
-  return rows.length;
 }

@@ -5,7 +5,11 @@ import { getWorkspace } from "@/server/crm/workspace";
 import { listPipelines } from "@/server/crm/pipelines";
 import { listTags } from "@/server/crm/tags";
 import { getProposalSettings } from "@/server/proposals/settings";
+import { ESIGN_FEATURE, featureOn } from "@/server/proposals/features";
+import { getConnection } from "@/server/esign/connections";
+import { simulatedAllowed } from "@/server/esign/providers";
 import { ProposalSettingsPanel } from "@/components/proposals/settings-panel";
+import { SigningConnectionCard } from "@/components/proposals/signing-connection-card";
 
 export const metadata = { title: "Proposal settings" };
 
@@ -14,11 +18,14 @@ export default async function ProposalSettingsPage() {
   const actor = memberActor(ctx);
   const canEdit = ctx.can("proposals.settings");
   // The tag and stage lists are only for the owner's choices. Someone who cannot see them still sees the settings.
-  const [settings, workspace, tags, pipelines] = await Promise.all([
+  // Signing is a separate switch. Until a Super Admin turns it on the connection is not even looked up.
+  const esignOn = await featureOn(ctx.org.orgId, ESIGN_FEATURE);
+  const [settings, workspace, tags, pipelines, connection] = await Promise.all([
     getProposalSettings(actor),
     getWorkspace(actor),
     canEdit ? listTags(actor).catch(() => []) : Promise.resolve([]),
     canEdit ? listPipelines(actor).catch(() => []) : Promise.resolve([]),
+    esignOn ? getConnection(actor) : Promise.resolve(null),
   ]);
   return (
     <div className="space-y-5">
@@ -31,6 +38,7 @@ export default async function ProposalSettingsPage() {
         tags={tags.map((t) => ({ id: t.id, name: t.name }))}
         stages={pipelines.flatMap((p) => p.stages.filter((s) => s.kind === "open").map((s) => ({ id: s.id, name: s.name, pipelineName: p.name })))}
       />
+      <SigningConnectionCard enabled={esignOn} connection={connection} canConnect={ctx.can("proposals.connect")} simulatedAvailable={simulatedAllowed()} tz={ctx.org.timezone || "UTC"} />
     </div>
   );
 }

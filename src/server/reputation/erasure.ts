@@ -15,6 +15,8 @@ export interface ReputationErasure {
   requestsCancelled: number;
   submissions: number;
   programsStopped: number;
+  /** Public reviews a person had linked to this customer, now unlinked. */
+  reviewLinks: number;
 }
 
 export async function eraseReputationRecords(db: Queryable, orgId: string, contactId: string): Promise<ReputationErasure> {
@@ -62,6 +64,9 @@ export async function eraseReputationRecords(db: Queryable, orgId: string, conta
   // What the customer typed into a form (a satisfaction survey included) is theirs to have removed; the submission itself stays as a count.
   const submissions = await db.query("update crm_form_submissions set answers = '{}'::jsonb, consent_text = null, marketing_text = null, ip_hash = null where org_id = $1 and contact_id = $2", [orgId, contactId]);
 
+  // A public review a person linked to this customer by hand: the link goes (the review itself is the review site's public data, not this customer's record, and stays).
+  const links = await db.query("update external_reviews set contact_id = null, contact_linked_by = null, contact_linked_at = null where org_id = $1 and contact_id = $2", [orgId, contactId]);
+
   const programs = await cancelRetention(db, orgId, contactId, "contact_removed");
-  return { feedbackRows: cleared.rowCount ?? 0, requestsCancelled: waiting.rows.length, submissions: submissions.rowCount ?? 0, programsStopped: programs.enrollments };
+  return { feedbackRows: cleared.rowCount ?? 0, requestsCancelled: waiting.rows.length, submissions: submissions.rowCount ?? 0, programsStopped: programs.enrollments, reviewLinks: links.rowCount ?? 0 };
 }

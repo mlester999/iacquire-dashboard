@@ -55,7 +55,7 @@ describe("reading a comment that came without a score", () => {
 describe("the settings a workspace may choose", () => {
   it("starts from the standard settings: level 2, 24 hours, reminders on, nudges off, AI replies off", () => {
     expect(DEFAULT_REPUTATION_SETTINGS).toMatchObject({
-      escalateAtOrBelow: 2, npsDetractorMax: 6, acknowledgeWithinHours: 24, publicReviewAlertAtOrBelow: 3, aiRepliesEnabled: false, slaRemindersEnabled: true, outcomeNudgesEnabled: false, version: 0, isDefault: true,
+      escalateAtOrBelow: 2, npsDetractorMax: 6, acknowledgeWithinHours: 24, publicReviewAlertAtOrBelow: 3, aiRepliesEnabled: false, slaRemindersEnabled: true, outcomeNudgesEnabled: false, renewalRemindersEnabled: false, version: 0, isDefault: true,
     });
   });
 

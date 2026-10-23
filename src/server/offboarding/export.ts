@@ -120,6 +120,12 @@ const TABLES: TableSpec[] = [
   // Review request batches: each batch (who it was for, the pace, what the owner approved and when) and the customers in it with what became of each.
   { file: "reputation/review-request-batches.json", table: "review_request_batches", order: "created_at" },
   { file: "reputation/review-request-batch-customers.json", table: "review_request_batch_items", order: "updated_at" },
+  // Public reviews: the review sites that were connected (by name and status only: never the saved sign-in, the place a read stopped or the site's own ids for the account), the
+  // reviews the sites returned, the replies written to them with their words and who approved them, and each reply's history. A review's reviewer is as the site gave it.
+  { file: "reputation/review-site-connections.json", table: "review_connections", pick: ["id", "provider", "adapter", "name", "status", "status_detail", "reported_rating", "reported_review_count", "reported_at", "last_success_at", "last_complete_at", "connected_at", "disconnected_at", "created_at"], order: "created_at" },
+  { file: "reputation/public-reviews.json", table: "external_reviews", order: "first_seen_at" },
+  { file: "reputation/review-replies.json", table: "review_replies", omit: ["approved_hash", "ai_meta"], order: "created_at" },
+  { file: "reputation/review-reply-history.json", table: "review_reply_events", order: "id" },
   // Proposals. A customer's link is exported without the hash of its address (a credential); the emailed-code challenges and the customer's sessions are working state and are not
   // exported; the address and browser hashes of a recorded answer are left out. Each version's PDF is among the files below.
   { file: "proposals/proposals.json", table: "proposals", order: "created_at" },
@@ -133,6 +139,25 @@ const TABLES: TableSpec[] = [
   { file: "proposals/template-versions.json", table: "proposal_template_versions", order: "created_at" },
   { file: "proposals/settings.json", table: "proposal_settings" },
   { file: "proposals/ai-suggestions.json", table: "proposal_ai_runs", order: "created_at" },
+  // Electronic signing: each request (who was asked to sign which version, what the signing service said, and whether the signature was applied to the proposal), its history, and
+  // the signing service connection without its keys or the secret in its notice address. The signed copies and certificates are among the files below.
+  { file: "proposals/signing-requests.json", table: "signature_requests", omit: ["idempotency_key", "provider_state", "lease_until", "claimed_by", "attempt", "max_attempts", "run_at", "copy_attempts", "copy_next_at", "cancel_attempts", "last_polled_at"], order: "created_at" },
+  { file: "proposals/signing-history.json", table: "signature_events", omit: ["provider_event_id"], order: "id" },
+  { file: "proposals/signing-connection.json", table: "esign_connections", pick: ["id", "provider", "mode", "label", "account_label", "status", "status_detail", "last_checked_at", "last_success_at", "connected_by", "connected_at", "disconnected_at", "created_at"], order: "created_at" },
+  // Customer invoices and payments. The invoices as issued (without the hash of the customer's link, which is a credential), their lines, history and reminders, every payment
+  // and refund with how it was recorded, what the payment provider told us (the facts of each delivery; no body is ever kept), and the checkouts customers started (without the
+  // provider's page address). The payment account is exported by name, mode and status only: never the keys that sign in as it. Messages that carried a reminder are in
+  // conversations/messages.json with the customer's link written as words.
+  { file: "invoices/invoices.json", table: "customer_invoices", omit: ["public_token_hash", "idempotency_key"], order: "created_at" },
+  { file: "invoices/lines.json", table: "customer_invoice_lines", order: "invoice_id, position" },
+  { file: "invoices/history.json", table: "customer_invoice_events", order: "id" },
+  { file: "invoices/reminders.json", table: "customer_invoice_reminders", order: "due_at" },
+  { file: "invoices/payments.json", table: "customer_payments", omit: ["idempotency_key"], order: "received_at" },
+  { file: "invoices/refunds.json", table: "customer_refunds", omit: ["idempotency_key"], order: "created_at" },
+  { file: "invoices/checkouts.json", table: "customer_payment_attempts", omit: ["checkout_url"], order: "created_at" },
+  { file: "invoices/provider-notices.json", table: "customer_payment_events", order: "received_at" },
+  { file: "invoices/payment-account.json", table: "customer_payment_connections", pick: ["id", "provider", "mode", "account_label", "supported_currencies", "status", "authorized_by", "authorized_at", "authorization_text_version", "live_confirmed_at", "live_confirmed_by", "last_event_at", "last_checked_at", "last_error", "created_at"], order: "created_at" },
+  { file: "invoices/settings.json", table: "customer_invoice_settings" },
   { file: "ai-team/employees.json", table: "agent_instances", omit: ["credential_id", "hermes_base_url", "hermes_profile"] },
   { file: "ai-team/employee-knowledge.json", table: "employee_knowledge_entries", order: "updated_at" },
   { file: "ai-team/configuration-versions.json", table: "agent_config_versions", order: "created_at" },
@@ -288,8 +313,9 @@ Exported ${now.toISOString()}.
 - **business/**: your profile, knowledge, onboarding answers and messaging settings.
 - **customers/** and **conversations/**: your contacts, their consent history, and every conversation and message, as readable JSON.
 - **sales/**, **appointments/**, **retention/**: leads, pipeline, appointments, reminders and customer programs, and the private feedback your customers gave you (with how your team followed it up).
-- **reputation/**: your reputation settings (what counts as low feedback, how long your team has to acknowledge it).
-- **proposals/**: your proposals, every saved version of each, the answers customers gave and how each was recorded, each proposal's history, your price book, tax rates and templates. The PDF of each version is in files/proposal-documents.
+- **reputation/**: your reputation settings (what counts as low feedback, how long your team has to acknowledge it), your review request batches, the review sites you connected (never their sign-in), the public reviews they returned, and the replies your team wrote to them with their history.
+- **proposals/**: your proposals, every saved version of each, the answers customers gave and how each was recorded, each proposal's history, your price book, tax rates and templates, and your signing requests with their history (never your signing service's keys). The PDF of each version, and each signed copy, is in files/proposal-documents.
+- **invoices/**: the invoices you sent your customers with their lines and history, every payment and refund and how it was recorded, the checkouts your customers started, what your payment provider told us about each payment, your reminders, your invoice settings, and your payment account by name and status (never its keys or your customers' payment links).
 - **website/**: your website's content, every published version, your domains and enquiries, and the images, as files.
 - **ai-team/**: how your AI employees were set up (names, modes, configuration versions) and every approval request and decision.
 - **billing/**: payments, your credit ledger, usage and fees.

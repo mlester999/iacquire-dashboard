@@ -9,6 +9,7 @@ import { createContact, setContactConsent } from "@/server/crm/contacts";
 import { createOpportunity } from "@/server/crm/opportunities";
 import { setInvoicesEnabled } from "@/server/invoices/feature";
 import { createDraft, issueInvoice, submitForApproval } from "@/server/invoices/invoices";
+import { getInvoiceLink } from "@/server/invoices/share";
 import { applyPaymentInTx, type ApplyPaymentInput, type ApplyPaymentResult } from "@/server/invoices/apply";
 import type { InvoiceDetail } from "@/server/invoices/views";
 import type { LineFormInput } from "@/lib/invoices/lines";
@@ -146,4 +147,14 @@ export async function addMessaging(io: InvoiceOrg, opts: { credits?: number; cha
 /** The customer has agreed to service messages on a channel (consent the business recorded with its evidence), so a reminder may be sent to them. */
 export async function consentTo(io: InvoiceOrg, contactId: string, channel: "email" | "sms" = "email"): Promise<void> {
   await setContactConsent(io.c.actor("owner"), contactId, { channel, purpose: "service", status: "granted", evidence: "Signed intake form on file, 12 Oct" });
+}
+
+let ipCounter = 0;
+/** An address no other test has used, so the per-address limits of the public endpoints never carry from one test to the next. */
+export const freshIp = (): string => `203.0.113.${(ipCounter += 1) % 250}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** The customer's link token of an issued invoice, the way the owner gets it from the screen. */
+export async function linkTokenOf(io: InvoiceOrg, invoiceId: string): Promise<string> {
+  const { url } = await getInvoiceLink(io.ctx("owner"), invoiceId);
+  return url.split("/").pop() as string;
 }

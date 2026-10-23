@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Field, Select } from "@/components/ui/primitives";
+import { Field, Select, Textarea } from "@/components/ui/primitives";
 import { useCrmAction } from "@/components/crm/ui";
 import { saveReputationSettingsAction } from "@/app/actions/reputation";
 import { THRESHOLD_LIMITS } from "@/lib/reputation/scores";
@@ -12,6 +12,7 @@ import { SETTING_LIMITS, type ReputationSettings } from "@/lib/reputation/settin
 // customer sees, or what they are told to do before posting one. Only settings that already do something are shown.
 
 const HOUR_CHOICES = [2, 4, 8, 24, 48, 72, 168];
+const ALERT_STARS = [1, 2, 3, 4];
 const hoursLabel = (h: number) => (h === 168 ? "1 week" : h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hours`);
 const starLabel = (n: number) => `${n} star${n === 1 ? "" : "s"}`;
 
@@ -27,13 +28,14 @@ function Check({ id, checked, onChange, disabled, label, hint }: { id: string; c
   );
 }
 
-export function ReputationSettingsPanel({ orgId, settings, canEdit }: { orgId: string | null; settings: ReputationSettings; canEdit: boolean }) {
+export function ReputationSettingsPanel({ orgId, settings, canEdit, publicReviews = false }: { orgId: string | null; settings: ReputationSettings; canEdit: boolean; /** Public reviews are switched on for the workspace (or it already has some): show their settings. */ publicReviews?: boolean }) {
   const { run, busy } = useCrmAction();
   // The version the form started from. A save names it, so edits made on top of old settings can never overwrite newer ones; the workspace remounts this panel
   // (key = version) when the page brings newer settings, so it always starts from the latest.
   const [loaded, setLoaded] = React.useState(settings);
-  const [d, setD] = React.useState({ stars: settings.escalateAtOrBelow, nps: settings.npsDetractorMax, hours: settings.acknowledgeWithinHours, sla: settings.slaRemindersEnabled, nudge: settings.outcomeNudgesEnabled });
-  const dirty = d.stars !== loaded.escalateAtOrBelow || d.nps !== loaded.npsDetractorMax || d.hours !== loaded.acknowledgeWithinHours || d.sla !== loaded.slaRemindersEnabled || d.nudge !== loaded.outcomeNudgesEnabled;
+  const [d, setD] = React.useState({ stars: settings.escalateAtOrBelow, nps: settings.npsDetractorMax, hours: settings.acknowledgeWithinHours, sla: settings.slaRemindersEnabled, nudge: settings.outcomeNudgesEnabled, renewals: settings.renewalRemindersEnabled, alert: settings.publicReviewAlertAtOrBelow, ai: settings.aiRepliesEnabled, style: settings.replyStyleNote ?? "" });
+  const dirty = d.stars !== loaded.escalateAtOrBelow || d.nps !== loaded.npsDetractorMax || d.hours !== loaded.acknowledgeWithinHours || d.sla !== loaded.slaRemindersEnabled || d.nudge !== loaded.outcomeNudgesEnabled
+    || d.renewals !== loaded.renewalRemindersEnabled || d.alert !== loaded.publicReviewAlertAtOrBelow || d.ai !== loaded.aiRepliesEnabled || d.style.trim() !== (loaded.replyStyleNote ?? "");
   const hourOptions = HOUR_CHOICES.includes(d.hours) ? HOUR_CHOICES : [...HOUR_CHOICES, d.hours].filter((h) => h >= SETTING_LIMITS.acknowledgeWithinHours.min && h <= SETTING_LIMITS.acknowledgeWithinHours.max).sort((a, b) => a - b);
   const stars = Array.from({ length: THRESHOLD_LIMITS.escalateAtOrBelow.max - THRESHOLD_LIMITS.escalateAtOrBelow.min + 1 }, (_, i) => THRESHOLD_LIMITS.escalateAtOrBelow.min + i);
   const tenths = Array.from({ length: THRESHOLD_LIMITS.npsDetractorMax.max - THRESHOLD_LIMITS.npsDetractorMax.min + 1 }, (_, i) => THRESHOLD_LIMITS.npsDetractorMax.min + i);
@@ -41,7 +43,7 @@ export function ReputationSettingsPanel({ orgId, settings, canEdit }: { orgId: s
   async function save() {
     const saved = await run(
       "save",
-      () => saveReputationSettingsAction(orgId, { escalateAtOrBelow: d.stars, npsDetractorMax: d.nps, acknowledgeWithinHours: d.hours, slaRemindersEnabled: d.sla, outcomeNudgesEnabled: d.nudge }, loaded.version),
+      () => saveReputationSettingsAction(orgId, { escalateAtOrBelow: d.stars, npsDetractorMax: d.nps, acknowledgeWithinHours: d.hours, slaRemindersEnabled: d.sla, outcomeNudgesEnabled: d.nudge, renewalRemindersEnabled: d.renewals, publicReviewAlertAtOrBelow: d.alert, aiRepliesEnabled: d.ai, replyStyleNote: d.style.trim() || null }, loaded.version),
       "Settings saved.",
     );
     if (saved && typeof saved === "object") setLoaded(saved as ReputationSettings);
@@ -74,6 +76,24 @@ export function ReputationSettingsPanel({ orgId, settings, canEdit }: { orgId: s
       </Field>
       <Check id="rs-sla" checked={d.sla} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, sla: v }))} label="Remind the team once if nobody has acknowledged low feedback in time" hint="The owner, the managers and the person the follow-up task is assigned to are told. It is not repeated." />
       <Check id="rs-nudge" checked={d.nudge} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, nudge: v }))} label="Remind the owner each day to record how finished appointments went" hint="Follow-ups after a visit start only once an appointment is marked attended or a no-show by a person. This reminder counts the appointments still open; it never marks anything for you." />
+      <Check id="rs-renewals" checked={d.renewals} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, renewals: v }))} label="Remind the team before a customer account renews" hint="A task and a notice for your team 30, 14 and 7 days before the renewal date of an account on the Retention page. Nothing is ever sent to the customer." />
+      {publicReviews && (
+        <div className="space-y-4 border-t border-line pt-4">
+          <div>
+            <h2 className="text-[15px] font-semibold text-ink">Public reviews</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">How your team hears about reviews your review sites returned, and the optional help with replies. A reply is never posted by itself: the owner or a manager approves those exact words first.</p>
+          </div>
+          <Field label="Tell the team when a public review is at or below" htmlFor="rs-alert" hint="The owner and managers get one notice for each new review at or below this many stars, or one that says it doesn't recommend you. The notice names the site, not the reviewer or what they wrote.">
+            <Select id="rs-alert" value={String(d.alert)} disabled={!canEdit} onChange={(e) => setD((x) => ({ ...x, alert: Number(e.target.value) }))} className="text-[16px] sm:text-[14px]">
+              {ALERT_STARS.map((n) => <option key={n} value={n}>{starLabel(n)}{n === 3 ? " (standard)" : ""}</option>)}
+            </Select>
+          </Field>
+          <Check id="rs-ai" checked={d.ai} disabled={!canEdit} onChange={(v) => setD((x) => ({ ...x, ai: v }))} label="Let the team ask the AI assist for a draft reply" hint="Off until you switch it on. A person asks for each draft, it is labelled AI-drafted, it is written only from your approved business information, and it still needs the owner's or a manager's approval before anything is posted." />
+          <Field label="How replies should sound" htmlFor="rs-style" optional hint="Plain guidance for the AI assist, such as warm, short, no exclamation marks. Never prices, offers or claims.">
+            <Textarea id="rs-style" rows={3} maxLength={600} value={d.style} disabled={!canEdit || !d.ai} onChange={(e) => setD((x) => ({ ...x, style: e.target.value }))} className="text-[16px] sm:text-[14px]" />
+          </Field>
+        </div>
+      )}
       {canEdit ? (
         <Button variant="brand" loading={busy("save")} disabled={!dirty} onClick={save}>Save settings</Button>
       ) : (

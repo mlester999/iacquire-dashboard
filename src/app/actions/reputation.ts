@@ -7,6 +7,11 @@ import { resolveCrmActor } from "@/server/crm/request";
 import type { CrmActor } from "@/server/crm/actor";
 import { saveReputationSettings } from "@/server/reputation/settings";
 import { approveBatch, cancelBatch, createBatch, duplicateBatch, pauseBatch, requestBatchApproval, resumeBatch, returnBatch, updateBatch } from "@/server/reputation/batches";
+import { checkConnection, connectChosenLocation, connectFacebookPage, connectSimulatedSite, disconnectConnection, startGoogleConnect } from "@/server/reputation/connections";
+import { syncNow } from "@/server/reputation/sync";
+import { linkReviewContact } from "@/server/reputation/public-reviews";
+import { cancelReply, decideReply, editReply, postReply, resolveReply, startReply, submitReply } from "@/server/reputation/replies";
+import { draftReplyWithAi } from "@/server/reputation/reply-ai";
 import type { Permission } from "@/lib/permissions";
 
 // Server actions for the reputation features that sit beside CRM → Reviews. Every rule lives in src/server/reputation; these parse input, resolve who is acting and
@@ -87,4 +92,82 @@ export async function resumeBatchAction(orgId: string | null, id: string) {
 
 export async function cancelBatchAction(orgId: string | null, id: string) {
   return act(orgId, "reviews.manage", (actor) => cancelBatch(actor, uuid.parse(id)));
+}
+
+// ---------------------------------------------------------------------------
+// Public reviews: connecting a review site, reading it, and replying. Every rule is in src/server/reputation (connections, sync, replies, reply-ai); these parse input, resolve who is
+// acting and refresh the screens. A review or a rating is never an input to any of them: reviews arrive only from a review site. Replies are gated by the service itself
+// (reviews.respond to write, reviews.reply_publish to approve and post), so the permission named here is only what lets iAcquire support through to be told no, in words.
+// ---------------------------------------------------------------------------
+
+const siteArg = z.enum(["google", "facebook"]);
+const replyBody = z.string().max(5000);
+const version = z.number().int().min(1);
+
+export async function connectSimulatedSiteAction(orgId: string | null, provider: "google" | "facebook", name?: string) {
+  return act(orgId, "reviews.manage", (actor) => connectSimulatedSite(actor, { provider: siteArg.parse(provider), name: z.string().max(200).optional().parse(name) }));
+}
+
+export async function connectFacebookPageAction(orgId: string | null, socialAccountId: string) {
+  return act(orgId, "reviews.manage", (actor) => connectFacebookPage(actor, uuid.parse(socialAccountId)));
+}
+
+/** Where to send the browser to sign in with Google. The sign-in comes back to /api/reputation/oauth/google/callback, which finishes it. */
+export async function startGoogleConnectAction(orgId: string | null) {
+  return act(orgId, "reviews.manage", (actor) => startGoogleConnect(actor, null));
+}
+
+export async function connectGoogleLocationAction(orgId: string | null, stateId: string, accountId: string, locationId: string) {
+  return act(orgId, "reviews.manage", (actor) => connectChosenLocation(actor, stateId, { accountId: z.string().max(200).parse(accountId), locationId: z.string().max(200).parse(locationId) }));
+}
+
+export async function checkConnectionAction(orgId: string | null, id: string) {
+  return act(orgId, "reviews.manage", async (actor) => ({ status: await checkConnection(actor, uuid.parse(id)) }));
+}
+
+export async function disconnectConnectionAction(orgId: string | null, id: string) {
+  return act(orgId, "reviews.manage", (actor) => disconnectConnection(actor, uuid.parse(id)));
+}
+
+export async function readReviewsNowAction(orgId: string | null, id: string) {
+  return act(orgId, "reviews.manage", async (actor) => {
+    const r = await syncNow(actor, uuid.parse(id));
+    return { status: r.status, inserted: r.inserted, updated: r.updated, removed: r.removed, complete: r.complete, reason: r.reason };
+  });
+}
+
+export async function linkReviewContactAction(orgId: string | null, reviewId: string, contactId: string | null) {
+  return act(orgId, "reviews.manage", (actor) => linkReviewContact(actor, uuid.parse(reviewId), contactId === null ? null : uuid.parse(contactId)));
+}
+
+export async function startReplyAction(orgId: string | null, reviewId: string, body: string) {
+  return act(orgId, "contacts.view", (actor) => startReply(actor, uuid.parse(reviewId), { body: replyBody.parse(body) }));
+}
+
+export async function draftReplyWithAiAction(orgId: string | null, reviewId: string) {
+  return act(orgId, "contacts.view", (actor) => draftReplyWithAi(actor, uuid.parse(reviewId)));
+}
+
+export async function editReplyAction(orgId: string | null, replyId: string, body: string, expectedVersion: number) {
+  return act(orgId, "contacts.view", (actor) => editReply(actor, uuid.parse(replyId), { body: replyBody.parse(body), expectedVersion: version.parse(expectedVersion) }));
+}
+
+export async function submitReplyAction(orgId: string | null, replyId: string, replyVersion: number) {
+  return act(orgId, "contacts.view", (actor) => submitReply(actor, uuid.parse(replyId), { version: version.parse(replyVersion) }));
+}
+
+export async function decideReplyAction(orgId: string | null, replyId: string, decision: "approve" | "request_changes" | "reject", replyVersion: number, note?: string | null) {
+  return act(orgId, "contacts.view", (actor) => decideReply(actor, uuid.parse(replyId), { decision: z.enum(["approve", "request_changes", "reject"]).parse(decision), version: version.parse(replyVersion), note: z.string().max(600).nullish().parse(note) }));
+}
+
+export async function postReplyAction(orgId: string | null, replyId: string) {
+  return act(orgId, "contacts.view", (actor) => postReply(actor, uuid.parse(replyId)));
+}
+
+export async function cancelReplyAction(orgId: string | null, replyId: string) {
+  return act(orgId, "contacts.view", (actor) => cancelReply(actor, uuid.parse(replyId)));
+}
+
+export async function resolveReplyAction(orgId: string | null, replyId: string, outcome: "posted" | "not_posted") {
+  return act(orgId, "contacts.view", (actor) => resolveReply(actor, uuid.parse(replyId), { outcome: z.enum(["posted", "not_posted"]).parse(outcome) }));
 }

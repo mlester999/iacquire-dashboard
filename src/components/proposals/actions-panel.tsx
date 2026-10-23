@@ -9,6 +9,7 @@ import { ConfirmDialog, useCrmAction } from "@/components/crm/ui";
 import {
   decideProposalAction, duplicateProposalAction, recordOfflineDecisionAction, reviseProposalAction, sendProposalAction, submitForApprovalAction, withdrawProposalAction,
 } from "@/app/actions/proposals";
+import { isLive } from "@/lib/esign/state";
 import { whenIn } from "@/lib/proposals/format";
 import { blockingFor } from "@/lib/proposals/problems";
 import { APPROVAL_REASON_TEXT, approveBlockedReason, isRevisable, STATUS_EXPLAIN } from "@/lib/proposals/state";
@@ -140,6 +141,11 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
           <p className="text-[13px] text-ink-2">
             The customer&apos;s link is on the <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("delivery")}>Delivery tab</button>. iAcquire has not sent it to anyone: copy it and give it to the customer yourself.
           </p>
+          {detail.requiresSignature && (
+            <p className="text-[13px] text-ink-2">
+              This proposal needs a signature, which the customer gives at your signing service, not on their proposal page. Ask for it on the <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("signature")}>Signature tab</button>. It is accepted only when the signing service reports the signature.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {can.record && <Button variant="secondary" onClick={() => setRecording(true)}>Record the customer&apos;s answer</Button>}
           </div>
@@ -166,12 +172,12 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
       />
       <ConfirmDialog
         open={confirm === "withdraw"} onOpenChange={(o) => !o && setConfirm(null)} title="Withdraw this proposal?" confirmLabel="Withdraw" danger loading={busy("withdraw")}
-        description={s === "sent" ? "The customer's link stops working at once, and they can no longer accept it. You can revise it and send a new version later." : "It will not be sent. You can revise it later."}
+        description={s === "sent" ? `The customer's link stops working at once, and they can no longer accept it.${detail.signature.requests.some((r) => isLive(r.status)) ? " A signing request that is out is withdrawn too, and a signature that still arrives for it is not applied." : ""} You can revise it and send a new version later.` : "It will not be sent. You can revise it later."}
         onConfirm={async () => { await run("withdraw", () => withdrawProposalAction(detail.id), "Withdrawn."); setConfirm(null); }}
       />
       <ConfirmDialog
         open={confirm === "revise"} onOpenChange={(o) => !o && setConfirm(null)} title="Start a new version?" confirmLabel="Revise" loading={busy("revise")}
-        description="The new version starts as a draft with the same wording and has to be approved and sent again. The customer's old link is closed and the old version is kept in the history."
+        description={`The new version starts as a draft with the same wording and has to be approved and sent again. The customer's old link is closed and the old version is kept in the history.${detail.signature.requests.some((r) => isLive(r.status)) ? " A signing request that is out for the old version is ended: a signature that still arrives for it is never applied to the new version." : ""}`}
         onConfirm={async () => { await run("revise", () => reviseProposalAction(detail.id), "A new version was started."); setConfirm(null); onOpenTab("edit"); }}
       />
       {recording && <RecordAnswer detail={detail} onClose={() => setRecording(false)} />}

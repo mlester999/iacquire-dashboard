@@ -125,8 +125,8 @@ describe("scheduled jobs", () => {
     ];
     // The Automation Studio plan sweep sits right after the workflow housekeeping it follows; the inbox attention scan right after the reply checks;
     // lead re-scoring, the Phase 2 and website-chat clean-ups and missed-call recovery run just before the dispatcher, so what they queue goes out in the same run.
-    // The reputation jobs (the low-feedback reminder, the appointment outcome nudge and the review request batches) follow the retention programs.
-    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : name === "retentionPrograms" ? [name, "feedbackSla", "appointmentOutcomeNudge", "reviewRequestBatches"] : name === "repliesChecked" ? [name, "inboxAttention"] : name === "messagesDispatched" ? ["leadScoreReassessment", "phase2Retention", "webChatRetention", "socialPublisher", "socialAccountHealth", "socialMetrics", "socialCleanup", "proposalExpiry", "proposalHousekeeping", "missedCallRecovery", name] : [name]));
+    // The reputation jobs (the low-feedback reminder, the appointment outcome nudge, the review request batches, the public review sync, the renewal reminders and the reputation clean-up) follow the retention programs.
+    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : name === "retentionPrograms" ? [name, "feedbackSla", "appointmentOutcomeNudge", "reviewRequestBatches", "reviewSync", "renewalReminders", "reputationRetention"] : name === "repliesChecked" ? [name, "inboxAttention"] : name === "messagesDispatched" ? ["leadScoreReassessment", "phase2Retention", "webChatRetention", "socialPublisher", "socialAccountHealth", "socialMetrics", "socialCleanup", "proposalExpiry", "proposalHousekeeping", "esignSync", "missedCallRecovery", name] : [name]));
     expect(JOBS.map((job) => job.name)).toEqual([
       ...withStudio,
       "aqiOperationsBriefings",

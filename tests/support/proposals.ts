@@ -145,3 +145,74 @@ export const knowledge = (orgId: string, section: string, content: string, over:
      on conflict (org_id, section) do update set content = excluded.content, review_status = excluded.review_status, risk_flags = excluded.risk_flags`,
     [orgId, section, content, over.review_status ?? "approved", over.risk ?? []],
   ));
+
+// ---------------------------------------------------------------------------
+// Electronic signing. The signing service is ALWAYS the in-process stand-in or a replaced HTTP layer: these fixtures prove the pipeline around a service, never how a real
+// service behaves.
+// ---------------------------------------------------------------------------
+
+/** A workspace with proposals AND signing switched on, and the stand-in signing service connected by the owner. */
+export async function signingOrg(opts: { connect?: boolean; timezone?: string } = {}): Promise<ProposalOrg> {
+  const { simulatedEsign } = await import("@/server/esign/providers/simulated");
+  simulatedEsign.reset();
+  const p = await proposalOrg({ timezone: opts.timezone });
+  await setFeature(p.org.id, true, "esign");
+  if (opts.connect !== false) {
+    const { connectSimulated } = await import("@/server/esign/connections");
+    await connectSimulated(p.actor("owner"));
+  }
+  return p;
+}
+
+/** A proposal that asks for a signature, written, approved and sent, with the customer's link in hand. */
+export async function sentForSigning(p: ProposalOrg, over: CreateInput = {}, deps: { now?: Date } = {}) {
+  return sentWithLink(p, { requiresSignature: true, ...over }, deps);
+}
+
+/** Asks the customer to sign, as the sales rep (who can send). */
+export async function askToSign(p: ProposalOrg, proposalId: string, input: { signerName?: string; signerEmail?: string } = {}, deps: { now?: Date } = {}) {
+  const { requestSignature } = await import("@/server/esign/requests");
+  return requestSignature(p.actor("sales"), proposalId, input, { now: deps.now ?? NOW });
+}
+
+export const requestRow = async (id: string) => (await rows<{ status: string; provider_document_id: string | null; provider_state: Record<string, unknown>; attempt: number; last_error: string | null; last_error_kind: string | null; cancel_state: string; applied_at: Date | null; not_applied_reason: string | null; signed_file_id: string | null; certificate_file_id: string | null; copy_attempts: number; copy_gave_up_at: Date | null; run_at: Date; void_reason: string | null }>("select status, provider_document_id, provider_state, attempt, last_error, last_error_kind, cancel_state, applied_at, not_applied_reason, signed_file_id, certificate_file_id, copy_attempts, copy_gave_up_at, run_at, void_reason from signature_requests where id = $1", [id]))[0];
+
+export const sigEvents = (requestId: string) => rows<{ kind: string; source: string; provider_event_id: string | null; detail: Record<string, unknown> }>("select kind, source, provider_event_id, detail from signature_events where request_id = $1 order by id", [requestId]);
+
+/** A signing request that the worker has handed to the stand-in service: the signer has been asked and the service holds a document. */
+export async function handedOver(p: ProposalOrg, over: CreateInput = {}, deps: { now?: Date } = {}) {
+  const { processDueRequests } = await import("@/server/esign/worker");
+  const now = deps.now ?? NOW;
+  const sent = await sentForSigning(p, over, { now });
+  const { requestId } = await askToSign(p, sent.proposal.id, {}, { now });
+  const r = await processDueRequests({ orgId: p.org.id, now: () => now, jitter: () => 0 });
+  const row = await requestRow(requestId);
+  if (row.status !== "sent" || !row.provider_document_id) throw new Error(`the request was not handed over: ${row.status} ${row.last_error ?? ""} ${JSON.stringify(r)}`);
+  return { ...sent, requestId, documentId: row.provider_document_id };
+}
+
+/**
+ * What the signer does at the stand-in service, then the service's notice about it, signed with the connection's own key and posted to the webhook handler the real route calls.
+ * Returns the handler's answer.
+ */
+export async function signerActs(p: ProposalOrg, requestId: string, action: "view" | "complete" | "decline" | "expire" | "void", opts: { now?: Date; eventId?: string; ip?: string } = {}) {
+  const { handleEsignWebhook } = await import("@/server/esign/webhook");
+  const { simulatedEsign } = await import("@/server/esign/providers/simulated");
+  const row = await requestRow(requestId);
+  if (!row.provider_document_id) throw new Error("the request has no document at the service");
+  simulatedEsign.signerAction(row.provider_document_id, action);
+  const keys = await connectionKeys(p.org.id);
+  const d = simulatedEsign.delivery(row.provider_document_id, keys.creds.webhookKey, { eventId: opts.eventId });
+  return handleEsignWebhook({ token: keys.token, rawBody: d.rawBody, headers: d.headers, query: d.query, ip: opts.ip ?? freshIp(), now: opts.now ?? NOW });
+}
+
+/** The workspace's live connection with its keys opened, for building a signed delivery the way the stand-in service would. */
+export async function connectionKeys(orgId: string) {
+  const { openCredentials } = await import("@/server/esign/credentials");
+  const { tokenForStoredConnection } = await import("@/server/esign/webhook-token");
+  const row = (await rows<{ id: string; webhook_token_hash: string; credentials: string }>("select id, webhook_token_hash, credentials from esign_connections where org_id = $1 and status not in ('revoked', 'disconnected')", [orgId]))[0];
+  const creds = openCredentials(row.credentials);
+  const token = tokenForStoredConnection(row.id, row.webhook_token_hash);
+  if (!creds || !token) throw new Error("the connection's keys cannot be opened");
+  return { connectionId: row.id, token, creds };
+}

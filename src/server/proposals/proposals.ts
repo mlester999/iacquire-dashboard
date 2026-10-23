@@ -20,7 +20,7 @@ import { buildDoc, docFromTemplate, type DocInput } from "@/server/proposals/doc
 import { applyEffects } from "@/server/proposals/crm-effects";
 import { ensureVersionPdf, type ProposalPdfRenderer } from "@/server/proposals/documents";
 import { createShareLinkInTx } from "@/server/proposals/share";
-import { voidLiveRequestsInTx } from "@/server/esign/apply";
+import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 import { assertVersionIntact, checkProposal, ensureVersion } from "@/server/proposals/versions";
 import { buildDetail, LIST_COLUMNS_SQL, namesOf, toSummary, type ProposalDetail, type ProposalSummary } from "@/server/proposals/view";
 

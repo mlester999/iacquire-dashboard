@@ -111,7 +111,8 @@ describe("a verified customer", () => {
     expect(markup).not.toContain('name="ack"');
     expect(markup).not.toContain('value="accept"');
     expect(t).not.toContain("Accept this proposal");
-    expect(t).toContain("accepted by signature");
+    expect(t).toContain("accepted by signing a document");
+    expect(t).toContain("They haven't sent it yet");
     expect(markup).toContain('value="request_changes"');
     expect(markup).toContain('value="decline"');
   });
@@ -177,7 +178,7 @@ describe("a link that cannot be used", () => {
     expect(text(m2)).not.toContain("Website build");
     // States that know nothing about the business say nothing about it.
     for (const state of ["invalid", "rate_limited", "disabled"] as const) {
-      const view: PublicProposalView = { state, business: null, proposal: null, answer: null, changeRequests: 0, recipient: { maskedEmail: null }, verified: null, acknowledgement: null };
+      const view: PublicProposalView = { state, business: null, proposal: null, answer: null, changeRequests: 0, recipient: { maskedEmail: null }, verified: null, acknowledgement: null, signing: null };
       const m = page("x", view);
       expect(text(m)).toContain(PUBLIC_STATE_TEXT[state].title);
       expect(m).not.toContain("mailto:");

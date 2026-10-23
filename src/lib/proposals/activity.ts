@@ -1,6 +1,7 @@
 // The history of a proposal in plain sentences. Pure. Every sentence says only what the record shows: a page request is "the link was requested", never "the customer read it";
 // an answer recorded by a person is "recorded by", never "signed"; and nothing here ever prints a link, a code or a session.
 import { DECISION_METHOD_LABELS } from "@/lib/proposals/ack";
+import { NOT_APPLIED_TEXT, type NotAppliedReason } from "@/lib/esign/state";
 
 export interface ActivityInput {
   kind: string;
@@ -58,7 +59,14 @@ export function describeEvent(e: ActivityInput): { text: string; tone: ActivityT
     case "viewed": return { text: "The page stayed open in a browser and was used. That does not show who, or that it was read.", tone: "neutral" };
     case "code_requested": return { text: `A code was emailed to ${str(e.detail.emailMasked) || "the customer's address"}.`, tone: "neutral" };
     case "verified": return { text: `Someone entered the emailed code for ${str(e.detail.emailMasked) || "the customer's address"}. That shows control of that mailbox, not who they are.`, tone: "neutral" };
+    case "signature_requested": return { text: `${who(e)} asked ${str(e.detail.signer) || "the customer"} to sign${v}, through ${str(e.detail.mode) === "simulated" ? "the simulated signing service (nothing real is sent)" : "the business's signing service"}.`, tone: "neutral" };
+    case "signature_withdrawn": return { text: `${who(e)} withdrew the signing request${v}.`, tone: "warning" };
+    case "signature_declined": return { text: `The signing service reports that ${str(e.detail.signer) || "the signer"} declined to sign${v}. The proposal is still open.`, tone: "bad" };
+    case "signature_expired": return { text: `The signing request ran out before ${str(e.detail.signer) || "the signer"} signed${v}. The proposal is still open.`, tone: "warning" };
+    case "signature_failed": return { text: `A signing request could not be sent${v}. Nothing reached the signer.`, tone: "bad" };
+    case "signature_not_applied": return { text: `The signing service reports a signature${v}, but it was not applied to the proposal. ${Object.hasOwn(NOT_APPLIED_TEXT, str(e.detail.reason)) ? NOT_APPLIED_TEXT[str(e.detail.reason) as NotAppliedReason] : ""}`.trim(), tone: "warning" };
     case "accepted":
+      if (str(e.detail.method) === "provider_signature") return { text: `The signing service reports that ${str(e.detail.signer) || "the signer"} signed${v}, and the proposal was accepted. The signature itself is held by the signing service.`, tone: "good" };
       return str(e.detail.method) === "recorded_by_staff"
         ? { text: `${who(e)} recorded that the customer accepted${v}. ${DECISION_METHOD_LABELS.recorded_by_staff}.`, tone: "good" }
         : e.actorKind === "recipient"

@@ -188,8 +188,11 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
   const { run, busy } = useCrmAction();
   const connected = new Set(connections.map((c) => c.provider));
   const available = providers.filter((p) => !connected.has(p));
-  const [provider, setProvider] = React.useState<PaymentProviderId>(available[0] ?? "paymongo");
-  const [f, setF] = React.useState({ apiKey: "", apiSecret: "", environment: "sandbox" as PaypalEnvironment, webhookSecret: "", label: "", accept: false });
+  const [picked, setPicked] = React.useState<PaymentProviderId>(available[0] ?? "paymongo");
+  // Once a provider is connected it leaves the list; the form then moves to the next one rather than keeping a choice that is no longer on offer.
+  const provider = available.includes(picked) ? picked : available[0] ?? picked;
+  const blankForm = { apiKey: "", apiSecret: "", environment: "sandbox" as PaypalEnvironment, webhookSecret: "", label: "", accept: false };
+  const [f, setF] = React.useState(blankForm);
   const isPaypal = provider === "paypal";
   const simulated = provider === "simulated";
   const ready = simulated ? f.accept : f.accept && f.apiKey.trim() !== "" && (!isPaypal || f.apiSecret.trim() !== "");
@@ -210,7 +213,7 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
         <section aria-labelledby="conn-add" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
           <h2 id="conn-add" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><Plug className="size-4 text-muted" aria-hidden />Connect a payment account</h2>
           <Field label="Provider" htmlFor="cn-provider" hint={provider === "paymongo" ? "PayMongo takes Philippine pesos only." : provider === "paypal" ? "PayPal can take the currencies your account is set up for." : "For trying the whole path with no provider. It does not exist in production."}>
-            <Select id="cn-provider" className={input16} value={provider} onChange={(e) => setProvider(e.target.value as PaymentProviderId)}>{available.map((p) => <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>)}</Select>
+            <Select id="cn-provider" className={input16} value={provider} onChange={(e) => { setPicked(e.target.value as PaymentProviderId); setF(blankForm); }}>{available.map((p) => <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>)}</Select>
           </Field>
           {!simulated && (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -227,7 +230,14 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
             <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={f.accept} onChange={(e) => setF({ ...f, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
           </div>
           <div>
-            <Button variant="brand" loading={busy("connect")} disabled={!ready} onClick={() => run("connect", () => connectProviderAction({ provider, ...(simulated ? {} : { apiKey: f.apiKey, webhookSecret: f.webhookSecret || null }), ...(isPaypal ? { apiSecret: f.apiSecret, environment: f.environment } : {}), accountLabel: f.label || null, authorization: { accepted: true, version: CURRENT_AUTHORIZATION_VERSION } }), "Connected. The keys are saved and are not shown again.")}>Check the keys and connect</Button>
+            <Button
+              variant="brand" loading={busy("connect")} disabled={!ready}
+              onClick={async () => {
+                const done = await run("connect", () => connectProviderAction({ provider, ...(simulated ? {} : { apiKey: f.apiKey, webhookSecret: f.webhookSecret || null }), ...(isPaypal ? { apiSecret: f.apiSecret, environment: f.environment } : {}), accountLabel: f.label || null, authorization: { accepted: true, version: CURRENT_AUTHORIZATION_VERSION } }), "Connected. The keys are saved and are not shown again.");
+                // What was typed (a key that can move money) does not stay in the page once it has been saved.
+                if (done) setF(blankForm);
+              }}
+            >Check the keys and connect</Button>
             <p className="mt-2 text-[12.5px] text-muted">The provider is asked to accept the keys first, in a read-only call. Nothing is saved if it does not.</p>
           </div>
         </section>

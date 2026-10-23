@@ -46,7 +46,10 @@ interface World {
 }
 
 const fresh = (): World => ({ docs: [], seq: 0, failures: [], lose: [], notReady: 0, revoked: new Set(), log: [] });
-let world: World = fresh();
+// Kept on globalThis as well, so a server action and the scheduler's route (which the framework may load as separate copies of this file) talk to the same stand-in service
+// when someone clicks through the simulated flow in a browser.
+type Shared = typeof globalThis & { __iacquireSimulatedEsign?: World };
+let world: World = ((globalThis as Shared).__iacquireSimulatedEsign ??= fresh());
 
 export const SIM_SIGNATURE_HEADER = "x-simulated-signature";
 export const SIM_TIMESTAMP_HEADER = "x-simulated-timestamp";
@@ -58,6 +61,7 @@ const FACTS: Record<SimStatus, ProviderFact | "draft"> = { draft: "draft", sent:
 export const simulatedEsign = {
   reset() {
     world = fresh();
+    (globalThis as Shared).__iacquireSimulatedEsign = world;
   },
   documents(): SimDocument[] {
     return world.docs.map((d) => ({ ...d }));

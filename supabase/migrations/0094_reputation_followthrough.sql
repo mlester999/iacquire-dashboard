@@ -46,6 +46,8 @@ create table reputation_settings (
   sla_reminders_enabled boolean not null default true,
   -- A daily internal notice about finished appointments with no recorded outcome. Nothing is ever marked attended for anyone.
   outcome_nudges_enabled boolean not null default false,
+  -- A daily internal reminder (a task and a notice for the team, never a message to a customer) that a customer account on the retention page renews within 30, 14 or 7 days.
+  renewal_reminders_enabled boolean not null default false,
   version integer not null default 1,
   updated_at timestamptz not null default now(),
   updated_by uuid references users(id) on delete set null

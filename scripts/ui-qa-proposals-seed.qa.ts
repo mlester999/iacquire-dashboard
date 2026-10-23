@@ -1,7 +1,7 @@
 /**
  * Fictional proposals for isolated local browser QA, added on top of the Unified Inbox QA workspace ("Harbor Home Services (Inbox QA)"). It writes through the application's
- * own services into the embedded QA database and contacts NOBODY: code emails are captured (readable at /dev/mailbox), no signing service exists, and every name, address and
- * price is made up (scripts/proposals-qa-world.ts says which proposal is in which state and why).
+ * own services into the embedded QA database and contacts NOBODY: code emails are captured (readable at /dev/mailbox), the only signing service is the stand-in that lives inside
+ * the server (it sends nothing to anyone and signs nothing), and every name, address and price is made up (scripts/proposals-qa-world.ts says which proposal is in which state and why).
  *
  *   node scripts/run-inbox-qa-seed.mjs         (first, once)
  *   node scripts/run-proposals-qa-seed.mjs     (this; with the QA server stopped)
@@ -17,7 +17,7 @@ import { env } from "../src/server/env";
 import { memberActor } from "../src/server/crm/actor";
 import { permissionsFor, roleHasPermission, type OrgRole } from "../src/lib/permissions";
 import type { Membership, OrgContext } from "../src/server/tenancy/context";
-import { seedProposalWorld } from "./proposals-qa-world";
+import { seedProposalWorld, seedSigningWorld } from "./proposals-qa-world";
 
 const ORG_NAME = "Harbor Home Services (Inbox QA)";
 const SUMMARY_FILE = path.resolve(".data/crm-qa/proposals-seed-summary.json");
@@ -44,13 +44,21 @@ async function seed() {
   assertIsolated();
   const org = (await q<{ id: string; name: string; slug: string }>("select id, name, slug from organizations where name = $1", [ORG_NAME]))[0];
   if (!org) throw new Error("Run node scripts/run-inbox-qa-seed.mjs first: the Inbox QA workspace does not exist.");
-  if ((await q("select 1 from proposals where org_id = $1", [org.id])).length) {
-    console.log("The proposals QA data already exists; nothing added.");
-    return;
-  }
   const user = async (email: string) => (await q<{ id: string; email: string; full_name: string }>("select id, email, full_name from users where email = $1", [email]))[0];
   const as = async (email: string, role: OrgRole) => memberActor(ctxFor(await user(email), org, role));
-  const rows = await seedProposalWorld({ owner: await as("owner.harbor@example.test", "owner"), manager: await as("manager.harbor@example.test", "admin"), sales: await as("sales.harbor@example.test", "sales_rep") });
+  const actors = async () => ({ owner: await as("owner.harbor@example.test", "owner"), manager: await as("manager.harbor@example.test", "admin"), sales: await as("sales.harbor@example.test", "sales_rep") });
+  if ((await q("select 1 from proposals where org_id = $1", [org.id])).length) {
+    // The workspace was seeded before electronic signing existed: add only the three signing stories, once.
+    if ((await q("select 1 from esign_connections where org_id = $1", [org.id])).length) {
+      console.log("The proposals QA data already exists; nothing added.");
+      return;
+    }
+    const added = await seedSigningWorld(await actors());
+    console.log(`Added the electronic signing stories to the existing proposals QA data (${added.length} proposals). Customer addresses:`);
+    for (const r of added) console.log(`  ${r.number}  ${r.state}\n      ${r.url ?? "(no customer link)"}${r.email ? `\n      code email to ${r.email}` : ""}`);
+    return;
+  }
+  const rows = await seedProposalWorld(await actors());
   fs.mkdirSync(path.dirname(SUMMARY_FILE), { recursive: true });
   fs.writeFileSync(SUMMARY_FILE, JSON.stringify({ orgId: org.id, proposals: rows }, null, 2));
   console.log(`Proposals QA data is ready (${rows.length} proposals). Customer addresses:`);

@@ -50,12 +50,14 @@ describe("keys and the owner's authorization", () => {
     expect(connectSchema.safeParse({ provider: "stripe", authorization: { accepted: true, version: CURRENT_AUTHORIZATION_VERSION } }).success).toBe(false);
   });
 
-  it("is honest about what exists: PayMongo built and unverified, PayPal not built, the simulated one for testing only", () => {
+  it("is honest about what exists: PayMongo and PayPal built and never run against their providers, the simulated one for testing only", () => {
     expect(PROVIDER_STATE.paymongo.state).toBe("built_unverified");
-    expect(PROVIDER_STATE.paypal.state).toBe("not_built");
+    expect(PROVIDER_STATE.paypal.state).toBe("built_unverified");
+    expect(PROVIDER_STATE.paypal.note).toMatch(/has not run against a PayPal app yet/);
     expect(PROVIDER_STATE.simulated.state).toBe("testing_only");
     expect(PROVIDER_CURRENCIES.paymongo).toEqual(["PHP"]);
-    expect(PROVIDER_CURRENCIES.paypal).toEqual([]);
+    // PayPal is offered every currency we invoice in; whether a given PayPal account can take each one is unverified.
+    expect([...PROVIDER_CURRENCIES.paypal].sort()).toEqual([...CURRENCY_CODES].sort());
     expect([...PROVIDER_CURRENCIES.simulated].sort()).toEqual([...CURRENCY_CODES].sort());
   });
 

@@ -7,17 +7,18 @@ import { getProposal } from "@/server/proposals/proposals";
 import { freshIp, proposalOrg, rows } from "./support/proposals";
 
 describe("the proposals QA world", () => {
-  it("builds fifteen proposals in the states it describes, with customer links that open the right pages, and sends nothing to anyone", async () => {
+  it("builds eighteen proposals in the states it describes, with customer links that open the right pages, and sends nothing to anyone", async () => {
     const p = await proposalOrg({ feature: false });
     const emailsBefore = (await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n;
     // The world creates its own price book, so start from a workspace that has the fixtures' (a second tax rate and item are harmless).
     const out = await seedProposalWorld({ owner: p.actor("owner"), manager: p.actor("manager"), sales: p.actor("sales") });
-    expect(out).toHaveLength(15);
-    expect(out.map((r) => r.number)).toEqual(Array.from({ length: 15 }, (_, i) => `P-${String(i + 1).padStart(4, "0")}`));
+    expect(out).toHaveLength(18);
+    expect(out.map((r) => r.number)).toEqual(Array.from({ length: 18 }, (_, i) => `P-${String(i + 1).padStart(4, "0")}`));
     const status = async (number: string) => (await rows<{ status: string }>("select status from proposals where org_id = $1 and number = $2", [p.org.id, number]))[0].status;
     const expected: Record<string, string> = {
       "P-0001": "sent", "P-0002": "sent", "P-0003": "sent", "P-0004": "accepted", "P-0005": "declined", "P-0006": "expired", "P-0007": "sent", "P-0008": "sent", "P-0009": "withdrawn",
       "P-0010": "sent", "P-0011": "pending_approval", "P-0012": "draft", "P-0013": "accepted", "P-0014": "draft", "P-0015": "changes_requested",
+      "P-0016": "accepted", "P-0017": "sent", "P-0018": "sent",
     };
     for (const [number, s] of Object.entries(expected)) expect(await status(number), number).toBe(s);
 
@@ -58,5 +59,30 @@ describe("the proposals QA world", () => {
     expect((await rows<{ ai_drafts_enabled: boolean }>("select ai_drafts_enabled from proposal_settings where org_id = $1", [p.org.id]))[0].ai_drafts_enabled).toBe(true);
     // Nothing was sent: every email is only captured.
     expect((await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n).toBe(emailsBefore);
+
+    // The three signing stories, through the stand-in service only: one was signed end to end (simulated), one has nothing asked yet, one is waiting to be handed over.
+    const sig = async (number: string) => (await rows<{ status: string; mode: string; provider: string; applied_at: Date | null; signed_file_id: string | null; certificate_file_id: string | null }>(
+      "select r.status, r.mode, r.provider, r.applied_at, r.signed_file_id, r.certificate_file_id from signature_requests r join proposals p on p.id = r.proposal_id where p.org_id = $1 and p.number = $2", [p.org.id, number]));
+    expect(await sig("P-0017")).toEqual([]);
+    expect(await sig("P-0018")).toEqual([expect.objectContaining({ status: "queued", mode: "simulated", provider: "simulated", applied_at: null })]);
+    const signed = (await sig("P-0016"))[0];
+    expect(signed).toMatchObject({ status: "completed", mode: "simulated", provider: "simulated" });
+    expect(signed.applied_at).not.toBeNull();
+    expect(signed.signed_file_id).not.toBeNull();
+    expect(signed.certificate_file_id).not.toBeNull();
+    expect((await rows<{ requires_signature: boolean }>("select requires_signature from proposals where org_id = $1 and number in ('P-0016', 'P-0017', 'P-0018')", [p.org.id])).every((r) => r.requires_signature)).toBe(true);
+    expect((await rows<{ method: string }>("select d.method from proposal_decisions d join proposals p on p.id = d.proposal_id where p.org_id = $1 and p.number = 'P-0016'", [p.org.id]))[0].method).toBe("provider_signature");
+    expect((await rows<{ n: string }>("select count(*)::text as n from esign_connections where org_id = $1 and provider = 'simulated' and status = 'connected'", [p.org.id]))[0].n).toBe("1");
+    expect((await state("P-0016"))).toBe("answered");
+    expect((await state("P-0017"))).toBe("open");
+    expect((await state("P-0018"))).toBe("open");
+  }, 120_000);
+
+  it("adds only the signing stories to a workspace that was seeded before signing existed, and only once", async () => {
+    const p = await proposalOrg();
+    const { seedSigningWorld } = await import("../scripts/proposals-qa-world");
+    const first = await seedSigningWorld({ owner: p.actor("owner"), manager: p.actor("manager"), sales: p.actor("sales") });
+    expect(first.map((r) => r.number)).toEqual(["P-0001", "P-0002", "P-0003"]);
+    expect((await rows<{ n: string }>("select count(*)::text as n from esign_connections where org_id = $1", [p.org.id]))[0].n).toBe("1");
   }, 120_000);
 });

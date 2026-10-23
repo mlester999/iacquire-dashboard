@@ -22,7 +22,9 @@ export interface Classified {
  * error. Then the outcome is unknown, and the request must be checked before it is ever sent again.
  */
 export function classifyEsignFailure(input: { httpStatus: number | null; sent: boolean; retryAfterHeader?: string | null; providerLabel?: string }): Classified {
-  const name = input.providerLabel ?? "The signing service";
+  // Every message here starts with the service's name, and the stand-in's label ("the simulated signing service") is written for the middle of a sentence.
+  const label = input.providerLabel ?? "The signing service";
+  const name = label.charAt(0).toUpperCase() + label.slice(1);
   const retry = input.retryAfterHeader ? Number(input.retryAfterHeader) : NaN;
   const retryAfterSec = Number.isFinite(retry) && retry > 0 ? Math.min(retry, 86_400) : null;
   const s = input.httpStatus;

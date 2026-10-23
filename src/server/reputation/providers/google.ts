@@ -221,11 +221,12 @@ export function createGoogleProvider(deps: GoogleDeps = {}): ReviewProvider & {
       const creds: ReviewCredentials = { refreshToken };
       const out: Array<{ accountId: string; locationId: string; title: string }> = [];
       const accounts = await authed(creds, { method: "GET", url: `${ACCOUNTS_URL}?pageSize=20` });
-      for (const a of (Array.isArray(accounts.accounts) ? accounts.accounts : []).slice(0, 20) as Array<Record<string, unknown>>) {
-        const account = str(a.name);
+      for (const a of (Array.isArray(accounts.accounts) ? accounts.accounts : []).slice(0, 20) as Array<Record<string, unknown> | null>) {
+        const account = a && typeof a === "object" ? str(a.name) : null;
         if (!account || !/^accounts\/[\w-]+$/.test(account)) continue;
         const locs = await authed(creds, { method: "GET", url: `${LOCATIONS_URL(account)}?readMask=name,title&pageSize=100` });
-        for (const l of (Array.isArray(locs.locations) ? locs.locations : []).slice(0, 100) as Array<Record<string, unknown>>) {
+        for (const l of (Array.isArray(locs.locations) ? locs.locations : []).slice(0, 100) as Array<Record<string, unknown> | null>) {
+          if (!l || typeof l !== "object") continue;
           const name = str(l.name);
           if (!name || !/^locations\/[\w-]+$/.test(name)) continue;
           out.push({ accountId: account, locationId: name, title: (str(l.title) ?? name).slice(0, 200) });

@@ -10,6 +10,8 @@ const TENANT_TABLES = [
   "lead_research_requests", "leads", "crm_pipelines", "crm_opportunities", "appointment_refs", "record_notes",
   "retention_accounts", "customer_feedback", "service_history", "notifications", "support_tickets", "support_messages",
   "usage_events", "usage_limits", "billing_accounts", "audit_logs",
+  // Public reviews read from a review site, and the replies to them.
+  "review_connections", "external_reviews", "review_replies", "review_reply_events",
 ];
 
 let orgA: Awaited<ReturnType<typeof createOrg>>;
@@ -71,6 +73,10 @@ async function seedTenantData(orgId: string, userId: string) {
     await db.query("insert into support_messages (ticket_id, org_id, author_kind, body, internal) values ($1, $2, 'agency', 'internal note', true)", [t.rows[0].id, orgId]);
     await db.query("insert into usage_events (org_id, kind) values ($1, 'agent_message')", [orgId]);
     await db.query("insert into audit_logs (org_id, actor_kind, action, result) values ($1, 'system', 'test.event', 'success')", [orgId]);
+    const site = await db.query<{ id: string }>("insert into review_connections (org_id, provider, adapter, external_location_id, name) values ($1, 'google', 'simulated', 'loc-' || gen_random_uuid()::text, 'Tenant location') returning id", [orgId]);
+    const review = await db.query<{ id: string }>("insert into external_reviews (org_id, connection_id, provider_review_id, rating, simulated) values ($1, $2, 'r1', 4, true) returning id", [orgId, site.rows[0].id]);
+    const reply = await db.query<{ id: string }>("insert into review_replies (org_id, review_id, body) values ($1, $2, 'Thank you for writing.') returning id", [orgId, review.rows[0].id]);
+    await db.query("insert into review_reply_events (org_id, reply_id, kind) values ($1, $2, 'created')", [orgId, reply.rows[0].id]);
   });
 }
 

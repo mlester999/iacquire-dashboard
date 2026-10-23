@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, Ban, Info, Lock, MessageSquareHeart, MousePointerClick, Send, ShieldCheck, Star } from "lucide-react";
+import { AlertTriangle, Info, Lock, MessageSquareHeart, MousePointerClick, Send, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, EmptyState } from "@/components/ui/primitives";
 import { Pagination, PageTitle, ReadOnlyNotice } from "@/components/crm/ui";
@@ -16,12 +16,36 @@ import { ReputationSettingsPanel } from "@/components/reputation/settings-panel"
 import { SatisfactionPanel } from "@/components/reputation/satisfaction-panel";
 import { BatchesPanel } from "@/components/reputation/batches-panel";
 import { BatchDetail } from "@/components/reputation/batch-detail";
+import { ConnectionStatusCard, ConnectionsPanel } from "@/components/reputation/connections-panel";
+import { PublicReviewsPanel } from "@/components/reputation/public-reviews-panel";
 import type { ReputationSettings } from "@/lib/reputation/settings";
 import type { SatisfactionReport } from "@/lib/reputation/satisfaction";
 import type { BatchPersonView, BatchPreview, BatchView, PersonFilter } from "@/lib/reputation/batches";
 import type { BatchBuilderOptions } from "@/server/reputation/batches";
+import type { LocationChoice, SiteView } from "@/server/reputation/connections";
+import type { PublicReviewsData } from "@/server/reputation/public-reviews";
+import type { ReviewFilter } from "@/lib/reputation/external";
 
-export type ReviewsTab = "overview" | "requests" | "feedback" | "satisfaction" | "batches" | "settings";
+export type ReviewsTab = "overview" | "requests" | "feedback" | "satisfaction" | "public" | "batches" | "settings";
+
+/** What the review sites part of the screen needs. Absent where a screen shows no public reviews at all. */
+export interface PublicReviewsProps {
+  sites: SiteView[];
+  /** A Super Admin switched public reviews on for the workspace. */
+  enabled: boolean;
+  /** The workspace has public reviews or connections to show (they stay visible after a switch-off). */
+  any: boolean;
+  /** The Public reviews tab; null on every other tab. */
+  data: PublicReviewsData | null;
+  filter: ReviewFilter;
+  focusId: string | null;
+  /** Google locations to choose from after a sign-in, and the sign-in they belong to. */
+  pending: LocationChoice[] | null;
+  pendingStateId: string | null;
+  /** A fixed code for a sign-in that did not finish (see SIGN_IN_NOTICES). */
+  notice: string | null;
+  canManageSites: boolean;
+}
 
 type Page<T> = { rows: T[]; total: number; page: number; pageSize: number };
 
@@ -66,6 +90,8 @@ export interface ReviewsWorkspaceProps {
   satisfaction: SatisfactionReport | null;
   /** The Batches tab; null when the workspace has no batches and a Super Admin has not switched them on. */
   batches?: BatchesData | null;
+  /** Public reviews and the review sites; absent on screens that have none. */
+  publicReviews?: PublicReviewsProps | null;
 }
 
 const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : "–");
@@ -116,6 +142,14 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
     return `${scope.base}/reviews${s ? `?${s}` : ""}`;
   };
   const batches = p.batches ?? null;
+  const pub = p.publicReviews ?? null;
+  const showPublic = Boolean(pub && (pub.enabled || pub.any));
+  const publicHref = (q: { filter?: ReviewFilter; page?: number }) => {
+    const sp = new URLSearchParams({ tab: "public" });
+    if (q.filter && q.filter !== "all") sp.set("filter", q.filter);
+    if (q.page && q.page > 1) sp.set("page", String(q.page));
+    return `${scope.base}/reviews?${sp.toString()}`;
+  };
   // The people of one batch: the batch stays in the address, with the filter and page of its list.
   const peopleHref = (id: string) => (q: { filter?: PersonFilter; page?: number }) => {
     const sp = new URLSearchParams({ tab: "batches", batch: id });
@@ -178,7 +212,7 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
       </section>
 
       <nav aria-label="Reviews sections" className="flex gap-1 border-b border-line">
-        {([["overview", "Overview"], ["requests", "Requests"], ["feedback", "Private feedback"], ["satisfaction", "Satisfaction"], ["batches", "Batches"], ["settings", "Settings"]] as const).filter(([k]) => (k !== "satisfaction" || p.surveysEnabled) && (k !== "batches" || batches)).map(([k, label]) => (
+        {([["overview", "Overview"], ["requests", "Requests"], ["feedback", "Private feedback"], ["satisfaction", "Satisfaction"], ["public", "Public reviews"], ["batches", "Batches"], ["settings", "Settings"]] as const).filter(([k]) => (k !== "satisfaction" || p.surveysEnabled) && (k !== "batches" || batches) && (k !== "public" || showPublic)).map(([k, label]) => (
           <Link
             key={k}
             href={href({ tab: k })}
@@ -221,18 +255,10 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
                 {p.surveysEnabled && <li>A survey goes the same way and opens the same page, with the same review links. It asks its question first.</li>}
                 {batches && <li>A batch asks many customers at once. They are chosen only by a service you finished for them, never by how they felt; the owner approves it, and it goes out a few at a time.</li>}
                 <li>Nothing is offered in return for a review or feedback, and nobody is asked for a particular rating.</li>
-                <li>iAcquire never writes, posts or counts public reviews.</li>
+                <li>iAcquire never writes, hides or counts public reviews for you. It can show the ones a connected review site returns, and a reply goes out only after the owner or a manager approves it.</li>
               </ul>
             </Card>
-            <Card className="p-4 sm:p-5">
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-[14.5px] font-semibold text-ink"><Star className="size-4 text-muted" aria-hidden />Google reviews in iAcquire</h2>
-                <Badge tone="warning"><Ban className="size-3" aria-hidden />Blocked</Badge>
-              </div>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted">
-                Showing or replying to your Google reviews here needs Google&apos;s approved Business Profile API access for iAcquire, and your business location connected to it. That isn&apos;t set up, so iAcquire doesn&apos;t read, show or count Google reviews. Your Google review link above works as usual.
-              </p>
-            </Card>
+            {pub ? <ConnectionStatusCard scope={scope} sites={pub.sites} enabled={pub.enabled} /> : null}
             <Card className="p-4 sm:p-5">
               <h2 className="flex items-center gap-2 text-[14.5px] font-semibold text-ink"><Lock className="size-4 text-muted" aria-hidden />Private ratings</h2>
               {stats.feedback.rated ? (
@@ -297,7 +323,16 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
         )
       )}
 
-      {tab === "settings" && <ReputationSettingsPanel key={p.settings.version} orgId={scope.orgId} settings={p.settings} canEdit={p.canEditSettings} />}
+      {tab === "public" && pub?.data && showPublic && (
+        <PublicReviewsPanel scope={scope} data={pub.data} enabled={pub.enabled} contactsLinked={p.contactsLinked} hrefFor={publicHref} focusId={pub.focusId} />
+      )}
+
+      {tab === "settings" && (
+        <div className="space-y-6">
+          {pub && <ConnectionsPanel scope={scope} sites={pub.sites} enabled={pub.enabled} canManage={pub.canManageSites && !scope.readOnly} pending={pub.pending} pendingStateId={pub.pendingStateId} notice={pub.notice} />}
+          <ReputationSettingsPanel key={p.settings.version} orgId={scope.orgId} settings={p.settings} canEdit={p.canEditSettings} publicReviews={showPublic} />
+        </div>
+      )}
 
       {p.canSend && (
         <RequestReviewDialog scope={scope} open={asking} onOpenChange={setAsking} templates={p.templates} initialContact={p.initialContact} cooldownDays={p.limits.cooldownDays} surveysEnabled={p.surveysEnabled} />

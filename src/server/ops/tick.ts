@@ -15,6 +15,7 @@ import { checkAllAccounts, purgeSignInStates } from "@/server/social/accounts";
 import { finishPendingMediaRemovals } from "@/server/social/media";
 import { syncPostMetrics } from "@/server/social/analytics";
 import { expireDueProposals, proposalHousekeeping } from "@/server/proposals/jobs";
+import { runEsignSync } from "@/server/esign/maintenance";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
@@ -29,6 +30,9 @@ import { expireAllStaleApprovals } from "@/server/approvals/service";
 import { enrollEligible, prepareDueSteps } from "@/server/retention/engine";
 import { runFeedbackSla, runOutcomeNudge } from "@/server/reputation/jobs";
 import { processReviewBatches } from "@/server/reputation/batch-job";
+import { runReviewSync } from "@/server/reputation/sync";
+import { runRenewalReminders } from "@/server/reputation/renewals";
+import { purgeReputationRecords } from "@/server/reputation/housekeeping";
 import { runFairUseChecks } from "@/server/fairuse/service";
 import { runInactivityReview } from "@/server/inactivity/service";
 import { sendDeletionReminders } from "@/server/offboarding/service";
@@ -102,6 +106,13 @@ export const JOBS: ScheduledJob[] = [
   // against what would be sent now; any change stops it) and its customers are asked at the batch's pace, through the same checks as one review request. The messages it queues go
   // out in the dispatcher run straight after. Nothing happens for a batch nobody approved, and a staged start must name this job to run it.
   { name: "reviewRequestBatches", run: async () => { const r = await processReviewBatches(); return r.started + r.queued + r.excluded + r.failed + r.paused + r.stopped + r.completed; } },
+  // Public reviews. Every hour the reviews of each connected review site (only in workspaces a Super Admin switched public reviews on for, and only where reading that site is
+  // switched on for this deployment) are read into the mirror, and replies whose result is unknown are checked against the site. Nothing here posts a reply or writes to a customer.
+  // Renewal reminders are a daily internal task and notice for the team, only for workspaces that switched them on. The daily clean-up removes old mirrors and finished sign-ins.
+  // Like every job here they run only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "reviewSync", everyMinutes: 60, run: () => runReviewSync() },
+  { name: "renewalReminders", everyMinutes: 1440, run: async () => (await runRenewalReminders()).tasks },
+  { name: "reputationRetention", everyMinutes: 1440, run: async () => { const r = await purgeReputationRecords(); return r.signIns + r.disconnectedReviews + r.removedReviews + r.replyEvents; } },
   // Native CRM automation: the event outbox is handed to workflows, lead assignment, follow-ups and webhooks; then due workflow runs
   // advance (a message step queues its message, which the dispatcher right after sends in the same run).
   { name: "crmEventDispatch", run: async () => (await crmEventDispatch()).claimed },
@@ -131,6 +142,12 @@ export const JOBS: ScheduledJob[] = [
   // opening; the owner is warned two days ahead. The daily clean-up removes spent emailed codes, sessions and the outbox copies of code emails. Neither contacts a customer.
   { name: "proposalExpiry", everyMinutes: 60, run: async () => { const r = await expireDueProposals(); return r.expired + r.warned; } },
   { name: "proposalHousekeeping", everyMinutes: 1440, run: async () => { const r = await proposalHousekeeping(); return r.challenges + r.sessions + r.codeEmails; } },
+  // Electronic signatures (only workspaces a Super Admin switched proposals AND signing on for, that are not paused, and whose connection works). Hands queued signing requests to
+  // the client's own signing service, checks the ones whose answer was lost, reads the ones that are out when no notice came, fetches signed copies, withdraws what was
+  // withdrawn and checks each key a few times a day. A real service is written to only while ESIGN_WRITES_ENABLED is true; the simulated one reaches nothing and does not exist
+  // in production. Every tick, not hourly: a request waits for a pass, and the service takes a few seconds to make a document, so a slower rhythm would stretch one signing request
+  // over many minutes. Its polling and key checks keep their own, slower pace inside the job.
+  { name: "esignSync", run: async () => { const r = await runEsignSync(); return r.claimed + r.recovered + r.reconciled + r.polled + r.copies + r.cancelled + r.checked; } },
   { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).

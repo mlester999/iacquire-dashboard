@@ -30,5 +30,5 @@ export interface PayResponse {
   message?: string;
 }
 
-/** How long the return page keeps asking, in milliseconds between asks. Three minutes in all; after that it says confirmation is taking longer and offers a button. */
+/** How long the return page keeps asking, in milliseconds between asks. About two and a half minutes in all; after that it says confirmation is taking longer and offers a button. */
 export const POLL_DELAYS_MS: readonly number[] = [2500, 2500, 3000, 3000, 4000, 4000, 5000, 5000, 6000, 6000, 8000, 8000, 10_000, 10_000, 12_000, 12_000, 15_000, 15_000, 20_000];

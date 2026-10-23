@@ -195,10 +195,12 @@ describe("the source report", () => {
   it("shows no revenue, cost per lead or return on spend while their inputs are missing, and says what is missing", async () => {
     const r = await attributionReport(c.actor("owner"), { ...period });
     const g = rowOf(r, "google");
-    expect(g).toMatchObject({ verifiedRevenue: null, returnOnSpend: null, costPerLead: null, cost: [] });
+    // This workspace has no customer invoicing, so there is no verified revenue to show: the report says so, and never fills the place with deal value.
+    expect(g).toMatchObject({ verifiedRevenue: [], refunded: [], recordedByHand: [], returnOnSpend: null, returnCurrency: null, costPerLead: null, cost: [] });
     expect(g.missing).toBe("Needs an entered campaign cost and verified payments.");
+    expect(r.revenue).toMatchObject({ state: "off", manualCounted: false, workspaceHasPayments: false, testPaymentsExcluded: 0, disputedHeldOut: 0, total: [] });
     expect(r.notes.join(" ")).toMatch(/not verified revenue/);
-    expect(r.notes.join(" ")).toMatch(/does not record verified customer payments yet/);
+    expect(r.notes.join(" ")).toMatch(/Verified revenue needs customer invoices and payments, which are not switched on for this workspace/);
   });
 
   it("computes cost per lead only from an entered cost wholly inside the period and in one currency, and still never computes return on spend", async () => {

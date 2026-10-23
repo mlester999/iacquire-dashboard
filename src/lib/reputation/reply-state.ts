@@ -65,6 +65,7 @@ export const approvalStands = (r: { version: number; approvedVersion: number | n
 
 /** How long a reply may sit in "posting" before the scheduler asks the review site what happened. */
 export const POSTING_STALE_MINUTES = 5;
+// (The grace period before "not found" is believed, and the day after which a person is asked to look, are RECONCILE_GRACE_MINUTES and RECONCILE_GIVE_UP_HOURS in src/server/reputation/replies.ts.)
 
 // ---------------------------------------------------------------------------
 // What this person may do right now
@@ -133,3 +134,26 @@ export function replyAbilities(f: ReplyFacts): ReplyAbilities {
   if (r.status === "pending_approval" && !f.canPublish) out.note = "Only the owner or a manager can approve a reply.";
   return out;
 }
+
+/** What each step in a reply's history is called on the screen. */
+export const REPLY_EVENT_LABELS: Record<string, string> = {
+  created: "Started",
+  ai_drafted: "Drafted by the AI assist for a person",
+  edited: "Edited",
+  submitted: "Sent for approval",
+  approved: "Approved",
+  changes_requested: "Changes asked for",
+  rejected: "Rejected",
+  cancelled: "Cancelled",
+  posting: "Sending to the review site",
+  posted: "Posted",
+  posted_confirmed: "Confirmed on the review site",
+  outcome_unknown: "The review site did not say whether it took it",
+  posting_interrupted: "Sending was interrupted",
+  failed: "Not posted",
+  not_posted: "Checked: not on the review site",
+  resolved_by_person: "A person said what happened",
+  review_changed: "The review changed, so the approval was withdrawn",
+};
+
+export const eventLabel = (kind: string) => REPLY_EVENT_LABELS[kind] ?? kind.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());

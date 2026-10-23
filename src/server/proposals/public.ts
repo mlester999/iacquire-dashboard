@@ -10,14 +10,16 @@ import { contentHash } from "@/lib/proposals/hash";
 import { acknowledgementText, PROPOSAL_ACKNOWLEDGEMENT_VERSION } from "@/lib/proposals/ack";
 import {
   CHANGE_REQUESTS_PER_DAY, CODE_COOLDOWN_SECONDS, CODE_MAX_ATTEMPTS, CODE_TTL_MINUTES, SESSION_MAX_HOURS, SESSION_SLIDE_MINUTES, cleanCode, maskEmail,
-  type CodeOutcome, type DecideOutcome, type PublicState,
+  type CodeOutcome, type DecideOutcome, type PublicSigning, type PublicState,
 } from "@/lib/proposals/share";
+import { PROVIDER_LABELS } from "@/lib/esign/state";
 import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { validityOn, type Validity } from "@/lib/proposals/validity";
 import { addEvent, loadProposalRow, loadVersionRow, readSettings, type ProposalRow, type VersionRow } from "@/server/proposals/core";
 import { applyEffects } from "@/server/proposals/crm-effects";
+import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 import { readVersionPdf, type PdfDeps } from "@/server/proposals/documents";
-import { featureOn, PROPOSALS_FEATURE, proposalsPublicDisabled } from "@/server/proposals/features";
+import { ESIGN_FEATURE, featureOn, PROPOSALS_FEATURE, proposalsPublicDisabled } from "@/server/proposals/features";
 import { hashCode, hashLinkToken, hashSession, looksLikeProposalToken, newCode, newSessionToken, sameDigest, SESSION_TOKEN_RE } from "@/server/proposals/link-token";
 
 // Everything a customer can do with the link they were given. There is no sign-in: the token in the address is the credential, and the workspace, the proposal and the version are
@@ -176,9 +178,26 @@ export interface PublicProposalView {
   verified: { emailMasked: string; expiresAt: string } | null;
   /** The sentence to tick before accepting; null when accepting is not offered. */
   acknowledgement: { version: number; text: string } | null;
+  /** Only for a proposal that asks for a signature: where the signing document stands. */
+  signing: PublicSigning | null;
 }
 
-const blank = (state: PublicState): PublicProposalView => ({ state, business: null, proposal: null, answer: null, changeRequests: 0, recipient: { maskedEmail: null }, verified: null, acknowledgement: null });
+const blank = (state: PublicState): PublicProposalView => ({ state, business: null, proposal: null, answer: null, changeRequests: 0, recipient: { maskedEmail: null }, verified: null, acknowledgement: null, signing: null });
+
+const SIGNING_STATE: Record<string, PublicSigning["state"]> = { queued: "preparing", sending: "preparing", unknown: "preparing", sent: "sent", viewed: "viewed" };
+
+/** The newest signing request for this very version, as much of it as the customer may see. */
+async function signingFor(db: Queryable, f: Found): Promise<PublicSigning> {
+  const none: PublicSigning = { state: "none", providerLabel: null, signerEmailMasked: null, simulated: false };
+  // Signing is a separate switch (and a separate migration): until a Super Admin turns it on for the workspace there is nothing to look up.
+  if (!(await featureOn(f.row.org_id, ESIGN_FEATURE, db))) return none;
+  const r = (await db.query<{ status: string; signer_email: string; provider: "pandadoc" | "simulated"; mode: string }>(
+    "select status, signer_email::text as signer_email, provider, mode from signature_requests where proposal_id = $1 and org_id = $2 and proposal_version = $3 order by created_at desc, id desc limit 1",
+    [f.row.id, f.row.org_id, f.link.version],
+  )).rows[0];
+  if (!r) return none;
+  return { state: SIGNING_STATE[r.status] ?? "ended", providerLabel: PROVIDER_LABELS[r.provider], signerEmailMasked: maskEmail(r.signer_email), simulated: r.mode === "simulated" };
+}
 
 const businessOf = (l: LinkFacts) => ({ name: l.org_name, brandColor: l.brand_color, contactEmail: l.contact_email, contactPhone: l.contact_phone, timezone: l.org_timezone });
 
@@ -222,6 +241,7 @@ export async function loadPublicProposal(token: string, ctx: PublicContext = {})
       recipient: { maskedEmail: f.link.recipient_email ? maskEmail(f.link.recipient_email) : null },
       verified: session && state === "open" ? { emailMasked: maskEmail(session.email), expiresAt: session.expiresAt.toISOString() } : null,
       acknowledgement: canAccept ? { version: PROPOSAL_ACKNOWLEDGEMENT_VERSION, text: acknowledgementText(f.row.number, version.version) } : null,
+      signing: state === "open" && f.row.requires_signature ? await signingFor(db, f) : null,
     };
   });
 }
@@ -440,6 +460,8 @@ export async function decideOnProposal(token: string, input: DecideInput, ctx: P
     if (!rows[0]) return { outcome: "conflict" };
     if (want !== "changes_requested") {
       await db.query("update proposals set status = $3, closed_at = $4::timestamptz where id = $1 and org_id = $2", [f.row.id, f.row.org_id, want, now.toISOString()]);
+      // The customer's own answer replaces a signing request still out (they declined on the page): it ends, and a signature that arrives afterwards is not applied.
+      await voidLiveRequestsInTx(db, f.row.org_id, f.row.id, "voided", `The customer ${want === "declined" ? "declined" : "answered"} on the proposal page.`, { userId: null, now });
     }
     await addEvent(db, f.row.org_id, f.row.id, f.link.version, want, { id: null, kind: "recipient" }, { method: "verified_acknowledgement", emailMasked: maskEmail(session.email), hasNote: Boolean(note) });
     await recordAudit({ orgId: f.row.org_id, actorKind: "system", actorUserId: null, agentInstanceId: null, action: `proposals.customer_${want}`, targetType: "proposal", targetId: f.row.id, result: "success", metadata: { version: f.link.version, method: "verified_acknowledgement" } }, db);

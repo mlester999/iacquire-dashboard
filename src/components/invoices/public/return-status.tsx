@@ -18,26 +18,29 @@ const TONE = {
 
 type View = Pick<ReturnDescription, "state" | "headline" | "detail" | "polling" | "tone">;
 
+const noSubscription = () => () => undefined;
+const noBackPath = () => null;
+function readBackPath(): string | null {
+  try {
+    return safeBackPath(window.sessionStorage.getItem(BACK_STORAGE_KEY));
+  } catch {
+    // Storage can be blocked; there is then no way back to offer.
+    return null;
+  }
+}
+
 export function ReturnStatus({ reference, initial, approvedCheckoutId }: { reference: string; initial: View; approvedCheckoutId: string | null }) {
   const [view, setView] = React.useState<View>(initial);
   const [exhausted, setExhausted] = React.useState(false);
   const [round, setRound] = React.useState(0);
-  const [back, setBack] = React.useState<string | null>(null);
+  // The page the customer left to pay lives in this tab's own storage: nothing on the server knows it, and the server's markup has no way back to offer.
+  const back = React.useSyncExternalStore(noSubscription, readBackPath, noBackPath);
   const captured = React.useRef(false);
-
-  React.useEffect(() => {
-    try {
-      setBack(safeBackPath(window.sessionStorage.getItem(BACK_STORAGE_KEY)));
-    } catch {
-      setBack(null);
-    }
-  }, []);
 
   React.useEffect(() => {
     if (!view.polling && round === 0) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    setExhausted(false);
 
     async function ask(): Promise<View | null> {
       try {
@@ -105,7 +108,7 @@ export function ReturnStatus({ reference, initial, approvedCheckoutId }: { refer
       {view.polling && exhausted && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <p className="text-[13.5px] text-ink-2">Still waiting for your payment provider to confirm it.</p>
-          <Button variant="secondary" onClick={() => setRound((r) => r + 1)}>Check again</Button>
+          <Button variant="secondary" onClick={() => { setExhausted(false); setRound((r) => r + 1); }}>Check again</Button>
         </div>
       )}
       {back && (

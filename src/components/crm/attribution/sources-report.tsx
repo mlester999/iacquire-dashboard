@@ -13,9 +13,25 @@ import type { CostEntry } from "@/server/attribution/costs";
 import type { CrmScope } from "@/server/crm/page";
 
 // Where leads came from and what became of them. A figure appears only where its inputs exist; a blank says what is missing, in words. Deal value is deal
-// value: it is never called revenue, because this platform does not record verified customer payments yet.
+// value: it is never called revenue. Verified revenue is money a payment provider confirmed in live mode, net of refunds and without tax, for the leads created in the
+// period and received at any time up to the moment shown ("cohort revenue to date"); currencies are never added together.
 
 const fmt = (m: MoneyByCurrency[]) => (m.length === 0 ? "None" : m.map((x) => `${x.currency} ${x.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`).join(" · "));
+
+/** "2026-10-24T09:15:00.000Z" -> "2026-10-24 09:15 UTC": the same on the server and in the browser, whatever the viewer's locale or zone. */
+export const asOfText = (iso: string) => `${iso.slice(0, 16).replace("T", " ")} UTC`;
+
+/** A revenue cell: the figure, or the plain reason there is none. */
+function Revenue({ money, state, note }: { money: MoneyByCurrency[]; state: AttributionReport["revenue"]["state"]; note?: string }) {
+  if (state === "hidden") return <span className="text-muted">Not shown to your role</span>;
+  if (state === "off") return <span className="text-muted">Not switched on</span>;
+  return (
+    <>
+      {money.length ? fmt(money) : <span className="text-muted">None yet</span>}
+      {note && <span className="mt-0.5 block text-[12px] text-muted">{note}</span>}
+    </>
+  );
+}
 
 function Toolbar({ base, days, model }: { base: string; days: number; model: AttributionModel }) {
   const href = (d: number, m: AttributionModel) => `${base}/reports/sources?range=${d}&model=${m}`;
@@ -48,6 +64,7 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
   }
 
   const t = report.totals;
+  const rev = report.revenue;
   return (
     <div className="space-y-6">
       <PageTitle title="Lead sources and ROI" description="Where your leads came from and what became of them. Figures are counted from your records; the ones that need an input nobody supplied are left blank, with the reason." />
@@ -65,10 +82,10 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
           <p className="text-[13px] text-muted">No leads were created in this period. When a visitor fills in a form, chats on your website or phones, the source is recorded here.</p>
         ) : (
           <div className="overflow-x-auto" role="region" aria-label="Leads by source" tabIndex={0}>
-            <table className="w-full min-w-[860px] text-left text-[13px]">
+            <table className="w-full min-w-[1180px] text-left text-[13px]">
               <caption className="sr-only">Leads by source, credited to each lead&apos;s {model} touch</caption>
               <thead className="text-[12px] text-muted">
-                <tr>{["Source", "Leads", "Qualified", "Appointments", "Deals", "Won deals", "Won deal value", "Open deal value", "Cost", "Cost per lead", "Return on spend"].map((h) => <th key={h} scope="col" className="py-1.5 pr-3 font-medium">{h}</th>)}</tr>
+                <tr>{["Source", "Leads", "Qualified", "Appointments", "Deals", "Won deals", "Won deal value", "Open deal value", "Verified revenue (net of refunds, excl. tax)", "Recorded by hand", "Cost", "Cost per lead", "Return on spend"].map((h) => <th key={h} scope="col" className="py-1.5 pr-3 font-medium">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {report.rows.map((r) => (
@@ -88,13 +105,37 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
                     <td className="py-2 pr-3 tabular-nums">{r.wonCount}</td>
                     <td className="py-2 pr-3">{fmt(r.wonValue)}</td>
                     <td className="py-2 pr-3">{fmt(r.openValue)}</td>
+                    <td className="py-2 pr-3 tabular-nums"><Revenue money={r.verifiedRevenue} state={rev.state} note={r.refunded.length ? `after ${fmt(r.refunded)} refunded` : undefined} /></td>
+                    <td className="py-2 pr-3 tabular-nums"><Revenue money={r.recordedByHand} state={rev.state} note={r.recordedByHand.length ? (rev.manualCounted ? "counted above" : "not counted above") : undefined} /></td>
                     <td className="py-2 pr-3">{r.cost.length ? fmt(r.cost) : <span className="text-muted">Not entered</span>}</td>
                     <td className="py-2 pr-3">{r.costPerLead ? fmt([r.costPerLead]) : <span className="text-muted">{r.cost.length > 1 ? "Several currencies" : "Not shown"}</span>}</td>
-                    <td className="py-2 pr-3">{r.returnOnSpend !== null ? `${Math.round(r.returnOnSpend * 100)}%` : <span className="text-muted" title={r.missing ?? undefined}>{r.missing ?? "Not shown"}</span>}</td>
+                    <td className="py-2 pr-3">
+                      {r.returnOnSpend !== null ? (
+                        <>
+                          <span className="tabular-nums">{Math.round(r.returnOnSpend * 100)}%</span>
+                          {r.returnCurrency && <span className="ml-1 text-[12px] text-muted">in {r.returnCurrency}</span>}
+                          {r.missing && <span className="mt-0.5 block text-[12px] text-muted">{r.missing}</span>}
+                        </>
+                      ) : (
+                        <span className="text-muted" title={r.missing ?? undefined}>{r.missing ?? "Not shown"}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {rev.state === "shown" && (
+          <div className="mt-4 space-y-1 text-[13px]" aria-label="Verified revenue summary">
+            <p><span className="font-medium text-ink">Verified revenue in total:</span> {fmt(rev.total)}. <span className="text-muted">Counted for leads created in this period, from payments received up to {asOfText(rev.asOf)}.</span></p>
+            {(rev.unattributed.verifiedRevenue.length > 0 || rev.unattributed.recordedByHand.length > 0) && (
+              <p>
+                <span className="font-medium text-ink">Not tied to a customer:</span> {rev.unattributed.verifiedRevenue.length ? fmt(rev.unattributed.verifiedRevenue) : "no verified revenue"}
+                {rev.unattributed.recordedByHand.length > 0 && <>, recorded by hand {fmt(rev.unattributed.recordedByHand)}{rev.manualCounted ? " (counted)" : " (not counted)"}</>}.{" "}
+                <span className="text-muted">These invoices no longer belong to a customer (for example after a privacy request), so they are not credited to any source or counted in the total above.</span>
+              </p>
+            )}
           </div>
         )}
         <ul className="mt-3 space-y-1 text-[12.5px] text-muted">{report.notes.map((n) => <li key={n}>{n}</li>)}</ul>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyTouch, costPerLead, missingInputs, normalizeSourceName, returnOnSpend, sourceFromReferrer, sourceLabel, UNKNOWN_SOURCE } from "@/lib/attribution/model";
+import { classifyTouch, costPerLead, missingInputs, normalizeSourceName, returnOnSpend, returnOnSpendFor, sourceFromReferrer, sourceLabel, UNKNOWN_SOURCE } from "@/lib/attribution/model";
 
 describe("reading where a touch came from", () => {
   it("takes explicit campaign tags as known, exactly as they arrived", () => {
@@ -76,5 +76,40 @@ describe("money the report may show", () => {
     expect(missingInputs({ verifiedRevenue: null, cost: 10 })).toBe("Needs verified payments.");
     expect(missingInputs({ verifiedRevenue: 5, cost: null })).toBe("Needs an entered campaign cost.");
     expect(missingInputs({ verifiedRevenue: 5, cost: 10 })).toBeNull();
+  });
+
+  describe("return on spend per currency", () => {
+    const php = (amount: number) => ({ currency: "PHP", amount });
+    const usd = (amount: number) => ({ currency: "USD", amount });
+
+    it("is worked out in the one currency that both the single cost and the verified revenue are in", () => {
+      expect(returnOnSpendFor({ cost: [php(1000)], verifiedRevenue: [php(2500)], workspaceHasPayments: true })).toEqual({ returnOnSpend: 1.5, currency: "PHP", missing: null });
+      expect(returnOnSpendFor({ cost: [php(1000)], verifiedRevenue: [php(0)], workspaceHasPayments: true })).toEqual({ returnOnSpend: -1, currency: "PHP", missing: null });
+      // Revenue in another currency is not added, converted or hidden: the result says it was left out.
+      expect(returnOnSpendFor({ cost: [php(1000)], verifiedRevenue: [php(2500), usd(200)], workspaceHasPayments: true })).toEqual({
+        returnOnSpend: 1.5, currency: "PHP", missing: "Revenue in USD is not included: it is not converted.",
+      });
+    });
+
+    it("says why no return is shown: no cost, several cost currencies, a different currency, no revenue yet, or no payments recorded at all", () => {
+      const none = { returnOnSpend: null, currency: null };
+      expect(returnOnSpendFor({ cost: [], verifiedRevenue: [], workspaceHasPayments: false })).toEqual({ ...none, missing: "Needs an entered campaign cost and verified payments." });
+      expect(returnOnSpendFor({ cost: [], verifiedRevenue: [php(5)], workspaceHasPayments: true })).toEqual({ ...none, missing: "Needs an entered campaign cost." });
+      expect(returnOnSpendFor({ cost: [php(1), usd(1)], verifiedRevenue: [php(5)], workspaceHasPayments: true })).toEqual({ ...none, missing: "Cost was entered in several currencies, which are not converted, so no return is shown." });
+      expect(returnOnSpendFor({ cost: [usd(100)], verifiedRevenue: [php(800)], workspaceHasPayments: true })).toEqual({
+        ...none, missing: "Revenue (PHP) and cost (USD) are in different currencies, which are not converted, so no return is shown.",
+      });
+      expect(returnOnSpendFor({ cost: [php(100)], verifiedRevenue: [], workspaceHasPayments: true })).toEqual({ ...none, missing: "No verified payments from these leads yet." });
+      expect(returnOnSpendFor({ cost: [php(100)], verifiedRevenue: [], workspaceHasPayments: false })).toEqual({ ...none, missing: "Needs verified payments." });
+    });
+
+    it("never compares or mixes currencies: a return exists only where the revenue's currency IS the cost's currency", () => {
+      const currencies = ["PHP", "USD", "EUR", "JPY"];
+      for (const cost of currencies) for (const revenue of currencies) {
+        const r = returnOnSpendFor({ cost: [{ currency: cost, amount: 100 }], verifiedRevenue: [{ currency: revenue, amount: 400 }], workspaceHasPayments: true });
+        expect(r.returnOnSpend === null, `${cost} cost against ${revenue} revenue`).toBe(cost !== revenue);
+        if (cost === revenue) expect(r).toEqual({ returnOnSpend: 3, currency: cost, missing: null });
+      }
+    });
   });
 });

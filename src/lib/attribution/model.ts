@@ -170,3 +170,40 @@ export function missingInputs(input: { verifiedRevenue: number | null; cost: num
   if (input.verifiedRevenue === null) needs.push("verified payments");
   return needs.length ? `Needs ${needs.join(" and ")}.` : null;
 }
+
+interface MoneyOf {
+  currency: string;
+  amount: number;
+}
+
+export interface ReturnOnSpendResult {
+  /** (revenue - cost) / cost, in the one currency both were in. Null when it cannot be worked out. */
+  returnOnSpend: number | null;
+  /** The currency the return was worked out in, or null. */
+  currency: string | null;
+  /** Why a return is not shown, or what was left out of one that is. Null when there is nothing to say. */
+  missing: string | null;
+}
+
+/**
+ * Return on spend for a source, per currency. It is worked out only when the source has exactly ONE cost currency and verified revenue in that same currency; amounts in
+ * different currencies are never added, converted or compared, and nothing is estimated. Otherwise the result says in words why not. `workspaceHasPayments` is whether
+ * the workspace has recorded any customer payment at all: until it has, "needs verified payments" is the honest answer; after, a source with no revenue yet is said so, and
+ * not shown as a return of minus one hundred percent that depends on money nobody records.
+ */
+export function returnOnSpendFor(input: { cost: MoneyOf[]; verifiedRevenue: MoneyOf[]; workspaceHasPayments: boolean }): ReturnOnSpendResult {
+  const none = (missing: string | null): ReturnOnSpendResult => ({ returnOnSpend: null, currency: null, missing });
+  const { cost, verifiedRevenue, workspaceHasPayments } = input;
+  if (cost.length === 0) return none(missingInputs({ verifiedRevenue: workspaceHasPayments ? 0 : null, cost: null }));
+  if (cost.length > 1) return none("Cost was entered in several currencies, which are not converted, so no return is shown.");
+  const single = cost[0];
+  const revenue = verifiedRevenue.find((r) => r.currency === single.currency);
+  if (!revenue) {
+    if (verifiedRevenue.length > 0) return none(`Revenue (${verifiedRevenue.map((r) => r.currency).join(", ")}) and cost (${single.currency}) are in different currencies, which are not converted, so no return is shown.`);
+    return none(workspaceHasPayments ? "No verified payments from these leads yet." : missingInputs({ verifiedRevenue: null, cost: single.amount }));
+  }
+  const value = returnOnSpend({ verifiedRevenue: revenue.amount, cost: single.amount });
+  if (value === null) return none("A return cannot be worked out from this cost.");
+  const others = verifiedRevenue.filter((r) => r.currency !== single.currency).map((r) => r.currency);
+  return { returnOnSpend: value, currency: single.currency, missing: others.length ? `Revenue in ${others.join(", ")} is not included: it is not converted.` : null };
+}

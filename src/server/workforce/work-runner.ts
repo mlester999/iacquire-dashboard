@@ -3,6 +3,7 @@ import { runMissedCallReviewJob } from "@/server/workforce/missed-call-review";
 import { runLeadPriorityReviewJob } from "@/server/workforce/lead-priority-review";
 import { runSocialPerformanceReviewJob } from "@/server/workforce/social-review";
 import { runReceivablesReviewJob } from "@/server/workforce/receivables-review";
+import { runReputationReviewJob } from "@/server/workforce/reputation-review";
 import crypto from "node:crypto";
 import { withSystem } from "@/server/db";
 import {
@@ -43,6 +44,7 @@ const HANDLERS: Record<string, Handler> = {
   lead_priority_review: runLeadPriorityReviewJob,
   social_performance_review: runSocialPerformanceReviewJob,
   receivables_review: runReceivablesReviewJob,
+  reputation_review: runReputationReviewJob,
   appointment_review: runAppointmentReviewJob,
   appointment_availability: runAppointmentAvailabilityJob,
   performance_snapshot: runPerformanceSnapshotJob,

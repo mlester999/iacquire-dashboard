@@ -1,7 +1,7 @@
 /**
- * The fictional proposals used for isolated local browser QA and for the test that proves this script works: a price book, an approved template and fifteen proposals in every
+ * The fictional proposals used for isolated local browser QA and for the test that proves this script works: a price book, an approved template and eighteen proposals in every
  * state a customer or the team can meet. It writes through the application's own services and contacts NO ONE: the code emails are captured in the outbox (EMAIL_PROVIDER=capture),
- * nothing is sent to a signing service (none exists yet), and every name, address and price is made up. The prices are not a price list: they exist so the totals have something
+ * nothing is sent to a real signing service (the signing stories use the stand-in that lives inside the server), and every name, address and price is made up. The prices are not a price list: they exist so the totals have something
  * to add up. The one AI-written draft is written by a FIXED stand-in answer that includes sentences the checks must drop; no language model is called.
  *
  * It is a plain module (no vitest, no database setup) so that both scripts/ui-qa-proposals-seed.qa.ts and tests/proposals-qa-seed.test.ts can run it.
@@ -11,7 +11,15 @@ import type { CrmActor } from "../src/server/crm/actor";
 import { createContact } from "../src/server/crm/contacts";
 import { adjustCredits, getBalance } from "../src/server/billing/ledger";
 import { draftProposalWithAi } from "../src/server/proposals/ai";
-import { createCatalogItem, createTaxRate, type CatalogItemView } from "../src/server/proposals/catalog";
+import { createCatalogItem, createTaxRate, listCatalogItems, type CatalogItemView } from "../src/server/proposals/catalog";
+import { connectSimulated, getConnection as getSigningConnection } from "../src/server/esign/connections";
+import { openCredentials } from "../src/server/esign/credentials";
+import { simulatedEsign } from "../src/server/esign/providers/simulated";
+import { requestSignature } from "../src/server/esign/requests";
+import { runEsignSync } from "../src/server/esign/maintenance";
+import { tokenForStoredConnection } from "../src/server/esign/webhook-token";
+import { handleEsignWebhook } from "../src/server/esign/webhook";
+import { processDueRequests } from "../src/server/esign/worker";
 import { clearFeatureCache } from "../src/server/proposals/features";
 import { expireDueProposals } from "../src/server/proposals/jobs";
 import { createProposal, decideProposal, recordOfflineDecision, sendProposal, submitForApproval, withdrawProposal, type CreateInput } from "../src/server/proposals/proposals";
@@ -162,7 +170,8 @@ export async function seedProposalWorld(a: ProposalWorldActors, opts: { now?: Da
   const s7 = await send(p7.id);
   await note(p7, "Sent. Many lines, discounts and a monthly plan: the long layout and the multi-page PDF.", s7.url, emailNguyen);
 
-  // 8. Needs a signature. Sending one is refused until a signing service exists, so this one was sent and then flagged, to see how the page treats it.
+  // 8. Needs a signature. Sending one is refused until a signing service is connected (the stand-in is connected at the end of this story, for the last three proposals), so this
+  // one was sent and then flagged, to see how the page treats it. Once the stand-in is connected it can be asked for a signature from its Signature tab like the others.
   const emailReyes = "ines.reyes@example.test";
   const p8 = await make("Boiler installation for Ines Reyes", a.sales, { contactId: await contacts("Ines", "Reyes", emailReyes), clientName: "Ines Reyes", clientEmail: emailReyes, doc: { lines: [line(heater, 2000)] } });
   const s8 = await send(p8.id);
@@ -227,5 +236,67 @@ export async function seedProposalWorld(a: ProposalWorldActors, opts: { now?: Da
   const tpl = await createTemplate(a.owner, { name: "Standard service proposal (QA)", doc: { sections: [{ heading: "About us", body: "{{business.name}} looks after heating and cooling systems for homes and small offices." }], lines: [{ catalogItemId: tuneup.id, quantityMilli: 1000 }], terms } });
   await approveTemplate(a.owner, tpl.id, 1);
 
+  // 16 to 18. Electronic signing, through the stand-in service.
+  rows.push(...(await seedSigningWorld(a, { now })));
+
+  return rows;
+}
+
+/**
+ * Three proposals that ask for a signature, with the stand-in signing service connected (a stand-in that lives inside the server: it sends nothing to anyone and signs nothing).
+ * Can be added to a workspace that already has the other fifteen. Nothing here is a real signature; the one that looks signed says so everywhere it is shown.
+ *
+ *   - signed through the stand-in, end to end in this process: accepted, with the signed copy and certificate stored;
+ *   - needs a signature and nothing has been asked yet: ask for it on the proposal's Signature tab;
+ *   - asked, waiting to be handed to the service: use "Hand it over now" and play the signer with the buttons under the request.
+ */
+export async function seedSigningWorld(a: ProposalWorldActors, opts: { now?: Date } = {}): Promise<WorldRow[]> {
+  const now = opts.now ?? new Date();
+  const orgId = a.owner.orgId;
+  await withSystem((db) => db.query("insert into org_features (org_id, feature, enabled) values ($1, 'proposals', true), ($1, 'esign', true) on conflict (org_id, feature) do update set enabled = true", [orgId]));
+  clearFeatureCache(orgId);
+  if (!(await getSigningConnection(a.owner))) await connectSimulated(a.owner, { label: "Simulated signing service (QA)" });
+  let item = (await listCatalogItems(a.owner))[0];
+  if (!item) {
+    const tax = await createTaxRate(a.owner, { name: "Sales tax (QA)", rateBps: 825 });
+    item = await createCatalogItem(a.owner, { name: "Seasonal tune-up", description: "A full check of the heating or cooling system, with a written report.", unitLabel: "visit", unitPriceMinor: 18_900, currency: "USD", billing: "one_time", taxRateId: tax.id });
+  }
+  const rows: WorldRow[] = [];
+  const terms = "Payment is due within 14 days of the work being finished.";
+  const day = (offset: number) => new Date(now.getTime() + offset * DAY).toISOString().slice(0, 10);
+  const story = async (title: string, first: string, last: string, email: string) => {
+    const contact = await createContact(a.owner, { firstName: first, lastName: last, email });
+    const draft = await createProposal(a.sales, { title, contactId: contact.id, clientName: `${first} ${last}`, clientEmail: email, validUntil: day(30), requiresSignature: true, doc: { terms, lines: [{ catalogItemId: item.id, quantityMilli: 1000 }] } }, { now });
+    await sendProposal(a.sales, draft.id, {}, { now });
+    const link = await getShareUrl(a.sales, draft.id, { now });
+    return { draft, url: link.url, email };
+  };
+
+  // The signed one goes first: handing a request to the stand-in works through every request that is due, and the other two must stay as they are for the person trying them.
+  const emailDiaz = "rosa.diaz@example.test";
+  const signed = await story("Annual service agreement for Rosa Diaz", "Rosa", "Diaz", emailDiaz);
+  const { requestId } = await requestSignature(a.sales, signed.draft.id, {}, { now });
+  await processDueRequests({ orgId, now: () => now, jitter: () => 0 });
+  const req = (await withSystem((db) => db.query<{ provider_document_id: string | null }>("select provider_document_id from signature_requests where id = $1", [requestId]))).rows[0];
+  const conn = (await withSystem((db) => db.query<{ id: string; credentials: string; webhook_token_hash: string }>("select id, credentials, webhook_token_hash from esign_connections where org_id = $1 and status = 'connected'", [orgId]))).rows[0];
+  const creds = openCredentials(conn?.credentials ?? null);
+  const token = conn ? tokenForStoredConnection(conn.id, conn.webhook_token_hash) : null;
+  if (!req?.provider_document_id || !creds || !token) throw new Error("The stand-in signing service could not be reached to make the signed example.");
+  simulatedEsign.signerAction(req.provider_document_id, "complete");
+  const d = simulatedEsign.delivery(req.provider_document_id, creds.webhookKey);
+  const answered = await handleEsignWebhook({ token, rawBody: d.rawBody, headers: d.headers, query: d.query, ip: CUSTOMER_IP, now });
+  if (answered.status !== 200) throw new Error(`The stand-in's notice was not accepted (${answered.body.reason ?? answered.status}).`);
+  await runEsignSync({ orgId, now: () => now, jitter: () => 0 });
+  rows.push({ number: signed.draft.number, title: signed.draft.title, state: "Signed through the stand-in signing service (simulated: nothing real was signed). Accepted, with the signed copy and its certificate stored.", url: signed.url, email: emailDiaz });
+
+  const emailMori = "kenji.mori@example.test";
+  const notAsked = await story("Duct replacement for Kenji Mori", "Kenji", "Mori", emailMori);
+  rows.push({ number: notAsked.draft.number, title: notAsked.draft.title, state: "Sent. Needs a signature and none has been asked for yet: use its Signature tab.", url: notAsked.url, email: emailMori });
+
+  // The stand-in's documents live in this process only, so a request is left waiting: it is handed over, and played, by the server the person is using.
+  const emailHaddad = "omar.haddad@example.test";
+  const asked = await story("Boiler service agreement for Omar Haddad", "Omar", "Haddad", emailHaddad);
+  await requestSignature(a.sales, asked.draft.id, {}, { now });
+  rows.push({ number: asked.draft.number, title: asked.draft.title, state: "Sent. A signature was asked for and is waiting to be handed to the stand-in service: use 'Hand it over now' on its Signature tab, then play the signer.", url: asked.url, email: emailHaddad });
   return rows;
 }

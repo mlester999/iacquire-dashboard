@@ -11,6 +11,7 @@ import { newPublicKey, newReference } from "@/server/customer-payments/ids";
 import { handleCustomerPaymentWebhook, type WebhookResult } from "@/server/customer-payments/webhooks";
 import { SIGNATURE_HEADER, signSimulatedBody, simulatedBody, simulatedPlatform, simulatedProvider } from "@/server/customer-payments/providers/simulated";
 import type { PaymongoHttp, PaymongoRequest, PaymongoResponse } from "@/server/customer-payments/providers/paymongo";
+import type { PaypalHttp, PaypalRequest, PaypalResponse } from "@/server/customer-payments/providers/paypal";
 import { uid } from "./fixtures";
 import { invoiceOrg, issuedInvoice, type InvoiceOrg } from "./invoices";
 
@@ -38,31 +39,36 @@ export interface TestConnection {
   provider: PaymentProviderId;
   mode: ConnectionMode;
   apiKey: string;
+  /** PayPal's client secret; null for the other providers. */
+  apiSecret: string | null;
+  /** PayPal: the id of the webhook deliveries are checked against. */
   webhookSecret: string;
 }
 
 /** A connected, authorized account whose secrets the test knows. Written straight to the table, so no provider is asked anything. */
 export async function connect(
   io: InvoiceOrg,
-  over: { provider?: "paymongo" | "simulated"; mode?: ConnectionMode; webhookSecret?: string | null; apiKey?: string; status?: ConnectionStatus; liveConfirmed?: boolean; currencies?: string[]; authorized?: boolean } = {},
+  over: { provider?: "paymongo" | "paypal" | "simulated"; mode?: ConnectionMode; webhookSecret?: string | null; apiKey?: string; status?: ConnectionStatus; liveConfirmed?: boolean; currencies?: string[]; authorized?: boolean } = {},
 ): Promise<TestConnection> {
   const provider = over.provider ?? "paymongo";
-  const mode = over.mode ?? (provider === "simulated" ? "test" : "test");
-  const apiKey = over.apiKey ?? (provider === "simulated" ? `sim_${uid()}${uid()}` : `sk_${mode}_${uid()}${uid()}${uid()}`);
-  const webhookSecret = over.webhookSecret === undefined ? `whsk_${crypto.randomBytes(12).toString("hex")}` : over.webhookSecret;
+  const mode = over.mode ?? "test";
+  const apiKey = over.apiKey ?? (provider === "simulated" ? `sim_${uid()}${uid()}` : provider === "paypal" ? `AZ${uid()}${uid()}${uid()}${uid()}client` : `sk_${mode}_${uid()}${uid()}${uid()}`);
+  const apiSecret = provider === "paypal" ? `EC${uid()}${uid()}${uid()}${uid()}secret` : null;
+  const webhookSecret = over.webhookSecret === undefined ? (provider === "paypal" ? `${uid()}${uid()}`.toUpperCase().replace(/-/g, "") : `whsk_${crypto.randomBytes(12).toString("hex")}`) : over.webhookSecret;
   const publicKey = newPublicKey();
   const status = over.status ?? (webhookSecret ? "connected" : "pending_verification");
+  const settings = provider === "paypal" ? { environment: mode === "live" ? ("live" as const) : ("sandbox" as const) } : undefined;
   const r = await withSystem((db) =>
     db.query<{ id: string }>(
       `insert into customer_payment_connections (org_id, provider, mode, public_key, credentials, supported_currencies, status, authorized_by, authorized_at, authorization_text_version, live_confirmed_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
       [
-        io.orgId, provider, mode, publicKey, credentialVault.seal({ apiKey, webhookSecret }), over.currencies ?? (provider === "paymongo" ? ["PHP"] : ["PHP", "USD", "EUR", "GBP", "AUD", "CAD", "SGD", "JPY"]), status,
+        io.orgId, provider, mode, publicKey, credentialVault.seal({ apiKey, apiSecret, webhookSecret, settings }), over.currencies ?? (provider === "paymongo" ? ["PHP"] : ["PHP", "USD", "EUR", "GBP", "AUD", "CAD", "SGD", "JPY"]), status,
         over.authorized === false ? null : io.c.people.owner.id, over.authorized === false ? null : new Date(), over.authorized === false ? null : CURRENT_AUTHORIZATION_VERSION, over.liveConfirmed ? new Date() : null,
       ],
     ),
   );
-  return { id: r.rows[0].id, orgId: io.orgId, publicKey, provider, mode, apiKey, webhookSecret: webhookSecret ?? "" };
+  return { id: r.rows[0].id, orgId: io.orgId, publicKey, provider, mode, apiKey, apiSecret, webhookSecret: webhookSecret ?? "" };
 }
 
 export interface TestAttempt {
@@ -89,7 +95,7 @@ export async function attempt(
       `insert into customer_payment_attempts (org_id, invoice_id, connection_id, currency, amount_minor, reference, provider_checkout_id, checkout_url, status, expires_at, created_at, updated_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11) returning id`,
       [
-        conn.orgId, invoiceId, conn.id, inv.currency, amountMinor, reference, checkoutId, checkoutId ? `https://checkout.paymongo.com/${checkoutId}` : null, over.status ?? "redirected",
+        conn.orgId, invoiceId, conn.id, inv.currency, amountMinor, reference, checkoutId, checkoutId ? (conn.provider === "paypal" ? `https://www.sandbox.paypal.com/checkoutnow?token=${checkoutId}` : `https://checkout.paymongo.com/${checkoutId}`) : null, over.status ?? "redirected",
         new Date(Date.now() + (over.expiresInHours ?? 24) * 3_600_000), new Date(Date.now() - (over.ageMinutes ?? 0) * 60_000),
       ],
     ),
@@ -214,4 +220,133 @@ export function fakePaymongo(): FakePaymongo {
     return typeof route.answer === "function" ? route.answer(req) : route.answer;
   };
   return { http, calls, on: (match, answer) => void routes.unshift({ match, answer }), throwNext: (e) => void failures.push(e) };
+}
+
+// ---------------------------------------------------------------------------
+// PayPal-shaped bodies, headers, and a network layer that is a fixture
+// ---------------------------------------------------------------------------
+// Written by hand from PayPal's documentation as remembered, NOT recorded from PayPal (see providers/paypal.ts). They prove the adapter does what it says with these
+// shapes, not that PayPal sends them. PayPal checks a delivery's signature by being asked, so the fixture "PayPal" answers that question by recomputing a stand-in
+// signature that is bound to the webhook id, the transmission id and the exact bytes of the event: a changed body, another webhook id or another signature fails.
+
+export const PAYPAL_CERT_URL = "https://api.sandbox.paypal.com/v1/notifications/certs/CERT-360caa42-fca2a594-1d93a270";
+
+/** The stand-in for PayPal's signature: bound to the webhook id, the transmission and the exact event bytes. */
+export const paypalSignatureFor = (webhookId: string, transmissionId: string, rawBody: string) => `fixture-sig-${crypto.createHash("sha256").update(`${webhookId}|${transmissionId}|${rawBody}`).digest("base64url")}`;
+
+export interface FakePaypal {
+  http: PaypalHttp;
+  calls: PaypalRequest[];
+  /** What a call answers, by a predicate on the request. Newest first; the defaults (token, signature check) are checked last. */
+  on(match: (req: PaypalRequest) => boolean, answer: PaypalResponse | ((req: PaypalRequest) => PaypalResponse)): void;
+  throwNext(error: Error): void;
+  /** The calls to one path. */
+  to(path: string | RegExp): PaypalRequest[];
+}
+
+/** The part of a verify-webhook-signature request body that is the event, byte for byte as the adapter put it there. */
+const eventOf = (body: string) => {
+  const marker = '"webhook_event":';
+  return body.slice(body.indexOf(marker) + marker.length, body.length - 1);
+};
+
+/** A network layer standing in for PayPal for one webhook id. A token call is answered, and a signature check is answered by recomputing the stand-in signature. */
+export function fakePaypal(webhookId: string): FakePaypal {
+  const calls: PaypalRequest[] = [];
+  const routes: Array<{ match: (r: PaypalRequest) => boolean; answer: PaypalResponse | ((r: PaypalRequest) => PaypalResponse) }> = [];
+  const failures: Error[] = [];
+  const defaults = (req: PaypalRequest): PaypalResponse => {
+    if (req.method === "POST" && req.path === "/v1/oauth2/token") return req.basic ? { status: 200, json: { access_token: "A21AAfixtureToken", token_type: "Bearer", expires_in: 32400 } } : { status: 401, json: { error: "invalid_client" } };
+    if (req.method === "POST" && req.path === "/v1/notifications/verify-webhook-signature") {
+      const sent = JSON.parse(req.body ?? "{}") as { webhook_id?: string; transmission_id?: string; transmission_sig?: string };
+      const ok = sent.webhook_id === webhookId && sent.transmission_sig === paypalSignatureFor(webhookId, String(sent.transmission_id), eventOf(req.body ?? ""));
+      return { status: 200, json: { verification_status: ok ? "SUCCESS" : "FAILURE" } };
+    }
+    return { status: 404, json: { name: "RESOURCE_NOT_FOUND", message: "The specified resource does not exist." } };
+  };
+  const http: PaypalHttp = async (req) => {
+    calls.push(req);
+    const f = failures.shift();
+    if (f) throw f;
+    const route = routes.find((r) => r.match(req));
+    if (!route) return defaults(req);
+    return typeof route.answer === "function" ? route.answer(req) : route.answer;
+  };
+  return {
+    http, calls, on: (match, answer) => void routes.unshift({ match, answer }), throwNext: (e) => void failures.push(e),
+    to: (path) => calls.filter((c) => (typeof path === "string" ? c.path === path : path.test(c.path))),
+  };
+}
+
+const paypalEnvelope = (eventId: string, type: string, resourceType: string, resource: unknown, createTime = new Date().toISOString()) =>
+  JSON.stringify({ id: eventId, event_version: "1.0", create_time: createTime, resource_type: resourceType, event_type: type, summary: "A fixture event", resource });
+
+const decimal = (minor: number, currency: string) => (currency === "JPY" ? String(minor) : (minor / 100).toFixed(2));
+
+export function paypalCaptureCompleted(o: { eventId?: string; captureId?: string; orderId: string; reference: string; amount: number; currency?: string; fee?: number; status?: string; createTime?: string }): string {
+  const currency = o.currency ?? "PHP";
+  return paypalEnvelope(o.eventId ?? `WH-${uid()}${uid()}`, "PAYMENT.CAPTURE.COMPLETED", "capture", {
+    id: o.captureId ?? `CAP${uid()}${uid()}`.toUpperCase(), status: o.status ?? "COMPLETED", amount: { currency_code: currency, value: decimal(o.amount, currency) }, final_capture: true, custom_id: o.reference,
+    seller_receivable_breakdown: { gross_amount: { currency_code: currency, value: decimal(o.amount, currency) }, paypal_fee: { currency_code: currency, value: decimal(o.fee ?? 500, currency) } },
+    supplementary_data: { related_ids: { order_id: o.orderId } }, create_time: o.createTime ?? new Date().toISOString(),
+  });
+}
+
+export function paypalCaptureOther(type: "PAYMENT.CAPTURE.PENDING" | "PAYMENT.CAPTURE.DENIED" | "PAYMENT.CAPTURE.REVERSED", o: { eventId?: string; captureId?: string; orderId: string; reference: string; amount: number; currency?: string }): string {
+  const currency = o.currency ?? "PHP";
+  return paypalEnvelope(o.eventId ?? `WH-${uid()}${uid()}`, type, "capture", {
+    id: o.captureId ?? `CAP${uid()}${uid()}`.toUpperCase(), status: type.endsWith("PENDING") ? "PENDING" : type.endsWith("DENIED") ? "DECLINED" : "REVERSED", amount: { currency_code: currency, value: decimal(o.amount, currency) },
+    custom_id: o.reference, supplementary_data: { related_ids: { order_id: o.orderId } },
+  });
+}
+
+export function paypalRefunded(o: { eventId?: string; refundId?: string; captureId: string; amount: number; currency?: string; note?: string }): string {
+  const currency = o.currency ?? "PHP";
+  return paypalEnvelope(o.eventId ?? `WH-${uid()}${uid()}`, "PAYMENT.CAPTURE.REFUNDED", "refund", {
+    id: o.refundId ?? `REF${uid()}${uid()}`.toUpperCase(), status: "COMPLETED", amount: { currency_code: currency, value: decimal(o.amount, currency) }, note_to_payer: o.note ?? "Refunded from the PayPal dashboard",
+    links: [{ href: `https://api.sandbox.paypal.com/v2/payments/refunds/${o.refundId ?? "REF1"}`, rel: "self", method: "GET" }, { href: `https://api.sandbox.paypal.com/v2/payments/captures/${o.captureId}`, rel: "up", method: "GET" }],
+  });
+}
+
+export function paypalOrderApproved(o: { eventId?: string; orderId: string; reference: string; amount: number; currency?: string }): string {
+  const currency = o.currency ?? "PHP";
+  return paypalEnvelope(o.eventId ?? `WH-${uid()}${uid()}`, "CHECKOUT.ORDER.APPROVED", "checkout-order", {
+    id: o.orderId, status: "APPROVED", intent: "CAPTURE", purchase_units: [{ custom_id: o.reference, amount: { currency_code: currency, value: decimal(o.amount, currency) } }],
+  });
+}
+
+export function paypalDispute(type: "CUSTOMER.DISPUTE.CREATED" | "CUSTOMER.DISPUTE.RESOLVED", o: { eventId?: string; captureId: string }): string {
+  return paypalEnvelope(o.eventId ?? `WH-${uid()}${uid()}`, type, "dispute", { dispute_id: "PP-D-1", status: type.endsWith("CREATED") ? "OPEN" : "RESOLVED", disputed_transactions: [{ seller_transaction_id: o.captureId }] });
+}
+
+/** An order as PayPal describes it when asked (GET or capture). */
+export function paypalOrder(o: { orderId: string; reference: string; status: string; amount: number; currency?: string; captures?: Array<{ id: string; status: string; amount?: number; fee?: number }> }) {
+  const currency = o.currency ?? "PHP";
+  return {
+    id: o.orderId, status: o.status, intent: "CAPTURE",
+    purchase_units: [{
+      custom_id: o.reference, amount: { currency_code: currency, value: decimal(o.amount, currency) },
+      ...(o.captures ? { payments: { captures: o.captures.map((c) => ({ id: c.id, status: c.status, amount: { currency_code: currency, value: decimal(c.amount ?? o.amount, currency) }, seller_receivable_breakdown: { paypal_fee: { currency_code: currency, value: decimal(c.fee ?? 500, currency) } } })) } } : {}),
+    }],
+    links: [{ href: `https://api.sandbox.paypal.com/v2/checkout/orders/${o.orderId}`, rel: "self", method: "GET" }],
+  };
+}
+
+/** Hands a PayPal delivery to the real webhook handler, headed the way PayPal heads it and signed with the stand-in unless the test says otherwise. */
+export function paypalDeliver(
+  conn: TestConnection,
+  rawBody: string,
+  over: { signature?: string | null; webhookId?: string; certUrl?: string | null; time?: string; transmissionId?: string; key?: string; omit?: string[]; ip?: string | null; now?: Date } = {},
+): Promise<WebhookResult> {
+  const transmissionId = over.transmissionId ?? `tx-${uid()}${uid()}`;
+  const headers = new Headers();
+  const set = (name: string, value: string | null) => {
+    if (value !== null && !(over.omit ?? []).includes(name)) headers.set(name, value);
+  };
+  set("paypal-auth-algo", "SHA256withRSA");
+  set("paypal-cert-url", over.certUrl === undefined ? PAYPAL_CERT_URL : over.certUrl);
+  set("paypal-transmission-id", transmissionId);
+  set("paypal-transmission-sig", over.signature === undefined ? paypalSignatureFor(over.webhookId ?? conn.webhookSecret, transmissionId, rawBody) : over.signature);
+  set("paypal-transmission-time", over.time ?? new Date().toISOString());
+  return handleCustomerPaymentWebhook({ provider: "paypal", key: over.key ?? conn.publicKey, rawBody, headers, ip: over.ip ?? null, now: over.now });
 }

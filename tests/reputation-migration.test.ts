@@ -90,7 +90,7 @@ describe("migration 0094: what it adds", () => {
       expect(r.kind).toMatchObject({ column_default: "'review'::text", is_nullable: "NO" });
       expect(r.scale).toMatchObject({ column_default: "'csat5'::text", is_nullable: "NO" });
       expect(Object.keys(await cols("reputation_settings")).sort()).toEqual([
-        "acknowledge_within_hours", "ai_replies_enabled", "escalate_at_or_below", "nps_detractor_max", "org_id", "outcome_nudges_enabled", "public_review_alert_at_or_below", "reply_style_note", "sla_reminders_enabled", "updated_at", "updated_by", "version",
+        "acknowledge_within_hours", "ai_replies_enabled", "escalate_at_or_below", "nps_detractor_max", "org_id", "outcome_nudges_enabled", "public_review_alert_at_or_below", "renewal_reminders_enabled", "reply_style_note", "sla_reminders_enabled", "updated_at", "updated_by", "version",
       ]);
       expect((await db.query("select 1 from reputation_settings where org_id = $1", [w.org.id])).rows).toHaveLength(0);
       throw new Done();

@@ -232,7 +232,7 @@ export async function mergeContactsInTx(db: Queryable, who: Principal | OrgConte
  * References to a contact from records added by later CRM phases (opportunities, tasks, review requests, private feedback, call records). Each statement only runs when
  * its column exists, so this stays correct as the schema grows. Every name below is a real table with a contact_id column (tests/reputation-contacts.test.ts keeps it so).
  */
-export const MOVED_CONTACT_TABLES = ["crm_opportunities", "tasks", "crm_review_requests", "customer_feedback", "crm_form_submissions", "crm_call_records", "crm_campaign_recipients", "customer_invoices"] as const;
+export const MOVED_CONTACT_TABLES = ["crm_opportunities", "tasks", "crm_review_requests", "customer_feedback", "crm_form_submissions", "crm_call_records", "crm_campaign_recipients", "customer_invoices", "external_reviews"] as const;
 
 async function moveContactReferences(db: Queryable, orgId: string, fromId: string, toId: string) {
   const { rows } = await db.query<{ table_name: string }>(

@@ -11,6 +11,7 @@ import { PanelTabs, type TabItem } from "@/components/proposals/tabs";
 import { ProposalEditor } from "@/components/proposals/editor";
 import type { TaxOption } from "@/components/proposals/lines-editor";
 import { DeliveryPanel } from "@/components/proposals/delivery-panel";
+import { SignaturePanel } from "@/components/proposals/signature-panel";
 import { ActivityPanel, VersionsPanel } from "@/components/proposals/history-panels";
 import { ProposalDocument } from "@/components/proposals/public/document";
 
@@ -28,24 +29,27 @@ export interface WorkspaceProps {
 }
 
 export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, tz, initialTab }: WorkspaceProps) {
-  const [tab, setTab] = React.useState<string>(initialTab ?? "edit");
-  const [dirty, setDirty] = React.useState(false);
   const reason = lockedReason(detail.status, detail.viewer.canEdit);
   const editable = reason === null;
+  // The Signature tab is there for a proposal that asks for a signature, or that has had a signing request, and only then: it is no use to anyone else.
+  const withSignature = detail.requiresSignature || detail.signature.requests.length > 0;
   const items: TabItem[] = [
     { id: "edit", label: editable ? "Edit" : "Details" },
     { id: "preview", label: "Preview" },
     { id: "versions", label: "Versions", count: detail.versions.length },
     { id: "activity", label: "Activity" },
     { id: "delivery", label: "Delivery" },
+    ...(withSignature ? [{ id: "signature", label: "Signature" }] : []),
   ];
+  const [tab, setTab] = React.useState<string>(initialTab && items.some((i) => i.id === initialTab) ? initialTab : "edit");
+  const [dirty, setDirty] = React.useState(false);
   const preview = detail.preview;
   return (
     <div className="space-y-5">
       {detail.ai && <AiNotice ai={detail.ai} />}
       <ProposalActions detail={detail} can={can} twoPerson={twoPerson} dirty={dirty} tz={tz} onOpenTab={setTab} />
       <PanelTabs
-        label="Proposal sections" items={items} value={tab} onChange={setTab} idPrefix="prop"
+        label="Proposal sections" items={items} value={items.some((i) => i.id === tab) ? tab : "edit"} onChange={setTab} idPrefix="prop"
         panels={{
           edit: <ProposalEditor detail={detail} catalog={catalog} taxRates={taxRates} canDiscount={can.discount} editable={editable} lockedReason={reason} onDirtyChange={setDirty} />,
           preview: (
@@ -64,7 +68,8 @@ export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, t
           ),
           versions: <VersionsPanel detail={detail} tz={tz} />,
           activity: <ActivityPanel detail={detail} tz={tz} />,
-          delivery: <DeliveryPanel detail={detail} canSend={can.send} tz={tz} />,
+          delivery: <DeliveryPanel detail={detail} canSend={can.send} tz={tz} onOpenTab={setTab} />,
+          ...(withSignature ? { signature: <SignaturePanel detail={detail} tz={tz} /> } : {}),
         }}
       />
     </div>

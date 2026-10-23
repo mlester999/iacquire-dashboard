@@ -152,6 +152,9 @@ export const CRM_QA_ENV = {
   PROPOSALS_PUBLIC_DISABLED: "false",
   // Electronic signatures: no real signing service is ever reached in a QA run; the simulated one is what QA uses.
   ESIGN_WRITES_ENABLED: "false",
+  // Customers' payments: no payment provider is ever called and nothing live is open. The simulated provider and its testing checkout page are what QA uses.
+  CUSTOMER_PAYMENTS_WRITES_ENABLED: "false",
+  CUSTOMER_PAYMENTS_LIVE_ENABLED: "false",
 };
 
 /** Variables that must stay empty: hosted database, Supabase, and every provider secret, key and URL. */
@@ -170,6 +173,7 @@ export const MUST_BE_BLANK = [
 /** Kill switches that must stay off. */
 export const MUST_BE_FALSE = [
   "GHL_WRITES_ENABLED", "RESEND_WRITES_ENABLED", "TWILIO_WRITES_ENABLED", "META_WHATSAPP_WRITES_ENABLED", "META_SOCIAL_WRITES_ENABLED", "GOOGLE_BUSINESS_API_APPROVED", "GOOGLE_BUSINESS_REPLIES_ENABLED", "META_REVIEWS_ENABLED", "META_REVIEWS_REPLIES_ENABLED", "N8N_ACTIONS_ENABLED", "ESIGN_WRITES_ENABLED",
+  "CUSTOMER_PAYMENTS_WRITES_ENABLED", "CUSTOMER_PAYMENTS_LIVE_ENABLED",
   "OFFBOARDING_PURGE_ENABLED", "ALLOW_INSECURE_HERMES_URLS", "ALLOW_LEGACY_CREDENTIAL_READS",
 ];
 

@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review" | "social_performance_review" | "receivables_review";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review" | "social_performance_review" | "receivables_review" | "reputation_review";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -134,6 +134,16 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     requiredPermission: "invoices.view",
     risk: "read_only",
     produces: "Findings about overdue invoices, failed or held payments, deliveries that were not applied, a payment account that needs attention, reminders on hold and reminders that could not be sent, each with a link; plus counts of open, overdue and recently paid invoices.",
+    workBoardAction: true,
+  },
+  reputation_review: {
+    key: "reputation_review",
+    label: "Reputation review",
+    description: "Read private feedback, public reviews a connected review site returned, replies to them, review site connections and review requests, then say what is waiting for a person and what the evidence supports. It never writes, posts, approves or sends anything, never contacts a customer or a review site, and never writes, edits or counts a review or a rating.",
+    allowedRoles: ["performance_analyst"],
+    requiredPermission: "reviews.view",
+    risk: "read_only",
+    produces: "Findings about low private feedback nobody has acknowledged, complaints nobody has taken, public reviews with no reply, replies waiting for approval or not posted, review sites that need reconnecting, customer programs whose approval lapsed and why review requests did not go out, each with a link; plus counts, and a plain caution when there are too few answers to read a trend.",
     workBoardAction: true,
   },
   performance_snapshot: {

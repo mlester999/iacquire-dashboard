@@ -5,6 +5,8 @@ import { memberActor, type CrmActor } from "@/server/crm/actor";
 import { createContact, setContactConsent } from "@/server/crm/contacts";
 import { approveTemplate, createTemplate } from "@/server/crm/message-templates";
 import { createReviewDestination, hashReviewToken, requestReview, reviewTokenFor, submitReviewFeedback } from "@/server/crm/reviews";
+import { connectSimulatedSite, type ConnectionView } from "@/server/reputation/connections";
+import { simulatedReviews, type SimSeed } from "@/server/reputation/providers/simulated";
 import { messagingOrg, phone, type MessagingOrg } from "./messaging";
 
 export const one = async <T>(sql: string, params: unknown[] = []): Promise<T> => (await withSystem((db) => db.query<T & Record<string, unknown>>(sql, params))).rows[0] as T;
@@ -149,3 +151,54 @@ export function batchInput(s: ReputationShop, over: Partial<{ name: string; temp
     name: "October visits", templateId: s.smsTemplate.id, criteria: { source: "appointments_showed", from: dayAgo(30), to: dayAgo(0) }, ...over,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Public reviews (review sites, the mirror, replies). The review site is always the in-process simulated one or a replaced HTTP layer: nothing here reaches a real service.
+// ---------------------------------------------------------------------------
+
+/** Switches public reviews on (or off) for a workspace, the way a Super Admin does: org_features, feature "reputation_reviews". */
+export async function setReviews(orgId: string, enabled: boolean) {
+  await withSystem((db) => db.query(
+    "insert into org_features (org_id, feature, enabled) values ($1, 'reputation_reviews', $2) on conflict (org_id, feature) do update set enabled = excluded.enabled",
+    [orgId, enabled],
+  ));
+}
+
+/** A reputation workspace with public reviews switched on. Pass `{ reviews: false }` for one that never had them. (The simulated review site is shared by the whole test file: a test resets it in beforeEach.) */
+export async function reviewsShop(name: string, opts: { reviews?: boolean; credits?: number } = {}): Promise<ReputationShop> {
+  const s = await reputationShop(name, { credits: opts.credits });
+  if (opts.reviews !== false) await setReviews(s.m.org.id, true);
+  return s;
+}
+
+/** Connects a made-up review site (Google or Facebook) as the owner would, and seeds what it holds. */
+export async function connectSim(s: ReputationShop, provider: "google" | "facebook" = "google", seed?: SimSeed[], reported?: { count?: number | null; rating?: number | null }): Promise<ConnectionView> {
+  const c = await connectSimulatedSite(s.owner, { provider, name: `${provider === "google" ? "Google" : "Facebook"} test location` });
+  if (seed) simulatedReviews.seed(c.externalLocationId, seed, reported);
+  return c;
+}
+
+/** A review the simulated site holds: a star rating by default, written `daysAgo` days before `now`. */
+export const simReview = (id: string, over: Partial<SimSeed> & { daysAgo?: number } = {}): SimSeed => {
+  const { daysAgo, ...rest } = over;
+  return { id, rating: 5, name: `Reviewer ${id}`, comment: `Sample comment ${id}`, createdAt: new Date(Date.now() - (daysAgo ?? 1) * 86_400_000), ...rest };
+};
+
+/** The mirror row for one review the site returned. */
+export const mirrored = (connectionId: string, providerReviewId: string) => one<{
+  id: string; rating: number | null; recommends: boolean | null; comment: string | null; reviewer_name: string | null; reviewer_anonymous: boolean; removed_at: Date | null;
+  provider_reply_text: string | null; last_seen_at: Date; alerted_at: Date | null; simulated: boolean; contact_id: string | null;
+}>("select id, rating, recommends, comment, reviewer_name, reviewer_anonymous, removed_at, provider_reply_text, last_seen_at, alerted_at, simulated, contact_id from external_reviews where connection_id = $1 and provider_review_id = $2", [connectionId, providerReviewId]);
+
+export const mirrorCount = (connectionId: string, where = "true") => count(`select count(*)::text as n from external_reviews where connection_id = $1 and ${where}`, [connectionId]);
+
+/** The reply a review has in progress (or its latest), as stored. */
+export const replyOf = (reviewId: string) => one<{
+  id: string; status: string; version: number; body: string; origin: string; approved_version: number | null; approved_hash: string | null; approved_by: string | null; sending_at: Date | null;
+  posted_via: string | null; verified_at: Date | null; failure_code: string | null; author_id: string | null; decision_note: string | null; ai_meta: Record<string, unknown> | null;
+}>("select id, status, version, body, origin, approved_version, approved_hash, approved_by, sending_at, posted_via, verified_at, failure_code, author_id, decision_note, ai_meta from review_replies where review_id = $1 order by created_at desc limit 1", [reviewId]);
+
+export const replyEvents = (replyId: string) => all<{ kind: string; actor_kind: string }>("select kind, actor_kind from review_reply_events where reply_id = $1 order by id", [replyId]);
+
+/** A short, calm reply that passes every rule. */
+export const CALM_REPLY = "Thank you for taking the time to write this. The team would like to hear more, and you can find how to reach us on our listing.";

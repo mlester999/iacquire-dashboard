@@ -12,7 +12,7 @@ import { addSigEvent, esignOnSql, loadConnection, orgRunnableSql, REQUEST_COLUMN
 import { applyProviderFact, failRequest, voidLiveRequestsInTx } from "@/server/esign/apply";
 import { openCredentials } from "@/server/esign/credentials";
 import { flagConnectionAttention } from "@/server/esign/connections";
-import { liveEsignWritesEnabled, providerFor, type Adapter } from "@/server/esign/providers";
+import { liveEsignWritesEnabled, providerFor, simulatedAllowed, type Adapter } from "@/server/esign/providers";
 import { EsignProviderError, type CreateInput, type CreateState, type EsignCredentials, type EsignProvider } from "@/server/esign/providers/types";
 
 // Asking the signing service, durably. A request has a row. A worker claims a due one for a short LEASE, does the next step at the service, and saves what happened after EVERY
@@ -94,17 +94,18 @@ export async function recoverExpiredLeases(db: Queryable, now: Date, orgId: stri
 }
 
 async function claimNext(db: Queryable, workerId: string, now: Date, live: boolean, orgId: string | null): Promise<RequestRow | null> {
-  // The write switch for real connections, a workspace that is stopped and a connection that needs attention each hold a request back untouched.
+  // The write switch for real connections, a workspace that is stopped and a connection that needs attention each hold a request back untouched. The stand-in service has no
+  // requests to hand over in production.
   const { rows } = await db.query<RequestRow>(
     `update signature_requests r set status = 'sending', attempt = r.attempt + 1, lease_until = $2::timestamptz, claimed_by = $1
      where r.id = (
        select q.id from signature_requests q join esign_connections c on c.id = q.connection_id and c.org_id = q.org_id
        where q.status = 'queued' and q.run_at <= $3::timestamptz and ($5::uuid is null or q.org_id = $5) and c.status = 'connected'
-         and (c.provider = 'simulated' or $4::boolean) and ${orgRunnableSql("q.org_id")} and ${esignOnSql("q.org_id")}
+         and (c.provider = 'simulated' or $4::boolean) and (c.provider <> 'simulated' or $6::boolean) and ${orgRunnableSql("q.org_id")} and ${esignOnSql("q.org_id")}
        order by q.run_at, q.created_at limit 1 for update of q skip locked
      )
      returning ${REQUEST_COLUMNS}`,
-    [workerId, iso(new Date(now.getTime() + LEASE_SECONDS * 1000)), iso(now), live, orgId],
+    [workerId, iso(new Date(now.getTime() + LEASE_SECONDS * 1000)), iso(now), live, orgId, simulatedAllowed()],
   );
   return rows[0] ?? null;
 }

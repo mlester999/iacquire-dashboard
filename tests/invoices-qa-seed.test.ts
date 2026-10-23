@@ -1,0 +1,84 @@
+// The invoices browser-QA world (scripts/invoices-qa-world.ts) proves itself on a synthetic workspace: every story ends in the state it says it does, nothing leaves the machine, and
+// the customer addresses it prints open the pages it describes. If this passes, the QA seed's logic works; only its wrapper (the isolated QA database) is not exercised here.
+import { describe, expect, it } from "vitest";
+import { seedInvoiceWorld } from "../scripts/invoices-qa-world";
+import { attributionReport } from "@/server/attribution/report";
+import { getInvoiceDetail } from "@/server/invoices/invoices";
+import { loadPublicInvoice } from "@/server/invoices/public";
+import { freshIp, invoiceOrg, rows } from "./support/invoices";
+
+const world = (io: Awaited<ReturnType<typeof invoiceOrg>>, over: Parameters<typeof seedInvoiceWorld>[1] = {}) => seedInvoiceWorld({ owner: io.ctx("owner"), ownerActor: io.c.actor("owner"), sales: io.ctx("sales") }, over);
+
+describe("the invoices QA world", () => {
+  it("builds fourteen invoices in the states it describes, with customer links that open the right pages, and sends nothing to anyone", async () => {
+    const io = await invoiceOrg();
+    const outboxBefore = (await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n;
+    const out = await world(io);
+    expect(out).toHaveLength(14);
+    const by = (title: string) => out.find((r) => r.title === title)!;
+    const detail = (title: string) => getInvoiceDetail(io.ctx("owner"), by(title).invoiceId);
+    const status = async (title: string) => { const d = await detail(title); return `${d.invoice.status}/${d.invoice.paymentStatus}`; };
+
+    // Numbers are given when an invoice is issued: the draft and the one waiting for approval have none.
+    expect(by("Bathroom faucet replacement").number).toBeNull();
+    expect(by("Leak detection survey").number).toBeNull();
+    expect(out.filter((r) => r.number).map((r) => r.number)).toEqual(Array.from({ length: 12 }, (_, i) => `INV-${String(i + 1).padStart(4, "0")}`));
+    expect(await status("Bathroom faucet replacement")).toBe("draft/unpaid");
+    expect(await status("Leak detection survey")).toBe("pending_approval/unpaid");
+    expect(await status("Annual boiler service")).toBe("issued/unpaid");
+    expect(await status("Water heater inspection")).toBe("issued/unpaid");
+    expect((await detail("Water heater inspection")).invoice.overdue).toBe(true);
+    expect((await detail("Annual boiler service")).invoice.overdue).toBe(false);
+    expect(await status("Kitchen repipe")).toBe("issued/partially_paid");
+    expect(await status("Drain clearing")).toBe("issued/paid");
+    expect(await status("Sump pump installation")).toBe("issued/paid");
+    expect((await detail("Sump pump installation")).payments[0]).toMatchObject({ status: "partially_refunded", livemode: false, provider: "simulated" });
+    expect(await status("Gas line check")).toBe("void/unpaid");
+    expect((await detail("Remote monitoring set-up")).invoice).toMatchObject({ currency: "USD", taxInclusive: true });
+    expect((await detail("Seasonal tune-up")).invoice.writtenOffAt).not.toBeNull();
+    expect(await status("Pressure valve replacement")).toBe("issued/disputed");
+    // The payment the provider reported that did not match is kept for review and counts for nothing.
+    expect(await status("Radiator bleed")).toBe("issued/unpaid");
+    expect((await detail("Radiator bleed")).payments).toEqual([expect.objectContaining({ status: "needs_review" })]);
+    expect(await status("Whole-house water filter")).toBe("issued/paid");
+    expect(await status("Sprinkler repair")).toBe("issued/paid");
+
+    // Each customer link opens its own invoice; a void invoice and the drafts have none.
+    for (const r of out) {
+      if (!r.customerPath) continue;
+      const res = await loadPublicInvoice(r.customerPath.split("/pay/")[1], { ip: freshIp() });
+      if (r.title === "Gas line check") continue;
+      expect(res.state, r.title).toBe("ok");
+      expect(res.state === "ok" && res.invoice.number, r.title).toBe(r.number);
+    }
+    expect(by("Gas line check").customerPath).toBeNull();
+    expect(by("Bathroom faucet replacement").customerPath).toBeNull();
+
+    // Nothing was sent: no message exists, no email left the outbox's capture, and the only payment connections are the simulated one and a paused placeholder with no keys.
+    expect((await rows<{ n: string }>("select count(*)::text as n from conversation_messages where org_id = $1", [io.orgId]))[0].n).toBe("0");
+    expect((await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n).toBe(outboxBefore);
+    const connections = await rows<{ provider: string; mode: string; status: string; credentials: string | null }>("select provider, mode, status, credentials from customer_payment_connections where org_id = $1 order by provider", [io.orgId]);
+    expect(connections.map((c) => `${c.provider}/${c.mode}/${c.status}`)).toEqual(["paymongo/live/disabled", "simulated/test/connected"]);
+    expect(connections.find((c) => c.provider === "paymongo")!.credentials).toBeNull();
+
+    // The Lead Sources report has something to show, honestly: the fictional live payment is revenue, the hand-recorded one is shown apart, the testing checkout's payments are left out.
+    const report = await attributionReport(io.c.actor("owner"), { startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 86_400_000) });
+    const google = report.rows.find((r) => r.source === "google")!;
+    expect(google.verifiedRevenue.map((l) => `${l.currency} ${l.amount}`)).toEqual(["PHP 7000"]);
+    // The 4,000.00 deposit on the kitchen repipe and the 1,500.00 sprinkler repair, both recorded by a person.
+    expect(google.recordedByHand.map((l) => `${l.currency} ${l.amount}`)).toEqual(["PHP 5500"]);
+    expect(google).toMatchObject({ cost: [{ currency: "PHP", amount: 1500 }], returnCurrency: "PHP" });
+    expect(google.returnOnSpend).toBeCloseTo((7000 - 1500) / 1500, 4);
+    expect(report.rows.find((r) => r.source === "facebook")!.verifiedRevenue).toEqual([]);
+    expect(report.revenue).toMatchObject({ state: "shown", manualCounted: false, testPaymentsExcluded: 1, disputedHeldOut: 1 });
+  }, 120_000);
+
+  it("leaves the fictional live payment out when asked, so no invoice is paid by money that never moved", async () => {
+    const io = await invoiceOrg();
+    const out = await world(io, { revenueFiction: false });
+    expect(out).toHaveLength(12);
+    expect((await rows<{ n: string }>("select count(*)::text as n from customer_payments where org_id = $1 and provider = 'paymongo'", [io.orgId]))[0].n).toBe("0");
+    const report = await attributionReport(io.c.actor("owner"), { startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 86_400_000) });
+    expect(report.rows.every((r) => r.verifiedRevenue.length === 0)).toBe(true);
+  }, 120_000);
+});

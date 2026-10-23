@@ -16,6 +16,9 @@ import { searchDealsForProposal } from "@/server/proposals/search";
 import { getShareUrl, renewShareLink } from "@/server/proposals/share";
 import { saveProposalSettings } from "@/server/proposals/settings";
 import { approveTemplate, archiveTemplate, createTemplate, saveTemplate } from "@/server/proposals/templates";
+import { checkConnection, connectPandaDoc, connectSimulated, disconnect, getWebhookUrl } from "@/server/esign/connections";
+import { requestSignature, voidSignatureRequest } from "@/server/esign/requests";
+import { actAsSimulatedSigner } from "@/server/esign/simulate";
 
 // Server actions for proposals (/proposals). Every rule, and every permission check, lives in src/server/proposals; these parse the input, resolve who is acting and refresh the
 // screens. The price book, tax rates and templates also take the client's id so an agency person inside an audited support session can set them up as a service; everything else
@@ -221,4 +224,45 @@ export async function archiveTemplateAction(orgId: string | null, id: string) {
     await archiveTemplate(actor, uuid.parse(id));
     return true;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Electronic signing
+// ---------------------------------------------------------------------------
+// The signing account is the client's own: only the owner or a manager connects it (proposals.connect), and the agency never does, so none of these take a client id. The keys
+// are checked, sealed and kept on the server; no action returns them, and the result of a connect is the connection as a person may see it.
+
+const pandaDocConnect = z.object({
+  apiKey: z.string().max(400), webhookKey: z.string().max(400), mode: z.enum(["sandbox", "live"]), label: z.string().max(120).optional(),
+});
+export async function connectPandaDocAction(input: unknown) {
+  return act(null, "proposals.connect", (actor) => connectPandaDoc(actor, pandaDocConnect.parse(input)));
+}
+/** A stand-in connection for tests and demonstrations. It does not exist in production, and the service refuses it there whatever is sent. */
+export async function connectSimulatedSigningAction() {
+  return act(null, "proposals.connect", (actor) => connectSimulated(actor, { label: "Simulated signing service" }));
+}
+export async function checkSigningConnectionAction() {
+  return act(null, "proposals.connect", (actor) => checkConnection(actor));
+}
+/** The secret address the signing service is given for its notices. Shown to the person who asked; never logged or kept. */
+export async function getSigningWebhookUrlAction() {
+  return act(null, "proposals.connect", (actor) => getWebhookUrl(actor), { refresh: false });
+}
+export async function disconnectSigningAction() {
+  return act(null, "proposals.connect", (actor) => disconnect(actor));
+}
+
+const signer = z.object({ signerName: z.string().max(400).nullish(), signerEmail: z.string().max(400).nullish() });
+export async function requestSignatureAction(proposalId: string, input: unknown) {
+  return act(null, "proposals.send", (actor) => requestSignature(actor, uuid.parse(proposalId), signer.parse(input ?? {})));
+}
+export async function voidSignatureRequestAction(requestId: string) {
+  return act(null, "proposals.send", async (actor) => {
+    await voidSignatureRequest(actor, uuid.parse(requestId));
+    return true;
+  });
+}
+export async function actAsSimulatedSignerAction(requestId: string, action: string) {
+  return act(null, "proposals.send", (actor) => actAsSimulatedSigner(actor, uuid.parse(requestId), z.enum(["send_now", "view", "sign", "decline", "expire"]).parse(action)));
 }

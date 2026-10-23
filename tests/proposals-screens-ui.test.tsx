@@ -95,6 +95,12 @@ const baseDoc = (): ProposalDoc => ({
   terms: "Payment is due within 14 days.",
 });
 
+/** Signing is not switched on for the workspace: the Signature tab has nothing to show but that. */
+const NO_SIGNATURE: ProposalDetail["signature"] = {
+  enabled: false, connection: null, requests: [], blocked: "Electronic signing isn't switched on for your workspace yet. Ask your iAcquire contact to switch it on.", canRequest: false, canConnect: false,
+  defaultSigner: { name: "Maria Santos", email: "maria@example.test" }, simulated: false,
+};
+
 function detail(over: Partial<ProposalDetail> = {}): ProposalDetail {
   const doc = over.doc ?? baseDoc();
   return {
@@ -103,7 +109,7 @@ function detail(over: Partial<ProposalDetail> = {}): ProposalDetail {
     opportunityId: null, sentAt: null, closedAt: null, createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-21T10:00:00.000Z", doc, liveTotals: computeDocTotals(doc.lines).groups,
     clientEmail: "maria@example.test", internalNotes: null, templateId: null, templateVersion: null, approvedVersion: null, approvedByName: null, approvedAt: null, decisionNote: null,
     sentVersion: null, sentByName: null, signatureState: "none", problems: [], approval: { required: false, reasons: [] }, versions: [], decisions: [], events: [], share: null, preview: null,
-    createdById: ME, viewer: { userId: ME, canEdit: true, isAuthor: true }, ai: null, ...over,
+    createdById: ME, viewer: { userId: ME, canEdit: true, isAuthor: true }, ai: null, signature: NO_SIGNATURE, ...over,
   };
 }
 

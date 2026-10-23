@@ -7,10 +7,12 @@ import { recordAudit } from "@/server/audit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { cancelRetention } from "@/server/retention/cancel";
 import { endWorkspaceBatches } from "@/server/reputation/batch-state";
+import { disconnectWorkspaceReviewConnections } from "@/server/reputation/connections";
 import { releaseReservation } from "@/server/billing/ledger";
 import { disconnectIntegration } from "@/server/integrations/manager";
 import { disconnectWorkspaceAccounts } from "@/server/social/accounts";
 import { revokeWorkspaceConnections } from "@/server/customer-payments/connections";
+import { disconnectWorkspaceEsign } from "@/server/esign/connections";
 import { removeStoredObjectTrusted, type PrivateBucket } from "@/server/storage/private";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -245,6 +247,18 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
         : "No social media accounts were connected.",
   );
 
+  // 2b-2. Review sites (Google Business Profile, Facebook recommendations). A Google connection holds a long-lived refresh token, deleted here exactly as the owner's own disconnect
+  // would; nothing more is read. The reviews already read stay for the export. Recorded only when there was something to disconnect.
+  const reviewSites = await disconnectWorkspaceReviewConnections(orgId, user.id);
+  if (reviewSites.disconnected > 0 || reviewSites.failed.length > 0) {
+    await record(
+      "review_sites", reviewSites.failed.length === 0,
+      reviewSites.failed.length
+        ? `Could not disconnect review sites: ${reviewSites.failed.join(", ")}. Disconnect them by hand and remove iAcquire's access in the review site's account settings.`
+        : `Disconnected ${reviewSites.disconnected} review site${reviewSites.disconnected === 1 ? "" : "s"} and deleted the saved sign-in. Remove iAcquire's access in the review site's account settings too.`,
+    );
+  }
+
   // 2c. The business's own payment accounts (customer invoices). Their keys can move money, so they are deleted exactly as the owner's own disconnect would; the invoices and
   // payments already recorded are the client's data and stay for the export. Recorded only when there was something to disconnect.
   const payments = await revokeWorkspaceConnections(orgId, user.id);
@@ -254,6 +268,18 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
       payments.failed.length
         ? `Could not disconnect payment accounts: ${payments.failed.join(", ")}. Remove the saved keys by hand and revoke them at the provider.`
         : `Disconnected ${payments.revoked} payment account${payments.revoked === 1 ? "" : "s"} and deleted the saved keys${payments.cancelledCheckouts ? `; ${payments.cancelledCheckouts} checkout${payments.cancelledCheckouts === 1 ? "" : "s"} waiting to be paid ${payments.cancelledCheckouts === 1 ? "was" : "were"} cancelled` : ""}. Revoke the keys at the provider too.`,
+    );
+  }
+
+  // 2d. The business's own signing service (proposals). Its API key can create and send documents in the client's account, so it is deleted exactly as the owner's own
+  // disconnect would, and signing requests still out are ended (a signature that arrives later is not applied). Recorded only when there was something to disconnect.
+  const esign = await disconnectWorkspaceEsign(orgId, user.id);
+  if (esign.disconnected > 0 || esign.failed) {
+    await record(
+      "esign", !esign.failed,
+      esign.failed
+        ? "Could not disconnect the signing service. Remove the saved keys by hand and revoke them at the signing service."
+        : `Disconnected the signing service and deleted the saved keys${esign.ended ? `; ${esign.ended} signing request${esign.ended === 1 ? "" : "s"} still out ${esign.ended === 1 ? "was" : "were"} ended` : ""}. Revoke the key at the signing service too, and withdraw any document still waiting there.`,
     );
   }
 
@@ -283,7 +309,7 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     );
     await addEvent(db, requestId, orgId, "shutdown", `Workspace shut down. Data is kept for ${d.retentionDays} days. Remaining prepaid credit: $${(Number(bal) / 1_000_000).toFixed(2)}.`, user.id);
     await addEvent(db, requestId, orgId, "retention_started", `Deletion can be scheduled after ${d.retentionDays} days.`, user.id);
-    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length || !socialOk || payments.failed.length ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed, failedSocialDisconnects: social.failed, failedPaymentDisconnects: payments.failed } }, db);
+    await recordAudit({ orgId, actorUserId: user.id, actorKind: "agency", action: "offboarding.shutdown", targetType: "offboarding_request", targetId: requestId, result: failed.length || !socialOk || payments.failed.length || esign.failed ? "failure" : "success", metadata: { retentionDays: d.retentionDays, websitePlan: d.websitePlan, failedDisconnects: failed, failedSocialDisconnects: social.failed, failedPaymentDisconnects: payments.failed, failedEsignDisconnect: esign.failed } }, db);
     await notifyOrgRoles(db, orgId, ["owner"], {
       kind: "offboarding_update", severity: "info", title: "Your workspace has been closed down",
       body: `Automation and messaging are off. You can download your data until ${new Date(res.rows[0].delete_after!).toISOString().slice(0, 10)}. Your domains are yours to keep.`, link: "/settings/data", dedupeKey: `offboarding:${requestId}:shutdown`,

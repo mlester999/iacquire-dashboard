@@ -17,6 +17,8 @@ import { AUTHORIZATION, attempt, connect, deliver, fakePaymongo, paymongoPaid, q
 const TEST_KEY = "sk_test_AbCdEfGh90abcdef";
 const LIVE_KEY = "sk_live_ZyXwVuTs21zyxwvu";
 const WH = "whsk_0123456789abcdef01234567";
+const PAYPAL_ID = "AbCdEfGhIjKlMnOpQrStUvWx";
+const PAYPAL_SECRET = "ZyXwVuTsRqPoNmLkJiHgFeDcBa12";
 const OK_LIST = { status: 200, json: { data: [] } };
 
 const stored = (id: string) => q<{ credentials: string | null; status: string; mode: string; live_confirmed_at: string | null; last_error: string | null; supported_currencies: string[]; authorization_text_version: string | null; authorized_by: string | null }>(
@@ -87,13 +89,14 @@ describe("connecting the simulated provider", () => {
     expect(String(err)).toMatch(/permission denied/);
   });
 
-  it("needs the current wording accepted, only one account per provider, and honestly refuses PayPal", async () => {
+  it("needs the current wording accepted, only one account per provider, and refuses PayPal while real provider calls are switched off", async () => {
     const io = await invoiceOrg();
     await expect(connectProvider(io.ctx("owner"), { provider: "simulated", authorization: { accepted: false, version: CURRENT_AUTHORIZATION_VERSION } })).rejects.toThrow();
     await expect(connectProvider(io.ctx("owner"), { provider: "simulated", authorization: { accepted: true, version: "draft-1999" } })).rejects.toThrow();
     await connectProvider(io.ctx("owner"), { provider: "simulated", authorization: AUTHORIZATION });
     await expect(connectProvider(io.ctx("owner"), { provider: "simulated", authorization: AUTHORIZATION })).rejects.toThrow(/already connected/);
-    await expect(connectProvider(io.ctx("owner"), { provider: "paypal", authorization: AUTHORIZATION })).rejects.toThrow(/PayPal is not available in this release/);
+    // PayPal is built but has never run against PayPal: until the environment's switch for real provider calls is on, it saves nothing and sends nothing.
+    await expect(connectProvider(io.ctx("owner"), { provider: "paypal", apiKey: PAYPAL_ID, apiSecret: PAYPAL_SECRET, environment: "sandbox", authorization: AUTHORIZATION })).rejects.toThrow(PROVIDER_CALLS_OFF);
     expect(await q("select id from customer_payment_connections where org_id = $1", [io.orgId])).toHaveLength(1);
   });
 });
@@ -124,7 +127,7 @@ describe("connecting PayMongo", () => {
     expect(view.webhookUrl).toMatch(/\/api\/webhooks\/customer-payments\/paymongo\/cpk_/);
     expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: TEST_KEY, webhookSecret: null });
     // Until the secret is saved, no delivery is believed.
-    const conn = { id: view.id, orgId: io.orgId, publicKey: view.webhookUrl.split("/").pop()!, provider: "paymongo" as const, mode: "test" as const, apiKey: TEST_KEY, webhookSecret: WH };
+    const conn = { id: view.id, orgId: io.orgId, publicKey: view.webhookUrl.split("/").pop()!, provider: "paymongo" as const, mode: "test" as const, apiKey: TEST_KEY, apiSecret: null, webhookSecret: WH };
     expect((await deliver(conn, paymongoPaid({ checkoutId: "cs_1", reference: "CP-0123456789abcdef0123456789abcdef", amount: 1000 }))).status).toBe(403);
 
     const saved = await saveWebhookSecret(io.ctx("owner"), view.id, { webhookSecret: ` ${WH} ` });

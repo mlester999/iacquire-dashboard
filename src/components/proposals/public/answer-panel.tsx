@@ -1,7 +1,8 @@
 import * as React from "react";
-import { CircleAlert, CircleCheck, Mail, MailCheck, Phone } from "lucide-react";
+import { CircleAlert, CircleCheck, FileSignature, Mail, MailCheck, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/primitives";
+import { publicSigningText } from "@/lib/proposals/share";
 import type { PublicProposalView } from "@/server/proposals/public";
 
 // How the customer answers. Every form posts to the proposals API and works without JavaScript. Nothing here claims more than what is recorded: an answer given with a code is
@@ -96,6 +97,12 @@ export function AnswerPanel({ token, view, code, result }: { token: string; view
       <h2 className="text-[16px] font-semibold tracking-[-0.02em] text-ink">Your answer</h2>
       <div className="mt-3 space-y-4">
         <NoticeBanner notice={result} />
+        {view.signing && (
+          <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink-2">
+            <FileSignature className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>{publicSigningText(business.name, view.signing)}</span>
+          </p>
+        )}
         {!masked ? (
           <div className="space-y-3">
             <p className="text-[14px] leading-relaxed text-ink-2">{business.name} has no email address on file for you, so this proposal can&apos;t be answered on this page. Contact them to accept, decline or ask for changes.</p>
@@ -128,11 +135,7 @@ export function AnswerPanel({ token, view, code, result }: { token: string; view
               <span>Email confirmed: {view.verified.emailMasked}</span>
             </p>
             {view.changeRequests > 0 && <p className="text-[13.5px] text-muted">You have asked {business.name} for changes {view.changeRequests === 1 ? "once" : `${view.changeRequests} times`}. They will get back to you. You can still answer here.</p>}
-            {proposal.requiresSignature ? (
-              <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-[14px] leading-relaxed text-ink-2">
-                This proposal is accepted by signature, which {business.name} arranges separately. It can&apos;t be accepted on this page. Contact them to sign.
-              </p>
-            ) : (
+            {proposal.requiresSignature ? null : (
               <form method="post" action={api("decide")} className="space-y-3">
                 <input type="hidden" name="decision" value="accept" />
                 <input type="hidden" name="h" value={proposal.contentHash} />

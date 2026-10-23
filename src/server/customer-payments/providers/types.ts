@@ -64,6 +64,11 @@ export interface PaymentProviderAdapter {
   readonly id: PaymentProviderId;
   /** Always false in this release: nothing has run against the provider itself. */
   readonly contractVerified: false;
+  /**
+   * A delivery is checked by asking the provider (PayPal), with the business's own credentials, so every delivery that reaches the check costs the business two calls to the
+   * provider whoever sent it. The webhook route limits those per connection before it asks (src/server/customer-payments/webhooks.ts).
+   */
+  readonly verifiesRemotely?: true;
   readonly supportedCurrencies: readonly CurrencyCode[];
   /** The mode a key belongs to, read from the key itself; null when it is not a key of this provider. */
   modeOf(credentials: ProviderCredentials): ConnectionMode | null;

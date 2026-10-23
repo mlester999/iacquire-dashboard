@@ -4,17 +4,20 @@ import {
   FEEDBACK_FILTERS, getReviewStats, listFeedback, listReviewDestinations, listReviewRequests, listReviewTemplates, REQUEST_FILTERS, REVIEW_REQUEST_COOLDOWN_DAYS,
   REVIEW_LINK_TTL_DAYS, MAX_ACTIVE_DESTINATIONS, MAX_DESTINATIONS, type FeedbackFilter, type RequestFilter,
 } from "@/server/crm/reviews";
-import { ReviewsWorkspace, type BatchesData, type ReviewsTab } from "@/components/crm/reviews/reviews-workspace";
+import { ReviewsWorkspace, type BatchesData, type PublicReviewsProps, type ReviewsTab } from "@/components/crm/reviews/reviews-workspace";
 import { getReputationSettings } from "@/server/reputation/settings";
 import { getSatisfaction } from "@/server/reputation/analytics";
 import { surveysEnabled } from "@/server/reputation/entitlement";
 import { batchBuilderOptions, batchesStatus, getBatch, listBatches, listBatchPeople, previewBatch } from "@/server/reputation/batches";
 import { dayIn } from "@/lib/reputation/ask-criteria";
 import { PERSON_FILTERS, isEditableStatus, type PersonFilter } from "@/lib/reputation/batches";
+import { getSites, pendingLocations } from "@/server/reputation/connections";
+import { publicReviewsData, publicReviewsStatus } from "@/server/reputation/public-reviews";
+import { isReviewFilter } from "@/lib/reputation/external";
 
 type SP = Record<string, string | string[] | undefined>;
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
-const TABS: readonly ReviewsTab[] = ["overview", "requests", "feedback", "satisfaction", "batches", "settings"];
+const TABS: readonly ReviewsTab[] = ["overview", "requests", "feedback", "satisfaction", "public", "batches", "settings"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -49,6 +52,25 @@ async function batchesData(actor: CrmActor, tab: ReviewsTab, searchParams: SP, c
 }
 
 /**
+ * The review sites part of the screen: each site's honest state (always, for the Overview card and Settings), and the Public reviews tab's data only when that tab is open. The
+ * Google locations to choose from after a sign-in are read only on Settings, only for the person who started the sign-in.
+ */
+async function publicReviewsProps(actor: CrmActor, tab: ReviewsTab, searchParams: SP): Promise<PublicReviewsProps | null> {
+  const [sites, status] = await Promise.all([getSites(actor), publicReviewsStatus(actor)]);
+  const filterParam = str(searchParams.filter);
+  const filter = isReviewFilter(filterParam) ? filterParam : "all";
+  const focusParam = str(searchParams.review);
+  const focusId = UUID.test(focusParam) ? focusParam : null;
+  const show = status.enabled || status.any;
+  const data = tab === "public" && show ? await publicReviewsData(actor, { filter, page: Math.max(1, Math.floor(Number(searchParams.page) || 1)), focusId }) : null;
+  const choose = str(searchParams.choose);
+  const canManageSites = actor.kind === "member" && actor.can("reviews.manage");
+  const pending = tab === "settings" && canManageSites && status.enabled && UUID.test(choose) ? await pendingLocations(actor, choose).catch(() => null) : null;
+  const notice = tab === "settings" ? str(searchParams.site) || null : null;
+  return { sites, enabled: status.enabled, any: status.any, data, filter, focusId, pending, pendingStateId: pending ? choose : null, notice, canManageSites };
+}
+
+/**
  * CRM → Reviews: the business's public review links, review requests to customers and how far each got, and the private feedback
  * customers chose to give. Everyone with contact access can look; owners and managers manage the links and send requests (sending is
  * the client's own decision, so an agency support session only looks). Counts come from this workspace's own records only.
@@ -63,7 +85,7 @@ export async function ReviewsView({ actor, scope, searchParams = {} }: { actor: 
   const canManage = actor.can("reviews.manage");
   // Satisfaction surveys are dormant until a Super Admin switches them on for the workspace (src/server/reputation/entitlement.ts).
   const surveys = await surveysEnabled(actor.orgId);
-  const [stats, destinations, templates, requests, feedback, settings, satisfaction, batches] = await Promise.all([
+  const [stats, destinations, templates, requests, feedback, settings, satisfaction, batches, publicReviews] = await Promise.all([
     getReviewStats(actor, { days }),
     listReviewDestinations(actor),
     listReviewTemplates(actor),
@@ -72,6 +94,7 @@ export async function ReviewsView({ actor, scope, searchParams = {} }: { actor: 
     getReputationSettings(actor),
     tab === "satisfaction" && surveys ? getSatisfaction(actor, { days }) : Promise.resolve(null),
     batchesData(actor, tab, searchParams, canManage),
+    publicReviewsProps(actor, tab, searchParams),
   ]);
   // Opened from a contact (?contact=<id>): that contact is chosen in the request dialog, if this person can see them.
   const contactParam = str(searchParams.contact);
@@ -103,6 +126,7 @@ export async function ReviewsView({ actor, scope, searchParams = {} }: { actor: 
       surveysEnabled={surveys}
       satisfaction={satisfaction ? JSON.parse(JSON.stringify(satisfaction)) : null}
       batches={batches ? JSON.parse(JSON.stringify(batches)) : null}
+      publicReviews={publicReviews ? JSON.parse(JSON.stringify(publicReviews)) : null}
       settings={JSON.parse(JSON.stringify(settings))}
       // The settings decide what the client's team is told and when: a decision for the client's own owners and managers.
       canEditSettings={canManage && actor.kind === "member" && !scope.readOnly}

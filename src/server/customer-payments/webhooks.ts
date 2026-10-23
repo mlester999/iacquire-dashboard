@@ -26,6 +26,12 @@ export const MAX_REDELIVERIES = 5;
 
 const BY_IP: RateLimitRule = { name: "customer-payments:webhook:ip", limit: 600, windowSeconds: 60 };
 const BY_KEY: RateLimitRule = { name: "customer-payments:webhook:key", limit: 1200, windowSeconds: 60 };
+/**
+ * For a provider that checks a delivery by being asked (PayPal): each delivery that gets as far as the check spends two calls of the business's own credentials at the
+ * provider, however false it is, and anyone who knows a connection's address can send one. A business's real deliveries are a few a minute, so this leaves them untouched
+ * and stops the address being used to run the business's account into the provider's own limits.
+ */
+const REMOTE_CHECK_BY_KEY: RateLimitRule = { name: "customer-payments:webhook:remote-check:key", limit: 120, windowSeconds: 60 };
 
 export interface WebhookInput {
   provider: string;
@@ -91,6 +97,7 @@ export async function handleCustomerPaymentWebhook(input: WebhookInput, deps: Pr
   }
   const creds = credentialVault.open(conn.credentials);
   if (!creds?.webhookSecret) return forbidden();
+  if (adapter.verifiesRemotely && !(await consumeRateLimit(REMOTE_CHECK_BY_KEY, conn.id)).allowed) return { status: 429, body: { error: "rate_limited" } };
   const sig = await adapter.verifyWebhook({ rawBody: input.rawBody, headers: input.headers, secret: creds.webhookSecret, now: now.getTime(), credentials: creds });
   if (!sig.ok) return forbidden();
 

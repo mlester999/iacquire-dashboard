@@ -33,8 +33,8 @@ Both work only on the workspace's own data. Neither uses GoHighLevel.
    - It is stored in `customer_feedback` (`source = 'review_request'`).
    - It is never published, never counted as a review, and never shown to other customers.
 3. **No invented reviews or counts.**
-   - iAcquire never writes, posts, imports or counts public reviews.
-   - The most it knows is that a customer *opened* a review site's link from their page. The screens say that this is not the same as leaving a review.
+   - iAcquire never writes, posts, edits, hides or removes a public review, and never counts one as its own. It can only *read* the reviews a connected site returns (see "Public reviews and replies"), shown with a "read from" date next to the site's own total, and made-up test reviews carry a "Simulated" badge.
+   - Without a connected site, the most it knows is that a customer *opened* a review site's link from their page. The screens say that this is not the same as leaving a review.
 4. **Consent first.**
    - A request is a service message (`purpose: service`), sent through the same gated outbound path as every message (`evaluateSend` / `queueOutbound`).
    - It is **refused with the reason** unless the contact has *granted* service consent on that channel. "Unknown" is not enough.
@@ -190,7 +190,7 @@ When the scheduler processes a submission (`processSubmissionInTx`), the feedbac
 
 - **Request a review** step: *a request for a review* (default; nothing new is stored, so versions published earlier keep their exact content) or *a short satisfaction survey* (`mode: "survey"`, with `scale: "csat5"` or `"nps10"`).
 - **Trigger `feedback.escalated`** ("Low private feedback needs a follow-up"): fires once per piece of low feedback, with the customer and no rating or comment. A workflow it starts may notify people and create tasks. It **may not contain a request-a-review step (either mode) or a message whose approved wording carries `{{review.link}}`**: who is asked never depends on how they felt (checked when a workflow is saved and published). It has no filters.
-- **Trigger `review.external_received`** ("New public review"): defined, with no contact and no filters, for the day a review site is connected. Nothing starts it today.
+- **Trigger `review.external_received`** ("New public review"): fires once for each review newly read from a connected site, with the site and the stars and no contact and no filters. A workflow it starts may notify people and create tasks; it **may not message or ask anyone**, because a reviewer is never matched to a customer (checked when a workflow is saved and published). It is not an outbound webhook event. Nothing fires it until a site is connected and read, and the scheduler has never run in production.
 - **Template "Check in after a visit, then ask how it went"**: a day after someone is marked as having attended, an approved check-in message; three days later, an approved survey message with the survey link.
 
 ### Statuses and reporting
@@ -217,17 +217,63 @@ This means no background job is needed to copy delivery updates across.
 
 Owners and managers (and the assignee of the follow-up task) mark feedback **new**, **acknowledged** or **resolved**. **Escalated** is set by the escalation itself.
 
-### Google Business Profile: **Blocked**
+### Public reviews and replies (Google, Facebook): **built, not verified against the real services**
 
-iAcquire does **not** read, import, show, count or reply to Google reviews. Nothing scrapes Google.
+CRM → Reviews → **Public reviews** reads the reviews people left about the business on Google and Facebook into a read-only copy ("the mirror"), shows them next to what the site itself reports, and lets the team answer them. **Nothing in this section has run against Google or Meta.** Both adapters were written against the providers' documentation as the team understood it and are exercised only against replaced HTTP layers; every endpoint path, field name and permission is unconfirmed until a real approved account is used. The screen and these notes say so.
 
-What it needs:
-1. **Google approval:** approved access to the Google Business Profile APIs (My Business Account Management / Business Information / Reviews). Google grants this per Google Cloud project, through its access request form.
-2. **OAuth verification:** a verified OAuth consent screen with the `https://www.googleapis.com/auth/business.manage` scope.
-3. **Per-client connection:** each client connects their Business Profile location.
-4. **iAcquire work:** a connector that stores the OAuth credential in the vault and syncs reviews read-only.
+| Area | Code |
+|---|---|
+| Migration | `supabase/migrations/0095_*` (tables `review_connections`, `external_reviews`, `review_replies`, `review_reply_events`, `review_oauth_states`; rollback beside it). `0094` carries the settings columns, including `renewal_reminders_enabled` |
+| Connections, sealed sign-ins, Google sign-in, Facebook reuse | `src/server/reputation/connections.ts`, `src/app/api/reputation/oauth/google/callback/route.ts` |
+| Review site adapters | `src/server/reputation/providers/` (`google.ts`, `meta-reviews.ts`, `simulated.ts`, `types.ts`, `index.ts`) |
+| Reading (sync) | `src/server/reputation/sync.ts` (job `reviewSync`) |
+| Replies, approval, posting, checking | `src/server/reputation/replies.ts`, `reply-hash.ts`, `src/lib/reputation/reply-rules.ts`, `reply-state.ts` |
+| AI assist for a draft | `src/server/reputation/reply-ai.ts`, `src/lib/reputation/reply-draft.ts` |
+| Screens and read side | `src/server/reputation/public-reviews.ts`, `src/components/reputation/` (`public-reviews-panel.tsx`, `reply-editor.tsx`, `connections-panel.tsx`), `src/components/crm/reviews/reviews-workspace.tsx` |
+| Renewals, clean-up, reputation review | `src/server/reputation/renewals.ts`, `housekeeping.ts`, `src/server/workforce/reputation-review.ts` |
+| Tests | `tests/reputation-sync.test.ts`, `reputation-replies.test.ts`, `reputation-reply-ai.test.ts`, `reputation-google.test.ts`, `reputation-meta-reviews.test.ts`, `reputation-connections.test.ts`, `reputation-public-reviews.test.ts`, `reputation-external-*.test.ts`, `reputation-gating-guard.test.ts` (rules R5 to R7) |
 
-None of this exists yet, and the Reviews screen says "Blocked". The business's Google review **link** (for example `https://g.page/r/…/review`) works as an ordinary review link.
+**Dormant until switched on.** `org_features`, feature `reputation_reviews` (one seam, `src/server/reputation/entitlement.ts`; no price: where it sits relative to the implementation fee and the monthly plan is the founder's decision). Off, the tab shows that public reviews are not switched on, nothing is connected or read, and replies are refused. **No screen switches it on yet**: until the Super Admin screen gets one, it is a row in `org_features` (`setExternalReviewsEnabled` in the same file). It is available only in a client's own workspace, not in an agency workspace.
+
+**Environment switches (all off by default, `.env.example`).** A real site is never asked unless its switch is on; the simulated site reaches nothing and is refused in production.
+
+| Switch | What it allows |
+|---|---|
+| `GOOGLE_BUSINESS_API_APPROVED`, `GOOGLE_BUSINESS_CLIENT_ID`, `GOOGLE_BUSINESS_CLIENT_SECRET` | Connecting Google and reading its reviews. Needs Google's approval of iAcquire's Cloud project for the Business Profile APIs and a verified consent screen for `https://www.googleapis.com/auth/business.manage`. Redirect URI `<APP_URL>/api/reputation/oauth/google/callback` |
+| `GOOGLE_BUSINESS_REPLIES_ENABLED` | Posting replies to Google (on top of the above) |
+| `META_REVIEWS_ENABLED` | Reading a connected Facebook Page's recommendations. Needs Meta's review of the `pages_read_user_content` permission |
+| `META_REVIEWS_REPLIES_ENABLED` | Replying to Facebook recommendations (on top of the above). Whether Meta allows it at all is not known; a Facebook connection is created as unable to post replies, so a person posts on Facebook and says so |
+
+**Connections.** Owners and managers connect a site under Settings (`reviews.manage`, client members only; an iAcquire support session can look but not change).
+- **Google:** a sign-in with Google (state and code verifier are single-use and expire in 10 minutes, the callback only redirects with a fixed code, never anything Google sent), then a choice among the locations the person manages. A location can belong to one workspace at a time.
+- **Facebook:** reuses the Page connected for Social media; there is no second sign-in. The Page must already have been given the read permission, and is asked once, before anything is saved as connected.
+- **Test site (Simulated):** only outside production, for trying the screens. Its reviews are made up, carry a "Simulated" badge and never exist in production.
+- **Credentials** are sealed (AES-GCM) in a column the application role has no grant on. They never appear in a view, a screen, a log, the audit trail, an export or anything sent to an AI model. The status card shows a state in words (connected, needs reconnecting, blocked, not switched on), what was last read and when, never the credential.
+
+**What is read, and what it means.**
+- Each review is copied once, keyed by the site's own review id (an upsert, so reading again never makes a second copy). iAcquire has no way to create, change, hide or delete a review on a site: the adapter interface has no such method, and `tests/reputation-gating-guard.test.ts` (rule R5) fails if one appears, or if anything other than the sync writes a rating, comment or name.
+- The site's own total and average are shown **next to** the number actually read, with the date of the last complete read. If the site reports more reviews than were returned, the screen says so; a figure is never made up to fill the gap.
+- A review the site stops returning is marked removed **only after a complete pass** that read at least as many as the site reports; if it comes back, it is restored. A review whose rating or words changed on the site is updated in the mirror, and any reply written for the old version (waiting, approved, failed) goes back to a draft with a note and a history entry, because the approval was of words written for a different review.
+- A reviewer's name and picture are shown only as the site gives them. **A reviewer is never matched to a customer by name.** A person can link a review to one of their customers by hand; the link is theirs, recorded with who and when, and is not a rating, a score or a reason to ask or not ask anyone for anything.
+- The first read of a connection announces only reviews less than 48 hours old, so connecting a site with years of reviews does not notify the team of each. A new low review (at or below the workspace's level, 3 stars by default) sends one notice to owners and managers; the notice has the site and the stars, never the reviewer's name or words, and it links to the review. The `review.external_received` trigger fires once per review with the site and stars and no customer.
+
+**Replies.** A reply is a person's, approved by version, and posted only if it still matches what was approved.
+- **Who:** anyone with `reviews.respond` can write a draft; an agency support session can draft only in a write session. **Only the client's own owner or a manager (`reviews.reply_publish`) can approve and post**, and iAcquire support never can. An owner may approve a reply they wrote.
+- **States:** draft → pending approval → approved → posting → posted, with changes requested, rejected, cancelled, failed, and "result being checked" (`needs_reconciliation`). One reply per review is open at a time.
+- **Rules a reply must pass** (`reply-rules.ts`, applied in the editor, when saving, when sending for approval, when approving and again just before posting; they block, they do not warn): no link, email address, phone number or street address; no offer of money, a refund or anything free; no asking the reviewer to change, update or reconsider the review; no words that say the reviewer was a customer or patient; no health, money or identity detail; no arguing with or accusing the reviewer; no claim that is not backed by the business's approved information; 5 to 1,000 characters. The word lists are proposals for counsel to confirm.
+- **Approval is bound to a hash** of the workspace, connection, review, the site's review id, a fingerprint of the review as it was read, the version and the exact words. Any edit starts again at draft. Posting recomputes it; if the review or the words changed since the approval, nothing is sent.
+- **Posting** writes the intent (`posting` and the time) **before** the request leaves, then calls the site once. If the answer is lost the reply becomes "result being checked" and is **never sent again on a guess**: the scheduled read looks for it on the site (found: posted; absent for 10 minutes: treated as not posted, failed with a retry offered; no answer after 24 hours: the owner and managers are told to look at the site, and the reply stays "being checked" until a person says what happened). A person can also say "I posted it" or "it was not posted"; that is recorded as the person's word, audited, and never described as something iAcquire verified. Where the site's reply switch is off, an approved reply waits for a person to post it on the site and say so.
+- **AI assist** (off unless the workspace turns it on in Settings and the AI service is configured). A person asks for a draft; the model sees the review (fenced, reviewer's name left out) and only the business's approved, unflagged information (brand voice, business description, customer service, policies). Its own rate limit applies (20 an hour per person, 50 a day per workspace), every model call is metered (`review_reply_ai`) and counted against credits, and a draft that breaks a reply rule or states an unbacked claim is not saved. The result is an ordinary draft labelled **AI-drafted**; it never submits, approves or posts, and editing it does not remove the label.
+
+**The reputation review.** The Performance Analyst has a read-only `reputation_review` capability (permission `reviews.view`) that lists what needs attention: sites that need reconnecting, low feedback or low reviews waiting, replies stuck, programs lapsed. It reads counts and ids, never a review's words, and changes nothing.
+
+**What is kept, and for how long.** Reviews of a disconnected site are kept 90 days after the disconnection, reviews the site stopped returning for 90 days (never while a reply is in progress), the history of finished replies for 730 days. These are **proposals for the product owner to confirm** (`src/server/reputation/housekeeping.ts`). Offboarding stops all reading, removes the stored sign-ins and includes the workspace's mirror, replies and reply history in the export (never a credential or an AI prompt's internals).
+
+**Renewal reminders.** Off by default (Settings). A task and a notice for the owner and managers 30, 14 and 7 days before a retention account's renewal date. Internal only: nothing is written to the customer, because a renewal notice to a customer needs legal review first.
+
+**What is not proven.** The Google and Facebook adapters, the sign-in, the real HTTP layers, Meta's recommendation format, whether Facebook accepts replies, and the AI assist against a real model. The scheduler has never run in production, so no review has ever been read there. Browser checks at phone and desktop widths, light and dark, and keyboard use of the reply drawer have not been done in this stage.
+
+The business's Google review **link** (for example `https://g.page/r/…/review`) still works as an ordinary review link whether or not any of this is connected.
 
 ## Calls
 
@@ -433,7 +479,10 @@ The call completes at once: `call.completed` is emitted and a `call.logged` time
 | Manage review links, send and cancel requests | `reviews.manage` (owners and managers, delegable), client members only |
 | Mark feedback acknowledged or resolved | `reviews.manage` (agency write sessions included), or being the person the feedback's follow-up task is assigned to |
 | Change the reputation settings (low-feedback level, acknowledgement time, optional assists) | `reviews.manage`, client members only |
-| `reviews.view`, `reviews.respond`, `reviews.reply_publish` | Defined for the public-review features that come next (reading, drafting and approving replies); nothing uses them for private feedback yet. `reviews.reply_publish` is the client's owner and manager only: the agency never approves or posts a reply |
+| See public reviews | `reviews.view` (every client role; agency read sessions), once public reviews are switched on for the workspace |
+| Write a draft reply to a public review | `reviews.respond` (client members; an agency support session only in a write session). The AI assist is for client members only |
+| Connect or disconnect a review site, change the public-review settings | `reviews.manage`, client members only |
+| Approve and post a reply, or say what happened to one | `reviews.reply_publish`: the client's owner and manager only. The agency never approves or posts a reply |
 | See calls and connection status | `calls.view` (everyone who works with customers; not read-only viewers, because calls can carry recording links) |
 | Log calls, add notes, link a call to a contact | `calls.view` + `contacts.edit` |
 | Create a follow-up task from a call | `calls.view` + `tasks.manage` |
@@ -446,6 +495,7 @@ The call completes at once: `call.completed` is emitted and a `call.logged` time
 | `review.requested` | `review_request` | `review.requested:<request id>` | `requestId`, `channel`, `templateId`, `templateVersion`, `via` (`manual`, `workflow` or `api`), `appointmentId`, `opportunityId` |
 | `feedback.received` | `customer_feedback` (actor kind `contact`) | `feedback.received:<feedback id>` | `feedbackId`, `reviewRequestId`, `rating`, `hasComment`, `source`. The comment text is never included. |
 | `call.completed` | `call` | `call.completed:<call record id>` | `callId`, `provider`, `direction`, `status`, `durationSeconds`, `disposition`, `contactMatched` |
+| `review.external_received` | `external_review` | `review.external_received:<review id>` | `provider`, `connectionId`, `reviewId`, `rating`, `recommends`, `simulated`. No name, no words, no contact. A workflow trigger only, not a webhook event. |
 
 These are in the outbox, so the dispatcher hands them to subscribers, and both catalogs list them:
 - the workflow **trigger** catalog (`EVENT_TRIGGER_TYPES` in `src/lib/crm/workflow/spec.ts`, the "Growth" group of the trigger picker).
@@ -475,7 +525,7 @@ These are in the outbox, so the dispatcher hands them to subscribers, and both c
 
 ## Not done, and limits
 
-- **Google Business Profile:** Blocked (see above).
+- **Google Business Profile and Facebook reviews:** built and tested against replaced HTTP layers only, behind switches that are off; never run against the real services (see above).
 - **Automatic follow-ups for provider calls:** there is no built-in follow-up per connection. A workflow does it: "Call ended", narrowed to
   incoming calls that ended as No answer, Busy or Voicemail, with a "Create task" step.
 - **The link is not stored in the message:** the queued message holds `{{review.link}}` and the link is filled in at dispatch, for the provider call only (see "Token" above). The provider and the customer's own phone or inbox hold the working link; nothing the team can read does.

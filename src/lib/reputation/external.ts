@@ -60,6 +60,8 @@ export function providerState(f: ProviderFacts): ProviderStateView {
   const view = (state: ProviderState, detail: string, canConnect = false): ProviderStateView => ({ state, label: STATE_LABELS[state], tone: STATE_TONES[state], detail, canConnect });
   const c = f.connection;
   if (c) {
+    // The connection exists but this deployment no longer reads (or never read) the site: nothing new arrives, and it must not be shown as working.
+    if (!f.environmentReady) return view("unavailable", `Reading ${site} reviews is switched off for iAcquire right now, so no new reviews are being read for ${c.name}. The reviews already read are still shown.`);
     if (c.status === "connected") return view("connected", `Reading ${site} reviews for ${c.name}.${c.simulated ? " This is a test connection: the reviews are samples, not real." : ""}`);
     if (c.status === "needs_reauth") return view("needs_reauth", c.statusDetail ?? `${site} no longer accepts the saved sign-in. Reconnect it to read reviews again.`, f.environmentReady);
     if (c.status === "revoked") return view("revoked", c.statusDetail ?? `Access to ${site} was removed on their side. Reconnect it to read reviews again.`, f.environmentReady);
@@ -106,6 +108,8 @@ export interface MirrorRow {
   rating: number | null;
   recommends: boolean | null;
   removed: boolean;
+  /** How many stored reviews this row stands for (one when absent), so a count grouped by the database can be summarised without listing every review. */
+  n?: number;
 }
 
 export interface MirrorSummary {
@@ -125,17 +129,18 @@ export function summarizeMirror(rows: readonly MirrorRow[]): MirrorSummary {
   const byRating: MirrorSummary["byRating"] = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let live = 0, removed = 0, rated = 0, sum = 0, recommended = 0, notRecommended = 0;
   for (const r of rows) {
+    const n = r.n ?? 1;
     if (r.removed) {
-      removed += 1;
+      removed += n;
       continue;
     }
-    live += 1;
+    live += n;
     if (r.rating !== null && r.rating >= 1 && r.rating <= 5) {
-      rated += 1;
-      sum += r.rating;
-      byRating[r.rating as 1 | 2 | 3 | 4 | 5] += 1;
-    } else if (r.recommends === true) recommended += 1;
-    else if (r.recommends === false) notRecommended += 1;
+      rated += n;
+      sum += r.rating * n;
+      byRating[r.rating as 1 | 2 | 3 | 4 | 5] += n;
+    } else if (r.recommends === true) recommended += n;
+    else if (r.recommends === false) notRecommended += n;
   }
   return { live, removed, rated, average: rated ? Math.round((sum / rated) * 10) / 10 : null, byRating, recommended, notRecommended };
 }

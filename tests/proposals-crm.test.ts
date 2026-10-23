@@ -168,12 +168,12 @@ describe("a customer's privacy request", () => {
     await accept(b.token, b.email);
     const r = await withSystem((db) => eraseProposalsForContact(db, p.org.id, c.id));
     // One was open; both working copies are blanked; the frozen versions and the one recorded answer remain.
-    expect(r).toEqual({ withdrawn: 1, redacted: 2, retainedRecords: 3 });
+    expect(r).toEqual({ withdrawn: 1, redacted: 2, retainedRecords: 3, signingEnded: 0 });
     expect((await rows<{ status: string }>("select status from proposals where id = $1", [a.proposal.id]))[0].status).toBe("withdrawn");
     // Asked again, there is nothing left to do.
     expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, c.id))).toMatchObject({ withdrawn: 0 });
     // A person with no proposals costs nothing.
-    expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, crypto.randomUUID()))).toEqual({ withdrawn: 0, redacted: 0, retainedRecords: 0 });
+    expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, crypto.randomUUID()))).toEqual({ withdrawn: 0, redacted: 0, retainedRecords: 0, signingEnded: 0 });
   });
 });
 

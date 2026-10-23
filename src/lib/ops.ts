@@ -51,7 +51,7 @@ const IMPORTANT_KINDS = new Set([
  * Kinds whose body can contain what a customer wrote or a lead's details. Email is outside the portal's access controls, so these
  * are emailed as a title and a link only; the details stay behind the sign-in.
  */
-const CUSTOMER_CONTENT_KINDS = new Set(["escalation_action_required", "escalation_fyi", "escalation_claimed", "escalation_unclaimed", "message_blocked", "message_failed", "system", "booking_confirmed", "booking_cancelled", "booking_rescheduled", "booking_conflict", "booking_needs_action", "lead_awaiting_approval", "feedback_follow_up_overdue", "invoice_approval_requested", "invoice_approval_decided", "invoice_paid", "invoice_payment_failed", "invoice_overdue", "invoice_refund_recorded", "payment_review_needed"]);
+const CUSTOMER_CONTENT_KINDS = new Set(["escalation_action_required", "escalation_fyi", "escalation_claimed", "escalation_unclaimed", "message_blocked", "message_failed", "system", "booking_confirmed", "booking_cancelled", "booking_rescheduled", "booking_conflict", "booking_needs_action", "lead_awaiting_approval", "feedback_follow_up_overdue", "invoice_approval_requested", "invoice_approval_decided", "invoice_paid", "invoice_payment_failed", "invoice_overdue", "invoice_refund_recorded", "payment_review_needed", "proposal_approval_requested", "proposal_approval_decided", "proposal_viewed", "proposal_accepted", "proposal_declined", "proposal_changes_requested", "proposal_expiring", "signature_completed", "signature_failed"]);
 
 /** Kinds that already send their own email (owner-first escalations honour the person's own alert settings; setup updates email from the setup engine; support updates follow the delivery rules the Super Admin chose). */
 export const emailedElsewhere = (kind: string) => kind.startsWith("escalation_") || kind.startsWith("setup_") || kind.startsWith("support_");
@@ -91,6 +91,9 @@ export const JOB_LABELS: Record<string, string> = {
   feedbackSla: "Remind the team about low customer feedback nobody has acknowledged",
   appointmentOutcomeNudge: "Remind the team to record how finished appointments went",
   reviewRequestBatches: "Send approved review request batches at their set pace",
+  reviewSync: "Read public reviews from connected review sites and check replies whose result is unknown",
+  renewalReminders: "Remind the team of customer renewals coming up",
+  reputationRetention: "Clean up old public review records and unfinished review site sign-ins",
   missedCallRecovery: "Follow up missed calls",
   phase2Retention: "Clear out old missed-call and lead-score records",
   webChatRetention: "Clear out old website chats",
@@ -100,6 +103,7 @@ export const JOB_LABELS: Record<string, string> = {
   socialCleanup: "Clear out unfinished social media sign-ins and removed media files",
   proposalExpiry: "Close proposals that went past their valid-until date and warn about those about to",
   proposalHousekeeping: "Clear out spent proposal codes and sessions",
+  esignSync: "Hand signing requests to each business's signing service and read back what happened",
   leadScoreReassessment: "Re-score leads whose details changed",
   messagesDispatched: "Send queued messages",
   websiteEnquiries: "Turn website enquiries into leads",

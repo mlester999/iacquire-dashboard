@@ -234,6 +234,7 @@ export function createPaypalProvider(deps: { http?: PaypalHttp } = {}): PaymentP
   return {
     id: "paypal",
     contractVerified: false,
+    verifiesRemotely: true,
     supportedCurrencies: PROVIDER_CURRENCIES.paypal,
 
     modeOf: (c) => paypalModeOf(c.settings?.environment),

@@ -17,7 +17,7 @@ const CREATED = "o.created_at >= $5 and o.created_at < $6";
 const CLOSED = "o.closed_at >= $5 and o.closed_at < $6";
 
 /**
- * Deals & revenue: deals created in the period, deals won and lost in it (by the date they closed), and the value recorded on them, always
+ * Deals and deal value: deals created in the period, deals won and lost in it (by the date they closed), and the value recorded on them (never called revenue: verified revenue is on the Lead Sources report), always
  * per currency. Open deals are a snapshot of now. Every filter applies: owner, the contact's lead source, and pipeline.
  */
 export async function dealsSection(scope: ReportScope): Promise<SectionResult<"deals">> {

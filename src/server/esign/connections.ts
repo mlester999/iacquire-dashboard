@@ -14,8 +14,8 @@ import { sealCredentials, openCredentials } from "@/server/esign/credentials";
 import { liveEsignWritesEnabled, providerFor, simulatedAllowed } from "@/server/esign/providers";
 import { EsignProviderError, type EsignCredentials, type ProviderHealth } from "@/server/esign/providers/types";
 import { hashWebhookToken, tokenForStoredConnection, webhookTokenFor, webhookUrl } from "@/server/esign/webhook-token";
-import { liveConnection, type ConnectionRow } from "@/server/esign/core";
-import { voidLiveRequestsInTx } from "@/server/esign/apply";
+import { addSigEvent, liveConnection, type ConnectionRow } from "@/server/esign/core";
+import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 
 // Connecting a client's own signing account. The account is the CLIENT's (so what it costs is theirs, and iAcquire never signs for anyone): only the workspace's owner or a
 // manager connects or disconnects it. The keys are stored sealed and are never returned to a browser, a server-action result, an audit row or a log. A connection is saved only
@@ -102,7 +102,8 @@ async function saveConnection(actor: CrmActor, userId: string, input: SaveInput)
         if ((await db.query(LIVE_REQUEST_SQL, [existing.id, actor.orgId])).rows[0]) {
           throw new AppError("conflict", "Signing requests are still out through the current connection. Wait for them to finish, or withdraw them, before switching to a different account.");
         }
-        await db.query("update esign_connections set status = 'disconnected', credentials = null, disconnected_at = now(), status_detail = 'Replaced by another connection.' where id = $1", [existing.id]);
+        // Nothing is out through it (checked above), but a signed copy not yet fetched cannot be fetched with keys that are about to be deleted: that is said, not left pending.
+        await disconnectRow(db, existing, "Replaced by another connection.", userId);
         connectionId = await insertConnection(db, actor.orgId, userId, input, sealed);
       } else {
         connectionId = existing.id;
@@ -264,7 +265,7 @@ export async function disconnect(actor: CrmActor): Promise<{ ended: number }> {
   });
 }
 
-async function disconnectRow(db: Queryable, row: ConnectionRow, detail: string, userId: string | null): Promise<number> {
+async function disconnectRow(db: Queryable, row: ConnectionRow, detail: string, userId: string | null, voidReason = "The signing service was disconnected."): Promise<number> {
   // Proposals first, in a fixed order, then their requests: the order every writer uses.
   const proposals = (await db.query<{ proposal_id: string }>(
     "select distinct proposal_id from signature_requests where connection_id = $1 and org_id = $2 and status in ('queued', 'sending', 'sent', 'viewed', 'unknown') order by proposal_id", [row.id, row.org_id],
@@ -272,10 +273,15 @@ async function disconnectRow(db: Queryable, row: ConnectionRow, detail: string, 
   let ended = 0;
   for (const p of proposals) {
     await db.query("select 1 from proposals where id = $1 and org_id = $2 for update", [p.proposal_id, row.org_id]);
-    ended += await voidLiveRequestsInTx(db, row.org_id, p.proposal_id, "voided", "The signing service was disconnected.", { userId });
+    ended += await voidLiveRequestsInTx(db, row.org_id, p.proposal_id, "voided", voidReason, { userId });
   }
   // The keys are gone, so nothing can be withdrawn at the service from here.
   await db.query("update signature_requests set cancel_state = 'manual' where connection_id = $1 and org_id = $2 and cancel_state = 'wanted'", [row.id, row.org_id]);
+  // Nor can a signed copy that has not been fetched yet: say so now instead of promising a retry that can never happen. (A signature that is already recorded stays recorded.)
+  const orphaned = await db.query<{ id: string }>(
+    "update signature_requests set copy_gave_up_at = now(), copy_next_at = null where connection_id = $1 and org_id = $2 and status = 'completed' and signed_file_id is null and copy_gave_up_at is null returning id", [row.id, row.org_id],
+  );
+  for (const r of orphaned.rows) await addSigEvent(db, row.org_id, r.id, "copy_gave_up", "system", { why: "disconnected" });
   await db.query("update esign_connections set status = 'disconnected', credentials = null, disconnected_at = now(), status_detail = $2 where id = $1", [row.id, detail]);
   return ended;
 }
@@ -287,9 +293,11 @@ async function disconnectRow(db: Queryable, row: ConnectionRow, detail: string, 
 export async function disconnectWorkspaceEsign(orgId: string, actorUserId: string): Promise<{ disconnected: number; ended: number; failed: boolean }> {
   try {
     return await withSystem(async (db) => {
+      // A database that has not had the signing migration applied yet has no connection to disconnect, and closing a workspace must still complete.
+      if (!(await db.query<{ t: string | null }>("select to_regclass('public.esign_connections')::text as t")).rows[0]?.t) return { disconnected: 0, ended: 0, failed: false };
       const row = await liveConnection(db, orgId, true);
       if (!row) return { disconnected: 0, ended: 0, failed: false };
-      const ended = await disconnectRow(db, row, "The workspace was closed.", null);
+      const ended = await disconnectRow(db, row, "The workspace was closed.", null, "The workspace was closed.");
       await recordAudit({ orgId, actorUserId, actorKind: "agency", action: "proposals.esign_disconnected", targetType: "esign_connection", targetId: row.id, result: "success", metadata: { provider: row.provider, ended, why: "workspace_closed" } }, db);
       return { disconnected: 1, ended, failed: false };
     });

@@ -20,6 +20,8 @@ export interface ReputationSettings {
   slaRemindersEnabled: boolean;
   /** A daily internal notice when finished appointments have no recorded outcome. Off until switched on: nothing is ever marked attended for anyone. */
   outcomeNudgesEnabled: boolean;
+  /** A daily internal reminder (a task and a notice for the team, never a message to a customer) that a customer account on the retention page renews within 30, 14 or 7 days. Off until switched on. */
+  renewalRemindersEnabled: boolean;
   version: number;
   /** True when nothing was ever saved for the workspace, so these are the defaults. */
   isDefault: boolean;
@@ -40,6 +42,7 @@ export const DEFAULT_REPUTATION_SETTINGS: ReputationSettings = {
   replyStyleNote: null,
   slaRemindersEnabled: true,
   outcomeNudgesEnabled: false,
+  renewalRemindersEnabled: false,
   version: 0,
   isDefault: true,
 };
@@ -58,6 +61,7 @@ export const settingsPatchSchema = z.strictObject({
   replyStyleNote: z.string().max(4000).refine((s) => squash(s).length <= SETTING_LIMITS.replyStyleNoteMax, { error: `Keep the reply style note to ${SETTING_LIMITS.replyStyleNoteMax} characters.` }).nullable().optional(),
   slaRemindersEnabled: z.boolean().optional(),
   outcomeNudgesEnabled: z.boolean().optional(),
+  renewalRemindersEnabled: z.boolean().optional(),
 });
 export type ReputationSettingsPatch = z.infer<typeof settingsPatchSchema>;
 
@@ -79,5 +83,6 @@ export function applySettingsPatch(cur: ReputationSettings, patch: ReputationSet
     replyStyleNote: patch.replyStyleNote !== undefined ? cleanStyleNote(patch.replyStyleNote) : cur.replyStyleNote,
     slaRemindersEnabled: patch.slaRemindersEnabled ?? cur.slaRemindersEnabled,
     outcomeNudgesEnabled: patch.outcomeNudgesEnabled ?? cur.outcomeNudgesEnabled,
+    renewalRemindersEnabled: patch.renewalRemindersEnabled ?? cur.renewalRemindersEnabled,
   };
 }

@@ -6,7 +6,7 @@ import { featureOn, ESIGN_FEATURE, proposalsPublicDisabled } from "@/server/prop
 import { applyProviderFact } from "@/server/esign/apply";
 import { addSigEvent, CONNECTION_COLUMNS, orgTakesNoAnswers, type ConnectionRow } from "@/server/esign/core";
 import { openCredentials } from "@/server/esign/credentials";
-import { providerFor, type Adapter } from "@/server/esign/providers";
+import { providerFor, simulatedAllowed, type Adapter } from "@/server/esign/providers";
 import type { EsignProvider } from "@/server/esign/providers/types";
 import { hashWebhookToken, looksLikeWebhookToken } from "@/server/esign/webhook-token";
 
@@ -45,6 +45,8 @@ export async function handleEsignWebhook(input: WebhookInput, deps: { provider?:
   const now = input.now ?? new Date();
   const connection = await withSystem(async (db) => (await db.query<ConnectionRow>(`select ${CONNECTION_COLUMNS} from esign_connections where webhook_token_hash = $1 and status not in ('revoked', 'disconnected')`, [hashWebhookToken(input.token)])).rows[0] ?? null);
   if (!connection) return refuse(404, "not_found");
+  // The stand-in service does not exist in production, so an address that belongs to one is an address that belongs to nothing.
+  if (connection.provider === "simulated" && !simulatedAllowed()) return refuse(404, "not_found");
   // A workspace that takes no answers right now (switched off, suspended, archived, paused) answers "try again later", so the service delivers again once it is back.
   const stopped = await withSystem(async (db) => !(await featureOn(connection.org_id, ESIGN_FEATURE, db)) || (await orgTakesNoAnswers(db, connection.org_id)));
   if (stopped) return refuse(503, "unavailable");
