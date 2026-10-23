@@ -1,4 +1,5 @@
 import "server-only";
+import { sameSiteRequest } from "@/server/security/same-site";
 import { looksLikeInvoiceToken } from "@/lib/invoices/token";
 import { looksLikeReference, REFERENCE_HEADER, TOKEN_HEADER, type PayFailure } from "@/lib/invoices/public-http";
 import { completeApprovedCheckout, paymentStatusByReference, paymentStatusByToken, startPublicPayment, type PublicContext } from "@/server/invoices/public";
@@ -14,17 +15,8 @@ const clientIp = (req: Request): string | null => req.headers.get("x-forwarded-f
 
 const json = (status: number, body: unknown, extra: Record<string, string> = {}) => Response.json(body, { status, headers: { ...NO_STORE, ...extra } });
 
-/** A browser that sends an Origin header must be sending it from this very site. A request made from another site is refused before anything is read. */
-export function sameSite(req: Request): boolean {
-  const origin = req.headers.get("origin");
-  if (!origin) return true;
-  try {
-    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-    return host !== null && new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
+/** A request made from another site is refused before anything is read. A same-site request from this no-referrer page can arrive with Origin: null; see security/same-site.ts. */
+export const sameSite = sameSiteRequest;
 
 const contextOf = (req: Request, now?: Date): PublicContext => ({ ip: clientIp(req), now });
 

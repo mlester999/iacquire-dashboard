@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "@/server/env";
+import { sameSiteRequest } from "@/server/security/same-site";
 import { SESSION_MAX_HOURS, type PublicState } from "@/lib/proposals/share";
 import { decideOnProposal, loadPublicPdf, recordProposalView, requestEmailCode, verifyEmailCode, type PublicContext } from "@/server/proposals/public";
 import { looksLikeProposalToken, sessionCookieName } from "@/server/proposals/link-token";
@@ -25,17 +26,8 @@ export function contextOf(req: Request, token: string, now?: Date): PublicContex
   return { ip: clientIp(req), userAgent: req.headers.get("user-agent"), sessionToken: looksLikeProposalToken(token) ? cookieValue(req, sessionCookieName(token)) : null, now };
 }
 
-/** A browser that sends an Origin header must be sending it from this very site. A form posted from another site is refused before anything is read. */
-export function sameSite(req: Request): boolean {
-  const origin = req.headers.get("origin");
-  if (!origin) return true;
-  try {
-    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-    return host !== null && new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
+/** A form posted from another site is refused before anything is read. A same-site form on this no-referrer page arrives with Origin: null; see security/same-site.ts. */
+export const sameSite = sameSiteRequest;
 
 /** The customer's page for a token, with the outcome of what they just did in the query. The token is only ever put back in the address when it is the right shape. */
 export const pagePath = (token: string, query?: Record<string, string>): string =>
