@@ -250,7 +250,8 @@ export async function redactContact(who: OrgContext | CrmActor, contactId: strin
     // Keep the opt-out so a deleted person is never contacted again on an address they opted out of.
     await db.query("update follow_up_plans set status = 'cancelled', cancel_reason = 'privacy_request', closed_at = now() where org_id = $1 and contact_id = $2 and status = 'active'", [ctx.org.orgId, contactId]);
     await db.query("update conversation_messages set body = '[removed on request]', attachments = '[]'::jsonb where org_id = $1 and conversation_id in (select id from conversations where org_id = $1 and contact_id = $2)", [ctx.org.orgId, contactId]);
-    await db.query("update conversations set last_message_preview = null, status = 'closed' where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
+    // The subject line (an email's) is customer-written text too, and the inbox search matches it: it goes with the preview.
+    await db.query("update conversations set last_message_preview = null, subject = null, status = 'closed' where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
     // Missed-call cases (the caller's number, drafted texts) and lead scores about this person go with them.
     await eraseRecoveryAndScoring(db, ctx.org.orgId, contactId);
     await eraseWebChatAndAttribution(db, ctx.org.orgId, contactId);

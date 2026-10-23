@@ -19,6 +19,22 @@ export async function createUser(opts: { email?: string; platformRole?: Platform
   return { id: rows[0].id, email };
 }
 
+/**
+ * The test matrix knob INBOX_TEST_ROLLOUT=on: every workspace createOrg makes has the new inbox switched on, so the rest of the suite can be run in that state.
+ * It exists for the in-memory test database only (NODE_ENV=test and DATABASE_DRIVER=pglite-memory, which vitest.config.ts sets for every run). Anywhere else
+ * (a file-based embedded QA database, a local or hosted Postgres, development or production mode) it throws instead of writing a rollout row that would outlive the run
+ * or reach a real workspace. A value other than on, off or empty throws too, so a typo such as "true" cannot quietly make a run that is not the matrix run.
+ */
+export function inboxMatrixKnob(vars: Record<string, string | undefined> = process.env): boolean {
+  const value = vars.INBOX_TEST_ROLLOUT;
+  if (value === undefined || value === "" || value === "off") return false;
+  if (value !== "on") throw new Error(`INBOX_TEST_ROLLOUT must be "on" or "off" (or unset), not "${value}".`);
+  if (vars.NODE_ENV !== "test" || vars.DATABASE_DRIVER !== "pglite-memory") {
+    throw new Error("INBOX_TEST_ROLLOUT=on is only for the in-memory test database (NODE_ENV=test, DATABASE_DRIVER=pglite-memory, as vitest.config.ts sets). Refusing to write rollout rows anywhere else.");
+  }
+  return true;
+}
+
 export async function createOrg(opts: { name?: string; kind?: "agency" | "client"; status?: string } = {}) {
   const name = opts.name ?? `Org ${uid()}`;
   const slug = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${uid()}`;
@@ -34,7 +50,8 @@ export async function createOrg(opts: { name?: string; kind?: "agency" | "client
     await ensureAgentInstances(orgId, db);
     // A test matrix knob, never set in a normal run: INBOX_TEST_ROLLOUT=on switches the new inbox on for every workspace a test creates, so the rest of the
     // suite can be run with it on (the inbox's own tests assume the default, off, and are left out of that run). See docs/unified-inbox/release-verification.md.
-    if (process.env.INBOX_TEST_ROLLOUT === "on") await db.query("insert into inbox_rollout (org_id, enabled, note, enabled_at) values ($1, true, 'Test matrix', now())", [orgId]);
+    // inboxMatrixKnob() above refuses it on anything but the in-memory test database.
+    if (inboxMatrixKnob()) await db.query("insert into inbox_rollout (org_id, enabled, note, enabled_at) values ($1, true, 'Test matrix', now())", [orgId]);
     return { id: orgId, name, slug };
   });
 }

@@ -133,6 +133,10 @@ export const CRM_QA_ENV = {
   // Operations
   OFFBOARDING_PURGE_ENABLED: "false",
   SCHEDULER_STALE_MINUTES: "20",
+  // The Unified Inbox's global emergency switch is pinned off, so the new inbox here follows each QA workspace's own rollout row and nothing else. A shell that
+  // exported INBOX_DISABLED=true for a rollout rehearsal, or an env file that names it, cannot change what a browser run is looking at (it would otherwise show
+  // the previous inbox everywhere and answer 503 on /api/inbox/*, and the run could be recorded as having verified the new inbox).
+  INBOX_DISABLED: "false",
 };
 
 /** Variables that must stay empty: hosted database, Supabase, and every provider secret, key and URL. */

@@ -231,17 +231,25 @@ export async function finishSchedulerTick(ok: boolean, error: string | null = nu
   ).catch(() => undefined);
 }
 
+/** The longest SCHEDULER_JOBS_ONLY a tick accepts. A list naming every job is about 950 characters, so this is generous; a longer value is a mistake, and is refused. */
+export const SCHEDULER_JOBS_ONLY_MAX_LENGTH = 2000;
+
 /**
- * The jobs a tick runs: all of them, unless SCHEDULER_JOBS_ONLY names some (comma separated, exact names, any order; the registry's order is kept). This is what
- * lets the scheduler be switched on in stages instead of all at once. Whatever is not named does not run and leaves no heartbeat. A name that does not exist, or a
- * value that names nothing, throws, so a typo can never silently run something other than what was approved.
+ * The jobs a tick runs: all of them when SCHEDULER_JOBS_ONLY is unset (env() reads an empty value as unset, and nothing else), otherwise exactly the jobs it names
+ * (comma separated, exact case-sensitive names, any order; the registry's order is kept and a name given twice runs once). This is what lets the scheduler be switched
+ * on in stages instead of all at once. Whatever is not named does not run and leaves no heartbeat. It fails closed: one name that does not exist refuses the WHOLE list
+ * (a valid name beside it does not run), and a value that names nothing (spaces, tabs, commas) or is over 2000 characters throws too, so a typo can never silently run
+ * something other than what was approved and the tick endpoint answers 500 and runs nothing (with the reason in the scheduler's heartbeat). Because the check is here and
+ * not in env(), a bad list stops the scheduler only; it cannot make the application's whole configuration invalid. Names are matched by membership in a Set, never as keys of an object, so `__proto__`, `constructor`
+ * and the like are just unknown names. Unset runs every job only behind CRON_SECRET and SCHEDULER_ENABLED (see the tick route).
  */
 export function activeJobs(all: readonly ScheduledJob[] = JOBS, only: string | undefined = env().SCHEDULER_JOBS_ONLY): readonly ScheduledJob[] {
   if (only === undefined) return all;
+  if (only.length > SCHEDULER_JOBS_ONLY_MAX_LENGTH) throw new Error(`SCHEDULER_JOBS_ONLY is longer than ${SCHEDULER_JOBS_ONLY_MAX_LENGTH} characters (naming every job takes about 1000).`);
   const names = only.split(",").map((s) => s.trim()).filter(Boolean);
-  if (!names.length) throw new Error("SCHEDULER_JOBS_ONLY is set but names no job. Unset it to run every job.");
+  if (!names.length) throw new Error("SCHEDULER_JOBS_ONLY is set but names no job. Unset it (or leave it empty) to run every job.");
   const known = new Set(all.map((j) => j.name));
-  const unknown = names.filter((n) => !known.has(n));
+  const unknown = [...new Set(names.filter((n) => !known.has(n)))];
   if (unknown.length) throw new Error(`SCHEDULER_JOBS_ONLY names a job that does not exist: ${unknown.join(", ")}.`);
   const wanted = new Set(names);
   return all.filter((j) => wanted.has(j.name));

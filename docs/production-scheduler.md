@@ -4,7 +4,7 @@
 
 The scheduler is **prepared but not activated**.
 
-- `POST /api/internal/tick` exists and runs every job in `src/server/ops/tick.ts`.
+- `POST /api/internal/tick` exists and runs every job in `src/server/ops/tick.ts` (or only those named in `SCHEDULER_JOBS_ONLY`, see below).
 - Production has **no `CRON_SECRET`**, so the endpoint returns `503 Worker endpoint is not configured`.
 - `SCHEDULER_ENABLED` is not set in production. Even with a secret, the endpoint returns `503` until it is explicitly `true`.
   Both absences were confirmed in the Vercel-pulled production environment file (variable names read; values never printed).
@@ -32,10 +32,37 @@ Both are required. Deploying a cron definition cannot start work by itself; a pe
 ### Starting with some jobs only: `SCHEDULER_JOBS_ONLY`
 
 Switching the scheduler on starts **every** registered job (53 on 2026-10-23; it was 45 on 2026-10-22, before the missed-call, lead-scoring, website-chat and social media jobs). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
-(for example `aiWorkRecovery,crmWorkflowRecovery,inboxAttention`). A tick then runs only those, in the registry's order, and the others do not run and leave no heartbeat. Unset (the default) runs every job. A name that
-does not exist, or a value that names nothing, makes the tick fail with a 500 and run nothing, so a typo cannot start something that was not approved.
+(for example `aiWorkRecovery,crmWorkflowRecovery,inboxAttention`). A tick then runs only those, in the registry's order, and the others do not run and leave no heartbeat. The job inventory, what each can do, and a suggested order of steps are in
+[unified-inbox/scheduler-impact.md](unified-inbox/scheduler-impact.md).
+
+**The rules, exactly** (`activeJobs()` in `src/server/ops/tick.ts`; each line is covered by `tests/scheduler-job-allowlist.test.ts`):
+
+| Value | What a tick does |
+| --- | --- |
+| Unset, or empty (`SCHEDULER_JOBS_ONLY=` as shipped in `.env.example`) | Runs **every** registered job. This is the only way to run all of them, and it still needs `CRON_SECRET` and `SCHEDULER_ENABLED=true` (below). |
+| A list of exact names | Runs exactly those, once each, in the registry's order whatever order they were written in. Names are case-sensitive; spaces, tabs and new lines around a name, and empty entries (`a,,b`), are ignored. |
+| Any list with a name that is not a job | Runs **nothing**: one unknown name refuses the whole list, so a valid name beside it does not run either. This covers a typo, another case (`AIWORKRECOVERY`), a wildcard or keyword (`*`, `all`, `none`), another separator (`a;b`, `a b`, `a|b`), a negation (`-a`), a heartbeat-only name (`tick`, `missedCallSweep`) and inherited object keys (`__proto__`, `constructor`, `toString`). |
+| Only spaces, tabs, new lines or commas (`" "`, `","`) | Runs **nothing**: it is a value that names no job, not "unset". (Earlier, a value of spaces was trimmed to "unset" and started every job; that is fixed and tested.) |
+| More than 2000 characters | Runs **nothing**. Naming every job takes about 950 characters. |
+
+"Runs nothing" means the endpoint answers `500 Scheduled work failed. See the worker heartbeat for details.`, no job starts and no job heartbeat is written, and the reason (for example `Error: SCHEDULER_JOBS_ONLY names a job that does not exist: typo.`) is recorded in the
+`last_error` of the `scheduler_tick` row of `worker_job_runs`, whose failure count rises with every refused tick. The next tick after the list is corrected runs normally and the count starts again from zero. The list is checked by the tick, not when the server starts, so a bad list stops the scheduler only: it cannot make the
+application's configuration invalid or take the web application down. A request cannot change the list: the endpoint reads only the `Authorization` header, and a query string, body or other header is ignored (`GET` and `POST` alike).
+
+**What "unset" means in production.** With the variable unset or empty, a tick runs all 53 jobs, but only behind two other switches: `CRON_SECRET` must exist and the request must carry it (otherwise `503` / `401`), and `SCHEDULER_ENABLED` must be `true` (or `1`; `false`, `0`, empty or absent answer
+`503`, with the list not even read). So the staged start is not a safety switch that has to be remembered: the scheduler as a whole is off until a person sets `SCHEDULER_ENABLED=true`. But once it is on and the list is unset or empty, everything
+starts. Set the list **before** setting `SCHEDULER_ENABLED=true`, and after the first tick check that `worker_job_runs` shows a recent `last_started_at` for the named jobs only. The Phase 2 to 4 jobs (`leadScoreReassessment`, `missedCallRecovery`, `phase2Retention`, `webChatRetention`, `socialPublisher`,
+`socialAccountHealth`, `socialMetrics`, `socialCleanup`) run only when named, or when the list is unset.
+
+**Naming a job does not skip that job's own gates.** The list chooses which jobs may run; each job still obeys its feature flags, workspace settings and provider write switches. For example `missedCallRecovery` acts only under a workspace's missed-call policy and only queues a text through the ordinary
+send rules; `socialPublisher` does not pick up a real account's post while `META_SOCIAL_WRITES_ENABLED` is not `true`; `leadScoreReassessment` asks a model only for a workspace that switched extraction on; `aiWorkSchedules`, `aiWorkTriggers` and `aiProactiveBriefings` need `WORKFORCE_SCHEDULES_ENABLED`,
+`WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED`. `tests/scheduler-job-allowlist-phases.test.ts` shows it on real pending work in synthetic workspaces: the same data is untouched while other jobs are named, then handled by each of the eight under its own gate once they are named.
+
+**What the list does not govern.** It limits the tick and nothing else. Three things run without it: the two maintenance passes that run when the server starts (see Current state above; the Setup Center one only reads recorded evidence), the AI workforce worker process (`WORKFORCE_WORKER_ENABLED`), and request-time paths. In particular a provider webhook
+for an inbound message (Twilio, WhatsApp, Resend, GoHighLevel) asks the AI employee for a reply where the workspace has automatic replies on, and then calls the dispatcher for up to five messages straight away, whether or not `repliesChecked` and `messagesDispatched` are in the list; what stops those is the provider write switch, not `SCHEDULER_JOBS_ONLY`.
+
 **Order matters for messaging:** the dispatcher (`messagesDispatched`) turns a queued message into a final `blocked / provider_not_enabled` while a provider write switch is off, so keep it, `repliesChecked` and
-`followUpsPrepared` out of the list until the provider is switched on. The job inventory, what each can do, and a suggested order of steps are in [unified-inbox/scheduler-impact.md](unified-inbox/scheduler-impact.md).
+`followUpsPrepared` out of the list until the provider is switched on.
 
 ## Authentication
 
@@ -232,3 +259,6 @@ status change, the notices and the pause. Core features (native CRM, AI employee
 - `tests/setup-maintenance-lease.test.ts` — the setup-evidence lease shared by the boot path and the `setupEvidence` job: one claim,
   fifteen-minute window, retry and crash reclaim, and a skipped run creating no checklist.
 - `tests/environment-safety.test.ts` — development database guard.
+- `tests/scheduler-job-allowlist.test.ts` — the `SCHEDULER_JOBS_ONLY` rules above: unset, empty, spaces-only, commas-only, unknown, differently-cased, duplicate, inherited-key and over-long values; that a name selects only itself; and, through the real endpoint, that a request cannot choose jobs, every invalid
+  list answers 500 and runs nothing, and nothing starts without the secret and `SCHEDULER_ENABLED`.
+- `tests/scheduler-job-allowlist-phases.test.ts` — the eight Phase 2 to 4 jobs against real pending work: untouched while other jobs are named, and each under its own gate (policy, write switches, no network) once named.

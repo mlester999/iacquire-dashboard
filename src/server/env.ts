@@ -71,8 +71,12 @@ const schema = z.object({
   // the scheduler configuration cannot start outbound work by itself. Off unless explicitly enabled.
   SCHEDULER_ENABLED: bool,
   // Staged activation: when set, a scheduler tick runs only the jobs named here (comma separated, exact names from src/server/ops/tick.ts) and no others.
-  // Unset (the default) runs every job. A name that does not exist makes the tick fail loudly. See docs/unified-inbox/scheduler-impact.md.
-  SCHEDULER_JOBS_ONLY: z.preprocess(blankToUndefined, z.string().max(2000).optional()),
+  // Unset or empty (the default) runs every job, and only behind CRON_SECRET and SCHEDULER_ENABLED. Anything else is a list that must be right: a name that does not
+  // exist, a value that names nothing (spaces, commas) or one over 2000 characters makes the tick fail loudly and run nothing. So, unlike the other optional values, only
+  // an EMPTY value counts as unset here; a value of spaces is not trimmed away into "unset", because that would start every job when a list was meant. The list is
+  // checked by the tick (activeJobs in src/server/ops/tick.ts), not here, so a bad list can stop the scheduler but can never make this whole configuration invalid
+  // and take the web application down with it. See docs/production-scheduler.md and docs/unified-inbox/scheduler-impact.md.
+  SCHEDULER_JOBS_ONLY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   // The scheduler is reported as stopped when its last completed run is older than this. Set it to a few times the schedule interval.
   SCHEDULER_STALE_MINUTES: z.coerce.number().int().min(2).max(1440).default(20),
   // Automation Studio: days a workspace keeps the plan's features after a payment is recorded as failed, before the plan expires. An agency member
