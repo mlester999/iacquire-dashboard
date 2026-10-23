@@ -124,8 +124,10 @@ const TABLES: TableSpec[] = [
   { file: "support/messages.json", table: "support_messages", where: "t.internal = false", omit: ["client_message_id"], order: "created_at" },
   // Only the timeline entries written for the client; the team's own history (priority, escalation, assignment names) stays internal.
   { file: "support/timeline.json", table: "support_ticket_events", where: "t.visibility = 'client'", omit: ["seq", "actor_user_id"], order: "created_at" },
-  { file: "projects/requests.json", table: "client_project_requests" },
-  { file: "projects/quotes.json", table: "project_quotes", omit: ["content_hash"] },
+  // The columns a client may read in the portal (migration 0015's column grants), nothing more: the agency's internal notes, who is assigned and which services
+  // staff suggested must not reach the download. A column added later is left out until someone decides it is the client's.
+  { file: "projects/requests.json", table: "client_project_requests", pick: ["id", "ref", "org_id", "created_by", "service_id", "title", "summary", "tools_used", "preferred_deadline", "budget_range", "status", "status_before_hold", "cancel_reason", "submitted_at", "last_activity_at", "closed_at", "created_at", "updated_at"] },
+  { file: "projects/quotes.json", table: "project_quotes", pick: ["id", "request_id", "org_id", "version", "status", "project_name", "scope", "deliverables", "included_integrations", "exclusions", "timeline_text", "estimated_weeks_min", "estimated_weeks_max", "one_time_cents", "ongoing_monthly_cents", "ongoing_description", "revision_terms", "payment_terms", "warranty_terms", "currency", "valid_until", "sent_at", "first_viewed_at", "created_at"], where: "t.status <> 'draft'" },
   { file: "projects/projects.json", table: "client_projects" },
   { file: "projects/milestones.json", table: "project_milestones" },
   { file: "billing/payments.json", table: "payments", omit: ["provider_checkout_id", "provider_payment_id", "checkout_url", "fee_minor", "fx_source"], order: "created_at" },

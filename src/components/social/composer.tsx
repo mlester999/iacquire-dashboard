@@ -174,7 +174,7 @@ export function PostComposer(p: ComposerProps) {
                         )}
                         <span className="mt-1 block truncate text-ink-2">{m.filename}</span>
                         {v && !v.ok && <span className="block text-[11px] text-danger-ink">Not for {PLATFORM_LABELS[platform]}</span>}
-                        {selected && <span className="absolute right-2 top-2 rounded bg-primary px-1.5 text-[10px] font-semibold text-white">Chosen</span>}
+                        {selected && <span className="absolute right-2 top-2 rounded bg-primary px-1.5 text-[10px] font-semibold text-primary-on">Chosen</span>}
                       </label>
                     </li>
                   );

@@ -132,7 +132,7 @@ export function CalendarView(props: CalendarProps) {
                       return (
                         <td key={d} className={cn("h-32 border-b border-r border-line p-1.5 align-top first:border-l", !grid.inMonth(d) && "bg-surface-2/60")}>
                           <div className="mb-1 flex items-center justify-between">
-                            <Link href={href({ view: "week", date: d })} className={cn("inline-flex size-6 items-center justify-center rounded-full text-[12px] hover:bg-surface-2", d === today ? "bg-primary text-white" : grid.inMonth(d) ? "text-ink" : "text-faint")} aria-label={`Week of ${formatDay(d)}`}>{Number(d.slice(8))}</Link>
+                            <Link href={href({ view: "week", date: d })} className={cn("inline-flex size-6 items-center justify-center rounded-full text-[12px] hover:bg-surface-2", d === today ? "bg-primary text-primary-on" : grid.inMonth(d) ? "text-ink" : "text-faint")} aria-label={`Week of ${formatDay(d)}`}>{Number(d.slice(8))}</Link>
                             {canCreate && grid.inMonth(d) && d >= today && <Link href={`/social/posts/new?date=${d}`} className="inline-flex size-6 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink" aria-label={`New post on ${formatDay(d)}`}><Plus className="size-3.5" aria-hidden /></Link>}
                           </div>
                           <div className="space-y-1">

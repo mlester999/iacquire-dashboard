@@ -355,15 +355,19 @@ export async function decideQuote(ctx: OrgContext, quoteId: string, decision: Qu
   const limit = await consumeRateLimit(RATE_LIMITS.quoteDecisionByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "Too many quote actions. Please wait a little and try again.");
   return withSystem(async (db) => {
-    const q = (await db.query<QuoteRow & { request_id: string; ref: string; title: string }>(
+    const q = (await db.query<QuoteRow & { request_id: string; ref: string; title: string; request_status: string }>(
       `select q.id, q.request_id, q.version, q.status, q.project_name, q.scope, q.deliverables, q.included_integrations, q.exclusions, q.timeline_text,
               q.estimated_weeks_min, q.estimated_weeks_max, q.one_time_cents, q.ongoing_monthly_cents, q.ongoing_description, q.revision_terms, q.payment_terms,
-              q.warranty_terms, q.currency, q.valid_until::text as valid_until, q.content_hash, q.sent_at, q.first_viewed_at, q.created_at, r.ref, r.title
+              q.warranty_terms, q.currency, q.valid_until::text as valid_until, q.content_hash, q.sent_at, q.first_viewed_at, q.created_at, r.ref, r.title, r.status as request_status
        from project_quotes q join client_project_requests r on r.id = q.request_id where q.id = $1 and q.org_id = $2 for update of q`,
       [quoteId, ctx.org.orgId],
     )).rows[0];
     if (!q) throw new AppError("not_found", "Quote not found.");
     if (q.status !== "sent") throw new AppError("conflict", "This quote is no longer open for a decision. Refresh to see the latest version.");
+    // Staff can hold or cancel a project while its quote is still marked sent; accepting it then would bring a closed project back to Approved.
+    if (!["quote_sent", "awaiting_approval"].includes(q.request_status)) {
+      throw new AppError("conflict", q.request_status === "on_hold" ? "This project is on hold, so the quote can't be decided right now. Ask iAcquire to resume it first." : "This project is no longer waiting for a quote decision. Ask iAcquire if you still want to go ahead.");
+    }
     const view = toQuoteView(q);
     if (!q.content_hash || quoteContentHash(view) !== q.content_hash) throw new AppError("conflict", "This quote changed after it was sent. Ask iAcquire to resend it.");
     if (decision === "accepted" && q.valid_until && q.valid_until < new Date().toISOString().slice(0, 10)) throw new AppError("conflict", "This quote has expired. Ask iAcquire for an updated quote.");
