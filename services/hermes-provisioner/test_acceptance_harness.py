@@ -1,8 +1,20 @@
 import hashlib
+import json
+import threading
 import unittest
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from acceptance_harness import AcceptanceState, ROLE_TITLES, TENANTS, _audit_event_diagnostic, _synthetic_model_counters
+from acceptance_harness import (
+    AcceptanceState,
+    ROLE_TITLES,
+    TENANTS,
+    _audit_event_diagnostic,
+    _hold_fixture_until_shutdown,
+    _model_handler,
+    _synthetic_model_counters,
+)
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
@@ -15,6 +27,31 @@ class AcceptanceFixtureTests(unittest.TestCase):
             _synthetic_model_counters(state),
             {"modelCalls": 5, "modelChatCalls": 4, "modelAuthenticationFailures": 1},
         )
+
+    def test_model_fixture_stays_available_until_explicit_compose_shutdown(self):
+        state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _model_handler(state, "synthetic-model-key"))
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        shutdown_requested = threading.Event()
+        lifecycle_thread = threading.Thread(
+            target=_hold_fixture_until_shutdown,
+            args=(shutdown_requested,),
+            daemon=True,
+        )
+        lifecycle_thread.start()
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/healthz", timeout=2) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), {"ok": True})
+            self.assertTrue(lifecycle_thread.is_alive())
+        finally:
+            shutdown_requested.set()
+            lifecycle_thread.join(timeout=2)
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=2)
+        self.assertFalse(lifecycle_thread.is_alive())
 
     def test_audit_diagnostic_exposes_only_the_observed_record_count(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))

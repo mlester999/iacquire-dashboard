@@ -290,7 +290,7 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       jobId: syncJob.jobId,
       leaseToken: syncJob.leaseToken,
       gatewayId,
-      code: "canary_failed",
+      code: "canary_failed_model_endpoint_unreachable",
     }, workerToken);
     expect(failedSync.status).toBe(200);
     expect(await failedSync.json()).toEqual({ accepted: true, failed: true });

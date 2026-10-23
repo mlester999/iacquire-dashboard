@@ -71,6 +71,11 @@ PROFILE_CONFIG_SYNC_RETRY_INTERVAL_SECONDS = 1
 TOOL_CATALOG_CONTRACT = "hermes.api_server.tool_catalog.v1"
 SAFE_INVENTORY_TOOLSETS = {"memory", "session_search", "todo", "vision", "web"}
 RUN_SUBMISSION_ERROR_CODE_RE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
+SAFE_CANARY_ERROR_CODE_SUFFIXES = {
+    "model_authentication_failed", "model_configuration_missing", "model_credentials_missing",
+    "model_endpoint_unreachable", "model_provider_error", "model_provider_unsupported",
+    "model_unavailable", "provider_resolution_failed",
+}
 CANARY_ERROR_CLASSIFIERS = (
     (
         re.compile(
@@ -649,7 +654,7 @@ def _safe_canary_error_code(event: Any) -> str | None:
         candidates.extend((detail.get("code"), detail.get("error_code")))
         detail = detail.get("message")
     for candidate in candidates:
-        if isinstance(candidate, str) and RUN_SUBMISSION_ERROR_CODE_RE.fullmatch(candidate):
+        if isinstance(candidate, str) and candidate in SAFE_CANARY_ERROR_CODE_SUFFIXES:
             return candidate
     if isinstance(detail, str):
         for pattern, code in CANARY_ERROR_CLASSIFIERS:

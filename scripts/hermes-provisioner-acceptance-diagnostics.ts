@@ -59,11 +59,93 @@ const safeProvisioningFailureCodes = new Set([
   "profile_create_failed", "profile_conflict", "profile_authentication_failed", "profile_api_contract_failed",
   "profile_identity_failed", "canary_tool_isolation_failed", "canary_submission_failed",
   "canary_events_unavailable", "canary_event_invalid", "canary_tool_invoked", "canary_failed",
+  "canary_failed_model_authentication_failed", "canary_failed_model_configuration_missing",
+  "canary_failed_model_credentials_missing", "canary_failed_model_endpoint_unreachable",
+  "canary_failed_model_provider_error", "canary_failed_model_provider_unsupported",
+  "canary_failed_model_unavailable", "canary_failed_provider_resolution_failed",
   "canary_incomplete", "effective_soul_unverified", "runtime_tool_policy_unverified",
   "runtime_tool_inventory_incomplete", "invalid_profile", "invalid_profile_route",
   "unsafe_hermes_api_origin", "http_response_too_large", "http_unavailable",
   "stale_configuration", "identity_mismatch", "audit_log_unavailable", "worker_internal_error",
 ]);
+
+const safeProvisioningUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const maxProvisioningAttempts = 3;
+
+const safeProvisioningFailureStage = (code: string) => {
+  if (code.startsWith("canary_") || code === "effective_soul_unverified") return "canary_verification";
+  if (code.startsWith("profile_create") || code === "profile_conflict") return "profile_creation";
+  if (code.startsWith("profile_authentication") || code.startsWith("profile_api_contract") || code === "profile_identity_failed") return "profile_route_verification";
+  if (code.startsWith("runtime_tool") || code === "runtime_tool_inventory_incomplete") return "runtime_policy_verification";
+  if (code === "lease_expired") return "lease_validation";
+  return "provisioning";
+};
+
+const safeProvisioningErrorCategory = (code: string) => {
+  if (code === "canary_failed") return "unclassified_hermes_run_failure";
+  if (code.startsWith("canary_failed_")) return "hermes_run_failure";
+  if (code === "effective_soul_unverified") return "soul_challenge_mismatch";
+  if (code.startsWith("profile_create")) return "profile_creation_failure";
+  if (code.startsWith("profile_authentication") || code.startsWith("profile_api_contract")) return "authenticated_profile_route_failure";
+  if (code === "lease_expired") return "lease_expired";
+  return code === "unclassified_provisioner_failure" ? code : "provisioner_failure";
+};
+
+const safeProvisioningExceptionDetail = (code: string) => {
+  if (code === "canary_failed") return "Terminal Hermes run had no allowlisted error code.";
+  if (code === "effective_soul_unverified") return "Canary output did not match the one-time challenge.";
+  if (code === "canary_events_unavailable") return "Authenticated canary event stream was unavailable.";
+  if (code.startsWith("canary_failed_")) return `Hermes canary run reported ${code.slice("canary_failed_".length)}.`;
+  return `Allowlisted provisioner failure: ${code}.`;
+};
+
+export type SafeProvisioningJobDiagnostic = {
+  correlationId: string;
+  jobStatus: "failed" | "in_progress";
+  stage: string;
+  errorCategory: string;
+  safeExceptionDetail: string;
+  attempt: number;
+  maxAttempts: number;
+  retryState: "in_progress" | "retry_scheduled" | "retry_exhausted" | "retry_not_scheduled";
+};
+
+/** Return bounded acceptance-only job diagnostics; do not forward tenant/profile fields or raw DB details. */
+export function safeProvisioningJobDiagnostics(jobs: unknown[]): SafeProvisioningJobDiagnostic[] {
+  const diagnostics: SafeProvisioningJobDiagnostic[] = [];
+  for (const value of jobs) {
+    if (!value || typeof value !== "object") continue;
+    const job = value as {
+      id?: unknown; status?: unknown; detail?: unknown; attempt_count?: unknown; next_retry_at?: unknown;
+    };
+    if (typeof job.id !== "string" || !safeProvisioningUuid.test(job.id)) continue;
+    if (job.status !== "failed" && job.status !== "in_progress") continue;
+
+    const attempt = Number.isInteger(job.attempt_count)
+      ? Math.min(maxProvisioningAttempts, Math.max(0, Number(job.attempt_count)))
+      : 0;
+    const code = job.status === "failed" ? safeProvisioningFailureCode(job.detail) : "unclassified_provisioner_failure";
+    const retryState = job.status === "in_progress"
+      ? "in_progress"
+      : attempt >= maxProvisioningAttempts
+        ? "retry_exhausted"
+        : job.next_retry_at
+          ? "retry_scheduled"
+          : "retry_not_scheduled";
+
+    diagnostics.push({
+      correlationId: job.id,
+      jobStatus: job.status,
+      stage: job.status === "failed" ? safeProvisioningFailureStage(code) : "in_progress",
+      errorCategory: job.status === "failed" ? safeProvisioningErrorCategory(code) : "none_recorded",
+      safeExceptionDetail: job.status === "failed" ? safeProvisioningExceptionDetail(code) : "No failure recorded yet.",
+      attempt,
+      maxAttempts: maxProvisioningAttempts,
+      retryState,
+    });
+  }
+  return diagnostics.slice(0, 12);
+}
 
 const safeDatabaseCodes = new Map([
   ["22P02", "DATABASE_INVALID_VALUE"],

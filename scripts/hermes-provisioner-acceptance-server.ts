@@ -5,6 +5,7 @@ import {
   safeAcceptanceSeedErrorCode,
   safeAcceptanceSeedStage,
   safeProvisioningFailureCodeList,
+  safeProvisioningJobDiagnostics,
   safeStartupFailureCode,
 } from "./hermes-provisioner-acceptance-diagnostics";
 
@@ -289,8 +290,10 @@ async function readStatus() {
     orgIds,
   ));
   const mappedProfiles = agents.filter((agent) => Boolean(agent.hermes_profile)).length;
-  const latestJobs = await dbModule.withSystem((db) => db.query<{ kind: string; status: string; detail: string | null }>(
-    "select kind,status,detail from agent_provisioning_jobs where org_id=$1 or org_id=$2",
+  const latestJobs = await dbModule.withSystem((db) => db.query<{
+    id: string; kind: string; status: string; detail: string | null; attempt_count: number; next_retry_at: Date | string | null;
+  }>(
+    "select id,kind,status,detail,attempt_count,next_retry_at from agent_provisioning_jobs where org_id=$1 or org_id=$2 order by created_at,id",
     orgIds,
   ));
   const jobs = latestJobs.rows;
@@ -311,6 +314,7 @@ async function readStatus() {
     syncSucceeded: jobs.filter((job) => job.kind === "sync" && job.status === "succeeded").length,
     failedJobs: jobs.filter((job) => job.status === "failed").length,
     failedCodes: safeProvisioningFailureCodeList(jobs.filter((job) => job.status === "failed").map((job) => job.detail)),
+    jobDiagnostics: safeProvisioningJobDiagnostics(jobs),
     profileVersionsMatch: agents.filter((agent) => agent.hermes_profile_config_version_id === agent.active_config_version_id).length,
     duplicateCallbackReplays: state.duplicateCallbackReplays,
     syncVersionCreated: Boolean(state.syncVersionId),
@@ -490,6 +494,12 @@ const server = createServer({ cert, key }, async (req, res) => {
       if (path === "/__acceptance/sync") return json(res, 200, await createSync());
 
       if (path === "/api/internal/hermes-provisioner/claim") {
+        // Freeze the diagnostic snapshot after the first failure. Let any already leased
+        // synthetic job settle, then avoid creating more temporary profiles during a failed run.
+        if (secureMatch(req.headers.authorization, provisionerToken)) {
+          const status = await readStatus();
+          if (status.seeded && status.failedJobs !== undefined && status.failedJobs > 0) return json(res, 200, { job: null });
+        }
         return copyWebResponse(await claimRoute(webRequest(req, path, body)), res);
       }
       if (path === "/api/internal/hermes-provisioner/complete") {

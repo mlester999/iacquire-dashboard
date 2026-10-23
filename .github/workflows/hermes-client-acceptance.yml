@@ -447,6 +447,20 @@ jobs:
               --profile provisioner --profile acceptance "$@"
           }
 
+          portal_failure_phase=model_fixture_lifecycle
+          harness_id="$(compose ps --all -q acceptance-harness | head -n 1)"
+          client_id="$(compose ps --all -q hermes-client | head -n 1)"
+          if [[ -z "$harness_id" || -z "$client_id" || "$(docker inspect -f '{{.State.Status}}' "$harness_id")" != running ]]; then
+            echo "::error title=Synthetic model fixture unavailable::MODEL_FIXTURE_LIFECYCLE_FAIL"
+            exit 1
+          fi
+          if ! docker exec "$client_id" /opt/hermes/bin/python -c \
+            'import urllib.request; r=urllib.request.urlopen("http://127.0.0.1:19000/healthz", timeout=5); raise SystemExit(0 if r.status == 200 else 1)'; then
+            echo "::error title=Synthetic model fixture unavailable::MODEL_FIXTURE_HEALTH_FAIL"
+            exit 1
+          fi
+          echo "SYNTHETIC_MODEL_FIXTURE_LIFECYCLE_PASS: loopback model fixture stayed available after runtime recovery acceptance"
+
           report_portal_status() {
             local status_json="$1"
             local diagnostic
@@ -462,7 +476,31 @@ jobs:
           codes = sorted({code for code in raw_codes if isinstance(code, str) and re.fullmatch(r"[a-z_]{1,64}", code)}) if isinstance(raw_codes, list) else []
           if counts["failedJobs"] > 0 and not codes:
               codes = ["unclassified_provisioner_failure"]
-          print("PORTAL_PROVISIONING_DIAGNOSTIC=" + json.dumps({**counts, "failedCodes": codes[:12]}, separators=(",", ":")))
+          allowed_stages = {"canary_verification", "profile_creation", "profile_route_verification", "runtime_policy_verification", "lease_validation", "provisioning", "in_progress"}
+          allowed_categories = {"unclassified_hermes_run_failure", "hermes_run_failure", "soul_challenge_mismatch", "profile_creation_failure", "authenticated_profile_route_failure", "lease_expired", "provisioner_failure", "unclassified_provisioner_failure", "none_recorded"}
+          allowed_retry = {"in_progress", "retry_scheduled", "retry_exhausted", "retry_not_scheduled"}
+          allowed_detail = {"Terminal Hermes run had no allowlisted error code.", "Canary output did not match the one-time challenge.", "Authenticated canary event stream was unavailable.", "No failure recorded yet."}
+          uuid = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}")
+          diagnostics = []
+          raw_diagnostics = status.get("jobDiagnostics")
+          if isinstance(raw_diagnostics, list):
+              for item in raw_diagnostics:
+                  if not isinstance(item, dict) or not isinstance(item.get("correlationId"), str) or not uuid.fullmatch(item["correlationId"]):
+                      continue
+                  stage = item.get("stage") if item.get("stage") in allowed_stages else "provisioning"
+                  category = item.get("errorCategory") if item.get("errorCategory") in allowed_categories else "unclassified_provisioner_failure"
+                  retry = item.get("retryState") if item.get("retryState") in allowed_retry else "retry_not_scheduled"
+                  detail = item.get("safeExceptionDetail")
+                  if not (detail in allowed_detail or (isinstance(detail, str) and re.fullmatch(r"(?:Hermes canary run reported|Allowlisted provisioner failure): [a-z0-9_]{1,80}\.", detail))):
+                      detail = "Unclassified provisioner failure."
+                  attempt = item.get("attempt")
+                  if not isinstance(attempt, int) or isinstance(attempt, bool) or not 0 <= attempt <= 3:
+                      attempt = 0
+                  job_status = item.get("jobStatus") if item.get("jobStatus") in {"failed", "in_progress"} else "failed"
+                  diagnostics.append({"correlationId": item["correlationId"], "jobStatus": job_status, "stage": stage, "errorCategory": category, "safeExceptionDetail": detail, "attempt": attempt, "maxAttempts": 3, "retryState": retry})
+                  if len(diagnostics) == 12:
+                      break
+          print("PORTAL_PROVISIONING_DIAGNOSTIC=" + json.dumps({**counts, "failedCodes": codes[:12], "jobDiagnostics": diagnostics}, separators=(",", ":")))
           PY
           )"
             echo "$diagnostic"
@@ -554,10 +592,18 @@ jobs:
           deadline=$((SECONDS + 2100))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
-            provision_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("mappedProfiles")==12 and s.get("provisionAwaitingHealthCheck")==12 else "waiting")')"
+            provision_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("mappedProfiles")==12 and s.get("provisionRequested")==0 and s.get("provisionInProgress")==0 and s.get("provisionAwaitingHealthCheck")==12 else "waiting")')"
             if [[ "$provision_state" == failed ]]; then
+              settle_deadline=$((SECONDS + 240))
+              while [[ "$(STATUS_JSON="$status_json" python3 -c 'import json,os; print(json.loads(os.environ["STATUS_JSON"]).get("provisionInProgress",0))')" != 0 && "$SECONDS" -lt "$settle_deadline" ]]; do
+                sleep 5
+                status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
+              done
               report_portal_status "$status_json"
               echo "PORTAL_HERMES_E2E_FAIL: a synthetic profile provisioning job failed"
+              if [[ "$(STATUS_JSON="$status_json" python3 -c 'import json,os; print(json.loads(os.environ["STATUS_JSON"]).get("provisionInProgress",0))')" != 0 ]]; then
+                echo "PORTAL_HERMES_E2E_FAIL: a synthetic worker lease did not settle within the diagnostic drain window"
+              fi
               exit 1
             fi
             if [[ "$provision_state" == ready ]]; then break; fi
@@ -615,7 +661,11 @@ jobs:
           assert status.get("onlineEmployees") == 12
           assert status.get("profileVersionsMatch") == 12
           assert status.get("provisionSucceeded") == 12
+          assert status.get("provisionRequested") == 0
+          assert status.get("provisionInProgress") == 0
           assert status.get("syncSucceeded") == 1
+          assert status.get("syncRequested") == 0
+          assert status.get("syncInProgress") == 0
           assert status.get("failedJobs") == 0
           assert status.get("duplicateCallbackReplays") == 1
           print("PORTAL_JOB_STATE_PASS: 12 profiles online, twelve provisions and one approved configuration sync succeeded")

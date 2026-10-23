@@ -9,6 +9,7 @@ import hmac
 import json
 import os
 import re
+import signal
 import ssl
 import stat
 import sys
@@ -603,6 +604,9 @@ def _model_handler(state: AcceptanceState, model_key: str):
             self.wfile.write(data)
 
         def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/healthz":
+                self._send_json(200, {"ok": True})
+                return
             authorized = hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + model_key)
             state.accept_model_call(authorized, chat_completion=self.path.endswith("/chat/completions"))
             if not authorized:
@@ -687,6 +691,7 @@ def healthcheck() -> None:
     for url, ssl_context in (
         (f"https://127.0.0.1:{PORTAL_PORT}/healthz", context),
         ("http://127.0.0.1:8642/health", None),
+        (f"http://127.0.0.1:{MODEL_PORT}/healthz", None),
     ):
         with urllib.request.urlopen(url, timeout=5, context=ssl_context) as response:
             if response.status != 200:
@@ -702,6 +707,11 @@ def write_summary(state: AcceptanceState, result: dict[str, Any]) -> None:
     print("ACCEPTANCE_RESULT " + json.dumps(result, sort_keys=True, separators=(",", ":")))
 
 
+def _hold_fixture_until_shutdown(shutdown_requested: threading.Event) -> None:
+    while not shutdown_requested.wait(0.5):
+        pass
+
+
 def serve() -> None:
     gateway_id = os.environ["ACCEPTANCE_GATEWAY_ID"]
     result_dir = Path(os.environ["ACCEPTANCE_RESULTS_DIR"])
@@ -715,6 +725,13 @@ def serve() -> None:
         raise ValueError("acceptance_tls_fixture_missing")
 
     state = AcceptanceState(gateway_id, result_dir)
+    shutdown_requested = threading.Event()
+
+    def request_shutdown(_signum, _frame) -> None:
+        shutdown_requested.set()
+
+    signal.signal(signal.SIGTERM, request_shutdown)
+    signal.signal(signal.SIGINT, request_shutdown)
     portal = ThreadingHTTPServer(("127.0.0.1", PORTAL_PORT), _json_handler(state, token, cert_path))
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.load_cert_chain(str(cert_path), str(private_key_path))
@@ -774,6 +791,11 @@ def serve() -> None:
             write_summary(state, result)
             raise SystemExit(1)
         write_summary(state, result)
+        # The second acceptance phase provisions through the real iAcquireOS routes, but it
+        # still uses this run's local-only model endpoint. Keep the fixture and its health probe
+        # alive until Compose sends SIGTERM during isolated cleanup.
+        print("SYNTHETIC_MODEL_FIXTURE_HELD_OPEN", flush=True)
+        _hold_fixture_until_shutdown(shutdown_requested)
     finally:
         portal.shutdown()
         model.shutdown()
