@@ -540,6 +540,17 @@ jobs:
             report_model_diagnostic
           }
 
+          portal_status_state() {
+            local status_json="$1"
+            local phase="$2"
+            STATUS_JSON="$status_json" PHASE="$phase" \
+              PYTHONPATH="$GITHUB_WORKSPACE/services/hermes-provisioner" python3 - <<'PY'
+          import json, os
+          from acceptance_harness import _portal_status_state
+          print(_portal_status_state(json.loads(os.environ["STATUS_JSON"]), os.environ["PHASE"]))
+          PY
+          }
+
           compose up -d --no-build portal-acceptance
           portal_failure_phase=portal_health
           # Include stopped containers: an early Node startup failure makes plain `ps -q`
@@ -625,7 +636,7 @@ jobs:
           deadline=$((SECONDS + 2100))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
-            provision_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("mappedProfiles")==12 and s.get("provisionRequested")==0 and s.get("provisionInProgress")==0 and s.get("provisionAwaitingHealthCheck")==12 else "waiting")')"
+            provision_state="$(portal_status_state "$status_json" provision)"
             if [[ "$provision_state" == failed ]]; then
               settle_deadline=$((SECONDS + 240))
               while [[ "$(STATUS_JSON="$status_json" python3 -c 'import json,os; print(json.loads(os.environ["STATUS_JSON"]).get("provisionInProgress",0))')" != 0 && "$SECONDS" -lt "$settle_deadline" ]]; do
@@ -662,7 +673,7 @@ jobs:
           deadline=$((SECONDS + 900))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
-            sync_state="$(STATUS_JSON="$status_json" python3 -c 'import json,os; s=json.loads(os.environ["STATUS_JSON"]); print("failed" if s.get("failedJobs",0) else "ready" if s.get("syncAwaitingHealthCheck")==1 else "waiting")')"
+            sync_state="$(portal_status_state "$status_json" sync)"
             if [[ "$sync_state" == failed ]]; then
               report_portal_status "$status_json"
               echo "PORTAL_HERMES_E2E_FAIL: synthetic profile configuration sync failed"

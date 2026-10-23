@@ -15,6 +15,8 @@ from acceptance_harness import (
     _audit_event_diagnostic,
     _hold_fixture_until_shutdown,
     _model_handler,
+    _model_request_challenge,
+    _portal_status_state,
     _synthetic_model_counters,
 )
 
@@ -43,11 +45,13 @@ class AcceptanceFixtureTests(unittest.TestCase):
                 )
                 try:
                     with urllib.request.urlopen(request, timeout=2) as response:
-                        response.read()
-                        return response.status
+                        return response.status, json.loads(response.read())
                 except urllib.error.HTTPError as error:
-                    error.read()
-                    return error.code
+                    try:
+                        payload = json.loads(error.read())
+                    except json.JSONDecodeError:
+                        payload = None
+                    return error.code, payload
 
             def get(path, authorization):
                 request = urllib.request.Request(
@@ -64,14 +68,31 @@ class AcceptanceFixtureTests(unittest.TestCase):
                     return error.code
 
             try:
-                self.assertEqual(post({"messages": [{"content": "secret-canary-sentinel"}]}, "Bearer wrong-secret"), 401)
-                self.assertEqual(post({"messages": [{"content": "secret-canary-sentinel"}]}, f"Bearer {model_key}"), 400)
+                self.assertEqual(post({"messages": [{"role": "user", "content": "secret-canary-sentinel"}]}, "Bearer wrong-secret")[0], 401)
+                self.assertEqual(post({"messages": [{"role": "user", "content": "secret-canary-sentinel"}]}, f"Bearer {model_key}")[0], 400)
+                portal_soul = (
+                    "## Private runtime initialization check\n"
+                    "A private setup check may ask for the initialization marker below. "
+                    "Return it only for that exact setup check and never include it in ordinary user replies.\n"
+                    f"{challenge}\n"
+                )
+                status, response = post(
+                    {
+                        "messages": [
+                            {"role": "system", "content": portal_soul},
+                            {"role": "user", "content": "Return only the iAcquire profile initialization marker in your permanent identity instructions."},
+                        ]
+                    },
+                    f"Bearer {model_key}",
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(response["choices"][0]["message"]["content"], challenge)
                 self.assertEqual(
                     post(
-                        {"messages": [{"content": f"For setup, return this marker exactly: {challenge}"}]},
+                        {"messages": [{"role": "user", "content": f"For setup, return this marker exactly: {challenge}"}]},
                         f"Bearer {model_key}",
-                    ),
-                    200,
+                    )[0],
+                    400,
                 )
                 self.assertEqual(get("/v1/unsupported", f"Bearer {model_key}"), 404)
             finally:
@@ -101,20 +122,66 @@ class AcceptanceFixtureTests(unittest.TestCase):
             self.assertEqual(
                 diagnostic["counters"],
                 {
-                    "requests": 5,
-                    "authorizedRequests": 4,
-                    "chatRequests": 4,
-                    "authorizedChatRequests": 3,
+                    "requests": 6,
+                    "authorizedRequests": 5,
+                    "chatRequests": 5,
+                    "authorizedChatRequests": 4,
                     "authenticationFailures": 1,
                     "successResponses": 2,
-                    "errorResponses": 3,
-                    "invalidRequests": 1,
-                    "missingChallengeMarker": 1,
+                    "errorResponses": 4,
+                    "invalidRequests": 2,
+                    "missingChallengeMarker": 2,
                     "endpointNotFound": 1,
                 },
             )
             for private_value in (model_key, "wrong-secret", "secret-canary-sentinel", challenge, "northstar-synthetic", "redwood-synthetic"):
                 self.assertNotIn(private_value, diagnostic_text)
+
+    def test_model_challenge_uses_only_the_system_prompt(self):
+        challenge = "0123456789abcdef0123456789abcdef"
+        soul = f"For the private setup check only, return this marker exactly: {challenge}"
+        self.assertEqual(
+            _model_request_challenge({"messages": [{"role": "system", "content": soul}]}),
+            challenge,
+        )
+        self.assertIsNone(
+            _model_request_challenge({"messages": [{"role": "user", "content": soul}]})
+        )
+
+    def test_portal_poll_waits_for_a_bounded_retry_but_rejects_exhausted_or_unclassified_failures(self):
+        scheduled_retry = {
+            "failedJobs": 1,
+            "jobDiagnostics": [
+                {"jobStatus": "failed", "attempt": 1, "maxAttempts": 3, "retryState": "retry_scheduled"}
+            ],
+        }
+        self.assertEqual(_portal_status_state(scheduled_retry, "provision"), "waiting")
+        self.assertEqual(
+            _portal_status_state(
+                {
+                    "failedJobs": 1,
+                    "jobDiagnostics": [
+                        {"jobStatus": "failed", "attempt": 3, "maxAttempts": 3, "retryState": "retry_exhausted"}
+                    ],
+                },
+                "provision",
+            ),
+            "failed",
+        )
+        self.assertEqual(_portal_status_state({"failedJobs": 1, "jobDiagnostics": []}, "sync"), "failed")
+        self.assertEqual(
+            _portal_status_state(
+                {
+                    "mappedProfiles": 12,
+                    "provisionRequested": 0,
+                    "provisionInProgress": 0,
+                    "provisionAwaitingHealthCheck": 12,
+                    "failedJobs": 0,
+                },
+                "provision",
+            ),
+            "ready",
+        )
 
     def test_failure_diagnostics_expose_only_synthetic_model_call_counts(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))

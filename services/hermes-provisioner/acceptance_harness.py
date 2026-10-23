@@ -31,6 +31,13 @@ MODEL_KEY_NAME = "OPENAI_API_KEY"
 MODEL_KEY_RE = re.compile(r"^[ -~]{1,256}$")
 API_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 MARKER_RE = re.compile(r"return this marker exactly:\s*([0-9a-f]{32})", re.IGNORECASE)
+PORTAL_SOUL_MARKER_RE = re.compile(
+    r"## Private runtime initialization check\r?\n"
+    r"A private setup check may ask for the initialization marker below\. "
+    r"Return it only for that exact setup check and never include it in ordinary user replies\.\r?\n"
+    r"([0-9a-f]{32})\s*\Z",
+    re.IGNORECASE,
+)
 ROLE_TITLES = {
     "operations_manager": ("Zeng", "Operations Manager"),
     "lead_hunter": ("Lead Hunter", "Lead Hunter"),
@@ -76,6 +83,85 @@ def sha256(data: bytes) -> str:
 
 def new_id() -> str:
     return str(uuid.uuid4())
+
+
+def _collect_text(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [text for item in value for text in _collect_text(item)]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _collect_text(item)]
+    return []
+
+
+def _model_request_challenge(request: Any) -> str | None:
+    """Read a challenge only from the profile's system prompt, never from user input."""
+    if not isinstance(request, dict):
+        return None
+    system_texts = _collect_text(request.get("system"))
+    messages = request.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            if isinstance(message, dict) and message.get("role") == "system":
+                system_texts.extend(_collect_text(message.get("content")))
+    for text in system_texts:
+        marker = PORTAL_SOUL_MARKER_RE.search(text) or MARKER_RE.search(text)
+        if marker:
+            return marker.group(1).lower()
+    return None
+
+
+def _portal_status_state(status: Any, phase: str) -> str:
+    """Keep portal acceptance polling through bounded retries, but fail closed otherwise."""
+    if not isinstance(status, dict):
+        return "failed"
+    failed_count = status.get("failedJobs")
+    if type(failed_count) is not int or failed_count < 0:
+        return "failed"
+    def equals_count(field: str, expected: int) -> bool:
+        value = status.get(field)
+        return type(value) is int and value == expected
+
+    if phase == "provision":
+        ready = (
+            equals_count("mappedProfiles", 12)
+            and equals_count("provisionRequested", 0)
+            and equals_count("provisionInProgress", 0)
+            and equals_count("provisionAwaitingHealthCheck", 12)
+            and failed_count == 0
+        )
+    elif phase == "sync":
+        ready = equals_count("syncAwaitingHealthCheck", 1) and failed_count == 0
+    else:
+        return "failed"
+    if ready:
+        return "ready"
+    if failed_count == 0:
+        return "waiting"
+
+    diagnostics = status.get("jobDiagnostics")
+    if not isinstance(diagnostics, list):
+        return "failed"
+    failed_jobs = [
+        item for item in diagnostics
+        if isinstance(item, dict) and item.get("jobStatus") == "failed"
+    ]
+    if len(failed_jobs) != failed_count:
+        return "failed"
+    for item in failed_jobs:
+        attempt = item.get("attempt")
+        max_attempts = item.get("maxAttempts")
+        if (
+            item.get("retryState") != "retry_scheduled"
+            or type(attempt) is not int
+            or type(max_attempts) is not int
+            or attempt < 1
+            or max_attempts != 3
+            or attempt >= max_attempts
+        ):
+            return "failed"
+    return "waiting"
 
 
 def make_manifest(
@@ -726,20 +812,7 @@ def _model_handler(state: AcceptanceState, model_key: str):
             except Exception:
                 self._send_json(400, {"error": {"message": "invalid_body", "type": "invalid_request_error"}}, category="invalid_request")
                 return
-            texts: list[str] = []
-
-            def collect(value: Any) -> None:
-                if isinstance(value, str):
-                    texts.append(value)
-                elif isinstance(value, list):
-                    for item in value:
-                        collect(item)
-                elif isinstance(value, dict):
-                    for item in value.values():
-                        collect(item)
-
-            collect(request)
-            challenge = next((match.group(1).lower() for text in texts if (match := MARKER_RE.search(text))), None)
+            challenge = _model_request_challenge(request)
             if challenge is None:
                 self._send_json(400, {"error": {"message": "synthetic_prompt_marker_missing", "type": "invalid_request_error"}}, category="missing_challenge_marker")
                 return
