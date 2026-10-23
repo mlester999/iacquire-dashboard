@@ -97,7 +97,9 @@ export const simulatedPlatform = {
   pay(checkoutId: string, secret: string, over: { amountMinor?: number; paymentId?: string; eventId?: string; livemode?: boolean; t?: number } = {}): { rawBody: string; signature: string; paymentId: string } {
     const co = world.checkouts.get(checkoutId);
     if (!co) throw new Error(`No simulated checkout ${checkoutId}`);
-    const paymentId = over.paymentId ?? `sim_pay_${++world.seq}`;
+    // The tag is random per process, like the checkout's: a development server that restarts starts its counter again, and a bare counter would reuse the ids of payments
+    // already recorded ("This payment was already recorded; nothing changed") so a test payment after a restart would count for nothing.
+    const paymentId = over.paymentId ?? `sim_pay_${world.tag}${++world.seq}`;
     const amountMinor = over.amountMinor ?? co.amountMinor;
     co.payments.push({ id: paymentId, amountMinor, status: "paid" });
     const rawBody = simulatedBody({
