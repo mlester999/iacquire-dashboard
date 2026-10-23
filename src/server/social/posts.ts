@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
-import { draftProblems, hasBlocking, normalizeHashtags, type MediaFacts, type Platform, type PostKind, type Problem } from "@/lib/social/rules";
+import { draftProblems, normalizeHashtags, type MediaFacts, type Platform, type PostKind, type Problem } from "@/lib/social/rules";
 import { approvalRequired, canTransition, scheduleProblem, selfApprovalAllowed, type PostStatus } from "@/lib/social/state";
 import { addEvent, announce, loadAccountRow, loadPostRow, newTrackingCode, POST_COLUMNS, readSettings, type AccountRow, type PostRow } from "@/server/social/post-core";
 import { cancelQueuedJob, enqueueJob } from "@/server/social/publisher";

@@ -386,3 +386,13 @@ export async function markAccountNeedsReauth(db: Queryable, orgId: string, accou
     body: `${detail}${stopped ? ` ${stopped} post${stopped === 1 ? "" : "s"} waiting to publish ${stopped === 1 ? "was" : "were"} stopped.` : ""}`, link: "/social/accounts", dedupeKey: `social-reauth:${accountId}:${now.toISOString().slice(0, 10)}`,
   });
 }
+
+/** Tests one account now, for the person looking at it. Only the client's owner or manager (who may connect it) can, and only for their own workspace's account. */
+export async function checkMyAccount(ctx: OrgContext, accountId: string): Promise<AccountStatus> {
+  assertConnect(ctx);
+  const own = await withSystem(async (db) => (await db.query("select 1 from social_accounts where id = $1 and org_id = $2 and status in ('connected', 'needs_reauth', 'error')", [accountId, ctx.org.orgId])).rows.length > 0);
+  if (!own) throw new AppError("not_found", "That account was not found.");
+  const status = await checkAccountHealth(accountId);
+  if (!status) throw new AppError("not_found", "That account was not found.");
+  return status;
+}

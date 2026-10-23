@@ -2,7 +2,7 @@ import "server-only";
 import { env } from "@/server/env";
 import { providerRequest } from "@/server/calendars/adapters/http";
 import { classifyProviderFailure, type ProviderErrorBody } from "@/lib/social/errors";
-import { ProviderError, type AccountRef, type Credentials, type HealthResult, type PublishInput, type PublishState, type Reconciliation, type SocialProvider, type StepResult } from "@/server/social/providers/types";
+import { ProviderError, type AccountRef, type HealthResult, type Reconciliation, type SocialProvider, type StepResult } from "@/server/social/providers/types";
 
 // Facebook Pages and Instagram professional accounts through Meta's Graph API. Endpoint and field names are the ones in Meta's own open-source SDK for Graph
 // API v26.0 (facebook-python-business-sdk, September 2026): `POST /{page-id}/feed` (message, link, published), `POST /{page-id}/photos` (url, caption, published),

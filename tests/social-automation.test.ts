@@ -102,9 +102,10 @@ describe("the Performance Analyst's read-only social media review", () => {
     await withSystem((db) => db.query("update social_accounts set status = 'needs_reauth' where id = $1", [second.id]));
 
     const dispatched = await dispatchCapabilityJob(s.owner, { agentRole: "performance_analyst", capability: "social_performance_review", title: "Social review" });
-    let job: { status: string; result: { findings?: Array<{ key: string; count: number; severity: string }>; metrics?: Array<{ key: string }> } } | undefined;
+    type Job = { status: string; result: { findings?: Array<{ key: string; count: number; severity: string }>; metrics?: Array<{ key: string }> } };
+    let job: Job | undefined;
     for (let i = 0; i < 400; i += 1) {
-      job = (await rows<{ status: string; result: never }>("select status, result from ai_work_jobs where id = $1", [dispatched.jobId]))[0] as never;
+      job = (await rows("select status, result from ai_work_jobs where id = $1", [dispatched.jobId]))[0] as unknown as Job;
       if (job && ["completed", "failed", "blocked", "cancelled"].includes(job.status)) break;
       await new Promise((res) => setTimeout(res, 25));
     }

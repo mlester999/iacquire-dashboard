@@ -4,7 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
+import { Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
 import { AvatarTile } from "@/components/ui/status";
@@ -26,6 +26,7 @@ const MAIN: NavItem[] = [
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals.view", badge: "approvals", tour: "approvals" },
   { href: "/knowledge", label: "Knowledge Center", icon: BookOpen, permission: "knowledge.view" },
   { href: "/website", label: "Website", icon: Globe, permission: "website.view" },
+  { href: "/social", label: "Social Media", icon: Share2, permission: "social.view" },
   { href: "/activity", label: "Activity", icon: Activity },
 ];
 // Native CRM. "Sales Pipeline" (/sales) is the GoHighLevel read-only view and is shown only where GoHighLevel owns the pipeline; likewise

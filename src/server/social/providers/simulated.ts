@@ -1,5 +1,5 @@
 import "server-only";
-import { ProviderError, type AccountRef, type Credentials, type HealthResult, type PublishInput, type PublishState, type Reconciliation, type SocialProvider, type StepResult } from "@/server/social/providers/types";
+import { ProviderError, type AccountRef, type Credentials, type HealthResult, type Reconciliation, type SocialProvider, type StepResult } from "@/server/social/providers/types";
 
 // A stand-in for a social platform that lives inside this process. It posts nothing anywhere. It exists so the whole publishing pipeline (approval, scheduling,
 // retries, duplicate protection, reconciliation, revocation) can be tested and clicked through without a Meta app, and it refuses to run in production.
