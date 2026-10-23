@@ -13,6 +13,7 @@ import signal
 import ssl
 import stat
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -154,6 +155,16 @@ class AcceptanceState:
         self.model_calls = 0
         self.model_chat_calls = 0
         self.model_bad_auth = 0
+        self.model_requests = 0
+        self.model_authorized_requests = 0
+        self.model_chat_requests = 0
+        self.model_authorized_chat_requests = 0
+        self.model_success_responses = 0
+        self.model_error_responses = 0
+        self.model_invalid_requests = 0
+        self.model_missing_challenge_marker = 0
+        self.model_not_found = 0
+        self.model_portal_baseline: dict[str, int] | None = None
         self.audit_events_observed: int | None = None
         self.audit_event_summary_observed: dict[str, int] | None = None
         self.cross_tenant_denials = 0
@@ -316,14 +327,85 @@ class AcceptanceState:
             if self.sync_completed:
                 self.done.set()
 
+    def _model_diagnostic_counts_locked(self) -> dict[str, int]:
+        return {
+            "requests": self.model_requests,
+            "authorizedRequests": self.model_authorized_requests,
+            "chatRequests": self.model_chat_requests,
+            "authorizedChatRequests": self.model_authorized_chat_requests,
+            "authenticationFailures": self.model_bad_auth,
+            "successResponses": self.model_success_responses,
+            "errorResponses": self.model_error_responses,
+            "invalidRequests": self.model_invalid_requests,
+            "missingChallengeMarker": self.model_missing_challenge_marker,
+            "endpointNotFound": self.model_not_found,
+        }
+
+    def _write_model_diagnostics_locked(self) -> None:
+        output = self.result_dir / "model-diagnostics.json"
+        temporary_path: Path | None = None
+        try:
+            self.result_dir.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "schemaVersion": 1,
+                "counters": self._model_diagnostic_counts_locked(),
+                "portalPhaseBaseline": self.model_portal_baseline,
+            }
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.result_dir,
+                prefix=".model-diagnostics-",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                json.dump(payload, temporary, separators=(",", ":"))
+                temporary.write("\n")
+            os.chmod(temporary_path, 0o644)
+            os.replace(temporary_path, output)
+        except OSError:
+            # Diagnostics must never turn a model request into a provisioning failure.
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def begin_portal_phase(self) -> None:
+        with self.lock:
+            self.model_portal_baseline = self._model_diagnostic_counts_locked()
+            self._write_model_diagnostics_locked()
+
     def accept_model_call(self, authorized: bool, *, chat_completion: bool = False) -> None:
         with self.lock:
+            self.model_requests += 1
+            if chat_completion:
+                self.model_chat_requests += 1
             if not authorized:
                 self.model_bad_auth += 1
-                return
-            self.model_calls += 1
-            if chat_completion:
-                self.model_chat_calls += 1
+            else:
+                self.model_authorized_requests += 1
+                self.model_calls += 1
+                if chat_completion:
+                    self.model_authorized_chat_requests += 1
+                    self.model_chat_calls += 1
+            self._write_model_diagnostics_locked()
+
+    def record_model_response(self, status: int, *, category: str | None = None) -> None:
+        with self.lock:
+            if 200 <= status < 300:
+                self.model_success_responses += 1
+            else:
+                self.model_error_responses += 1
+            if category == "invalid_request":
+                self.model_invalid_requests += 1
+            elif category == "missing_challenge_marker":
+                self.model_invalid_requests += 1
+                self.model_missing_challenge_marker += 1
+            elif category == "not_found":
+                self.model_not_found += 1
+            self._write_model_diagnostics_locked()
 
     def should_inject_canary_mismatch(self, challenge: str) -> bool:
         first_challenge = self.base_jobs[self.first_job_id]["soulChallenge"]
@@ -594,7 +676,14 @@ def _model_handler(state: AcceptanceState, model_key: str):
         def log_message(self, _format: str, *_args: Any) -> None:
             return
 
-        def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+        def _send_json(
+            self,
+            status: int,
+            payload: dict[str, Any],
+            *,
+            category: str | None = None,
+            record_diagnostics: bool = True,
+        ) -> None:
             data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -602,38 +691,40 @@ def _model_handler(state: AcceptanceState, model_key: str):
             self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(data)
+            if record_diagnostics:
+                state.record_model_response(status, category=category)
 
         def do_GET(self) -> None:  # noqa: N802
             if self.path == "/healthz":
-                self._send_json(200, {"ok": True})
+                self._send_json(200, {"ok": True}, record_diagnostics=False)
                 return
             authorized = hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + model_key)
             state.accept_model_call(authorized, chat_completion=self.path.endswith("/chat/completions"))
             if not authorized:
-                self._send_json(401, {"error": {"message": "synthetic_auth_failed", "type": "authentication_error"}})
+                self._send_json(401, {"error": {"message": "synthetic_auth_failed", "type": "authentication_error"}}, category="authentication")
                 return
             if self.path.endswith("/models"):
                 self._send_json(200, {"object": "list", "data": [{"id": "synthetic-fixture", "object": "model", "created": 0, "owned_by": "synthetic"}]})
                 return
-            self._send_json(404, {"error": {"message": "not_found", "type": "invalid_request_error"}})
+            self._send_json(404, {"error": {"message": "not_found", "type": "invalid_request_error"}}, category="not_found")
 
         def do_POST(self) -> None:  # noqa: N802
             authorized = hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + model_key)
             state.accept_model_call(authorized, chat_completion=self.path.endswith("/chat/completions"))
             if not authorized:
-                self._send_json(401, {"error": {"message": "synthetic_auth_failed", "type": "authentication_error"}})
+                self._send_json(401, {"error": {"message": "synthetic_auth_failed", "type": "authentication_error"}}, category="authentication")
                 return
             if not self.path.endswith("/chat/completions"):
-                self._send_json(404, {"error": {"message": "not_found", "type": "invalid_request_error"}})
+                self._send_json(404, {"error": {"message": "not_found", "type": "invalid_request_error"}}, category="not_found")
                 return
             length = self.headers.get("Content-Length", "")
             if not length.isdecimal() or int(length) > 262_144:
-                self._send_json(413, {"error": {"message": "invalid_body", "type": "invalid_request_error"}})
+                self._send_json(413, {"error": {"message": "invalid_body", "type": "invalid_request_error"}}, category="invalid_request")
                 return
             try:
                 request = json.loads(self.rfile.read(int(length)).decode("utf-8"))
             except Exception:
-                self._send_json(400, {"error": {"message": "invalid_body", "type": "invalid_request_error"}})
+                self._send_json(400, {"error": {"message": "invalid_body", "type": "invalid_request_error"}}, category="invalid_request")
                 return
             texts: list[str] = []
 
@@ -650,7 +741,7 @@ def _model_handler(state: AcceptanceState, model_key: str):
             collect(request)
             challenge = next((match.group(1).lower() for text in texts if (match := MARKER_RE.search(text))), None)
             if challenge is None:
-                self._send_json(400, {"error": {"message": "synthetic_prompt_marker_missing", "type": "invalid_request_error"}})
+                self._send_json(400, {"error": {"message": "synthetic_prompt_marker_missing", "type": "invalid_request_error"}}, category="missing_challenge_marker")
                 return
             fail_canary = state.should_inject_canary_mismatch(challenge)
             if fail_canary:
@@ -672,6 +763,7 @@ def _model_handler(state: AcceptanceState, model_key: str):
                     self.wfile.write(b"data: " + json.dumps(chunk, separators=(",", ":")).encode("utf-8") + b"\n\n")
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
+                state.record_model_response(200)
                 return
             self._send_json(200, {
                 "id": "chatcmpl-synthetic",
@@ -791,6 +883,7 @@ def serve() -> None:
             write_summary(state, result)
             raise SystemExit(1)
         write_summary(state, result)
+        state.begin_portal_phase()
         # The second acceptance phase provisions through the real iAcquireOS routes, but it
         # still uses this run's local-only model endpoint. Keep the fixture and its health probe
         # alive until Compose sends SIGTERM during isolated cleanup.

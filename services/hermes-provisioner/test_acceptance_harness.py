@@ -1,7 +1,9 @@
 import hashlib
 import json
 import threading
+import tempfile
 import unittest
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -18,6 +20,102 @@ from acceptance_harness import (
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
+    def test_model_diagnostics_capture_portal_deltas_without_request_contents(self):
+        model_key = "synthetic-model-key-not-for-diagnostics"
+        challenge = "0123456789abcdef0123456789abcdef"
+        with tempfile.TemporaryDirectory() as directory:
+            state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path(directory))
+            state.accept_model_call(True, chat_completion=True)
+            state.record_model_response(200)
+            state.begin_portal_phase()
+
+            server = ThreadingHTTPServer(("127.0.0.1", 0), _model_handler(state, model_key))
+            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            server_thread.start()
+
+            def post(payload, authorization):
+                body = json.dumps(payload).encode("utf-8")
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+                    data=body,
+                    headers={"Content-Type": "application/json", "Authorization": authorization},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=2) as response:
+                        response.read()
+                        return response.status
+                except urllib.error.HTTPError as error:
+                    error.read()
+                    return error.code
+
+            def get(path, authorization):
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{server.server_port}{path}",
+                    headers={"Authorization": authorization},
+                    method="GET",
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=2) as response:
+                        response.read()
+                        return response.status
+                except urllib.error.HTTPError as error:
+                    error.read()
+                    return error.code
+
+            try:
+                self.assertEqual(post({"messages": [{"content": "secret-canary-sentinel"}]}, "Bearer wrong-secret"), 401)
+                self.assertEqual(post({"messages": [{"content": "secret-canary-sentinel"}]}, f"Bearer {model_key}"), 400)
+                self.assertEqual(
+                    post(
+                        {"messages": [{"content": f"For setup, return this marker exactly: {challenge}"}]},
+                        f"Bearer {model_key}",
+                    ),
+                    200,
+                )
+                self.assertEqual(get("/v1/unsupported", f"Bearer {model_key}"), 404)
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=2)
+
+            diagnostic_path = Path(directory) / "model-diagnostics.json"
+            diagnostic_text = diagnostic_path.read_text(encoding="utf-8")
+            diagnostic = json.loads(diagnostic_text)
+            self.assertEqual(diagnostic["schemaVersion"], 1)
+            self.assertEqual(
+                diagnostic["portalPhaseBaseline"],
+                {
+                    "requests": 1,
+                    "authorizedRequests": 1,
+                    "chatRequests": 1,
+                    "authorizedChatRequests": 1,
+                    "authenticationFailures": 0,
+                    "successResponses": 1,
+                    "errorResponses": 0,
+                    "invalidRequests": 0,
+                    "missingChallengeMarker": 0,
+                    "endpointNotFound": 0,
+                },
+            )
+            self.assertEqual(
+                diagnostic["counters"],
+                {
+                    "requests": 5,
+                    "authorizedRequests": 4,
+                    "chatRequests": 4,
+                    "authorizedChatRequests": 3,
+                    "authenticationFailures": 1,
+                    "successResponses": 2,
+                    "errorResponses": 3,
+                    "invalidRequests": 1,
+                    "missingChallengeMarker": 1,
+                    "endpointNotFound": 1,
+                },
+            )
+            for private_value in (model_key, "wrong-secret", "secret-canary-sentinel", challenge, "northstar-synthetic", "redwood-synthetic"):
+                self.assertNotIn(private_value, diagnostic_text)
+
     def test_failure_diagnostics_expose_only_synthetic_model_call_counts(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
         state.model_calls = 5

@@ -461,6 +461,38 @@ jobs:
           fi
           echo "SYNTHETIC_MODEL_FIXTURE_LIFECYCLE_PASS: loopback model fixture stayed available after runtime recovery acceptance"
 
+          report_model_diagnostic() {
+            local model_diagnostic
+            model_diagnostic="$(python3 - "$HERMES_ACCEPTANCE_DIR/results/model-diagnostics.json" <<'PY'
+          import json, sys
+          fields = (
+              "requests", "authorizedRequests", "chatRequests", "authorizedChatRequests",
+              "authenticationFailures", "successResponses", "errorResponses", "invalidRequests",
+              "missingChallengeMarker", "endpointNotFound",
+          )
+          try:
+              with open(sys.argv[1], encoding="utf-8") as source:
+                  payload = json.load(source)
+              current = payload.get("counters")
+              baseline = payload.get("portalPhaseBaseline")
+              if payload.get("schemaVersion") != 1 or not isinstance(current, dict) or not isinstance(baseline, dict):
+                  raise ValueError("diagnostic_shape_invalid")
+              deltas = {}
+              for field in fields:
+                  value = current.get(field)
+                  before = baseline.get(field)
+                  if any(not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in (value, before)) or value < before:
+                      raise ValueError("diagnostic_counter_invalid")
+                  deltas[field] = value - before
+              print("PORTAL_MODEL_DIAGNOSTIC=" + json.dumps({"available": True, "deltas": deltas}, separators=(",", ":")))
+          except (OSError, ValueError, TypeError, json.JSONDecodeError):
+              print('PORTAL_MODEL_DIAGNOSTIC={"available":false}')
+          PY
+          )"
+            echo "$model_diagnostic"
+            echo "::warning title=Portal model fixture counters::${model_diagnostic}"
+          }
+
           report_portal_status() {
             local status_json="$1"
             local diagnostic
@@ -505,6 +537,7 @@ jobs:
           )"
             echo "$diagnostic"
             echo "::warning title=Portal provisioning state::${diagnostic}"
+            report_model_diagnostic
           }
 
           compose up -d --no-build portal-acceptance
