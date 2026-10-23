@@ -10,6 +10,9 @@ import { scanInboxAttention } from "@/server/messaging/attention";
 import { processMissedCalls } from "@/server/missed-calls/engine";
 import { purgeExpiredPhase2Records } from "@/server/missed-calls/retention";
 import { purgeExpiredWebChats } from "@/server/webchat/retention";
+import { processDueSocialPosts } from "@/server/social/publisher";
+import { checkAllAccounts } from "@/server/social/accounts";
+import { syncPostMetrics } from "@/server/social/analytics";
 import { processScoringQueue } from "@/server/lead-scoring/queue";
 import { processSubmissions } from "@/server/websites/forms";
 import { sendRenewalReminders } from "@/server/websites/domains";
@@ -100,6 +103,11 @@ export const JOBS: ScheduledJob[] = [
   { name: "leadScoreReassessment", run: async () => { const r = await processScoringQueue(); return r.claimed; } },
   { name: "phase2Retention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredPhase2Records(); return r.cases + r.assessments + r.overrides + r.usage; } },
   { name: "webChatRetention", everyMinutes: 1440, run: async () => { const r = await purgeExpiredWebChats(); return r.anonymousChats + r.expiredChats; } },
+  // Social media. The publisher takes over jobs a dead worker left, publishes approved posts that are due (real accounts only while META_SOCIAL_WRITES_ENABLED is
+  // on; simulated ones reach nothing) and checks every post whose outcome was unknown. Account health and engagement numbers are read a few times a day.
+  { name: "socialPublisher", run: async () => { const r = await processDueSocialPosts(); return r.claimed + r.recovered + r.reconciled; } },
+  { name: "socialAccountHealth", everyMinutes: 360, run: () => checkAllAccounts() },
+  { name: "socialMetrics", everyMinutes: 360, run: () => syncPostMetrics() },
   { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).

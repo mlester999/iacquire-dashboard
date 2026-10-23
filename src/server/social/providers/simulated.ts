@@ -12,6 +12,7 @@ export interface SimPost {
   id: string;
   externalId: string;
   message: string;
+  linkUrl: string | null;
   kind: string;
   published: boolean;
   idempotencyKey: string;
@@ -119,7 +120,7 @@ export const simulatedProvider: SocialProvider = {
         // Repeatable: the same publication finds the same unpublished object instead of making another.
         let post = world.posts.find((p) => p.idempotencyKey === input.idempotencyKey);
         if (!post) {
-          post = { id: `sim_${++world.seq}`, externalId: input.externalId, message: input.message, kind: input.kind, published: false, idempotencyKey: input.idempotencyKey, createdAt: new Date() };
+          post = { id: `sim_${++world.seq}`, externalId: input.externalId, message: input.message, linkUrl: input.linkUrl, kind: input.kind, published: false, idempotencyKey: input.idempotencyKey, createdAt: new Date() };
           world.posts.push(post);
         }
         maybeLose("create");
@@ -134,7 +135,7 @@ export const simulatedProvider: SocialProvider = {
     }
     enter("send");
     // Not repeatable: sending twice makes two posts. That is exactly what the publisher must never do.
-    const post: SimPost = { id: `sim_${++world.seq}`, externalId: input.externalId, message: input.message, kind: input.kind, published: true, idempotencyKey: input.idempotencyKey, createdAt: new Date() };
+    const post: SimPost = { id: `sim_${++world.seq}`, externalId: input.externalId, message: input.message, linkUrl: input.linkUrl, kind: input.kind, published: true, idempotencyKey: input.idempotencyKey, createdAt: new Date() };
     world.posts.push(post);
     maybeLose("send");
     return { state: { ...state, providerPostId: post.id, permalink: `https://simulated.example/posts/${post.id}`, done: true } };

@@ -232,6 +232,19 @@ export async function createPost(ctx: OrgContext, input: PostInput): Promise<Pos
   });
 }
 
+/**
+ * For the AI drafting path only: a draft marked as AI-written, belonging to the person who asked for it. It is an ordinary draft in every other way, and it can
+ * never be scheduled without a human approval (see approvalRequired).
+ */
+export async function createAiDraft(ctx: OrgContext, input: PostInput, aiRunId: string, detail: Record<string, unknown> = {}): Promise<PostView> {
+  must(ctx, "social.create", "Your role can't write social posts.");
+  return withSystem(async (db) => {
+    const row = await insertDraft(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, input, "ai", aiRunId);
+    await addEvent(db, ctx.org.orgId, row.id, "ai_option_chosen", { id: ctx.user.id, kind: "user" }, detail);
+    return (await viewsFor(db, ctx.org.orgId, [row]))[0];
+  });
+}
+
 export type PostPatch = Partial<PostInput> & { timezone?: string | null };
 
 const CONTENT_KEYS = ["account_id", "campaign_id", "kind", "caption", "hashtags", "link_url", "media_asset_ids"] as const;
