@@ -35,7 +35,7 @@ PORTAL_SOUL_MARKER_RE = re.compile(
     r"## Private runtime initialization check\r?\n"
     r"A private setup check may ask for the initialization marker below\. "
     r"Return it only for that exact setup check and never include it in ordinary user replies\.\r?\n"
-    r"([0-9a-f]{32})\s*\Z",
+    r"([0-9a-f]{32})(?=[ \t]*(?:\r?\n|$))",
     re.IGNORECASE,
 )
 ROLE_TITLES = {

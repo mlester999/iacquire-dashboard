@@ -148,6 +148,24 @@ class AcceptanceFixtureTests(unittest.TestCase):
             _model_request_challenge({"messages": [{"role": "user", "content": soul}]})
         )
 
+    def test_portal_soul_challenge_survives_runtime_prompt_suffix(self):
+        challenge = "0123456789abcdef0123456789abcdef"
+        soul = (
+            "## Private runtime initialization check\n"
+            "A private setup check may ask for the initialization marker below. "
+            "Return it only for that exact setup check and never include it in ordinary user replies.\n"
+            f"{challenge}\n"
+        )
+        request = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": soul + "\n## Runtime environment\nHermes runtime guidance follows.",
+                }
+            ]
+        }
+        self.assertEqual(_model_request_challenge(request), challenge)
+
     def test_portal_poll_waits_for_a_bounded_retry_but_rejects_exhausted_or_unclassified_failures(self):
         scheduled_retry = {
             "failedJobs": 1,
