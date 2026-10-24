@@ -144,6 +144,48 @@ describe("tenant AI workforce schedules", () => {
     ).rejects.toMatchObject({ code: "invalid_input" });
   });
 
+  it("only updates the schedule version shown in an explicit preview", async () => {
+    await withSystem((db) => db.query(
+      "delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",
+      [org.id, operationsManagerId],
+    ));
+    try {
+      const initial = await saveSchedule(ctxFor(owner, org, "owner"), {
+        capability: "proactive_review", cadence: "daily", enabled: false,
+      });
+      const original = (await withSystem((db) => db.query<{ updated_at: string }>(
+        "select updated_at::text as updated_at from ai_work_schedules where id = $1",
+        [initial.id],
+      ))).rows[0].updated_at;
+      const updated = await saveSchedule(ctxFor(owner, org, "owner"), {
+        capability: "proactive_review",
+        cadence: "weekly",
+        enabled: false,
+        recurrenceRule: { kind: "weekly", localTime: "09:00", weekdays: ["mon"] },
+        expectedExistingSchedule: { id: initial.id, updatedAt: original },
+      });
+      expect(updated).toEqual({ id: initial.id, enabled: false });
+
+      await expect(saveSchedule(ctxFor(owner, org, "owner"), {
+        capability: "proactive_review",
+        cadence: "daily",
+        enabled: false,
+        expectedExistingSchedule: { id: initial.id, updatedAt: original },
+      })).rejects.toMatchObject({ code: "conflict" });
+      await expect(saveSchedule(ctxFor(owner, org, "owner"), {
+        capability: "proactive_review",
+        cadence: "daily",
+        enabled: false,
+        expectedExistingSchedule: null,
+      })).rejects.toMatchObject({ code: "conflict" });
+    } finally {
+      await withSystem((db) => db.query(
+        "delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",
+        [org.id, operationsManagerId],
+      ));
+    }
+  });
+
   it("enables, disables and deletes a schedule with audit evidence", async () => {
     const saved = await saveSchedule(ctxFor(owner, org, "owner"), { capability: "proactive_review", cadence: "weekly", enabled: false });
     await setScheduleEnabled(ctxFor(owner, org, "owner"), saved.id, true);

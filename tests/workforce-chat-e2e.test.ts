@@ -30,6 +30,7 @@ let mock: MockHermes;
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: Awaited<ReturnType<typeof createUser>>;
 let admin: Awaited<ReturnType<typeof createUser>>;
+let member: Awaited<ReturnType<typeof createUser>>;
 const agents = {} as Record<AgentRoleKey, string>;
 
 async function waitForWorkJob(jobId: string, timeoutMs = 10000) {
@@ -51,7 +52,9 @@ beforeAll(async () => {
   org = await createOrg({ name: "Six Employee Chat E2E" });
   owner = await createUser({ name: "Workflow Owner" });
   admin = await createUser({ platformRole: "agency_super_admin", name: "Test Workforce Admin" });
+  member = await createUser({ name: "Schedule Permission Member" });
   await addMember(org.id, owner.id, "owner");
+  await addMember(org.id, member.id, "member");
 
   for (const role of ROLES) {
     const id = await agentId(org.id, role);
@@ -253,5 +256,247 @@ describe("six employee chat to native workflow", () => {
     expect(secondJob.result.drafts).toMatchObject([{ messageId: firstDrafts[0].messageId, reused: true }]);
     expect((await withSystem((db) => db.query("select id from conversation_messages where org_id = $1 and dedupe_key like 'workforce-sales-followup:%'", [org.id]))).rows).toHaveLength(1);
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+  });
+
+  it("previews, explicitly confirms and idempotently saves a paused chat schedule", async () => {
+    const requestStart = mock.requests.length;
+    const operatorSettingBefore = process.env.WORKFORCE_SCHEDULES_ENABLED;
+    const preview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "operations_manager",
+      content: "Review unresolved operational tasks every weekday at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(preview).toMatchObject({ runId: null, jobId: null, conversationId: expect.any(String) });
+    const previewReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [preview.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(previewReply).toContain("Schedule preview");
+    expect(previewReply).toContain("paused");
+    expect(previewReply).toContain("confirm schedule");
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, agents.operations_manager]))).rows).toHaveLength(0);
+
+    const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "operations_manager",
+      conversationId: preview.conversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const savedRows = (await withSystem((db) => db.query<{
+      id: string; enabled: boolean; timezone: string; cadence: string; recurrence_rule: Record<string, unknown>; business_hours: Record<string, unknown>;
+    }>(
+      "select id, enabled, timezone, cadence, recurrence_rule, business_hours from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",
+      [org.id, agents.operations_manager],
+    ))).rows;
+    expect(savedRows).toHaveLength(1);
+    expect(savedRows[0]).toMatchObject({ enabled: false, timezone: "UTC", cadence: "weekly" });
+    expect(savedRows[0].recurrence_rule).toEqual({ kind: "weekly", localTime: "09:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] });
+    const accepted = (await withSystem((db) => db.query<{ pending_workforce_schedule: Record<string, unknown> }>(
+      "select pending_workforce_schedule from chat_conversations where id = $1 and org_id = $2",
+      [preview.conversationId, org.id],
+    ))).rows[0].pending_workforce_schedule;
+    expect(accepted).toMatchObject({ status: "accepted", scheduleId: savedRows[0].id, requestedBy: owner.id });
+    const confirmReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [confirm.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(confirmReply).toContain("Saved");
+    expect(confirmReply).toContain("paused");
+
+    const repeated = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "operations_manager",
+      conversationId: preview.conversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, agents.operations_manager]))).rows).toHaveLength(1);
+    const audits = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_saved'",
+      [org.id, savedRows[0].id],
+    ))).rows[0].count;
+    expect(Number(audits)).toBe(1);
+    const repeatedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [repeated.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(repeatedReply).toContain("already saved");
+    expect(process.env.WORKFORCE_SCHEDULES_ENABLED).toBe(operatorSettingBefore);
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [savedRows[0].id, org.id]));
+  });
+
+  it("cancels a preview, refuses scheduled writes and enforces schedule permission", async () => {
+    const preview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "sales_assistant",
+      content: "Review open opportunities daily at 10 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "sales_assistant",
+      conversationId: preview.conversationId,
+      content: "cancel schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const cancelled = (await withSystem((db) => db.query<{ pending_workforce_schedule: Record<string, unknown> }>(
+      "select pending_workforce_schedule from chat_conversations where id = $1 and org_id = $2",
+      [preview.conversationId, org.id],
+    ))).rows[0].pending_workforce_schedule;
+    expect(cancelled).toMatchObject({ status: "cancelled" });
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'pipeline_review'", [org.id, agents.sales_assistant]))).rows).toHaveLength(0);
+
+    const write = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "sales_assistant",
+      content: "Send follow-up emails every day at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const writeReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [write.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(writeReply).toMatch(/schedule messages|approved outbound/i);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'pipeline_review'", [org.id, agents.sales_assistant]))).rows).toHaveLength(0);
+
+    const memberPreview = await sendChatMessage(ctxFor(member, org, "member"), {
+      agentRole: "operations_manager",
+      content: "Review unresolved operational tasks every weekday at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const memberReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [memberPreview.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(memberReply).toContain("can't create this AI schedule");
+    expect(memberPreview.runId).toBeNull();
+  });
+
+  it("does not overwrite a schedule that appeared after the preview", async () => {
+    const preview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "operations_manager",
+      content: "Review unresolved operational tasks daily at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const appeared = await withSystem((db) => db.query<{ id: string }>(
+      `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, enabled, next_run_at)
+       values ($1, $2, $3, 'proactive_review', 'hourly', 60, 'UTC', false, now()) returning id`,
+      [org.id, agents.operations_manager, owner.id],
+    ));
+    const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "operations_manager",
+      conversationId: preview.conversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
+    expect(reply).toContain("changed after this preview");
+    const row = (await withSystem((db) => db.query<{ id: string; cadence: string; enabled: boolean }>(
+      "select id, cadence, enabled from ai_work_schedules where id = $1",
+      [appeared.rows[0].id],
+    ))).rows[0];
+    expect(row).toEqual({ id: appeared.rows[0].id, cadence: "hourly", enabled: false });
+    const pending = (await withSystem((db) => db.query<{ pending_workforce_schedule: Record<string, unknown> }>(
+      "select pending_workforce_schedule from chat_conversations where id = $1",
+      [preview.conversationId],
+    ))).rows[0].pending_workforce_schedule;
+    expect(pending).toMatchObject({ status: "expired" });
+    await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [appeared.rows[0].id, org.id]));
+  });
+
+  it("expires a preview if the workspace timezone changes before confirmation", async () => {
+    const { rows: originalRows } = await withSystem((db) => db.query<{ timezone: string }>("select timezone from organizations where id = $1", [org.id]));
+    const originalTimezone = originalRows[0].timezone;
+    const previewCtx = ctxFor(owner, org, "owner");
+    previewCtx.org.timezone = "America/Los_Angeles";
+    try {
+      await withSystem((db) => db.query("update organizations set timezone = $2 where id = $1", [org.id, previewCtx.org.timezone]));
+      const preview = await sendChatMessage(previewCtx, {
+        agentRole: "operations_manager",
+        content: "Review unresolved operational tasks daily at 9 AM",
+        clientMessageId: crypto.randomUUID(),
+      });
+      await withSystem((db) => db.query("update organizations set timezone = 'America/New_York' where id = $1", [org.id]));
+      const confirm = await sendChatMessage(previewCtx, {
+        agentRole: "operations_manager",
+        conversationId: preview.conversationId,
+        content: "confirm schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
+      expect(reply).toContain("timezone changed after this preview");
+      expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, agents.operations_manager]))).rows).toHaveLength(0);
+    } finally {
+      await withSystem((db) => db.query("update organizations set timezone = $2 where id = $1", [org.id, originalTimezone]));
+    }
+  });
+
+  it("supports an exact Lead Hunter research assignment and a safe appointment review", async () => {
+    const leadPreview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      content: "Research 10 dental clinics in Austin every weekday at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, agents.lead_hunter]))).rows).toHaveLength(0);
+    await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      conversationId: leadPreview.conversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const leadSchedule = (await withSystem((db) => db.query<{ enabled: boolean; payload: Record<string, unknown> }>(
+      "select enabled, payload from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+      [org.id, agents.lead_hunter],
+    ))).rows[0];
+    expect(leadSchedule).toMatchObject({
+      enabled: false,
+      payload: { target: "dental clinics", location: "Austin", quantity: 10 },
+    });
+    expect(leadSchedule.payload.prompt).toContain("Research 10 dental clinics in Austin");
+    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, agents.lead_hunter]));
+
+    const appointmentPreview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "appointment_setter",
+      content: "Schedule an appointment review every Friday at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const appointmentReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1",
+      [appointmentPreview.assistantMessageId],
+    ))).rows[0].content;
+    expect(appointmentReply).toContain("Schedule preview");
+    await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "appointment_setter",
+      conversationId: appointmentPreview.conversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const appointmentSchedule = (await withSystem((db) => db.query<{ enabled: boolean; recurrence_rule: Record<string, unknown> }>(
+      "select enabled, recurrence_rule from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'appointment_review'",
+      [org.id, agents.appointment_setter],
+    ))).rows[0];
+    expect(appointmentSchedule).toMatchObject({
+      enabled: false,
+      recurrence_rule: { kind: "weekly", weekdays: ["fri"], localTime: "09:00" },
+    });
+    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'appointment_review'", [org.id, agents.appointment_setter]));
+  });
+
+  it("requires a live preview at confirmation time", async () => {
+    const preview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "performance_analyst",
+      content: "Prepare a performance report daily at 9 AM",
+      clientMessageId: crypto.randomUUID(),
+    });
+    await withSystem((db) => db.query(
+      "update chat_conversations set pending_workforce_schedule = jsonb_set(pending_workforce_schedule, '{expiresAt}', to_jsonb($2::text)) where id = $1",
+      [preview.conversationId, new Date(Date.now() - 60_000).toISOString()],
+    ));
+    const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "performance_analyst",
+      conversationId: preview.conversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
+    expect(reply).toContain("preview has expired");
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'", [org.id, agents.performance_analyst]))).rows).toHaveLength(0);
   });
 });

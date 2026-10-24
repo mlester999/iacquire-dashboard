@@ -29,7 +29,16 @@ import { createResearchRequest } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
-import { capabilityDefinition } from "@/lib/workforce-capabilities";
+import { capabilityDefinition, isCapabilityKey, type CapabilityKey } from "@/lib/workforce-capabilities";
+import {
+  isScheduleConfirmation,
+  parseWorkforceChatScheduleIntent,
+  type WorkforceChatScheduleIntent,
+  type WorkforceScheduleCadence,
+} from "@/lib/workforce-chat-schedule-intent";
+import { nextWorkforceScheduleOccurrence, validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
+import { validateBusinessHours } from "@/lib/messaging";
+import { saveScheduleInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
@@ -38,6 +47,339 @@ import type { OrgContext } from "@/server/tenancy/context";
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
 const HEALTH_MAX_AGE_MS = 10 * 60 * 1000;
+const SCHEDULE_PREVIEW_TTL_MS = 15 * 60 * 1000;
+
+type PendingChatSchedule = {
+  version: 1;
+  proposalId: string;
+  status: "pending" | "accepted" | "cancelled" | "expired";
+  requestedBy: string;
+  agentInstanceId: string;
+  agentRole: AgentRoleKey;
+  capability: CapabilityKey;
+  title: string;
+  cadence: WorkforceScheduleCadence;
+  recurrenceRule: WorkforceScheduleRule | null;
+  timezone: string;
+  payload: Record<string, unknown>;
+  businessHours: Record<string, unknown>;
+  expectedExistingSchedule: { id: string; updatedAt: string } | null;
+  expiresAt: string;
+  scheduleId?: string | null;
+  acceptedAt?: string;
+};
+
+type ChatScheduleAction =
+  | { kind: "confirm" | "cancel" }
+  | Exclude<WorkforceChatScheduleIntent, { kind: "none" }>;
+
+function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (
+    item.version !== 1
+    || !uuid.test(String(item.proposalId ?? ""))
+    || !["pending", "accepted", "cancelled", "expired"].includes(String(item.status))
+    || typeof item.requestedBy !== "string"
+    || !uuid.test(String(item.agentInstanceId ?? ""))
+    || typeof item.agentRole !== "string"
+    || !isCapabilityKey(String(item.capability ?? ""))
+    || typeof item.title !== "string"
+    || !["hourly", "daily", "weekly"].includes(String(item.cadence))
+    || typeof item.timezone !== "string"
+    || item.timezone.length < 1
+    || item.timezone.length > 64
+    || typeof item.expiresAt !== "string"
+    || !Number.isFinite(Date.parse(item.expiresAt))
+    || typeof item.payload !== "object"
+    || item.payload === null
+    || Array.isArray(item.payload)
+  ) return null;
+
+  const cadence = item.cadence as WorkforceScheduleCadence;
+  const recurrenceRule = item.recurrenceRule === null ? null : validateWorkforceScheduleRule(item.recurrenceRule);
+  if ((cadence === "hourly" && item.recurrenceRule !== null) || (cadence !== "hourly" && !recurrenceRule)) return null;
+  if (recurrenceRule && ((recurrenceRule.kind === "daily" && cadence !== "daily") || (recurrenceRule.kind === "weekly" && cadence !== "weekly"))) return null;
+  let expectedExistingSchedule: PendingChatSchedule["expectedExistingSchedule"] = null;
+  if (item.expectedExistingSchedule !== null) {
+    if (typeof item.expectedExistingSchedule !== "object" || item.expectedExistingSchedule === null || Array.isArray(item.expectedExistingSchedule)) return null;
+    const existing = item.expectedExistingSchedule as Record<string, unknown>;
+    if (!uuid.test(String(existing.id ?? "")) || typeof existing.updatedAt !== "string" || !Number.isFinite(Date.parse(existing.updatedAt))) return null;
+    expectedExistingSchedule = { id: existing.id as string, updatedAt: existing.updatedAt };
+  }
+  const businessHours = validateBusinessHours(item.businessHours);
+  if (!businessHours) return null;
+  if (item.status === "accepted" && !uuid.test(String(item.scheduleId ?? ""))) return null;
+
+  return {
+    version: 1,
+    proposalId: item.proposalId as string,
+    status: item.status as PendingChatSchedule["status"],
+    requestedBy: item.requestedBy,
+    agentInstanceId: item.agentInstanceId as string,
+    agentRole: item.agentRole as AgentRoleKey,
+    capability: item.capability as CapabilityKey,
+    title: item.title,
+    cadence,
+    recurrenceRule,
+    timezone: item.timezone,
+    payload: item.payload as Record<string, unknown>,
+    businessHours: businessHours as unknown as Record<string, unknown>,
+    expectedExistingSchedule,
+    expiresAt: item.expiresAt,
+    scheduleId: typeof item.scheduleId === "string" ? item.scheduleId : null,
+    acceptedAt: typeof item.acceptedAt === "string" ? item.acceptedAt : undefined,
+  };
+}
+
+function schedulePermissionAllowed(ctx: OrgContext, role: AgentRoleKey, capability: string): boolean {
+  const definition = capabilityDefinition(capability);
+  return Boolean(
+    definition
+    && definition.allowedRoles.includes(role)
+    && ctx.can("agents.use")
+    && ctx.can("agents.configure")
+    && ctx.can(definition.requiredPermission)
+    && (definition.additionalPermissions ?? []).every((permission) => ctx.can(permission)),
+  );
+}
+
+function scheduleCadenceLabel(cadence: WorkforceScheduleCadence, rule: WorkforceScheduleRule | null): string {
+  if (cadence === "hourly") return "every hour";
+  if (cadence === "daily") return `daily at ${rule?.localTime ?? "the selected time"}`;
+  const weekdays = rule?.kind === "weekly" ? rule.weekdays : [];
+  const names: Record<string, string> = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+  return `every ${weekdays.map((day) => names[day]).join(" and ")} at ${rule?.localTime ?? "the selected time"}`;
+}
+
+async function insertChatScheduleReply(
+  db: Queryable,
+  ctx: OrgContext,
+  input: { conversationId: string; agentId: string; content: string },
+): Promise<string> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into chat_messages (conversation_id, org_id, role, content, status)
+     values ($1, $2, 'assistant', $3, 'complete') returning id`,
+    [input.conversationId, ctx.org.orgId, input.content],
+  );
+  await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId]);
+  await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId, kind: "agent_message" });
+  return rows[0].id;
+}
+
+async function handleChatScheduleAction(
+  ctx: OrgContext,
+  input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; action: ChatScheduleAction },
+): Promise<SendResult> {
+  return withSystem(async (db) => {
+    const { rows: conversations } = await db.query<{
+      id: string;
+      pending_workforce_schedule: unknown;
+    }>(
+      `select id, pending_workforce_schedule from chat_conversations
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null
+        for update`,
+      [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
+    );
+    const conversation = conversations[0];
+    if (!conversation) throw new AppError("not_found", "Conversation not found.");
+
+    const reply = async (content: string) => {
+      const assistantMessageId = await insertChatScheduleReply(db, ctx, {
+        conversationId: input.conversationId,
+        agentId: input.agentId,
+        content,
+      });
+      return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+    };
+
+    const rawPending = conversation.pending_workforce_schedule;
+    const pending = parsePendingChatSchedule(rawPending);
+    if (rawPending !== null && !pending) {
+      await db.query("update chat_conversations set pending_workforce_schedule = null where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId]);
+      return reply("I couldn't verify the saved schedule preview, so I discarded it. No schedule was saved. Please request a fresh preview.");
+    }
+
+    if (input.action.kind === "clarification") return reply(input.action.message);
+
+    if (input.action.kind === "proposal") {
+      const definition = capabilityDefinition(input.action.capability);
+      if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, input.action.capability)) {
+        return reply("Your current workspace role can't create this AI schedule. No schedule was saved.");
+      }
+
+      const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
+      const timezone = orgRows[0]?.timezone;
+      if (!timezone || timezone !== ctx.org.timezone) {
+        return reply("The workspace timezone changed while this request was being prepared. Refresh and request a new schedule preview.");
+      }
+      const { rows: scheduleRows } = await db.query<{
+        id: string;
+        updated_at: string;
+        enabled: boolean;
+        business_hours: unknown;
+      }>(
+        `select s.id, s.updated_at::text as updated_at, s.enabled, s.business_hours
+           from ai_work_schedules s
+           join agent_instances a on a.id = s.agent_instance_id and a.org_id = s.org_id
+          where s.org_id = $1 and a.role_key = $2 and s.capability = $3
+          limit 1`,
+        [ctx.org.orgId, input.agentRole, input.action.capability],
+      );
+      const existing = scheduleRows[0] ?? null;
+      const existingHours = existing ? validateBusinessHours(existing.business_hours) : {};
+      let nextRun: Date;
+      try {
+        nextRun = input.action.recurrenceRule
+          ? nextWorkforceScheduleOccurrence(input.action.recurrenceRule, timezone, new Date())
+          : new Date(Date.now() + 60 * 60 * 1000);
+      } catch {
+        return reply("I couldn't calculate the next time in the workspace timezone. No schedule was saved; check the timezone and try again.");
+      }
+      let nextLabel: string;
+      try {
+        nextLabel = new Intl.DateTimeFormat("en-US", {
+          weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: timezone,
+        }).format(nextRun);
+      } catch {
+        return reply("The workspace timezone is invalid, so I can't prepare a schedule preview. No schedule was saved.");
+      }
+
+      const proposal: PendingChatSchedule = {
+        version: 1,
+        proposalId: crypto.randomUUID(),
+        status: "pending",
+        requestedBy: ctx.user.id,
+        agentInstanceId: input.agentId,
+        agentRole: input.agentRole,
+        capability: input.action.capability,
+        title: input.action.title,
+        cadence: input.action.cadence,
+        recurrenceRule: input.action.recurrenceRule,
+        timezone,
+        payload: input.action.payload,
+        businessHours: (existingHours ?? {}) as unknown as Record<string, unknown>,
+        expectedExistingSchedule: existing ? { id: existing.id, updatedAt: existing.updated_at } : null,
+        expiresAt: new Date(Date.now() + SCHEDULE_PREVIEW_TTL_MS).toISOString(),
+      };
+      await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId,
+        ctx.org.orgId,
+        JSON.stringify(proposal),
+      ]);
+      const existingNotice = existing
+        ? ` An existing schedule for this review${existing.enabled ? " is currently enabled" : ""} will be replaced and saved paused if it hasn't changed.`
+        : "";
+      const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}. The next planned time is ${nextLabel} (${timezone}).${existingNotice} It will be saved paused and won't run until you enable it in Schedules; workspace schedule automation must also be enabled. Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
+      return reply(content);
+    }
+
+    if (!pending) {
+      return reply(input.action.kind === "confirm"
+        ? "There is no pending schedule preview to confirm. No schedule was saved."
+        : "There is no pending schedule preview to discard. No schedule was saved.");
+    }
+    if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId || pending.agentRole !== input.agentRole) {
+      return reply("I couldn't match this preview to the current employee and requester. No schedule was saved; request a new preview.");
+    }
+
+    if (input.action.kind === "cancel") {
+      if (pending.status === "accepted" && pending.scheduleId) {
+        const { rows: savedRows } = await db.query<{ enabled: boolean }>(
+          "select enabled from ai_work_schedules where id = $1 and org_id = $2",
+          [pending.scheduleId, ctx.org.orgId],
+        );
+        if (!savedRows[0]) return reply("This preview was already used, but its saved schedule no longer exists. No new schedule was created.");
+        return reply(`This preview was already used. Its schedule is currently ${savedRows[0].enabled ? "enabled" : "paused"}; canceling the preview does not change it.`);
+      }
+      if (pending.status === "pending") {
+        pending.status = "cancelled";
+        await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
+          input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+        ]);
+      }
+      return reply(pending.status === "expired"
+        ? "This schedule preview has expired. No schedule was saved."
+        : "Schedule preview discarded. No schedule was saved.");
+    }
+
+    const definition = capabilityDefinition(pending.capability);
+    if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, pending.capability)) {
+      return reply("Your current workspace role can't create this AI schedule. No schedule was saved.");
+    }
+    if (pending.status === "accepted" && pending.scheduleId) {
+      const { rows: savedRows } = await db.query<{ enabled: boolean }>(
+        "select enabled from ai_work_schedules where id = $1 and org_id = $2",
+        [pending.scheduleId, ctx.org.orgId],
+      );
+      if (!savedRows[0]) return reply("This preview was already used, but its saved schedule no longer exists. Request a new preview; no duplicate was created.");
+      return reply(`This schedule was already saved. It is currently ${savedRows[0].enabled ? "enabled" : "paused"}; no duplicate was created.`);
+    }
+    if (pending.status === "cancelled") return reply("This schedule preview was discarded. No schedule was saved.");
+    if (pending.status === "expired" || Date.parse(pending.expiresAt) <= Date.now()) {
+      pending.status = "expired";
+      await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+      ]);
+      return reply("This schedule preview has expired. No schedule was saved; request a fresh preview.");
+    }
+    if (!validateWorkforceScheduleRule(pending.recurrenceRule) && pending.cadence !== "hourly") {
+      return reply("I couldn't verify the recurrence in this preview. No schedule was saved; request a fresh preview.");
+    }
+    const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
+    if (!orgRows[0]?.timezone || orgRows[0].timezone !== pending.timezone || ctx.org.timezone !== pending.timezone) {
+      pending.status = "expired";
+      await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+      ]);
+      return reply("The workspace timezone changed after this preview. No schedule was saved; request a fresh preview.");
+    }
+
+    let saved: { id: string; enabled: boolean };
+    try {
+      saved = await saveScheduleInTransaction(db, ctx, {
+        capability: pending.capability,
+        cadence: pending.cadence as ScheduleCadence,
+        enabled: false,
+        businessHours: pending.businessHours,
+        payload: pending.payload,
+        recurrenceRule: pending.recurrenceRule,
+        expectedExistingSchedule: pending.expectedExistingSchedule,
+      });
+    } catch (error) {
+      if (!(error instanceof AppError) || !["conflict", "agent_unavailable", "forbidden", "invalid_input", "not_found"].includes(error.code)) throw error;
+      pending.status = "expired";
+      await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+      ]);
+      const reason = error.code === "conflict"
+        ? "The saved schedule changed after this preview. No changes were made; request a fresh preview."
+        : `I couldn't save this schedule: ${error.message} No schedule was changed.`;
+      return reply(reason);
+    }
+
+    pending.status = "accepted";
+    pending.scheduleId = saved.id;
+    pending.acceptedAt = new Date().toISOString();
+    await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
+      input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+    ]);
+    let nextLabel = "the planned time shown in the preview";
+    try {
+      const nextRun = pending.recurrenceRule
+        ? nextWorkforceScheduleOccurrence(pending.recurrenceRule, pending.timezone, new Date())
+        : new Date(Date.now() + 60 * 60 * 1000);
+      nextLabel = new Intl.DateTimeFormat("en-US", {
+        weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: pending.timezone,
+      }).format(nextRun);
+    } catch {
+      // Saving is already durable in this transaction; the prior preview contains the exact time.
+    }
+    const content = `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
+    return reply(content);
+  });
+}
 
 export interface ConversationSummary {
   id: string;
@@ -362,6 +704,37 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   const refusal = !input.regenerateMessageId && input.content
     ? workforceChatRefusal(input.agentRole, input.content)
     : null;
+  const scheduleConfirmation = !input.regenerateMessageId ? isScheduleConfirmation(prepared.userContent) : null;
+  const scheduleIntent = !input.regenerateMessageId
+    ? parseWorkforceChatScheduleIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (scheduleConfirmation) {
+    return handleChatScheduleAction(ctx, {
+      agentId: agent.id,
+      agentRole: input.agentRole,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      action: { kind: scheduleConfirmation },
+    });
+  }
+  if (scheduleIntent.kind === "proposal" && (!refusal || refusal.reason === "appointment_write")) {
+    return handleChatScheduleAction(ctx, {
+      agentId: agent.id,
+      agentRole: input.agentRole,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      action: scheduleIntent,
+    });
+  }
+  if (scheduleIntent.kind === "clarification" && !refusal) {
+    return handleChatScheduleAction(ctx, {
+      agentId: agent.id,
+      agentRole: input.agentRole,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      action: scheduleIntent,
+    });
+  }
   if (refusal) {
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,

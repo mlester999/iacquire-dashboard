@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem, withUser } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
@@ -76,14 +76,15 @@ function assertSchedulableCapability(capability: string) {
 
 type AgentRow = { id: string; role_key: AgentRoleKey; display_name: string; enabled: boolean; status: AgentStatus; active_config_version_id: string | null };
 
-async function resolveAgent(ctx: OrgContext, role: AgentRoleKey): Promise<AgentRow> {
-  const agent = await withSystem(async (db) => {
+async function resolveAgent(ctx: OrgContext, role: AgentRoleKey, transaction?: Queryable): Promise<AgentRow> {
+  const read = async (db: Queryable) => {
     const { rows } = await db.query<AgentRow>(
       "select id, role_key, display_name, enabled, status, active_config_version_id from agent_instances where org_id = $1 and role_key = $2",
       [ctx.org.orgId, role],
     );
     return rows[0] ?? null;
-  });
+  };
+  const agent = transaction ? await read(transaction) : await withSystem(read);
   if (!agent) throw new AppError("not_found", "AI employee not found.");
   if (!agent.enabled) throw new AppError("agent_unavailable", "This AI employee is paused.");
   if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
@@ -143,9 +144,29 @@ export async function listSchedules(ctx: OrgContext): Promise<ScheduleView[]> {
   });
 }
 
+export interface SaveWorkforceScheduleInput {
+  capability: string;
+  cadence: string;
+  enabled: boolean;
+  businessHours?: unknown;
+  payload?: unknown;
+  recurrenceRule?: unknown;
+  /** When present, chat confirmation may replace only the exact schedule version shown in its preview. */
+  expectedExistingSchedule?: { id: string; updatedAt: string } | null;
+}
+
 export async function saveSchedule(
   ctx: OrgContext,
-  input: { capability: string; cadence: string; enabled: boolean; businessHours?: unknown; payload?: unknown; recurrenceRule?: unknown },
+  input: SaveWorkforceScheduleInput,
+): Promise<{ id: string; enabled: boolean }> {
+  return withSystem((db) => saveScheduleInTransaction(db, ctx, input));
+}
+
+/** Shared guarded implementation so chat confirmation can save a paused schedule atomically with its preview state. */
+export async function saveScheduleInTransaction(
+  db: Queryable,
+  ctx: OrgContext,
+  input: SaveWorkforceScheduleInput,
 ): Promise<{ id: string; enabled: boolean }> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can manage AI schedules.");
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't start AI work.");
@@ -180,7 +201,7 @@ export async function saveSchedule(
       quantity: Math.min(50, assignment.quantity),
     };
   }
-  const agent = await resolveAgent(ctx, role);
+  const agent = await resolveAgent(ctx, role, db);
   const intervalMinutes = CADENCE_MINUTES[cadence];
   const businessHours = input.businessHours === undefined ? null : validateBusinessHours(input.businessHours);
   if (input.businessHours !== undefined && businessHours === null) {
@@ -195,9 +216,8 @@ export async function saveSchedule(
     }
   }
 
-  const saved = await withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string; enabled: boolean }>(
-      `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
+  const { rows } = await db.query<{ id: string; enabled: boolean }>(
+    `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, case when $11 then coalesce($12::timestamptz, now() + make_interval(mins => $6)) else now() end)
        on conflict (agent_instance_id, capability) do update set
          cadence = excluded.cadence,
@@ -211,34 +231,36 @@ export async function saveSchedule(
          last_skipped_reason = null,
          last_skipped_at = null,
          updated_at = now()
+       where not $13::boolean
+          or ($14::uuid is not null and ai_work_schedules.id = $14::uuid and ai_work_schedules.updated_at = $15::timestamptz)
        returning id, enabled`,
-      [
-        ctx.org.orgId, agent.id, ctx.user.id, definition.key, cadence, intervalMinutes, ctx.org.timezone,
-        JSON.stringify(businessHours ?? {}), JSON.stringify(payload), recurrenceRule ? JSON.stringify(recurrenceRule) : null,
-        Boolean(input.enabled), nextRunAt?.toISOString() ?? null,
-      ],
-    );
-    await recordAudit({
-      orgId: ctx.org.orgId,
-      actorUserId: ctx.user.id,
-      actorKind: "user",
-      action: "workforce.schedule_saved",
-      targetType: "ai_work_schedule",
-      targetId: rows[0].id,
-      result: "success",
-      metadata: {
-        capability: definition.key,
-        cadence,
-        recurrenceRule,
-        enabled: Boolean(input.enabled),
-        businessHours: businessHours ?? {},
-        hasAssignment: Boolean(payload.prompt),
-        operatorEnabled: schedulesOperatorEnabled(),
-      },
-    }, db);
-    return rows[0];
-  });
-  return { id: saved.id, enabled: saved.enabled };
+    [
+      ctx.org.orgId, agent.id, ctx.user.id, definition.key, cadence, intervalMinutes, ctx.org.timezone,
+      JSON.stringify(businessHours ?? {}), JSON.stringify(payload), recurrenceRule ? JSON.stringify(recurrenceRule) : null,
+      Boolean(input.enabled), nextRunAt?.toISOString() ?? null, input.expectedExistingSchedule !== undefined,
+      input.expectedExistingSchedule?.id ?? null, input.expectedExistingSchedule?.updatedAt ?? null,
+    ],
+  );
+  if (!rows[0]) throw new AppError("conflict", "The saved schedule changed after this preview. Review the current schedule and request a fresh preview.");
+  await recordAudit({
+    orgId: ctx.org.orgId,
+    actorUserId: ctx.user.id,
+    actorKind: "user",
+    action: "workforce.schedule_saved",
+    targetType: "ai_work_schedule",
+    targetId: rows[0].id,
+    result: "success",
+    metadata: {
+      capability: definition.key,
+      cadence,
+      recurrenceRule,
+      enabled: Boolean(input.enabled),
+      businessHours: businessHours ?? {},
+      hasAssignment: Boolean(payload.prompt),
+      operatorEnabled: schedulesOperatorEnabled(),
+    },
+  }, db);
+  return { id: rows[0].id, enabled: rows[0].enabled };
 }
 
 export async function setScheduleEnabled(ctx: OrgContext, scheduleId: string, enabled: boolean): Promise<void> {
