@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { withSystem } from "@/server/db";
+import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { canChat, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
@@ -28,6 +28,8 @@ export async function dispatchCapabilityJob(
     conversationId?: string | null;
     deferKick?: boolean;
     maxAttempts?: number;
+    /** Persist related chat provenance in the same transaction as the durable job. */
+    onDispatch?: (db: Queryable, job: { jobId: string; agentId: string }) => Promise<void>;
   },
 ): Promise<{ jobId: string; agentId: string }> {
   const definition = capabilityDefinition(input.capability);
@@ -82,6 +84,7 @@ export async function dispatchCapabilityJob(
       result: "success",
       metadata: { capability: input.capability, agentRole: input.agentRole },
     }, db);
+    await input.onDispatch?.(db, { jobId: created.id, agentId: agent.id });
     return created;
   });
   if (!input.deferKick) kickWorkJob(job.id);

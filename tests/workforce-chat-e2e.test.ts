@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
+import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
+import { parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -152,6 +154,174 @@ describe("six employee chat to native workflow", () => {
     expect(events.map((event) => event.stage)).toEqual(expect.arrayContaining(["preparing", "scanning", "analyzing", "preparing_results", "completed"]));
     expect((await withSystem((db) => db.query("select id from ai_work_reports where job_id = $1 and org_id = $2", [sent.jobId, org.id]))).rows).toHaveLength(1);
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+  });
+
+  it("hands explicitly named work to the correct employee with durable provenance", async () => {
+    const requestStart = mock.requests.length;
+    const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      content: "CRM Manager, check our CRM for duplicates and incomplete records.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(sent).toMatchObject({ runId: null, jobId: expect.any(String) });
+
+    const sourceReply = (await withSystem((db) => db.query<{ content: string; work_job_id: string | null }>(
+      "select content, work_job_id from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0];
+    expect(sourceReply.work_job_id).toBe(sent.jobId);
+    expect(sourceReply.content).toContain("/chat/crm-manager?c=");
+    expect(sourceReply.content).toContain(`/work?job=${sent.jobId}`);
+
+    const job = (await withSystem((db) => db.query<{
+      agent_instance_id: string; capability: string; input: Record<string, unknown>; conversation_id: string | null;
+    }>(
+      "select agent_instance_id, capability, input, conversation_id from ai_work_jobs where id = $1 and org_id = $2",
+      [sent.jobId, org.id],
+    ))).rows[0];
+    expect(job.agent_instance_id).toBe(agents.crm_manager);
+    expect(job.capability).toBe("crm_quality_review");
+    expect(job.input.handoff).toMatchObject({
+      sourceRole: "lead_hunter",
+      sourceAgentId: agents.lead_hunter,
+      sourceConversationId: sent.conversationId,
+      sourceMessageId: sent.userMessageId,
+    });
+    expect(job.conversation_id).toEqual(expect.any(String));
+
+    const target = (await withSystem((db) => db.query<{
+      role: string; content: string; work_job_id: string; user_id: string; agent_instance_id: string;
+    }>(
+      `select m.role, m.content, m.work_job_id, c.user_id, c.agent_instance_id
+         from chat_messages m join chat_conversations c on c.id = m.conversation_id and c.org_id = m.org_id
+        where m.org_id = $1 and c.id = $2 and m.work_job_id = $3`,
+      [org.id, job.conversation_id, sent.jobId],
+    ))).rows[0];
+    expect(target).toMatchObject({
+      role: "notice",
+      work_job_id: sent.jobId,
+      user_id: owner.id,
+      agent_instance_id: agents.crm_manager,
+    });
+    expect(target.content).toContain("Task routed from Lead Hunter to CRM Manager");
+    expect((await withSystem((db) => db.query(
+      "select id from chat_messages where conversation_id = $1 and org_id = $2 and role = 'user'",
+      [job.conversation_id, org.id],
+    ))).rows).toHaveLength(0);
+
+    const handoffEvent = (await withSystem((db) => db.query<{ data: Record<string, unknown> }>(
+      "select data from ai_work_events where org_id = $1 and job_id = $2 and kind = 'notice' and data->>'handoff' = 'true'",
+      [org.id, sent.jobId],
+    ))).rows[0];
+    expect(handoffEvent.data).toMatchObject({
+      sourceRole: "lead_hunter",
+      sourceConversationId: sent.conversationId,
+      targetRole: "crm_manager",
+      targetConversationId: job.conversation_id,
+    });
+    expect((await withSystem((db) => db.query(
+      "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.employee_handoff_created'",
+      [org.id, sent.jobId],
+    ))).rows).toHaveLength(1);
+
+    expect(await waitForWorkJob(sent.jobId!)).toMatchObject({ status: "completed", stage: "completed" });
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+
+    const route = parseNamedWorkforceHandoff("lead_hunter", "CRM Manager, check our CRM for duplicates and incomplete records.");
+    expect(route).not.toBeNull();
+    const repeated = await createWorkforceChatHandoff(ctxFor(owner, org, "owner"), {
+      sourceRole: "lead_hunter",
+      sourceAgentId: agents.lead_hunter,
+      sourceConversationId: sent.conversationId!,
+      sourceMessageId: sent.userMessageId!,
+      targetRole: "crm_manager",
+      assignment: route!.assignment,
+    });
+    expect(repeated).toMatchObject({ jobId: sent.jobId, targetConversationId: job.conversation_id, targetRole: "crm_manager" });
+    expect((await withSystem((db) => db.query(
+      "select id from ai_work_events where org_id = $1 and job_id = $2 and kind = 'notice' and data->>'handoff' = 'true'",
+      [org.id, sent.jobId],
+    ))).rows).toHaveLength(1);
+    expect((await withSystem((db) => db.query(
+      "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.employee_handoff_created'",
+      [org.id, sent.jobId],
+    ))).rows).toHaveLength(1);
+  });
+
+  it("does not create a handoff job when the viewer lacks the target capability permission", async () => {
+    const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    const sent = await sendChatMessage(ctxFor(member, org, "member"), {
+      agentRole: "lead_hunter",
+      content: "Operations Manager, review our operations and tell me what needs my attention.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(sent).toMatchObject({ runId: null, jobId: null });
+    const reply = (await withSystem((db) => db.query<{ content: string; work_job_id: string | null }>(
+      "select content, work_job_id from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0];
+    expect(reply.content).toContain("does not have permission");
+    expect(reply.content).toContain("No handoff or work job was created");
+    expect(reply.work_job_id).toBeNull();
+    const afterJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    expect(afterJobs).toBe(beforeJobs);
+  });
+
+  it("keeps named recurring requests in the target employee's confirmed schedule flow", async () => {
+    const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      content: "Performance Analyst, prepare our weekly performance report every Friday at 9 AM.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(sent).toMatchObject({ runId: null, jobId: null });
+    const reply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(reply).toContain("employee-specific permissions");
+    expect(reply).toContain("No handoff, schedule, or work job was created");
+    expect(reply).toContain("/chat/performance-analyst");
+    const afterJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    expect(afterJobs).toBe(beforeJobs);
+    expect((await withSystem((db) => db.query(
+      "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'",
+      [org.id, agents.performance_analyst],
+    ))).rows).toHaveLength(0);
+  });
+
+  it("does not let a cross-employee handoff bypass a refused CRM write", async () => {
+    const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      content: "CRM Manager, check our CRM for duplicates and merge them.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(sent).toMatchObject({ runId: null, jobId: null });
+    const reply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [sent.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(reply).toContain("does not have an approved CRM write action");
+    expect((await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count).toBe(beforeJobs);
   });
 
   it("prepares only a Sales Assistant-owned stale deal draft, and reuses it on retry", async () => {

@@ -29,7 +29,7 @@ import { createResearchRequest } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
-import { isAutomationBuilderRequest } from "@/lib/workforce-chat-routing";
+import { explicitlyAddressedWorkforceRole, isAutomationBuilderRequest, parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
 import { capabilityDefinition, isCapabilityKey, type CapabilityKey } from "@/lib/workforce-capabilities";
 import {
   isScheduleConfirmation,
@@ -41,6 +41,7 @@ import { nextWorkforceScheduleOccurrence, validateWorkforceScheduleRule, type Wo
 import { validateBusinessHours } from "@/lib/messaging";
 import { saveScheduleInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
+import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -719,8 +720,11 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   const refusal = !input.regenerateMessageId && input.content
     ? workforceChatRefusal(input.agentRole, input.content)
     : null;
-  const scheduleConfirmation = !input.regenerateMessageId ? isScheduleConfirmation(prepared.userContent) : null;
-  const scheduleIntent = !input.regenerateMessageId
+  const namedOtherRole = !input.regenerateMessageId
+    ? explicitlyAddressedWorkforceRole(input.agentRole, prepared.userContent)
+    : null;
+  const scheduleConfirmation = !input.regenerateMessageId && !namedOtherRole ? isScheduleConfirmation(prepared.userContent) : null;
+  const scheduleIntent = !input.regenerateMessageId && !namedOtherRole
     ? parseWorkforceChatScheduleIntent(input.agentRole, prepared.userContent)
     : { kind: "none" as const };
   if (scheduleConfirmation) {
@@ -750,6 +754,72 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       action: scheduleIntent,
     });
   }
+  if (!refusal && scheduleIntent.kind === "none" && !input.regenerateMessageId && prepared.userMessageId) {
+    const handoff = parseNamedWorkforceHandoff(input.agentRole, prepared.userContent);
+    if (handoff) {
+      const definition = capabilityDefinition(handoff.assignment.capability);
+      if (!definition || !definition.allowedRoles.includes(handoff.targetRole)) {
+        throw new AppError("forbidden", "That employee handoff is not available.");
+      }
+      if (![definition.requiredPermission, ...(definition.additionalPermissions ?? [])].every((permission) => ctx.can(permission))) {
+        const assistantMessageId = await persistChatAssistantMessage({
+          orgId: ctx.org.orgId,
+          userId: ctx.user.id,
+          agentId: agent.id,
+          conversationId: prepared.conversationId,
+          content: `Your workspace role does not have permission to start this ${definition.label.toLowerCase()} with ${AGENT_BY_KEY[handoff.targetRole].shortName}. No handoff or work job was created.`,
+        });
+        return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+      }
+
+      let created: Awaited<ReturnType<typeof createWorkforceChatHandoff>> | null = null;
+      let unavailableMessage: string | null = null;
+      try {
+        created = await createWorkforceChatHandoff(ctx, {
+          sourceRole: input.agentRole,
+          sourceAgentId: agent.id,
+          sourceConversationId: prepared.conversationId,
+          sourceMessageId: prepared.userMessageId,
+          targetRole: handoff.targetRole,
+          assignment: handoff.assignment,
+        });
+      } catch (error) {
+        if (error instanceof AppError && ["agent_unavailable", "not_found"].includes(error.code)) {
+          unavailableMessage = `${AGENT_BY_KEY[handoff.targetRole].shortName} is not available for authorized work right now. No handoff or work job was created.`;
+        } else {
+          throw error;
+        }
+      }
+      if (!created) {
+        const assistantMessageId = await persistChatAssistantMessage({
+          orgId: ctx.org.orgId,
+          userId: ctx.user.id,
+          agentId: agent.id,
+          conversationId: prepared.conversationId,
+          content: unavailableMessage ?? "I couldn't create that handoff. No work job was created.",
+        });
+        return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+      }
+
+      const target = AGENT_BY_KEY[created.targetRole];
+      const assistantMessageId = await persistChatAssistantMessage({
+        orgId: ctx.org.orgId,
+        userId: ctx.user.id,
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        content: `I've queued this supported work with ${target.shortName}. [Open ${target.shortName}'s chat](/chat/${target.slug}?c=${encodeURIComponent(created.targetConversationId)}) · [Track it on the AI Work Board](/work?job=${encodeURIComponent(created.jobId)}). ${target.shortName}'s own permissions and availability still apply.`,
+        workJobId: created.jobId,
+      });
+      kickWorkJob(created.jobId);
+      return {
+        conversationId: prepared.conversationId,
+        userMessageId: prepared.userMessageId,
+        assistantMessageId,
+        runId: null,
+        jobId: created.jobId,
+      };
+    }
+  }
   if (refusal) {
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,
@@ -758,6 +828,18 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       content: refusal.message,
       refusal: { role: input.agentRole, reason: refusal.reason },
+    });
+    return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+  }
+
+  if (namedOtherRole && !input.regenerateMessageId) {
+    const target = AGENT_BY_KEY[namedOtherRole];
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      content: `That request needs to go through ${target.shortName}'s employee chat so that employee-specific permissions and any schedule preview or confirmation apply. No handoff, schedule, or work job was created. [Open ${target.shortName}'s chat](/chat/${target.slug}).`,
     });
     return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
   }
