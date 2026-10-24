@@ -1,6 +1,6 @@
 # Wave 2 checkpoint (2026-10-24, resumed session)
 
-Starting point: branch `feat/phases-3-7` in `.data/wt-phases-3-7`, checkpoint `e3275d5` (the second usage-limit cut). The branch is 31 commits ahead of `origin/master` `36bf78c`. `e3275d5` was the last commit; the work described here was uncommitted in the worktree when this checkpoint was written. Nothing is pushed, deployed or applied to a hosted database.
+Starting point: branch `feat/phases-3-7` in `.data/wt-phases-3-7`, checkpoint `e3275d5` (the second usage-limit cut). The branch is 31 commits ahead of `origin/master` `36bf78c`. The work described here is committed as **`b05c69e`** (251 files, 21,348 insertions, 260 deletions); the ledger update follows it. Nothing is pushed, deployed or applied to a hosted database.
 
 ## What Wave 2 is
 
