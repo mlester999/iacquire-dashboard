@@ -41,6 +41,10 @@ describe("migration file numbers", () => {
     expect(MIGRATION_PREREQUISITES["0084_restricted_hermes_provisioner"]).toContain("0082_client_employee_provisioning");
   });
 
+  it("keeps appointment chat booking previews behind the chat schedule migration", () => {
+    expect(MIGRATION_PREREQUISITES["0089_workforce_chat_booking_previews"]).toContain("0088_workforce_chat_schedule_previews");
+  });
+
   it("notices a shared number (the check itself works)", () => {
     expect(duplicates(["0082_client_employee_provisioning.sql", "0082_unified_inbox.sql", "0083_other.sql"])).toEqual(["0082: 0082_client_employee_provisioning.sql, 0082_unified_inbox.sql"]);
   });

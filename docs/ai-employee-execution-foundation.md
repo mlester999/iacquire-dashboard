@@ -72,9 +72,11 @@ that arrives from another process is detected at the next safe check. Retries ar
 - `WorkJobPanel` polls the permission-checked `/api/work/jobs/[id]` endpoint and renders only persisted status,
   stage, counts, elapsed time and events. It has honest queued/running/failed/cancelled/completed states, no
   invented percentage or ETA, cancel/retry controls with server checks, and a review link only when leads exist.
-- Completed appointment-availability jobs show the returned slots in the workspace time zone and link to the existing
-  Appointments flow, where a person selects the contact and requests a time. The booking path checks availability again
-  and applies the workspace's approval rules; the availability review itself never holds or books a slot.
+- Completed appointment-availability jobs show the returned slots in the workspace time zone. Appointment Setter chat can
+  also prepare a short-lived preview for one exact active contact and one ISO 8601 time with a timezone offset. The preview
+  checks availability without holding the slot. A separate `confirm booking` message invokes the existing booking service,
+  which rechecks availability and applies employee mode, workspace booking settings and the normal approval flow. Chat
+  cancellation and rescheduling remain unavailable.
 - Chat and the Leads workspace show the real job stage. The full panel appears for a new request and in the chat
   turn that created it.
 
@@ -159,8 +161,14 @@ exact `work_job_id`, dispatches through the same role and permission checks, the
 job ID. It never drains the shared queue or invokes Hermes for a native review. Read-only review
 acknowledgements state that they do not edit CRM records, send messages, book appointments or activate
 monitoring. Sales follow-up drafting is the guarded exception: it creates unsent message drafts only.
-`src/lib/workforce-chat-guardrail.ts` also refuses clear out-of-role public prospecting,
-outbound communication, booking changes, approval bypasses, destructive/import CRM actions and
+Appointment booking is a separate, narrow chat action rather than a read-only job: it requires
+`contacts.view`, `appointments.view` and `appointments.book`, resolves one exact contact, checks one
+exact slot, stores only a short-lived proposal, and waits for explicit confirmation before calling
+`requestBooking`. The confirmer is recorded on the booking, and approval copy identifies the staff
+chat request accurately instead of claiming the customer initiated it. No customer conversation is
+linked to the private employee chat. Cancellation and rescheduling remain unsupported.
+`src/lib/workforce-chat-guardrail.ts` still refuses clear out-of-role public prospecting, outbound
+communication, unsupported booking changes, approval bypasses, destructive/import CRM actions and
 unsupported Operations task assignment before Hermes submission; the refusal is persisted with a
 redacted audit reason. Lead Hunter's separate assignment parser still handles research requests.
 

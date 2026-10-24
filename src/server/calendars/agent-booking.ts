@@ -8,7 +8,7 @@ import { createApproval } from "@/server/approvals/service";
 import { queueOutbound } from "@/server/messaging/send";
 import { systemActor, type CrmActor } from "@/server/crm/actor";
 import { isSwitching, loadWorkspace } from "@/server/crm/workspace";
-import { computeSlots, DRAFT_CALENDAR_MESSAGE, loadBookingContext } from "@/server/calendars/availability";
+import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
 import { resolveNativeAppointmentType as resolveType } from "@/server/calendars/native-availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
 import { formatSlot } from "@/lib/appointments";
@@ -62,7 +62,7 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
       `insert into appointment_bookings (org_id, provider, contact_id, conversation_id, calendar_id, start_at, end_at, timezone, title, requested_by_kind, requested_by_user, agent_id, status, idempotency_key, availability_checked_at)
        values ($1, 'native', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'requested', $12, now()) returning id`,
       [req.orgId, req.contactId, req.conversationId ?? null, typeId, req.startAt, end, c.rows[0].timezone ?? ctx.orgTimezone, (req.title ?? `${ctx.type.name} with ${c.rows[0].display_name || "a customer"}`).slice(0, 200),
-        req.actor.kind, req.actor.kind === "staff" ? req.actor.userId : null, req.actor.kind === "ai" ? req.actor.agentId : null, key],
+        req.actor.kind, req.actor.kind === "staff" ? req.actor.userId : req.requestedByUserId ?? null, req.actor.kind === "ai" ? req.actor.agentId : null, key],
     );
     return { kind: "held" as const, bookingId: ins.rows[0].id, contactName: c.rows[0].display_name, typeName: ctx.type.name, timezone: c.rows[0].timezone ?? ctx.orgTimezone, aiBooking: policy.rows[0]?.ai_booking_enabled ?? false };
   });
@@ -87,8 +87,13 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
     const approvalId = await createApproval(db, {
       orgId: req.orgId, agentId: req.actor.agentId, kind: "appointment_booking", title: `Book ${held.contactName || "a customer"} for ${label}`,
       action: { bookingId: held.bookingId }, targetType: "appointment_booking", targetId: held.bookingId, targetLabel: held.contactName || undefined,
-      reason: `Your Appointment Setter found this time free on your ${held.typeName} calendar and the customer asked to book it.`,
-      expectedEffect: "The appointment is added to your calendar and the customer is told it is confirmed.", risk: "medium", expiresInHours: 48, idempotencyKey: `booking:${held.bookingId}`, actorKind: "agent",
+      reason: req.requestSource === "staff_chat"
+        ? `A team member selected and explicitly confirmed this contact and time in AI Employee Chat for the ${held.typeName} calendar. The booking still needs your approval.`
+        : `Your Appointment Setter found this time free on your ${held.typeName} calendar and the customer asked to book it.`,
+      expectedEffect: req.requestSource === "staff_chat"
+        ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."
+        : "The appointment is added to your calendar and the customer is told it is confirmed.",
+      risk: "medium", expiresInHours: 48, idempotencyKey: `booking:${held.bookingId}`, actorKind: "agent",
     });
     await db.query("update appointment_bookings set status = 'awaiting_approval', approval_id = $2 where id = $1", [held.bookingId, approvalId]);
     await notifyOrgRoles(db, req.orgId, ["owner", "admin"], { kind: "approval_requested", severity: "info", title: `Confirm an appointment for ${held.contactName || "a customer"}`, body: label, link: "/approvals", dedupeKey: `booking-approval:${held.bookingId}` });

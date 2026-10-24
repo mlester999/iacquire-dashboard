@@ -16,6 +16,7 @@ import { ghlPathRefusal } from "@/server/crm/provider-guard";
 import { isSwitching } from "@/server/crm/workspace";
 
 export type BookingActor = { kind: "ai"; agentId: string | null } | { kind: "staff"; userId: string };
+export type BookingRequestSource = "customer_conversation" | "staff_chat";
 
 export interface BookingRequest {
   orgId: string;
@@ -25,6 +26,10 @@ export interface BookingRequest {
   startAt: Date;
   title?: string;
   actor: BookingActor;
+  /** Provenance for a guarded request made from an employee's private chat. */
+  requestSource?: BookingRequestSource;
+  /** The person who explicitly confirmed an employee-chat proposal; ordinary AI bookings omit this. */
+  requestedByUserId?: string | null;
   assignedGhlUserId?: string | null;
   now?: Date;
 }
@@ -119,7 +124,7 @@ export async function requestBooking(req: BookingRequest, d: { provider?: Appoin
       `insert into appointment_bookings (org_id, contact_id, conversation_id, calendar_id, start_at, end_at, timezone, title, assigned_ghl_user_id, requested_by_kind, requested_by_user, agent_id, status, idempotency_key)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'requested', $13) returning *`,
       [req.orgId, req.contactId, req.conversationId ?? null, calendarId, req.startAt.toISOString(), end.toISOString(), timezone, (req.title ?? `Appointment with ${contact.display_name || "a customer"}`).slice(0, 200), req.assignedGhlUserId ?? null,
-        req.actor.kind, req.actor.kind === "staff" ? req.actor.userId : null, req.actor.kind === "ai" ? req.actor.agentId : null, key],
+        req.actor.kind, req.actor.kind === "staff" ? req.actor.userId : req.requestedByUserId ?? null, req.actor.kind === "ai" ? req.actor.agentId : null, key],
     );
     return { kind: "held" as const, booking: ins.rows[0], contactName: contact.display_name, ghlContactId: contact.ghl_contact_id, aiBooking: policy.aiBookingEnabled };
   });
@@ -154,8 +159,13 @@ export async function requestBooking(req: BookingRequest, d: { provider?: Appoin
     const approvalId = await createApproval(db, {
       orgId: req.orgId, agentId: req.actor.agentId, kind: "appointment_booking", title: `Book ${held.contactName || "a customer"} for ${formatSlot(b.start_at.toISOString(), b.timezone)}`,
       action: { bookingId: b.id }, targetType: "appointment_booking", targetId: b.id, targetLabel: held.contactName || undefined,
-      reason: "Your Appointment Setter found this time on your real calendar and the customer asked to book it.",
-      expectedEffect: "The appointment is added to your calendar and the customer is told it is confirmed.", risk: "medium", expiresInHours: 48, idempotencyKey: `booking:${b.id}`, actorKind: "agent",
+      reason: req.requestSource === "staff_chat"
+        ? "A team member selected and explicitly confirmed this contact and time in AI Employee Chat. The booking still needs your approval."
+        : "Your Appointment Setter found this time on your real calendar and the customer asked to book it.",
+      expectedEffect: req.requestSource === "staff_chat"
+        ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."
+        : "The appointment is added to your calendar and the customer is told it is confirmed.",
+      risk: "medium", expiresInHours: 48, idempotencyKey: `booking:${b.id}`, actorKind: "agent",
     });
     await db.query("update appointment_bookings set status = 'awaiting_approval', approval_id = $2 where id = $1", [b.id, approvalId]);
     await notifyOrgRoles(db, req.orgId, ["owner", "admin"], { kind: "approval_requested", severity: "info", title: `Confirm an appointment for ${held.contactName || "a customer"}`, body: formatSlot(b.start_at.toISOString(), b.timezone), link: "/approvals", dedupeKey: `booking-approval:${b.id}` });

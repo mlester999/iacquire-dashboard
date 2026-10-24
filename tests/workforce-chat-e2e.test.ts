@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { RATE_LIMITS } from "@/server/security/rate-limit";
 import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
@@ -48,6 +49,10 @@ async function waitForWorkJob(jobId: string, timeoutMs = 10000) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error(`work job ${jobId} did not settle`);
+}
+
+async function resetAgentMessageRateLimit(userId: string) {
+  await withSystem((db) => db.query("delete from rate_limit_buckets where bucket_key = $1", [`${RATE_LIMITS.agentMessageByUser.name}:${userId}`]));
 }
 
 beforeAll(async () => {
@@ -712,6 +717,92 @@ describe("six employee chat to native workflow", () => {
       recurrence_rule: { kind: "weekly", weekdays: ["fri"], localTime: "09:00" },
     });
     await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'appointment_review'", [org.id, agents.appointment_setter]));
+  });
+
+  it("previews an exact appointment, submits only after chat confirmation, and leaves the approval gate intact", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const contact = await withSystem((db) => db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name, timezone) values ($1, 'Chat Booking E2E Contact', 'UTC') returning id",
+      [org.id],
+    ));
+    const startAt = new Date(Date.now() + 3 * 86_400_000);
+    startAt.setUTCHours(10, 0, 0, 0);
+    const requestStart = mock.requests.length;
+    const preview = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "appointment_setter",
+      content: `Book an appointment with Chat Booking E2E Contact at ${startAt.toISOString().slice(0, 16)}Z`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(preview).toMatchObject({ runId: null, jobId: null });
+    const previewReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [preview.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(previewReply).toContain("Appointment preview");
+    expect(previewReply).toContain("does not hold or book the slot");
+    const proposal = (await withSystem((db) => db.query<{ pending_workforce_booking: Record<string, unknown> }>(
+      "select pending_workforce_booking from chat_conversations where id = $1 and org_id = $2",
+      [preview.conversationId, org.id],
+    ))).rows[0].pending_workforce_booking;
+    expect(proposal).toMatchObject({ status: "pending", contactId: contact.rows[0].id, requestedBy: owner.id, agentInstanceId: agents.appointment_setter });
+    expect((await withSystem((db) => db.query("select id from appointment_bookings where org_id = $1 and contact_id = $2", [org.id, contact.rows[0].id]))).rows).toHaveLength(0);
+
+    const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "appointment_setter",
+      conversationId: preview.conversationId,
+      content: "confirm booking",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const booking = (await withSystem((db) => db.query<{
+      id: string; status: string; requested_by_kind: string; requested_by_user: string | null; agent_id: string | null; conversation_id: string | null;
+    }>(
+      "select id, status, requested_by_kind, requested_by_user, agent_id, conversation_id from appointment_bookings where org_id = $1 and contact_id = $2",
+      [org.id, contact.rows[0].id],
+    ))).rows[0];
+    expect(booking).toMatchObject({ status: "awaiting_approval", requested_by_kind: "ai", requested_by_user: owner.id, agent_id: agents.appointment_setter, conversation_id: null });
+    const confirmationReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [confirm.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(confirmationReply).toContain("not booked yet");
+    expect(confirmationReply).toContain("/approvals");
+    const approval = (await withSystem((db) => db.query<{ id: string; reason: string; expected_effect: string }>(
+      "select id, reason, expected_effect from approval_requests where org_id = $1 and kind = 'appointment_booking' and target_id = $2",
+      [org.id, booking.id],
+    ))).rows[0];
+    expect(approval.reason).toContain("team member selected and explicitly confirmed");
+    expect(approval.reason).not.toContain("customer asked");
+    expect(approval.expected_effect).toContain("calendar provider's settings");
+
+    const repeat = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "appointment_setter",
+      conversationId: preview.conversationId,
+      content: "confirm booking",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const repeatReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [repeat.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(repeatReply).toContain("already waiting");
+    expect((await withSystem((db) => db.query("select id from appointment_bookings where org_id = $1 and contact_id = $2", [org.id, contact.rows[0].id]))).rows).toHaveLength(1);
+
+    const ownerContext = ctxFor(owner, org, "owner");
+    const noBookingPermission = { ...ownerContext, can: (permission: Parameters<typeof ownerContext.can>[0]) => permission !== "appointments.book" && ownerContext.can(permission) };
+    const denied = await sendChatMessage(noBookingPermission, {
+      agentRole: "appointment_setter",
+      conversationId: preview.conversationId,
+      content: `Book an appointment with Chat Booking E2E Contact at ${startAt.toISOString().slice(0, 16)}Z`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [denied.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(deniedReply).toContain("needs permission");
+    expect((await withSystem((db) => db.query("select id from appointment_bookings where org_id = $1 and contact_id = $2", [org.id, contact.rows[0].id]))).rows).toHaveLength(1);
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    await resetAgentMessageRateLimit(owner.id);
   });
 
   it("requires a live preview at confirmation time", async () => {

@@ -51,6 +51,13 @@ The existing chat pipeline is reused (`src/server/chat/service.ts`, `/api/chat/s
 
 The chat stream is server-side: provider credentials never reach the browser.
 
+Appointment Setter chat can prepare one exact appointment preview when the caller can view
+contacts and calendars and book appointments. It requires one exact active CRM display name and an
+ISO 8601 date and time with an explicit offset. The preview checks the current calendar but does not
+hold the slot; the caller must reply `confirm booking` before the existing booking service is
+invoked. Confirmation rechecks the slot and applies employee mode, workspace booking settings and
+the normal approval flow. Cancellation and rescheduling are not supported from employee chat.
+
 ## Employee profile and instructions
 
 The employee detail screen (`/workforce/[slug]`) now exposes:

@@ -27,6 +27,7 @@ import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createResearchRequest } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
+import { parseWorkforceChatBookingIntent, type WorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
 import { explicitlyAddressedWorkforceRole, isAutomationBuilderRequest, parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
@@ -39,8 +40,11 @@ import {
 } from "@/lib/workforce-chat-schedule-intent";
 import { nextWorkforceScheduleOccurrence, validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
 import { validateBusinessHours } from "@/lib/messaging";
+import { formatSlot } from "@/lib/appointments";
 import { saveScheduleInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
+import { getAvailability } from "@/server/appointments/availability";
+import { requestBooking, type BookingResult } from "@/server/appointments/booking";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
 import { toolInventoryReady } from "@/lib/hermes-tool-inventory";
 import { abortChannel, openChannel, publish } from "@/server/chat/hub";
@@ -50,6 +54,7 @@ const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
 const HEALTH_MAX_AGE_MS = 10 * 60 * 1000;
 const SCHEDULE_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const BOOKING_PREVIEW_TTL_MS = 15 * 60 * 1000;
 
 type PendingChatSchedule = {
   version: 1;
@@ -68,6 +73,26 @@ type PendingChatSchedule = {
   expectedExistingSchedule: { id: string; updatedAt: string } | null;
   expiresAt: string;
   scheduleId?: string | null;
+  acceptedAt?: string;
+};
+
+type PendingChatBooking = {
+  version: 1;
+  proposalId: string;
+  status: "pending" | "processing" | "accepted" | "cancelled" | "expired";
+  requestedBy: string;
+  agentInstanceId: string;
+  contactId: string;
+  contactName: string;
+  contactTimeZone: string | null;
+  workspaceTimeZone: string;
+  timeZone: string;
+  calendarId: string;
+  startAt: string;
+  expiresAt: string;
+  processingAt?: string;
+  bookingId?: string | null;
+  bookingStatus?: BookingResult["status"];
   acceptedAt?: string;
 };
 
@@ -131,6 +156,67 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     expectedExistingSchedule,
     expiresAt: item.expiresAt,
     scheduleId: typeof item.scheduleId === "string" ? item.scheduleId : null,
+    acceptedAt: typeof item.acceptedAt === "string" ? item.acceptedAt : undefined,
+  };
+}
+
+function parsePendingChatBooking(value: unknown): PendingChatBooking | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validZone = (zone: unknown): zone is string => {
+    if (typeof zone !== "string" || zone.length < 1 || zone.length > 64) return false;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const bookingStatuses: readonly string[] = ["booked", "awaiting_approval", "needs_manual", "unavailable", "failed"];
+  if (
+    item.version !== 1
+    || !uuid.test(String(item.proposalId ?? ""))
+    || !["pending", "processing", "accepted", "cancelled", "expired"].includes(String(item.status))
+    || typeof item.requestedBy !== "string"
+    || !uuid.test(String(item.agentInstanceId ?? ""))
+    || !uuid.test(String(item.contactId ?? ""))
+    || typeof item.contactName !== "string"
+    || item.contactName.length < 1
+    || item.contactName.length > 200
+    || (item.contactTimeZone !== null && !validZone(item.contactTimeZone))
+    || !validZone(item.workspaceTimeZone)
+    || !validZone(item.timeZone)
+    || typeof item.calendarId !== "string"
+    || !/^[A-Za-z0-9_-]{1,80}$/.test(item.calendarId)
+    || typeof item.startAt !== "string"
+    || !Number.isFinite(Date.parse(item.startAt))
+    || new Date(item.startAt).toISOString() !== item.startAt
+    || typeof item.expiresAt !== "string"
+    || !Number.isFinite(Date.parse(item.expiresAt))
+    || (item.processingAt !== undefined && (typeof item.processingAt !== "string" || !Number.isFinite(Date.parse(item.processingAt))))
+    || (item.bookingId !== undefined && item.bookingId !== null && !uuid.test(String(item.bookingId)))
+    || (item.bookingStatus !== undefined && !bookingStatuses.includes(String(item.bookingStatus)))
+    || (item.acceptedAt !== undefined && (typeof item.acceptedAt !== "string" || !Number.isFinite(Date.parse(item.acceptedAt))))
+  ) return null;
+  if (item.status === "accepted" && (!uuid.test(String(item.bookingId ?? "")) || !bookingStatuses.includes(String(item.bookingStatus ?? "")))) return null;
+  return {
+    version: 1,
+    proposalId: item.proposalId as string,
+    status: item.status as PendingChatBooking["status"],
+    requestedBy: item.requestedBy,
+    agentInstanceId: item.agentInstanceId as string,
+    contactId: item.contactId as string,
+    contactName: item.contactName,
+    contactTimeZone: item.contactTimeZone as string | null,
+    workspaceTimeZone: item.workspaceTimeZone,
+    timeZone: item.timeZone,
+    calendarId: item.calendarId as string,
+    startAt: item.startAt,
+    expiresAt: item.expiresAt,
+    processingAt: typeof item.processingAt === "string" ? item.processingAt : undefined,
+    bookingId: typeof item.bookingId === "string" ? item.bookingId : null,
+    bookingStatus: item.bookingStatus as BookingResult["status"] | undefined,
     acceptedAt: typeof item.acceptedAt === "string" ? item.acceptedAt : undefined,
   };
 }
@@ -431,6 +517,275 @@ async function persistChatAssistantMessage(
   });
 }
 
+function appointmentBookingPermissionsAllowed(ctx: OrgContext): boolean {
+  return ctx.can("agents.use") && ctx.can("contacts.view") && ctx.can("appointments.view") && ctx.can("appointments.book");
+}
+
+function chatSafeText(value: string): string {
+  return value.replace(/[\\`*_{}\[\]()#+\-.!|>]/g, "\\$&");
+}
+
+function bookingResultReply(result: BookingResult, pending: PendingChatBooking): string {
+  const slot = formatSlot(pending.startAt, pending.timeZone);
+  const contactName = chatSafeText(pending.contactName);
+  if (result.status === "booked") {
+    return `The calendar confirmed ${contactName} for ${slot}. [View Appointments](/appointments).`;
+  }
+  if (result.status === "awaiting_approval") {
+    return `I submitted ${contactName}'s appointment request for ${slot}. It is not booked yet; an owner or admin must approve it. [Review approvals](/approvals).`;
+  }
+  if (result.status === "needs_manual") {
+    return `The calendar could not complete ${contactName}'s booking automatically. A person needs to add it manually before it is confirmed. [Open Appointments](/appointments).`;
+  }
+  if (result.status === "unavailable") {
+    return `I couldn't submit that appointment for ${contactName}: ${chatSafeText(result.detail.slice(0, 500))} No appointment was confirmed.`;
+  }
+  return `The calendar could not complete that booking: ${chatSafeText(result.reason.slice(0, 500))}. No appointment was confirmed.`;
+}
+
+async function handleChatBookingIntent(
+  ctx: OrgContext,
+  input: { agentId: string; agentRole: AgentRoleKey; conversationId: string; userMessageId: string | null; intent: WorkforceChatBookingIntent },
+): Promise<SendResult> {
+  const reply = async (content: string) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: input.agentId,
+      conversationId: input.conversationId,
+      content,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "none") return reply("I couldn't prepare that appointment request. No booking was made.");
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (!appointmentBookingPermissionsAllowed(ctx)) {
+    return reply("To prepare or submit an appointment request, your workspace role needs permission to view contacts and calendars and book appointments. No booking was made.");
+  }
+
+  if (input.intent.kind === "proposal") {
+    const proposalIntent = input.intent;
+    const matches = await withUser(ctx.user.id, async (db) => {
+      const { rows } = await db.query<{ id: string; name: string; timezone: string | null }>(
+        `select id, coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name, timezone
+           from contacts
+          where org_id = $1 and deleted_at is null and archived_at is null
+            and lower(btrim(coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')))) = lower($2)
+          order by id limit 2`,
+        [ctx.org.orgId, proposalIntent.contactName],
+      );
+      return rows;
+    });
+    if (matches.length === 0) return reply(`I couldn't find an active CRM contact named “${chatSafeText(proposalIntent.contactName)}” exactly. Check the contact's display name and try again. No booking preview was created.`);
+    if (matches.length > 1) return reply(`More than one active contact is named “${chatSafeText(proposalIntent.contactName)}”. Use a unique CRM display name before requesting a booking. No preview was created.`);
+
+    const contact = matches[0];
+    const timeZone = contact.timezone ?? ctx.org.timezone;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(proposalIntent.startAt));
+    } catch {
+      return reply("That contact or workspace has an invalid timezone. Update the contact or workspace timezone, then request a new preview. No booking was created.");
+    }
+    const startAt = new Date(proposalIntent.startAt);
+    let availability;
+    try {
+      availability = await getAvailability(ctx.org.orgId, {
+        from: new Date(startAt.getTime() - 60_000),
+        to: new Date(startAt.getTime() + 60_000),
+        timeZone,
+        limit: 200,
+      });
+    } catch {
+      return reply("I couldn't verify the requested time against the live calendar, so I didn't create a preview. Check the calendar connection and try again.");
+    }
+    if (!availability.ok) return reply(`I couldn't prepare a booking preview: ${chatSafeText(availability.detail.slice(0, 500))} No booking was made.`);
+    const slot = availability.slots.find((candidate) => new Date(candidate.start).getTime() === startAt.getTime());
+    if (!slot) return reply(`The calendar does not currently offer ${formatSlot(proposalIntent.startAt, timeZone)}. I did not reserve or book a time. Ask for a listed available slot and try again.`);
+
+    const proposal: PendingChatBooking = {
+      version: 1,
+      proposalId: crypto.randomUUID(),
+      status: "pending",
+      requestedBy: ctx.user.id,
+      agentInstanceId: input.agentId,
+      contactId: contact.id,
+      contactName: contact.name,
+      contactTimeZone: contact.timezone,
+      workspaceTimeZone: ctx.org.timezone,
+      timeZone,
+      calendarId: availability.calendarId,
+      startAt: startAt.toISOString(),
+      expiresAt: new Date(Date.now() + BOOKING_PREVIEW_TTL_MS).toISOString(),
+    };
+    const stored = await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string; pending_workforce_booking: unknown }>(
+        `select id, pending_workforce_booking from chat_conversations
+          where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null
+          for update`,
+        [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
+      );
+      if (!rows[0]) throw new AppError("not_found", "Conversation not found.");
+      const existing = parsePendingChatBooking(rows[0].pending_workforce_booking);
+      if (existing?.status === "processing") return false;
+      await db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId, ctx.org.orgId, JSON.stringify(proposal),
+      ]);
+      await recordAudit({
+        orgId: ctx.org.orgId,
+        actorUserId: ctx.user.id,
+        actorKind: "user",
+        action: "workforce.chat_booking_previewed",
+        targetType: "contact",
+        targetId: contact.id,
+        result: "success",
+        metadata: { agentRole: input.agentRole, startAt: proposal.startAt, timeZone },
+      }, db);
+      return true;
+    });
+    if (!stored) return reply("A booking request is already being processed in this conversation. Check Appointments before requesting another one.");
+    return reply(`Appointment preview for ${chatSafeText(contact.name)}: ${formatSlot(proposal.startAt, timeZone)}. This does not hold or book the slot. Reply “confirm booking” to submit it; the calendar will be checked again and the workspace approval rules still apply. This preview expires in 15 minutes.`);
+  }
+
+  const initial = await withSystem(async (db) => {
+    const { rows } = await db.query<{ pending_workforce_booking: unknown }>(
+      `select pending_workforce_booking from chat_conversations
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null`,
+      [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
+    );
+    return rows[0]?.pending_workforce_booking ?? null;
+  });
+  const pending = parsePendingChatBooking(initial);
+  if (initial !== null && !pending) {
+    await withSystem((db) => db.query(
+      "update chat_conversations set pending_workforce_booking = null where id = $1 and org_id = $2",
+      [input.conversationId, ctx.org.orgId],
+    ));
+    return reply("I couldn't verify the saved appointment preview, so I discarded it. No booking was made. Please request a fresh preview.");
+  }
+  if (!pending) return reply(input.intent.kind === "confirm"
+    ? "There is no pending appointment preview to confirm. No booking was made."
+    : "There is no pending appointment preview to discard. No appointment was changed.");
+  if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId || input.agentRole !== "appointment_setter") {
+    return reply("I couldn't match this preview to the current employee and requester. No booking was made; request a fresh preview.");
+  }
+
+  if (input.intent.kind === "cancel") {
+    if (pending.status === "accepted") return reply("This preview was already submitted. It cannot cancel or change that appointment. Use Appointments to review the booking.");
+    if (pending.status === "processing") return reply("The booking request is already being processed, so I can't discard it now. Check Appointments before taking further action.");
+    if (pending.status === "pending") {
+      pending.status = "cancelled";
+      await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+      ]));
+    }
+    return reply(pending.status === "expired"
+      ? "This appointment preview has expired. No booking was made."
+      : "Appointment preview discarded. No booking was made.");
+  }
+
+  if (pending.status === "accepted" && pending.bookingId && pending.bookingStatus) {
+    if (pending.bookingStatus === "booked") return reply(`This appointment was already submitted and the calendar confirmed it for ${formatSlot(pending.startAt, pending.timeZone)}. [View Appointments](/appointments).`);
+    if (pending.bookingStatus === "awaiting_approval") return reply(`This appointment request is already waiting for an owner or admin's approval; it is not booked yet. [Review approvals](/approvals).`);
+    if (pending.bookingStatus === "needs_manual") return reply("This appointment request was already submitted and still needs a person to add it to the calendar. [Open Appointments](/appointments).");
+    return reply("This appointment preview was already used. Check Appointments before requesting a new time.");
+  }
+  if (pending.status === "cancelled") return reply("This appointment preview was discarded. No booking was made.");
+  if (pending.status === "expired" || Date.parse(pending.expiresAt) <= Date.now()) {
+    pending.status = "expired";
+    await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2", [
+      input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+    ]));
+    return reply("This appointment preview has expired. No booking was made; request a fresh preview.");
+  }
+  if (pending.status === "processing") {
+    const processingAt = Date.parse(pending.processingAt ?? "");
+    if (Number.isFinite(processingAt) && Date.now() - processingAt > 10 * 60_000) {
+      pending.status = "expired";
+      await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2", [
+        input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+      ]));
+      return reply("I couldn't confirm the result of the earlier booking request. Check Appointments before retrying so you don't create a duplicate.");
+    }
+    return reply("The booking request is still being processed. Check Appointments before sending another request.");
+  }
+
+  const currentContact = await withUser(ctx.user.id, async (db) => {
+    const { rows } = await db.query<{ name: string; timezone: string | null }>(
+      `select coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name, timezone
+         from contacts where id = $1 and org_id = $2 and deleted_at is null and archived_at is null`,
+      [pending.contactId, ctx.org.orgId],
+    );
+    return rows[0] ?? null;
+  });
+  const workspaceTimeZone = await withSystem(async (db) => {
+    const { rows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
+    return rows[0]?.timezone ?? null;
+  });
+  const currentTimeZone = currentContact?.timezone ?? workspaceTimeZone;
+  if (
+    !currentContact
+    || currentContact.name !== pending.contactName
+    || currentContact.timezone !== pending.contactTimeZone
+    || workspaceTimeZone !== pending.workspaceTimeZone
+    || currentTimeZone !== pending.timeZone
+  ) {
+    pending.status = "expired";
+    await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2", [
+      input.conversationId, ctx.org.orgId, JSON.stringify(pending),
+    ]));
+    return reply("The contact or workspace timezone changed after this preview. No booking was made; request a fresh preview.");
+  }
+
+  const claimed = await withSystem(async (db) => {
+    const { rows } = await db.query<{ pending_workforce_booking: unknown }>(
+      `select pending_workforce_booking from chat_conversations
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null
+        for update`,
+      [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
+    );
+    const current = parsePendingChatBooking(rows[0]?.pending_workforce_booking);
+    if (!current || current.proposalId !== pending.proposalId || current.status !== "pending") return null;
+    current.status = "processing";
+    current.processingAt = new Date().toISOString();
+    await db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2", [
+      input.conversationId, ctx.org.orgId, JSON.stringify(current),
+    ]);
+    return current;
+  });
+  if (!claimed) return reply("This appointment preview changed while I was confirming it. No second booking was submitted; request a fresh preview or check Appointments.");
+
+  let result: BookingResult;
+  try {
+    result = await requestBooking({
+      orgId: ctx.org.orgId,
+      contactId: claimed.contactId,
+      calendarId: claimed.calendarId,
+      startAt: new Date(claimed.startAt),
+      title: `Appointment with ${claimed.contactName}`,
+      actor: { kind: "ai", agentId: input.agentId },
+      requestSource: "staff_chat",
+      requestedByUserId: ctx.user.id,
+    });
+  } catch {
+    claimed.status = "expired";
+    await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2 and pending_workforce_booking->>'proposalId' = $4", [
+      input.conversationId, ctx.org.orgId, JSON.stringify(claimed), claimed.proposalId,
+    ]));
+    return reply("I couldn't confirm the calendar result. Check Appointments before retrying so you don't create a duplicate.");
+  }
+
+  claimed.bookingId = "bookingId" in result && typeof result.bookingId === "string" ? result.bookingId : null;
+  claimed.bookingStatus = result.status;
+  const accepted = result.status === "booked" || result.status === "awaiting_approval" || result.status === "needs_manual";
+  claimed.status = accepted && claimed.bookingId ? "accepted" : "expired";
+  claimed.acceptedAt = accepted ? new Date().toISOString() : undefined;
+  await withSystem((db) => db.query("update chat_conversations set pending_workforce_booking = $3::jsonb where id = $1 and org_id = $2 and pending_workforce_booking->>'proposalId' = $4", [
+    input.conversationId, ctx.org.orgId, JSON.stringify(claimed), claimed.proposalId,
+  ]));
+  return reply(bookingResultReply(result, claimed));
+}
+
 // ---------------------------------------------------------------------------
 // Reads (row-level security restricts these to the signed-in user's own conversations)
 // ---------------------------------------------------------------------------
@@ -723,6 +1078,18 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   const namedOtherRole = !input.regenerateMessageId
     ? explicitlyAddressedWorkforceRole(input.agentRole, prepared.userContent)
     : null;
+  const bookingIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatBookingIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (bookingIntent.kind !== "none") {
+    return handleChatBookingIntent(ctx, {
+      agentId: agent.id,
+      agentRole: input.agentRole,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: bookingIntent,
+    });
+  }
   const scheduleConfirmation = !input.regenerateMessageId && !namedOtherRole ? isScheduleConfirmation(prepared.userContent) : null;
   const scheduleIntent = !input.regenerateMessageId && !namedOtherRole
     ? parseWorkforceChatScheduleIntent(input.agentRole, prepared.userContent)
