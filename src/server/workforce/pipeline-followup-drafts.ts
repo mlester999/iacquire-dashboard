@@ -4,8 +4,8 @@ import { cleanText } from "@/lib/support/content";
 import { recordAudit } from "@/server/audit";
 import { withSystem, withUser } from "@/server/db";
 import {
-  appendWorkEvent,
   finishWorkJob,
+  lockActiveWorkJobLease,
   recordWorkStage,
   type WorkJobRow,
 } from "@/server/workforce/jobs";
@@ -121,14 +121,23 @@ async function requesterStillAuthorized(job: WorkJobRow): Promise<boolean> {
 
 async function blockJob(job: WorkJobRow, failureCode: string, message: string): Promise<void> {
   await withSystem(async (db) => {
-    await finishWorkJob(db, { jobId: job.id, orgId: job.org_id, status: "blocked", stage: "blocked", failureCode, failureMessage: message });
-    await appendWorkEvent(db, { jobId: job.id, orgId: job.org_id, kind: "error", stage: "blocked", message });
+    await finishWorkJob(db, {
+      jobId: job.id,
+      orgId: job.org_id,
+      workerId: job.lease_owner ?? "",
+      status: "blocked",
+      stage: "blocked",
+      failureCode,
+      failureMessage: message,
+      event: { kind: "error", stage: "blocked", message },
+    });
   });
 }
 
-async function saveDraft(job: WorkJobRow, agent: AgentRow, candidate: PipelineDraftCandidate, body: string) {
+async function saveDraft(job: WorkJobRow, agent: AgentRow, candidate: PipelineDraftCandidate, body: string, workerId: string) {
   const dedupeKey = `workforce-sales-followup:${candidate.opportunityId}:${candidate.lastInboundId}`;
   return withSystem(async (db) => {
+    if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId })) throw new Error("work_lease_lost");
     const inserted = await db.query<{ id: string }>(
       `insert into conversation_messages
          (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail, blocked_reason, scope, dedupe_key)
@@ -219,6 +228,7 @@ export async function runPipelineFollowUpDraftsJob(
   await withSystem((db) => recordWorkStage(db, {
     jobId: job.id,
     orgId: job.org_id,
+    workerId: context.workerId,
     stage: "scanning",
     message: "Reviewing stale opportunities and the existing Sales Assistant conversations…",
     progress: { staleOpportunities: candidates.length, draftsToPrepare: eligible.length, priorDrafts: reused.length },
@@ -228,6 +238,7 @@ export async function runPipelineFollowUpDraftsJob(
   await withSystem((db) => recordWorkStage(db, {
     jobId: job.id,
     orgId: job.org_id,
+    workerId: context.workerId,
     stage: "analyzing",
     message: "Preparing unsent drafts for Inbox review and checking for duplicate or changed conversations…",
     progress: { staleOpportunities: candidates.length, draftsToPrepare: eligible.length, priorDrafts: reused.length },
@@ -251,7 +262,7 @@ export async function runPipelineFollowUpDraftsJob(
     }
     const body = draftByOpportunity.get(candidate.opportunityId);
     if (!body) continue;
-    const saved = await saveDraft(job, agent, candidate, body);
+    const saved = await saveDraft(job, agent, candidate, body, context.workerId);
     if (saved?.status === "draft") prepared.push({
       opportunityId: candidate.opportunityId,
       opportunityName: candidate.opportunityName,
@@ -286,10 +297,11 @@ export async function runPipelineFollowUpDraftsJob(
   const limitations = "Only this workspace's persisted open opportunities and current Sales Assistant conversations were used. Draft wording is a neutral template with only a simple CRM first name; it does not infer or claim conversation facts. Drafts are saved unsent; a person must review and approve them, and the existing messaging service rechecks consent, channel status, quiet hours, ownership, credits and policy before sending. No customer was contacted.";
 
   await withSystem(async (db) => {
-    await recordWorkStage(db, { jobId: job.id, orgId: job.org_id, stage: "preparing_results", message: "The pipeline findings and unsent Inbox drafts are ready for review." });
+    await recordWorkStage(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId, stage: "preparing_results", message: "The pipeline findings and unsent Inbox drafts are ready for review." });
     const finished = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId: context.workerId,
       status: "completed",
       stage: "completed",
       resultCount: draftCount,
@@ -303,16 +315,14 @@ export async function runPipelineFollowUpDraftsJob(
         skippedAlreadyHandled: handled.length,
         limitations,
       },
+      event: {
+        kind: "notice",
+        stage: "completed",
+        message: summary,
+        data: { drafts: draftCount, reusedDrafts: prepared.length - draftCount, messagesSent: 0, pipelineSignals: staleSignals },
+      },
     });
     if (!finished) throw new Error("work_finished_elsewhere");
-    await appendWorkEvent(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      kind: "notice",
-      stage: "completed",
-      message: summary,
-      data: { drafts: draftCount, reusedDrafts: prepared.length - draftCount, messagesSent: 0, pipelineSignals: staleSignals },
-    });
     await publishReviewReport(db, {
       job,
       agent,

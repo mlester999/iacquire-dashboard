@@ -4,7 +4,7 @@ import { AppError } from "@/server/errors";
 import { env } from "@/server/env";
 import { recordUsage } from "@/server/usage";
 import { notifyOrgRoles } from "@/server/notifications";
-import { buildRunInstructions, loadCompanyContext, loadConnection, markAgentDegraded } from "@/server/workforce/service";
+import { buildRunInstructions, loadCompanyContext, loadConnection } from "@/server/workforce/service";
 import {
   AgentRunNotReadyError,
   HermesError,
@@ -19,6 +19,7 @@ import {
   finishWorkJob,
   getWorkJob,
   heartbeatWorkJob,
+  lockActiveWorkJobLease,
   recordWorkProgress,
   recordWorkStage,
   type WorkJobRow,
@@ -104,16 +105,27 @@ async function updateAgentRun(
     `update agent_runs set status = $2, finished_at = now(),
             input_tokens = coalesce($3, input_tokens), output_tokens = coalesce($4, output_tokens),
             total_tokens = coalesce($5, total_tokens), error_code = coalesce($6, error_code)
-      where id = $1`,
+      where id = $1 and status = 'running'`,
     [runId, status, usage?.inputTokens ?? null, usage?.outputTokens ?? null, usage?.totalTokens ?? null, errorCode ?? null],
   );
 }
 
 async function markRequestFailed(
   job: WorkJobRow,
-  input: { status: "failed" | "blocked" | "cancelled"; code: string; message: string; requestId: string | null; agentRunId: string | null; usage?: TokenUsage | null },
+  workerId: string,
+  input: {
+    status: "failed" | "blocked" | "cancelled";
+    code: string;
+    message: string;
+    requestId: string | null;
+    agentRunId: string | null;
+    agentRunStatus?: "completed" | "failed" | "cancelled" | "timeout" | "interrupted";
+    degradeAgentDetail?: string;
+    usage?: TokenUsage | null;
+  },
 ) {
   await withSystem(async (db) => {
+    if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId })) return;
     const current = await getWorkJob(db, job.org_id, job.id);
     const effective = current?.status === "cancelled" ? "cancelled" : input.status;
     const stage = effective === "cancelled" ? "cancelled" : effective === "blocked" ? "blocked" : "failed";
@@ -121,42 +133,49 @@ async function markRequestFailed(
       await updateRequest(db, job.org_id, input.requestId, effective === "cancelled" ? "cancelled" : "failed", input.message);
     }
     if (input.agentRunId) {
-      await updateAgentRun(db, input.agentRunId, effective === "cancelled" ? "cancelled" : effective === "blocked" ? "failed" : "failed", input.usage, input.code);
+      await updateAgentRun(db, input.agentRunId, input.agentRunStatus ?? (effective === "cancelled" ? "cancelled" : "failed"), input.usage, input.code);
+    }
+    if (input.degradeAgentDetail) {
+      await db.query(
+        "update agent_instances set status = 'offline', last_health_ok = false, last_health_detail = $2, last_health_check_at = now() where id = $1 and status in ('online', 'busy')",
+        [job.agent_instance_id, input.degradeAgentDetail.slice(0, 500)],
+      );
     }
     await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       status: effective,
       stage,
       failureCode: input.code,
       failureMessage: input.message,
-    });
-    await appendWorkEvent(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      kind: effective === "cancelled" ? "notice" : "error",
-      stage,
-      message: input.message,
-      data: { code: input.code },
+      event: {
+        kind: effective === "cancelled" ? "notice" : "error",
+        stage,
+        message: input.message,
+        data: { code: input.code },
+      },
     });
   }).catch(() => undefined);
 }
 
-async function noteStage(job: WorkJobRow, stage: keyof typeof STAGE_COPY, progress?: Record<string, unknown>) {
+async function noteStage(job: WorkJobRow, workerId: string, stage: keyof typeof STAGE_COPY, progress?: Record<string, unknown>) {
   await withSystem((db) =>
     recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: stage as never,
       message: STAGE_COPY[stage] ?? "Working…",
       progress,
     }),
   ).catch(async () => {
     if (await requestCancelled(job.id, job.org_id)) throw new Error("work_cancelled");
+    throw new Error("work_lease_or_progress_write_failed");
   });
 }
 
-async function noteProgress(job: WorkJobRow, counters: Record<string, number>, stage?: string) {
+async function noteProgress(job: WorkJobRow, workerId: string, counters: Record<string, number>, stage?: string) {
   const message = [
     counters.searches ? `${counters.searches} search ${counters.searches === 1 ? "query" : "queries"} completed` : null,
     counters.pagesReviewed ? `${counters.pagesReviewed} source ${counters.pagesReviewed === 1 ? "page" : "pages"} reviewed` : null,
@@ -166,17 +185,21 @@ async function noteProgress(job: WorkJobRow, counters: Record<string, number>, s
     recordWorkProgress(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       message,
       progress: counters,
       data: stage ? { stage } : undefined,
     }),
-  ).catch(() => undefined);
+  ).catch(async () => {
+    if (await requestCancelled(job.id, job.org_id)) throw new Error("work_cancelled");
+    throw new Error("work_lease_or_progress_write_failed");
+  });
 }
 
 export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   const requestId = typeof job.input.requestId === "string" ? job.input.requestId : null;
   if (!requestId) {
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: "blocked",
       code: "invalid_job",
       message: "This research job has no linked request, so it cannot run.",
@@ -190,6 +213,9 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
   let agentRunId: string | null = null;
   try {
     setup = await withSystem(async (db) => {
+      if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId })) {
+        throw new Error("work_lease_lost");
+      }
       const { rows } = await db.query<{
         prompt: string; criteria: unknown; campaign_type: "business" | "influencer"; status: string; work_job_id: string | null;
       }>(
@@ -233,6 +259,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       await appendWorkEvent(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId: context.workerId,
         kind: "notice",
         stage: "preparing",
         message: "Research started. The Lead Hunter is preparing the assignment.",
@@ -252,20 +279,40 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     agentRunId = setup.runId;
   } catch (err) {
     const blocked = err instanceof ResearchBlocked;
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: blocked ? "blocked" : "failed",
       code: blocked ? "agent_unavailable" : "setup_failed",
       message: blocked ? err.message : "The research could not be prepared. No provider run was started.",
       requestId,
       agentRunId,
+      degradeAgentDetail: err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed") ? err.message : undefined,
     });
-    if (err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed")) {
-      await markAgentDegraded(job.agent_instance_id, err.message).catch(() => undefined);
-    }
     return;
   }
 
-  let hermesRunId: string;
+  let hermesRunId = "";
+  let leaseLost = false;
+  let heartbeatInFlight: Promise<boolean> | null = null;
+  const renewLease = async () => {
+    const renewed = await withSystem((db) => heartbeatWorkJob(db, {
+      jobId: job.id,
+      workerId: context.workerId,
+      leaseSeconds: 180,
+    })).catch(() => false);
+    if (renewed) return true;
+    leaseLost = true;
+    context.controller.abort();
+    if (hermesRunId) await stopRun(setup.conn, hermesRunId).catch(() => undefined);
+    return false;
+  };
+  if (!await renewLease()) {
+    await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
+    return;
+  }
+  const heartbeatTimer = setInterval(() => {
+    if (heartbeatInFlight || leaseLost) return;
+    heartbeatInFlight = renewLease().finally(() => { heartbeatInFlight = null; });
+  }, 20000);
   try {
     const started = await startAgentRun(job.agent_instance_id, job.org_id, setup.conn, {
       input: setup.input,
@@ -274,22 +321,36 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       memoryScope: setup.memoryScope,
     });
     hermesRunId = started.runId;
-    await withSystem((db) => db.query("update agent_runs set hermes_run_id = $2 where id = $1", [setup.runId, hermesRunId]));
+    if (leaseLost || !await withSystem(async (db) => {
+      if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId })) return false;
+      await db.query("update agent_runs set hermes_run_id = $2 where id = $1 and status = 'running'", [setup.runId, hermesRunId]);
+      return true;
+    })) {
+      clearInterval(heartbeatTimer);
+      if (heartbeatInFlight) await heartbeatInFlight;
+      await stopRun(setup.conn, hermesRunId).catch(() => undefined);
+      await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
+      return;
+    }
   } catch (err) {
+    clearInterval(heartbeatTimer);
+    if (heartbeatInFlight) await heartbeatInFlight;
+    if (leaseLost) {
+      await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
+      return;
+    }
     const message = err instanceof AgentRunNotReadyError
       ? err.message
       : err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed")
         ? "The Lead Hunter's Hermes connection is unavailable, so no research was started."
         : "The research run could not be started. No provider run was accepted.";
-    if (err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed")) {
-      await markAgentDegraded(job.agent_instance_id, err.message).catch(() => undefined);
-    }
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: err instanceof AgentRunNotReadyError ? "blocked" : "failed",
       code: err instanceof AgentRunNotReadyError ? "agent_not_ready" : "run_not_started",
       message,
       requestId,
       agentRunId,
+      degradeAgentDetail: err instanceof HermesError && (err.kind === "unreachable" || err.kind === "auth_failed") ? err.message : undefined,
     });
     return;
   }
@@ -307,7 +368,6 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
   let usage: TokenUsage | null = null;
   let approvalRequested = false;
   let lastCancelCheck = 0;
-  let lastHeartbeat = Date.now();
 
   const timer = setTimeout(() => {
     timedOut = true;
@@ -323,12 +383,12 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
         const stage = stageForTool(event.tool, phase);
         if (stage && stage !== lastStage) {
           lastStage = stage;
-          await noteStage(job, stage as keyof typeof STAGE_COPY, counters).catch(() => undefined);
+          await noteStage(job, context.workerId, stage as keyof typeof STAGE_COPY, counters);
         }
         const increment = progressForTool(event.tool, phase, event.type === "tool_completed" ? event.error : false);
         if (increment) {
           for (const [key, value] of Object.entries(increment)) counters[key as keyof typeof counters] += value;
-          await noteProgress(job, counters, stage ?? undefined);
+          await noteProgress(job, context.workerId, counters, stage ?? undefined);
         }
       } else if (event.type === "approval_request") {
         // The research workflow has no human present to grant a shell approval. Stop rather than
@@ -359,22 +419,29 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
           break;
         }
       }
-      if (now - lastHeartbeat > 20000) {
-        lastHeartbeat = now;
-        await withSystem((db) => heartbeatWorkJob(db, { jobId: job.id, workerId: context.workerId, leaseSeconds: 180 })).catch(() => undefined);
-      }
     }
-  } catch {
+  } catch (err) {
     if (cancelled || await requestCancelled(job.id, job.org_id)) cancelled = true;
+    else if (leaseLost || (err instanceof Error && err.message === "work_lease_lost")) {
+      await stopRun(setup.conn, hermesRunId).catch(() => undefined);
+      context.controller.abort();
+      failure = "The research worker lost its lease. The run was stopped before it could save a result.";
+    }
     else failure = timedOut
       ? "The research took longer than the allowed run time and was stopped."
       : "The connection to the Lead Hunter dropped before the research finished.";
   } finally {
     clearTimeout(timer);
+    clearInterval(heartbeatTimer);
   }
 
+  if (heartbeatInFlight) await heartbeatInFlight;
+  if (leaseLost) {
+    await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", usage, "work_lease_lost")).catch(() => undefined);
+    return;
+  }
   if (cancelled) {
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: "cancelled",
       code: "cancelled",
       message: "The research was stopped. No further provider work was requested.",
@@ -385,7 +452,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     return;
   }
   if (approvalRequested) {
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: "blocked",
       code: "approval_required",
       message: "The Lead Hunter requested a tool approval that this research workflow cannot grant. No action was taken.",
@@ -399,13 +466,13 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
     const message = timedOut
       ? "The research took longer than the allowed run time and was stopped."
       : failure ?? "The research ended without a result.";
-    await withSystem((db) => updateAgentRun(db, setup.runId, timedOut ? "timeout" : "failed", usage, "run_failed")).catch(() => undefined);
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: "failed",
       code: timedOut ? "timeout" : "run_failed",
       message,
       requestId,
       agentRunId: setup.runId,
+      agentRunStatus: timedOut ? "timeout" : "failed",
       usage,
     });
     return;
@@ -413,13 +480,13 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
 
   const parsed = parseResearchOutput(output);
   if (parsed.error) {
-    await withSystem((db) => updateAgentRun(db, setup.runId, "completed", usage)).catch(() => undefined);
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: "failed",
       code: "invalid_output",
       message: parsed.error,
       requestId,
       agentRunId: setup.runId,
+      agentRunStatus: "completed",
       usage,
     });
     return;
@@ -427,10 +494,14 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
 
   try {
     await withSystem(async (db) => {
+      if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId })) {
+        throw new Error("work_lease_lost");
+      }
       await updateAgentRun(db, setup.runId, "completed", usage);
       await recordWorkStage(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId: context.workerId,
         stage: "qualifying",
         message: STAGE_COPY.qualifying,
         progress: counters,
@@ -439,6 +510,7 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       await recordWorkStage(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId: context.workerId,
         stage: "checking_duplicates",
         message: STAGE_COPY.checking_duplicates,
         progress: { ...counters, candidates: parsed.leads.length },
@@ -503,18 +575,21 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
       await recordWorkProgress(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId: context.workerId,
         message: `${parsed.leads.length} candidate${parsed.leads.length === 1 ? "" : "s"} extracted: ${evidenceBacked} evidence-backed, ${needsEvidence} need more evidence, ${duplicates} duplicate${duplicates === 1 ? "" : "s"} flagged.`,
         progress: { candidates: parsed.leads.length, evidenceBacked, needsEvidence, duplicates, rejected: parsed.rejected, ...counters },
       });
       await recordWorkStage(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId: context.workerId,
         stage: "preparing_results",
         message: STAGE_COPY.preparing_results,
       });
       const finished = await finishWorkJob(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId: context.workerId,
         status: "completed",
         stage: "completed",
         resultCount: leadIds.length,
@@ -532,6 +607,14 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
           pagesReviewed: counters.pagesReviewed,
           limitation: leadIds.length < parsed.leads.length ? "Some candidates were flagged as duplicates or lacked evidence." : null,
         },
+        event: {
+          kind: "notice",
+          stage: "completed",
+          message: leadIds.length
+            ? `Research completed: ${leadIds.length} lead${leadIds.length === 1 ? "" : "s"} prepared for human review.`
+            : "Research completed without candidates that met the evidence requirements.",
+          data: { leadIds },
+        },
       });
       // If a cancellation won the race, do not persist a "completed" request or any success claim.
       if (!finished) throw new Error("work_finished_elsewhere");
@@ -544,20 +627,10 @@ export async function runLeadResearchJob(job: WorkJobRow, context: { workerId: s
           link: "/leads?tab=review",
         });
       }
-      await appendWorkEvent(db, {
-        jobId: job.id,
-        orgId: job.org_id,
-        kind: "notice",
-        stage: "completed",
-        message: leadIds.length
-          ? `Research completed: ${leadIds.length} lead${leadIds.length === 1 ? "" : "s"} prepared for human review.`
-          : "Research completed without candidates that met the evidence requirements.",
-        data: { leadIds },
-      });
     });
   } catch (err) {
     console.error(`[iacquire] research persistence failed: ${err instanceof Error ? err.name : "unknown"}`);
-    await markRequestFailed(job, {
+    await markRequestFailed(job, context.workerId, {
       status: "failed",
       code: "persistence_failed",
       message: "The research finished but its results could not be saved, so no success was claimed.",

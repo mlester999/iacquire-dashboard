@@ -81,8 +81,10 @@ export async function createWorkforceChatHandoff(ctx: OrgContext, input: Workfor
         await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [conversationId, ctx.org.orgId]);
       }
 
-      const { rows: jobs } = await db.query<{ conversation_id: string | null }>(
-        "select conversation_id from ai_work_jobs where id = $1 and org_id = $2 for update",
+      const { rows: jobs } = await db.query<{ conversation_id: string | null; status: string; lease_owner: string | null; lease_active: boolean }>(
+        `select conversation_id, status, lease_owner,
+                (lease_owner is not null and lease_expires_at is not null and lease_expires_at > now()) as lease_active
+           from ai_work_jobs where id = $1 and org_id = $2 for update`,
         [job.jobId, ctx.org.orgId],
       );
       if (!jobs[0]) throw new AppError("not_found", "The handed-off work job could not be found.");
@@ -99,21 +101,24 @@ export async function createWorkforceChatHandoff(ctx: OrgContext, input: Workfor
         [ctx.org.orgId, job.jobId, input.sourceMessageId],
       );
       if (!eventExists.rows[0]) {
-        await appendWorkEvent(db, {
-          jobId: job.jobId,
-          orgId: ctx.org.orgId,
-          kind: "notice",
-          message: `The user handed this work from ${source.shortName} to ${target.shortName}.`,
-          data: {
-            handoff: true,
-            sourceRole: input.sourceRole,
-            sourceAgentId: input.sourceAgentId,
-            sourceConversationId: input.sourceConversationId,
-            sourceMessageId: input.sourceMessageId,
-            targetRole,
-            targetConversationId: conversationId,
-          },
-        });
+        if (jobs[0].status !== "running" || (jobs[0].lease_active && jobs[0].lease_owner)) {
+          await appendWorkEvent(db, {
+            jobId: job.jobId,
+            orgId: ctx.org.orgId,
+            workerId: jobs[0].status === "running" ? jobs[0].lease_owner ?? undefined : undefined,
+            kind: "notice",
+            message: `The user handed this work from ${source.shortName} to ${target.shortName}.`,
+            data: {
+              handoff: true,
+              sourceRole: input.sourceRole,
+              sourceAgentId: input.sourceAgentId,
+              sourceConversationId: input.sourceConversationId,
+              sourceMessageId: input.sourceMessageId,
+              targetRole,
+              targetConversationId: conversationId,
+            },
+          });
+        }
         await recordAudit({
           orgId: ctx.org.orgId,
           actorUserId: ctx.user.id,

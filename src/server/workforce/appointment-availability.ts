@@ -19,6 +19,7 @@ import type { AgentRoleKey } from "@/lib/agents";
  * calendar. It reports the same slots the booking flow would offer, with the reason when it cannot.
  */
 export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+  const workerId = job.lease_owner ?? "";
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: string; display_name: string }>(
       "select role_key, display_name from agent_instances where id = $1 and org_id = $2",
@@ -31,17 +32,16 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       await finishWorkJob(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         status: "blocked",
         stage: "blocked",
         failureCode: "capability_not_allowed",
         failureMessage: "This employee's role is not allowed to check calendar availability.",
-      });
-      await appendWorkEvent(db, {
-        jobId: job.id,
-        orgId: job.org_id,
-        kind: "error",
-        stage: "blocked",
-        message: "This employee's role is not allowed to check calendar availability, so nothing was read.",
+        event: {
+          kind: "error",
+          stage: "blocked",
+          message: "This employee's role is not allowed to check calendar availability, so nothing was read.",
+        },
       });
     });
     return;
@@ -55,6 +55,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "scanning",
       message: "Checking real bookable calendar availability for the next seven days…",
     });
@@ -98,6 +99,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "analyzing",
       message: "Preparing the availability result and any scheduling risk…",
       progress: { checksRun: 2, findings: findings.length, slots: availability.ok ? availability.slots.length : 0 },
@@ -107,6 +109,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       await appendWorkEvent(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         kind: "evidence",
         stage: "analyzing",
         message: finding.title,
@@ -121,12 +124,14 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "preparing_results",
       message: "Availability check complete.",
     });
     const finished = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       status: "completed",
       stage: "completed",
       resultCount: availability.ok ? availability.slots.length : 0,
@@ -145,16 +150,14 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
         findings,
         limitations: "Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted.",
       },
+      event: {
+        kind: "notice",
+        stage: "completed",
+        message: summary,
+        data: { slots: availability.ok ? availability.slots.length : 0 },
+      },
     });
     if (!finished) throw new Error("work_finished_elsewhere");
-    await appendWorkEvent(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      kind: "notice",
-      stage: "completed",
-      message: summary,
-      data: { slots: availability.ok ? availability.slots.length : 0 },
-    });
     await publishReviewReport(db, {
       job,
       agent,

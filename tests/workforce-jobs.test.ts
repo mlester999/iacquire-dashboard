@@ -15,7 +15,7 @@ import { withSystem } from "@/server/db";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { recommendedSettings } from "@/lib/role-playbooks";
 import { createResearchRequest, listLeads } from "@/server/leads/service";
-import { cancelWorkJob, createWorkJob, getWorkJobView, recoverExpiredWorkJobs, retryWorkJobForUser } from "@/server/workforce/jobs";
+import { appendWorkEvent, cancelWorkJob, claimWorkJob, createWorkJob, finishWorkJob, getWorkJobView, heartbeatWorkJob, recordWorkStage, recoverExpiredWorkJobs, retryWorkJobForUser } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { sendChatMessage } from "@/server/chat/service";
@@ -444,6 +444,83 @@ describe("Lead Hunter durable research", () => {
       [expiryless.id]: "queued",
       [live.id]: "running",
     });
+  }, 30000);
+
+  it("rejects completion from a worker whose expired lease was reassigned", async () => {
+    const created = await withSystem((db) => createWorkJob(db, {
+      orgId: org.id,
+      agentId: hunterId,
+      requestedBy: owner.id,
+      capability: "proactive_review",
+      title: "Lease fencing check",
+      idempotencyKey: `lease-fence-${crypto.randomUUID()}`,
+      input: {},
+    }));
+    const firstClaim = await withSystem((db) => claimWorkJob(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-old",
+      leaseSeconds: 30,
+    }));
+    expect(firstClaim).toBeTruthy();
+
+    await withSystem((db) => db.query(
+      "update ai_work_jobs set lease_expires_at=now() - interval '1 minute' where id=$1",
+      [created.id],
+    ));
+    await recoverExpiredWorkJobs();
+    const secondClaim = await withSystem((db) => claimWorkJob(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-new",
+      leaseSeconds: 30,
+    }));
+    expect(secondClaim).toBeTruthy();
+
+    expect(await withSystem((db) => heartbeatWorkJob(db, { jobId: created.id, workerId: "worker-old" }))).toBe(false);
+    await expect(withSystem((db) => recordWorkStage(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-old",
+      stage: "analyzing",
+      message: "Stale worker progress",
+    }))).rejects.toMatchObject({ code: "conflict" });
+    await expect(withSystem((db) => appendWorkEvent(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-old",
+      kind: "progress",
+      message: "Stale worker event",
+    }))).rejects.toMatchObject({ code: "conflict" });
+
+    const staleFinish = {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-old",
+      status: "completed" as const,
+      stage: "completed" as const,
+      resultSummary: "Stale worker result",
+    };
+    expect(await withSystem((db) => finishWorkJob(db, staleFinish))).toBe(false);
+
+    const currentFinish = {
+      ...staleFinish,
+      workerId: "worker-new",
+      resultSummary: "Current worker result",
+      event: { kind: "notice" as const, stage: "completed" as const, message: "Current worker completed" },
+    };
+    expect(await withSystem((db) => finishWorkJob(db, currentFinish))).toBe(true);
+    const { rows } = await withSystem((db) => db.query<{ status: string; result_summary: string }>(
+      "select status, result_summary from ai_work_jobs where id=$1",
+      [created.id],
+    ));
+    expect(rows[0]).toMatchObject({ status: "completed", result_summary: "Current worker result" });
+    const { rows: events } = await withSystem((db) => db.query<{ message: string }>(
+      "select message from ai_work_events where job_id=$1 order by id",
+      [created.id],
+    ));
+    expect(events.some((event) => event.message === "Current worker completed")).toBe(true);
+    expect(events.some((event) => event.message === "Stale worker event")).toBe(false);
   }, 30000);
 
   it("marks a running job without an active lease as recovery pending in its authorized view", async () => {

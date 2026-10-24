@@ -103,6 +103,8 @@ export interface WorkJobRow {
   created_at: Date;
   started_at: Date | null;
   finished_at: Date | null;
+  lease_owner?: string | null;
+  lease_expires_at?: Date | string | null;
 }
 
 export interface WorkJobEventRow {
@@ -168,13 +170,20 @@ export async function createWorkJob(db: Queryable, input: CreateWorkJobInput): P
 
 export async function appendWorkEvent(
   db: Queryable,
-  input: { jobId: string; orgId: string; kind: WorkJobEventRow["kind"]; stage?: WorkJobStage | null; message: string; data?: Record<string, unknown> },
+  input: { jobId: string; orgId: string; kind: WorkJobEventRow["kind"]; stage?: WorkJobStage | null; message: string; data?: Record<string, unknown>; workerId?: string },
 ): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
     `insert into ai_work_events (job_id, org_id, kind, stage, message, data)
-     values ($1, $2, $3, $4, $5, $6::jsonb) returning id::text as id`,
-    [input.jobId, input.orgId, input.kind, input.stage ?? null, input.message.slice(0, 500), JSON.stringify(input.data ?? {})],
+     select j.id, j.org_id, $3, $4, $5, $6::jsonb
+       from ai_work_jobs j
+      where j.id = $1 and j.org_id = $2
+        and ((j.status = 'running' and $7::text is not null and j.lease_owner = $7 and j.lease_expires_at > now())
+          or (j.status <> 'running' and $7::text is null))
+      for update of j
+     returning id::text as id`,
+    [input.jobId, input.orgId, input.kind, input.stage ?? null, input.message.slice(0, 500), JSON.stringify(input.data ?? {}), input.workerId ?? null],
   );
+  if (!rows[0]) throw new AppError("conflict", "The work changed or its worker lease expired before this update was recorded.");
   return rows[0].id;
 }
 
@@ -184,6 +193,7 @@ export async function recordWorkStage(
   input: {
     jobId: string;
     orgId: string;
+    workerId: string;
     stage: WorkJobStage;
     message: string;
     progress?: Record<string, unknown>;
@@ -191,38 +201,56 @@ export async function recordWorkStage(
     kind?: WorkJobEventRow["kind"];
   },
 ): Promise<string> {
-  const updated = await db.query(
-    `update ai_work_jobs set stage = $3, progress = progress || $4::jsonb
-     where id = $1 and org_id = $2 and status in ('running', 'waiting_for_approval', 'blocked')`,
-    [input.jobId, input.orgId, input.stage, JSON.stringify(input.progress ?? {})],
+  const { rows } = await db.query<{ id: string }>(
+    `with updated as (
+       update ai_work_jobs set stage = $3, progress = progress || $4::jsonb
+        where id = $1 and org_id = $2 and status = 'running'
+          and lease_owner = $5 and lease_expires_at > now()
+        returning id, org_id
+     )
+     insert into ai_work_events (job_id, org_id, kind, stage, message, data)
+     select updated.id, updated.org_id, $6, $3, $7, $8::jsonb from updated
+     returning id::text as id`,
+    [
+      input.jobId,
+      input.orgId,
+      input.stage,
+      JSON.stringify(input.progress ?? {}),
+      input.workerId,
+      input.kind ?? "stage",
+      input.message.slice(0, 500),
+      JSON.stringify(input.data ?? {}),
+    ],
   );
-  if (!updated.rowCount) throw new AppError("conflict", "This work job is no longer running.");
-  return appendWorkEvent(db, {
-    jobId: input.jobId,
-    orgId: input.orgId,
-    kind: input.kind ?? "stage",
-    stage: input.stage,
-    message: input.message,
-    data: input.data,
-  });
+  if (!rows[0]) throw new AppError("conflict", "This work job is no longer running.");
+  return rows[0].id;
 }
 
 export async function recordWorkProgress(
   db: Queryable,
-  input: { jobId: string; orgId: string; message: string; progress: Record<string, unknown>; data?: Record<string, unknown> },
+  input: { jobId: string; orgId: string; workerId: string; message: string; progress: Record<string, unknown>; data?: Record<string, unknown> },
 ): Promise<string> {
-  const updated = await db.query(
-    `update ai_work_jobs set progress = progress || $3::jsonb where id = $1 and org_id = $2 and status = 'running'`,
-    [input.jobId, input.orgId, JSON.stringify(input.progress)],
+  const { rows } = await db.query<{ id: string }>(
+    `with updated as (
+       update ai_work_jobs set progress = progress || $3::jsonb
+        where id = $1 and org_id = $2 and status = 'running'
+          and lease_owner = $4 and lease_expires_at > now()
+        returning id, org_id
+     )
+     insert into ai_work_events (job_id, org_id, kind, message, data)
+     select updated.id, updated.org_id, 'progress', $5, $6::jsonb from updated
+     returning id::text as id`,
+    [
+      input.jobId,
+      input.orgId,
+      JSON.stringify(input.progress),
+      input.workerId,
+      input.message.slice(0, 500),
+      JSON.stringify({ ...(input.data ?? {}), progress: input.progress }),
+    ],
   );
-  if (!updated.rowCount) throw new AppError("conflict", "This work job is no longer running.");
-  return appendWorkEvent(db, {
-    jobId: input.jobId,
-    orgId: input.orgId,
-    kind: "progress",
-    message: input.message,
-    data: { ...(input.data ?? {}), progress: input.progress },
-  });
+  if (!rows[0]) throw new AppError("conflict", "This work job is no longer running.");
+  return rows[0].id;
 }
 
 /** Claims a queued job. Only one worker can hold the lease. */
@@ -255,7 +283,7 @@ export async function heartbeatWorkJob(
     `update ai_work_jobs
         set lease_expires_at = now() + make_interval(secs => $3),
             progress = progress || $4::jsonb
-      where id = $1 and lease_owner = $2 and status = 'running'`,
+      where id = $1 and lease_owner = $2 and status = 'running' and lease_expires_at > now()`,
     [input.jobId, input.workerId, lease, JSON.stringify(input.progress ?? {})],
   );
   return rowCount > 0;
@@ -264,6 +292,7 @@ export async function heartbeatWorkJob(
 export interface FinishWorkJobInput {
   jobId: string;
   orgId: string;
+  workerId: string;
   status: Extract<WorkJobStatus, "completed" | "failed" | "cancelled" | "blocked" | "waiting_for_approval">;
   stage: WorkJobStage;
   result?: Record<string, unknown>;
@@ -271,16 +300,29 @@ export interface FinishWorkJobInput {
   resultCount?: number;
   failureCode?: string | null;
   failureMessage?: string | null;
+  event?: { kind: WorkJobEventRow["kind"]; stage?: WorkJobStage | null; message: string; data?: Record<string, unknown> };
 }
 
 /** Sets a terminal (or approval-waiting) state. Idempotent: a second finish returns false. */
 export async function finishWorkJob(db: Queryable, input: FinishWorkJobInput): Promise<boolean> {
-  const { rowCount } = await db.query(
-    `update ai_work_jobs
-        set status = $3, stage = $4, result = $5::jsonb, result_summary = $6, result_count = $7,
-            failure_code = $8, failure_message = $9,
-            lease_owner = null, lease_expires_at = null, finished_at = now()
-      where id = $1 and org_id = $2 and status in ('running', 'waiting_for_approval', 'blocked')`,
+  const { rows } = await db.query<{ id: string }>(
+    `with finished as (
+       update ai_work_jobs
+          set status = $3, stage = $4, result = $5::jsonb, result_summary = $6, result_count = $7,
+              failure_code = $8, failure_message = $9,
+              lease_owner = null, lease_expires_at = null, finished_at = now()
+        where id = $1 and org_id = $2 and status in ('running', 'waiting_for_approval', 'blocked')
+          and lease_owner = $10 and lease_expires_at > now()
+        returning id, org_id
+     ),
+     finished_event as (
+       insert into ai_work_events (job_id, org_id, kind, stage, message, data)
+       select f.id, f.org_id, $11::text, $12::text, left($13::text, 500), $14::jsonb
+         from finished f
+        where $13::text is not null
+       returning id
+     )
+     select f.id from finished f cross join (select count(*) from finished_event) event_count`,
     [
       input.jobId,
       input.orgId,
@@ -291,15 +333,37 @@ export async function finishWorkJob(db: Queryable, input: FinishWorkJobInput): P
       Math.max(0, Math.floor(input.resultCount ?? 0)),
       input.failureCode?.slice(0, 80) ?? null,
       input.failureMessage?.slice(0, 1000) ?? null,
+      input.workerId,
+      input.event?.kind ?? null,
+      input.event?.stage ?? null,
+      input.event?.message ?? null,
+      JSON.stringify(input.event?.data ?? {}),
     ],
   );
-  return rowCount > 0;
+  return rows.length > 0;
+}
+
+/** Locks a live lease while a worker persists a capability-specific side effect. */
+export async function lockActiveWorkJobLease(
+  db: Queryable,
+  input: { jobId: string; orgId: string; workerId: string },
+): Promise<boolean> {
+  const { rows } = await db.query<{ id: string }>(
+    `select id from ai_work_jobs
+      where id = $1 and org_id = $2 and status = 'running'
+        and lease_owner = $3 and lease_expires_at > now()
+      for update`,
+    [input.jobId, input.orgId, input.workerId],
+  );
+  return rows.length > 0;
 }
 
 /** Requests cancellation. A queued job is cancelled immediately; a running job is signalled. */
 export async function requestWorkJobCancel(db: Queryable, input: { jobId: string; orgId: string }): Promise<"cancelled" | "cancel_requested"> {
-  const { rows } = await db.query<{ status: WorkJobStatus }>(
-    "select status from ai_work_jobs where id = $1 and org_id = $2",
+  const { rows } = await db.query<{ status: WorkJobStatus; lease_owner: string | null; lease_active: boolean }>(
+    `select status, lease_owner,
+            (lease_owner is not null and lease_expires_at is not null and lease_expires_at > now()) as lease_active
+       from ai_work_jobs where id = $1 and org_id = $2 for update`,
     [input.jobId, input.orgId],
   );
   const row = rows[0];
@@ -321,7 +385,15 @@ export async function requestWorkJobCancel(db: Queryable, input: { jobId: string
     "update ai_work_jobs set cancel_requested_at = coalesce(cancel_requested_at, now()) where id = $1 and org_id = $2 and status = 'running'",
     [input.jobId, input.orgId],
   );
-  await appendWorkEvent(db, { jobId: input.jobId, orgId: input.orgId, kind: "notice", message: "Stop requested. The employee will stop at the next safe point." });
+  if (row.status === "running" && row.lease_active && row.lease_owner) {
+    await appendWorkEvent(db, {
+      jobId: input.jobId,
+      orgId: input.orgId,
+      workerId: row.lease_owner,
+      kind: "notice",
+      message: "Stop requested. The employee will stop at the next safe point.",
+    });
+  }
   return "cancel_requested";
 }
 

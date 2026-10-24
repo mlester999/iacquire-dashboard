@@ -82,6 +82,7 @@ export function severityTone(severity: ReviewSeverity): "danger" | "warning" | "
 }
 
 export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReviewSpec): Promise<void> {
+  const workerId = job.lease_owner ?? "";
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: string; display_name: string }>(
       "select role_key, display_name from agent_instances where id = $1 and org_id = $2",
@@ -94,17 +95,16 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
       await finishWorkJob(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         status: "blocked",
         stage: "blocked",
         failureCode: "capability_not_allowed",
         failureMessage: "This employee's role is not allowed to perform this review.",
-      });
-      await appendWorkEvent(db, {
-        jobId: job.id,
-        orgId: job.org_id,
-        kind: "error",
-        stage: "blocked",
-        message: "This employee's role is not allowed to perform this review, so nothing was read.",
+        event: {
+          kind: "error",
+          stage: "blocked",
+          message: "This employee's role is not allowed to perform this review, so nothing was read.",
+        },
       });
     });
     return;
@@ -114,6 +114,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "scanning",
       message: spec.scanningMessage,
     });
@@ -128,6 +129,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
       await appendWorkEvent(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         kind: "progress",
         stage: "analyzing",
         message: `Measured ${metrics.length} KPI${metrics.length === 1 ? "" : "s"} from persisted records.`,
@@ -138,6 +140,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "analyzing",
       message: spec.analyzingMessage,
       progress: {
@@ -151,6 +154,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
       await appendWorkEvent(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         kind: "evidence",
         stage: "analyzing",
         message: `${item.title}${item.samples.length ? ` — e.g. ${item.samples.join("; ")}` : ""}`,
@@ -169,12 +173,14 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "preparing_results",
       message: "Review complete. Findings and recommended actions are ready.",
     });
     const finished = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       status: "completed",
       stage: "completed",
       resultCount: findings.length,
@@ -187,16 +193,14 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
         metrics,
         limitations: spec.limitations,
       },
+      event: {
+        kind: "notice",
+        stage: "completed",
+        message: summary,
+        data: { critical, warning, findings: findings.length },
+      },
     });
     if (!finished) throw new Error("work_finished_elsewhere");
-    await appendWorkEvent(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      kind: "notice",
-      stage: "completed",
-      message: summary,
-      data: { critical, warning, findings: findings.length },
-    });
     // The report is the durable proactive card. It is written after the job is complete, and its
     // delivery policy is per supervisor. A review with no findings is recorded but not announced.
     await publishReviewReport(db, {

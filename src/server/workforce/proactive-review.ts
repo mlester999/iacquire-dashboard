@@ -250,6 +250,7 @@ async function contactDataQuality(db: Queryable, orgId: string): Promise<Proacti
 }
 
 export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+  const workerId = job.lease_owner ?? "";
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: string; display_name: string }>(
       `select a.role_key, a.display_name from agent_instances a where a.id = $1 and a.org_id = $2`,
@@ -262,17 +263,16 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       await finishWorkJob(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         status: "blocked",
         stage: "blocked",
         failureCode: "capability_not_allowed",
         failureMessage: "This employee's role is not allowed to perform an operations review.",
-      });
-      await appendWorkEvent(db, {
-        jobId: job.id,
-        orgId: job.org_id,
-        kind: "error",
-        stage: "blocked",
-        message: "This employee's role is not allowed to perform an operations review, so nothing was read.",
+        event: {
+          kind: "error",
+          stage: "blocked",
+          message: "This employee's role is not allowed to perform an operations review, so nothing was read.",
+        },
       });
     });
     return;
@@ -283,6 +283,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "scanning",
       message: "Reading persisted workspace records across work, approvals, CRM, integrations and the AI workforce…",
     });
@@ -308,6 +309,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "analyzing",
       message: "Assessing each signal, separating observed evidence from recommendations and preparing the review…",
       progress: {
@@ -321,6 +323,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       await appendWorkEvent(db, {
         jobId: job.id,
         orgId: job.org_id,
+        workerId,
         kind: "evidence",
         stage: "analyzing",
         message: `${item.title}${item.samples.length ? ` — e.g. ${item.samples.join("; ")}` : ""}`,
@@ -337,12 +340,14 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
     await recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       stage: "preparing_results",
       message: "Review complete. Findings and recommended actions are ready.",
     });
     const finished = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId,
       status: "completed",
       stage: "completed",
       resultCount: findings.length,
@@ -354,16 +359,14 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
         findings,
         limitations: "Only records this workspace already stores were read. No external provider was contacted and no business record was changed.",
       },
+      event: {
+        kind: "notice",
+        stage: "completed",
+        message: summary,
+        data: { critical, warning, findings: findings.length },
+      },
     });
     if (!finished) throw new Error("work_finished_elsewhere");
-    await appendWorkEvent(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      kind: "notice",
-      stage: "completed",
-      message: summary,
-      data: { critical, warning, findings: findings.length },
-    });
     await publishReviewReport(db, {
       job,
       agent,

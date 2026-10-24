@@ -70,6 +70,7 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
     await appendWorkEvent(db, {
       jobId: job.id,
       orgId: job.org_id,
+      workerId: id,
       kind: "notice",
       stage: "preparing",
       message: "Work was claimed by a worker.",
@@ -85,9 +86,19 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
   try {
     if (!runHandler) {
       await withSystem(async (db) => {
-        await finishWorkJob(db, { jobId: claimed.id, orgId: claimed.org_id, status: "blocked", stage: "blocked", failureCode: "capability_unavailable", failureMessage: "No reviewed handler is registered for this capability." });
-        await appendWorkEvent(db, {
-          jobId: claimed.id, orgId: claimed.org_id, kind: "error", stage: "blocked", message: "No reviewed handler is registered for this capability, so nothing was executed.",
+        await finishWorkJob(db, {
+          jobId: claimed.id,
+          orgId: claimed.org_id,
+          workerId: id,
+          status: "blocked",
+          stage: "blocked",
+          failureCode: "capability_unavailable",
+          failureMessage: "No reviewed handler is registered for this capability.",
+          event: {
+            kind: "error",
+            stage: "blocked",
+            message: "No reviewed handler is registered for this capability, so nothing was executed.",
+          },
         });
       });
       return true;
@@ -100,13 +111,16 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
         await finishWorkJob(db, {
           jobId: claimed.id,
           orgId: claimed.org_id,
+          workerId: id,
           status: "failed",
           stage: "failed",
           failureCode: "handler_incomplete",
           failureMessage: "The worker stopped without recording a final result.",
-        });
-        await appendWorkEvent(db, {
-          jobId: claimed.id, orgId: claimed.org_id, kind: "error", stage: "failed", message: "The worker stopped without recording a final result. No success was claimed.",
+          event: {
+            kind: "error",
+            stage: "failed",
+            message: "The worker stopped without recording a final result. No success was claimed.",
+          },
         });
       });
     }
@@ -121,14 +135,17 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
       await finishWorkJob(db, {
         jobId: claimed.id,
         orgId: claimed.org_id,
+        workerId: id,
         status,
         stage,
         failureCode: controller.signal.aborted ? "cancelled" : "worker_error",
         failureMessage: message,
-      });
-      await appendWorkEvent(db, {
-        jobId: claimed.id, orgId: claimed.org_id, kind: controller.signal.aborted ? "notice" : "error", stage, message,
-        data: { error: err instanceof Error ? err.name : "unknown" },
+        event: {
+          kind: controller.signal.aborted ? "notice" : "error",
+          stage,
+          message,
+          data: { error: err instanceof Error ? err.name : "unknown" },
+        },
       });
     }).catch(() => undefined);
     console.error(`[iacquire] work job ${claimed.id} (${claimed.capability}) failed safely`);
