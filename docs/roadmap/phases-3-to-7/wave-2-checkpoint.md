@@ -21,7 +21,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 * Targeted Wave 2 files: 24 files, 512 tests before the last fixes; 8 failed in `invoices-from-proposal` / `invoices-actions-delivery` and were fixed (monthly lines were being copied as one-time, idempotency was disabled, the further-invoice permission was not enforced, and the draft closed the deal). Re-run: 27/27 pass.
 * Staff Messages screens/routes/stream/snapshot: 5 files, 142 tests pass after fixing the around-message window, thread-root validation, a stream-cancel test, an upload test fixture and two over-broad textbox assertions.
-* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s), at `b05c69e`. After purchase intents and the Messages/AQi fixes, with a 120 s per-test ceiling: **611 files, 10,273 passed, 8 skipped, 0 failed** (937 s, exit 0). The 120 s ceiling only gives the slow host headroom; the default 30 s had timed out one unrelated static scan, which passed alone in 6 s.
+* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s), at `b05c69e`. At the Phase 6 integration HEAD `b524d98`, with a 120 s per-test ceiling: **612 files, 10,274 passed, 8 skipped, 0 failed** (936 s, exit 0). The 120 s ceiling only gives the slow host headroom; nothing is skipped or weakened.
 * `tsconfig.clean.json` and `tsconfig.scripts.json`: both clean.
 * ESLint: clean (0 errors, 0 warnings).
 * `tests/client-bundle-safety.test.ts` and `tests/docs-modules.test.ts`: pass.
