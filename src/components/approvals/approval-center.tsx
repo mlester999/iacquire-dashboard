@@ -57,6 +57,7 @@ const KIND_LABEL: Record<string, string> = {
   crm_update: "CRM update",
   campaign_activation: "Campaign activation",
   knowledge_change: "Knowledge change",
+  appointment_change: "Appointment change",
   tool_action: "Agent tool action",
   config_change: "Configuration change",
 };
