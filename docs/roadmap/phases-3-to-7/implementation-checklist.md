@@ -50,7 +50,18 @@ States: Not Started, In Progress, Implemented, Verified Locally (tests on embedd
 
 ## Phase 5: sales closing and customer retention
 
-Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally; Waves 2 and 3 are not built. "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
+Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally at `2e192a1`; Waves 2 and 3 are not built (a partial, ungated Wave 2 work-in-progress commit, `cca6605`, is on the branch and is counted nowhere in this file). "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
+
+| Subphase | Overall state |
+| --- | --- |
+| 5A Proposals (0091) | Verified Locally; Browser-QA'd except the editor interactions and the AI draft button. Sending by email or text: Not built in Wave 1 |
+| 5B E-signature (0092) | Verified Locally and Browser-QA'd against the in-process stand-in. The PandaDoc adapter: Blocked-external. Withdraw call, certificate, master account: Not built |
+| 5C Customer invoices (0093) | Verified Locally; Browser-QA'd except the issue, record-payment, refund and void dialogs and the print layout. Credit notes, sending an invoice through the consent chain, invoice from an accepted proposal: Not built |
+| 5D Customer payments and verified revenue | Verified Locally; Browser-QA'd against the simulated provider (Lead Sources revenue not driven). PayMongo and PayPal adapters: Blocked-external |
+| 5E Setup payment gate and clearance | Not Started in Wave 1 (Wave 2 stage P1 is partial and ungated) |
+| 5F Reputation (0094, 0095) | Verified Locally; Browser-QA'd except the survey page, the request dialog and batch approval. Google and Facebook adapters: Blocked-external |
+| 5G Retention | Verified Locally. Birthdays, anniversaries and customer-facing renewal notices: Not built |
+| Cross-cutting (cost meter, kill switches, consent rule, module rollout page, jobs, documents) | Verified Locally; the rollout page Browser-QA'd; hosted rollout Needs Founder Approval |
 
 ### 5A Proposals (migration 0091)
 
@@ -64,7 +75,7 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 | 5A.6 | PDF writer (own, no dependency), stored on send with its sha256 | Verified Locally (structure; text read back with `pdftotext`); no recorded visual check of a PDF |
 | 5A.7 | Customer page `/proposal/<token>`, emailed one-time code, three honest levels of "seen", accept, decline, request changes | Verified Locally; Browser-QA'd (every state and the whole code, confirm, accept flow); the code email went through the capture provider only |
 | 5A.8 | CRM effects, seven `proposal.*` Studio triggers, contact and deal tabs, jobs `proposalExpiry` and `proposalHousekeeping`, export, erasure, offboarding | Verified Locally; the Studio editor for the triggers not browser-checked; jobs never run live |
-| 5A.9 | Send a proposal by email or text through the consent chain | **Not built** (the team copies the link; needs counsel's first-delivery wording) |
+| 5A.9 | Send a proposal by email or text through the consent chain | **Not built in Wave 1** (the team copies the link; needs counsel's first-delivery wording). Wave 2 stage M1 started it: partial and ungated in `cca6605` (a `proposal_deliveries` table added to 0091, the message scope `delivery`) |
 | 5A.10 | Counsel-approved acknowledgement wording; retention of accepted proposals; agency read of the tables (D24) | **Needs Founder Approval** / counsel (`blockers.md`) |
 
 ### 5B E-signature (migration 0092)
@@ -96,9 +107,9 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 | Id | Task | State |
 | --- | --- | --- |
 | 5D.1 | Provider seam, owner-only connection with sealed keys, one-open-checkout, per-tenant webhook route (receipt, apply, mark error), job `customerPaymentReconcile`, six go-live gates | Verified Locally |
-| 5D.2 | Settings > Customer payments (connect, replace keys, check, pause, going live) | Verified Locally; Browser-QA'd |
-| 5D.3 | Return page and the testing checkout (development only) | Verified Locally; Browser-QA'd |
-| 5D.4 | Refunds and disputes: provider events, closing outcomes (won, lost as a chargeback, unknown), the owner's by-hand actions, refund pairing | Verified Locally; Browser-QA'd (dispute dialog, a lost dispute becomes a chargeback); record-payment and refund dialogs not browser-checked |
+| 5D.2 | Settings > Customer payments (connect, replace keys, check, pause, going live) | Verified Locally; Browser-QA'd (the settings page as a whole; which of the connect, replace-keys, check, pause and going-live actions were driven is not recorded) |
+| 5D.3 | Return page and the testing checkout (development only) | Verified Locally; Browser-QA'd in the first pass only (before the fix wave); not named in the second pass |
+| 5D.4 | Refunds and disputes: refund events from both providers, dispute events from PayPal and the simulated provider only (the PayMongo adapter reads none), closing outcomes (won, lost as a chargeback, unknown), the owner's by-hand open and close, refund pairing | Verified Locally; Browser-QA'd (dispute dialog, a lost dispute becomes a chargeback); record-payment and refund dialogs not browser-checked |
 | 5D.5 | Verified revenue in the Lead Sources report (live, provider-confirmed, net of refunds and tax, per currency, as-of) | Verified Locally (SQL against rules over random payments); Lead Sources not in the recorded browser list |
 | 5D.6 | PayMongo adapter; PayPal adapter | **Blocked-external** (fixtures and a replaced HTTP layer only; `contractVerified: false`; need test keys and a sandbox app) |
 | 5D.7 | A scheduled capture of approved PayPal orders; a refund sent to a provider from the product | **Not built** (decisions; refunds are made in the provider's dashboard and recorded) |
@@ -108,7 +119,7 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 
 | Id | Task | State |
 | --- | --- | --- |
-| 5E.1 | Setup payment checked before activation or AI-employee provisioning; manual payment evidence; refunds and manual receipts reaching `payments` (the plan's W2-C) | Not Started |
+| 5E.1 | Setup payment checked before activation or AI-employee provisioning; manual payment evidence; refunds and manual receipts reaching `payments` (the plan's W2-C) | Not Started in Wave 1 (Wave 2 stage P1 started it: partial and ungated in `cca6605`, migration 0099) |
 
 ### 5F Reputation (migrations 0094 and 0095)
 
@@ -144,9 +155,9 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 | 5X.6 | Permissions, export, offboarding, erasure and contact-merge handling for every new table | Verified Locally |
 | 5X.7 | Twelve scheduler jobs registered and dormant, with time budgets | Verified Locally (injected clocks, real tick endpoint); never run live; worst-case budget 195 s against 120 s unmeasured |
 | 5X.8 | Module documents and the scheduler document, with drift tests | Done (`docs/proposals.md`, `esignature.md`, `invoices-and-payments.md`, `voice-and-reviews.md`, `production-scheduler.md`) |
-| 5X.9 | Adversarial review: 10 lenses and a coverage mapper, 114 agents, every finding checked by skeptics | Done: 43 confirmed (5 high, 22 medium, 16 low, none critical), 6 refuted |
-| 5X.10 | Fix wave: six chains and an integrator, decisions D21 to D31 and D32 | Verified Locally: 42 fixed, 1 partly (#12) |
-| 5X.11 | Gates: suite, typechecks, lint, clean build, rehearsal, line endings | Done at the first integrated tree and at the fixed tree (see `verification-evidence.md`); one slow test timed out in the last full run and was made faster |
+| 5X.9 | Adversarial review: 10 lenses and a coverage mapper, 114 agents, each finding sent to two skeptics (three for a high) | Done, but verification incomplete: 43 confirmed (5 high, 22 medium, 16 low, none critical), 6 not confirmed. Seven skeptics failed on a session limit: two confirmed findings rest on one verdict, and two of the six "refuted" claims were never tested (paced batches and workspace slots; closure cancel notices) |
+| 5X.10 | Fix wave: six chains and an integrator, decisions D21 to D31 and D32 | Verified Locally: 42 reported fixed and #12 reported "partly" by its chain, the missing piece then applied by the integrator (see checkpoint section 9); Q6, Q7 and test-invoice rule 8 were also reported "partly" |
+| 5X.11 | Gates: suite, typechecks, lint, clean build, rehearsal, line endings | Run at the first integrated tree (`759333b`: full suite 481 files, 7,823 passed, 1 skipped, exit 0; the clean build first failed on `node:crypto`, fixed in `8840d8d`, and the full suite was not re-run on that intermediate tree) and at the fixed tree (committed as `97609b2`: full suite 520 files, 8,362 passed, 1 skipped, exit 1 because one slow test timed out, since made faster and passing alone; typechecks, eslint, build, rehearsal and line endings clean). No full-suite run exists for `97609b2` as committed or for the head `2e192a1` (see `verification-evidence.md`) |
 | 5X.12 | Browser QA | Partly done (see the rows above and `phase-5-wave1-checkpoint.md` section 6); four defects found only in the browser were fixed with guards |
 | 5X.13 | Hosted migrations 0087 to 0095, deploy, scheduler stages, switching any module on, any provider run | **Needs Founder Approval** (`blockers.md`); none done |
 
@@ -154,13 +165,20 @@ Wave 1 (proposals and e-signature, customer invoices and payments, reputation an
 
 | Id | Task | State |
 | --- | --- | --- |
-| 6.x | Audit of the requests center; internal staff messages (missing); workload; collaboration | Not Started |
+| 6.x | Audit of the requests center; internal staff messages (missing); workload; collaboration | Not Started (audited and designed; Wave 1 delivered nothing here. Partial, ungated Wave 2 work on staff messages (0096) and request fixes sits in the commit `cca6605` and is not counted) |
 
 ## Phase 7: system-wide integration and launch readiness
+
+Wave 1 delivered four pieces that the plan placed in the Phase 7 hardening wave. They are listed here with their state; the rest of Phase 7 is Not Started. Partial, ungated Wave 2 work on payment clearance (0099) and the demo funnel (0100) sits in the commit `cca6605` and is not counted.
 
 | Id | Task | State |
 | --- | --- | --- |
 | 7.x | Integration audit, employee verification, onboarding, demo funnel (absent from this tree), billing, storage, super admin, scenarios, performance, security, UX, launch operations | Not Started |
+| 7.W1.1 | AI cost metering of every `llmComplete` caller (not the streaming AQi and builder paths or the Hermes reply path), and the public website chat's daily cap and kill switch (the plan's W3 hardening) | Verified Locally (= 5X.1, 5X.2); zero cost until an `llm` rate is published; gates before the call are narrower than D29's first text |
+| 7.W1.2 | Consent rule for visitor-typed contact details (the plan's W3 hardening) | Verified Locally (= 5X.3); covers the website chat only |
+| 7.W1.3 | Kill switches on the public pages (proposals, invoices, reviews, website chat) | Verified Locally (= 5X.2, 5X.5); none run with the switch on in a deployed environment |
+| 7.W1.4 | Super Admin page to switch modules on per workspace (the plan's 7G gap, for the six Wave 1 modules only) | Verified Locally; Browser-QA'd (= 5X.4); not a generic registry for every dormant feature |
+| 7.W1.5 | Key rotation (`decryptSecret` does not read `APP_ENCRYPTION_KEY_PREVIOUS`), a default statement timeout (`withUser` takes one only if a caller passes it; the default is none), CI (no `.github/workflows` in the tree) | Not Started (the rotation limit is documented in `docs/invoices-and-payments.md` and `blockers.md`, not changed) |
 
 ## Release checks (before the final GO / NO-GO report)
 
