@@ -1,4 +1,4 @@
-import "server-only";
+﻿import "server-only";
 import { z } from "zod";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -30,6 +30,10 @@ export interface SupportSettings {
   attachmentRetentionDays: number | null;
   defaultPriority: Record<RequestType, TicketPriority>;
   aiAssistEnabled: boolean;
+  /** Whether a resolved request may ask its opener one satisfaction question. Off until the Super Admin turns it on. */
+  surveysEnabled: boolean;
+  /** Hours after resolution before the survey appears. */
+  surveyDelayHours: number;
   /** Hours the team aims to take over the first look at a new custom project request. Null: no target is set (the review task is due in two days). */
   projectReviewTargetHours: number | null;
   /** Whether a client is told that target. Off until the Super Admin chooses to. */
@@ -59,6 +63,8 @@ interface SettingsRow {
   attachment_retention_days: number | null;
   default_priority: Record<string, string>;
   ai_assist_enabled: boolean;
+  surveys_enabled: boolean;
+  survey_delay_hours: number;
   project_review_target_hours: number | null;
   show_project_targets_to_clients: boolean;
   project_prerequisites_enabled: boolean;
@@ -85,6 +91,8 @@ export const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
   attachmentRetentionDays: null,
   defaultPriority: { support: "normal", issue: "normal", feedback: "low", change: "normal" },
   aiAssistEnabled: true,
+  surveysEnabled: false,
+  surveyDelayHours: 24,
   projectReviewTargetHours: null,
   showProjectTargetsToClients: false,
   projectPrerequisitesEnabled: false,
@@ -115,6 +123,8 @@ function fromRow(r: SettingsRow): SupportSettings {
     attachmentRetentionDays: r.attachment_retention_days,
     defaultPriority: { support: asPriority(r.default_priority?.support, d.support), issue: asPriority(r.default_priority?.issue, d.issue), feedback: asPriority(r.default_priority?.feedback, d.feedback), change: asPriority(r.default_priority?.change, d.change) },
     aiAssistEnabled: r.ai_assist_enabled,
+    surveysEnabled: r.surveys_enabled === true,
+    surveyDelayHours: r.survey_delay_hours ?? 24,
     projectReviewTargetHours: r.project_review_target_hours ?? null,
     showProjectTargetsToClients: r.show_project_targets_to_clients === true,
     projectPrerequisitesEnabled: r.project_prerequisites_enabled === true,
@@ -195,6 +205,8 @@ export const supportSettingsPatchSchema = z.object({
   attachmentRetentionDays: z.number().int().min(30).max(3650).nullable().optional(),
   defaultPriority: z.record(z.string(), z.string()).optional(),
   aiAssistEnabled: z.boolean().optional(),
+  surveysEnabled: z.boolean().optional(),
+  surveyDelayHours: z.number().int().min(0).max(720).optional(),
   projectReviewTargetHours: z.number().int().min(1, "A review target is at least 1 hour.").max(720, "A review target can be up to 720 hours.").nullable().optional(),
   showProjectTargetsToClients: z.boolean().optional(),
   projectPrerequisitesEnabled: z.boolean().optional(),
@@ -254,7 +266,7 @@ export async function updateSupportSettings(user: SessionUser, patch: SupportSet
     ["approachingPercent", "approaching_percent"], ["overdueEscalationMinutes", "overdue_escalation_minutes"], ["reopenWindowDays", "reopen_window_days"],
     ["autoCloseResolvedDays", "auto_close_resolved_days"], ["maxAttachmentMb", "max_attachment_mb"], ["maxAttachmentsPerMessage", "max_attachments_per_message"],
     ["stagedUploadTtlHours", "staged_upload_ttl_hours"], ["attachmentRetentionDays", "attachment_retention_days"], ["aiAssistEnabled", "ai_assist_enabled"],
-    ["projectReviewTargetHours", "project_review_target_hours"], ["showProjectTargetsToClients", "show_project_targets_to_clients"], ["projectPrerequisitesEnabled", "project_prerequisites_enabled"],
+    ["projectReviewTargetHours", "project_review_target_hours"], ["showProjectTargetsToClients", "show_project_targets_to_clients"], ["projectPrerequisitesEnabled", "project_prerequisites_enabled"], ["surveysEnabled", "surveys_enabled"], ["surveyDelayHours", "survey_delay_hours"],
   ];
   for (const [key, column] of simple) if (p[key] !== undefined) add(column, p[key]);
   if (!sets.length) return loadSupportSettingsFresh();
@@ -313,3 +325,4 @@ export async function setNotificationRule(user: SessionUser, event: string, mode
     await recordAudit({ actorUserId: user.id, actorKind: "agency", action: "support.notification_rule_updated", targetType: "support_notification_rule", targetId: event, result: "success", metadata: { from: before.rows[0]?.mode ?? SUPPORT_EVENT_INFO[event as SupportEvent].defaultMode, to: mode } }, db);
   });
 }
+

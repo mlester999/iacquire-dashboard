@@ -154,6 +154,17 @@ not offer it (`ASSISTANT_REQUEST_TYPES`): a change needs a target and, for a pro
 * AQi knows the page (`src/lib/aqi/routes.ts`) and may point a client at it in a workspace where it is off; the page then says plainly that it isn't switched on and offers Get Support.
   AQi's routes have no per-workspace switch yet, so this is the one place the dormant module can be reached by name.
 
+## 9b. Satisfaction survey (Phase 6, using the 0098 table)
+
+The support survey is separate from the reputation surveys in `voice-and-reviews.md`: this one is about a support request, not a public review or NPS program.
+
+* A Super Admin switches **Satisfaction survey** on in Support settings and chooses a delay (default 24 hours, 0–720). Off is the default; nothing is asked until it is on.
+* When a request moves to **resolved**, one `support_surveys` row is scheduled for the person who opened it, with `requested_at = now + delay` and a **14-day** window. The unique index on `ticket_id` means a reopen/resolve cycle never asks twice. Reopening a resolved request before it is answered marks the question **skipped**; an answered survey is a record and never changes.
+* The client sees the question inside the request only after the delay, and only if they are the opener. It asks a **1–5 rating**, **whether the reply helped**, and an **optional comment** (1,000 characters). Nothing is pre-selected; the Send button waits for both answers.
+* The answer is written by `answerSupportSurvey`, checked against the opener, the due time, the 14-day window and the `requested` status. A second answer, another person's answer, or an answer before the delay is refused. The audit log records the rating, not the comment.
+* `/admin/support/analytics` counts surveys **requested** and **answered** in the selected range and shows the average rating and the share who said the reply helped. Comments stay in the survey record; they are not copied into analytics or notifications.
+* No email or text is sent by this feature; it is an in-app question. There is no scheduler job because the row is created at resolution with a future due time.
+
 ## 10. AI help (advisory only)
 
 Uses the connected provider (`resolveLlmConfig`), the support settings switch, a per-person hourly limit, short outputs with a timeout and, for client-side help, the workspace's monthly help-request allowance. Everything is wrapped as data, emails/phones/long numbers/keys are removed first, and **nothing is sent, closed, assigned, prioritised or promised by AI**.

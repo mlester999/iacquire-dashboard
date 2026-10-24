@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { BellRing, CalendarClock, Check, ClipboardCheck, Clock3, FileUp, Plus, RotateCcw, Sparkles, Timer, Trash2 } from "lucide-react";
+import { BellRing, CalendarClock, Check, ClipboardCheck, Clock3, FileUp, HeartHandshake, Plus, RotateCcw, Sparkles, Timer, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/overlays";
@@ -40,6 +40,8 @@ interface Form {
   projectReviewTargetHours: string;
   showProjectTargetsToClients: boolean;
   projectPrerequisitesEnabled: boolean;
+  surveysEnabled: boolean;
+  surveyDelayHours: string;
 }
 
 const hoursOf = (b: BusinessHours): Record<Weekday, Windows> => Object.fromEntries(WEEKDAYS.map((d) => [d, (b[d] ?? []) as Windows])) as Record<Weekday, Windows>;
@@ -51,6 +53,7 @@ const toForm = (s: SupportSettings): Form => ({
   maxAttachmentsPerMessage: String(s.maxAttachmentsPerMessage), stagedUploadTtlHours: String(s.stagedUploadTtlHours), attachmentRetentionDays: s.attachmentRetentionDays ? String(s.attachmentRetentionDays) : "",
   defaultPriority: s.defaultPriority, aiAssistEnabled: s.aiAssistEnabled,
   projectReviewTargetHours: s.projectReviewTargetHours ? String(s.projectReviewTargetHours) : "", showProjectTargetsToClients: s.showProjectTargetsToClients, projectPrerequisitesEnabled: s.projectPrerequisitesEnabled,
+  surveysEnabled: s.surveysEnabled, surveyDelayHours: String(s.surveyDelayHours),
 });
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v));
@@ -111,6 +114,8 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
       projectReviewTargetHours: num(form.projectReviewTargetHours),
       showProjectTargetsToClients: form.showProjectTargetsToClients,
       projectPrerequisitesEnabled: form.projectPrerequisitesEnabled,
+      surveysEnabled: form.surveysEnabled,
+      surveyDelayHours: Number(form.surveyDelayHours),
     }, saved.revision);
     setPending(false);
     if (!res.ok) {
@@ -226,7 +231,7 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
           <Notice tone={emailMode === "capture" ? "warning" : "success"} icon={<BellRing />} role="status">
             {emailMode === "capture"
               ? "This server is in email capture mode: email notifications are recorded but not sent to anyone. In-app notifications work normally."
-              : "Email is delivered through the connected email provider. A message is recorded as “sent” once the provider accepts it; that is not a delivery receipt."}
+              : "Email is delivered through the connected email provider. A message is recorded as â€œsentâ€ once the provider accepts it; that is not a delivery receipt."}
           </Notice>
           <div className="overflow-x-auto rounded-2xl border border-line">
             <table className="w-full min-w-[640px] text-left text-[13px]"><caption className="sr-only">How each support update is delivered</caption>
@@ -276,6 +281,14 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
         </div>
       </Panel>
 
+      <Panel icon={<HeartHandshake />} tone="violet" title="Satisfaction survey" description="One short question after a request is resolved. Off until you choose; it appears inside the client's own request, never by email or text, and only the person who opened the request can answer it."
+        footer={canEdit ? <SaveBar dirty={dirty} pending={pending} onSave={() => void save()} onReset={() => setForm(toForm(saved))} /> : undefined}>
+        <SettingRow as="label" icon={<HeartHandshake />} title="Ask how it went after a request is resolved" description="Shows a one-to-five rating, whether the reply helped and an optional comment on the resolved request. A request is asked once; an answered survey never changes.">
+          <Switch checked={form.surveysEnabled} disabled={!canEdit} onCheckedChange={(v) => set("surveysEnabled", v)} aria-label="Ask how it went after a request is resolved" />
+        </SettingRow>
+        <div className="mt-4 max-w-sm space-y-1.5"><Label htmlFor="s-sdelay">Show the survey after</Label><div className="flex items-center gap-2"><Input id="s-sdelay" type="number" min={0} max={720} className="w-24" disabled={!canEdit || !form.surveysEnabled} value={form.surveyDelayHours} onChange={(e) => set("surveyDelayHours", e.target.value)} /><span className="text-[13px] text-muted">hours</span></div><p className="text-[12px] text-muted">The request is already resolved; this leaves time for the customer to reply first. It stays open for 14 days.</p></div>
+      </Panel>
+
       <Panel icon={<Sparkles />} tone="violet" title="AI help" description="Optional help for clients writing a request and for the team reading one: clearer wording, summaries, reply drafts. It uses the AI connection already set up in Integrations, only ever suggests, and never sends, closes, assigns or promises anything."
         footer={canEdit ? <SaveBar dirty={dirty} pending={pending} onSave={() => void save()} onReset={() => setForm(toForm(saved))} /> : undefined}>
         <SettingRow as="label" icon={<Sparkles />} title="Allow AI help on requests" description="Turn this off to remove every AI button from the request pages.">
@@ -285,3 +298,4 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
     </div>
   );
 }
+

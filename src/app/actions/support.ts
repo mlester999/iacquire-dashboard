@@ -8,6 +8,7 @@ import {
 } from "@/server/support/service";
 import { findSimilarRequests } from "@/server/support/duplicates";
 import { improveRequestDraft, suggestForDraft } from "@/server/support/ai";
+import { answerSupportSurvey, type SurveyAnswer } from "@/server/support/surveys";
 import { actionError } from "@/server/errors";
 import { REQUEST_TYPES } from "@/lib/support/lifecycle";
 
@@ -131,6 +132,25 @@ export async function improveRequestDraftAction(input: z.input<typeof improveSch
   try {
     const ctx = await requireOrgContextOrThrow("support.use");
     return { ok: true as const, data: await improveRequestDraft(ctx, improveSchema.parse(input)) };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+const surveyAnswerSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  helpful: z.boolean(),
+  comment: z.string().max(1000).optional(),
+});
+
+/** The person who opened a resolved request answers its one satisfaction question. */
+export async function answerSupportSurveyAction(surveyId: string, input: z.input<typeof surveyAnswerSchema>) {
+  try {
+    const ctx = await requireOrgContextOrThrow("support.use");
+    const parsed = surveyAnswerSchema.parse(input);
+    const survey = await answerSupportSurvey(ctx.user, surveyId, parsed as SurveyAnswer);
+    revalidatePath("/support/requests");
+    return { ok: true as const, data: survey };
   } catch (err) {
     return actionError(err);
   }

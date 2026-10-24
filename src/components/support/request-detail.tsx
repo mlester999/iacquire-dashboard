@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/overlays";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { AccentStrip, IconTile, Notice, type PanelTone } from "@/components/settings/panel";
 import { AttachmentPicker, type PickerState } from "@/components/support/attachment-picker";
+import { SupportSurveyCard } from "@/components/support/survey-card";
 import { MessageList, Timeline, type PendingMessage } from "@/components/support/parts";
 import { markRequestReadAction, postMessageAction, reopenRequestAction } from "@/app/actions/support";
 import {
@@ -19,6 +20,7 @@ import { describeDiagnostics } from "@/lib/support/content";
 import { CHANGE_ORDER_STATUS_LABEL, type ChangeOrderStatus } from "@/lib/project-change-orders";
 import { formatDateTime, relativeTime } from "@/lib/utils";
 import type { ClientRequestDetail } from "@/server/support/types";
+import type { SurveyView } from "@/lib/support/surveys";
 
 const tone = (status: string): PanelTone => (status === "resolved" ? "success" : status === "closed" ? "neutral" : status === "waiting_for_client" ? "warning" : "primary");
 
@@ -29,7 +31,7 @@ const POLL_MS = 20_000;
  * (a failed message stays on screen with a retry, and sending twice never duplicates), the history, and a way to reopen it.
  * The page refreshes itself every few seconds while it is open and visible; if that ever fails it simply keeps what it has.
  */
-export function RequestDetailView({ initial, timeZone }: { initial: ClientRequestDetail; timeZone: string }) {
+export function RequestDetailView({ initial, timeZone, survey = null }: { initial: ClientRequestDetail; timeZone: string; survey?: SurveyView | null }) {
   const [detail, setDetail] = React.useState(initial);
   const [body, setBody] = React.useState("");
   const [files, setFiles] = React.useState<PickerState>({ ids: [], busy: false, failed: false });
@@ -175,6 +177,8 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
         )}
       </Card>
 
+      {survey && <SupportSurveyCard survey={survey} />}
+
       {detail.linkedChange && (
         <Card className="p-5" role="region" aria-labelledby="linked-change-title">
           <h2 id="linked-change-title" className="text-[15px] font-semibold tracking-tight text-ink">Also on your project&apos;s change list</h2>
@@ -182,7 +186,7 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
             <span className="font-mono text-[12px] text-muted">{detail.linkedChange.ref}</span> {detail.linkedChange.title}
             <StatusPill size="sm" tone={detail.linkedChange.status === "quoted" ? "warning" : detail.linkedChange.status === "accepted" || detail.linkedChange.status === "applied" ? "success" : detail.linkedChange.status === "declined" || detail.linkedChange.status === "withdrawn" ? "neutral" : "primary"}>{CHANGE_ORDER_STATUS_LABEL[detail.linkedChange.status as ChangeOrderStatus] ?? detail.linkedChange.status}</StatusPill>
           </p>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">On {detail.linkedChange.projectRef} · {detail.linkedChange.projectTitle}. A quote, if the team sends one, waits there for the owner&apos;s decision.</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">On {detail.linkedChange.projectRef} Â· {detail.linkedChange.projectTitle}. A quote, if the team sends one, waits there for the owner&apos;s decision.</p>
           <Link href={`/projects/${detail.linkedChange.projectId}#project-changes`} className="mt-2 inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">Open the project&apos;s change requests</Link>
         </Card>
       )}
@@ -204,16 +208,16 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
         {detail.canReply ? (
           <div className="rounded-2xl border border-line-strong bg-surface p-3 shadow-card focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10">
             <label htmlFor="request-reply" className="sr-only">Your reply</label>
-            <Textarea id="request-reply" value={body} onChange={(e) => setBody(e.target.value)} maxLength={5000} rows={3} placeholder={done ? "Add a message to reopen this request…" : "Write a reply…"}
+            <Textarea id="request-reply" value={body} onChange={(e) => setBody(e.target.value)} maxLength={5000} rows={3} placeholder={done ? "Add a message to reopen this requestâ€¦" : "Write a replyâ€¦"}
               className="border-0 shadow-none focus:ring-0"
               onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void submit(); } }} />
             <div className="border-t border-line pt-3">
               <AttachmentPicker key={pickerKey} compact maxMb={detail.maxAttachmentMb} maxFiles={detail.maxAttachments} onChange={setFiles} label="Add files" />
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11.5px] text-muted">Press Ctrl or ⌘ + Enter to send</p>
+              <p className="text-[11.5px] text-muted">Press Ctrl or âŒ˜ + Enter to send</p>
               <Button type="button" variant="brand" size="sm" disabled={!body.trim() || files.busy || files.failed} onClick={() => void submit()}>
-                <Send className="size-3.5" aria-hidden /> {files.busy ? "Uploading files…" : done ? "Reopen and send" : "Send reply"}
+                <Send className="size-3.5" aria-hidden /> {files.busy ? "Uploading filesâ€¦" : done ? "Reopen and send" : "Send reply"}
               </Button>
             </div>
           </div>
@@ -259,3 +263,4 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
     </div>
   );
 }
+

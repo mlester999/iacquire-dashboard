@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { AlertTriangle, BarChart3, CheckCircle2, Clock3, Flame, Inbox, RotateCcw, Timer, UserCheck, UserRound, Users } from "lucide-react";
+﻿import Link from "next/link";
+import { AlertTriangle, BarChart3, CheckCircle2, Clock3, Flame, HeartHandshake, Inbox, RotateCcw, Star, Timer, UserCheck, UserRound, Users } from "lucide-react";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { Columns, HBarList, StatTile } from "@/components/charts";
 import { DayAreaChart } from "@/components/admin/support/day-chart";
@@ -49,7 +49,7 @@ export function AnalyticsView({ data, filterQuery }: { data: SupportAnalytics; f
   return (
     <div className="space-y-6">
       <p className="text-[12.5px] text-muted" role="note">
-        {data.range.from} to {data.range.to} · {data.range.bucket === "day" ? "daily" : "weekly"} totals · time zone {data.range.timezone.replace(/_/g, " ")}.{" "}
+        {data.range.from} to {data.range.to} Â· {data.range.bucket === "day" ? "daily" : "weekly"} totals Â· time zone {data.range.timezone.replace(/_/g, " ")}.{" "}
         Every figure counts real requests; where nothing has happened, it says so instead of showing a number.
       </p>
 
@@ -64,16 +64,34 @@ export function AnalyticsView({ data, filterQuery }: { data: SupportAnalytics; f
         <StatTile label="Reopened" value={t.reopenedInRange} icon={<RotateCcw className="size-4" />} definition={DEFINITIONS[2][1]} />
       </section>
 
+      <section aria-label="Satisfaction" className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <Card className="p-5">
+          <p className="flex items-center gap-2 text-[12.5px] font-medium text-muted"><HeartHandshake className="size-4" aria-hidden /> Satisfaction</p>
+          {data.satisfaction.answered > 0 ? (
+            <div className="mt-2 flex flex-wrap items-end gap-x-6 gap-y-2">
+              <p className="text-[26px] font-semibold leading-none tracking-tight tabular-nums text-ink">{data.satisfaction.averageRating?.toFixed(1)}<span className="ml-1 text-[13px] font-medium text-muted">/ 5</span></p>
+              <p className="text-[13px] text-ink-2">{data.satisfaction.answered} answered of {data.satisfaction.requested} asked{data.satisfaction.helpfulPercent !== null ? ` · ${data.satisfaction.helpfulPercent}% said it helped` : ""}</p>
+            </div>
+          ) : (
+            <p className="mt-2 text-[13.5px] text-ink-2">{data.satisfaction.requested > 0 ? `${data.satisfaction.requested} asked; none answered in these dates.` : "No satisfaction survey has been asked in these dates."}</p>
+          )}
+          <p className="mt-2 text-[12px] text-muted">Only the person who opened a resolved request can answer, once. Comments stay with the request.</p>
+        </Card>
+        <Card className="flex min-w-[150px] flex-col justify-center p-5">
+          <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-muted"><Star className="size-4" aria-hidden /> Answered</p>
+          <p className="mt-2 text-[26px] font-semibold leading-none tracking-tight tabular-nums text-ink">{data.satisfaction.answered}</p>
+        </Card>
+      </section>
       <section aria-label="Response and resolution times" className="grid gap-4 md:grid-cols-3">
         <Card className="p-5">
           <p className="flex items-center gap-2 text-[12.5px] font-medium text-muted"><Timer className="size-4" aria-hidden /> Average first response</p>
           <p className="mt-2 text-[26px] font-semibold tracking-tight tabular-nums text-ink">{minutes(data.firstResponse.avgMinutes)}</p>
-          <p className="mt-1 text-[12.5px] text-muted">{data.firstResponse.sample === 0 ? "No replies in this period yet." : `Median ${minutes(data.firstResponse.medianMinutes)} · ${data.firstResponse.sample} request${data.firstResponse.sample === 1 ? "" : "s"}`}</p>
+          <p className="mt-1 text-[12.5px] text-muted">{data.firstResponse.sample === 0 ? "No replies in this period yet." : `Median ${minutes(data.firstResponse.medianMinutes)} Â· ${data.firstResponse.sample} request${data.firstResponse.sample === 1 ? "" : "s"}`}</p>
         </Card>
         <Card className="p-5">
           <p className="flex items-center gap-2 text-[12.5px] font-medium text-muted"><CheckCircle2 className="size-4" aria-hidden /> Average time to resolve</p>
           <p className="mt-2 text-[26px] font-semibold tracking-tight tabular-nums text-ink">{minutes(data.resolution.avgMinutes)}</p>
-          <p className="mt-1 text-[12.5px] text-muted">{data.resolution.sample === 0 ? "Nothing resolved from this period yet." : `Median ${minutes(data.resolution.medianMinutes)} · ${data.resolution.sample} request${data.resolution.sample === 1 ? "" : "s"}`}</p>
+          <p className="mt-1 text-[12.5px] text-muted">{data.resolution.sample === 0 ? "Nothing resolved from this period yet." : `Median ${minutes(data.resolution.medianMinutes)} Â· ${data.resolution.sample} request${data.resolution.sample === 1 ? "" : "s"}`}</p>
         </Card>
         <Card className="p-5">
           <p className="flex items-center gap-2 text-[12.5px] font-medium text-muted"><RotateCcw className="size-4" aria-hidden /> Reopen rate</p>
@@ -128,7 +146,7 @@ export function AnalyticsView({ data, filterQuery }: { data: SupportAnalytics; f
             <Card className="p-5">
               <SectionLabel title="Most reported issues" description="Issue reports in this period, grouped by problem type and feature" />
               <HBarList unit="reports" emptyLabel="No issue reports in this period"
-                rows={data.commonIssues.map((c) => ({ key: `${c.category}-${c.feature ?? "none"}`, label: <Link href={q({ type: "issue", category: c.category, ...scope })} className="hover:text-primary-ink hover:underline">{categoryLabel(c.category)}{c.feature ? ` · ${featureLabel(c.feature)}` : ""}</Link>, value: c.count }))} />
+                rows={data.commonIssues.map((c) => ({ key: `${c.category}-${c.feature ?? "none"}`, label: <Link href={q({ type: "issue", category: c.category, ...scope })} className="hover:text-primary-ink hover:underline">{categoryLabel(c.category)}{c.feature ? ` Â· ${featureLabel(c.feature)}` : ""}</Link>, value: c.count }))} />
               {data.topClients.length > 0 && !filterQuery.orgId && <div className="mt-5"><p className="mb-2 text-[12.5px] font-medium text-ink-2">Clients sending the most requests</p><HBarList unit="requests" rows={data.topClients.map((c) => ({ key: c.orgId, label: <Link href={q({ org: c.orgId })} className="hover:text-primary-ink hover:underline">{c.name}</Link>, value: c.count }))} /></div>}
             </Card>
           </section>
@@ -142,3 +160,4 @@ export function AnalyticsView({ data, filterQuery }: { data: SupportAnalytics; f
     </div>
   );
 }
+
