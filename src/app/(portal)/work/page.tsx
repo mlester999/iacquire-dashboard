@@ -5,7 +5,7 @@ import { listSchedules, schedulesOperatorEnabled } from "@/server/workforce/sche
 import { listTriggers, triggersOperatorEnabled } from "@/server/workforce/triggers";
 import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
 import { WorkBoard } from "@/components/work/work-board";
-import { AGENT_BY_KEY, canChat } from "@/lib/agents";
+import { AGENT_BY_KEY, canChat, type AgentRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 
 export const metadata = { title: "AI Work Board" };
@@ -14,6 +14,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
 
 export default async function WorkPage({ searchParams }: { searchParams: Promise<{ status?: string; job?: string; report?: string }> }) {
   const [{ status, job, report }, ctx] = await Promise.all([searchParams, requireOrgContext()]);
+  const referenceTime = new Date().toISOString();
   const filter: WorkBoardFilter = status === "active" || status === "attention" || status === "completed" ? status : "all";
   const [jobs, summary, agents, schedules, triggers, reports, monitoring] = await Promise.all([
     listWorkBoardJobs(ctx, filter),
@@ -24,6 +25,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
     listProactiveReports(ctx, { limit: 24 }).catch(() => []),
     getProactiveMonitoringStatus(ctx).catch(() => null),
   ]);
+  const employeeNames = Object.fromEntries(agents.map((agent) => [agent.role_key, agent.display_name])) as Partial<Record<AgentRoleKey, string>>;
 
   const capabilityActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
     .map((key) => WORKFORCE_CAPABILITIES[key])
@@ -77,6 +79,8 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       reports={reports}
       monitoring={monitoring}
       focusReportId={typeof report === "string" && UUID.test(report) ? report : null}
+      employeeNames={employeeNames}
+      referenceTime={referenceTime}
     />
   );
 }

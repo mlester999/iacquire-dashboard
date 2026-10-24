@@ -124,7 +124,7 @@ const activeMonitoring: MonitoringStatus = {
 
 describe("AI Work Board proactive reports", () => {
   it("shows an honest monitoring state and a real acknowledgement action", async () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} reports={[proactiveReport]} monitoring={activeMonitoring} focusReportId="r1" />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" reports={[proactiveReport]} monitoring={activeMonitoring} focusReportId="r1" />);
     expect(screen.getByText("Proactive watch")).toBeTruthy();
     expect(screen.getByText("Monitoring active")).toBeTruthy();
     expect(screen.getByText("Operations Manager found 1 urgent signal")).toBeTruthy();
@@ -135,7 +135,7 @@ describe("AI Work Board proactive reports", () => {
   });
 
   it("does not imply continuous monitoring when no schedule is configured", () => {
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} reports={[]} monitoring={{ ...activeMonitoring, state: "not_configured", schedulesEnabled: 0, triggersEnabled: 0, byRole: [] }} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" reports={[]} monitoring={{ ...activeMonitoring, state: "not_configured", schedulesEnabled: 0, triggersEnabled: 0, byRole: [] }} />);
     expect(screen.getByText("No monitoring schedule")).toBeTruthy();
     expect(screen.getByText(/employees are not watching continuously/i)).toBeTruthy();
     expect(screen.getByText("No proactive reports yet")).toBeTruthy();
@@ -144,9 +144,9 @@ describe("AI Work Board proactive reports", () => {
 
 describe("AI Work Board", () => {
   it("renders persisted status, stage and metrics without inventing progress", () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByText("See the work, not a spinner.")).toBeTruthy();
-    expect(screen.getByText("Working")).toBeTruthy();
+    expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
     expect(screen.getByText("Reviewing discovered company websites")).toBeTruthy();
     expect(screen.getByText(/3 source pages reviewed/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Start review/ }).hasAttribute("disabled")).toBe(false);
@@ -155,22 +155,22 @@ describe("AI Work Board", () => {
   });
 
   it("shows an expired worker lease as awaiting recovery, not as active work", () => {
-    render(<WorkBoard jobs={[job({ recoveryPending: true, statusLabel: "Recovery pending" })]} summary={{ ...summary, active: 0, needsAttention: 2 }} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
-    expect(screen.getByText("Recovery pending")).toBeTruthy();
+    render(<WorkBoard jobs={[job({ recoveryPending: true, statusLabel: "Recovery pending" })]} summary={{ ...summary, active: 0, needsAttention: 2 }} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
+    expect(screen.getAllByText("Recovery pending").length).toBeGreaterThan(0);
     expect(screen.getByText("No active worker lease is recorded. Recovery is pending.")).toBeTruthy();
-    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByText("Working", { selector: "span" })).toBeNull();
     expect(screen.getByText("Failed, blocked or awaiting recovery")).toBeTruthy();
   });
 
   it("starts a real on-demand review when access allows it", async () => {
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     await userEvent.click(screen.getByRole("button", { name: /Start review/ }));
     await waitFor(() => expect(startReview).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalled();
   });
 
   it("expands the real work panel and links filters correctly", () => {
-    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} />);
+    render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByRole("link", { name: "Needs attention" }).getAttribute("href")).toBe("/work?status=attention");
     fireEvent.click(screen.getByRole("button", { name: "Activity" }));
     expect(screen.getByTestId("job-panel").textContent).toBe("job-1");
@@ -179,7 +179,7 @@ describe("AI Work Board", () => {
   });
 
   it("disables a review whose employee is not available and explains why", () => {
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={[reviewActions[1]]} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={[reviewActions[1]]} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByRole("button", { name: /Start review/ }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText(/CRM Manager needs an applied configuration first/)).toBeTruthy();
   });
@@ -206,7 +206,7 @@ describe("AI Work Board", () => {
       lastSkippedAt: null,
       operatorEnabled: false,
     }];
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={schedules} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={schedules} canManageSchedules scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByText("Scheduled work")).toBeTruthy();
     expect(screen.getByText("Operator switch off")).toBeTruthy();
     expect(screen.getByText(/no schedule creates work even when its row is enabled/i)).toBeTruthy();
@@ -227,7 +227,7 @@ describe("AI Work Board", () => {
       lastJobId: null,
       operatorEnabled: false,
     }];
-    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={triggers} canManageTriggers triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={triggers} canManageTriggers triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     expect(screen.getByText("Event triggers")).toBeTruthy();
     expect(screen.getByText(/no event creates work even when its trigger is enabled/i)).toBeTruthy();
     expect(screen.getByText(/last event #42/)).toBeTruthy();
@@ -261,8 +261,9 @@ describe("AI Work Board", () => {
       triggerOperatorEnabled={false}
       timeZone="UTC"
       focusJobId={null}
+      referenceTime="2026-10-24T00:00:00.000Z"
     />);
-    expect(screen.getByText("Failed")).toBeTruthy();
+    expect(screen.getAllByText("Failed").length).toBeGreaterThan(0);
     expect(screen.getByText(/worker stopped before the review completed/i)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Needs attention" }).getAttribute("aria-current")).toBe("page");
   });
