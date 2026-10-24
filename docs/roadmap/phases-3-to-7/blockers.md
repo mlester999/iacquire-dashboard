@@ -123,8 +123,8 @@ Nothing here has been done. Wave 1 is built and verified locally and is dormant 
 
 | Item | Why it matters | State |
 | --- | --- | --- |
-| Send a proposal or an issued invoice to the customer through the consent chain | Today the team copies the link; only reminders and codes are sent. Needs the generalised bearer-link placeholder (reminders already use it) and counsel's first-delivery wording | Not built (audit C5) |
-| Create an invoice from an accepted proposal | `customer_invoices.source_type` and `source_id` exist in 0093 and are never written; prefill from a deal or a contact works | Not built |
+| Send a proposal or an issued invoice to the customer through the consent chain | The send section, duplicate protection and consent gate are built for invoices (and shared with proposals). Browser QA reached the section and it correctly refused an unlinked GoHighLevel contact; no real email provider was called | **Implemented, Verified Locally**; a real send needs the contact linked to the provider, the channel write switch and counsel-approved first-delivery wording |
+| Create an invoice from an accepted proposal | Implemented in Wave 2 with immutable proposal terms and idempotency; targeted tests cover the earlier line/idempotency/permission defects | **Implemented, Verified Locally**; not browser-QA'd end to end |
 | Credit notes | No document or numbering | Not built; a founder and counsel decision first |
 | Birthdays and anniversaries; customer-facing renewal notices | No date-of-birth field or program exists; a renewal notice to a customer needs a contact link and legal review | Not built; renewal reminders are internal only |
 | A scheduled capture of approved PayPal orders | A customer who approves and closes the tab leaves an uncaptured order | Not built; a product decision (it would take money on a guess about intent) |
@@ -141,7 +141,8 @@ Nothing here has been done. Wave 1 is built and verified locally and is dormant 
 | Every workload rule number | The point weights, five label thresholds, overdue floors, horizon, team default capacity and project-health limits are audit proposals. A Super Admin can inspect them at `/admin/workload/settings`; editing is deliberately not exposed | The engine, history and notifications are built and tested; no number is presented as founder-approved. The screen says so |
 | Switching staff workload on in production | The module is dormant (`org_features.staff_workload` absent) and no production switch has been touched | A Super Admin switch exists on `/admin/workload/settings`; the isolated QA database is the only place it may be switched on until approval |
 | Remaining Wave 2 browser pass | Workload, purchase intents, Messages, the Requests support path, the demo funnel, onboarding questions 8–9, invoice draft → issue → public pay page are browser-QA'd; invoice sending end-to-end, invoice-from-proposal, Requests change/survey and a full 47-question onboarding submit are not | Unit/integration tests, typechecks, lint, whole suite, client-bundle safety, docs tests, migration rehearsal and build are green; the remaining browser QA is the next gate |
-| AQi launcher over a mobile request composer | At 375 px the fixed AQi button can sit over the lower reply/attachment area on `/admin/support?ticket=…`; the messages route now lifts it | Minor UX defect, not a release blocker; fix when the request composer next changes |
+| AQi launcher over a mobile request composer | **Closed:** agency and client request pages mark `body[data-aqi-composer]`; under 640 px the launcher is lifted 150 px above the safe area. Computed position checked at 375 px | No action |
+| Full premium design approval | Measured audit covers ten agency screens at 1440/375: no overflow, no axe violations, shell microcopy raised to 11–12 px. Client portal, public surfaces, dark theme and tablet are not yet reviewed; visual composition is not signed off | Continue the page-by-page design audit (`docs/design-audit.md`) before calling the UI finished |
 
 ### Behaviour that changes when this code deploys, whatever the switches say
 

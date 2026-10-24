@@ -178,6 +178,7 @@ Wave 1 delivered four pieces that the plan placed in the Phase 7 hardening wave.
 | Id | Task | State |
 | --- | --- | --- |
 | 7.x | Integration audit, employee verification, onboarding, demo funnel and purchase intents (now present in this tree), billing, storage, super admin, scenarios, performance, security, UX, launch operations | Not Started |
+| 7.UI.1 | Measured design/accessibility audit of the agency shell and ten operational screens at 1440/375 | **In Progress:** no overflow, no axe violations; shell microcopy raised and mobile AQi/composer overlap fixed. Client portal, public surfaces, dark theme and tablet pending (`docs/design-audit.md`) |
 | 7.W1.1 | AI cost metering of every `llmComplete` caller (not the streaming AQi and builder paths or the Hermes reply path), and the public website chat's daily cap and kill switch (the plan's W3 hardening) | Verified Locally (= 5X.1, 5X.2); zero cost until an `llm` rate is published; gates before the call are narrower than D29's first text |
 | 7.W1.2 | Consent rule for visitor-typed contact details (the plan's W3 hardening) | Verified Locally (= 5X.3); covers the website chat only |
 | 7.W1.3 | Kill switches on the public pages (proposals, invoices, reviews, website chat) | Verified Locally (= 5X.2, 5X.5); none run with the switch on in a deployed environment |

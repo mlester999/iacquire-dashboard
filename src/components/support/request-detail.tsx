@@ -42,6 +42,14 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
   const lastAgencyId = React.useRef<string | null>(initial.messages.filter((m) => m.authorKind === "agency").at(-1)?.id ?? null);
   const t = detail.ticket;
 
+  // The reply box needs the bottom of a phone screen; the floating AQi launcher moves above it (src/app/globals.css reads this attribute).
+  React.useEffect(() => {
+    document.body.dataset.aqiComposer = "true";
+    return () => {
+      delete document.body.dataset.aqiComposer;
+    };
+  }, []);
+
   const refresh = React.useCallback(async (): Promise<ClientRequestDetail | null> => {
     try {
       const res = await fetch(`/api/support/${t.id}/thread`, { cache: "no-store" });

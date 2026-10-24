@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 /* The footer stays in normal flow on large screens and above mobile browser/keyboard chrome. */
 .onboarding-navigation {
@@ -165,7 +165,7 @@
   --shadow-lg: 0 2px 4px rgb(16 24 40 / 0.04), 0 18px 48px -12px rgb(16 24 40 / 0.18);
   --glow: 0 0 0 1px rgb(44 91 255 / 0.12), 0 8px 30px -8px rgb(44 91 255 / 0.35);
 
-  /* Chart roles — validated reference palette (dataviz skill), light steps */
+  /* Chart roles â€” validated reference palette (dataviz skill), light steps */
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -850,5 +850,13 @@ body[data-aqi-tutorial='on'] [data-aqi-panel] {
 }
 body[data-aqi-tutorial='on'] [data-aqi-target] {
   scroll-margin-block: 96px 48px;
+}
+
+
+/* On a phone, a request's reply box and the floating AQi launcher would otherwise occupy the same corner. */
+@media (max-width: 639px) {
+  body[data-aqi-composer="true"] [data-aqi-launcher] {
+    bottom: calc(max(14px, env(safe-area-inset-bottom)) + 150px) !important;
+  }
 }
 

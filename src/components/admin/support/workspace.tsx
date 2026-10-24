@@ -137,13 +137,23 @@ export function AgencyWorkspace({ list, query, options, initialDetail, timeZone,
   );
   const details = detail && <DetailsPane key={detail.ticket.id} detail={detail} timeZone={timeZone} meId={meId} onChanged={changed} />;
 
+  // A request with a reply box gives the floating AQi launcher a reason to sit above it on a phone. The stylesheet reads this attribute; no page layout is duplicated.
+  const hasDetail = Boolean(detail);
+  React.useEffect(() => {
+    if (!hasDetail) return;
+    document.body.dataset.aqiComposer = "true";
+    return () => {
+      delete document.body.dataset.aqiComposer;
+    };
+  }, [hasDetail]);
+
   if (layout === "detail") {
     return thread && details ? (
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">{thread}<aside aria-label="Request details">{details}</aside></div>
     ) : null;
   }
 
-  const hasSelection = Boolean(detail);
+  const hasSelection = hasDetail;
   return (
     <div>
       <div className={cn("grid items-start gap-4", "md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)_330px]")}>
