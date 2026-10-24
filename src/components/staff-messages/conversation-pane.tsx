@@ -208,19 +208,23 @@ export function ConversationPane(props: ConversationPaneProps) {
                 {items.map((item) => {
                   if (item.type === "day") {
                     return (
-                      <li key={item.key} role="separator" aria-label={item.label} className="flex items-center gap-3 px-4 py-3">
-                        <span className="h-px flex-1 bg-line" aria-hidden />
-                        <span className="text-[12px] font-medium text-muted">{item.label}</span>
-                        <span className="h-px flex-1 bg-line" aria-hidden />
+                      <li key={item.key} className="px-4 py-3">
+                        <div role="separator" aria-label={item.label} className="flex items-center gap-3">
+                          <span className="h-px flex-1 bg-line" aria-hidden />
+                          <span className="text-[12px] font-medium text-muted">{item.label}</span>
+                          <span className="h-px flex-1 bg-line" aria-hidden />
+                        </div>
                       </li>
                     );
                   }
                   if (item.type === "unread") {
                     return (
-                      <li key={item.key} data-marker="unread" role="separator" aria-label="New messages" className="flex items-center gap-3 px-4 py-2">
-                        <span className="h-px flex-1 bg-danger/40" aria-hidden />
-                        <span className="text-[12px] font-semibold text-danger-ink">New messages</span>
-                        <span className="h-px flex-1 bg-danger/40" aria-hidden />
+                      <li key={item.key} data-marker="unread" className="px-4 py-2">
+                        <div role="separator" aria-label="New messages" className="flex items-center gap-3">
+                          <span className="h-px flex-1 bg-danger/40" aria-hidden />
+                          <span className="text-[12px] font-semibold text-danger-ink">New messages</span>
+                          <span className="h-px flex-1 bg-danger/40" aria-hidden />
+                        </div>
                       </li>
                     );
                   }

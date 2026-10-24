@@ -517,7 +517,10 @@ describe("the open conversation", () => {
 
   it("puts a heading before each day, in the person's own words for it, and an author line on the first of each run", () => {
     pane({ messages: [message(1, { createdAt: new Date(Date.UTC(2026, 9, 23, 17, 0)).toISOString() }), message(2), message(3)] });
-    expect(screen.getAllByRole("separator").map((s) => s.getAttribute("aria-label"))).toEqual(["Yesterday", "Today"]);
+    const separators = screen.getAllByRole("separator");
+    expect(separators.map((s) => s.getAttribute("aria-label"))).toEqual(["Yesterday", "Today"]);
+    // A day divider is a separator inside a list item, not an <li> whose role replaces the list item role.
+    expect(separators.every((s) => s.tagName === "DIV" && s.closest("li"))).toBe(true);
     // Two messages by one person in a row share an author line.
     expect(screen.getAllByText("Maya Santos")).toHaveLength(2);
   });
@@ -525,8 +528,9 @@ describe("the open conversation", () => {
   it("marks where the unread messages begin", () => {
     pane({ markerAfterSeq: 1 });
     const marker = screen.getByRole("separator", { name: "New messages" });
-    const items = Array.from(marker.parentElement?.children ?? []);
-    expect(items[items.indexOf(marker) + 1].textContent).toContain("Message number 2");
+    expect(marker.tagName).toBe("DIV");
+    const next = marker.closest("li")?.nextElementSibling;
+    expect(next?.textContent).toContain("Message number 2");
   });
 
   it("offers older messages when there are some, and says when there are none yet", () => {

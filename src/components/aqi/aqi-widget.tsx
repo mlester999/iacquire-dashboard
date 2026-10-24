@@ -43,6 +43,7 @@ import { AqiSupportDialog } from "@/components/aqi/support-request-dialog";
 import { AqiMessageFeedback } from "@/components/aqi/message-feedback";
 import { useMessageFeedback, type FeedbackValue } from "@/components/aqi/use-message-feedback";
 import { recordChatGuidance, setAqiPanelOpen, startTutorial, useGuidanceSelect } from "@/components/aqi/tutorial/tutorial-store";
+import { aqiLauncherRaised } from "@/lib/aqi/launcher";
 import { normalizeAqiNavigation, type AqiNavRoute } from "@/lib/aqi/navigation-links";
 import { DEFAULT_AQI_CONVERSATION_TITLE, isMeaningfulAqiMessage } from "@/lib/aqi/title";
 import { cn, relativeTime } from "@/lib/utils";
@@ -196,8 +197,8 @@ function parseSseBlock(block: string): Record<string, unknown> | null {
 
 export function AqiWidget({ raised: raisedProp }: { raised?: boolean } = {}) {
   const pathname = usePathname();
-  // The AI employee chat page has a bottom composer; lift the launcher there.
-  const raised = raisedProp ?? Boolean(pathname?.startsWith("/chat"));
+  // Pages with a bottom composer: the AI employee chat, and a staff conversation's message box. Lift the launcher so it cannot cover Send.
+  const raised = raisedProp ?? aqiLauncherRaised(pathname);
   const reduced = useReducedMotion();
   // Only these two fields matter here; subscribing to the whole snapshot re-rendered the widget on every tour step.
   const guidanceOpen = useGuidanceSelect((snapshot) => snapshot.open);

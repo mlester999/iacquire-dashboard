@@ -8,9 +8,9 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 | Stage | What it is | Migration | State in this tree |
 | --- | --- | --- | --- |
-| A | Staff Messages: direct, group and channel conversations, threads, search, attachments, reactions, read state, notices, permissions and screens | 0096 | Implemented; targeted tests pass; not browser-QA'd |
+| A | Staff Messages: direct, group and channel conversations, threads, search, attachments, reactions, read state, notices, permissions and screens | 0096 | Implemented; targeted tests pass; **browser-QA'd at 1280/375 px** (module switch, direct conversation, send); axe list-semantics defect fixed |
 | B | Staff workload: engine, labels, permissions, history/alerts job, team overview, board with assignment suggestions, calendar, project health, person page and manage forms | 0097 | Implemented; targeted tests pass; **workload screens browser-QA'd at 1280/375, light/dark**; other Wave 2 screens not |
-| C | Requests completion: change orders and decisions, prerequisites, scope amendments, support mentions, surveys, AI triage | 0098 | Implemented; targeted tests pass |
+| C | Requests completion: change orders and decisions, prerequisites, scope amendments, support mentions, surveys, AI triage | 0098 | Implemented; targeted tests pass; **support path browser-QA'd at 1280/375 px** (submit, internal note, public reply, assign, resolve, client view); change/survey branches test-only |
 | D | Payment clearance, manual payments, lifecycle and entitlement boundaries | 0099 | Implemented; targeted tests pass; no real provider |
 | E | Client onboarding completion: snapshot answers, employee status, media/storage step, setup payment line | 0102 | Implemented; targeted tests pass |
 | F | Demo funnel: verified prospect access, guided four-step room, ten-message limit, 24-hour window, admin, retention | 0100 | Implemented; targeted tests pass |
@@ -21,7 +21,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 * Targeted Wave 2 files: 24 files, 512 tests before the last fixes; 8 failed in `invoices-from-proposal` / `invoices-actions-delivery` and were fixed (monthly lines were being copied as one-time, idempotency was disabled, the further-invoice permission was not enforced, and the draft closed the deal). Re-run: 27/27 pass.
 * Staff Messages screens/routes/stream/snapshot: 5 files, 142 tests pass after fixing the around-message window, thread-root validation, a stream-cancel test, an upload test fixture and two over-broad textbox assertions.
-* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s), at `b05c69e`. After purchase intents, at `f96f1a7` with a 120 s per-test ceiling: **610 files, 10,272 passed, 8 skipped, 0 failed** (935 s, exit 0). The 120 s ceiling only gives the slow host headroom; the default 30 s had timed out one unrelated static scan, which passed alone in 6 s.
+* Full suite before purchase intents: **607 files, 10,255 passed, 8 skipped, 0 failed** (823 s), at `b05c69e`. After purchase intents and the Messages/AQi fixes, with a 120 s per-test ceiling: **611 files, 10,273 passed, 8 skipped, 0 failed** (937 s, exit 0). The 120 s ceiling only gives the slow host headroom; the default 30 s had timed out one unrelated static scan, which passed alone in 6 s.
 * `tsconfig.clean.json` and `tsconfig.scripts.json`: both clean.
 * ESLint: clean (0 errors, 0 warnings).
 * `tests/client-bundle-safety.test.ts` and `tests/docs-modules.test.ts`: pass.
@@ -47,9 +47,9 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 ## Remaining Wave 2 work and next actions
 
-1. Browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: Messages, Requests change/survey, onboarding, demo room/admin, invoice delivery and invoice-from-proposal.
-2. Keep the purchase-intent admin and public browser QA evidence with the commit; rerun it only if the pages change.
-3. Update `README.md`, `handoff.md`, `implementation-checklist.md`, `verification-evidence.md` and `blockers.md` with the committed evidence and exact next actions.
+1. Browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: onboarding, demo room/admin, invoice delivery, invoice-from-proposal, and the Requests change/survey branches.
+2. Keep the purchase-intent, Messages and Requests browser QA evidence with the commit; rerun only if those pages change.
+3. Finish the Phase 6 workload/project/change-order cross-module scenarios; the support path is browser-verified.
 
 ## Approvals still owned by the founder
 
