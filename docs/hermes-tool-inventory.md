@@ -1,8 +1,11 @@
 # Hermes complete tool-inventory verification
 
-Status: **implemented and fail-closed. The patched gateway is deployed and all six profiles pass the
-VPS `verify-catalog` check (6/6), but the six internal employees are still `provisioning`: none has had a
-portal health check or an applied configuration, so none can run.**
+Status (2026-10-24): **implemented and fail-closed. The live audit verified all six existing internal
+profiles, their complete six-tool inventory, and zero restricted tools. Zeng and Lead Hunter have
+current 6/6 app readiness; Appointment Setter, Sales Assistant, CRM Manager and Performance Analyst
+have no applied configuration and remain unavailable. Effective SOUL instructions and the running
+application SHA are still unverified.** See the [current internal workforce
+preflight](internal-workforce-production-preflight-2026-10-24.md).
 
 This page records the contract, the verification rules, the live evidence and the remaining
 activation steps. It contains no API keys, profile identifiers, organization names or customer
@@ -224,16 +227,18 @@ The gateway is Hermes `0.21.5` plus the complete-tool-catalog patch, which regis
 This evidence comes from the operator's VPS run and the loopback cross-test. Nothing in this repository
 contacted the gateway, and no run has been started.
 
-### What is still not true
+### Current activation gap
 
-The six internal employees are `provisioning`. None has had a portal health check, so none has a recorded
-inventory digest or applied configuration version, and the Super Admin profile checks (2026-10-17) and one
-acknowledgement are stale. `startAgentRun` therefore refuses every run for them, including
-configuration previews, before any request reaches the gateway.
+The 2026-10-24 app readiness audit confirms Zeng and Lead Hunter are 6/6 with current identity,
+health, inventory and acknowledgement evidence. The other four employees have no applied
+configuration and no saved inventory digest; their saved profile checks are stale/restricted. The
+live gateway inventory result has not been written into app readiness rows. Apply each reviewed
+configuration through the guarded path, then perform the required current checks and acknowledgement.
+Do not write readiness flags directly or change the existing profile identities.
 
 ## Activation steps (all explicit, none automatic)
 
-1. **Apply an initial configuration for each of the six employees.** `runHealthCheck` returns
+1. **Apply an initial configuration for each of the four employees that has none.** `runHealthCheck` returns
    `setup_required` for an employee with no applied configuration even when the catalog verifies
    ("The employee configuration hasn't been applied yet…"), so it can never go online until one exists. A
    Super Admin switches to the iAcquire (agency) workspace, opens each employee under **AI Workforce**, and

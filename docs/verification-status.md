@@ -1,6 +1,27 @@
 # Verification status
 
-## Current checkpoint (2026-10-19)
+## Current production workforce checkpoint (2026-10-24)
+
+The current production evidence is the read-only [internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md).
+It supersedes the dated 2026-10-19 checkpoint and older Hermes inventory observations below.
+
+| Gate | Current result |
+| --- | --- |
+| Hosted migration ledger | Applied through `0086_lead_scoring`; workforce RLS hardening and expected schema are present; no local migration through 0086 was pending. |
+| Internal company profile | 4/4 required business facts saved. |
+| Application readiness | Zeng and Lead Hunter are 6/6. Appointment Setter, Sales Assistant, CRM Manager and Performance Analyst have no applied configuration and remain 0/6/unavailable. |
+| Live Hermes profiles | All six existing internal identities authenticate and match; complete six-tool inventory verified across five reviewed toolsets, with no restricted tools enabled. |
+| Saved readiness evidence for new four | Stale/restricted; current live Hermes inventory has not been written into the app's readiness rows. |
+| Effective SOUL instructions | Unverified; current API has no admin configuration read endpoint. |
+| Production application SHA | Unverified; no deployment record or runtime SHA was available in the preflight. |
+| Proactive operator switches | Schedules, triggers, briefings and worker all false; no autonomous workforce processing enabled. |
+| Prior Lead Hunter research | Targeted read-only query confirmed the supplied work job and Hermes run remain completed, with 10 saved leads. The eight historical web tool calls were not re-read from a separate event source. |
+| Changes during preflight | No employee configuration, profile, acknowledgement, readiness row, schedule, worker or business record was changed. Resolving Hermes credentials appended the normal `credential.resolved` audit rows. |
+| Current local code | Branch `codex/iacquire-workforce-completion`, based on `36bf78c`, with verified implementation commit `9a8505a`; not pushed or deployed. |
+
+Local release checks on this branch: 13 focused test files, 158 tests passed; app and script TypeScript checks passed; ESLint passed on changed files; Next.js 16.4.2 Webpack production build completed. The default Turbopack build did not resolve the shared `node_modules` link from the isolated worktree.
+
+## Historical application and CRM checkpoint (2026-10-19)
 
 | Gate | Result |
 | --- | --- |
@@ -91,7 +112,7 @@ controlled-run procedure are in [hermes-live-acceptance.md](hermes-live-acceptan
 | Employee knowledge | Notes and documents are scoped by `org_id` + `agent_instance_id`; the retrieval check uses the same compiler as run instructions; injection-looking content is held; last-used evidence is written only after the provider accepts the run. `tests/ai-workforce-experience.test.ts` | Implemented locally |
 | PDF/DOCX extraction | Bounded dependency-free extraction for selectable-text PDF (plain and Flate) and Word `.docx`; explicit `processing`/`ready`/`failed`/`unsupported` states and reasons; encrypted, scanned, malformed and ZIP64 files are rejected honestly; no OCR. Extracted text reaches the real chat instructions. `tests/knowledge-extraction.test.ts` (8), migrations 0045/0046 rollback tests (6) | Implemented locally; **no paid OCR** |
 | Live gateway evidence | `scripts/hermes-live-audit.ts --live`: one multiplexed gateway authenticated; all six internal profile identities verified; capabilities advertise runs, SSE, status, stop and approval; `memory_write_api` and `admin_config_rw` false | **Read-only gateway verification passed** (credential resolution wrote audit rows); no run started |
-| Tool-inventory gate | The six internal profiles now enable only the five reviewed toolsets and six built-in tools; `GET /v1/toolsets` shows no restricted/unreviewed tools. The verifier requires `GET /v1/tools?platform=api_server`, a challenge echo, an explicit `platform_toolsets.api_server` allowlist, the five required tools (`vision_analyze` optional), two matching reads and a persisted digest. Every run (chat, lead research, customer replies, configuration preview) goes through `startAgentRun`, which also requires the employee to be online with a recorded inventory digest and, for internal employees, the agency acknowledgement. Gateway status: the patched Hermes 0.21.5 gateway (complete-catalog patch) is now deployed and `run-policy.sh verify-catalog` on the VPS passed 6/6 profiles (operator-run; not re-run from this repository). The six internal employees are still `provisioning`: none has had a portal health check or an applied configuration, so none can run. `tests/hermes-tool-inventory.test.ts`, `tests/workforce-inventory-health.test.ts`, `tests/hermes-run-gate.test.ts` | **Implemented and fail-closed; activation is a separate, explicit step** |
+| Tool-inventory gate | At that 2026-10-18 checkpoint, the six internal profiles had five reviewed toolsets and six built-in tools, and the operator-reported VPS catalog check passed 6/6. App profile health/configuration and saved inventory attestations had not been completed at that time. This employee state is historical and is superseded by the 2026-10-24 checkpoint above. `tests/hermes-tool-inventory.test.ts`, `tests/workforce-inventory-health.test.ts`, `tests/hermes-run-gate.test.ts` | **Implemented and fail-closed; activation is a separate, explicit step** |
 | Draft configuration testing | The draft is compiled without writing a version; a real provider run uses a unique preview session and memory scope; no conversation, message, run or usage row is written. Tested with the local mock Hermes | Tested with mocks; **no live Hermes draft test** |
 | SOUL.md and instruction hierarchy | Read-only SOUL.md, exact applied instructions, version history/rollback and honest “no SOUL.md write endpoint” copy. `tests/ai-workforce-experience.test.ts` covers the compiler and versions | Implemented locally |
 | Memory | Conversation history persists; long-term memory remains Hermes-managed with the tenant/role session key. The UI states that inspection/editing is unavailable and does not offer a fake editor | Implemented locally; **memory read/edit not supported by the verified API** |

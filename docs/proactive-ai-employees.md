@@ -1,8 +1,6 @@
 # Proactive AI employees
 
-Status: **implemented and verified locally; migration 0080 was reported applied to the hosted database; local migration
-0081 hardens workforce job/event RLS and has not been applied; application deployment and production configuration
-are pending; no production monitoring, schedule, trigger, briefing or external action is active.** This page covers the proactive layer added on top of the existing AI employee execution foundation in
+Status (2026-10-24): **implemented and verified locally; the read-only production preflight confirmed migrations through `0086_lead_scoring`, including workforce RLS hardening. The schedules, triggers, briefings and worker operator switches were false, so autonomous monitoring and work were not running. Two employees are at 6/6 readiness; the four employees without applied configurations remain unavailable.** See the [current internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md). This page covers the proactive layer added on top of the existing AI employee execution foundation in
 [AI employee execution foundation](ai-employee-execution-foundation.md).
 
 ## 1. What changed
@@ -158,9 +156,8 @@ migration or scheduler activation was performed.
 
 Before any proactive monitoring is described as production-live, all of the following need explicit authorization:
 
-1. Migration `0080_proactive_ai_employees.sql` is applied (2026-10-21). Deploy the application that reads it.
-2. Confirm the existing AI employee readiness and Lead Hunter configuration prerequisites. Production currently has
-   **0/4 company facts**, no applied Lead Hunter configuration and `setup_required`; this is the active blocker.
+1. The 2026-10-24 preflight confirmed the hosted schema through `0086_lead_scoring`; no local migrations through 0086 were pending. The exact running application SHA is still unverified.
+2. Production has **4/4 company facts** and Lead Hunter is configured at 6/6 readiness. The remaining four internal employees have no applied configurations and remain unavailable; this is the active employee blocker.
 3. Enable a single schedule or event trigger in a supervised window. Keep `WORKFORCE_SCHEDULES_ENABLED`,
    `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` false until each activation is approved.
 4. Start the dedicated worker only when queued jobs are authorized to run.

@@ -1,12 +1,13 @@
 # Hermes live acceptance procedure and current blocker
 
-Status: **read-only gateway audit passed; controlled live run blocked.**
+Status (2026-10-24): **complete tool inventory, profile identity and gateway authentication verified for all six existing internal profiles. The four employees without applied configurations remain blocked from Chat; effective SOUL instructions and the running application SHA are not verified.**
 
 This page records what was actually observed against the configured gateway and the exact work required
 before a model run can be accepted. It deliberately contains no API keys, profile keys, Cloudflare
-secrets, customer data or organization names.
+secrets, customer data or organization names. Current employee and production evidence is in the
+[2026-10-24 internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md).
 
-## What was verified live
+## Historical 2026-10-18 audit
 
 Command (no run is started):
 
@@ -30,9 +31,10 @@ Observed on 2026-10-18:
 | Complete inventory gate | **false** — the public API cannot prove plugin/MCP completeness |
 | Model run | none started |
 
-All six profiles are currently `provisioning`. That status is correct: they are not safe to run.
+The 2026-10-18 `provisioning` state and inventory result below are historical, not the current
+employee readiness state. See the 2026-10-24 preflight linked above for the current result.
 
-## Exact gateway-side blocker
+## Historical gateway exposure (2026-10-18, superseded)
 
 Each internal profile exposes restricted or unreviewed tools. The exact enabled toolsets observed are:
 
@@ -54,10 +56,12 @@ browser, code_execution, connections, cronjob, delegation, file, image_gen, skil
 ```
 
 Remember that `image_gen` and `skills` are separate from shell/file/browser. The previous runbook did
-not disable them; that gap is now fixed in `buildConfigYaml()`. The live profiles still expose them.
+not disable them; that gap is now fixed in `buildConfigYaml()`. The profiles still exposed them in
+the historical 2026-10-18 audit.
 
-The portal refuses to mark these employees online. Do **not** bypass the gate, and do not add these
-tools to `REVIEWED_CLIENT_TOOLS` merely to make the screen green.
+At that time, the portal correctly refused to mark the employees online. The 2026-10-24 live audit
+verified the restricted tools were no longer enabled; do **not** add unreviewed tools to
+`REVIEWED_CLIENT_TOOLS` to bypass any future inventory failure.
 
 ### Required remediation
 
@@ -148,14 +152,15 @@ A successful mock-gateway run is **not** evidence for this checklist.
 
 | Capability | Classification |
 | --- | --- |
-| Gateway authentication | COMPLETE — verified live |
-| Internal profile identity | COMPLETE — verified live for all six |
-| Gateway capabilities/streaming/stop/approval support | COMPLETE — advertised and adapter-tested; approval/stop not exercised live |
-| Tool exposure safety | BLOCKED — 32 restricted tools enabled per profile |
-| Complete tool inventory proof | BLOCKED — contract not provided by the public API |
-| Real model response | BLOCKED — live-run gate refuses by design |
-| Client live profile | NOT STARTED — no client employee is mapped |
+| Gateway authentication and internal profile identity | COMPLETE — verified live for all six on 2026-10-24 |
+| Complete inventory and restricted-tool check | COMPLETE — six reviewed tools across five toolsets; zero restricted tools observed |
+| Gateway capabilities | Advertised live; no new run was started to exercise events, stop or approvals |
+| Internal app readiness | 2/6 complete (Zeng and Lead Hunter); four employees remain at 0/6 pending configuration and current saved checks |
+| Real model response | A historical Lead Hunter production research job exists; this preflight started no new model run |
+| Effective SOUL instructions | UNVERIFIED — current API does not expose loaded instructions; host-side check remains required |
+| Running application SHA | UNVERIFIED — no deployment record or runtime SHA was available to this audit |
+| Client live profile | NOT VERIFIED by this internal-profile audit; sandbox results are documented separately |
 | PDF/DOCX extraction | LOCALLY VERIFIED — synthetic real files, no paid OCR |
-| SOUL.md write | BLOCKED — `admin_config_rw: false`, no documented write endpoint |
-| Memory read/edit | BLOCKED — `memory_write_api: false` |
-| Migration 0045/0046 in hosted DB | **APPLIED 2026-10-18** via the `--only` runner, after hosted 0044. See [workforce-migration-and-release.md](workforce-migration-and-release.md) |
+| SOUL.md read/write via current API | UNAVAILABLE — `admin_config_rw: false`; use an authorized host-side evidence path |
+| Memory read/edit | UNAVAILABLE — `memory_write_api: false` |
+| Hosted application migrations | 0086 is the latest applied migration in the 2026-10-24 read-only preflight |

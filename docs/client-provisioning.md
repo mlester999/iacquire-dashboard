@@ -118,4 +118,7 @@ Automated tests use isolated in-memory PostgreSQL with Supabase schema emulation
 and local HTTP adapter doubles. They verify state transitions, tenant isolation, retry recovery,
 approval history and safe failures; they are not live Supabase/Hermes/GHL/n8n verification.
 After authorizing a development Supabase project, use the live acceptance checklist in
-`verification-status.md`. No production deployment or remote repository push is part of this work.
+`verification-status.md`. The documented provisioning sandbox is not production onboarding evidence;
+the current application release SHA and live client-provisioning state remain unverified. See the
+[2026-10-24 production preflight](internal-workforce-production-preflight-2026-10-24.md) for the
+current release and activation evidence.

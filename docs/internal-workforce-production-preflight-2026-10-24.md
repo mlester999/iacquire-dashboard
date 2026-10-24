@@ -33,6 +33,11 @@ The configuration previews used the existing role defaults and saved company fac
 
 The existing six profile identities were preserved. No profiles were created, no employee configurations or readiness rows were changed, and no research, outreach, CRM mutation or appointment booking was started. The Hermes live audit appends its normal `credential.resolved` audit records while resolving credentials; the database readiness audit itself performs only `SELECT` queries.
 
+A second targeted, read-only database check confirmed that the supplied Lead Hunter work job and
+Hermes run are still completed, the request has 10 results, and 10 lead records remain linked to
+that request. The eight historical web tool-call events cited in the project brief were not
+re-read from a separate Hermes event source.
+
 ## Release / approval boundary
 
 The local code branch is based on `36bf78c` and contains a new read-only all-six readiness audit at `scripts/internal-workforce-readiness-audit.ts`. Completed appointment availability now links to the existing guarded booking flow. Local acceptance: 13 files, 158 tests passed; app and script TypeScript checks passed; ESLint passed on all changed code; and Next.js 16.4.2's Webpack production build completed. The default Turbopack build could not resolve dependencies through the isolated worktree's external `node_modules` link. These are local results, not production acceptance.

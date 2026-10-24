@@ -141,30 +141,26 @@ endpoint, so the UI:
 
 ## Live Hermes evidence (read-only)
 
-A read-only audit was run against the configured multiplexed gateway
-(`hermes-api.iacquire.online`) on 2026-10-18:
+A new read-only audit was run against the configured multiplexed gateway on 2026-10-24. Its current
+employee configuration and readiness state is summarized in the [2026-10-24 internal workforce
+preflight](internal-workforce-production-preflight-2026-10-24.md):
 
-- The gateway authenticated and returned `hermes.api_server.capabilities`.
-- All six internal employees were mapped to distinct profiles; every profile identity was verified by
-  `GET /v1/models`.
-- Every profile advertised run submission, SSE events, run status, stop and approval support.
-- `memory_write_api` and `admin_config_rw` are **false**; the portal therefore keeps SOUL.md read-only
-  and does not offer memory editing.
-- **Every one of the six profiles currently enables 14 toolsets and 32 restricted/unreviewed tools.**
-  The reviewed safe set is `memory`, `session_search`, `todo`, `vision`, `web`; the unauthorized
-  enabled toolsets are `browser`, `code_execution`, `connections`, `cronjob`, `delegation`, `file`,
-  `image_gen`, `skills`, `terminal`. The gateway-side profiles must be restricted before any live
-  employee run. The portal correctly refuses to mark them online.
-- The provisioning runbook was corrected to disable `image_gen` and `skills` as well; it previously
-  missed those two. The live gateway has not yet been changed.
-- No client employee is mapped to a live profile yet.
-- The complete plugin/MCP inventory could not be proven by the public API server contract at that point, so
-  `verifyToolInventory` failed and the live-run gate stayed closed. This is not a cosmetic warning:
-  `startAgentRun` refuses to contact the provider. (A patched gateway has since been deployed; see
-  [hermes-tool-inventory.md](hermes-tool-inventory.md).)
-- No model run was started and no gateway, profile, employee, configuration or inventory state was
-  changed. Credential resolution appended `credential.resolved` audit-log rows; this audit is therefore
-  not strictly zero-write, and no customer data or tool action was involved.
+- The gateway authenticated all six existing internal profiles and verified that each profile ID
+  matches its intended employee.
+- It verified the complete six-tool inventory (`memory`, `session_search`, `todo_list`,
+  `vision_analyze`, `web_extract`, `web_search`) across five reviewed toolsets. No restricted tools
+  were enabled at the time of this audit.
+- The gateway advertised run submission, events, status, stop and approval support.
+- `memory_write_api` and `admin_config_rw` remain false. The current API cannot attest to the
+  effective deployed SOUL instructions, so host-side verification remains outstanding.
+- The live gateway audit and the portal's saved readiness evidence are separate. Zeng and Lead
+  Hunter have current 6/6 app readiness; the four new employees have no applied configuration and
+  remain unavailable. The audit did not update their app readiness rows.
+- No model run or profile mutation was performed by this audit. Resolving the six credentials
+  appended the normal `credential.resolved` audit records; the check was not strictly zero-write.
+
+The 2026-10-18 inventory finding below is historical. The current live result and the missing
+configuration, SOUL attestation and deployment-SHA evidence are recorded in the linked preflight.
 
 Reproduce the evidence without starting a run:
 
