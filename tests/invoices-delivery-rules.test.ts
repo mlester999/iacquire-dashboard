@@ -195,6 +195,9 @@ describe("how a message is described to the team", () => {
     expect(invoiceDeliveryVerdict({ allow: false, reason: "quiet_hours", retryAt: until }, "sms", "***4567")).toMatchObject({ kind: "waiting", waitingUntil: until.toISOString() });
     expect(invoiceDeliveryVerdict({ allow: false, reason: "no_consent", retryAt: until, permanent: true }, "email", null)).toMatchObject({ kind: "refused", waitingUntil: null });
     expect(invoiceDeliveryVerdict({ allow: false, reason: "no_customer" }, "email", null).text).toBe("The invoice is not linked to a customer record, so there is no address to send to, so it can't be sent.");
+    // The address can be present and the provider still unreachable because the contact is not linked to its CRM. Say that, never "no address".
+    expect(invoiceRefusalReasonText("contact_unreachable", "This contact is not linked to your CRM yet.")).toBe("This contact is not linked to your CRM yet, so it can't be sent.");
+    expect(invoiceBlockedReasonText("contact_unreachable", "This contact is not linked to your CRM yet.")).toBe("This contact is not linked to your CRM yet, so the message was not sent.");
   });
 });
 

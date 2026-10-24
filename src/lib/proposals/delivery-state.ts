@@ -77,6 +77,9 @@ const PROPOSAL_VOCAB: DeliveryVocab = {
 const stripEnd = (s: string) => s.replace(/[.!?\s]+$/, "");
 
 function reasonCore(reason: string | null | undefined, detail: string | null | undefined, vocab: DeliveryVocab): string | null {
+  // "Contact unreachable" covers a removed contact, a missing address and a provider that addresses its own CRM record. The chain's detail says which; the
+  // generic line ("no address") would be false when the address is present but the provider is not linked.
+  if (reason === "contact_unreachable" && detail && detail.trim()) return stripEnd(detail.trim());
   if (reason && Object.hasOwn(vocab.reasons, reason)) return vocab.reasons[reason];
   if (reason && Object.hasOwn(REASON_CORE, reason)) return REASON_CORE[reason];
   if (detail && detail.trim()) return stripEnd(detail.trim());

@@ -295,7 +295,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   );
   const provider: TransportName = chan[0] && isTransportName(chan[0].provider) ? chan[0].provider : "ghl";
   // GoHighLevel addresses its own contact record; native providers send to the address itself, so only GoHighLevel needs the link.
-  if (transportFor(provider).requiresContactRef && !conv.ghl_contact_id) return deny("contact_unreachable", "This contact is not linked to your CRM yet, so the provider cannot deliver to them.");
+  if (transportFor(provider).requiresContactRef && !conv.ghl_contact_id) return deny("contact_unreachable", "This contact is not linked to your CRM yet.");
 
   if (await isSuppressed(db, req.orgId, channel, address)) return deny("suppressed", "This address opted out or bounced, so nothing can be sent to it.", { permanent: true });
   // A WhatsApp template is looked up with the provider carrying the channel. Its category can make the message marketing.
