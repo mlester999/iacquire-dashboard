@@ -391,12 +391,13 @@ export async function rescheduleNativeAppointment(actor: CrmActor, id: string, i
 }
 
 /** Cancels a native appointment and gives the time back. Cancelling twice changes nothing. */
-export async function cancelNativeAppointment(actor: CrmActor, id: string, input: { reason?: string | null; by: "staff" | "customer" | "agent"; now?: Date }): Promise<{ changed: boolean; late: boolean }> {
+export async function cancelNativeAppointment(actor: CrmActor, id: string, input: { reason?: string | null; by: "staff" | "customer" | "agent"; expectedVersion?: number; now?: Date }): Promise<{ changed: boolean; late: boolean }> {
   if (input.by === "staff") assertCan(actor, "appointments.manage");
   const now = input.now ?? new Date();
   return crmWrite(actor, async (db) => {
     await assertNativeOwner(db, actor.orgId, "appointments");
     const a = await lockNative(db, actor.orgId, id);
+    if (input.expectedVersion !== undefined && a.version !== input.expectedVersion) throw new AppError("conflict", "Someone else changed this appointment. Reload and try again.");
     if (a.status === "cancelled") return { changed: false, late: false };
     if (!["new", "confirmed"].includes(a.status)) throw new AppError("conflict", "Only an upcoming appointment can be cancelled.");
     if (input.by === "customer") await assertCustomerMayChange(db, actor.orgId, a, now);

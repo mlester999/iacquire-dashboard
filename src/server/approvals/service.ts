@@ -18,6 +18,7 @@ export type ApprovalKind =
   | "tool_action"
   | "config_change"
   | "appointment_booking"
+  | "appointment_change"
   | "standing_authorization"
   | "workflow_activation"
   | "workflow_action";
@@ -357,6 +358,10 @@ async function runExecutor(
       if (!bookingId) return { status: "failed", detail: "The booking could not be identified." };
       const { executeApprovedBooking } = await import("@/server/appointments/booking");
       return executeApprovedBooking(orgId, approvalId, bookingId);
+    }
+    case "appointment_change": {
+      const { executeApprovedAppointmentChange } = await import("@/server/appointments/changes");
+      return executeApprovedAppointmentChange(orgId, approvalId, a.action, actorUserId, a.agent_instance_id);
     }
     case "workflow_activation": {
       // Binds the approval to the exact version content an owner looked at, and switches the workflow on when that was asked for.

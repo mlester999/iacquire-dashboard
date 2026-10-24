@@ -246,6 +246,18 @@ describe("booking", () => {
     expect((await eventsFor(b.org.id)).map((e) => e.type)).toEqual(expect.arrayContaining(["appointment.booked", "appointment.rescheduled", "appointment.cancelled"]));
   });
 
+  it("rejects a cancellation whose approved appointment version is stale", async () => {
+    const b = await crmOrg({ timezone: "Asia/Manila" });
+    const { typeId } = await setupWorkspace(b);
+    const page = await bookingPageActor(b.org.id);
+    const booked = await bookNativeAppointment(page, { typeId, startAt: at("09:00"), contact: { firstName: "Stale", email: "stale@example.test" }, via: "booking_page", now: NOW });
+    const version = (await withSystem((db) => db.query<{ version: number }>("select version from appointment_refs where id = $1 and org_id = $2", [booked.appointmentId, b.org.id]))).rows[0].version;
+    await withSystem((db) => db.query("update appointment_refs set version = version + 1 where id = $1 and org_id = $2", [booked.appointmentId, b.org.id]));
+
+    await expect(cancelNativeAppointment(page, booked.appointmentId, { by: "agent", expectedVersion: version, now: NOW })).rejects.toThrow(/Someone else changed this appointment/);
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from appointment_refs where id = $1 and org_id = $2", [booked.appointmentId, b.org.id]))).rows[0].status).toBe("confirmed");
+  });
+
   it("refuses when GoHighLevel owns appointments, and keeps workspaces apart", async () => {
     const b = await crmOrg({ timezone: "Asia/Manila" });
     const { typeId } = await setupWorkspace(b);

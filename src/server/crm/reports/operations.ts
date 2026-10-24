@@ -12,7 +12,7 @@ const OUTCOME_LABELS: Record<string, string> = {
 };
 const APPROVAL_KIND_LABELS: Record<string, string> = {
   lead_import: "Lead import", outreach: "Outreach", follow_up_message: "Follow-up message", crm_update: "CRM change", campaign_activation: "Campaign", knowledge_change: "Knowledge change",
-  tool_action: "Tool action", config_change: "Settings change", appointment_booking: "Appointment booking", standing_authorization: "Standing permission",
+  tool_action: "Tool action", config_change: "Settings change", appointment_booking: "Appointment booking", appointment_change: "Appointment change", standing_authorization: "Standing permission",
   workflow_activation: "Workflow activation", workflow_action: "Workflow step",
 };
 const RUN_STATUS_LABELS: Record<string, string> = {

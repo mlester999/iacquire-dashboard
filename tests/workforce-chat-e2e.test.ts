@@ -4,6 +4,7 @@ import { withSystem } from "@/server/db";
 import { RATE_LIMITS } from "@/server/security/rate-limit";
 import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
+import { decideApproval } from "@/server/approvals/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
 import { parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
@@ -803,6 +804,116 @@ describe("six employee chat to native workflow", () => {
     expect((await withSystem((db) => db.query("select id from appointment_bookings where org_id = $1 and contact_id = $2", [org.id, contact.rows[0].id]))).rows).toHaveLength(1);
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
     await resetAgentMessageRateLimit(owner.id);
+  });
+
+  it("routes Appointment Setter cancellation through an owner approval before changing the calendar", async () => {
+    await resetAgentMessageRateLimit(member.id);
+    const contact = await withSystem((db) => db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name, timezone) values ($1, 'Chat Change E2E Contact', 'UTC') returning id",
+      [org.id],
+    ));
+    const startAt = new Date(Date.now() + 5 * 86_400_000);
+    startAt.setUTCHours(10, 0, 0, 0);
+    const appointment = await withSystem((db) => db.query<{ id: string }>(
+      `insert into appointment_refs (org_id, provider, calendar_ref, appointment_type_id, title, status, start_at, end_at, timezone, contact_id, booked_via, origin, created_by)
+       select $1, 'native', c.id, t.id, 'Approved change appointment', 'confirmed', $3, $4, 'UTC', $5, 'staff', 'portal_staff', $6
+         from crm_calendars c join crm_appointment_types t on t.org_id = c.org_id and t.calendar_id = c.id
+        where c.org_id = $1 and c.slug = $2 order by t.position limit 1
+       returning id`,
+      [org.id, "workflow-calendar", startAt.toISOString(), new Date(startAt.getTime() + 30 * 60_000).toISOString(), contact.rows[0].id, owner.id],
+    ));
+    expect(appointment.rows).toHaveLength(1);
+    const appointmentId = appointment.rows[0].id;
+    const memberContext = ctxFor(member, org, "member");
+    expect(memberContext.can("appointments.book")).toBe(true);
+    expect(memberContext.can("appointments.manage")).toBe(false);
+    const requestStart = mock.requests.length;
+
+    const preview = await sendChatMessage(memberContext, {
+      agentRole: "appointment_setter",
+      content: `Cancel the appointment for Chat Change E2E Contact at ${startAt.toISOString().slice(0, 16)}Z`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const previewReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [preview.assistantMessageId]))).rows[0].content;
+    expect(previewReply).toContain("Cancellation preview");
+    expect(previewReply).toContain("owner or admin approval");
+    expect((await withSystem((db) => db.query("select id from approval_requests where org_id = $1 and kind = 'appointment_change' and target_id = $2", [org.id, appointmentId]))).rows).toHaveLength(0);
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from appointment_refs where id = $1 and org_id = $2", [appointmentId, org.id]))).rows[0].status).toBe("confirmed");
+
+    const confirm = await sendChatMessage(memberContext, {
+      agentRole: "appointment_setter",
+      conversationId: preview.conversationId,
+      content: "confirm appointment change",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const confirmReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
+    expect(confirmReply).toContain("not changed yet");
+    const approval = (await withSystem((db) => db.query<{ id: string; reason: string; expected_effect: string; status: string }>(
+      "select id, reason, expected_effect, status from approval_requests where org_id = $1 and kind = 'appointment_change' and target_id = $2",
+      [org.id, appointmentId],
+    ))).rows[0];
+    expect(approval).toMatchObject({ status: "pending" });
+    expect(approval.reason).toContain("explicitly confirmed");
+    expect(approval.expected_effect).toContain("No customer message will be sent");
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from appointment_refs where id = $1 and org_id = $2", [appointmentId, org.id]))).rows[0].status).toBe("confirmed");
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+
+    const decision = await decideApproval(ctxFor(owner, org, "owner"), approval.id, "approve");
+    expect(decision.outcome).toMatchObject({ status: "succeeded" });
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from appointment_refs where id = $1 and org_id = $2", [appointmentId, org.id]))).rows[0].status).toBe("cancelled");
+    await resetAgentMessageRateLimit(member.id);
+  });
+
+  it("rechecks and executes an approved Appointment Setter reschedule through the native calendar service", async () => {
+    await resetAgentMessageRateLimit(member.id);
+    const contact = await withSystem((db) => db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name, timezone) values ($1, 'Chat Reschedule E2E Contact', 'UTC') returning id",
+      [org.id],
+    ));
+    const startAt = new Date(Date.now() + 5 * 86_400_000);
+    startAt.setUTCHours(10, 0, 0, 0);
+    const replacementAt = new Date(startAt.getTime() + 60 * 60_000);
+    const appointment = await withSystem((db) => db.query<{ id: string }>(
+      `insert into appointment_refs (org_id, provider, calendar_ref, appointment_type_id, title, status, start_at, end_at, timezone, contact_id, assigned_user_id, booked_via, origin, created_by)
+       select $1, 'native', c.id, t.id, 'Approved reschedule appointment', 'confirmed', $3, $4, 'UTC', $5, $6, 'staff', 'portal_staff', $6
+         from crm_calendars c join crm_appointment_types t on t.org_id = c.org_id and t.calendar_id = c.id
+        where c.org_id = $1 and c.slug = $2 order by t.position limit 1
+       returning id`,
+      [org.id, "workflow-calendar", startAt.toISOString(), new Date(startAt.getTime() + 30 * 60_000).toISOString(), contact.rows[0].id, owner.id],
+    ));
+    expect(appointment.rows).toHaveLength(1);
+    const appointmentId = appointment.rows[0].id;
+    await withSystem((db) => db.query("insert into crm_appointment_hosts (org_id, appointment_id, user_id) values ($1, $2, $3)", [org.id, appointmentId, owner.id]));
+    const memberContext = ctxFor(member, org, "member");
+
+    const preview = await sendChatMessage(memberContext, {
+      agentRole: "appointment_setter",
+      content: `Reschedule the appointment for Chat Reschedule E2E Contact from ${startAt.toISOString().slice(0, 16)}Z to ${replacementAt.toISOString().slice(0, 16)}Z`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const previewReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [preview.assistantMessageId]))).rows[0].content;
+    expect(previewReply).toContain("Reschedule preview");
+    expect(previewReply).toContain("replacement time is not held");
+    expect((await withSystem((db) => db.query<{ start_at: Date }>("select start_at from appointment_refs where id = $1", [appointmentId]))).rows[0].start_at.toISOString()).toBe(startAt.toISOString());
+
+    const confirm = await sendChatMessage(memberContext, {
+      agentRole: "appointment_setter",
+      conversationId: preview.conversationId,
+      content: "confirm appointment change",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const confirmReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
+    expect(confirmReply).toContain("not changed yet");
+    const approval = (await withSystem((db) => db.query<{ id: string }>(
+      "select id from approval_requests where org_id = $1 and kind = 'appointment_change' and target_id = $2",
+      [org.id, appointmentId],
+    ))).rows[0];
+    const decision = await decideApproval(ctxFor(owner, org, "owner"), approval.id, "approve");
+    expect(decision.outcome).toMatchObject({ status: "succeeded" });
+    const moved = (await withSystem((db) => db.query<{ start_at: Date; status: string }>("select start_at, status from appointment_refs where id = $1 and org_id = $2", [appointmentId, org.id]))).rows[0];
+    expect(moved.status).toBe("confirmed");
+    expect(moved.start_at.toISOString()).toBe(replacementAt.toISOString());
+    await resetAgentMessageRateLimit(member.id);
   });
 
   it("requires a live preview at confirmation time", async () => {

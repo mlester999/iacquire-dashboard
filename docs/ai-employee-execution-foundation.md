@@ -75,8 +75,14 @@ that arrives from another process is detected at the next safe check. Retries ar
 - Completed appointment-availability jobs show the returned slots in the workspace time zone. Appointment Setter chat can
   also prepare a short-lived preview for one exact active contact and one ISO 8601 time with a timezone offset. The preview
   checks availability without holding the slot. A separate `confirm booking` message invokes the existing booking service,
-  which rechecks availability and applies employee mode, workspace booking settings and the normal approval flow. Chat
-  cancellation and rescheduling remain unavailable.
+  which rechecks availability and applies employee mode, workspace booking settings and the normal approval flow.
+- Appointment Setter chat can prepare exact cancellation and rescheduling proposals for one upcoming appointment, using the
+  contact's CRM name and current appointment start with an explicit timezone offset. Reschedules also require one exact
+  available replacement start. The short-lived preview does not reserve or change the appointment. `confirm appointment change`
+  creates an owner/admin approval request; the existing native calendar service or the guarded GoHighLevel update path executes
+  only after approval and rechecks the saved appointment snapshot and replacement availability. iAcquire does not send a
+  customer message for these changes. Migration `0090_workforce_appointment_changes` is local to this branch/test database and
+  has not been applied in production. The four internal employee configurations and production Chat availability are unchanged.
 - Chat and the Leads workspace show the real job stage. The full panel appears for a new request and in the chat
   turn that created it.
 
