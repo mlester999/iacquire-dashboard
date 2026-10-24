@@ -59,6 +59,11 @@ export function parseWorkforceChatBookingIntent(role: AgentRoleKey, content: str
   const instantMatch = text.match(ISO_INSTANT);
   const hasTimestamp = Boolean(instantMatch || LOCAL_DATETIME.test(text));
 
+  // An availability request is its own read-only workflow, even when the person says they want
+  // help scheduling. Let the availability job run first; a booking still needs a later exact
+  // contact, time and explicit confirmation.
+  if (hasAvailabilityRequest && !hasTimestamp) return { kind: "none" };
+
   // Preserve the existing read-only availability route for requests such as “check the calendar
   // and schedule an appointment for an available time”; choosing a customer or slot is still
   // required before a booking preview can be made.

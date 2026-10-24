@@ -5,8 +5,8 @@ import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
 describe("employee chat assignment routing", () => {
   it.each([
     ["operations_manager", "Review our operations, identify problems and tell me what needs my attention today", "proactive_review"],
-    ["lead_hunter", "Review the lead generation pipeline and tell me what to research next", "lead_generation_review"],
-    ["appointment_setter", "Check our calendar and schedule an appointment for an available time", "appointment_availability"],
+    ["lead_hunter", "Review our recent lead research and explain which candidates need review", "lead_generation_review"],
+    ["appointment_setter", "Check our appointment availability and help me schedule a consultation", "appointment_availability"],
     ["sales_assistant", "Review our opportunities and prepare follow-ups for deals needing attention", "pipeline_followup_drafts"],
     ["crm_manager", "Check our CRM for duplicates and incomplete records, then prepare corrections", "crm_quality_review"],
     ["performance_analyst", "Analyze this month's performance and tell me what improved", "performance_snapshot"],
@@ -43,7 +43,7 @@ describe("employee chat assignment routing", () => {
   });
 
   it("keeps read-only calendar checks and normal conversation available", () => {
-    expect(workforceChatRefusal("appointment_setter", "Check our calendar and schedule an appointment for an available time")).toBeNull();
+    expect(workforceChatRefusal("appointment_setter", "Check our appointment availability and help me schedule a consultation")).toBeNull();
     expect(workforceChatRefusal("sales_assistant", "What is a sales pipeline?")).toBeNull();
   });
 });

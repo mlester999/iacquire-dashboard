@@ -26,6 +26,7 @@ describe("Appointment Setter chat booking intent", () => {
     expect(parseWorkforceChatBookingIntent("appointment_setter", "confirm booking")).toEqual({ kind: "confirm" });
     expect(parseWorkforceChatBookingIntent("appointment_setter", "cancel booking preview")).toEqual({ kind: "cancel" });
     expect(parseWorkforceChatBookingIntent("appointment_setter", "Check our calendar and schedule an appointment for an available time")).toEqual({ kind: "none" });
+    expect(parseWorkforceChatBookingIntent("appointment_setter", "Check our appointment availability and help me schedule a consultation")).toEqual({ kind: "none" });
     expect(parseWorkforceChatBookingIntent("sales_assistant", "Book an appointment with Jane Doe at 2026-11-02T09:00+08:00")).toEqual({ kind: "none" });
   });
 });

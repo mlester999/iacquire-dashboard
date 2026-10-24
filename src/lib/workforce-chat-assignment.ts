@@ -17,9 +17,10 @@ const normalize = (value: string) => value
 const hasAction = (text: string, words: string) => new RegExp(`\\b(?:${words})\\b`, "i").test(text);
 
 /**
- * Route only clear requests for the existing read-only native employee workflows.
- * This is intentionally a narrow command recognizer: it cannot authorize writes, approvals,
- * bookings, CRM imports, outreach or recurring work. Lead research has its own stricter parser.
+ * Route only clear requests for existing, server-owned employee workflows. This recognizer does
+ * not authorize an action by itself: dispatch still checks employee role and caller permissions.
+ * Draft-producing work remains unsent and approval-gated; bookings, CRM imports, outreach and
+ * recurring work use their separate guarded flows. Lead research has its own stricter parser.
  */
 export function parseWorkforceChatAssignment(role: AgentRoleKey, content: string): WorkforceChatAssignment | null {
   const text = normalize(content);
@@ -39,7 +40,7 @@ export function parseWorkforceChatAssignment(role: AgentRoleKey, content: string
     };
   }
 
-  if (role === "lead_hunter" && reviewAction && /\b(?:lead generation|research pipeline|lead pipeline|researched leads)\b/.test(text)) {
+  if (role === "lead_hunter" && reviewAction && /\b(?:lead generation|lead research|research pipeline|lead pipeline|researched leads|research candidates|candidates (?:need|needing) review)\b/.test(text)) {
     return {
       capability: "lead_generation_review",
       title: "Lead generation review",

@@ -121,12 +121,12 @@ afterAll(async () => {
 
 describe("six employee chat to native workflow", () => {
   it.each([
-    ["operations_manager", "Review our operations, identify problems and tell me what needs my attention today", "proactive_review"],
-    ["lead_hunter", "Review our lead generation pipeline and current coverage", "lead_generation_review"],
-    ["appointment_setter", "Check the calendar and show available appointment slots", "appointment_availability"],
+    ["operations_manager", "Review our current operations, identify blocked work and tell me what needs my attention", "proactive_review"],
+    ["lead_hunter", "Review our recent lead research and explain which candidates need review", "lead_generation_review"],
+    ["appointment_setter", "Check our appointment availability and help me schedule a consultation", "appointment_availability"],
     ["sales_assistant", "Review our opportunities and prepare follow-ups for deals needing attention", "pipeline_followup_drafts"],
-    ["crm_manager", "Check our CRM for duplicates and incomplete records, then prepare corrections", "crm_quality_review"],
-    ["performance_analyst", "Analyze this month's performance and tell me what improved", "performance_snapshot"],
+    ["crm_manager", "Check our CRM for incomplete records and possible duplicates", "crm_quality_review"],
+    ["performance_analyst", "Analyze our business performance this month compared with last month", "performance_snapshot"],
   ] as const)("persists and completes %s work through chat and its role-scoped handler", async (role, content, capability) => {
     const requestStart = mock.requests.length;
     const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {

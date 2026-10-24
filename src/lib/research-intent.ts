@@ -62,6 +62,10 @@ function stripVerbAndQuantity(value: string): string {
  */
 export function parseResearchAssignment(input: string): ResearchAssignment | null {
   const text = input.replace(/\s+/g, " ").trim().slice(0, 2000);
+  const reviewExistingResearch = /^\s*(?:please\s+)?(?:review|check|audit|summari[sz]e|analy[sz]e|explain)\b/i.test(text)
+    && /\b(?:recent|saved|existing|previous|prior|completed|recorded)\s+(?:lead\s+)?research\b/i.test(text);
+  const explicitNewResearch = /\b(?:find|research|discover|source|identify|hunt|get)\s+(?:(?:me|us)\s+)?(?:up to\s+)?\d{1,3}\b/i.test(text);
+  if (reviewExistingResearch && !explicitNewResearch) return null;
   if (!text || !RESEARCH_VERB.test(text)) return null;
   if (!TARGET_NOUN.test(text) && !/\b\d{1,3}\b/.test(text)) return null;
 
