@@ -49,7 +49,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 1. Browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: onboarding, demo room/admin, invoice delivery, invoice-from-proposal, and the Requests change/survey branches.
 2. Keep the purchase-intent, Messages and Requests browser QA evidence with the commit; rerun only if those pages change.
-3. Extend the Phase 6 cross-module scenario (`tests/phase6-client-operations.test.ts`) to change orders and surveys; the support path is browser-verified and the project/workload/staff-channel path is covered by that test.
+3. Extend the Phase 6 cross-module scenario (`tests/phase6-client-operations.test.ts`) to surveys; the support path is browser-verified and the project/workload/staff-channel/change-order path is covered by that test.
 
 ## Approvals still owned by the founder
 
