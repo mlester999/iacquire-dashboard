@@ -224,6 +224,14 @@ active, member refusal, non-review capability refusal, enable/pause/delete and a
 and daylight-saving gaps and overlaps. The Kanban Work Board and Schedules & Calendar are design
 proposals awaiting review; their frontend implementation remains behind that review gate.
 
+The server-side calendar data layer returns real jobs separately from sanitized schedule
+definitions, scopes jobs to the requesting member or workspace Activity permission, and only returns
+schedule definitions to people who can configure them. It omits saved assignment payloads and
+limits requested ranges to 62 days. The shared recurrence helper projects a bounded half-open date
+range from each saved next-run anchor; projected occurrences remain distinct from persisted jobs.
+`tests/workforce-calendar.test.ts` covers schedule-job timestamps, sanitized schedule data,
+permission and tenant scope, range boundaries and invalid ranges.
+
 ## 10. Event-driven triggers (implemented, not activated)
 
 Migration `0079_ai_work_triggers.sql` adds `ai_work_triggers`. Only these reviewed exceptional

@@ -166,3 +166,79 @@ export function legacyScheduleIntervalMinutes(cadence: string): number {
   if (cadence === "weekly") return 10080;
   throw new TypeError("Unsupported legacy schedule cadence.");
 }
+
+export interface WorkforceScheduleOccurrenceRange {
+  cadence: string;
+  intervalMinutes?: number;
+  recurrenceRule?: unknown;
+  timezone: string;
+  nextRunAt: Date | string;
+  from: Date;
+  to: Date;
+  maxOccurrences?: number;
+}
+
+export interface WorkforceScheduleOccurrenceProjection {
+  occurrences: Date[];
+  truncated: boolean;
+}
+
+/**
+ * Projects one saved schedule into a half-open calendar range. The persisted next-run time is
+ * the anchor, so a projection cannot invent an earlier event. The returned dates are still
+ * projections; callers must keep them distinct from persisted jobs.
+ */
+export function projectWorkforceScheduleOccurrences(
+  input: WorkforceScheduleOccurrenceRange,
+): WorkforceScheduleOccurrenceProjection {
+  const anchor = new Date(input.nextRunAt);
+  const fromMs = input.from.getTime();
+  const toMs = input.to.getTime();
+  const anchorMs = anchor.getTime();
+  const maxOccurrences = input.maxOccurrences ?? 2000;
+  const maxRangeMs = 370 * DAY_MS;
+  if (
+    !Number.isFinite(fromMs)
+    || !Number.isFinite(toMs)
+    || !Number.isFinite(anchorMs)
+    || fromMs >= toMs
+    || toMs - fromMs > maxRangeMs
+    || !Number.isInteger(maxOccurrences)
+    || maxOccurrences < 1
+    || maxOccurrences > 5000
+  ) {
+    throw new TypeError("The workforce schedule projection range is invalid.");
+  }
+
+  const threshold = Math.max(fromMs, anchorMs);
+  if (threshold >= toMs) return { occurrences: [], truncated: false };
+
+  const hasRule = input.recurrenceRule !== undefined && input.recurrenceRule !== null;
+  if (hasRule) {
+    const rule = validateWorkforceScheduleRule(input.recurrenceRule);
+    if (!rule) throw new TypeError("The workforce schedule recurrence is invalid.");
+    const occurrences: Date[] = [];
+    let next = nextWorkforceScheduleOccurrence(rule, input.timezone, new Date(threshold - 1));
+    while (next.getTime() < toMs) {
+      if (occurrences.length >= maxOccurrences) return { occurrences, truncated: true };
+      occurrences.push(next);
+      next = nextWorkforceScheduleOccurrence(rule, input.timezone, next);
+    }
+    return { occurrences, truncated: false };
+  }
+
+  const intervalMinutes = input.intervalMinutes ?? legacyScheduleIntervalMinutes(input.cadence);
+  if (!Number.isInteger(intervalMinutes) || intervalMinutes < 60 || intervalMinutes > 10080) {
+    throw new TypeError("The legacy workforce schedule interval is invalid.");
+  }
+  const intervalMs = intervalMinutes * 60_000;
+  const firstOffset = Math.max(0, Math.ceil((fromMs - anchorMs) / intervalMs));
+  let nextMs = anchorMs + firstOffset * intervalMs;
+  const occurrences: Date[] = [];
+  while (nextMs < toMs) {
+    if (occurrences.length >= maxOccurrences) return { occurrences, truncated: true };
+    occurrences.push(new Date(nextMs));
+    nextMs += intervalMs;
+  }
+  return { occurrences, truncated: false };
+}
