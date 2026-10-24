@@ -1,0 +1,42 @@
+# Secret-free client-only Hermes config. Review model/provider fields against the pinned build.
+# Put provider credentials in the private profile-model-env JSON file, never here.
+model:
+  provider: openai-api
+  model: REPLACE_WITH_APPROVED_MODEL_ID
+
+gateway:
+  multiplex_profiles: true
+  api_server:
+    enabled: true
+    host: 0.0.0.0
+    port: 8642
+    max_concurrent_runs: 1
+
+platform_toolsets:
+  api_server:
+    - memory
+    - session_search
+    - todo
+    - vision
+    - web
+    - no_mcp
+
+agent:
+  disabled_toolsets:
+    - browser
+    - code_execution
+    - computer_use
+    - connections
+    - cronjob
+    - delegation
+    - file
+    - image_gen
+    - skills
+    - terminal
+    - catalog
+    - kanban
+
+terminal:
+  backend: docker
+  docker_forward_env: []
+  container_persistent: false

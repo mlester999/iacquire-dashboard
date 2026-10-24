@@ -48,7 +48,11 @@ Hermes profile's `API_SERVER_KEY` is a second, independent credential sent as
    proof that the listener is currently present. Confirm a real profile's authenticated
    `/p/<profile>/v1/capabilities`, `/p/<profile>/v1/toolsets` and
    `/p/<profile>/v1/tools?platform=api_server` routes work before publishing it. The last route is
-   required for the portal's complete-inventory gate and is absent from Hermes 0.21.5.
+   required for the portal's complete-inventory gate and absent from unpatched Hermes 0.21.5. A
+   2026-10-22 read-only app-terminal probe returned the native route, but its default profile lacked
+   an explicit tool allowlist and failed policy; the terminal's container ID could not be matched to
+   the previously recorded Docker ID. The isolated client image now carries the reviewed backport,
+   but it has not been built or accepted. Do not treat the existing default profile as a client route.
 3. In the existing Tunnel's published application routes, map hostname
    `hermes-api.iacquire.online` to `http://127.0.0.1:8642` only after the listener is confirmed.
    Keep the origin listener bound to loopback/private access; do not open port `8642` directly to

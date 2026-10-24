@@ -527,12 +527,51 @@ async function activateVersion(db: Queryable, orgId: string, agentId: string, ve
     "update agent_config_versions set status = 'applied', applied_at = coalesce(applied_at, now()) where id = $1 and org_id = $2",
     [versionId, orgId],
   );
-  await db.query("update agent_instances set active_config_version_id = $2, display_name = $3 where id = $1 and org_id = $4", [
+  await db.query(
+    "update agent_instances set active_config_version_id=$2,display_name=$3," +
+    "status=case when hermes_profile_config_version_id is not null and hermes_profile_config_version_id<>$2 then 'provisioning' else status end," +
+    "last_health_ok=case when hermes_profile_config_version_id is not null and hermes_profile_config_version_id<>$2 then null else last_health_ok end," +
+    "last_health_detail=case when hermes_profile_config_version_id is not null and hermes_profile_config_version_id<>$2 then 'Approved configuration synchronization is pending.' else last_health_detail end " +
+    "where id=$1 and org_id=$4",
+    [
     agentId,
     versionId,
     displayName,
     orgId,
-  ]);
+    ],
+  );
+  // A host callback may have verified the prior version while the portal health check is still
+  // pending. Close that completed operation, and invalidate any older queued/in-flight sync so
+  // the one-open-job constraint can admit exactly one job for the newest applied version.
+  await db.query(
+    "update agent_provisioning_jobs j set status='succeeded',lease_token=null,lease_expires_at=null,next_retry_at=null," +
+    "detail='Host profile setup completed for an older applied version; the current version is queued for synchronization.' " +
+    "where j.org_id=$1 and j.agent_instance_id=$2 and j.kind='provision' and j.status='awaiting_health_check' " +
+    "and exists (select 1 from agent_instances a where a.id=j.agent_instance_id and a.org_id=j.org_id and a.hermes_profile_config_version_id is not null)",
+    [orgId, agentId],
+  );
+  await db.query(
+    "update agent_provisioning_jobs j set status='cancelled',lease_token=null,lease_expires_at=null,next_retry_at=null," +
+    "detail='A newer applied configuration superseded this sync request.' " +
+    "where j.org_id=$1 and j.agent_instance_id=$2 and j.kind='sync' " +
+    "and j.status in ('requested','failed','in_progress','awaiting_health_check') " +
+    "and exists (select 1 from agent_instances a where a.id=j.agent_instance_id and a.org_id=j.org_id and a.hermes_profile_config_version_id is not null)",
+    [orgId, agentId],
+  );
+  await db.query(
+    "insert into agent_provisioning_jobs (org_id,agent_instance_id,kind,config_version_id,source_job_id) " +
+    "select a.org_id,a.id,'sync',$3,p.id from agent_instances a " +
+    "join organizations o on o.id=a.org_id " +
+    "join hermes_gateways g on g.id=a.hermes_gateway_id " +
+    "join lateral (select j.id from agent_provisioning_jobs j where j.agent_instance_id=a.id and j.org_id=a.org_id " +
+    "and j.kind='provision' and j.result_reference like 'provisioner:v1:%' order by j.created_at desc limit 1) p on true " +
+    "where a.id=$2 and a.org_id=$1 and o.kind='client' and a.enabled and a.hermes_profile is not null " +
+    "and a.hermes_profile_config_version_id is not null and g.status='connected' " +
+    "and g.profile_creation_status='restricted_service_verified' and g.provisioner_isolation_verified_at is not null " +
+    "and not exists (select 1 from agent_instances ai join organizations oi on oi.id=ai.org_id where ai.hermes_gateway_id=g.id and oi.kind='agency') " +
+    "on conflict do nothing",
+    [orgId, agentId, versionId],
+  );
 }
 
 /** Applies a draft version after its approval was granted. */
@@ -987,9 +1026,13 @@ export async function runHealthCheck(
   actor: { userId: string | null; kind: "agency" | "system" | "user" },
   opts: { skipSetupSync?: boolean } = {},
 ): Promise<HealthResult> {
-  const { conn, orgId, enabled, hasConfig, previousInventoryDigest } = await withSystem(async (db) => {
-    const { rows } = await db.query<{ org_id: string; enabled: boolean; active_config_version_id: string | null }>(
-      "select org_id, enabled, active_config_version_id from agent_instances where id = $1",
+  const { conn, orgId, enabled, hasConfig, profileConfigCurrent, previousInventoryDigest } = await withSystem(async (db) => {
+    const { rows } = await db.query<{
+      org_id: string; kind: string; enabled: boolean; active_config_version_id: string | null;
+      hermes_profile_config_version_id: string | null;
+    }>(
+      "select a.org_id,o.kind,a.enabled,a.active_config_version_id,a.hermes_profile_config_version_id " +
+      "from agent_instances a join organizations o on o.id=a.org_id where a.id=$1",
       [agentId],
     );
     if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
@@ -999,6 +1042,9 @@ export async function runHealthCheck(
       orgId: rows[0].org_id,
       enabled: rows[0].enabled,
       hasConfig: Boolean(rows[0].active_config_version_id),
+      profileConfigCurrent: rows[0].kind !== "client" ||
+        rows[0].hermes_profile_config_version_id === null ||
+        rows[0].hermes_profile_config_version_id === rows[0].active_config_version_id,
       previousInventoryDigest: await loadPersistedInventoryDigest(db, agentId),
     };
   });
@@ -1007,6 +1053,7 @@ export async function runHealthCheck(
   let inventory: { snapshot: ToolInventorySnapshot | null; detail: string | null } = { snapshot: null, detail: null };
   if (!enabled) result = { ok: false, status: "disabled", detail: "This employee isn't enabled for the workspace." };
   else if (!conn) result = { ok: false, status: "setup_required", detail: "No dedicated Hermes profile is connected yet." };
+  else if (!profileConfigCurrent) result = { ok: false, status: "setup_required", detail: "The approved configuration has not been synchronized to this Hermes profile yet." };
   else {
     try {
       const caps = await getCapabilities(conn);

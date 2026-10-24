@@ -706,7 +706,7 @@ describe("agency Hermes workforce isolation", () => {
     try {
       await expect(clientRequest()).rejects.toMatchObject({ kind: "bad_response" });
       const requests = mock.requests.slice(requestsStart);
-      expect(requests.map(({ method, path }) => [method, path])).toEqual([["GET", "/v1/capabilities"], ["GET", "/v1/tools"]]);
+      expect(requests.map(({ method, path }) => [method, path])).toEqual([["GET", "/v1/capabilities"]]);
       expect(requests.some(({ path }) => path === "/v1/runs")).toBe(false);
     } finally {
       mock.setInventory(CLIENT_TEST_PROFILE, null);

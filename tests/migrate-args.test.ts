@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { describeDatabaseTarget, migrationScope, parseMigrateArgs } from "@/server/db/migrate-args";
 
-const FILES = ["0079_ai_work_triggers.sql", "0080_proactive_ai_employees.sql", "0081_ai_work_job_rls_hardening.sql", "0082_client_employee_provisioning.sql", "0083_unified_inbox.sql"];
+const FILES = ["0079_ai_work_triggers.sql", "0080_proactive_ai_employees.sql", "0081_ai_work_job_rls_hardening.sql", "0082_client_employee_provisioning.sql", "0083_unified_inbox.sql", "0084_restricted_hermes_provisioner.sql"];
 
 describe("the migration runner's options", () => {
   it("reads --only, --through and --dry-run, and keeps today's behaviour when none is given", () => {
     expect(parseMigrateArgs([])).toEqual({ dryRun: false });
     expect(parseMigrateArgs(["--only", "0083_unified_inbox"])).toEqual({ dryRun: false, only: ["0083_unified_inbox"] });
+    expect(parseMigrateArgs(["--only", "0084_restricted_hermes_provisioner"])).toEqual({ dryRun: false, only: ["0084_restricted_hermes_provisioner"] });
     expect(parseMigrateArgs(["--only", "0081_a", "0082_b"]).only).toEqual(["0081_a", "0082_b"]);
     expect(parseMigrateArgs(["--through", "0080_proactive_ai_employees"])).toEqual({ dryRun: false, through: "0080_proactive_ai_employees" });
     expect(parseMigrateArgs(["--dry-run", "--only", "0083_unified_inbox"])).toEqual({ dryRun: true, only: ["0083_unified_inbox"] });
@@ -22,6 +23,7 @@ describe("the migration runner's options", () => {
   it("turns --through into every migration up to and including it, in order, and refuses an unknown one", () => {
     expect(migrationScope(parseMigrateArgs(["--through", "0080_proactive_ai_employees"]), FILES)).toEqual(["0079_ai_work_triggers", "0080_proactive_ai_employees"]);
     expect(migrationScope(parseMigrateArgs(["--through", "0083_unified_inbox"]), FILES)).toHaveLength(5);
+    expect(migrationScope(parseMigrateArgs(["--through", "0084_restricted_hermes_provisioner"]), FILES)).toHaveLength(6);
     expect(migrationScope(parseMigrateArgs(["--only", "0083_unified_inbox"]), FILES)).toEqual(["0083_unified_inbox"]);
     expect(migrationScope(parseMigrateArgs([]), FILES)).toBeUndefined();
     expect(() => migrationScope(parseMigrateArgs(["--through", "0080"]), FILES)).toThrow(/Unknown migration version/);

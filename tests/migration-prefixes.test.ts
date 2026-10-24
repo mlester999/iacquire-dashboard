@@ -37,6 +37,10 @@ describe("migration file numbers", () => {
     expect(MIGRATION_PREREQUISITES["0083_unified_inbox"]).toContain("0065_support_requests");
   });
 
+  it("keeps restricted Hermes provisioning behind the client provisioning queue", () => {
+    expect(MIGRATION_PREREQUISITES["0084_restricted_hermes_provisioner"]).toContain("0082_client_employee_provisioning");
+  });
+
   it("notices a shared number (the check itself works)", () => {
     expect(duplicates(["0082_client_employee_provisioning.sql", "0082_unified_inbox.sql", "0083_other.sql"])).toEqual(["0082: 0082_client_employee_provisioning.sql, 0082_unified_inbox.sql"]);
   });

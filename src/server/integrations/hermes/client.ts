@@ -69,6 +69,26 @@ export interface HermesCapabilities {
   supportsApproval: boolean;
 }
 
+function parseCapabilityEndpoint(raw: unknown): HermesCapabilityEndpoint | null {
+  let method: unknown;
+  let path: unknown;
+
+  if (Array.isArray(raw)) {
+    if (raw.length !== 2) return null;
+    [method, path] = raw;
+  } else if (raw && typeof raw === "object") {
+    const endpoint = raw as Record<string, unknown>;
+    if (Object.keys(endpoint).length !== 2 || !Object.hasOwn(endpoint, "method") || !Object.hasOwn(endpoint, "path")) return null;
+    method = endpoint.method;
+    path = endpoint.path;
+  } else {
+    return null;
+  }
+
+  if (typeof method !== "string" || typeof path !== "string" || !/^[A-Z]+$/.test(method) || !path.startsWith("/")) return null;
+  return { method, path };
+}
+
 export interface StartRunInput {
   input: string;
   instructions?: string;
@@ -154,9 +174,8 @@ export async function getCapabilities(conn: HermesConnection, timeoutMs = 8000):
   const endpoints: Record<string, HermesCapabilityEndpoint> = {};
   if (obj.endpoints && typeof obj.endpoints === "object") {
     for (const [name, raw] of Object.entries(obj.endpoints as Record<string, unknown>)) {
-      if (!Array.isArray(raw) || raw.length !== 2 || typeof raw[0] !== "string" || typeof raw[1] !== "string") continue;
-      if (!/^[A-Z]+$/.test(raw[0]) || !raw[1].startsWith("/")) continue;
-      endpoints[name] = { method: raw[0], path: raw[1] };
+      const endpoint = parseCapabilityEndpoint(raw);
+      if (endpoint) endpoints[name] = endpoint;
     }
   }
   return {
@@ -246,7 +265,7 @@ export interface HermesToolCatalogEntry {
 
 export interface HermesToolCatalog {
   platform: string;
-  /** The catalog contract the gateway says it implements (`hermes.api_server.tool_catalog.v1` on the patched gateway). */
+  /** The catalog contract the gateway says it implements. */
   contract: string | null;
   /** The gateway certified that every enabled runtime tool was enumerated. */
   complete: boolean;
@@ -254,8 +273,10 @@ export interface HermesToolCatalog {
   explicitConfigPresent: boolean;
   enabledToolsets: string[];
   tools: HermesToolCatalogEntry[];
-  /** The request's `X-Hermes-Inventory-Challenge`, echoed by the patched gateway. The verifier requires it. */
+  /** The request challenge echoed by the native contract. */
   challenge: string | null;
+  /** Freshness is accepted only when the gateway echoes this request's challenge. */
+  responseBinding: "challenge_bound_authenticated_catalog";
   generatedAt: string | null;
   expiresAt: string | null;
   attestation: { algorithm: string; signature: string; keyId: string | null } | null;
@@ -267,13 +288,23 @@ const TOOL_NAME = /^[a-z][a-z0-9_]{0,79}$/;
 /**
  * GET /v1/tools?platform=api_server — the complete model-callable catalog, including MCP and
  * plugin tools, before Tool Search replaces them with its bridge. The endpoint is not present in
- * older gateways (0.21.5 returns 404), so its absence is reported as a concrete contract problem
+ * older unpatched gateways return 404, so absence is reported as a concrete contract problem
  * rather than being mistaken for an empty inventory. No run is started by this call.
  */
-export async function getToolCatalog(conn: HermesConnection, challenge?: string, timeoutMs = 12000): Promise<HermesToolCatalog> {
-  const res = await request(conn, "/v1/tools?platform=api_server", {
+export async function getToolCatalog(
+  conn: HermesConnection,
+  challenge?: string,
+  timeoutMs = 12000,
+): Promise<HermesToolCatalog> {
+  // Bind each read to a unique nonce and tell intermediaries not to cache the profile snapshot.
+  const catalogPath = "/v1/tools?platform=api_server" + (challenge ? `&inventory_challenge=${encodeURIComponent(challenge)}` : "");
+  const res = await request(conn, catalogPath, {
     method: "GET",
-    headers: headers(conn, challenge ? { "X-Hermes-Inventory-Challenge": challenge } : undefined),
+    headers: headers(conn, challenge ? {
+      "X-Hermes-Inventory-Challenge": challenge,
+      "Cache-Control": "no-cache, no-store, max-age=0",
+      Pragma: "no-cache",
+    } : { "Cache-Control": "no-cache, no-store, max-age=0", Pragma: "no-cache" }),
     timeoutMs,
   });
   if (res.status === 404 || res.status === 405) {
@@ -328,14 +359,14 @@ export async function getToolCatalog(conn: HermesConnection, challenge?: string,
   return {
     platform: raw.platform,
     contract: typeof raw.contract === "string" ? raw.contract : null,
-    // Fail closed if the gateway does not explicitly certify completeness. An older
-    // endpoint that never sends this field is treated as incomplete, not as complete.
+    // Fail closed if the gateway does not explicitly certify completeness.
     complete: raw.complete === true,
     incompleteReason: typeof raw.incomplete_reason === "string" ? raw.incomplete_reason : null,
     explicitConfigPresent: raw.explicit_config_present,
     enabledToolsets,
     tools,
     challenge: typeof raw.challenge === "string" ? raw.challenge : null,
+    responseBinding: "challenge_bound_authenticated_catalog",
     generatedAt: typeof raw.generated_at === "string" ? raw.generated_at : null,
     expiresAt: typeof raw.expires_at === "string" ? raw.expires_at : null,
     attestation: attestation
@@ -496,6 +527,7 @@ export type AgentRunBlockReason =
   | "identity_unverified"
   | "acknowledgement_required"
   | "credential_unavailable"
+  | "configuration_sync_required"
   | "permission_mismatch"
   | "readiness_unknown";
 
@@ -523,6 +555,7 @@ interface AgentRunGateRow {
   status: string;
   credential_ready: boolean;
   active_config_version_id: string | null;
+  hermes_profile_config_version_id?: string | null;
   tool_inventory_digest: string | null;
   last_health_ok: boolean | null;
   tool_inventory_contract: string | null;
@@ -539,13 +572,16 @@ interface AgentRunGateRow {
  * a recorded digest the live catalog would have nothing to be compared against, so a never-health-checked employee
  * could run on a catalog that merely looks safe today.
  */
-export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "tool_inventory_digest" | "credential_ready">): string {
+export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "hermes_profile_config_version_id" | "tool_inventory_digest" | "credential_ready">): string {
   if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
   if (!canChat(row.status as AgentStatus)) {
     throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status));
   }
   if (!row.active_config_version_id) {
     throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
+  }
+  if (row.hermes_profile_config_version_id && row.hermes_profile_config_version_id !== row.active_config_version_id) {
+    throw new AgentRunNotReadyError("configuration_sync_required", "This AI employee's approved configuration is still synchronizing to its dedicated Hermes profile.");
   }
   if (!row.credential_ready) {
     throw new AgentRunNotReadyError("credential_unavailable", "This AI employee's saved Hermes credential is missing or revoked, so it can't run.");
@@ -684,7 +720,7 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
   try {
     await withSystem(async (db) => {
       const { rows } = await db.query<AgentRunGateRow>(
-        `select o.kind,a.enabled,a.status,a.active_config_version_id,a.last_health_ok,
+        `select o.kind,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
                 (cred.id is not null and cred.revoked_at is null and
                  (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
                 a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
@@ -709,7 +745,7 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
 async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRunGateRow | null> {
   try {
     const { rows } = await withSystem((db) => db.query<AgentRunGateRow>(
-      `select o.kind,a.enabled,a.status,a.active_config_version_id,a.last_health_ok,
+      `select o.kind,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
               (cred.id is not null and cred.revoked_at is null and
                (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
               a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count

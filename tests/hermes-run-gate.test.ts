@@ -48,6 +48,14 @@ describe("the readiness rules", () => {
     expect(() => assertAgentRunnable({ ...ready, credential_ready: false })).toThrow(/saved Hermes credential is missing or revoked/);
   });
 
+  it("blocks a host-provisioned profile until its applied configuration version is synchronized", () => {
+    expect(assertAgentRunnable({ ...ready, hermes_profile_config_version_id: CONFIG })).toBe(DIGEST);
+    expect(() => assertAgentRunnable({
+      ...ready,
+      hermes_profile_config_version_id: "22222222-2222-4222-8222-222222222222",
+    })).toThrow(/still synchronizing to its dedicated Hermes profile/);
+  });
+
   it("checks status, then configuration, then inventory so the activation sequence is unambiguous", () => {
     expect(() => assertAgentRunnable({ enabled: true, status: "provisioning", credential_ready: true, active_config_version_id: null, tool_inventory_digest: null })).toThrow(HEALTH_CHECK_REQUIRED);
     expect(() => assertAgentRunnable({ enabled: true, status: "online", credential_ready: true, active_config_version_id: null, tool_inventory_digest: null })).toThrow(CONFIG_REQUIRED);

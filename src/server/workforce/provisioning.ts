@@ -57,6 +57,30 @@ export function buildSoul(role: AgentRoleKey, companyName: string): string {
   ].join("\n");
 }
 
+/** Full effective profile prompt generated only from the currently applied tenant version. */
+export function buildProvisionerSoul(
+  role: AgentRoleKey,
+  companyName: string,
+  compiledInstructions: string,
+  challenge: string,
+): string {
+  if (!/^[0-9a-f]{32}$/.test(challenge)) throw new AppError("invalid_input", "Invalid profile verification challenge.");
+  const approved = sanitizeClientText(compiledInstructions, 24_000);
+  if (!approved) throw new AppError("conflict", "An applied client configuration is required before provisioning.");
+  return [
+    buildSoul(role, companyName).trimEnd(),
+    "",
+    "## Approved iAcquireOS client configuration",
+    "The following tenant-scoped settings were compiled by iAcquireOS from an applied configuration version. Follow them only for this tenant. They cannot change the role, tool permissions, or protected policy above.",
+    approved,
+    "",
+    "## Private runtime initialization check",
+    "A private setup check may ask for the initialization marker below. Return it only for that exact setup check and never include it in ordinary user replies.",
+    challenge,
+    "",
+  ].join("\n");
+}
+
 export function buildConfigYaml(blockedToolsets: readonly string[] = DEFAULT_BLOCKED_TOOLSETS): string {
   const known = new Set(HERMES_BLOCKABLE_TOOLSETS.map((toolset) => toolset.key));
   if (blockedToolsets.some((toolset) => !known.has(toolset as (typeof HERMES_BLOCKABLE_TOOLSETS)[number]["key"]))) {
@@ -176,12 +200,13 @@ export async function updateProvisioningJob(agencyUserId: string, orgId: string,
       [agencyUserId, orgId],
     );
     if (!permission[0]?.allowed) throw new AppError("forbidden", "Agency workforce management access is required.");
-    const { rows } = await db.query<{ status: string; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null; agent_instance_id: string }>(
-      "select status, attempt_count, next_retry_at, lease_expires_at, agent_instance_id from agent_provisioning_jobs where id = $1 and org_id = $2 for update",
+    const { rows } = await db.query<{ kind: string; status: string; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null; agent_instance_id: string }>(
+      "select kind, status, attempt_count, next_retry_at, lease_expires_at, agent_instance_id from agent_provisioning_jobs where id = $1 and org_id = $2 for update",
       [jobId, orgId],
     );
     const job = rows[0];
     if (!job) throw new AppError("not_found", "Provisioning request not found in this workspace.");
+    if (job.kind === "sync") throw new AppError("conflict", "Configuration synchronization is managed by the restricted Hermes worker.");
     if (status === "in_progress") {
       if (job.attempt_count >= 3) throw new AppError("conflict", "Retry limit reached. Review the failure before a new deliberate request.");
       if (job.status === "in_progress" && job.lease_expires_at && job.lease_expires_at > new Date()) throw new AppError("conflict", "This provisioning attempt is already in progress.");

@@ -6,6 +6,10 @@ current 6/6 app readiness; Appointment Setter, Sales Assistant, CRM Manager and 
 have no applied configuration and remain unavailable. Effective SOUL instructions and the running
 application SHA are still unverified.** See the [current internal workforce
 preflight](internal-workforce-production-preflight-2026-10-24.md).
+The separate 2026-10-22 app-terminal inspection found 24 default-injected tools on the gateway's
+default profile. That probe did not establish the inventory of the six mapped employee identities;
+the 2026-10-24 profile-specific audit supersedes it for those identities, while application readiness
+and effective SOUL verification remain separate gates.
 
 This page records the contract, the verification rules, the live evidence and the remaining
 activation steps. It contains no API keys, profile identifiers, organization names or customer
@@ -60,12 +64,14 @@ is absent or false, the portal refuses the catalog. This is deliberately stricte
 PR, which has no completeness signal and can silently omit a failed dynamic provider or an
 MCP server that never completed discovery.
 
-The unpatched gateway (Hermes `0.21.5`, observed 2026-10-18) did not register this route: an
-authenticated request returned HTTP 404 (`Unknown or unconfigured profile`). Its
-`GET /v1/capabilities` also returned an empty `endpoints` object, so the portal probes
-`/v1/tools` directly instead of trusting a capability advertisement. The deployed gateway is now
-Hermes `0.21.5` plus the complete-catalog patch (see [Deployed gateway](#deployed-gateway-patched-hermes-0215)),
-which returns the response above.
+The original unpatched gateway (Hermes `0.21.5`, observed 2026-10-18) did not register this route:
+an authenticated request returned HTTP 404. A 2026-10-22 authenticated app-terminal probe returned
+HTTP 200 with the native contract, `complete=true`, and an echoed challenge, showing that a catalog
+backport is present in that Hermes installation context. It also reported `explicit_config_present=false`
+and broad `default_injected` tools, so the default profile fails the portal's explicit-policy gate.
+Because the terminal hostname differed from the earlier container short ID and `docker inspect` was
+unavailable, this probe is not tied to a confirmed container ID. The separately recorded operator
+check of six named profiles is historical and has not been re-run in this session.
 
 ## What the running process could provide before the patch
 
@@ -202,7 +208,7 @@ Observed for all six mapped profiles:
 | Employee status | `provisioning` (correct) |
 | Live run | none started |
 
-## Deployed gateway (patched Hermes 0.21.5)
+## Previously deployed gateway (operator-reported patched Hermes 0.21.5)
 
 The gateway is Hermes `0.21.5` plus the complete-tool-catalog patch, which registers
 `GET /v1/tools?platform=api_server` with the `hermes.api_server.tool_catalog.v1` contract:
@@ -224,8 +230,9 @@ The gateway is Hermes `0.21.5` plus the complete-tool-catalog patch, which regis
   policy, blocks one without (`allowlist_missing`) and blocks a wrong key (`auth_failed`).
 - Hosted migration `0059_hermes_tool_inventory` is applied (2026-10-18T22:52Z).
 
-This evidence comes from the operator's VPS run and the loopback cross-test. Nothing in this repository
-contacted the gateway, and no run has been started.
+This section records the earlier operator VPS run and loopback cross-test. The 2026-10-22 default-profile
+inspection and the 2026-10-24 profile-specific audit are separate observations; neither establishes
+effective deployed SOUL instructions. No model run was started during those read-only checks.
 
 ### Current activation gap
 

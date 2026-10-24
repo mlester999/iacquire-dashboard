@@ -29,18 +29,20 @@ Checked against the Hermes Agent source (`gateway/platforms/api_server.py`, `api
 | `GET /v1/capabilities` | Health check: requires `features.run_submission` and either `run_events_sse` or `run_status`; reads `run_stop`, `run_approval_response`, and the informational `memory_write_api` / `admin_config_rw` flags |
 | `GET /v1/models` | Verifies the intended profile identity (never treats an alias as the primary identity) |
 | `GET /v1/toolsets` → `{ object: "list", data: [{ name, enabled, tools[] }] }` | Advertised configurable inventory only. The health check refuses `online` if any restricted or unreviewed tool is enabled, but this endpoint cannot prove plugin/default-MCP/Tool Search completeness |
-| `GET /v1/tools?platform=api_server` → complete runtime catalog with per-tool provenance | Required proof for live use. The verifier requires an explicit `platform_toolsets.api_server` allowlist, exactly the reviewed toolsets, only reviewed tools, no MCP/plugin/connector/Tool Search bridge entries, two matching reads and a digest matching the last health check. Absence (HTTP 404 on Hermes 0.21.5) is reported as `contract_unavailable` |
+| `GET /v1/tools?platform=api_server` → complete runtime catalog with per-tool provenance | Required proof for live use. The verifier requires an explicit `platform_toolsets.api_server` allowlist, exactly the reviewed toolsets, only reviewed tools, no MCP/plugin/connector/Tool Search bridge entries, two matching reads and a digest matching the last health check. An unpatched Hermes 0.21.5 returns 404 and is reported as `contract_unavailable`; the isolated client Docker build definition vendors a native backport, but its base-version/security review and runtime acceptance remain pending. |
 | `POST /v1/runs` `{ input, instructions, session_id, conversation_history }` + `Idempotency-Key`, `X-Hermes-Session-Key` | Start a chat or research run; the adapter re-verifies the complete inventory immediately before submission and refuses before HTTP if it fails |
 | `GET /v1/runs/{id}/events` (SSE) | `message.delta`, `message.interim`, `tool.started`, `tool.completed`, `tool.failed`, `approval.request`, `run.completed`, `run.failed`, `run.cancelled`, `run.interrupted` |
 | `GET /v1/runs/{id}` | Non-streaming fallback: poll run status and render the real completed output once |
 | `POST /v1/runs/{id}/stop` | Stop generation |
 | `POST /v1/runs/{id}/approval` `{ choice: "once" \| "deny", request_id }` | Resolve a paused tool approval from the Approval Center |
 
-The live gateway was audited read-only on 2026-10-18. Authentication, all six internal profile
-identities, run capabilities and the known built-in exposure passed: each profile now enables only
-the five reviewed toolsets with six built-in tools and no restricted tools. The deployed Hermes
-`0.21.5` gateway does **not** expose `GET /v1/tools`, so plugin/default-MCP/Tool Search completeness
-still cannot be proven. All six employees remain `provisioning`; no run was started. See
+The prior six-profile audit was read-only on 2026-10-18 and reported identity and toolset checks, but its
+catalog verification is historical. A 2026-10-22 app-terminal probe now returns the native catalog
+contract, complete flag and challenge echo. The inspected default profile nevertheless has no explicit
+allowlist and exposes broad default-injected tools, so it fails policy. That terminal's container ID
+could not be matched to the earlier Docker ID. All six employees remain `provisioning`; no run was
+started. The client-only Docker build definition vendors the reviewed native 0.21.5 backport, but
+the image has not been built or accepted in an isolated runtime. See
 [hermes-live-acceptance.md](hermes-live-acceptance.md) and
 [hermes-tool-inventory.md](hermes-tool-inventory.md) for the exact blocker, contract and
 remediation.
@@ -111,8 +113,9 @@ the exact profile name, `SOUL.md`, `config.yaml` snippet and steps:
    and is not shown again.
 5. Run the profile's read-only health check. The profile is `online` only after identity, capabilities,
    the explicit reviewed toolset allowlist and the complete runtime tool catalog are verified. The
-   catalog endpoint (`GET /v1/tools`) is not in Hermes 0.21.5, so live client runs remain blocked
-   until the gateway deployment supplies it and migration 0059 is applied. See
+    catalog endpoint (`GET /v1/tools`) is absent from unpatched Hermes 0.21.5. The current default
+    profile also fails its allowlist policy; automatic client runs remain blocked until the isolated
+    client image and profiles pass acceptance. See
    [hermes-tool-inventory.md](hermes-tool-inventory.md).
 
 Profiles made this way are operator-managed. Six-profile automatic client provisioning is not ready;

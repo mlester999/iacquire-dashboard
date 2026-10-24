@@ -26,7 +26,8 @@ export { TOOL_INVENTORY_CONTRACT, toolInventoryReady } from "@/lib/hermes-tool-i
  * construct an agent and includes plugin, MCP, runtime-provider and Tool Search deferrable tools.
  *
  * The catalog is a *snapshot*. An employee may run only when:
- *   - the gateway echoes this request's challenge and names the catalog contract;
+ *   - the authenticated capabilities response advertises GET `/v1/tools`, and the catalog returns
+ *     the native contract and echoes this request's challenge;
  *   - the profile publishes an explicit `platform_toolsets.api_server` allowlist;
  *   - the enabled toolsets are exactly the reviewed set;
  *   - the callable tools are exactly the five required reviewed tools, plus `vision_analyze` when
@@ -78,7 +79,7 @@ export interface ToolInventorySnapshot {
   tools: ToolInventoryTool[];
   toolCount: number;
   /** How the snapshot was bound to this authenticated response. */
-  attestation: "challenge_bound_authenticated_catalog" | "authenticated_runtime_catalog" | "hmac_attested_catalog";
+  attestation: "challenge_bound_authenticated_catalog" | "hmac_attested_catalog";
   serverContract: string;
 }
 
@@ -276,11 +277,10 @@ function assertCatalogPolicy(catalog: HermesToolCatalog, profile: string): void 
 
 function buildSnapshot(catalog: HermesToolCatalog, profile: string, challenge: string, now: Date, serverContract: string): ToolInventorySnapshot {
   const digest = toolCatalogDigest(catalog, profile);
-  // The challenge echo is already required by the read loop, so every snapshot is at least challenge-bound.
-  let attestation: ToolInventorySnapshot["attestation"] = "challenge_bound_authenticated_catalog";
+  let attestation: ToolInventorySnapshot["attestation"] = catalog.responseBinding;
   if (catalog.attestation) {
-    if (!catalog.challenge || catalog.challenge !== challenge) {
-      failure("inventory_incomplete", profile, "The gateway returned a signed inventory without binding it to this request's challenge, so it cannot be trusted as fresh.");
+    if (catalog.challenge && catalog.challenge !== challenge) {
+      failure("inventory_incomplete", profile, "The gateway returned a signed inventory bound to a different request challenge.");
     }
     if (catalog.attestation.algorithm !== "hmac-sha256") {
       failure("inventory_incomplete", profile, `The gateway's inventory attestation algorithm (${catalog.attestation.algorithm}) is not supported.`);
@@ -339,6 +339,10 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
   if (caps.contract !== "hermes.api_server.capabilities" || !caps.authenticated) {
     failure("inventory_incomplete", profile, "The gateway did not verify its authenticated Hermes API contract, so the inventory cannot be trusted.");
   }
+  const toolsEndpoint = caps.endpoints.tools;
+  if (toolsEndpoint?.method !== "GET" || toolsEndpoint.path !== "/v1/tools") {
+    failure("contract_unavailable", profile, "The gateway does not expose GET /v1/tools (complete tool catalog) in its authenticated capabilities response.");
+  }
   const now = options.now ?? new Date();
   const reads = Math.max(1, Math.min(3, options.stabilityReads ?? 1));
   let first: ToolInventorySnapshot | null = null;
@@ -372,10 +376,10 @@ export async function verifyToolInventory(conn: HermesConnection, options: Verif
       }
     }
     if (catalog.challenge === null) {
-      failure("inventory_incomplete", profile, "The gateway did not echo the inventory challenge, so this response cannot be proven fresh and bound to the current request. Deploy the gateway with the complete tool-catalog patch.");
+      failure("inventory_incomplete", profile, "The gateway did not echo the inventory challenge, so this response cannot be proven fresh.");
     }
     if (catalog.challenge !== challenge) {
-      failure("inventory_incomplete", profile, "The gateway echoed a different inventory challenge, so this response cannot be bound to the current request.");
+      failure("inventory_incomplete", profile, "The gateway echoed a different inventory challenge, so this response cannot be proven fresh.");
     }
     if (catalog.contract !== TOOL_INVENTORY_CONTRACT) {
       failure("inventory_incomplete", profile, `The gateway did not identify the supported tool-catalog contract (${TOOL_INVENTORY_CONTRACT}).`);

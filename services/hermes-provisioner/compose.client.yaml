@@ -1,0 +1,159 @@
+name: iacquire-client-hermes
+
+services:
+  hermes-client:
+    image: ${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}
+    build:
+      context: ../..
+      dockerfile: services/hermes-provisioner/Dockerfile
+      target: hermes-client
+      args:
+        HERMES_BASE_IMAGE: ${HERMES_BASE_IMAGE:?Set a reviewed Hermes image digest}
+    command: ["gateway", "run"]
+    restart: unless-stopped
+    init: true
+    environment:
+      HERMES_HOME: /opt/data
+      HERMES_UID: "10000"
+      GATEWAY_MULTIPLEX_PROFILES: "true"
+      HERMES_DASHBOARD: "0"
+    volumes:
+      - hermes_home:/opt/data
+      - client_profiles:/opt/data/profiles
+      - type: bind
+        source: ${HERMES_CLIENT_CONFIG_FILE:?Set a secret-free Hermes config file}
+        target: /opt/data/config.yaml
+      - type: bind
+        source: ${HERMES_API_KEY_FILE:?Set the private API key file}
+        target: /run/secrets/hermes_api_key
+        read_only: true
+    networks:
+      - client_egress
+      - hermes_private
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+      - SYS_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 1.0
+    pids_limit: 256
+    stop_grace_period: 60s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD
+        - /opt/hermes/.venv/bin/python
+        - -c
+        - >-
+          import urllib.request;
+          response=urllib.request.urlopen('http://127.0.0.1:8642/health', timeout=4);
+          raise SystemExit(0 if response.status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  init-worker-home:
+    image: ${HERMES_BASE_IMAGE:?Set a reviewed Hermes image digest}
+    profiles: [provisioner]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        mkdir -p /opt/data/iacquire-provisioner-state /opt/data/profiles;
+        chown 10000:10000 /opt/data /opt/data/iacquire-provisioner-state /opt/data/profiles;
+        chmod 0700 /opt/data/iacquire-provisioner-state /opt/data/profiles
+    network_mode: none
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    volumes:
+      - worker_home:/opt/data
+      - client_profiles:/opt/data/profiles
+    restart: "no"
+
+  hermes-provisioner:
+    image: ${IACQUIRE_PROVISIONER_IMAGE:-iacquire/hermes-provisioner:acceptance}
+    build:
+      context: ../..
+      dockerfile: services/hermes-provisioner/Dockerfile
+      target: provisioner
+      args:
+        HERMES_BASE_IMAGE: ${HERMES_BASE_IMAGE:?Set a reviewed Hermes image digest}
+    profiles: [provisioner]
+    restart: on-failure:3
+    user: "10000:10000"
+    read_only: true
+    init: true
+    environment:
+      HERMES_HOME: /opt/data
+      HERMES_CLI: /opt/hermes/bin/hermes
+      HERMES_PROVISIONER_API_BASE: http://127.0.0.1:8642
+      IACQUIRE_PROVISIONER_URL: ${IACQUIRE_PROVISIONER_URL:?Set the iAcquireOS HTTPS origin}
+      IACQUIRE_PROVISIONER_GATEWAY_ID: ${IACQUIRE_PROVISIONER_GATEWAY_ID:?Set the pinned gateway UUID}
+      IACQUIRE_PROVISIONER_TOKEN_FILE: /run/secrets/provisioner_token
+      HERMES_PROVISIONER_BOOTSTRAP_API_KEY_FILE: /run/secrets/hermes_api_key
+      IACQUIRE_PROFILE_MODEL_ENV_FILE: /run/secrets/profile_model_env.json
+    network_mode: service:hermes-client
+    depends_on:
+      hermes-client:
+        condition: service_healthy
+      init-worker-home:
+        condition: service_completed_successfully
+    volumes:
+      - worker_home:/opt/data
+      - client_profiles:/opt/data/profiles
+      - type: bind
+        source: ${HERMES_CLIENT_CONFIG_FILE:?Set a secret-free Hermes config file}
+        target: /opt/data/config.yaml
+        read_only: true
+      - type: bind
+        source: ${HERMES_API_KEY_FILE:?Set the private API key file}
+        target: /run/secrets/hermes_api_key
+        read_only: true
+      - type: bind
+        source: ${IACQUIRE_PROVISIONER_TOKEN_FILE:?Set the private provisioner token file}
+        target: /run/secrets/provisioner_token
+        read_only: true
+      - type: bind
+        source: ${HERMES_PROFILE_MODEL_ENV_FILE:?Set the private provider-key document}
+        target: /run/secrets/profile_model_env.json
+        read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+    stop_grace_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 5m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "/opt/iacquire-hermes/.venv/bin/python", "/opt/iacquire-hermes/worker.py", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+networks:
+  client_egress:
+    driver: bridge
+  hermes_private:
+    name: ${IACQUIRE_HERMES_PRIVATE_NETWORK:-iacquire-hermes-private}
+    internal: true
+
+volumes:
+  hermes_home:
+  client_profiles:
+  worker_home:
