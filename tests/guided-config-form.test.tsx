@@ -10,6 +10,7 @@ import { defaultSettings } from "@/server/workforce/compiler";
 
 const mocks = vi.hoisted(() => ({
   preview: vi.fn(),
+  regenerate: vi.fn(),
   save: vi.fn(),
   refresh: vi.fn(),
   push: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/actions/workforce", () => ({
   previewConfigAction: mocks.preview,
+  regenerateEmployeeSettingsAction: mocks.regenerate,
   saveAgentSettingsAction: mocks.save,
   proposeChangeAction: vi.fn(),
   applyChangeAction: vi.fn(),
@@ -102,6 +104,7 @@ function renderForm(
 
 beforeEach(() => {
   mocks.preview.mockReset();
+  mocks.regenerate.mockReset();
   mocks.save.mockReset();
   mocks.refresh.mockReset();
   mocks.push.mockReset();
@@ -155,6 +158,43 @@ describe("guided AI employee configuration", () => {
     expect((screen.getByRole("textbox", { name: /Company rules/i }) as HTMLTextAreaElement).value).toContain("approved company profile");
     expect(screen.getByRole("radio", { name: /Professional/ }).getAttribute("aria-checked")).toBe("true");
     expect((screen.getByRole("textbox", { name: /Main responsibilities/i }) as HTMLTextAreaElement).value).toBe("Existing responsibility");
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("previews all generated behavior fields and changes only the draft after acceptance", async () => {
+    const user = userEvent.setup();
+    mocks.regenerate.mockResolvedValue({
+      ok: true,
+      data: {
+        personality: "AI draft: a composed and attentive coordinator.",
+        characterTraits: "Thoughtful, steady and accountable.",
+        communicationStyle: "Summarise current work, blockers and decisions.",
+        responseBehavior: "Use recorded work and label uncertainty clearly.",
+        responsibilities: "Coordinate assigned internal work and surface dependencies.",
+        goals: "Help the team meet confirmed commitments with clear ownership.",
+        operatingProcedures: "Review authorized work, approvals and blocked items.",
+        proactiveResponsibilities: "Flag overdue work only when an approved trigger runs.",
+        reportingBehavior: "Report verified changes, blockers, owners and next steps.",
+        source: "ai",
+      },
+    });
+    renderForm();
+
+    const originalResponsibilities = screen.getByRole("textbox", { name: /Main responsibilities/i }) as HTMLTextAreaElement;
+    expect(originalResponsibilities.value).toBe("Existing responsibility");
+    await user.click(screen.getByRole("button", { name: "Regenerate employee setup" }));
+
+    expect(await screen.findByText("Suggested employee setup · AI draft")).toBeTruthy();
+    expect(screen.getByText(/Operating procedures:/)).toBeTruthy();
+    expect(screen.getByText(/Proactive work:/)).toBeTruthy();
+    expect(screen.getByText(/Reporting:/)).toBeTruthy();
+    expect(originalResponsibilities.value).toBe("Existing responsibility");
+    expect(mocks.save).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Use these in my draft" }));
+    expect(originalResponsibilities.value).toBe("Coordinate assigned internal work and surface dependencies.");
+    expect((screen.getByRole("textbox", { name: /Goals for this employee/i }) as HTMLTextAreaElement).value)
+      .toBe("Help the team meet confirmed commitments with clear ownership.");
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
