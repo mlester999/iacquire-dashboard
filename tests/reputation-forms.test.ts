@@ -148,7 +148,7 @@ async function submit(org: CrmOrg, key: string, answers: Record<string, string>)
   await processFormSubmissions({ now: NOW, limit: 50 });
 }
 const feedbackFor = (formId: string) =>
-  all<{ id: string; rating: number | null; nps_score: number | null; scale: string; comment: string | null; contact_id: string | null; source: string; low_score: boolean; follow_up_status: string; escalated_task_id: string | null; escalation_id: string | null; form_submission_id: string; review_request_id: string | null }>(
+  all<{ id: string; rating: number | null; nps_score: number | null; scale: string; comment: string | null; contact_id: string | null; possible_contact_id: string | null; source: string; low_score: boolean; follow_up_status: string; escalated_task_id: string | null; escalation_id: string | null; form_submission_id: string; review_request_id: string | null }>(
     "select f.* from customer_feedback f join crm_form_submissions s on s.id = f.form_submission_id where s.form_id = $1 order by f.received_at, f.id", [formId],
   );
 
@@ -249,12 +249,24 @@ describe("a survey's answers become private feedback", () => {
     expect((await feedbackFor(survey.id)).length).toBe(before);
   });
 
-  it("attributes it to an existing contact with the same email without changing that contact's addresses, and says the person is unverified", async () => {
+  it("does not attribute an answer to an existing contact that only matches by the email typed: it waits for a person, and the contact's addresses are left alone", async () => {
     const existing = await createContact(c.actor("owner"), { firstName: "Elena", lastName: "Existing", email: "existing.person@example.test", phone: "+15555550177" });
     await submit(c, survey.key, { "q.score": "2", "q.email": "existing.person@example.test" });
-    const f = (await feedbackFor(survey.id)).find((r) => r.contact_id === existing.id)!;
-    expect(f).toMatchObject({ rating: 2, low_score: true });
+    const rows = await feedbackFor(survey.id);
+    expect(rows.find((r) => r.contact_id === existing.id)).toBeUndefined();
+    const f = rows.find((r) => r.possible_contact_id === existing.id)!;
+    expect(f).toMatchObject({ rating: 2, low_score: true, contact_id: null, follow_up_status: "new", escalated_task_id: null, escalation_id: null });
     expect(await one("select email::text as email, phone from contacts where id = $1", [existing.id])).toEqual({ email: "existing.person@example.test", phone: "+15555550177" });
+    expect((await eventsFor(c.org.id, "feedback.received")).filter((e) => e.entity_id === f.id)).toEqual([]);
+    expect(await all("select 1 from tasks where org_id = $1 and contact_id = $2", [c.org.id, existing.id])).toEqual([]);
+  });
+
+  it("attributes it to that contact once the business has verified the address, and says the survey knew them only by what they typed", async () => {
+    const existing = await createContact(c.actor("owner"), { firstName: "Vera", lastName: "Verified", email: "verified.person@example.test" });
+    await withSystem((db) => db.query("update contact_identities set verified = true, verified_via = 'staff_confirmed' where contact_id = $1 and kind = 'email'", [existing.id]));
+    await submit(c, survey.key, { "q.score": "2", "q.email": "verified.person@example.test" });
+    const f = (await feedbackFor(survey.id)).find((r) => r.contact_id === existing.id)!;
+    expect(f).toMatchObject({ rating: 2, low_score: true, possible_contact_id: null });
     expect((await one<{ description: string }>("select description from tasks where id = $1", [f.escalated_task_id])).description).toMatch(/only from the email address or phone number they typed/);
   });
 

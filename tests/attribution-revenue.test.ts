@@ -24,8 +24,9 @@ const lead = async (name: string, source: string | null) => {
   if (source) await withSystem((db) => recordTouch(db, { orgId: io.orgId, contactId: id, facts: { kind: "website_form", attribution: { utm_source: source } } }));
   return id;
 };
-const invoice = async (contactId: string | null, over: { currency?: "PHP" | "USD"; unit?: string; tax?: string } = {}) =>
-  (await issuedInvoice(io, { contactId, currency: over.currency ?? "PHP", lines: [line({ unitPrice: over.unit ?? "1500.00", ...(over.tax ? { taxPercent: over.tax } : {}) })] })).invoice;
+/** An issued invoice; `test` makes it a test invoice, the only kind that takes a payment made in a provider's test mode. */
+const invoice = async (contactId: string | null, over: { currency?: "PHP" | "USD"; unit?: string; tax?: string; test?: boolean } = {}) =>
+  (await issuedInvoice(io, { contactId, currency: over.currency ?? "PHP", isTest: over.test, lines: [line({ unitPrice: over.unit ?? "1500.00", ...(over.tax ? { taxPercent: over.tax } : {}) })] })).invoice;
 /** A payment a live provider confirmed, a few hours ago unless said otherwise. */
 const paid = (invoiceId: string, minor: number, over: Parameters<typeof providerPayment>[4] = {}) =>
   providerPayment(io, invoiceId, paymongo, minor, { provider: "paymongo", livemode: true, receivedAt: hoursAgo(2), ...over });
@@ -78,9 +79,9 @@ describe("verified revenue", () => {
   it("leaves out a provider's test mode and says how many were left out, so a test payment is never revenue", async () => {
     const before = text(rowOf(await run(), "google").verifiedRevenue);
     const t = await lead("Tess", "google");
-    const inv = await invoice(t, { unit: "500.00" });
+    const inv = await invoice(t, { unit: "500.00", test: true });
     await paid(inv.id, 50000, { livemode: false });
-    const sim = await invoice(t, { unit: "400.00" });
+    const sim = await invoice(t, { unit: "400.00", test: true });
     await providerPayment(io, sim.id, await connectionFor(io, { provider: "simulated", mode: "test" }), 40000, { provider: "simulated", livemode: false, receivedAt: hoursAgo(1) });
     const r = await run();
     expect(text(rowOf(r, "google").verifiedRevenue)).toEqual(before);
@@ -98,8 +99,23 @@ describe("verified revenue", () => {
     expect(rowOf(open, "linkedin").verifiedRevenue).toEqual([]);
     expect(open.revenue.disputedHeldOut).toBeGreaterThanOrEqual(1);
     expect(open.notes.join(" ")).toMatch(/under an open dispute and held out/);
+    // A close that does not say who won puts nothing back: the money stays held out.
     await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, actor: { id: null, kind: "provider" } }));
+    expect(rowOf(await run(), "linkedin").verifiedRevenue).toEqual([]);
+    await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, outcome: "won", actor: { id: null, kind: "provider" } }));
     expect(text(rowOf(await run(), "linkedin").verifiedRevenue)).toEqual(["PHP 900"]);
+  });
+
+  it("takes a lost dispute out of revenue: the chargeback is a refund, so what was kept drops by what the buyer got back", async () => {
+    const d = await lead("Dan", "quora");
+    const inv = await invoice(d, { unit: "800.00" });
+    const p = await paid(inv.id, 80000);
+    expect(text(rowOf(await run(), "quora").verifiedRevenue)).toEqual(["PHP 800"]);
+    await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: true, actor: { id: null, kind: "provider" } }));
+    await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, outcome: "lost", lostMinor: 30000, actor: { id: null, kind: "provider" } }));
+    const row = rowOf(await run(), "quora");
+    expect(text(row.verifiedRevenue)).toEqual(["PHP 500"]);
+    expect(text(row.refunded)).toEqual(["PHP 300"]);
   });
 
   it("counts only leads created in the period, but counts what they paid at any time up to now, and nothing dated after the report", async () => {

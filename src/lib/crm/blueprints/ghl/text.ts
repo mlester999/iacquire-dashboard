@@ -170,7 +170,8 @@ export function ghlValueKeyOf(fieldKey: string): string | null {
   return m ? ghlValueKey(m[1]) : null;
 }
 
-const TOKEN = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// The capture is trimmed in code: a \s* beside [^{}]* made a long run of spaces take minutes to scan.
+const TOKEN = /\{\{([^{}]*)\}\}/g;
 const markerFor = (inner: string) => `[${inner.replace(/[^A-Za-z0-9 ._-]/g, "").trim().slice(0, 60) || "merge field"}]`;
 
 /**

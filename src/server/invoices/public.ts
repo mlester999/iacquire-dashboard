@@ -8,11 +8,12 @@ import { formatQuantity, isCurrency, type CurrencyCode } from "@/lib/money";
 import { hashInvoiceToken, looksLikeInvoiceToken } from "@/lib/invoices/token";
 import { checkoutBlock, REFERENCE_RE, type ConnectionMode, type ConnectionStatus, type PaymentProviderId } from "@/lib/invoices/connection-rules";
 import { describeReturn, invoiceBanner, type AttemptState, type InvoiceBanner, type PaymentRowState, type ReturnDescription } from "@/lib/invoices/public-status";
-import type { PayFailure } from "@/lib/invoices/public-http";
+import { PAY_DISABLED_MESSAGE, PAY_UNAVAILABLE_MESSAGE, type PayFailure } from "@/lib/invoices/public-http";
 import { isOverdue, type InvoicePaymentStatus } from "@/lib/invoices/state";
 import { addInvoiceEvent, INVOICE_COLUMNS, loadLines, readSettings, toMinor, type InvoiceRow } from "@/server/invoices/core";
 import { invoicesEnabledIn } from "@/server/invoices/feature";
 import { tokenIsFor } from "@/server/invoices/links";
+import { invoicesPublicDisabled, workspaceTakesNoCustomers } from "@/server/invoices/workspace-gate";
 import { startCheckout } from "@/server/customer-payments/attempts";
 import { readBackAllowed } from "@/server/customer-payments/events";
 import { credentialVault } from "@/server/customer-payments/credentials";
@@ -90,10 +91,13 @@ export interface PublicInvoice {
   hasPendingPayment: boolean;
   /** An online payment can be started right now (the invoice owes something and a connected account may take it). */
   canPayOnline: boolean;
+  /** A test invoice: nothing is owed on it and no money moves. */
+  isTest: boolean;
   banner: InvoiceBanner;
 }
 
-export type PublicInvoiceResult = { state: "ok"; invoice: PublicInvoice } | { state: "invalid" } | { state: "rate_limited" };
+/** "unavailable": the business takes no customers right now (suspended, archived, paused). "disabled": the whole customer-facing side is switched off (INVOICES_PUBLIC_DISABLED). */
+export type PublicInvoiceResult = { state: "ok"; invoice: PublicInvoice } | { state: "invalid" } | { state: "rate_limited" } | { state: "unavailable" } | { state: "disabled" };
 
 interface Found extends InvoiceRow {
   token_hash: string | null;
@@ -120,14 +124,17 @@ async function businessFor(db: Queryable, orgId: string, billFrom: Record<string
   };
 }
 
-/** Whether a connected account could take a customer's payment for this invoice now (the same rule a checkout is started under, without opening any key). */
-async function onlinePaymentPossible(db: Queryable, orgId: string, currency: CurrencyCode): Promise<boolean> {
+/**
+ * Whether a connected account could take a customer's payment for this invoice now (the same rule a checkout is started under, without opening any key). A test invoice is
+ * offered only an account in test mode and a real invoice only a live one.
+ */
+async function onlinePaymentPossible(db: Queryable, orgId: string, currency: CurrencyCode, isTest: boolean): Promise<boolean> {
   if (!(await invoicesEnabledIn(db, orgId))) return false;
   const sw = paymentSwitches();
   const { rows } = await db.query<{ provider: PaymentProviderId; mode: ConnectionMode; status: ConnectionStatus; supported_currencies: string[]; authorized_at: Date | null; live_confirmed_at: Date | null }>(
     "select provider, mode, status, supported_currencies, authorized_at, live_confirmed_at from customer_payment_connections where org_id = $1 and status <> 'revoked'", [orgId],
   );
-  return rows.some((c) => checkoutBlock({ provider: c.provider, mode: c.mode, status: c.status, supportedCurrencies: c.supported_currencies, authorizedAt: c.authorized_at, liveConfirmedAt: c.live_confirmed_at }, currency, sw, "public") === null);
+  return rows.filter((c) => (c.mode === "test") === isTest).some((c) => checkoutBlock({ provider: c.provider, mode: c.mode, status: c.status, supportedCurrencies: c.supported_currencies, authorizedAt: c.authorized_at, liveConfirmedAt: c.live_confirmed_at }, currency, sw, "public") === null);
 }
 
 /**
@@ -135,11 +142,14 @@ async function onlinePaymentPossible(db: Queryable, orgId: string, currency: Cur
  * business is told "opened", not "read").
  */
 export async function loadPublicInvoice(token: string, ctx: PublicContext): Promise<PublicInvoiceResult> {
+  if (invoicesPublicDisabled()) return { state: "disabled" };
   if (!(await allowed(VIEW_BY_IP, ctx.ip))) return { state: "rate_limited" };
   const now = ctx.now ?? new Date();
   return withSystem(async (db): Promise<PublicInvoiceResult> => {
     const row = await findByToken(db, token);
     if (!row || !row.number || !row.issue_on || !row.due_on || !isCurrency(row.currency)) return { state: "invalid" };
+    // A workspace that takes no customers shows nothing, and records no "opened" for a page nobody was shown.
+    if (await workspaceTakesNoCustomers(db, row.org_id)) return { state: "unavailable" };
     const first = await db.query("update customer_invoices set first_viewed_at = $3 where id = $1 and org_id = $2 and first_viewed_at is null returning id", [row.id, row.org_id, now]);
     if (first.rows[0]) await addInvoiceEvent(db, row.org_id, row.id, "viewed", { id: null, kind: "customer" }, {});
     const [lines, settings, org, pending, canPayOnline] = await Promise.all([
@@ -147,12 +157,12 @@ export async function loadPublicInvoice(token: string, ctx: PublicContext): Prom
       readSettings(db, row.org_id),
       db.query<{ timezone: string }>("select timezone from organizations where id = $1", [row.org_id]),
       db.query("select 1 from customer_payments where invoice_id = $1 and org_id = $2 and status = 'pending' limit 1", [row.id, row.org_id]),
-      onlinePaymentPossible(db, row.org_id, row.currency),
+      onlinePaymentPossible(db, row.org_id, row.currency, row.is_test),
     ]);
     const tz = org.rows[0]?.timezone ?? "UTC";
     const balanceMinor = toMinor(row.balance_minor);
     const owing = row.payment_status === "unpaid" || row.payment_status === "partially_paid";
-    const overdue = isOverdue({ status: row.status, paymentStatus: row.payment_status, dueOn: row.due_on, writtenOff: row.written_off_at !== null }, now, tz);
+    const overdue = isOverdue({ status: row.status, paymentStatus: row.payment_status, dueOn: row.due_on, writtenOff: row.written_off_at !== null, isTest: row.is_test }, now, tz);
     const stillPayable = balanceMinor > 0 && owing && row.written_off_at === null;
     const hasPendingPayment = pending.rows.length > 0;
     const billTo = row.bill_to ?? {};
@@ -170,8 +180,8 @@ export async function loadPublicInvoice(token: string, ctx: PublicContext): Prom
         })),
         subtotalMinor: toMinor(row.subtotal_minor), taxMinor: toMinor(row.tax_minor), totalMinor: toMinor(row.total_minor), paidMinor: toMinor(row.paid_minor), balanceMinor,
         paymentStatus: row.payment_status, overdue, paymentInstructions: row.payment_instructions, notes: row.notes, terms: row.terms, footerNote: settings.footerNote, hasPendingPayment,
-        canPayOnline: canPayOnline && stillPayable && row.payment_status !== "disputed",
-        banner: invoiceBanner({ paymentStatus: row.payment_status, balanceMinor, hasPendingPayment, canPayOnline: canPayOnline && stillPayable, overdue }),
+        canPayOnline: canPayOnline && stillPayable && row.payment_status !== "disputed", isTest: row.is_test,
+        banner: invoiceBanner({ paymentStatus: row.payment_status, balanceMinor, hasPendingPayment, canPayOnline: canPayOnline && stillPayable, overdue, isTest: row.is_test }),
       },
     };
   });
@@ -201,20 +211,26 @@ export function checkoutTarget(provider: PaymentProviderId, attemptId: string, c
 
 /** Starts (or finds again) the one open checkout for the invoice behind a link, for the balance the SERVER works out. The caller can send nothing but the link. */
 export async function startPublicPayment(token: string, ctx: PublicContext, deps: { providerFor?: ProviderResolver } = {}): Promise<PayResult> {
+  if (invoicesPublicDisabled()) return { ok: false, reason: "disabled", message: PAY_DISABLED_MESSAGE };
   if (!(await allowed(PAY_BY_IP, ctx.ip))) return { ok: false, reason: "rate_limited", message: "Too many attempts in a short while. Wait a few minutes, then try again." };
-  const row = await withSystem((db) => findByToken(db, token));
+  const row = await withSystem(async (db) => {
+    const found = await findByToken(db, token);
+    // A workspace that takes no customers starts no checkout (startCheckout asks again for itself, for every other way in).
+    return found && (await workspaceTakesNoCustomers(db, found.org_id)) ? "stopped" : found;
+  });
+  if (row === "stopped") return { ok: false, reason: "unavailable", message: PAY_UNAVAILABLE_MESSAGE };
   if (!row) return { ok: false, reason: "invalid", message: INVALID_LINK };
   // A link that is hammered cannot be used to flood a provider with checkout requests.
   if (!(await consumeRateLimit(PAY_BY_INVOICE, row.id)).allowed) return { ok: false, reason: "rate_limited", message: "Too many attempts in a short while. Wait a few minutes, then try again." };
   try {
     const started = await startCheckout({ orgId: row.org_id, invoiceId: row.id, audience: "public" }, { providerFor: deps.providerFor, now: ctx.now });
     const url = checkoutTarget(started.provider, started.attemptId, started.checkoutUrl);
-    if (!url) return { ok: false, reason: "unavailable", message: "Online payment is not available for this invoice right now. Please contact the business to arrange payment." };
+    if (!url) return { ok: false, reason: "unavailable", message: PAY_UNAVAILABLE_MESSAGE };
     return { ok: true, url, reused: started.reused };
   } catch (e) {
     if (e instanceof AppError) {
       if (e.code === "conflict" && /already been paid|nothing left/i.test(e.message)) return { ok: false, reason: "paid", message: e.message };
-      if (e.code === "unavailable" || e.code === "not_enabled") return { ok: false, reason: "unavailable", message: "Online payment is not available for this invoice right now. Please contact the business to arrange payment." };
+      if (e.code === "unavailable" || e.code === "not_enabled") return { ok: false, reason: "unavailable", message: PAY_UNAVAILABLE_MESSAGE };
       if (e.code === "not_found") return { ok: false, reason: "invalid", message: INVALID_LINK };
       // Everything else a customer is told is a sentence startCheckout wrote for a customer, or the plain retry line.
       return { ok: false, reason: "try_again", message: e.code === "conflict" || e.code === "upstream_error" || e.code === "integration_unavailable" ? e.message : TRY_AGAIN, retryAfterSeconds: e.retryAfterSeconds };
@@ -247,13 +263,14 @@ interface AttemptRead {
   invoice_status: "draft" | "pending_approval" | "issued" | "void";
   number: string | null;
   bill_from: Record<string, unknown>;
+  is_test: boolean;
 }
 
 async function findByReference(db: Queryable, reference: string): Promise<AttemptRead | null> {
   if (!REFERENCE_RE.test(reference)) return null;
   const { rows } = await db.query<AttemptRead>(
     `select a.id as attempt_id, a.org_id, a.invoice_id, a.connection_id, a.status, a.amount_minor::text as amount_minor, a.currency, a.reference, a.provider_checkout_id, a.created_at,
-       c.provider, c.mode, c.status as conn_status, c.credentials, i.status as invoice_status, i.number, i.bill_from
+       c.provider, c.mode, c.status as conn_status, c.credentials, i.status as invoice_status, i.number, i.bill_from, i.is_test
      from customer_payment_attempts a
        join customer_invoices i on i.id = a.invoice_id and i.org_id = a.org_id
        join customer_payment_connections c on c.id = a.connection_id and c.org_id = a.org_id
@@ -279,9 +296,11 @@ export interface ReturnView {
   currency: CurrencyCode;
   reference: string;
   description: ReturnDescription;
+  /** The checkout was for a test invoice. */
+  isTest: boolean;
 }
 
-export type ReturnResult = { state: "ok"; view: ReturnView } | { state: "invalid" } | { state: "rate_limited" };
+export type ReturnResult = { state: "ok"; view: ReturnView } | { state: "invalid" } | { state: "rate_limited" } | { state: "disabled" };
 
 const minutesBetween = (from: Date, to: Date) => Math.max(0, (to.getTime() - new Date(from).getTime()) / 60_000);
 
@@ -291,13 +310,14 @@ async function returnViewOf(db: Queryable, a: AttemptRead, now: Date, saidCancel
   const org = (await db.query<{ name: string }>("select name from organizations where id = $1", [a.org_id])).rows[0];
   const name = text(a.bill_from?.name) ?? org?.name ?? "The business";
   return {
-    business: { name, brandColor: profile?.brand_color ?? null }, invoiceNumber: a.number, amountMinor: toMinor(a.amount_minor), currency: a.currency, reference: a.reference,
-    description: describeReturn({ attemptStatus: a.status, payment, invoiceStatus: a.invoice_status, ageMinutes: minutesBetween(a.created_at, now), saidCancelled }),
+    business: { name, brandColor: profile?.brand_color ?? null }, invoiceNumber: a.number, amountMinor: toMinor(a.amount_minor), currency: a.currency, reference: a.reference, isTest: a.is_test,
+    description: describeReturn({ attemptStatus: a.status, payment, invoiceStatus: a.invoice_status, ageMinutes: minutesBetween(a.created_at, now), saidCancelled, isTest: a.is_test }),
   };
 }
 
 /** What the page a provider sends the customer back to shows. The reference is not the invoice's link: it reaches this one checkout's outcome and nothing else. */
 export async function loadReturn(reference: string, ctx: PublicContext & { saidCancelled?: boolean }): Promise<ReturnResult> {
+  if (invoicesPublicDisabled()) return { state: "disabled" };
   if (!(await allowed(STATUS_BY_IP, ctx.ip))) return { state: "rate_limited" };
   return withSystem(async (db): Promise<ReturnResult> => {
     const a = await findByReference(db, reference);
@@ -320,16 +340,18 @@ export interface InvoiceStatusView {
 }
 
 /** The invoice's own payment status, by its link, for a page that stays open. "paid" appears only when the database says paid. */
-export async function paymentStatusByToken(token: string, ctx: PublicContext): Promise<{ state: "ok"; status: InvoiceStatusView } | { state: "invalid" } | { state: "rate_limited" }> {
+export async function paymentStatusByToken(token: string, ctx: PublicContext): Promise<{ state: "ok"; status: InvoiceStatusView } | { state: "invalid" } | { state: "rate_limited" } | { state: "unavailable" } | { state: "disabled" }> {
+  if (invoicesPublicDisabled()) return { state: "disabled" };
   if (!(await allowed(STATUS_BY_IP, ctx.ip))) return { state: "rate_limited" };
   return withSystem(async (db) => {
     const row = await findByToken(db, token);
     if (!row || !isCurrency(row.currency)) return { state: "invalid" as const };
+    if (await workspaceTakesNoCustomers(db, row.org_id)) return { state: "unavailable" as const };
     const pending = (await db.query("select 1 from customer_payments where invoice_id = $1 and org_id = $2 and status = 'pending' limit 1", [row.id, row.org_id])).rows.length > 0;
     const balanceMinor = toMinor(row.balance_minor);
     return {
       state: "ok" as const,
-      status: { paymentStatus: row.payment_status, balanceMinor, currency: row.currency, hasPendingPayment: pending, banner: invoiceBanner({ paymentStatus: row.payment_status, balanceMinor, hasPendingPayment: pending, canPayOnline: balanceMinor > 0, overdue: false }) },
+      status: { paymentStatus: row.payment_status, balanceMinor, currency: row.currency, hasPendingPayment: pending, banner: invoiceBanner({ paymentStatus: row.payment_status, balanceMinor, hasPendingPayment: pending, canPayOnline: balanceMinor > 0, overdue: false, isTest: row.is_test }) },
     };
   });
 }
@@ -345,6 +367,7 @@ export type CaptureResult = { ok: true } | { ok: false; reason: "invalid" | "rat
  * one this product stored for the reference. What the provider answers is read back like any other checkout and becomes a receipt: nothing is counted here.
  */
 export async function completeApprovedCheckout(reference: string, providerCheckoutId: string, ctx: PublicContext, deps: { providerFor?: ProviderResolver } = {}): Promise<CaptureResult> {
+  if (invoicesPublicDisabled()) return { ok: false, reason: "unavailable" };
   if (!(await allowed(CAPTURE_BY_IP, ctx.ip))) return { ok: false, reason: "rate_limited" };
   const now = ctx.now ?? new Date();
   const resolve = deps.providerFor ?? providerFor;

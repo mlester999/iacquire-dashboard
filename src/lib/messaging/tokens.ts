@@ -181,8 +181,8 @@ export function sampleTokenValues(overrides: TokenValues = {}): Record<TokenKey,
 // Finding tokens
 // ---------------------------------------------------------------------------
 
-/** A well-formed placeholder: two braces, anything but braces, two braces. Whitespace inside is allowed and ignored. */
-const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
+/** A well-formed placeholder: two braces, anything but braces, two braces. Whitespace inside is allowed and ignored (callers trim the capture: a \s* beside it made a long run of spaces take minutes). */
+const PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
 
 export interface TokenOccurrence {
   /** Exactly as written, braces included. */

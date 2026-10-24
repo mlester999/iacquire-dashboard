@@ -26,6 +26,8 @@ drop function app.signature_events_append_only();
 drop function app.signature_requests_guard();
 
 delete from role_permissions where permission = 'proposals.connect';
+-- A workspace a Super Admin had switched electronic signing on for loses that switch with the tables it was for, so applying 0092 again leaves it off.
+delete from org_features where feature = 'esign';
 
 -- After a rollback the ledger row remains: delete it so the migration can be applied again.
 --   delete from schema_migrations where version = '0092_esign';

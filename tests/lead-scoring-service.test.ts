@@ -3,6 +3,7 @@
 // or spends on another. The model is a stub: no request leaves the machine.
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { adjustCredits } from "@/server/billing/ledger";
 import { AppError } from "@/server/errors";
 import { createContact, updateContact } from "@/server/crm/contacts";
 import { createCustomField, setRecordFields } from "@/server/crm/fields";
@@ -26,6 +27,8 @@ const denied = async (p: Promise<unknown>, pattern: RegExp) => {
 };
 const ago = (ms: number) => new Date(Date.now() - ms);
 const HOUR = 3_600_000;
+/** The model is asked only for a workspace with credit (tests/lead-scoring-ai-gate.test.ts covers the refusals), so the ones that expect a call start with some. */
+const giveCredit = (w: CrmOrg) => withSystem((db) => adjustCredits(db, { orgId: w.org.id, deltaMicros: 5_000_000, reason: "seed credit for tests", userId: w.people.owner.id }));
 const phoneNo = () => callerNumber();
 
 async function lead(w: CrmOrg, over: { name?: string; source?: string; city?: string; email?: string } = {}) {
@@ -228,6 +231,7 @@ describe("reassessment", () => {
 
   it("keeps the request when something newer was asked for while the assessment ran", async () => {
     const w = await crmOrg();
+    await giveCredit(w);
     const { id, phone } = await lead(w);
     await chat(w, phone);
     await withSystem((db) => db.query("update lead_scoring_profiles set ai_extraction_enabled = true where org_id = $1", [w.org.id]).catch(() => null));
@@ -386,6 +390,7 @@ describe("the optional model", () => {
 
   async function aiOrg(limit = 100) {
     const w = await crmOrg();
+    await giveCredit(w);
     await saveProfile(w.actor("owner"), { expectedVersion: 0, aiExtractionEnabled: true, aiDailyLimit: limit });
     return w;
   }

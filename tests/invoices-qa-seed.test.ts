@@ -3,18 +3,18 @@
 import { describe, expect, it } from "vitest";
 import { seedInvoiceWorld } from "../scripts/invoices-qa-world";
 import { attributionReport } from "@/server/attribution/report";
-import { getInvoiceDetail } from "@/server/invoices/invoices";
+import { getInvoiceDetail, receivablesSummary } from "@/server/invoices/invoices";
 import { loadPublicInvoice } from "@/server/invoices/public";
 import { freshIp, invoiceOrg, rows } from "./support/invoices";
 
 const world = (io: Awaited<ReturnType<typeof invoiceOrg>>, over: Parameters<typeof seedInvoiceWorld>[1] = {}) => seedInvoiceWorld({ owner: io.ctx("owner"), ownerActor: io.c.actor("owner"), sales: io.ctx("sales") }, over);
 
 describe("the invoices QA world", () => {
-  it("builds fourteen invoices in the states it describes, with customer links that open the right pages, and sends nothing to anyone", async () => {
+  it("builds sixteen invoices in the states it describes, two of them test invoices, with customer links that open the right pages, and sends nothing to anyone", async () => {
     const io = await invoiceOrg();
     const outboxBefore = (await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n;
     const out = await world(io);
-    expect(out).toHaveLength(14);
+    expect(out).toHaveLength(16);
     const by = (title: string) => out.find((r) => r.title === title)!;
     const detail = (title: string) => getInvoiceDetail(io.ctx("owner"), by(title).invoiceId);
     const status = async (title: string) => { const d = await detail(title); return `${d.invoice.status}/${d.invoice.paymentStatus}`; };
@@ -22,7 +22,9 @@ describe("the invoices QA world", () => {
     // Numbers are given when an invoice is issued: the draft and the one waiting for approval have none.
     expect(by("Bathroom faucet replacement").number).toBeNull();
     expect(by("Leak detection survey").number).toBeNull();
-    expect(out.filter((r) => r.number).map((r) => r.number)).toEqual(Array.from({ length: 12 }, (_, i) => `INV-${String(i + 1).padStart(4, "0")}`));
+    // Real invoices are numbered INV-0001 on; the two test invoices have a counter of their own, so the real sequence has no gap for them.
+    expect(out.filter((r) => r.number && !r.number.startsWith("TEST-")).map((r) => r.number)).toEqual(Array.from({ length: 12 }, (_, i) => `INV-${String(i + 1).padStart(4, "0")}`));
+    expect(out.filter((r) => r.number?.startsWith("TEST-")).map((r) => r.number)).toEqual(["TEST-0001", "TEST-0002"]);
     expect(await status("Bathroom faucet replacement")).toBe("draft/unpaid");
     expect(await status("Leak detection survey")).toBe("pending_approval/unpaid");
     expect(await status("Annual boiler service")).toBe("issued/unpaid");
@@ -32,7 +34,7 @@ describe("the invoices QA world", () => {
     expect(await status("Kitchen repipe")).toBe("issued/partially_paid");
     expect(await status("Drain clearing")).toBe("issued/paid");
     expect(await status("Sump pump installation")).toBe("issued/paid");
-    expect((await detail("Sump pump installation")).payments[0]).toMatchObject({ status: "partially_refunded", livemode: false, provider: "simulated" });
+    expect((await detail("Sump pump installation")).payments[0]).toMatchObject({ status: "partially_refunded", livemode: true, provider: "manual" });
     expect(await status("Gas line check")).toBe("void/unpaid");
     expect((await detail("Remote monitoring set-up")).invoice).toMatchObject({ currency: "USD", taxInclusive: true });
     expect((await detail("Seasonal tune-up")).invoice.writtenOffAt).not.toBeNull();
@@ -42,6 +44,21 @@ describe("the invoices QA world", () => {
     expect((await detail("Radiator bleed")).payments).toEqual([expect.objectContaining({ status: "needs_review" })]);
     expect(await status("Whole-house water filter")).toBe("issued/paid");
     expect(await status("Sprinkler repair")).toBe("issued/paid");
+    // The test invoices: marked, kept out of what is owed, one paid at the testing checkout with a test-mode payment and the other open for a customer to pay there.
+    const paidTest = await detail("Testing the payment account: paid");
+    const openTest = await detail("Testing the payment account: open");
+    expect(paidTest.invoice).toMatchObject({ isTest: true, number: "TEST-0001", status: "issued", paymentStatus: "paid" });
+    expect(paidTest.payments).toEqual([expect.objectContaining({ livemode: false, provider: "simulated", status: "succeeded" })]);
+    expect(openTest.invoice).toMatchObject({ isTest: true, number: "TEST-0002", status: "issued", paymentStatus: "unpaid" });
+    expect((await rows<{ n: string }>("select count(*)::text as n from customer_invoices where org_id = $1 and is_test", [io.orgId]))[0].n).toBe("2");
+    // No real invoice holds test money, and no test invoice holds anything else.
+    expect(await rows("select 1 from customer_payments p join customer_invoices i on i.id = p.invoice_id where i.org_id = $1 and p.livemode = i.is_test", [io.orgId])).toEqual([]);
+    const summary = await receivablesSummary(io.ctx("owner"));
+    expect(summary.testInvoices).toBe(2);
+    const openPage = await loadPublicInvoice(by("Testing the payment account: open").customerPath!.split("/pay/")[1], { ip: freshIp() });
+    expect(openPage.state === "ok" && openPage.invoice).toMatchObject({ isTest: true, canPayOnline: true, banner: { kind: "test" } });
+    const realPage = await loadPublicInvoice(by("Annual boiler service").customerPath!.split("/pay/")[1], { ip: freshIp() });
+    expect(realPage.state === "ok" && realPage.invoice).toMatchObject({ isTest: false, canPayOnline: false });
 
     // Each customer link opens its own invoice; a void invoice and the drafts have none.
     for (const r of out) {
@@ -77,6 +94,7 @@ describe("the invoices QA world", () => {
     const io = await invoiceOrg();
     const out = await world(io, { revenueFiction: false });
     expect(out).toHaveLength(12);
+    expect(out.filter((r) => r.number?.startsWith("TEST-"))).toHaveLength(2);
     expect((await rows<{ n: string }>("select count(*)::text as n from customer_payments where org_id = $1 and provider = 'paymongo'", [io.orgId]))[0].n).toBe("0");
     const report = await attributionReport(io.c.actor("owner"), { startsAt: new Date(Date.now() - 86_400_000), endsAt: new Date(Date.now() + 86_400_000) });
     expect(report.rows.every((r) => r.verifiedRevenue.length === 0)).toBe(true);

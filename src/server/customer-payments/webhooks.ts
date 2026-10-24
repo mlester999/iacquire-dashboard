@@ -8,7 +8,8 @@ import { isPaymentProvider, PUBLIC_KEY_RE, type PaymentProviderId } from "@/lib/
 import { emptyEvent, looksLikeOurReference, type NormalizedEvent } from "@/lib/invoices/payment-events";
 import { credentialVault } from "@/server/customer-payments/credentials";
 import { isFinished, markReceiptError, processReceipt, runEffects, storeReceipt, type ProcessDeps } from "@/server/customer-payments/events";
-import { providerFor } from "@/server/customer-payments/providers";
+import { providerFor, type ProviderResolver } from "@/server/customer-payments/providers";
+import { paymentSwitches } from "@/server/customer-payments/switches";
 import type { HeaderReader } from "@/server/customer-payments/providers/types";
 
 // The address a business's payment provider delivers its webhooks to: /api/webhooks/customer-payments/<provider>/<connection key>. There is no session. The
@@ -17,7 +18,8 @@ import type { HeaderReader } from "@/server/customer-payments/providers/types";
 //
 // Order: look the connection up from the address, open its secret, verify the signature (all of these failing answers are one and the same bare 403, so a caller
 // learns nothing about which keys exist, and nothing is stored for a request that was not authenticated), read the event, commit its receipt (transaction 1), apply it
-// (transaction 2) and, if that fails, record the failure (transaction 3) and answer 500 so the provider sends it again.
+// (transaction 2) and, if that fails, record the failure (transaction 3) and answer 500 so the provider sends it again. A provider whose deliveries can only be checked by
+// calling it (PayPal) is answered 503 with Retry-After, before any lookup, while the environment's switch for real provider calls is off.
 
 /** The largest delivery accepted. Real events are a few kilobytes. */
 export const MAX_BODY_BYTES = 256_000;
@@ -43,10 +45,15 @@ export interface WebhookInput {
 }
 
 export interface WebhookResult {
-  status: 200 | 403 | 413 | 429 | 500;
+  status: 200 | 403 | 413 | 429 | 500 | 503;
   body: Record<string, unknown>;
   outcome?: string;
+  /** For a 503: when the provider should send the delivery again. */
+  retryAfterSeconds?: number;
 }
+
+/** How long a provider is asked to wait when a delivery is turned away until real provider calls are switched on. PayPal retries for a few days, so a short wait costs nothing. */
+export const SWITCHED_OFF_RETRY_SECONDS = 600;
 
 const forbidden = (): WebhookResult => ({ status: 403, body: { error: "forbidden" }, outcome: "rejected" });
 const ok = (outcome: string): WebhookResult => ({ status: 200, body: { received: true, outcome }, outcome });
@@ -65,6 +72,15 @@ function spendTheSameEffort(rawBody: string) {
   crypto.createHmac("sha256", "customer-payments-decoy").update(rawBody).digest();
 }
 
+/** Whether this provider's deliveries are checked by asking the provider. A provider the server cannot use at all (the simulated one in production) is not one. */
+function verifiesRemotely(resolve: ProviderResolver, provider: PaymentProviderId): boolean {
+  try {
+    return resolve(provider).verifiesRemotely === true;
+  } catch {
+    return false;
+  }
+}
+
 /** An event the business's other sales produce: this product only ever issues references of its own shape, so a payment without one is not ours and is not stored. */
 const isForeignPayment = (e: NormalizedEvent) => (e.kind === "payment.succeeded" || e.kind === "payment.failed" || e.kind === "payment.pending") && !looksLikeOurReference(e.reference);
 
@@ -79,6 +95,12 @@ export async function handleCustomerPaymentWebhook(input: WebhookInput, deps: Pr
   if (input.ip) {
     const limit = await consumeRateLimit(BY_IP, hashIp(input.ip) ?? "unknown");
     if (!limit.allowed) return { status: 429, body: { error: "rate_limited" } };
+  }
+  // A provider that checks a delivery by being asked (PayPal) costs two real calls with the business's own credentials, and the environment's calls switch says no real
+  // provider is called while it is off. So the delivery is turned away, before the connection is even looked up (every address gets the same answer), with a retry: nothing is
+  // stored, and once the switch is on the provider's retry, or the scheduled check of open checkouts, records the payment.
+  if (!paymentSwitches().writesEnabled && verifiesRemotely(resolve, input.provider)) {
+    return { status: 503, body: { received: false, error: "unavailable" }, outcome: "unavailable", retryAfterSeconds: SWITCHED_OFF_RETRY_SECONDS };
   }
 
   const conn = (await withSystem((db) =>

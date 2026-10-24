@@ -6,7 +6,9 @@ import { checkoutBlock, type CheckoutAudience, type CheckoutBlock, type Connecti
 import type { AttemptFacts } from "@/lib/invoices/payment-events";
 import { addInvoiceEvent, toMinor } from "@/server/invoices/core";
 import { INVOICES_NOT_ENABLED_MESSAGE, invoicesEnabledIn } from "@/server/invoices/feature";
+import { workspaceTakesNoCustomers } from "@/server/invoices/workspace-gate";
 import { credentialVault } from "@/server/customer-payments/credentials";
+import { flagRefusedKey } from "@/server/customer-payments/key-refused";
 import { newReference } from "@/server/customer-payments/ids";
 import { returnUrlsFor } from "@/server/customer-payments/links";
 import { paymentSwitches } from "@/server/customer-payments/switches";
@@ -37,19 +39,27 @@ export interface AttemptRow {
   status: "created" | "redirected" | "succeeded" | "failed" | "expired" | "cancelled" | "needs_review";
   expires_at: Date | null;
   created_at: Date;
+  /** Whether the invoice this checkout is for is a test invoice (read with the attempt by its reference). */
+  invoice_is_test?: boolean;
 }
 
 export const ATTEMPT_COLUMNS = "id, org_id, invoice_id, connection_id, currency, amount_minor::text as amount_minor, reference, provider_checkout_id, status, expires_at, created_at";
 
 /** The attempt this connection issued under a reference. The lookup names the connection, so a reference from another workspace is simply not found. */
 export async function attemptByReference(db: Queryable, connectionId: string, reference: string, lock = false): Promise<AttemptRow | null> {
-  const { rows } = await db.query<AttemptRow>(`select ${ATTEMPT_COLUMNS} from customer_payment_attempts where connection_id = $1 and reference = $2${lock ? " for update" : ""}`, [connectionId, reference]);
+  const { rows } = await db.query<AttemptRow>(
+    `select ${ATTEMPT_COLUMNS}, (select i.is_test from customer_invoices i where i.id = customer_payment_attempts.invoice_id and i.org_id = customer_payment_attempts.org_id) as invoice_is_test
+     from customer_payment_attempts where connection_id = $1 and reference = $2${lock ? " for update" : ""}`, [connectionId, reference],
+  );
   return rows[0] ?? null;
 }
 
 export function attemptFacts(a: AttemptRow, now: Date): AttemptFacts {
   const age = (now.getTime() - new Date(a.created_at).getTime()) / 1000;
-  return { reference: a.reference, checkoutId: a.provider_checkout_id, settingUp: a.provider_checkout_id === null && a.status === "created" && age < SETTING_UP_SECONDS, amountMinor: toMinor(a.amount_minor), currency: a.currency };
+  return {
+    reference: a.reference, checkoutId: a.provider_checkout_id, settingUp: a.provider_checkout_id === null && a.status === "created" && age < SETTING_UP_SECONDS, amountMinor: toMinor(a.amount_minor), currency: a.currency,
+    invoiceIsTest: a.invoice_is_test === true,
+  };
 }
 
 interface ConnRow {
@@ -109,21 +119,28 @@ export async function startCheckout(input: StartCheckoutInput, deps: { providerF
   const actor = input.actorUserId ? { id: input.actorUserId, kind: "user" as const } : { id: null, kind: "customer" as const };
 
   const plan = await withSystem(async (db): Promise<Plan> => {
-    const inv = (await db.query<{ status: string; payment_status: string; currency: CurrencyCode; balance_minor: string; written_off_at: Date | null; number: string | null }>(
-      "select status, payment_status, currency, balance_minor::text as balance_minor, written_off_at, number from customer_invoices where id = $1 and org_id = $2 for update", [input.invoiceId, input.orgId],
+    const inv = (await db.query<{ status: string; payment_status: string; currency: CurrencyCode; balance_minor: string; written_off_at: Date | null; number: string | null; is_test: boolean }>(
+      "select status, payment_status, currency, balance_minor::text as balance_minor, written_off_at, number, is_test from customer_invoices where id = $1 and org_id = $2 for update", [input.invoiceId, input.orgId],
     )).rows[0];
     if (!inv) throw new AppError("not_found", "That invoice was not found.");
     // Switching invoicing off for a workspace stops new payments from being started (a payment already on its way is still recorded when it arrives).
     if (!(await invoicesEnabledIn(db, input.orgId))) return { kind: "refused", error: input.audience === "public" ? unavailable("public", null) : new AppError("not_enabled", INVOICES_NOT_ENABLED_MESSAGE) };
+    // A workspace that takes no customers (suspended, archived, paused by iAcquire) starts no checkout for one: this is the one door every customer payment goes through.
+    if (input.audience === "public" && (await workspaceTakesNoCustomers(db, input.orgId))) return { kind: "refused", error: unavailable("public", null) };
     if (inv.status !== "issued") throw unavailable(input.audience, null, inv.status === "void" ? "This invoice is void, so it cannot be paid." : "This invoice has not been issued yet.");
     if (inv.written_off_at) throw unavailable(input.audience, null, "This invoice was written off, so it can no longer be paid online.");
     if (inv.payment_status === "disputed") throw unavailable(input.audience, null, "A payment on this invoice is disputed. Resolve that before taking another.");
     const balance = toMinor(inv.balance_minor);
     if (balance <= 0) throw new AppError("conflict", input.audience === "public" ? "This invoice has already been paid." : "This invoice has nothing left to pay.");
 
-    const conns = (await db.query<ConnRow>(
+    // Test money and real money never meet: a test invoice is paid only through an account in test mode and a real invoice only through a live one, so a test payment never
+    // lands on an invoice a customer owes and a live account is never asked to take a test.
+    const wantMode: ConnectionMode = inv.is_test ? "test" : "live";
+    if (input.onlyMode && input.onlyMode !== wantMode) throw unavailable(input.audience, null, inv.is_test ? "This is a test invoice, so it is paid through an account in test mode only." : "This is a real invoice, so it cannot be paid as a test. Only a test invoice can.");
+    const everyConn = (await db.query<ConnRow>(
       "select id, provider, mode, status, credentials, supported_currencies, authorized_at, live_confirmed_at from customer_payment_connections where org_id = $1 and status <> 'revoked'", [input.orgId],
-    )).rows.filter((c) => !input.onlyMode || c.mode === input.onlyMode).sort((a, b) => PROVIDER_ORDER.indexOf(a.provider) - PROVIDER_ORDER.indexOf(b.provider));
+    )).rows;
+    const conns = everyConn.filter((c) => c.mode === wantMode).sort((a, b) => PROVIDER_ORDER.indexOf(a.provider) - PROVIDER_ORDER.indexOf(b.provider));
     let firstBlock: CheckoutBlock | null = null;
     let usable: ConnRow | null = null;
     for (const c of conns) {
@@ -141,7 +158,14 @@ export async function startCheckout(input: StartCheckoutInput, deps: { providerF
       usable = c;
       break;
     }
-    if (!usable) return { kind: "refused", error: unavailable(input.audience, firstBlock ?? { code: "not_connected", message: input.onlyMode === "test" ? "No payment account in test mode is connected." : "No payment account is connected." }) };
+    if (!usable) {
+      const none: CheckoutBlock = {
+        code: "not_connected",
+        message: inv.is_test ? "No payment account in test mode is connected."
+          : everyConn.length ? "This is a real invoice, and the payment account connected is in test mode, which takes only test invoices." : "No payment account is connected.",
+      };
+      return { kind: "refused", error: unavailable(input.audience, firstBlock ?? none) };
+    }
 
     const open = (await db.query<AttemptRow & { checkout_url: string | null }>(`select ${ATTEMPT_COLUMNS}, checkout_url from customer_payment_attempts where invoice_id = $1 and org_id = $2 and status in ('created', 'redirected') for update`, [input.invoiceId, input.orgId])).rows[0];
     if (open) {
@@ -187,6 +211,11 @@ export async function startCheckout(input: StartCheckoutInput, deps: { providerF
     // Unreachable: the provider may have made the checkout and the answer was lost, so the attempt stays open (nobody starts a second one) until the reconcile job closes
     // it. Anything else is a definite "no": the attempt is closed now and the payer can try again.
     if (!outcomeUnknown) await withSystem((db) => db.query("update customer_payment_attempts set status = 'failed' where id = $1 and status = 'created'", [plan.attemptId]));
+    // The provider answered that it does not accept the saved key (401 or 403, not just any refusal, such as a currency it cannot take): the connection says so now, instead of
+    // offering Pay online to the next customer until the daily check notices.
+    if (e instanceof ProviderCallError && e.kind === "rejected" && (e.httpStatus === 401 || e.httpStatus === 403)) {
+      await withSystem((db) => flagRefusedKey(db, { id: plan.connectionId, orgId: input.orgId }, e.message, now)).catch(() => undefined);
+    }
     if (e instanceof ProviderCallError) {
       throw new AppError(outcomeUnknown ? "upstream_error" : "integration_unavailable", input.audience === "public"
         ? "The payment page could not be opened just now. Nothing was charged. Please try again in a few minutes."

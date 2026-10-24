@@ -33,6 +33,7 @@ describe("what counts as verified revenue", () => {
     if (p.receivedAt > ASOF) return "not_money";
     if (p.status === "disputed") return "held";
     if (!["succeeded", "partially_refunded", "refunded"].includes(p.status)) return "not_money";
+    if (p.invoiceIsTest) return "test";
     if (p.verification === "manual") return "by_hand";
     return p.livemode && (p.provider === "paymongo" || p.provider === "paypal") ? "verified" : "test";
   };
@@ -40,8 +41,8 @@ describe("what counts as verified revenue", () => {
   it("classifies every combination of provider, who vouched for it, mode, status and date, and only a live provider-confirmed payment already received is verified", () => {
     let verified = 0;
     let total = 0;
-    for (const provider of ["paymongo", "paypal", "simulated", "manual"] as const) for (const verification of ["provider_confirmed", "manual"] as const) for (const livemode of [false, true]) for (const status of STATUSES) for (const receivedAt of [BEFORE, ASOF, AFTER]) {
-      const p: PaymentFacts = { provider, verification, livemode, status, receivedAt };
+    for (const provider of ["paymongo", "paypal", "simulated", "manual"] as const) for (const verification of ["provider_confirmed", "manual"] as const) for (const livemode of [false, true]) for (const status of STATUSES) for (const receivedAt of [BEFORE, ASOF, AFTER]) for (const invoiceIsTest of [false, true]) {
+      const p: PaymentFacts = { provider, verification, livemode, status, receivedAt, invoiceIsTest };
       const c = classifyPayment(p, ASOF);
       expect(c, JSON.stringify(p)).toBe(expected(p));
       total += 1;
@@ -50,11 +51,12 @@ describe("what counts as verified revenue", () => {
         expect(verification).toBe("provider_confirmed");
         expect(livemode).toBe(true);
         expect(["paymongo", "paypal"]).toContain(provider);
+        expect(invoiceIsTest).toBe(false);
         expect(["succeeded", "partially_refunded", "refunded"]).toContain(status);
         expect(receivedAt.getTime()).toBeLessThanOrEqual(ASOF.getTime());
       }
     }
-    expect(total).toBe(4 * 2 * 2 * 7 * 3);
+    expect(total).toBe(4 * 2 * 2 * 7 * 3 * 2);
     expect(verified).toBeGreaterThan(0);
     expect(COUNTED_PAYMENT_STATUSES).toEqual(["succeeded", "partially_refunded", "refunded"]);
   });
@@ -67,6 +69,9 @@ describe("what counts as verified revenue", () => {
     for (const status of ["pending", "failed", "needs_review"] as const) expect(classifyPayment({ ...base, status }, ASOF)).toBe("not_money");
     expect(classifyPayment({ ...base, status: "disputed" }, ASOF)).toBe("held");
     expect(classifyPayment({ ...base, receivedAt: AFTER }, ASOF)).toBe("not_money");
+    // Nothing on a test invoice is revenue, however the payment looks, and a hand-recorded one on it is not "recorded by hand" money either.
+    expect(classifyPayment({ ...base, invoiceIsTest: true }, ASOF)).toBe("test");
+    expect(classifyPayment({ ...base, provider: "manual", verification: "manual", invoiceIsTest: true }, ASOF)).toBe("test");
     expect(classifyPayment({ ...base, provider: "manual", verification: "manual" }, ASOF)).toBe("by_hand");
   });
 });
@@ -164,9 +169,27 @@ interface Seeded {
   refunds: Array<{ amountMinor: number; taxPortionMinor: number; status: "succeeded" | "pending" | "failed" }>;
 }
 
+/**
+ * Random payments, some on real invoices and some on TEST invoices. In life a test invoice takes only test-mode payments and a real invoice only live ones (the database insists);
+ * here that guard is switched off while the rows are made, so the report's rule that nothing on a test invoice is revenue is tried against every combination, not only the
+ * ones the guard lets through.
+ */
 async function seed(io: InvoiceOrg, contactId: string, asOf: Date, r: () => number, count: number): Promise<Seeded[]> {
   const invoices = { PHP: [] as string[], USD: [] as string[] };
-  for (const currency of ["PHP", "USD"] as const) for (let i = 0; i < 3; i += 1) invoices[currency].push((await issuedInvoice(io, { contactId, currency })).invoice.id);
+  const testInvoices = { PHP: [] as string[], USD: [] as string[] };
+  for (const currency of ["PHP", "USD"] as const) {
+    for (let i = 0; i < 3; i += 1) invoices[currency].push((await issuedInvoice(io, { contactId, currency })).invoice.id);
+    for (let i = 0; i < 2; i += 1) testInvoices[currency].push((await issuedInvoice(io, { contactId, currency, isTest: true })).invoice.id);
+  }
+  await withSystem((db) => db.query("alter table customer_payments disable trigger customer_payments_guard"));
+  try {
+    return await seedPayments(io, asOf, r, count, invoices, testInvoices);
+  } finally {
+    await withSystem((db) => db.query("alter table customer_payments enable trigger customer_payments_guard"));
+  }
+}
+
+async function seedPayments(io: InvoiceOrg, asOf: Date, r: () => number, count: number, invoices: Record<"PHP" | "USD", string[]>, testInvoices: Record<"PHP" | "USD", string[]>): Promise<Seeded[]> {
   const connections = { paymongo: await connectionFor(io, { provider: "paymongo", mode: "live" }), paypal: await connectionFor(io, { provider: "paypal", mode: "live" }), simulated: await connectionFor(io, { provider: "simulated", mode: "test" }) };
   const out: Seeded[] = [];
   for (let n = 0; n < count; n += 1) {
@@ -178,8 +201,9 @@ async function seed(io: InvoiceOrg, contactId: string, asOf: Date, r: () => numb
     const status = pick(r, STATUSES);
     // Some payments are dated after the report, which must leave them out.
     const receivedAt = new Date(asOf.getTime() + (r() < 0.12 ? int(r, 1, 20) * 3_600_000 : -int(r, 1, 240) * 3_600_000));
-    const facts: PaymentFacts = { provider, verification: manual ? "manual" : "provider_confirmed", livemode: manual ? true : r() < 0.7, status, receivedAt };
-    const invoiceId = pick(r, invoices[currency]);
+    const onTest = r() < 0.3;
+    const facts: PaymentFacts = { provider, verification: manual ? "manual" : "provider_confirmed", livemode: manual ? true : r() < 0.7, status, receivedAt, invoiceIsTest: onTest };
+    const invoiceId = pick(r, onTest ? testInvoices[currency] : invoices[currency]);
     const id = (await withSystem((db) => db.query<{ id: string }>(
       `insert into customer_payments (org_id, invoice_id, connection_id, provider, provider_payment_id, amount_minor, tax_portion_minor, currency, livemode, verification, status, received_at, evidence)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,

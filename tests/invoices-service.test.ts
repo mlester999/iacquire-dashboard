@@ -487,15 +487,16 @@ describe("reading", () => {
     await issuedInvoice(io, { currency: "PHP", lines: [line({ unitPrice: "1000" })] }, NOW);
     await issuedInvoice(io, { currency: "PHP", lines: [line({ unitPrice: "500" })], dueOn: "2026-10-24" }, NOW);
     await providerPayment(io, usd.invoice.id, conn, 5000, { currency: "USD", livemode: true });
-    // A payment the provider ran in test mode counts toward its invoice but is not money received, and is shown apart.
-    await providerPayment(io, usd.invoice.id, conn, 2500, { currency: "USD" });
+    // A test invoice, paid in a provider's test mode, is in none of it: nothing is owed on a test, and no money moved.
+    const test = await issuedInvoice(io, { isTest: true, currency: "USD", lines: [line({ unitPrice: "100" })] }, NOW);
+    await providerPayment(io, test.invoice.id, conn, 2500, { currency: "USD" });
     await draftBy(io, "owner");
     await submittedInvoice(io, "sales");
     const s = await receivablesSummary(io.ctx("owner"), { now: new Date("2026-11-30T00:00:00Z") });
     expect(s.byCurrency.map((r) => r.currency)).toEqual(["PHP", "USD"]);
-    expect(s.byCurrency[0]).toMatchObject({ currency: "PHP", outstandingMinor: 150000, overdueMinor: 150000, openCount: 2, overdueCount: 2, netReceivedMinor: 0, testPaidMinor: 0 });
-    expect(s.byCurrency[1]).toMatchObject({ currency: "USD", outstandingMinor: 12500, openCount: 1, netReceivedMinor: 5000, testPaidMinor: 2500 });
-    expect(s).toMatchObject({ drafts: 1, pendingApproval: 1 });
+    expect(s.byCurrency[0]).toMatchObject({ currency: "PHP", outstandingMinor: 150000, overdueMinor: 150000, openCount: 2, overdueCount: 2, netReceivedMinor: 0 });
+    expect(s.byCurrency[1]).toMatchObject({ currency: "USD", outstandingMinor: 15000, openCount: 1, netReceivedMinor: 5000 });
+    expect(s).toMatchObject({ drafts: 1, pendingApproval: 1, testInvoices: 1 });
     const early = await receivablesSummary(io.ctx("owner"), { now: new Date("2026-10-23T00:00:00Z") });
     expect(early.byCurrency[0]).toMatchObject({ currency: "PHP", overdueMinor: 0, overdueCount: 0 });
   });

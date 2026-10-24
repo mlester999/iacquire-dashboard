@@ -35,6 +35,7 @@ interface InvoiceFacts {
   contact_id: string | null;
   opportunity_id: string | null;
   company_id: string | null;
+  is_test: boolean;
 }
 
 interface DealFacts {
@@ -61,7 +62,7 @@ const recordApplied = (db: Queryable, orgId: string, invoiceId: string, detail: 
 export async function runCloseRule(orgId: string, invoiceId: string): Promise<CloseRuleOutcome> {
   // Step 1, one transaction: read the facts, decide, and for a task create it and record that the rule acted.
   const first = await withSystem(async (db): Promise<{ outcome: CloseRuleOutcome; inv: InvoiceFacts | null; deal: DealFacts | null; rule: string }> => {
-    const inv = (await db.query<InvoiceFacts>("select id, number, closes_deal, status, payment_status, contact_id, opportunity_id, company_id from customer_invoices where id = $1 and org_id = $2", [invoiceId, orgId])).rows[0];
+    const inv = (await db.query<InvoiceFacts>("select id, number, closes_deal, status, payment_status, contact_id, opportunity_id, company_id, is_test from customer_invoices where id = $1 and org_id = $2", [invoiceId, orgId])).rows[0];
     if (!inv) return { outcome: { decision: { action: "none", reason: "not_fully_paid" }, note: "The invoice was not found." }, inv: null, deal: null, rule: "none" };
     const settings = await readSettings(db, orgId);
     const deal = inv.opportunity_id
@@ -75,7 +76,7 @@ export async function runCloseRule(orgId: string, invoiceId: string): Promise<Cl
     )).rows[0];
     const decision = decideCloseRule({
       rule: settings.closeRule, closesDeal: inv.closes_deal, invoiceStatus: inv.status, paymentStatus: inv.payment_status, hasDispute: flags.dispute, dealStatus: deal?.status ?? null,
-      allProviderConfirmed: !flags.manual, countManualAsVerified: settings.countManualAsVerified, alreadyApplied: flags.applied, hasTestPayment: flags.test,
+      allProviderConfirmed: !flags.manual, countManualAsVerified: settings.countManualAsVerified, alreadyApplied: flags.applied, hasTestPayment: flags.test, isTest: inv.is_test,
     });
     if (decision.action !== "task") return { outcome: { decision }, inv, deal, rule: settings.closeRule };
     const task = await askPerson(db, orgId, inv, deal?.assigned_user_id ?? null, {
@@ -127,7 +128,7 @@ export async function runRefundReview(orgId: string, invoiceId: string, refundId
     if (!won) return { taskId: null };
     const done = await db.query("select 1 from customer_invoice_events where invoice_id = $1 and org_id = $2 and kind = 'refund_review_task' and detail->>'refundId' = $3", [invoiceId, orgId, refundId]);
     if (done.rows[0]) return { taskId: null };
-    const inv = (await db.query<InvoiceFacts>("select id, number, closes_deal, status, payment_status, contact_id, opportunity_id, company_id from customer_invoices where id = $1 and org_id = $2", [invoiceId, orgId])).rows[0];
+    const inv = (await db.query<InvoiceFacts>("select id, number, closes_deal, status, payment_status, contact_id, opportunity_id, company_id, is_test from customer_invoices where id = $1 and org_id = $2", [invoiceId, orgId])).rows[0];
     const refund = (await db.query<{ amount_minor: string }>("select amount_minor::text as amount_minor from customer_refunds where id = $1 and org_id = $2 and status = 'succeeded'", [refundId, orgId])).rows[0];
     if (!inv || !refund) return { taskId: null };
     const deal = inv.opportunity_id ? (await db.query<{ assigned_user_id: string | null }>("select assigned_user_id from crm_opportunities where id = $1 and org_id = $2 and archived_at is null", [inv.opportunity_id, orgId])).rows[0] : undefined;

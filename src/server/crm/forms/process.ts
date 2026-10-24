@@ -348,10 +348,11 @@ export async function processSubmissionInTx(db: Queryable, id: string, orgId: st
     }
   }
 
-  // A survey's answers saved as private feedback: attributed to the contact this submission made or matched, or to nobody when it gave neither (the score and the follow-up of a
+  // A survey's answers saved as private feedback: attributed to the contact this submission MADE, or to one it matched only when an address it typed is verified for them; an answer
+  // that matches an existing contact only by what was typed waits for a person to confirm the match, and one that gave neither belongs to nobody (the score and the follow-up of a
   // low one are those of an answer given through a review request's link: src/server/reputation/survey-feedback.ts). Keyed to the submission, so a retry saves nothing twice.
   if (mapped.feedback && form.kind === "survey") {
-    const saved = await saveSurveyFeedback(db, actor, { submissionId: s.id, formName: form.name, contactId, feedback: mapped.feedback, receivedAt: new Date(s.created_at), now });
+    const saved = await saveSurveyFeedback(db, actor, { submissionId: s.id, formName: form.name, contactId, contactCreated: createdContact, typed: { email, phone }, feedback: mapped.feedback, receivedAt: new Date(s.created_at), now });
     notes.push(...saved.notes);
   }
 

@@ -54,6 +54,7 @@ export async function recordManualPayment(ctx: OrgContext, invoiceId: string, ra
     const inv = await loadInvoiceRow(db, ctx.org.orgId, invoiceId, true);
     if (!inv) throw new AppError("not_found", "That invoice was not found.");
     if (inv.status !== "issued") throw new AppError("conflict", inv.status === "void" ? "This invoice is void, so no payment can be recorded against it." : "Only an issued invoice can take a payment. Issue it first.");
+    if (inv.is_test) throw new AppError("conflict", "This is a test invoice: nothing is owed on it, so there is nothing to record. Pay it as a test, or void or delete it.");
 
     if (input.idempotencyKey) {
       // Pressing the button twice, or a reloaded form, is the same payment: answer it from the first record before any other check can object to it.
@@ -117,13 +118,14 @@ export async function recordRefund(ctx: OrgContext, paymentId: string, rawInput:
     if (!pay) throw new AppError("not_found", "That payment was not found.");
     const inv = await loadInvoiceRow(db, ctx.org.orgId, pay.invoice_id);
     if (!inv) throw new AppError("not_found", "That invoice was not found.");
+    if (inv.is_test) throw new AppError("conflict", "This is a test invoice: no money moved, so there is nothing to refund. Void or delete the test invoice instead.");
     const amount = asAppError(() => parseAmount(input.amount, inv.currency));
     if (amount <= 0) throw new AppError("invalid_input", "Enter an amount more than zero.");
     const problem = freeTextProblem("The reason", input.reason);
     if (problem) throw new AppError("invalid_input", problem);
     const applied = await applyRefundInTx(db, {
       orgId: ctx.org.orgId, paymentId, amountMinor: amount, source: "manual_record", reason: input.reason, recordedBy: ctx.user.id, idempotencyKey: input.idempotencyKey ?? null,
-      actor: { id: ctx.user.id, kind: "user" },
+      separate: input.separateFromProvider === true, actor: { id: ctx.user.id, kind: "user" },
     });
     if (!applied.duplicate) {
       await recordAudit({

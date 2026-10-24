@@ -5,8 +5,10 @@ import { chargeUsage } from "@/server/billing/ledger";
 import { sanitizeErrorText } from "@/lib/ops";
 import type { LlmUsage } from "@/server/llm/client";
 
-// Metering for model calls the platform pays for. Every AI feature that calls llmComplete calls this once per call, with the token counts the provider reported
-// (the `usage` field of llmComplete's result).
+// Metering for model calls the platform pays for. Every AI feature a workspace uses that calls llmComplete calls this once per call, with the token counts the provider
+// reported (the `usage` field of llmComplete's result). The only callers that do not are AQi (it keeps its own cost accounting), the Super Admin's AQi connection check and the
+// one-token connection ping in Integrations: none has a workspace to charge. tests/llm-callers-metered.test.ts lists them with the reasons and scans the source, so a new caller
+// that neither meters nor is listed fails there. Before a call, src/server/llm/gate.ts says whether the workspace may use the model at all (active, not paused, credit).
 //
 // What it does, per call:
 //   * records one usage line per token unit (input, output) in metered_usage_events, with the workspace, the feature ("ai:<feature>") and the token count;

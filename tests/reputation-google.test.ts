@@ -11,7 +11,7 @@ import {
 } from "@/server/reputation/providers/google";
 import { siteEnvironment } from "@/server/reputation/providers";
 import type { LocationRef } from "@/server/reputation/providers/types";
-import { completeGoogleConnect, connectChosenLocation, pendingLocations, safeReturn, startGoogleConnect, listConnections, STATE_MINUTES } from "@/server/reputation/connections";
+import { completeGoogleConnect, connectChosenLocation, disconnectConnection, pendingLocations, safeReturn, startGoogleConnect, listConnections, STATE_MINUTES } from "@/server/reputation/connections";
 import { setReviews, reviewsShop, one, all, type ReputationShop } from "./support/reputation";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
@@ -422,7 +422,8 @@ describe("the sign-in and the choice of a location", () => {
       const stateId = done.stateId as string;
       // Only the person (in the workspace) who started it can see the choices, and they carry no token.
       expect(await pendingLocations(s.owner, stateId)).toEqual([
-        { accountId: "accounts/777", locationId: "locations/881", title: "Harbor Dental, Main Street", alreadyConnected: false }, { accountId: "accounts/777", locationId: "locations/882", title: "Harbor Dental, Pier", alreadyConnected: false },
+        { accountId: "accounts/777", locationId: "locations/881", title: "Harbor Dental, Main Street", alreadyConnected: false, reconnect: false },
+        { accountId: "accounts/777", locationId: "locations/882", title: "Harbor Dental, Pier", alreadyConnected: false, reconnect: false },
       ]);
       await expectError(pendingLocations(s.manager, stateId), "not_found", /expired/);
       await expectError(pendingLocations(other.owner, stateId), "not_found");
@@ -449,6 +450,57 @@ describe("the sign-in and the choice of a location", () => {
       expect((await pendingLocations(other.owner, theirs.stateId as string)).find((l) => l.locationId === "locations/881")?.alreadyConnected).toBe(true);
       await expectError(connectChosenLocation(other.owner, theirs.stateId as string, { accountId: "accounts/777", locationId: "locations/881" }, { google: g.provider }), "conflict", /already connected to a workspace/);
       expect((await listConnections(other.owner)).filter((c) => c.provider === "google")).toHaveLength(0);
+    });
+
+    const RENEWED = "1//the-renewed-refresh-token";
+    const signIn = async (who: ReputationShop, g: ReturnType<typeof google>) => {
+      const { url } = await startGoogleConnect(who.owner, null, { google: g.provider });
+      const done = await completeGoogleConnect({ id: who.owner.userId as string }, { state: await stateIn(url), code: "c" }, { google: g.provider });
+      return done.stateId as string;
+    };
+    const renewed = () => google({ [TOKEN]: (req) => ({ json: FORM(req).grant_type === "authorization_code" ? { access_token: "a3", refresh_token: RENEWED, scope: GOOGLE_SCOPE, expires_in: 3600 } : { access_token: "a4", expires_in: 3600 } }) });
+    const reconnects = (orgId: string, id: string) => one<{ n: string }>("select count(*)::text as n from audit_logs where org_id = $1 and action = 'reputation.connection_reconnected' and target_id = $2", [orgId, id]);
+
+    it("lets a workspace reconnect its own location whose sign-in was revoked: it is offered, not shown as taken, and the sign-in is replaced in place with nothing duplicated or lost", async () => {
+      const mine = (await listConnections(s.owner)).find((c) => c.externalLocationId === "locations/881") as { id: string };
+      await withSystem(async (db) => {
+        await db.query("update review_connections set status = 'needs_reauth', status_detail = 'Google no longer accepts the saved sign-in.', can_reply = false where id = $1", [mine.id]);
+        await db.query("insert into external_reviews (org_id, connection_id, provider_review_id, rating, comment) values ($1, $2, 'g-keep', 2, 'Already read.') on conflict do nothing", [s.m.org.id, mine.id]);
+      });
+      const kept = await one<{ id: string }>("select id from external_reviews where connection_id = $1 and provider_review_id = 'g-keep'", [mine.id]);
+      const g = renewed();
+      const stateId = await signIn(s, g);
+      // Its own location is offered for reconnecting; the other one is simply available. Another workspace sees the same location as taken.
+      expect((await pendingLocations(s.owner, stateId)).map((l) => [l.locationId, l.alreadyConnected, l.reconnect])).toEqual([["locations/881", false, true], ["locations/882", false, false]]);
+      const theirs = await signIn(other, g);
+      expect((await pendingLocations(other.owner, theirs)).map((l) => [l.locationId, l.alreadyConnected, l.reconnect])).toEqual([["locations/881", true, false], ["locations/882", false, false]]);
+
+      const before = (await listConnections(s.owner, { includePast: true })).length;
+      const back = await connectChosenLocation(s.owner, stateId, { accountId: "accounts/777", locationId: "locations/881" }, { google: g.provider });
+      expect(back).toMatchObject({ id: mine.id, status: "connected", statusDetail: null, name: "Harbor Dental, Main Street" });
+      expect((await listConnections(s.owner, { includePast: true })).length).toBe(before);
+      const stored = await one<{ credentials: string; sync_lease_until: Date | null }>("select credentials, sync_lease_until from review_connections where id = $1", [mine.id]);
+      expect(JSON.parse(decryptSecret(stored.credentials))).toEqual({ refreshToken: RENEWED });
+      expect(stored.credentials).not.toContain(RENEWED);
+      // The review already read is the same row, and the reconnection is on the record.
+      expect(await one("select id from external_reviews where connection_id = $1 and provider_review_id = 'g-keep'", [mine.id])).toEqual(kept);
+      expect(Number((await reconnects(s.m.org.id, mine.id)).n)).toBe(1);
+      // Another workspace still cannot take a location this one reads.
+      await expectError(connectChosenLocation(other.owner, theirs, { accountId: "accounts/777", locationId: "locations/881" }, { google: g.provider }), "conflict", /already connected to a workspace/);
+    });
+
+    it("gives a location a person disconnected its own connection back when it is connected again, with the reviews it read", async () => {
+      const mine = (await listConnections(s.owner)).find((c) => c.externalLocationId === "locations/881") as { id: string };
+      await disconnectConnection(s.owner, mine.id);
+      expect((await listConnections(s.owner)).some((c) => c.id === mine.id)).toBe(false);
+      const g = renewed();
+      const stateId = await signIn(s, g);
+      expect((await pendingLocations(s.owner, stateId)).find((l) => l.locationId === "locations/881")).toMatchObject({ alreadyConnected: false, reconnect: false });
+      const back = await connectChosenLocation(s.owner, stateId, { accountId: "accounts/777", locationId: "locations/881" }, { google: g.provider });
+      expect(back).toMatchObject({ id: mine.id, status: "connected", disconnectedAt: null });
+      expect(await one<{ n: string }>("select count(*)::text as n from review_connections where org_id = $1 and external_location_id = 'locations/881'", [s.m.org.id])).toEqual({ n: "1" });
+      expect(await one<{ n: string }>("select count(*)::text as n from external_reviews where org_id = $1 and provider_review_id = 'g-keep'", [s.m.org.id])).toEqual({ n: "1" });
+      expect(Number((await reconnects(s.m.org.id, mine.id)).n)).toBe(2);
     });
 
     it("does not save a location Google will not let it read, and still spends the state", async () => {

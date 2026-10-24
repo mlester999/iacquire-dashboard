@@ -36,9 +36,9 @@ interface OverdueRow {
   late_days: number;
 }
 
-/** Issued, still owing, not written off or disputed, due before today in the workspace's own time zone. */
+/** Issued, still owing, not written off or disputed, due before today in the workspace's own time zone. A test invoice is never owed, so it is never in any of these reads. */
 const OVERDUE_FROM = `from customer_invoices i join organizations o on o.id = i.org_id
-  where i.org_id = $1 and i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on is not null
+  where i.org_id = $1 and not i.is_test and i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on is not null
     and i.due_on < (now() at time zone coalesce(o.timezone, 'UTC'))::date`;
 
 export const overdueInvoices: ReviewCheck = whenEnabled(async (db, job) => {
@@ -64,7 +64,7 @@ export const overdueInvoices: ReviewCheck = whenEnabled(async (db, job) => {
 export const paymentsNeedReview: ReviewCheck = whenEnabled(async (db, job) => {
   const { rows } = await db.query<{ count: number; samples: string[] }>(
     `select count(*)::int as count, coalesce((array_agg(coalesce(i.number, 'An invoice') order by p.received_at))[1:3], '{}') as samples
-     from customer_payments p join customer_invoices i on i.id = p.invoice_id and i.org_id = p.org_id where p.org_id = $1 and p.status = 'needs_review'`,
+     from customer_payments p join customer_invoices i on i.id = p.invoice_id and i.org_id = p.org_id where p.org_id = $1 and not i.is_test and p.status = 'needs_review'`,
     [job.org_id],
   );
   const count = Number(rows[0]?.count ?? 0);
@@ -81,7 +81,7 @@ export const failedPayments: ReviewCheck = whenEnabled(async (db, job) => {
   const { rows } = await db.query<{ count: number; samples: string[] }>(
     `select count(*)::int as count, coalesce((array_agg(coalesce(i.number, 'An invoice') order by p.received_at desc))[1:3], '{}') as samples
      from customer_payments p join customer_invoices i on i.id = p.invoice_id and i.org_id = p.org_id
-     where p.org_id = $1 and p.status = 'failed' and p.created_at > now() - interval '14 days' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null`,
+     where p.org_id = $1 and not i.is_test and p.status = 'failed' and p.created_at > now() - interval '14 days' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null`,
     [job.org_id],
   );
   const count = Number(rows[0]?.count ?? 0);
@@ -97,7 +97,7 @@ export const failedPayments: ReviewCheck = whenEnabled(async (db, job) => {
 export const disputedPayments: ReviewCheck = whenEnabled(async (db, job) => {
   const { rows } = await db.query<{ count: number; samples: string[] }>(
     `select count(distinct i.id)::int as count, coalesce((array_agg(distinct coalesce(i.number, 'An invoice')))[1:3], '{}') as samples
-     from customer_payments p join customer_invoices i on i.id = p.invoice_id and i.org_id = p.org_id where p.org_id = $1 and p.status = 'disputed'`,
+     from customer_payments p join customer_invoices i on i.id = p.invoice_id and i.org_id = p.org_id where p.org_id = $1 and not i.is_test and p.status = 'disputed'`,
     [job.org_id],
   );
   const count = Number(rows[0]?.count ?? 0);
@@ -113,7 +113,7 @@ export const disputedPayments: ReviewCheck = whenEnabled(async (db, job) => {
 export const overpaidInvoices: ReviewCheck = whenEnabled(async (db, job) => {
   const { rows } = await db.query<{ count: number; samples: string[] }>(
     `select count(*)::int as count, coalesce((array_agg(coalesce(i.number, 'An invoice') order by i.updated_at desc))[1:3], '{}') as samples
-     from customer_invoices i where i.org_id = $1 and i.status = 'issued' and i.overpaid_minor > 0`,
+     from customer_invoices i where i.org_id = $1 and not i.is_test and i.status = 'issued' and i.overpaid_minor > 0`,
     [job.org_id],
   );
   const count = Number(rows[0]?.count ?? 0);
@@ -128,7 +128,7 @@ export const overpaidInvoices: ReviewCheck = whenEnabled(async (db, job) => {
 
 export const approvalsWaiting: ReviewCheck = whenEnabled(async (db, job) => {
   const { rows } = await db.query<{ count: number }>(
-    `select count(*)::int as count from customer_invoices i where i.org_id = $1 and i.status = 'pending_approval'
+    `select count(*)::int as count from customer_invoices i where i.org_id = $1 and not i.is_test and i.status = 'pending_approval'
        and (select max(e.at) from customer_invoice_events e where e.invoice_id = i.id and e.org_id = i.org_id and e.kind = 'submitted') < now() - interval '1 day'`,
     [job.org_id],
   );
@@ -211,7 +211,7 @@ export const metrics = async (db: Queryable, job: WorkJobRow): Promise<ReviewMet
     `select count(*) filter (where i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null)::int as open,
             count(*) filter (where i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on < (now() at time zone coalesce(o.timezone, 'UTC'))::date)::int as overdue,
             count(*) filter (where i.status = 'issued' and exists (select 1 from customer_invoice_events e where e.invoice_id = i.id and e.org_id = i.org_id and e.kind = 'paid' and e.at > now() - interval '30 days'))::int as paid
-     from customer_invoices i join organizations o on o.id = i.org_id where i.org_id = $1`,
+     from customer_invoices i join organizations o on o.id = i.org_id where i.org_id = $1 and not i.is_test`,
     [job.org_id],
   );
   const r = rows[0] ?? { open: 0, overdue: 0, paid: 0 };

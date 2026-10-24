@@ -4,7 +4,7 @@ import { withSystem, withUser } from "@/server/db";
 import { CURRENCY_CODES } from "@/lib/money";
 import { ORG_ROLES, PERMISSION_MATRIX } from "@/lib/permissions";
 import { recordManualPayment, recordRefund } from "@/server/invoices/payments";
-import { connectionFor, draftBy, invoiceOrg, issuedInvoice, providerPayment, rows } from "./support/invoices";
+import { connectionFor, draftBy, invoiceOrg, issuedInvoice, providerPayment, rows, submittedInvoice } from "./support/invoices";
 import { uid } from "./support/fixtures";
 
 // Migration 0093 on embedded Postgres: what the database refuses whatever the code does (frozen invoices, payments that must add up, tenant-bound foreign keys), who can
@@ -257,10 +257,55 @@ describe("an invoice is frozen once it leaves draft", () => {
   });
 });
 
+describe("an invoice starts unpaid", () => {
+  const issue = (extra: string) => `update customer_invoices set status = 'issued', number = $2, content_hash = repeat('a', 64), issue_on = current_date, due_on = current_date, approved_version = 1, issued_at = now()${extra ? `, ${extra}` : ""} where id = $1`;
+  const WITH_MONEY: Array<[string, string]> = [
+    ["a paid amount and the status paid", "paid_minor = total_minor, payment_status = 'paid'"],
+    ["part of the total paid", "paid_minor = 100, payment_status = 'partially_paid'"],
+    ["a paid amount that was refunded", "paid_minor = 100, refunded_minor = 100, payment_status = 'partially_paid'"],
+    ["the status disputed", "payment_status = 'disputed'"],
+    ["a write-off", "written_off_at = now()"],
+  ];
+
+  it("refuses to issue a draft, or a submitted invoice, that already says it was paid, refunded, disputed or written off, whatever the code does, and lets the plain issue through", async () => {
+    const io = await invoiceOrg();
+    for (const [label, make] of [["a draft", () => draftBy(io)], ["a submitted invoice", () => submittedInvoice(io, "sales")]] as const) {
+      const inv = (await make()).invoice;
+      await rolledBack(async (db) => {
+        for (const [what, extra] of WITH_MONEY) {
+          expect(await tries(db, issue(extra), [inv.id, `INV-${uid()}`.slice(0, 12)]), `${label} issued with ${what}`).toMatch(/An invoice starts unpaid when it is issued/);
+        }
+        // Nothing of it stuck, and the plain issue is fine: an invoice that was issued with nothing paid is the only kind that exists.
+        expect((await db.query<{ status: string }>("select status from customer_invoices where id = $1", [inv.id])).rows[0].status).not.toBe("issued");
+        expect(await tries(db, issue(""), [inv.id, "INV-0901"])).toBeNull();
+        expect((await db.query<{ paid_minor: string; payment_status: string }>("select paid_minor::text, payment_status from customer_invoices where id = $1", [inv.id])).rows[0]).toEqual({ paid_minor: "0", payment_status: "unpaid" });
+      });
+    }
+  });
+
+  it("is only ever inserted as a draft with nothing paid: an issued, void or submitted invoice, or one with a payment already on it, is refused at the door", async () => {
+    const io = await invoiceOrg();
+    const row = (extra: string, values: string) => `insert into customer_invoices (org_id, currency${extra}) values ($1, 'PHP'${values})`;
+    await rolledBack(async (db) => {
+      expect(await tries(db, row("", ""), [io.orgId])).toBeNull();
+      expect(await tries(db, row(", status", ", 'pending_approval'"), [io.orgId])).toMatch(/An invoice is created as a draft/);
+      expect(await tries(db, row(", status", ", 'void'"), [io.orgId])).toMatch(/An invoice is created as a draft/);
+      expect(await tries(db, row(", status, number, content_hash, issue_on, due_on, subtotal_minor, total_minor, approved_version, issued_at, paid_minor, payment_status", ", 'issued', 'INV-0902', repeat('a', 64), current_date, current_date, 100, 100, 1, now(), 100, 'paid'"), [io.orgId])).toMatch(/An invoice is created as a draft/);
+      expect(await tries(db, row(", paid_minor, payment_status", ", 100, 'partially_paid'"), [io.orgId])).toMatch(/An invoice is created as a draft/);
+      expect(await tries(db, row(", written_off_at", ", now()"), [io.orgId])).toMatch(/An invoice is created as a draft/);
+      // A draft's own edits and its deletion are untouched by the door.
+      const made = (await db.query<{ id: string }>(row("", "") + " returning id", [io.orgId])).rows[0].id;
+      expect(await tries(db, "update customer_invoices set notes = 'edited' where id = $1", [made])).toBeNull();
+      expect(await tries(db, "delete from customer_invoices where id = $1", [made])).toBeNull();
+    });
+  });
+});
+
 describe("payments must add up", () => {
   it("refuses a paid amount or status on an invoice that its payment rows do not add up to, and lets the right values through", async () => {
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    // A test invoice, so the payment row below can be a provider's test-mode one (a real invoice takes live payments only: tests/invoices-test-invoices-db.test.ts).
+    const inv = (await issuedInvoice(io, { isTest: true })).invoice;
     const conn = await connectionFor(io);
     await rolledBack(async (db) => {
       expect(await tries(db, "update customer_invoices set paid_minor = 100000, payment_status = 'paid' where id = $1", [inv.id])).toMatch(/must equal what its payments/);
@@ -282,7 +327,9 @@ describe("payments must add up", () => {
   it("will not let a payment name another workspace's invoice, another currency, a duplicate provider id, or a manual record without evidence", async () => {
     const a = await invoiceOrg();
     const b = await invoiceOrg();
-    const inv = (await issuedInvoice(a)).invoice;
+    // The provider rows are test-mode ones, so they sit on a test invoice; the rows recorded by hand are real-world money, so they sit on a real one.
+    const inv = (await issuedInvoice(a, { isTest: true })).invoice;
+    const real = (await issuedInvoice(a)).invoice;
     const connA = await connectionFor(a);
     const connB = await connectionFor(b);
     const base = `insert into customer_payments (org_id, invoice_id, connection_id, provider, provider_payment_id, amount_minor, currency, livemode, verification, status, received_at)`;
@@ -294,9 +341,9 @@ describe("payments must add up", () => {
       expect(await tries(db, `${base} values ($1, $2, $3, 'simulated', 'p4', 100, 'PHP', false, 'provider_confirmed', 'succeeded', now())`, [a.orgId, inv.id, connA])).toBeNull();
       expect(await tries(db, `${base} values ($1, $2, $3, 'simulated', 'p4', 100, 'PHP', false, 'provider_confirmed', 'succeeded', now())`, [a.orgId, inv.id, connA])).toMatch(/unique|duplicate/);
       // A provider payment needs its provider's id and a connection; a manual one needs neither but must say how it is known.
-      expect(await tries(db, `${base} values ($1, $2, null, 'manual', null, 100, 'PHP', true, 'manual', 'succeeded', now())`, [a.orgId, inv.id])).toMatch(/check|violates/);
-      expect(await tries(db, `${base} values ($1, $2, null, 'manual', null, 100, 'PHP', true, 'provider_confirmed', 'succeeded', now())`, [a.orgId, inv.id])).toMatch(/check|violates/);
-      expect(await tries(db, `${base.replace(")", ", evidence)")} values ($1, $2, null, 'manual', null, 100, 'PHP', true, 'manual', 'succeeded', now(), 'bank ref 123')`, [a.orgId, inv.id])).toBeNull();
+      expect(await tries(db, `${base} values ($1, $2, null, 'manual', null, 100, 'PHP', true, 'manual', 'succeeded', now())`, [a.orgId, real.id])).toMatch(/check|violates/);
+      expect(await tries(db, `${base} values ($1, $2, null, 'manual', null, 100, 'PHP', true, 'provider_confirmed', 'succeeded', now())`, [a.orgId, real.id])).toMatch(/check|violates/);
+      expect(await tries(db, `${base.replace(")", ", evidence)")} values ($1, $2, null, 'manual', null, 100, 'PHP', true, 'manual', 'succeeded', now(), 'bank ref 123')`, [a.orgId, real.id])).toBeNull();
       expect(await tries(db, `${base} values ($1, $2, $3, 'simulated', null, 100, 'PHP', false, 'provider_confirmed', 'succeeded', now())`, [a.orgId, inv.id, connA])).toMatch(/check|violates/);
       expect(await tries(db, `${base} values ($1, $2, $3, 'simulated', 'p5', 0, 'PHP', false, 'provider_confirmed', 'succeeded', now())`, [a.orgId, inv.id, connA])).toMatch(/check|violates/);
     });
@@ -309,7 +356,7 @@ describe("payments must add up", () => {
     const paid = await providerPayment(io, inv.id, conn, 40000);
     const failed = await providerPayment(io, inv.id, conn, 1000, { status: "failed" });
     await rolledBack(async (db) => {
-      for (const set of ["amount_minor = 1", "currency = 'USD'", "livemode = true", "verification = 'manual'", "tax_portion_minor = 5", "received_at = now() + interval '1 day'", "provider_payment_id = 'other'"]) {
+      for (const set of ["amount_minor = 1", "currency = 'USD'", "livemode = false", "verification = 'manual'", "tax_portion_minor = 5", "received_at = now() + interval '1 day'", "provider_payment_id = 'other'"]) {
         expect(await tries(db, `update customer_payments set ${set} where id = $1`, [paid.paymentId]), set).toMatch(/cannot be changed|check|violates|foreign key|unique/);
       }
       expect(await tries(db, "delete from customer_payments where id = $1", [paid.paymentId])).toMatch(/never deleted/);

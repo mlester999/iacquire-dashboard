@@ -78,3 +78,28 @@ export interface ReviewProvider {
 
 /** The text of a reply the way sites compare it: whitespace squashed. */
 export const squashReply = (s: string | null | undefined) => String(s ?? "").replace(/\s+/g, " ").trim();
+
+/** The time a pass was given ran out while it was waiting on a review site. It says nothing about the site or the connection. */
+export class BudgetExceeded extends Error {
+  constructor() {
+    super("The time for this run was used up while the review site was being asked.");
+    this.name = "BudgetExceeded";
+  }
+}
+
+/**
+ * Asks a review site for something, but only for as long as the pass has left (`deadline`, epoch milliseconds; none means no limit). A site that never answers is abandoned when
+ * the time is up, so one hung request cannot hold the scheduler's whole run. Only reads go through here: a write is never abandoned and sent again.
+ */
+export function within<T>(ask: () => Promise<T>, deadline: number | undefined): Promise<T> {
+  if (deadline === undefined) return ask();
+  const left = deadline - Date.now();
+  if (left <= 0) return Promise.reject(new BudgetExceeded());
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new BudgetExceeded()), left);
+    Promise.resolve().then(ask).then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e: unknown) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}

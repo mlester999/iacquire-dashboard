@@ -8,6 +8,7 @@ import { getOpportunityDetail } from "@/server/crm/opportunities";
 import { isCurrency } from "@/lib/money";
 import { isUuid } from "@/lib/social/address";
 import { getInvoiceSettings } from "@/server/invoices/settings";
+import { hasTestConnection } from "@/server/invoices/test-payment";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { emptyFormState } from "@/lib/invoices/form-state";
 
@@ -22,6 +23,8 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const actor = memberActor(ctx);
   const settings = await getInvoiceSettings(ctx);
+  // A test invoice can be made while a payment account in test mode is connected, by the person who may run test payments. The connection card links here with ?test=1.
+  const canMarkTest = await hasTestConnection(ctx);
   const dealId = one(sp.deal);
   const contactId = one(sp.contact);
   // The address may carry the customer or the deal this invoice starts from. Each is read through the person's own access, so an id from elsewhere finds nothing.
@@ -33,6 +36,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
     contact: contact ? { id: contact.id, name: contact.displayName || "Customer" } : deal?.contact ? { id: deal.contact.id, name: deal.contact.name } : null,
     deal: deal ? { id: deal.id, name: deal.name } : null,
     paymentInstructions: settings.defaultPaymentInstructions ?? "",
+    isTest: canMarkTest && one(sp.test) === "1",
   });
   return (
     <div className="space-y-5">
@@ -41,7 +45,7 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
         <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-ink">New invoice</h1>
         <p className="mt-1 max-w-2xl text-[13.5px] text-muted">You are writing a draft. It gets its number when it is issued, and nothing goes to the customer until you give them the link.</p>
       </div>
-      <InvoiceForm mode={{ kind: "new" }} initial={initial} termsDays={settings.paymentTermsDays} />
+      <InvoiceForm mode={{ kind: "new" }} initial={initial} termsDays={settings.paymentTermsDays} canMarkTest={canMarkTest} />
     </div>
   );
 }

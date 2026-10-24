@@ -8,7 +8,9 @@ import { cancelRetention } from "@/server/retention/cancel";
 import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
+import { latestConsentEvent } from "@/server/messaging/consent-identity";
 import { CHANNELS, identityKind, type Channel } from "@/lib/messaging";
+import { MERGE_CARRIED_NOTE, TYPED_CONSENT_SOURCE } from "@/lib/webchat/identity";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { CrmActor } from "@/server/crm/actor";
 import type { Permission } from "@/lib/permissions";
@@ -120,9 +122,12 @@ export async function isSuppressed(db: Queryable, orgId: string, channel: Channe
   return rows.length > 0;
 }
 
-/** The address a message on this channel would go to, from the contact's identities. */
+/**
+ * The address a message on this channel would go to, from the contact's identities: a verified one first, then one that a visitor did not merely type (a merge can leave a
+ * contact with both), then the oldest.
+ */
 export async function contactAddress(db: Queryable, orgId: string, contactId: string, channel: Channel): Promise<string | null> {
-  const { rows } = await db.query<{ value: string }>("select value from contact_identities where org_id = $1 and contact_id = $2 and kind = $3 order by verified desc, created_at limit 1", [orgId, contactId, identityKind(channel)]);
+  const { rows } = await db.query<{ value: string }>("select value from contact_identities where org_id = $1 and contact_id = $2 and kind = $3 order by verified desc, typed_by_visitor, created_at limit 1", [orgId, contactId, identityKind(channel)]);
   return rows[0]?.value ?? null;
 }
 
@@ -163,7 +168,19 @@ export async function mergeContactsInTx(db: Queryable, who: Principal | OrgConte
     for (const purpose of ["service", "marketing"] as const) {
       const [a, b] = await Promise.all([getConsent(db, orgId, kept.id, channel, purpose), getConsent(db, orgId, merged.id, channel, purpose)]);
       if (b === "revoked" && a !== "revoked") await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "revoked", source: "contact_merge", evidence: "Merged record had opted out", recordedBy: p.userId });
-      else if (b === "granted" && a === "unknown") await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "granted", source: "contact_merge", recordedBy: p.userId });
+      else if (b === "granted" && a === "unknown") {
+        const latest = await latestConsentEvent(db, orgId, merged.id, channel, purpose);
+        if (latest?.source !== TYPED_CONSENT_SOURCE) {
+          await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "granted", source: "contact_merge", recordedBy: p.userId });
+          continue;
+        }
+        // A tick a website visitor made is the visitor's word for the details they typed. It is carried with its source and its words, so it is still recognised as typed
+        // (src/lib/webchat/identity.ts), and only when the kept contact has no address of its own on this channel: the tick said nothing about that one.
+        const own = await db.query("select 1 from contact_identities where org_id = $1 and contact_id = $2 and kind = $3 and not typed_by_visitor limit 1", [orgId, kept.id, identityKind(channel)]);
+        if (own.rows[0]) continue;
+        const evidence = `${(latest.evidence ?? "").slice(0, 500 - MERGE_CARRIED_NOTE.length - 1)} ${MERGE_CARRIED_NOTE}`.trim();
+        await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "granted", source: TYPED_CONSENT_SOURCE, evidence, recordedBy: p.userId });
+      }
     }
   }
 
@@ -232,7 +249,7 @@ export async function mergeContactsInTx(db: Queryable, who: Principal | OrgConte
  * References to a contact from records added by later CRM phases (opportunities, tasks, review requests, private feedback, call records). Each statement only runs when
  * its column exists, so this stays correct as the schema grows. Every name below is a real table with a contact_id column (tests/reputation-contacts.test.ts keeps it so).
  */
-export const MOVED_CONTACT_TABLES = ["crm_opportunities", "tasks", "crm_review_requests", "customer_feedback", "crm_form_submissions", "crm_call_records", "crm_campaign_recipients", "customer_invoices", "external_reviews"] as const;
+export const MOVED_CONTACT_TABLES = ["crm_opportunities", "tasks", "crm_review_requests", "customer_feedback", "crm_form_submissions", "crm_call_records", "crm_campaign_recipients", "customer_invoices", "external_reviews", "proposals", "appointment_bookings"] as const;
 
 async function moveContactReferences(db: Queryable, orgId: string, fromId: string, toId: string) {
   const { rows } = await db.query<{ table_name: string }>(
@@ -241,6 +258,22 @@ async function moveContactReferences(db: Queryable, orgId: string, fromId: strin
     [[...MOVED_CONTACT_TABLES]],
   );
   for (const r of rows) await db.query(`update "${r.table_name}" set contact_id = $3 where org_id = $1 and contact_id = $2`, [orgId, fromId, toId]);
+  const present = new Set(
+    (await db.query<{ t: string }>(
+      `select table_name || '.' || column_name as t from information_schema.columns
+       where table_schema = 'public' and ((table_name = 'signature_requests' and column_name = 'signer_contact_id') or (table_name = 'review_request_batch_items' and column_name = 'contact_id'))`,
+    )).rows.map((r) => r.t),
+  );
+  // A signing request names its signer's contact in a column of its own. The database refuses to change what was asked of the signer, and this is not part of that.
+  if (present.has("signature_requests.signer_contact_id")) await db.query("update signature_requests set signer_contact_id = $3 where org_id = $1 and signer_contact_id = $2", [orgId, fromId, toId]);
+  // A batch asks each customer once. An item the kept contact already has in the same batch stays behind on the merged record (its turn then ends as left out, "deleted"), so the person is asked once.
+  if (present.has("review_request_batch_items.contact_id")) {
+    await db.query(
+      `update review_request_batch_items i set contact_id = $3, updated_at = now() where i.org_id = $1 and i.contact_id = $2
+         and not exists (select 1 from review_request_batch_items k where k.batch_id = i.batch_id and k.contact_id = $3)`,
+      [orgId, fromId, toId],
+    );
+  }
   await moveRetentionEnrollments(db, orgId, fromId, toId);
 }
 
@@ -258,6 +291,19 @@ async function moveRetentionEnrollments(db: Queryable, orgId: string, fromId: st
   );
 }
 
+/** Every contact that was merged into this one, directly or through another merge (the merge history is append-only, so this is the person's whole earlier record). */
+async function mergedIntoLineage(db: Queryable, orgId: string, contactId: string): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `with recursive lineage(id) as (
+       select merged_contact_id from contact_merges where org_id = $1 and kept_contact_id = $2
+       union
+       select m.merged_contact_id from contact_merges m join lineage l on m.kept_contact_id = l.id where m.org_id = $1
+     ) select id from lineage`,
+    [orgId, contactId],
+  );
+  return rows.map((r) => r.id);
+}
+
 /** Privacy request: removes personal details and identifiers, keeps non-identifying counts and the audit trail. */
 export async function redactContact(who: OrgContext | CrmActor, contactId: string, reason: string) {
   const p = principalOf(who);
@@ -273,16 +319,33 @@ export async function redactContact(who: OrgContext | CrmActor, contactId: strin
     await db.query("update conversation_messages set body = '[removed on request]', attachments = '[]'::jsonb where org_id = $1 and conversation_id in (select id from conversations where org_id = $1 and contact_id = $2)", [ctx.org.orgId, contactId]);
     // The subject line (an email's) is customer-written text too, and the inbox search matches it: it goes with the preview.
     await db.query("update conversations set last_message_preview = null, subject = null, status = 'closed' where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
-    // Missed-call cases (the caller's number, drafted texts) and lead scores about this person go with them.
-    await eraseRecoveryAndScoring(db, ctx.org.orgId, contactId);
-    await eraseWebChatAndAttribution(db, ctx.org.orgId, contactId);
-    // Private feedback comments, survey answers, review requests still waiting and customer programs still running go with them (the scores stay, with no person attached).
-    await eraseReputationRecords(db, ctx.org.orgId, contactId);
-    // Invoices that were never issued go; issued ones keep their numbers and amounts but lose the customer's details and the link to the contact.
-    await eraseInvoiceCustomerDetails(db, ctx.org.orgId, contactId);
-    // Proposals still open are withdrawn and their links stop working; the person's name and address leave the working copies. Frozen versions and recorded answers are records and
-    // stay until the retention policy is decided (src/server/proposals/erase.ts).
-    await eraseProposalsForContact(db, ctx.org.orgId, contactId);
+    // The same person under older records: contacts merged into this one. A merge moves what it knows about, but a record it did not know about (a table added later, a merge
+    // made before it did) still names the merged-away contact, and a privacy request for this person has to reach it too.
+    const people = [contactId, ...(await mergedIntoLineage(db, ctx.org.orgId, contactId))];
+    for (const id of people) {
+      // Missed-call cases (the caller's number, drafted texts) and lead scores about this person go with them.
+      await eraseRecoveryAndScoring(db, ctx.org.orgId, id);
+      await eraseWebChatAndAttribution(db, ctx.org.orgId, id);
+      // Private feedback comments, survey answers, review requests still waiting and customer programs still running go with them (the scores stay, with no person attached).
+      await eraseReputationRecords(db, ctx.org.orgId, id);
+      // Invoices that were never issued go; issued ones keep their numbers and amounts but lose the customer's details and the link to the contact.
+      await eraseInvoiceCustomerDetails(db, ctx.org.orgId, id);
+      // Proposals still open are withdrawn and their links stop working; the person's name and address leave the working copies. Frozen versions and recorded answers are records and
+      // stay until the retention policy is decided (src/server/proposals/erase.ts).
+      await eraseProposalsForContact(db, ctx.org.orgId, id);
+    }
+    if (people.length > 1) {
+      // The merged-away records keep the name and address they had when they were merged, and the merge history keeps what they held (mergeContactsInTx writes both).
+      await db.query(
+        `update contacts set display_name = 'Removed contact', first_name = null, last_name = null, email = null, phone = null, ghl_contact_id = null,
+           address_line1 = null, address_line2 = null, city = null, region = null, postal_code = null where org_id = $1 and id = any($2::uuid[])`,
+        [ctx.org.orgId, people.slice(1)],
+      );
+      await db.query(
+        `update contact_merges set snapshot = jsonb_set(snapshot, '{merged}', '{"displayName": null, "email": null, "phone": null}'::jsonb) where org_id = $1 and merged_contact_id = any($2::uuid[]) and snapshot ? 'merged'`,
+        [ctx.org.orgId, people.slice(1)],
+      );
+    }
     await db.query("delete from contact_identities where org_id = $1 and contact_id = $2", [ctx.org.orgId, contactId]);
     await db.query("update contact_memories set deleted_at = now() where org_id = $1 and contact_id = $2 and deleted_at is null", [ctx.org.orgId, contactId]);
     // CRM details about the person go too: custom field values, tags, company links, and the text of notes about them.

@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { requestMeta } from "@/server/auth/session";
 import { loadPublicProposal } from "@/server/proposals/public";
 import { looksLikeProposalToken, sessionCookieName } from "@/server/proposals/link-token";
-import { noticeFor, PublicProposal } from "@/components/proposals/public/public-proposal";
+import { PublicProposal, recordedNotice } from "@/components/proposals/public/public-proposal";
 
 export const dynamic = "force-dynamic";
 
@@ -26,5 +26,6 @@ export default async function ProposalPage({ params, searchParams }: { params: P
     userAgent: meta.userAgent,
     sessionToken: looksLikeProposalToken(token) ? jar.get(sessionCookieName(token))?.value ?? null : null,
   });
-  return <PublicProposal token={token} view={view} result={noticeFor("r", one(q.r))} code={noticeFor("c", one(q.c), one(q.left))} />;
+  // The address can be typed by anyone holding the link, so its words are shown only where the record agrees with them.
+  return <PublicProposal token={token} view={view} result={recordedNotice("r", one(q.r), view)} code={recordedNotice("c", one(q.c), view, one(q.left))} />;
 }

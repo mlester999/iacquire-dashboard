@@ -46,6 +46,19 @@ describe("an approval is of one version", () => {
     expect(await kinds(draft.id)).toEqual(["created", "submitted", "approved"]);
   });
 
+  it("fills a placeholder in the title in the frozen version, and stops one that cannot be filled before anyone is asked to approve it", async () => {
+    const p = await proposalOrg();
+    const ok = await draftBy(p, "member", { title: "Proposal for {{client.name}}" });
+    expect(ok.title).toBe("Proposal for {{client.name}}");
+    await submitForApproval(p.member, ok.id, deps);
+    const snapshot = (await rows<{ snapshot: { title: string } }>("select snapshot from proposal_versions where proposal_id = $1", [ok.id]))[0].snapshot;
+    expect(snapshot.title).toBe("Proposal for Maria Santos");
+    const missing = await draftBy(p, "member", { title: "Proposal for {{client.company}}" });
+    await expect(submitForApproval(p.member, missing.id, deps)).rejects.toThrow(/customer's company/);
+    const typo = await draftBy(p, "member", { title: "For {{client.nmae}}" });
+    await expect(submitForApproval(p.member, typo.id, deps)).rejects.toThrow(/doesn't recognise/);
+  });
+
   it("refuses a decision on a version the reviewer did not see, and one on a proposal not waiting", async () => {
     const p = await proposalOrg();
     const draft = await draftBy(p, "member");
@@ -434,6 +447,32 @@ describe("withdrawing, revising and copying", () => {
     const future = await draftBy(p, "owner", { validUntil: "2026-12-31" });
     expect((await duplicateProposal(p.actor("sales"), future.id, deps)).validUntil).toBe("2026-12-31");
     await expect(duplicateProposal(p.actor("viewer"), src.id)).rejects.toThrow(/can't write proposals/);
+  });
+
+  it("copies a discounted proposal without its discounts and changed prices when the person copying may not give them, and says so in the history", async () => {
+    const p = await proposalOrg();
+    // With approval for discounts off, nothing else would stop the copy going out with the manager's discount.
+    await saveProposalSettings(p.actor("owner"), { discountNeedsApproval: false }, 0);
+    const manager = p.actor("manager");
+    const src = await createProposal(manager, { title: "Discounted", clientName: "Maria", clientEmail: "maria@example.test", doc: { lines: [lineOf(p.item, 1000, { discount: { kind: "percent", bps: 2000 } }), lineOf(p.item, 1000, { unitPriceMinor: 100_000 })] } });
+    const plain = await createProposal(manager, { title: "Plain", clientName: "Maria", doc: { lines: [lineOf(p.item, 1000), lineOf(p.item, 1000)] } });
+    expect(src.totals).not.toEqual(plain.totals);
+
+    const copy = await duplicateProposal(p.actor("sales"), src.id, deps);
+    expect(copy.doc.lines.map((l) => [l.discount, l.unitPriceMinor, l.catalogPriceMinor])).toEqual([[null, 150_000, 150_000], [null, 150_000, 150_000]]);
+    expect(copy.totals).toEqual(plain.totals);
+    expect(copy).toMatchObject({ title: "Discounted", clientName: "Maria", status: "draft" });
+    expect((await events(copy.id)).find((e) => e.kind === "duplicated")?.detail).toMatchObject({ discountsRemoved: 1, pricesReset: 1 });
+    // Saved as it is, the copy needs no discount permission, and it sends at the full price.
+    expect((await sendProposal(p.actor("sales"), copy.id, {}, deps)).totals).toEqual(plain.totals);
+
+    // Someone who may give discounts copies them as they are, and nothing is said.
+    const kept = await duplicateProposal(manager, src.id, deps);
+    expect(kept.doc.lines).toEqual(src.doc.lines);
+    expect(kept.totals).toEqual(src.totals);
+    expect((await events(kept.id)).find((e) => e.kind === "duplicated")?.detail).toEqual({ from: src.id, number: src.number });
+    // A copy of a proposal with no discounts is untouched whoever makes it.
+    expect((await duplicateProposal(p.actor("sales"), plain.id, deps)).doc.lines).toEqual(plain.doc.lines);
   });
 });
 

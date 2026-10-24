@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, Info, Lock, MessageSquareHeart, MousePointerClick, Send, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, EmptyState } from "@/components/ui/primitives";
+import { Card, EmptyState } from "@/components/ui/primitives";
 import { Pagination, PageTitle, ReadOnlyNotice } from "@/components/crm/ui";
 import { cn } from "@/lib/utils";
 import type { CrmScope } from "@/server/crm/page";
@@ -16,8 +16,10 @@ import { ReputationSettingsPanel } from "@/components/reputation/settings-panel"
 import { SatisfactionPanel } from "@/components/reputation/satisfaction-panel";
 import { BatchesPanel } from "@/components/reputation/batches-panel";
 import { BatchDetail } from "@/components/reputation/batch-detail";
+import { ReviewsTabNav } from "@/components/crm/reviews/tab-nav";
 import { ConnectionStatusCard, ConnectionsPanel } from "@/components/reputation/connections-panel";
 import { PublicReviewsPanel } from "@/components/reputation/public-reviews-panel";
+import { visibleReviewsTabs, type ReviewsTab } from "@/lib/reputation/review-tabs";
 import type { ReputationSettings } from "@/lib/reputation/settings";
 import type { SatisfactionReport } from "@/lib/reputation/satisfaction";
 import type { BatchPersonView, BatchPreview, BatchView, PersonFilter } from "@/lib/reputation/batches";
@@ -26,7 +28,7 @@ import type { LocationChoice, SiteView } from "@/server/reputation/connections";
 import type { PublicReviewsData } from "@/server/reputation/public-reviews";
 import type { ReviewFilter } from "@/lib/reputation/external";
 
-export type ReviewsTab = "overview" | "requests" | "feedback" | "satisfaction" | "public" | "batches" | "settings";
+export type { ReviewsTab };
 
 /** What the review sites part of the screen needs. Absent where a screen shows no public reviews at all. */
 export interface PublicReviewsProps {
@@ -162,7 +164,7 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
   const r = stats.requests;
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6">
       <PageTitle
         title="Reviews"
         description="Ask customers how it went. Everyone you ask gets the same public review links; what they tell you privately stays with your team."
@@ -211,19 +213,7 @@ export function ReviewsWorkspace(p: ReviewsWorkspaceProps) {
         )}
       </section>
 
-      <nav aria-label="Reviews sections" className="flex gap-1 border-b border-line">
-        {([["overview", "Overview"], ["requests", "Requests"], ["feedback", "Private feedback"], ["satisfaction", "Satisfaction"], ["public", "Public reviews"], ["batches", "Batches"], ["settings", "Settings"]] as const).filter(([k]) => (k !== "satisfaction" || p.surveysEnabled) && (k !== "batches" || batches) && (k !== "public" || showPublic)).map(([k, label]) => (
-          <Link
-            key={k}
-            href={href({ tab: k })}
-            aria-current={tab === k ? "page" : undefined}
-            className={cn("-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[13.5px] font-medium transition-colors", tab === k ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink")}
-          >
-            {label}
-            {k === "feedback" && stats.feedback.open > 0 && <Badge tone="primary" className="ml-2">{stats.feedback.open}</Badge>}
-          </Link>
-        ))}
-      </nav>
+      <ReviewsTabNav tab={tab} tabs={visibleReviewsTabs({ satisfaction: p.surveysEnabled, batches: Boolean(batches), public: showPublic })} hrefFor={(t) => href({ tab: t })} openFeedback={stats.feedback.open} />
 
       {tab === "overview" && (
         <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">

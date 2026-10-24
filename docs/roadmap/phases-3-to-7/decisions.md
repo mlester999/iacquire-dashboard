@@ -88,3 +88,51 @@ Accounts, approvals and publishing are the client's; the section is hidden from 
 * Token expiry: a warning to owners and admins seven days before a token or data-access expiry.
 * AI helper: per-user hourly and per-workspace daily rate limits.
 * Failure notifications and automation events are keyed per failed job, so a retry that fails again is announced again.
+
+# Phase 5 Wave 1: decisions taken after the adversarial review (2026-10-24)
+
+The review of proposals and signing, customer invoices and payments, reputation, AI metering and the consent rule for visitor-typed details found 43 defects. These are the decisions that shape what was built to fix them; the number in brackets is the one in the fix brief. The module documents say what the code does ([../../proposals.md](../../proposals.md), [../../invoices-and-payments.md](../../invoices-and-payments.md), [../../esignature.md](../../esignature.md), [../../voice-and-reviews.md](../../voice-and-reviews.md), [../../production-scheduler.md](../../production-scheduler.md)).
+
+## D21. A closed dispute never restores money on a guess (fix brief D1)
+
+The closing event carries an outcome. Won restores the payment; lost first records a refund with the source `chargeback` for the disputed amount, and the payment and invoice follow what the rows add up to; unknown or missing keeps the payment disputed, tells the owners and managers and shows it on the invoice. An owner can also open and close a dispute by hand (`invoices.refund`), which is the only way to represent a reversal that is never followed by a resolution.
+
+## D22. A test payment belongs to a test invoice (fix brief D2)
+
+Test-mode payments are recorded only on an invoice made on purpose as a test invoice (`customer_invoices.is_test`, in the unreleased `0093`); a test invoice is labelled everywhere, never reminded and never counted in receivables, overdue, verified revenue or the deal rule. A real invoice never gets a test payment. Built in `0093`: the mark is the owner's alone and fixed once the invoice leaves draft, the database refuses a test-mode payment on a real invoice and a live or hand-recorded payment on a test invoice, and a test invoice has its own `TEST-` numbers.
+
+## D23. A PayPal delivery while real provider calls are off is refused, not stored (fix brief D3)
+
+The route answers 503 with Retry-After before any outbound call and stores nothing; PayPal sends it again, and the scheduled read-back of open checkouts records the payment once `CUSTOMER_PAYMENTS_WRITES_ENABLED` is on. A PayMongo delivery is still recorded, because its signature is checked locally.
+
+## D24. Agency read of proposal documents needs a support session; the proposal tables stay as built (fix brief D4)
+
+The `proposal-documents` bucket requires an active support session for an agency caller (`app.file_permission`, migration `0090`). The proposal tables keep the `proposals.view` read policy, which does not: **a founder decision still open** (recorded in the header of `0091_proposals.sql` and the `proposals.view` note in `src/lib/permissions.ts`). No screen shows an agency person those records today.
+
+## D25. The "typed by a visitor" fact belongs to the address and to the consent event (fix brief D5)
+
+A merge never turns an unverified typed address, or the consent ticked with it, into a verified-looking one. The send rule reads the identity (`contact_identities.typed_by_visitor`, `verified`, `verified_via`), not the contact's `created_via`.
+
+## D26. A public survey answer is attributed only through a verified identity (fix brief D6)
+
+An answer that matches an existing customer only by a typed email or phone is stored unattributed, with the possible match kept for staff, and triggers nothing about that customer until a person confirms the match. A match to a verified identity attributes as before.
+
+## D27. Holds and suspensions reach what is already queued (fix brief D7)
+
+A person's hold on automatic messages withdraws already queued automatic review asks and invoice reminders in the same transaction and is checked again when the dispatcher sends. A suspended or archived workspace's queued review-batch messages are held (the batch job considers every workspace and lets its own gate park them), and system sends of scope retention and billing are gated on the workspace being allowed to send at dispatch.
+
+## D28. Messages waiting for a sending window count against a batch's pace (fix brief D8)
+
+Releasing the window never releases more than the approved pace per minute.
+
+## D29. Every model call checks the workspace first and is metered (fix brief D9)
+
+Lead scoring and every model call check the workspace is active and has credit before calling; the web chat reply check runs the shared claim check and covers singular currency words, every supported currency code and P/Php prefixes; the published token rate is per 1,000 tokens; the website assistant, onboarding assist and employee generator are metered; a source-scan test lists every file that imports `llmComplete`.
+
+## D30. Reconnecting a review location adopts what is there; a reply permission error switches off replies only (fix brief D10)
+
+Reconnecting the same location adopts the old mirror rows and replies and replaces the credentials in place. The Facebook sign-in can ask for the review permissions as an option, `canReply` comes from the Page's granted scopes, and a permission error while posting marks the reply failed and turns `can_reply` off without marking the connection as needing to be reconnected.
+
+## D31. The public pages have their own emergency stops (fix brief D11)
+
+`PROPOSALS_PUBLIC_DISABLED`, `INVOICES_PUBLIC_DISABLED` and `REVIEWS_PUBLIC_DISABLED`, all off by default: the customer's page and its routes answer "temporarily unavailable" before any database read. Each leaves alone what it should not stop (money that arrives, the team's own screens, requests and reminders already sent); the table is in [../../production-scheduler.md](../../production-scheduler.md).

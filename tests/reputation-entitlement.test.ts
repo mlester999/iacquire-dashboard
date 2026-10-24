@@ -20,7 +20,7 @@ vi.mock("next/cache", () => ({ revalidatePath() {} }));
 const { stub } = vi.hoisted(() => ({ stub: async () => ({ ok: false, error: "not in tests" }) }));
 vi.mock("@/app/actions/crm-reviews", () => Object.fromEntries([
   "createReviewDestinationAction", "updateReviewDestinationAction", "setReviewDestinationActiveAction", "moveReviewDestinationAction", "deleteReviewDestinationAction",
-  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction",
+  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction", "confirmSurveyMatchAction", "dismissSurveyMatchAction",
 ].map((n) => [n, stub])));
 vi.mock("@/app/actions/reputation", () => ({ saveReputationSettingsAction: stub }));
 vi.mock("@/app/actions/crm", () => Object.fromEntries(["searchContactsAction"].map((n) => [n, stub])));

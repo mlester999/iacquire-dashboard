@@ -8,7 +8,7 @@ import { POST as payRoute, GET as payGet } from "@/app/api/public/invoices/pay/r
 import { GET as statusRoute, POST as statusPost } from "@/app/api/public/invoices/status/route";
 import { POST as captureRoute, GET as captureGet } from "@/app/api/public/invoices/capture/route";
 import { simulatedPlatform } from "@/server/customer-payments/providers/simulated";
-import { contactIn, freshIp, invoiceOrg, issuedInvoice, linkTokenOf, providerPayment } from "./support/invoices";
+import { connectionFor, contactIn, freshIp, invoiceOrg, issuedInvoice, linkTokenOf, providerPayment } from "./support/invoices";
 import { attempt, connect, q } from "./support/customer-payments";
 
 const BASE = "http://localhost/api/public/invoices";
@@ -18,7 +18,8 @@ const req = (path: string, init: { method?: string; headers?: Record<string, str
 async function setup() {
   const io = await invoiceOrg();
   const contactId = await contactIn(io, { email: "private.customer@example.test" });
-  const inv = (await issuedInvoice(io, { contactId })).invoice;
+  // The testing checkout (the simulated connection) takes a TEST invoice only.
+  const inv = (await issuedInvoice(io, { contactId, isTest: true })).invoice;
   const conn = await connect(io, { provider: "simulated" });
   const token = await linkTokenOf(io, inv.id);
   return { io, inv, conn, token };
@@ -110,7 +111,7 @@ describe("paying", () => {
       expect(await res.json(), String(token)).toMatchObject({ error: "invalid", message: expect.stringMatching(/This link is not valid/) });
     }
     // Paid: 409. No account to take it: 503.
-    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "simulated", livemode: true });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "simulated" });
     const paid = await handlePay(req("pay", { method: "POST", headers: { "x-invoice-token": s.token } }));
     expect(paid.status).toBe(409);
     expect(await paid.json()).toMatchObject({ error: "paid", message: "This invoice has already been paid." });
@@ -154,21 +155,34 @@ describe("where a payment stands", () => {
     const before = await ask();
     expect(before.status).toBe(200);
     expect(await before.json()).toEqual({ state: "confirming", headline: "We are confirming your payment", detail: expect.stringMatching(/Please do not pay again/), polling: true, tone: "wait" });
-    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "simulated", livemode: true, attemptId: a.id });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "simulated", attemptId: a.id });
     const after = await (await ask()).json();
     expect(after).toMatchObject({ state: "received", polling: false, tone: "ok" });
   });
 
   it("answers by the invoice's link with the status the database holds, and says paid only when it is paid", async () => {
-    const s = await setup();
+    // A real invoice: the banners of a test invoice are always "test" (below).
+    const io = await invoiceOrg();
+    const contactId = await contactIn(io, { email: "private.customer@example.test" });
+    const inv = (await issuedInvoice(io, { contactId })).invoice;
+    const conn = await connectionFor(io);
+    const s = { io, inv, conn: { id: conn }, token: await linkTokenOf(io, inv.id) };
     const ask = async () => (await handleStatus(req("status", { headers: { "x-invoice-token": s.token } }))).json();
     expect(await ask()).toEqual({ paymentStatus: "unpaid", balanceMinor: 150000, currency: "PHP", hasPendingPayment: false, banner: "pay_online" });
-    await providerPayment(s.io, s.inv.id, s.conn.id, 50000, { provider: "simulated", livemode: true });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 50000, { provider: "simulated" });
     expect(await ask()).toMatchObject({ paymentStatus: "partially_paid", balanceMinor: 100000, banner: "partly_paid" });
-    await providerPayment(s.io, s.inv.id, s.conn.id, 100000, { provider: "simulated", livemode: true });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 100000, { provider: "simulated" });
     expect(await ask()).toMatchObject({ paymentStatus: "paid", balanceMinor: 0, banner: "paid" });
     const text = JSON.stringify(await ask());
     for (const secret of ["private.customer", s.token, s.io.orgId, s.inv.id]) expect(text).not.toContain(secret);
+  });
+
+  it("says a test invoice is a test, whatever state it is in", async () => {
+    const s = await setup();
+    const ask = async () => (await handleStatus(req("status", { headers: { "x-invoice-token": s.token } }))).json();
+    expect(await ask()).toEqual({ paymentStatus: "unpaid", balanceMinor: 150000, currency: "PHP", hasPendingPayment: false, banner: "test" });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "simulated" });
+    expect(await ask()).toMatchObject({ paymentStatus: "paid", balanceMinor: 0, banner: "test" });
   });
 
   it("answers nothing it could not have been asked: a made-up reference, a made-up link, or neither, are the same 404; the reference wins when both are given", async () => {

@@ -4,6 +4,8 @@
 
 export const NUMBER_PREFIX_RE = /^[A-Za-z0-9._/-]{0,12}$/;
 export const NUMBER_PADDING = 4;
+/** A test invoice is numbered from its own counter with this prefix, so the business's real sequence never has a gap for a test. */
+export const TEST_NUMBER_PREFIX = "TEST-";
 export const MAX_NEXT_NUMBER = 999_999_999_999;
 
 export function prefixProblem(prefix: string): string | null {

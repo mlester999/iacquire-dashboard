@@ -193,7 +193,7 @@ describe("the file", () => {
   it("reads back through the platform's own PDF reader with everything the customer needs: number, title, people, wording, every figure and the terms", () => {
     const { bytes, snapshot } = sample();
     const t = text(bytes);
-    for (const needle of ["Acme Web Studio", "Website proposal", "Proposal P-0007", "Version 2", "Maria Santos", "Santos Bakery", "maria@example.test", "Pat Rivera", "November 30, 2026", "Hello Maria",
+    for (const needle of ["Acme Web Studio", "Website proposal", "Proposal P-0007", "Version 2", "Maria Santos", "Santos Bakery", "Pat Rivera", "November 30, 2026", "Hello Maria",
       "Thanks for talking with us, Maria Santos.", "Design a five page site", "Build it", "Investment", "Website build 1", "Website build 2", "Payment is due within 14 days.", "Terms", "Document ID"]) {
       expect(t, needle).toContain(needle);
     }
@@ -202,6 +202,10 @@ describe("the file", () => {
     for (const minor of [150_000, 135_000, g.subtotal, g.discount > 0 ? -g.discount : 0]) if (minor !== 0) expect(t, String(minor)).toContain(formatMinor(minor, "PHP"));
     expect(t).toContain(`Total`);
     expect(t).toContain(formatMinor(g.total, "PHP"));
+    // The customer's page lists their name and company only and masks the address its code goes to; anyone holding the link can download this file, so it holds no address either.
+    expect(snapshot.client.email).toBe("maria@example.test");
+    expect(t).not.toContain("maria@example.test");
+    expect(t).not.toMatch(/example\.test|maria@|@example/);
     // No placeholder and no markup marker survives.
     expect(t).not.toMatch(/\{\{|\*\*/);
     expect(t).not.toMatch(/undefined|NaN|\[object Object\]/);

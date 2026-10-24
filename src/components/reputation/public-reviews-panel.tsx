@@ -96,7 +96,7 @@ function ReviewRow({ r, onOpen, scope, contactsLinked }: { r: PublicReviewView; 
         {answered && <Badge tone="success">Answered</Badge>}
         {reply && reply.status !== "posted" && <ReplyStatusBadge status={reply.status} />}
       </div>
-      <p className="mt-1 text-[12.5px] text-muted">{r.reviewerName ?? "Anonymous reviewer"} · <RelativeTime iso={r.at} timezone={scope.timezone} /></p>
+      <p className="mt-1 break-words text-[12.5px] text-muted">{r.reviewerName ?? "Anonymous reviewer"} · <RelativeTime iso={r.at} timezone={scope.timezone} /></p>
       {r.comment ? <p className="mt-2 line-clamp-4 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-ink">{r.comment}</p> : <p className="mt-2 text-[13px] text-muted">The reviewer wrote no text.</p>}
       {r.contactId && r.contactName && (
         <p className="mt-2 text-[12.5px] text-muted">
@@ -124,7 +124,7 @@ export function PublicReviewsPanel({ scope, data, enabled, contactsLinked, hrefF
   const open = rows.find((r) => r.id === openId) ?? null;
   const canRead = enabled && !scope.readOnly && !scope.agency;
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       {!enabled && (
         <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-2">
           <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -136,7 +136,7 @@ export function PublicReviewsPanel({ scope, data, enabled, contactsLinked, hrefF
         and goes out only after the owner or a manager approves those exact words.
       </p>
       {data.summaries.length > 0 ? (
-        <div className="grid gap-4 xl:grid-cols-2">{data.summaries.map((s) => <Summary key={s.connectionId} s={s} scope={scope} canRead={canRead && !scope.agency} />)}</div>
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2 [&>*]:min-w-0">{data.summaries.map((s) => <Summary key={s.connectionId} s={s} scope={scope} canRead={canRead && !scope.agency} />)}</div>
       ) : (
         <EmptyState compact icon={<Globe2 className="size-5" />} title="No review site is connected" description={<>Connect Google or a Facebook Page in <Link href={`${scope.base}/reviews?tab=settings`} className="font-medium underline">Settings</Link>. Until then nothing is read, and no review or rating appears here.</>} />
       )}

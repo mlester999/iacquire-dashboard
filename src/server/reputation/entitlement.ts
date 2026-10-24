@@ -1,8 +1,12 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
+import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { SessionUser } from "@/server/auth/service";
+
+/** The platform-wide emergency switch for the customer's review page and its two forms (REVIEWS_PUBLIC_DISABLED). Checked first, before any database read. */
+export const reviewsPublicDisabled = (): boolean => env().REVIEWS_PUBLIC_DISABLED;
 
 // Satisfaction surveys (a request of kind "survey", CSAT and NPS, the Satisfaction view, a retention program's feedback link, a survey form's answers saved as private
 // feedback) are dormant until a Super Admin switches them on for a workspace: org_features, feature "reputation_surveys"; no row means off. This is the one entitlement seam

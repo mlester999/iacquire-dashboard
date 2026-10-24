@@ -18,6 +18,7 @@ import { reconcileSetupAutomation } from "@/server/setup/automation";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { listAssets } from "@/server/assets/service";
 import { llmComplete, resolveLlmConfig } from "@/server/llm/client";
+import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { analyzeWebsite, digestAnalysis, type PageFetcher, type WebsiteAnalysis } from "@/server/onboarding/website";
 import { QUESTION_BY_ID, QUESTIONS, INDUSTRY_OPTIONS, questionOptions } from "@/lib/onboarding/definitions";
 import {
@@ -504,6 +505,8 @@ export async function suggestOnboardingAnswer(ctx: OrgContext, questionId: strin
       temperature: 0.2,
       timeoutMs: 25_000,
     }, signal);
+    // The tokens are recorded whatever becomes of the answer, a failed call that still cost some included. Never fails the request. No credit is needed: a new workspace has none yet.
+    await meterModelUse({ orgId: ctx.org.orgId, feature: "onboarding_assist", key: modelCallKey(ctx.user.id), usage: reply.usage });
     if (!reply.ok) throw new AppError("integration_unavailable", "The AI assistant couldn't answer right now. You can still answer this yourself.");
     signal?.throwIfAborted();
     const output = outputSchema.safeParse(reply.text.length <= 16000 ? parseJsonObject(reply.text) : null);
@@ -888,7 +891,7 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
     );
     return rows.map((row) => row.content);
   }) : [];
-  const generated = firstSubmission ? await generateEmployeeSettings(data, approvedKnowledge) : null;
+  const generated = firstSubmission ? await generateEmployeeSettings(data, approvedKnowledge, undefined, ctx.org.orgId) : null;
   return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, firstSubmission, generated });
 }
 

@@ -24,9 +24,11 @@ describe("the list a filter means", () => {
   });
 
   it("asks each list for exactly its own invoices, and 'owed' includes a disputed one but never a void or a draft", () => {
-    expect(filterQuery("open")).toEqual({ status: ["issued"], paymentStatus: ["unpaid", "partially_paid", "disputed"] });
-    expect(filterQuery("paid")).toEqual({ status: ["issued"], paymentStatus: ["paid"] });
-    expect(filterQuery("overdue")).toEqual({ overdueOnly: true });
+    // Nothing is owed on a test invoice, so the lists of what is owed, overdue and paid leave test invoices out, and they have a list of their own.
+    expect(filterQuery("open")).toEqual({ status: ["issued"], paymentStatus: ["unpaid", "partially_paid", "disputed"], tests: "exclude" });
+    expect(filterQuery("paid")).toEqual({ status: ["issued"], paymentStatus: ["paid"], tests: "exclude" });
+    expect(filterQuery("overdue")).toEqual({ overdueOnly: true, tests: "exclude" });
+    expect(filterQuery("test")).toEqual({ tests: "only" });
     expect(filterQuery("draft")).toEqual({ status: ["draft"] });
     expect(filterQuery("waiting")).toEqual({ status: ["pending_approval"] });
     expect(filterQuery("void")).toEqual({ status: ["void"] });
@@ -88,17 +90,25 @@ describe("the reminder days a person writes", () => {
 
 describe("what an invoice offers the person looking at it", () => {
   const base: ActionFacts = {
-    status: "issued", paymentStatus: "unpaid", writtenOff: false, balanceMinor: 150000, paidMinor: 0, createdVia: "manual", isAuthor: false, approvalRequiredForCreators: true, hasTestConnection: false,
+    status: "issued", paymentStatus: "unpaid", writtenOff: false, balanceMinor: 150000, paidMinor: 0, createdVia: "manual", isAuthor: false, approvalRequiredForCreators: true, hasTestConnection: false, isTest: false,
     can: { create: false, approve: false, send: false, recordPayment: false, void: false, refund: false, connect: false },
   };
   const owner = { create: true, approve: true, send: true, recordPayment: true, void: true, refund: true, connect: true };
   const sales = { create: true, approve: false, send: false, recordPayment: false, void: false, refund: false, connect: false };
   const offered = (over: Partial<ActionFacts>) => invoiceActions({ ...base, ...over }).offered;
 
-  it("lets the owner do everything on an issued invoice that still owes something, and hides the test payment unless a test account is connected", () => {
+  it("lets the owner do everything on an issued invoice that still owes something, and never offers a real invoice a test payment, whatever account is connected", () => {
     const all = offered({ can: owner });
     expect([...all].sort()).toEqual(["link", "record_payment", "void", "write_off"].sort());
-    expect(offered({ can: owner, hasTestConnection: true })).toContain("test_payment");
+    expect(offered({ can: owner, hasTestConnection: true })).not.toContain("test_payment");
+  });
+
+  it("offers a test invoice the test payment, only when a test account is connected, and the delete, and nothing about money owed", () => {
+    const test = { isTest: true, can: owner };
+    expect([...offered({ ...test, hasTestConnection: true })].sort()).toEqual(["delete_test", "link", "test_payment", "void"].sort());
+    expect([...offered({ ...test, hasTestConnection: false })].sort()).toEqual(["delete_test", "link", "void"].sort());
+    expect(offered({ ...test, hasTestConnection: true, writtenOff: true })).not.toContain("test_payment");
+    expect(offered({ ...test, hasTestConnection: true, paymentStatus: "disputed" })).not.toContain("test_payment");
   });
 
   it("does not offer to void an invoice with a payment, says why, and never offers to record a payment on one that owes nothing or to test-pay a written-off or disputed one", () => {
@@ -108,8 +118,6 @@ describe("what an invoice offers the person looking at it", () => {
     const paid = offered({ can: owner, paidMinor: 150000, balanceMinor: 0, paymentStatus: "paid" });
     expect(paid).not.toContain("record_payment");
     expect(paid).not.toContain("write_off");
-    expect(offered({ can: owner, hasTestConnection: true, writtenOff: true })).not.toContain("test_payment");
-    expect(offered({ can: owner, hasTestConnection: true, paymentStatus: "disputed" })).not.toContain("test_payment");
   });
 
   it("offers a salesperson the draft they wrote, to send for approval, and not to issue while approval is required", () => {
@@ -134,13 +142,13 @@ describe("what an invoice offers the person looking at it", () => {
 
   it("never offers an action that needs a right the person does not have", () => {
     const needs: Record<InvoiceActionId, keyof ActionFacts["can"] | null> = {
-      edit: "create", submit: "create", withdraw: "create", approve_issue: "approve", request_changes: "approve", issue: null, discard: "create", link: "send", record_payment: "recordPayment", void: "void", write_off: "refund", test_payment: "connect",
+      edit: "create", submit: "create", withdraw: "create", approve_issue: "approve", request_changes: "approve", issue: null, discard: "create", link: "send", record_payment: "recordPayment", void: "void", write_off: "refund", test_payment: "connect", delete_test: "connect",
     };
     const rights = Object.keys(owner) as Array<keyof ActionFacts["can"]>;
     for (const status of ["draft", "pending_approval", "issued"] as const) for (const mask of Array.from({ length: 1 << rights.length }, (_, i) => i)) {
       const can = Object.fromEntries(rights.map((r, i) => [r, Boolean(mask & (1 << i))])) as ActionFacts["can"];
-      for (const isAuthor of [false, true]) for (const hasTestConnection of [false, true]) {
-        const { offered: o } = invoiceActions({ ...base, status, can, isAuthor, hasTestConnection });
+      for (const isAuthor of [false, true]) for (const hasTestConnection of [false, true]) for (const isTest of [false, true]) {
+        const { offered: o } = invoiceActions({ ...base, status, can, isAuthor, hasTestConnection, isTest });
         for (const a of o) {
           const right = needs[a];
           if (right) expect(can[right], `${status} ${a} offered without ${right}`).toBe(true);

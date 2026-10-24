@@ -24,7 +24,8 @@ const BY_KEY = new Map<string, (typeof PROPOSAL_TOKENS)[number]>(PROPOSAL_TOKENS
 export const isProposalToken = (key: string): key is ProposalTokenKey => BY_KEY.has(key);
 export const tokenPhrase = (key: string): string => BY_KEY.get(key)?.phrase ?? key;
 
-const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// No \s* beside [^{}]*: two quantifiers that both match a space made an unclosed "{{" plus thousands of spaces take minutes to scan. The key is trimmed in code instead.
+const PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
 
 export interface TokenUse {
   raw: string;

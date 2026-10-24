@@ -44,6 +44,7 @@ drop table customer_invoices;
 drop table customer_payment_connections;
 drop table customer_invoice_settings;
 
+drop function app.customer_invoice_reminder_guard();
 drop function app.customer_refund_guard();
 drop function app.customer_payment_event_guard();
 drop function app.customer_payment_attempt_guard();

@@ -20,7 +20,9 @@ export const sameSite = sameSiteRequest;
 
 const contextOf = (req: Request, now?: Date): PublicContext => ({ ip: clientIp(req), now });
 
-const FAILURE_STATUS: Record<PayFailure, number> = { invalid: 404, rate_limited: 429, paid: 409, unavailable: 503, try_again: 503 };
+const FAILURE_STATUS: Record<PayFailure, number> = { invalid: 404, rate_limited: 429, paid: 409, unavailable: 503, disabled: 503, try_again: 503 };
+/** The same answer for the platform's switch and for a workspace that takes no customers: neither says which, and a client may try again later. */
+const unavailableAnswer = () => json(503, { error: "unavailable" }, { "Retry-After": "300" });
 
 /** POST: the customer pressed "Pay online". The link is in a header; nothing else is read, so there is no amount, invoice or workspace to tamper with. */
 export async function handlePay(req: Request, deps: Parameters<typeof startPublicPayment>[2] = {}, now?: Date): Promise<Response> {
@@ -29,7 +31,7 @@ export async function handlePay(req: Request, deps: Parameters<typeof startPubli
   if (!looksLikeInvoiceToken(token)) return json(404, { error: "invalid", message: "This link is not valid. Open the link from the message you received." });
   const r = await startPublicPayment(token, contextOf(req, now), deps);
   if (r.ok) return json(200, { url: r.url });
-  return json(FAILURE_STATUS[r.reason], { error: r.reason, message: r.message }, r.reason === "rate_limited" || r.retryAfterSeconds ? { "Retry-After": String(r.retryAfterSeconds ?? 300) } : {});
+  return json(FAILURE_STATUS[r.reason], { error: r.reason, message: r.message }, r.reason === "rate_limited" || r.reason === "disabled" || r.retryAfterSeconds ? { "Retry-After": String(r.retryAfterSeconds ?? 300) } : {});
 }
 
 /**
@@ -42,6 +44,7 @@ export async function handleStatus(req: Request, now?: Date): Promise<Response> 
   const ctx = contextOf(req, now);
   if (looksLikeReference(reference)) {
     const r = await paymentStatusByReference(reference, ctx);
+    if (r.state === "disabled") return unavailableAnswer();
     if (r.state === "rate_limited") return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
     if (r.state === "invalid") return json(404, { error: "invalid" });
     const d = r.view.description;
@@ -49,6 +52,7 @@ export async function handleStatus(req: Request, now?: Date): Promise<Response> 
   }
   if (looksLikeInvoiceToken(token)) {
     const r = await paymentStatusByToken(token, ctx);
+    if (r.state === "disabled" || r.state === "unavailable") return unavailableAnswer();
     if (r.state === "rate_limited") return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
     if (r.state === "invalid") return json(404, { error: "invalid" });
     return json(200, { paymentStatus: r.status.paymentStatus, balanceMinor: r.status.balanceMinor, currency: r.status.currency, hasPendingPayment: r.status.hasPendingPayment, banner: r.status.banner.kind });

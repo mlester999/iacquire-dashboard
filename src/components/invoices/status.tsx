@@ -17,6 +17,11 @@ export function PaymentBadge({ status, className }: { status: InvoicePaymentStat
   return <Badge tone={PAYMENT_TONE[status]} className={className}>{PAYMENT_STATUS_LABELS[status]}</Badge>;
 }
 
+/** A test invoice says so wherever it appears: nothing is owed on it and no money moves. The words carry it; the colour is only a help. */
+export function TestBadge({ className }: { className?: string }) {
+  return <Badge tone="violet" className={className} title="A test invoice: nothing is owed and no money moves. It is kept out of what is owed, reminders, revenue and your deals.">Test invoice</Badge>;
+}
+
 export function OverdueBadge({ days, className }: { days: number; className?: string }) {
   return <Badge tone="danger" className={className}>{days > 0 ? `${days} ${days === 1 ? "day" : "days"} overdue` : "Overdue"}</Badge>;
 }

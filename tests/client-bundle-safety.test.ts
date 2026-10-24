@@ -34,12 +34,47 @@ const read = (file: string) => {
   return text;
 };
 
+const resolved = new Map<string, string | null>();
 function resolveImport(spec: string, from: string): string | null {
+  const key = `${from}\0${spec}`;
+  const known = resolved.get(key);
+  if (known !== undefined) return known;
   const base = spec.startsWith("@/") ? path.join(SRC, spec.slice(2)) : spec.startsWith(".") ? path.resolve(path.dirname(from), spec) : null;
-  if (!base) return null;
-  for (const suffix of ["", ".ts", ".tsx", "/index.ts", "/index.tsx"]) if (existsSync(base + suffix) && statSync(base + suffix).isFile()) return base + suffix;
-  return null;
+  let found: string | null = null;
+  if (base) for (const suffix of ["", ".ts", ".tsx", "/index.ts", "/index.tsx"]) if (existsSync(base + suffix) && statSync(base + suffix).isFile()) { found = base + suffix; break; }
+  resolved.set(key, found);
+  return found;
 }
+
+// Each file is read, parsed and classified once: the walks below visit the same shared files from hundreds of entry points.
+const kinds = new Map<string, { client: boolean; action: boolean }>();
+const kindOf = (file: string) => {
+  let kind = kinds.get(file);
+  if (!kind) {
+    const head = read(file).slice(0, 600);
+    kind = { client: DIRECTIVE("use client").test(head), action: DIRECTIVE("use server").test(head) };
+    kinds.set(file, kind);
+  }
+  return kind;
+};
+const parsedImports = new Map<string, RegExpMatchArray[]>();
+const importsOf = (file: string) => {
+  let list = parsedImports.get(file);
+  if (!list) {
+    list = [...read(file).matchAll(IMPORT)];
+    parsedImports.set(file, list);
+  }
+  return list;
+};
+const parsedNamed = new Map<string, RegExpMatchArray[]>();
+const namedImportsOf = (file: string) => {
+  let list = parsedNamed.get(file);
+  if (!list) {
+    list = [...read(file).matchAll(NAMED_IMPORT)];
+    parsedNamed.set(file, list);
+  }
+  return list;
+};
 
 function reachesServerCode(entry: string): string[] {
   const seen = new Set<string>([entry]);
@@ -47,9 +82,8 @@ function reachesServerCode(entry: string): string[] {
   const found: string[] = [];
   while (stack.length) {
     const file = stack.pop() as string;
-    const text = read(file);
-    if (file !== entry && DIRECTIVE("use server").test(text.slice(0, 600))) continue;
-    for (const m of text.matchAll(IMPORT)) {
+    if (file !== entry && kindOf(file).action) continue;
+    for (const m of importsOf(file)) {
       if (m[2]) continue; // import type / export type: erased before bundling
       const spec = m[3];
       if (NODE_ONLY.test(spec) || spec.startsWith("@/server/")) {
@@ -82,14 +116,11 @@ function clientValueImportsFromServer(entry: string): string[] {
   const stack = [entry];
   while (stack.length) {
     const file = stack.pop() as string;
-    const text = read(file);
-    for (const m of text.matchAll(NAMED_IMPORT)) {
+    for (const m of namedImportsOf(file)) {
       if (m[1]) continue; // import type { ... }
       const target = resolveImport(m[4], file);
       if (!target) continue;
-      const targetText = read(target);
-      const isClient = DIRECTIVE("use client").test(targetText.slice(0, 600));
-      if (!isClient) continue;
+      if (!kindOf(target).client) continue;
       for (const raw of m[3].split(",")) {
         const part = raw.trim();
         if (!part || part.startsWith("type ")) continue;
@@ -98,12 +129,11 @@ function clientValueImportsFromServer(entry: string): string[] {
       }
     }
     // Follow the imports that stay on the server: a client module ends the walk (what it imports is the browser's business).
-    for (const m of text.matchAll(IMPORT)) {
+    for (const m of importsOf(file)) {
       if (m[2]) continue;
       const next = resolveImport(m[3], file);
       if (!next || seen.has(next)) continue;
-      const nextText = read(next);
-      if (DIRECTIVE("use client").test(nextText.slice(0, 600)) || DIRECTIVE("use server").test(nextText.slice(0, 600))) continue;
+      if (kindOf(next).client || kindOf(next).action) continue;
       seen.add(next);
       stack.push(next);
     }
@@ -156,7 +186,7 @@ describe("client components stay free of Node-only code", () => {
       writeFileSync(path.join(dir, "panel.tsx"), '"use client";\nimport { h } from "./shared";\nexport const Panel = () => h("x");\n');
       expect(reachesServerCode(path.join(dir, "panel.tsx"))).toHaveLength(1);
       writeFileSync(path.join(dir, "shared.ts"), 'import type { Buffer } from "node:buffer";\nexport const h = (s: string) => s;\n');
-      texts.clear();
+      for (const cache of [texts, kinds, parsedImports, parsedNamed, resolved]) cache.clear();
       expect(reachesServerCode(path.join(dir, "panel.tsx"))).toHaveLength(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });

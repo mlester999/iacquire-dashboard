@@ -7,9 +7,10 @@ import { auditActor, type CrmActor } from "@/server/crm/actor";
 import { widgetKnowledge } from "@/server/webchat/generator";
 import { unsupportedClaims } from "@/server/social/claims";
 import { assertExternalReviewsEnabled } from "@/server/reputation/entitlement";
-import { connectionCredentials, recordProviderFailure, replyPostable, type ConnectionRow } from "@/server/reputation/connections";
+import { connectionCredentials, markRepliesNotAllowed, recordProviderFailure, replyPostable, type ConnectionRow } from "@/server/reputation/connections";
+import { PROVIDER_LABELS } from "@/lib/reputation/external";
 import { reviewProviderFor } from "@/server/reputation/providers";
-import { ProviderError, squashReply, type ReplyRead, type ReviewProvider } from "@/server/reputation/providers/types";
+import { ProviderError, squashReply, within, type ReplyRead, type ReviewProvider } from "@/server/reputation/providers/types";
 import { replyApprovalHash, reviewFingerprint } from "@/server/reputation/reply-hash";
 import { cleanReplyBody, replyProblems } from "@/lib/reputation/reply-rules";
 import { REPLY_KNOWLEDGE_SECTIONS } from "@/lib/reputation/reply-draft";
@@ -326,6 +327,8 @@ export async function cancelReply(actor: CrmActor, replyId: string): Promise<voi
 export interface PostDeps {
   provider?: ReviewProvider;
   now?: Date;
+  /** Epoch milliseconds after which the review site is no longer waited on (the scheduler's budget). Reads only: a post is never abandoned. */
+  deadline?: number;
 }
 
 const trim400 = (s: string) => s.slice(0, 400);
@@ -383,10 +386,15 @@ export async function postReply(actor: CrmActor, replyId: string, deps: PostDeps
         await addEvent(db, actor.orgId, replyId, "outcome_unknown", { id: null, kind: "system" }, { message: err.message });
         return { status: "needs_reconciliation" as ReplyStatus };
       }
-      await db.query("update review_replies set status = 'failed', failure_code = $3, failure_message = $4 where id = $1 and org_id = $2", [replyId, actor.orgId, err.kind.slice(0, 60), trim400(err.message)]);
+      // Replying is the optional part of a connection. A site that refuses a reply for lack of permission has not stopped accepting the sign-in: only replies are switched off,
+      // reading carries on, and the connection is not marked as needing to be reconnected. A sign-in the site rejects (kind auth) still is.
+      const noPermission = err.kind === "permission";
+      const message = noPermission ? `${PROVIDER_LABELS[ctx.connection.provider]} did not allow this reply with the access it was given. Reconnect with permission to reply, or post the reply there yourself.` : err.message;
+      await db.query("update review_replies set status = 'failed', failure_code = $3, failure_message = $4 where id = $1 and org_id = $2", [replyId, actor.orgId, err.kind.slice(0, 60), trim400(message)]);
       await addEvent(db, actor.orgId, replyId, "failed", { id: null, kind: "system" }, { code: err.kind });
-      if (err.needsReauth || err.kind === "auth" || err.kind === "permission") await recordProviderFailure(db, ctx.connection, err, now);
-      await notifyFailure(db, actor.orgId, ctx, `${ctx.reply.id}:${ctx.reply.version}:${now.getTime()}`, err.message);
+      if (noPermission) await markRepliesNotAllowed(db, ctx.connection);
+      else if (err.needsReauth || err.kind === "auth") await recordProviderFailure(db, ctx.connection, err, now);
+      await notifyFailure(db, actor.orgId, ctx, `${ctx.reply.id}:${ctx.reply.version}:${now.getTime()}`, message);
       return { status: "failed" as ReplyStatus };
     });
   }
@@ -428,9 +436,37 @@ async function notifyFailure(db: Queryable, orgId: string, ctx: ReplyContext, ke
 export type ReconcileOutcome = "posted" | "failed" | "waiting" | "needs_person" | "skipped";
 
 /**
+ * After RECONCILE_GIVE_UP_HOURS without an answer, the owner and managers are asked to look at the review site themselves, once for this version of the reply. Whatever stopped the
+ * answer (a site that cannot say, one that is down or refuses, a sign-in that cannot be opened, a connection a person ended) does not matter: the day-clock runs without the read.
+ * Returns whether the day has passed.
+ */
+async function askPersonToCheck(db: Queryable, orgId: string, ctx: ReplyContext, now: Date, sendingAt: Date): Promise<boolean> {
+  if (now.getTime() - sendingAt.getTime() < RECONCILE_GIVE_UP_HOURS * 3_600_000) return false;
+  const { id, version } = ctx.reply;
+  await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+    kind: "review_reply_failed", severity: "warning", title: "Check whether a reply was posted", body: `${ctx.connection.name}: iAcquire could not tell whether the reply went out. Look at the review on the site, then say here whether it is there.`,
+    link: `/crm/reviews?tab=public&review=${ctx.reply.review_id}`, dedupeKey: `review-reply-check:${id}:${version}`,
+  });
+  const told = await db.query("select 1 from review_reply_events where reply_id = $1 and org_id = $2 and kind = 'check_requested' and detail->>'version' = $3 limit 1", [id, orgId, String(version)]);
+  if (!told.rows[0]) await addEvent(db, orgId, id, "check_requested", { id: null, kind: "system" }, { version });
+  return true;
+}
+
+/** The site could not be asked, or did not say. Nothing is settled on a guess, but the day-clock still runs. */
+async function settleWithoutAnswer(orgId: string, replyId: string, now: Date): Promise<ReconcileOutcome> {
+  return withSystem(async (db) => {
+    const cur = await loadContext(db, orgId, replyId, true);
+    // A person settled it, or another pass did, in the meantime.
+    if (!cur || cur.reply.status !== "needs_reconciliation") return "skipped";
+    const sendingAt = cur.reply.sending_at ? new Date(cur.reply.sending_at) : now;
+    return (await askPersonToCheck(db, orgId, cur, now, sendingAt)) ? "needs_person" : "waiting";
+  });
+}
+
+/**
  * Asks the review site whether a reply it may have taken is there. Found word for word: posted. Found with other words: not posted (someone else's reply is there; posting again
- * would replace it, which is a person's decision). Not found: still waiting until the grace period has passed, then not posted. A site that cannot say: waiting, and after a day the
- * owner and managers are asked to look at the site themselves. A reply stuck in "posting" because its worker died is first moved to "checking".
+ * would replace it, which is a person's decision). Not found: still waiting until the grace period has passed, then not posted. A site that cannot say, cannot be reached or cannot be
+ * asked at all: waiting, and after a day the owner and managers are asked to look at the site themselves. A reply stuck in "posting" because its worker died is first moved to "checking".
  */
 export async function reconcileReply(orgId: string, replyId: string, deps: PostDeps = {}): Promise<ReconcileOutcome> {
   const now = deps.now ?? new Date();
@@ -444,22 +480,24 @@ export async function reconcileReply(orgId: string, replyId: string, deps: PostD
       r.status = "needs_reconciliation";
     }
     if (r.status !== "needs_reconciliation") return null;
-    if (ctx.connection.status === "disconnected") return null;
+    // A connection a person ended cannot be asked, but the reply is still unsettled: it is not skipped for good.
+    if (ctx.connection.status === "disconnected") return { ctx, creds: null };
     const creds = await connectionCredentials(db, ctx.connection);
     return creds.ok ? { ctx, creds: creds.creds } : { ctx, creds: null };
   });
   if (!loaded) return "skipped";
   const { ctx, creds } = loaded;
-  if (!creds) return "waiting";
+  if (!creds) return settleWithoutAnswer(orgId, replyId, now);
   const provider = deps.provider ?? reviewProviderFor(ctx.connection.adapter);
   const loc = { provider: ctx.connection.provider, accountId: ctx.connection.external_account_id, locationId: ctx.connection.external_location_id };
   const sendingAt = ctx.reply.sending_at ? new Date(ctx.reply.sending_at) : now;
   let seen: ReplyRead;
   try {
-    seen = await provider.readReply(creds, loc, ctx.review.provider_review_id, ctx.reply.body);
+    seen = await within(() => provider.readReply(creds, loc, ctx.review.provider_review_id, ctx.reply.body), deps.deadline);
   } catch (e) {
     if (e instanceof ProviderError && (e.needsReauth || e.kind === "auth" || e.kind === "permission")) await withSystem((db) => recordProviderFailure(db, ctx.connection, e, now));
-    return "waiting";
+    // No answer, for whatever reason (the site failed, or the pass ran out of time waiting): nothing is settled, and the day-clock still runs.
+    return settleWithoutAnswer(orgId, replyId, now);
   }
   return withSystem(async (db) => {
     const cur = await loadContext(db, orgId, replyId, true);
@@ -489,14 +527,7 @@ export async function reconcileReply(orgId: string, replyId: string, deps: PostD
       await notifyFailure(db, orgId, ctx, `${replyId}:${ctx.reply.version}:absent`, "The review site does not show the reply, so it was not posted.");
       return "failed" as ReconcileOutcome;
     }
-    if (waitedMs >= RECONCILE_GIVE_UP_HOURS * 3_600_000) {
-      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
-        kind: "review_reply_failed", severity: "warning", title: "Check whether a reply was posted", body: `${ctx.connection.name}: iAcquire could not tell whether the reply went out. Look at the review on the site, then say here whether it is there.`,
-        link: `/crm/reviews?tab=public&review=${ctx.reply.review_id}`, dedupeKey: `review-reply-check:${replyId}:${ctx.reply.version}`,
-      });
-      return "needs_person" as ReconcileOutcome;
-    }
-    return "waiting" as ReconcileOutcome;
+    return (await askPersonToCheck(db, orgId, cur, now, sendingAt)) ? ("needs_person" as ReconcileOutcome) : ("waiting" as ReconcileOutcome);
   });
 }
 
@@ -507,19 +538,27 @@ export interface ReconcileSummary {
   waiting: number;
 }
 
-/** The scheduler's pass over replies being checked, and over replies stuck in "posting". It never posts anything. */
-export async function reconcileDueReplies(opts: { now?: Date; limit?: number; provider?: ReviewProvider } = {}): Promise<ReconcileSummary> {
+/**
+ * The scheduler's pass over replies being checked, and over replies stuck in "posting". It never posts anything. `budgetMs` is the time the pass may take: no reply is started once it
+ * is used up, and a site that is still being waited on then is abandoned (the reply stays as it was). Replies the owner and managers were already asked to look at come last, so a
+ * few that stay stuck cannot crowd the others out of the batch.
+ */
+export async function reconcileDueReplies(opts: { now?: Date; limit?: number; provider?: ReviewProvider; budgetMs?: number } = {}): Promise<ReconcileSummary> {
   const now = opts.now ?? new Date();
+  const started = Date.now();
+  const deadline = opts.budgetMs === undefined ? undefined : started + opts.budgetMs;
   const ids = (await withSystem((db) => db.query<{ id: string; org_id: string }>(
     `select p.id, p.org_id from review_replies p
      join organizations o on o.id = p.org_id and o.status not in ('suspended', 'archived')
      where (p.status = 'needs_reconciliation' or (p.status = 'posting' and p.sending_at <= $1::timestamptz - make_interval(mins => $3::int)))
-     order by p.sending_at nulls first limit $2`,
+     order by exists (select 1 from review_reply_events e where e.reply_id = p.id and e.org_id = p.org_id and e.kind = 'check_requested' and e.detail->>'version' = p.version::text),
+              p.sending_at nulls first limit $2`,
     [now.toISOString(), opts.limit ?? RECONCILE_BATCH, POSTING_STALE_MINUTES],
   ))).rows;
   const out: ReconcileSummary = { checked: 0, posted: 0, failed: 0, waiting: 0 };
   for (const r of ids) {
-    const o = await reconcileReply(r.org_id, r.id, { now, provider: opts.provider });
+    if (deadline !== undefined && Date.now() >= deadline) break;
+    const o = await reconcileReply(r.org_id, r.id, { now, provider: opts.provider, deadline });
     if (o === "skipped") continue;
     out.checked += 1;
     if (o === "posted") out.posted += 1;

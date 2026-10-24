@@ -30,12 +30,15 @@ export interface CloseRuleFacts {
   alreadyApplied: boolean;
   /** Some payment that counts toward the invoice moved no real money (a payment provider's test mode). A test never changes a deal, however it is paid. */
   hasTestPayment?: boolean;
+  /** The invoice is a test invoice: nothing was owed and no money moved, so it never acts on a deal. */
+  isTest?: boolean;
 }
 
-export type CloseRuleDecision = { action: "none"; reason: "rule_none" | "no_deal" | "deal_not_open" | "not_fully_paid" | "dispute" | "already_applied" | "not_marked" | "test_payment" } | { action: "task" } | { action: "won" };
+export type CloseRuleDecision = { action: "none"; reason: "rule_none" | "no_deal" | "deal_not_open" | "not_fully_paid" | "dispute" | "already_applied" | "not_marked" | "test_payment" | "test_invoice" } | { action: "task" } | { action: "won" };
 
 export function decideCloseRule(f: CloseRuleFacts): CloseRuleDecision {
   if (f.alreadyApplied) return { action: "none", reason: "already_applied" };
+  if (f.isTest) return { action: "none", reason: "test_invoice" };
   if (f.rule === "none") return { action: "none", reason: "rule_none" };
   if (f.dealStatus === null) return { action: "none", reason: "no_deal" };
   if (f.dealStatus !== "open") return { action: "none", reason: "deal_not_open" };

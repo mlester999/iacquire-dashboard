@@ -3,6 +3,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { identityKind, type Channel } from "@/lib/messaging";
+import { typedByVisitorOnly, type DestinationFacts } from "@/lib/webchat/identity";
 import type { OrgContext } from "@/server/tenancy/context";
 
 // Whether a phone number or email address on a contact has been confirmed, and how it becomes confirmed. The rule that uses this (evaluateSend, src/lib/webchat/identity.ts)
@@ -13,30 +14,38 @@ import type { OrgContext } from "@/server/tenancy/context";
 
 /** Whether the contact's identity for this channel and address is verified; null when there is no such identity. */
 export async function identityVerified(db: Queryable, orgId: string, contactId: string, channel: Channel, address: string): Promise<boolean | null> {
-  const { rows } = await db.query<{ verified: boolean }>("select verified from contact_identities where org_id = $1 and contact_id = $2 and kind = $3 and value = $4", [orgId, contactId, identityKind(channel), address]);
-  return rows[0]?.verified ?? null;
+  return (await identityFacts(db, orgId, contactId, channel, address)).verified;
+}
+
+/** What the contact's identity for this channel and address says about where it came from; `verified` is null when there is no such identity. */
+export async function identityFacts(db: Queryable, orgId: string, contactId: string, channel: Channel, address: string): Promise<DestinationFacts> {
+  const { rows } = await db.query<{ verified: boolean; typed_by_visitor: boolean }>(
+    "select verified, typed_by_visitor from contact_identities where org_id = $1 and contact_id = $2 and kind = $3 and value = $4",
+    [orgId, contactId, identityKind(channel), address],
+  );
+  return { typedByVisitor: rows[0]?.typed_by_visitor ?? false, verified: rows[0]?.verified ?? null };
 }
 
 /**
- * Whether this address is one a website visitor only typed (its contact came from the website chat and the address is not verified). For read-only previews that
- * say what a send would do; evaluateSend itself applies the whole rule.
+ * Whether this address is one a website visitor only typed (the visitor typed it and nothing has confirmed it since). It is a fact of the address, so it holds after a
+ * merge moved the address to another contact. For read-only previews that say what a send would do; evaluateSend itself applies the whole rule.
  */
 export async function typedByVisitorAddress(db: Queryable, orgId: string, contactId: string, channel: Channel, address: string): Promise<boolean> {
-  const { rows } = await db.query<{ typed: boolean }>(
-    `select (not i.verified and k.created_via = 'website_chat') as typed from contact_identities i join contacts k on k.id = i.contact_id and k.org_id = i.org_id
-     where i.org_id = $1 and i.contact_id = $2 and i.kind = $3 and i.value = $4`,
-    [orgId, contactId, identityKind(channel), address],
-  );
-  return rows[0]?.typed ?? false;
+  return typedByVisitorOnly(await identityFacts(db, orgId, contactId, channel, address));
 }
 
 /** The source of the contact's latest consent event for this channel and purpose (for example "website_chat_form"), or null when there is none. */
 export async function latestConsentSource(db: Queryable, orgId: string, contactId: string, channel: Channel, purpose: "service" | "marketing"): Promise<string | null> {
-  const { rows } = await db.query<{ source: string }>(
-    "select source from contact_consent_events where org_id = $1 and contact_id = $2 and channel = $3 and purpose = $4 order by id desc limit 1",
+  return (await latestConsentEvent(db, orgId, contactId, channel, purpose))?.source ?? null;
+}
+
+/** The contact's latest consent event for this channel and purpose, with the words recorded for it, or null when there is none. */
+export async function latestConsentEvent(db: Queryable, orgId: string, contactId: string, channel: Channel, purpose: "service" | "marketing"): Promise<{ status: "granted" | "revoked"; source: string; evidence: string | null } | null> {
+  const { rows } = await db.query<{ status: "granted" | "revoked"; source: string; evidence: string | null }>(
+    "select status, source, evidence from contact_consent_events where org_id = $1 and contact_id = $2 and channel = $3 and purpose = $4 order by id desc limit 1",
     [orgId, contactId, channel, purpose],
   );
-  return rows[0]?.source ?? null;
+  return rows[0] ?? null;
 }
 
 /**

@@ -71,7 +71,7 @@ export async function regenerateEmployeeStyleAction(role: string) {
       );
       return rows.map((row) => row.content);
     });
-    const generated = (await generateEmployeeSettings(data, knowledge))[agent.role_key];
+    const generated = (await generateEmployeeSettings(data, knowledge, undefined, ctx.org.orgId))[agent.role_key];
     const { personality, characterTraits, communicationStyle, responseBehavior } = generated.settings;
     return { ok: true as const, data: { personality, characterTraits, communicationStyle, responseBehavior, source: generated.source } };
   } catch (err) {

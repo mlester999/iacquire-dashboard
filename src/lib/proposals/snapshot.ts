@@ -67,20 +67,22 @@ export function tokenValuesFor(i: FreezeInput): ProposalTokenValues {
 }
 
 export function freeze(i: FreezeInput): Frozen {
-  const values = tokenValuesFor(i);
   const missing = new Set<ProposalTokenKey>();
   const unknown = new Set<string>();
-  const fill = (text: string): string => {
+  const fillWith = (values: ProposalTokenValues) => (text: string): string => {
     const r = renderProposalText(text, values);
     for (const m of r.missing) missing.add(m);
     for (const u of r.unknown) unknown.add(u);
     return r.text;
   };
+  // The title is filled first and cannot be made of its own text ({{proposal.title}} in it is reported as missing). Every other field then reads the title as the customer does.
+  const title = fillWith({ ...tokenValuesFor(i), "proposal.title": null })(i.title);
+  const fill = fillWith({ ...tokenValuesFor(i), "proposal.title": title });
   const { lines: figures, groups } = computeDocTotals(i.doc.lines);
   const snapshot: ProposalSnapshot = {
     v: 1,
     number: i.number,
-    title: i.title,
+    title,
     currency: i.currency,
     validUntil: i.validUntil,
     requiresSignature: i.requiresSignature,
@@ -89,8 +91,8 @@ export function freeze(i: FreezeInput): Frozen {
     client: i.client,
     sections: i.doc.sections.map((s) => ({ heading: fill(s.heading), body: fill(s.body) })),
     lines: i.doc.lines.map((l, n) => ({
-      name: fill(l.name), description: fill(l.description), unitLabel: l.unitLabel, quantityMilli: l.quantityMilli, unitPriceMinor: l.unitPriceMinor, billing: l.billing,
-      taxName: l.taxBps > 0 ? l.taxName : null, taxBps: l.taxBps, discount: l.discount, note: fill(l.note), amounts: figures[n],
+      name: fill(l.name), description: fill(l.description), unitLabel: fill(l.unitLabel), quantityMilli: l.quantityMilli, unitPriceMinor: l.unitPriceMinor, billing: l.billing,
+      taxName: l.taxBps > 0 && l.taxName !== null ? fill(l.taxName) : null, taxBps: l.taxBps, discount: l.discount, note: fill(l.note), amounts: figures[n],
     })),
     groups,
     terms: fill(i.doc.terms),

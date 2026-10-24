@@ -14,6 +14,7 @@ import { assertSocialWorkspace } from "@/server/social/workspace";
 import { SOCIAL_CLIENT_ONLY_MESSAGE } from "@/lib/social/workspace";
 import { providerFor, simulatedAllowed, type Adapter } from "@/server/social/providers";
 import { authorizeUrl, canPostTo, metaConfigured, resolveSignIn, type ConnectedPage } from "@/server/social/providers/meta-oauth";
+import { metaRepliesReady, metaReviewsReady } from "@/server/reputation/providers/meta-reviews";
 import { ProviderError, type AccountCapabilities, type HealthResult, type SocialProvider } from "@/server/social/providers/types";
 
 // Connecting, checking and disconnecting social accounts. An account is a Facebook Page or an Instagram professional account that belongs to the CLIENT: only
@@ -87,10 +88,15 @@ export const STATE_MINUTES = 10;
 export const DEFAULT_RETURN = "/social/accounts";
 export const safeReturn = (raw: string | null | undefined) => (raw && /^\/social(\/[A-Za-z0-9/_-]*)?$/.test(raw) ? raw : DEFAULT_RETURN);
 
-/** Records a single-use sign-in state for this person and returns the address to send the browser to. */
-export async function startMetaConnect(ctx: OrgContext, platform: Platform, returnPath?: string | null): Promise<{ url: string }> {
+/**
+ * Records a single-use sign-in state for this person and returns the address to send the browser to. `reviews` is the "reconnect with review access" step of CRM → Reviews: it
+ * also asks Meta for the permissions to read the Page's recommendations (and to reply to them when that is switched on), and is refused unless reading them is switched on at all.
+ */
+export async function startMetaConnect(ctx: OrgContext, platform: Platform, returnPath?: string | null, opts: { reviews?: boolean } = {}): Promise<{ url: string }> {
   assertConnect(ctx);
   if (!PLATFORMS.includes(platform)) throw new AppError("invalid_input", "Choose Facebook or Instagram.");
+  if (opts.reviews && platform !== "facebook") throw new AppError("invalid_input", "Review access is for Facebook Pages.");
+  if (opts.reviews && !metaReviewsReady()) throw new AppError("unavailable", "Reading Facebook recommendations isn't switched on for iAcquire yet, so review access can't be asked for.");
   if (!metaConfigured()) {
     throw new AppError("unavailable", "Connecting Facebook and Instagram is not set up for this deployment yet. iAcquire needs to register its Meta app first, so nothing can be connected today.");
   }
@@ -102,7 +108,7 @@ export async function startMetaConnect(ctx: OrgContext, platform: Platform, retu
       [ctx.org.orgId, ctx.user.id, platform, sha256(state), safeReturn(returnPath), STATE_MINUTES],
     );
   });
-  return { url: authorizeUrl(state, platform) };
+  return { url: authorizeUrl(state, platform, undefined, { reviews: opts.reviews, replies: metaRepliesReady() }) };
 }
 
 export interface PageChoice {

@@ -1,5 +1,5 @@
 import "server-only";
-import { NUMBER_TOKEN, plainNumber, ungroundedAmounts } from "@/server/webchat/generator";
+import { NUMBER_TOKEN, plainNumber, ungroundedAmounts } from "@/server/webchat/amounts";
 
 // What an AI suggestion may state. The model is told never to invent a price, a review, a statistic, an award, a deadline or an offer; this is the safety net
 // behind that instruction. A suggestion is dropped when it states any of the claims below that the business's approved knowledge does not itself state. It is a

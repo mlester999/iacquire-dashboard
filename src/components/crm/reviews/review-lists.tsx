@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, EmptyState, Select, Textarea } from "@/components/ui/primitives";
 import { RelativeTime } from "@/components/crm/relative-time";
 import { ConfirmDialog, useCrmAction } from "@/components/crm/ui";
-import { cancelReviewRequestAction, setFeedbackFollowUpAction } from "@/app/actions/crm-reviews";
+import { cancelReviewRequestAction, confirmSurveyMatchAction, dismissSurveyMatchAction, setFeedbackFollowUpAction } from "@/app/actions/crm-reviews";
 import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
 import { npsBand, type FeedbackScale } from "@/lib/reputation/scores";
 import { cn } from "@/lib/utils";
@@ -114,7 +114,10 @@ const SOURCE_LABELS: Record<FeedbackView["source"], string> = { review_request: 
 export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyText }: { scope: CrmScope; rows: FeedbackView[]; canFollowUp: boolean; contactsLinked: boolean; emptyText?: string }) {
   const { run, busy } = useCrmAction();
   const [resolving, setResolving] = React.useState<FeedbackView | null>(null);
+  const [confirming, setConfirming] = React.useState<FeedbackView | null>(null);
   const [note, setNote] = React.useState("");
+  // Saying whose a survey answer is belongs to the client's own owners and managers (the service refuses everyone else, support included).
+  const canDecide = canFollowUp && !scope.agency && !scope.readOnly;
   if (!rows.length) {
     return <EmptyState compact icon={<MessageSquareHeart className="size-5" />} title="No feedback here" description={emptyText ?? "When customers send you private feedback from their review page, it appears here."} />;
   }
@@ -173,6 +176,22 @@ export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyTe
               </div>
             </div>
             {f.comment ? <p className="mt-2 whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-ink-2">{f.comment}</p> : <p className="mt-2 text-[13px] text-muted">No comment.</p>}
+            {f.possibleContact && (
+              <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-3 text-[13px] leading-relaxed text-warning-ink">
+                <p className="font-medium">
+                  May be from {contactsLinked ? <Link href={`${scope.base}/contacts/${f.possibleContact.id}`} className="underline">{f.possibleContact.name}</Link> : f.possibleContact.name}. Not confirmed.
+                </p>
+                <p className="mt-1">
+                  The survey knew them only from an email address or phone number that was typed, and anyone can type anyone&apos;s. So far nothing was done for them: it is not on their timeline or counted as their answer{f.lowScore ? ", no follow-up was opened in their name" : ""}, and their automatic messages carry on.
+                </p>
+                {canDecide && (
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" disabled={busy(`match-${f.id}`)} onClick={() => setConfirming(f)}>It is them</Button>
+                    <Button size="sm" variant="ghost" loading={busy(`match-${f.id}`)} onClick={() => void run(`match-${f.id}`, () => dismissSurveyMatchAction(scope.orgId, f.id), "Kept as an answer with no name.")}>It is not them</Button>
+                  </div>
+                )}
+              </div>
+            )}
             {(f.acknowledgedAt || f.resolvedAt) && (
               <p className="mt-2 text-[12.5px] text-muted">
                 {f.acknowledgedAt && <>Acknowledged{f.acknowledgedByName ? ` by ${f.acknowledgedByName}` : ""} <RelativeTime iso={f.acknowledgedAt} timezone={scope.timezone} />. </>}
@@ -183,6 +202,20 @@ export function FeedbackList({ scope, rows, canFollowUp, contactsLinked, emptyTe
         );
       })}
     </ul>
+    <ConfirmDialog
+      open={Boolean(confirming)}
+      onOpenChange={(o) => !o && setConfirming(null)}
+      title={confirming?.possibleContact ? `Is this answer from ${confirming.possibleContact.name}?` : "Is this their answer?"}
+      description={confirming?.lowScore
+        ? "From now on it is their own answer: it goes on their timeline, a follow-up task is opened for their owner, the owner and managers are told, and their automatic program messages stop."
+        : "From now on it is their own answer: it goes on their timeline and is counted as theirs."}
+      confirmLabel="Yes, it is them"
+      loading={busy("confirm-match")}
+      onConfirm={async () => {
+        if (!confirming) return;
+        if (await run("confirm-match", () => confirmSurveyMatchAction(scope.orgId, confirming.id), "Saved as their answer.")) setConfirming(null);
+      }}
+    />
     <ConfirmDialog
       open={Boolean(resolving)}
       onOpenChange={(o) => !o && setResolving(null)}

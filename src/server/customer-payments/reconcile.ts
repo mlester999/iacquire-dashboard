@@ -1,14 +1,15 @@
 import "server-only";
 import { withSystem } from "@/server/db";
-import { notifyOrgRoles } from "@/server/notifications";
 import { sanitizeErrorText } from "@/lib/ops";
 import type { PaymentProviderId } from "@/lib/invoices/connection-rules";
 import { runCloseRule } from "@/server/invoices/close-rules";
 import { credentialVault } from "@/server/customer-payments/credentials";
+import { flagRefusedKey } from "@/server/customer-payments/key-refused";
 import { SETTING_UP_SECONDS } from "@/server/customer-payments/attempts";
 import { markReceiptError, processReceipt, readBackAllowed, runEffects } from "@/server/customer-payments/events";
 import { recordCheckoutPayments } from "@/server/customer-payments/read-back";
 import { providerFor, type ProviderResolver } from "@/server/customer-payments/providers";
+import type { CredentialCheck } from "@/server/customer-payments/providers/types";
 import { webhookUrlFor } from "@/server/customer-payments/links";
 
 // The scheduled job that makes a lost or failed webhook harmless (customerPaymentReconcile). It runs only when the scheduler does, and in a staged start only when
@@ -21,16 +22,26 @@ import { webhookUrlFor } from "@/server/customer-payments/links";
 //   3. Checkouts still open after half an hour are read back from the provider, so a payment whose webhook was lost is still recorded (through the same receipt path).
 //   4. Each connection is checked once a day: a key the provider no longer accepts stops new payments and tells the owner.
 //   5. The deal rules for invoices paid in the last week that did not get to run (the process died between the payment and the rule) run now.
+//
+// The whole run has a time budget (RECONCILE_BUDGET_MS, passed by the scheduler), because the tick that runs it has a hard limit and every job after it waits for it: the three
+// steps that ask a provider (1, 3 and 4) each get a share of it, and a provider that does not answer in its share is given up on for this run (the call is abandoned, not
+// cancelled; whatever it does later is idempotent), the item is put at the back of its queue, and the next run goes on from there. Steps 2 and 5 ask nobody and always run.
 
 const RETRY_AFTER_MINUTES = 10;
 const POLL_AFTER_MINUTES = 30;
 const POLL_EVERY_MINUTES = 15;
 const HEALTH_EVERY_HOURS = 24;
 export const MAX_ATTEMPTS = 10;
+/** What one run may spend waiting on providers, in all. The tick is cut off at 120 seconds and the jobs after this one are waiting for it. */
+export const RECONCILE_BUDGET_MS = 30_000;
+/** How the budget is shared between the steps that ask a provider (receipts, open checkouts, key checks). */
+const SHARES = { receipts: 0.35, polling: 0.4, health: 0.25 } as const;
 
 export interface ReconcileDeps {
   now?: Date;
   providerFor?: ProviderResolver;
+  /** What this run may spend waiting on providers, default RECONCILE_BUDGET_MS. */
+  budgetMs?: number;
 }
 
 export interface ReconcileReport {
@@ -41,11 +52,29 @@ export interface ReconcileReport {
   recordedFromPoll: number;
   connectionsChecked: number;
   dealRules: number;
+  /** A provider did not answer within its share of the budget, so a step was cut short and the rest waits for the next run. */
+  cutShort: boolean;
 }
 
 const minutes = (now: Date, m: number) => new Date(now.getTime() - m * 60_000);
 
-async function retryReceipts(now: Date, deps: ReconcileDeps): Promise<number> {
+/** A call that was given up on because the time ran out. */
+class TimeSpent extends Error {}
+
+/** Waits for `work` until `until` (a clock time in ms) and no longer. The work is not cancelled; its late result is dropped. */
+function within<T>(until: number, work: () => Promise<T>): Promise<T> {
+  const left = until - Date.now();
+  if (left <= 0) return Promise.reject(new TimeSpent());
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new TimeSpent()), left);
+    work().then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
+async function retryReceipts(now: Date, deps: ReconcileDeps, until: number): Promise<{ done: number; cutShort: boolean }> {
   const ids = (await withSystem((db) =>
     db.query<{ id: string }>(
       `select id from customer_payment_events
@@ -56,15 +85,18 @@ async function retryReceipts(now: Date, deps: ReconcileDeps): Promise<number> {
   )).rows;
   let n = 0;
   for (const { id } of ids) {
+    if (Date.now() >= until) return { done: n, cutShort: true };
     try {
-      const r = await processReceipt(id, { now, providerFor: deps.providerFor });
+      const r = await within(until, () => processReceipt(id, { now, providerFor: deps.providerFor }));
       await runEffects(r.effects);
       if (r.outcome !== "deferred" && r.outcome !== "duplicate") n += 1;
     } catch (e) {
-      await markReceiptError(id, sanitizeErrorText(e)).catch(() => undefined);
+      // (A receipt whose read-back timed out counts the try like any other failure, so the others get their turn.)
+      await markReceiptError(id, e instanceof TimeSpent ? "The provider did not answer in time. It is tried again on a later run." : sanitizeErrorText(e)).catch(() => undefined);
+      if (e instanceof TimeSpent) return { done: n, cutShort: true };
     }
   }
-  return n;
+  return { done: n, cutShort: false };
 }
 
 async function closeAttempts(now: Date): Promise<{ expired: number; closedUnanswered: number }> {
@@ -86,7 +118,7 @@ interface PollRow {
   credentials: string;
 }
 
-async function pollOpenAttempts(now: Date, deps: ReconcileDeps): Promise<{ polled: number; recorded: number }> {
+async function pollOpenAttempts(now: Date, deps: ReconcileDeps, until: number): Promise<{ polled: number; recorded: number; cutShort: boolean }> {
   const resolve = deps.providerFor ?? providerFor;
   const rows = (await withSystem((db) =>
     db.query<PollRow>(
@@ -99,7 +131,9 @@ async function pollOpenAttempts(now: Date, deps: ReconcileDeps): Promise<{ polle
   )).rows;
   let polled = 0;
   let recorded = 0;
+  let cutShort = false;
   for (const a of rows) {
+    if (Date.now() >= until) return { polled, recorded, cutShort: true };
     // The environment's say first: no real provider is asked while its calls switch is off. The attempt is left alone, so it is looked at when the switch is on.
     if (!readBackAllowed(a.provider)) continue;
     let adapter;
@@ -110,23 +144,26 @@ async function pollOpenAttempts(now: Date, deps: ReconcileDeps): Promise<{ polle
     }
     const creds = credentialVault.open(a.credentials);
     if (!adapter.fetchCheckout || !creds) continue;
+    const fetchCheckout = adapter.fetchCheckout.bind(adapter);
     try {
-      const co = await adapter.fetchCheckout(creds, a.provider_checkout_id);
+      const co = await within(until, () => fetchCheckout(creds, a.provider_checkout_id));
       polled += 1;
       // The provider's own record must name our reference, or it is not this checkout (recordCheckoutPayments checks that too).
       if (co && (co.reference === null || co.reference === a.reference)) {
-        recorded += await recordCheckoutPayments({ connectionId: a.connection_id, orgId: a.org_id, mode: a.mode, reference: a.reference, providerCheckoutId: a.provider_checkout_id }, co, now, { providerFor: deps.providerFor });
+        recorded += await within(until, () => recordCheckoutPayments({ connectionId: a.connection_id, orgId: a.org_id, mode: a.mode, reference: a.reference, providerCheckoutId: a.provider_checkout_id }, co, now, { providerFor: deps.providerFor }));
         if (co.status === "expired" && !co.payments.some((p) => p.status === "paid")) {
           await withSystem((db) => db.query("update customer_payment_attempts set status = 'expired' where id = $1 and status in ('created', 'redirected')", [a.id]));
         }
       }
-    } catch {
-      // The provider could not be asked just now; the attempt is looked at again on a later run.
+    } catch (e) {
+      // The provider could not be asked just now (or did not answer in time); the attempt is looked at again on a later run.
+      cutShort = e instanceof TimeSpent;
     }
     // Looked at: it is not asked about again for a while, so one slow provider cannot keep the same twenty at the front of the line.
     await withSystem((db) => db.query("update customer_payment_attempts set status = status where id = $1", [a.id])).catch(() => undefined);
+    if (cutShort) break;
   }
-  return { polled, recorded };
+  return { polled, recorded, cutShort };
 }
 
 interface HealthRow {
@@ -138,7 +175,7 @@ interface HealthRow {
   credentials: string;
 }
 
-async function checkConnections(now: Date, deps: ReconcileDeps): Promise<number> {
+async function checkConnections(now: Date, deps: ReconcileDeps, until: number): Promise<{ checked: number; cutShort: boolean }> {
   const resolve = deps.providerFor ?? providerFor;
   const rows = (await withSystem((db) =>
     db.query<HealthRow>(
@@ -148,7 +185,9 @@ async function checkConnections(now: Date, deps: ReconcileDeps): Promise<number>
     ),
   )).rows;
   let checked = 0;
+  let cutShort = false;
   for (const c of rows) {
+    if (Date.now() >= until) return { checked, cutShort: true };
     if (!readBackAllowed(c.provider)) continue;
     let adapter;
     try {
@@ -157,9 +196,20 @@ async function checkConnections(now: Date, deps: ReconcileDeps): Promise<number>
       continue;
     }
     const creds = credentialVault.open(c.credentials);
-    const check = creds
-      ? await adapter.verifyCredentials(creds, { webhookUrl: webhookUrlFor(c.provider, c.public_key) })
-      : ({ ok: false, reason: "rejected", message: "The saved keys can no longer be read. Paste the secret key again." } as const);
+    const verify = adapter.verifyCredentials.bind(adapter);
+    let check: CredentialCheck;
+    if (!creds) {
+      check = { ok: false, reason: "rejected", message: "The saved keys can no longer be read. Paste the secret key again." };
+    } else {
+      try {
+        check = await within(until, () => verify(creds, { webhookUrl: webhookUrlFor(c.provider, c.public_key) }));
+      } catch (e) {
+        if (!(e instanceof TimeSpent)) throw e;
+        // No answer in time is the same as an unreachable provider: the note is updated and the connection is not asked again until the next day's turn comes round.
+        check = { ok: false, reason: "unreachable", message: "The provider did not answer in time." };
+        cutShort = true;
+      }
+    }
     checked += 1;
     await withSystem(async (db) => {
       if (check.ok) {
@@ -168,26 +218,21 @@ async function checkConnections(now: Date, deps: ReconcileDeps): Promise<number>
           [c.id, now, Boolean(creds?.webhookSecret)],
         );
       } else if (check.reason === "rejected") {
-        const changed = await db.query("update customer_payment_connections set last_checked_at = $2, last_error = $3, status = 'needs_attention' where id = $1 and status in ('connected', 'needs_attention') returning id", [c.id, now, check.message.slice(0, 400)]);
-        if (changed.rows[0]) {
-          await notifyOrgRoles(db, c.org_id, ["owner"], {
-            kind: "payment_connection_attention", severity: "warning", title: "Your payment account needs attention",
-            body: "The payment provider no longer accepts the saved key, so new online payments are paused until you reconnect it.", link: "/settings/payments", dedupeKey: `payment-connection:${c.id}:${now.toISOString().slice(0, 10)}`,
-          });
-        }
+        await flagRefusedKey(db, { id: c.id, orgId: c.org_id }, check.message, now);
       } else {
         await db.query("update customer_payment_connections set last_checked_at = $2, last_error = $3 where id = $1", [c.id, now, check.message.slice(0, 400)]);
       }
     });
+    if (cutShort) break;
   }
-  return checked;
+  return { checked, cutShort };
 }
 
 async function sweepDealRules(now: Date): Promise<number> {
   const rows = (await withSystem((db) =>
     db.query<{ id: string; org_id: string }>(
       `select i.id, i.org_id from customer_invoices i join customer_invoice_settings s on s.org_id = i.org_id
-       where i.status = 'issued' and i.payment_status in ('paid') and i.opportunity_id is not null and s.close_rule <> 'none' and i.updated_at > $1
+       where i.status = 'issued' and not i.is_test and i.payment_status in ('paid') and i.opportunity_id is not null and s.close_rule <> 'none' and i.updated_at > $1
          and not exists (select 1 from customer_invoice_events e where e.invoice_id = i.id and e.kind = 'close_rule_applied')
        order by i.updated_at desc limit 25`,
       [new Date(now.getTime() - 7 * 86_400_000)],
@@ -217,15 +262,20 @@ export async function runCustomerPaymentReconcileDetailed(deps: ReconcileDeps = 
       return fallback;
     }
   };
+  // Each step that asks a provider gets its own share of the budget, counted from when it starts, so one provider that hangs cannot take the time of the others.
+  const budget = Math.max(deps.budgetMs ?? RECONCILE_BUDGET_MS, 0);
+  const share = (s: number) => Date.now() + budget * s;
   // Order matters: what the provider already reported is applied first, then stale checkouts are closed, then the provider is asked about the rest.
-  const retried = await step(() => retryReceipts(now, deps), 0);
+  const retried = await step(() => retryReceipts(now, deps, share(SHARES.receipts)), { done: 0, cutShort: false });
   const closed = await step(() => closeAttempts(now), { expired: 0, closedUnanswered: 0 });
-  const poll = await step(() => pollOpenAttempts(now, deps), { polled: 0, recorded: 0 });
-  const connectionsChecked = await step(() => checkConnections(now, deps), 0);
+  const poll = await step(() => pollOpenAttempts(now, deps, share(SHARES.polling)), { polled: 0, recorded: 0, cutShort: false });
+  const health = await step(() => checkConnections(now, deps, share(SHARES.health)), { checked: 0, cutShort: false });
   const dealRules = await step(() => sweepDealRules(now), 0);
   if (errors.length === 5) throw errors[0];
   if (errors.length) console.error("[iacquire] customer payment reconcile: some steps failed", { failed: errors.length });
-  return { retried, expired: closed.expired, closedUnanswered: closed.closedUnanswered, polled: poll.polled, recordedFromPoll: poll.recorded, connectionsChecked, dealRules };
+  const cutShort = retried.cutShort || poll.cutShort || health.cutShort;
+  if (cutShort) console.error("[iacquire] customer payment reconcile: a provider did not answer in time; the rest waits for the next run");
+  return { retried: retried.done, expired: closed.expired, closedUnanswered: closed.closedUnanswered, polled: poll.polled, recordedFromPoll: poll.recorded, connectionsChecked: health.checked, dealRules, cutShort };
 }
 
 /** The scheduled job's body: the number of things it changed. */

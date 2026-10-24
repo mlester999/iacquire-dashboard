@@ -58,6 +58,8 @@ alter table customer_feedback
   drop column resolved_at, drop column resolved_by, drop column resolution_note, drop column sla_notified_at, drop column form_submission_id;
 
 delete from role_permissions where permission in ('reviews.view', 'reviews.respond', 'reviews.reply_publish');
+-- A workspace a Super Admin had switched satisfaction surveys or review request batches on for loses those switches with the tables they were for, so applying 0094 again leaves it off.
+delete from org_features where feature in ('reputation_surveys', 'reputation_batches');
 
 -- The notification kinds added by 0094 are removed from the live allow-list (every other kind is left exactly as it is).
 do $$

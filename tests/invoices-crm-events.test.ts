@@ -152,17 +152,19 @@ describe("what is announced, and when", () => {
     expect(await eventsFor(io.orgId, "payment.refunded")).toHaveLength(2);
   });
 
-  it("starts nothing for money that moved in a provider's test mode, but says so on the timeline", async () => {
+  it("starts nothing for a test invoice or for money that moved in a provider's test mode, but says so on the timeline", async () => {
     const io = await invoiceOrg();
     const contactId = await contactIn(io);
     const conn = await connectionFor(io);
-    const inv = await issuedInvoice(io, { contactId }, NOW);
+    // Money in a provider's test mode sits on a test invoice, and nothing a test invoice does starts a workflow.
+    const inv = await issuedInvoice(io, { contactId, isTest: true }, NOW);
     const test = await providerPayment(io, inv.invoice.id, conn, 150_000, { livemode: false });
     expect(test.counted).toBe(true);
     expect((await providerPayment(io, inv.invoice.id, conn, 100, { livemode: false, status: "failed" })).status).toBe("failed");
-    expect(await types(io.orgId)).toEqual(["invoice.created", "invoice.issued"]);
+    expect(await types(io.orgId)).toEqual([]);
     const lines = await timeline(io.orgId, contactId);
     expect(lines.map((a) => a.kind)).toEqual(["invoice.created", "invoice.issued", "payment.verified", "invoice.paid", "payment.failed"]);
+    for (const l of lines) expect(l.summary, l.kind).toContain("a test invoice: nothing is owed");
     for (const kind of ["payment.verified", "invoice.paid", "payment.failed"]) expect(lines.find((a) => a.kind === kind)?.summary, kind).toContain("test mode: no real money moved");
   });
 
@@ -187,7 +189,7 @@ describe("a workflow started by an invoice", () => {
     const verifiedWf = await liveWorkflow(io, "When the provider confirms a payment", { trigger: { type: "payment.verified" }, steps: [step("n", "notify_team", { roles: ["owner"], title: "A payment arrived" })] });
     const conn = await connectionFor(io);
 
-    const test = await issuedInvoice(io, { contactId, opportunityId: dealId }, NOW);
+    const test = await issuedInvoice(io, { contactId, opportunityId: dealId, isTest: true }, NOW);
     await providerPayment(io, test.invoice.id, conn, 150_000, { livemode: false });
     await settle();
     expect(await rows("select 1 from crm_workflow_runs where workflow_id = any($1::uuid[])", [[wf, verifiedWf]])).toHaveLength(0);
@@ -223,11 +225,11 @@ describe("a test payment and the deal", () => {
     await saveInvoiceSettings(io.ctx("owner"), { closeRule: "auto_won" }, 0);
     const contactId = await contactIn(io);
     const dealId = await dealFor(io, contactId);
-    const inv = await issuedInvoice(io, { contactId, opportunityId: dealId, closesDeal: true }, NOW);
+    const inv = await issuedInvoice(io, { contactId, opportunityId: dealId, closesDeal: true, isTest: true }, NOW);
     await providerPayment(io, inv.invoice.id, conn, 150_000, { livemode: false });
     const { runCloseRule } = await import("@/server/invoices/close-rules");
     const out = await runCloseRule(io.orgId, inv.invoice.id);
-    expect(out.decision).toEqual({ action: "none", reason: "test_payment" });
+    expect(out.decision).toEqual({ action: "none", reason: "test_invoice" });
     expect((await rows<{ status: string }>("select status from crm_opportunities where id = $1", [dealId]))[0].status).toBe("open");
     expect(await rows("select 1 from tasks where org_id = $1 and opportunity_id = $2", [io.orgId, dealId])).toHaveLength(0);
     expect(await rows("select 1 from customer_invoice_events where invoice_id = $1 and kind = 'close_rule_applied'", [inv.invoice.id])).toHaveLength(0);

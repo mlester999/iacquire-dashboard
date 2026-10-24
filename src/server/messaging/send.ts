@@ -9,7 +9,8 @@ import { BillingBlockedError, chargeUsage, reserveCredits, releaseReservation, s
 import { isSwitching } from "@/server/crm/workspace";
 import { nativeAutomationRefusal } from "@/server/crm/provider-guard";
 import { contactAddress, getConsent, isSuppressed, suppressAddress } from "@/server/messaging/contacts";
-import { identityVerified, latestConsentSource } from "@/server/messaging/consent-identity";
+import { identityFacts, latestConsentSource } from "@/server/messaging/consent-identity";
+import { dispatchGate } from "@/server/messaging/dispatch-gate";
 import { TYPED_CONSENT_SOURCE, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
 import type { ChannelProvider } from "@/server/messaging/provider";
 import { fillInvoiceLink, fillManageLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
@@ -213,7 +214,6 @@ interface ConversationRow {
   last_inbound_at: Date | null;
   subject: string | null;
   contact_deleted: Date | null;
-  contact_created_via: string | null;
   ghl_contact_id: string | null;
   contact_tz: string | null;
   org_tz: string;
@@ -228,7 +228,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   const now = req.now ?? new Date();
   const { rows } = await db.query<ConversationRow>(
     `select c.id, c.contact_id, c.channel, c.owner_kind, c.owner_user_id, c.ownership_version, c.ai_paused_at, c.last_inbound_at, c.subject,
-            k.deleted_at as contact_deleted, k.created_via as contact_created_via, k.ghl_contact_id, k.timezone as contact_tz, o.timezone as org_tz, o.name as org_name
+            k.deleted_at as contact_deleted, k.ghl_contact_id, k.timezone as contact_tz, o.timezone as org_tz, o.name as org_name
      from conversations c join contacts k on k.id = c.contact_id and k.org_id = c.org_id join organizations o on o.id = c.org_id
      where c.id = $1 and c.org_id = $2`,
     [req.conversationId, req.orgId],
@@ -292,15 +292,11 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   const waTemplate = channel === "whatsapp" && req.templateId ? await loadWhatsappTemplate(db, req.orgId, req.templateId, provider) : null;
   const purpose: SendPurpose = purposeWith(req.purpose, waTemplate);
   // A number or address that only a website visitor typed is not reachable by anything automated or promotional until it is confirmed (see src/lib/webchat/identity.ts).
-  // Only contacts a website chat created can hold one, so every other message skips the extra lookup.
-  const fromChat = conv.contact_created_via === "website_chat";
-  if (fromChat) {
-    const refusal = unverifiedIdentityRefusal(
-      { createdVia: conv.contact_created_via, verified: await identityVerified(db, req.orgId, conv.contact_id, channel, address) },
-      { actor: req.actor.kind, approvedByPerson: req.actor.kind === "ai" && Boolean(req.actor.approvalId), scope: req.scope, purpose },
-    );
-    if (refusal) return deny(refusal.reason, refusal.detail, { permanent: true });
-  }
+  // The mark is on the address, not on the contact: a merge into a contact the chat did not create moves the address, and it stays typed.
+  const refusal = unverifiedIdentityRefusal(await identityFacts(db, req.orgId, conv.contact_id, channel, address), {
+    actor: req.actor.kind, approvedByPerson: req.actor.kind === "ai" && Boolean(req.actor.approvalId), scope: req.scope, purpose,
+  });
+  if (refusal) return deny(refusal.reason, refusal.detail, { permanent: true });
   const consent = await getConsent(db, req.orgId, conv.contact_id, channel, purpose);
   if (consent === "revoked") return deny("no_consent", "This customer withdrew consent on this channel.", { permanent: true });
   // Promotional messages need an explicit yes. Anything else needs one on record, or the customer having written to us first.
@@ -308,8 +304,9 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
     return deny("no_consent", waTemplate?.category === "marketing" && req.purpose !== "marketing" ? "This WhatsApp template is a marketing template, and this customer has not agreed to promotional messages on WhatsApp." : "This customer has not agreed to promotional messages on this channel.", { permanent: true });
   }
   // The box offering promotional messages was ticked by whoever typed the details, possibly before the address was confirmed as theirs. Confirming the address later does not
-  // make that tick the customer's own, so it does not count until the customer or a person of the business records the agreement again.
-  if (purpose === "marketing" && fromChat && (await latestConsentSource(db, req.orgId, conv.contact_id, channel, "marketing")) === TYPED_CONSENT_SOURCE) {
+  // make that tick the customer's own, so it does not count until the customer or a person of the business records the agreement again. The grant keeps its source when a
+  // merge carries it to another contact, so this holds for whichever contact now owns it.
+  if (purpose === "marketing" && (await latestConsentSource(db, req.orgId, conv.contact_id, channel, "marketing")) === TYPED_CONSENT_SOURCE) {
     return deny("no_consent", "The only promotional agreement on record was ticked in the website chat, before this customer confirmed the address. It needs to be recorded again.", { permanent: true });
   }
   if (consent === "unknown" && (req.scope === "followup" || !conv.last_inbound_at)) return deny("no_consent", "There is no consent on record to message this person.", { permanent: true });
@@ -780,6 +777,20 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
       ? (await db.query<{ status: string }>("select status from usage_reservations where id = $1 and org_id = $2 for update", [m.reservation_id, m.org_id])).rows[0]?.status ?? null
       : null;
     const held = holdStatus === "held";
+    // The checks that need the message itself (src/server/messaging/dispatch-gate.ts): a paused or inactive workspace holds a program message, and a person's hold on the customer stops
+    // an automatic one.
+    const gate = await dispatchGate(db, m, now);
+    if (gate?.action === "hold") {
+      await db.query("update conversation_messages set status = 'queued', send_after = $2, status_detail = $3, attempt_count = attempt_count - 1 where id = $1", [m.id, gate.retryAt, gate.detail.slice(0, 300)]);
+      if (held) await extendHold(db, m.org_id, m.reservation_id, gate.retryAt);
+      return { done: "queued" };
+    }
+    if (gate?.action === "block") {
+      await finishBlocked(db, m, gate.reason, gate.detail);
+      const { settleHeldAsks } = await import("@/server/retention/hold");
+      await settleHeldAsks(db, m.org_id, [m.id]);
+      return { done: "blocked" };
+    }
     const decision = await evaluateSend(db, { ...requestFor(m, now), hasReservation: held });
     if (!decision.allow) {
       if (decision.retryAt && !decision.permanent && WAITING_REASONS.has(decision.reason)) {

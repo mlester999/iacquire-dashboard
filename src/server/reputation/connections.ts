@@ -9,7 +9,8 @@ import { openCredentials as openSocialCredentials } from "@/server/social/creden
 import { REVIEWS_CLIENT_ONLY_MESSAGE, REVIEWS_NOT_ENABLED_MESSAGE, assertExternalReviewsEnabled, externalReviewsEnabledIn } from "@/server/reputation/entitlement";
 import { reviewProviderFor, simulatedAllowed, siteEnvironment } from "@/server/reputation/providers";
 import { createGoogleProvider, googleReviewProvider } from "@/server/reputation/providers/google";
-import { META_READ_SCOPE } from "@/server/reputation/providers/meta-reviews";
+import { MIRROR_DAYS_AFTER_DISCONNECT } from "@/server/reputation/housekeeping";
+import { META_READ_SCOPE, META_REPLY_SCOPE, metaRepliesReady } from "@/server/reputation/providers/meta-reviews";
 import { ProviderError, type LocationRef, type ReviewAdapter, type ReviewCredentials, type ReviewProvider } from "@/server/reputation/providers/types";
 import { PROVIDER_LABELS, providerState, type ConnectionStatus, type ProviderStateView, type ReviewProvider as Site } from "@/lib/reputation/external";
 
@@ -48,7 +49,10 @@ export interface PageOption {
   name: string;
   /** The Page was given permission to read recommendations (always true for the simulated stand-in). */
   hasPermission: boolean;
+  /** This workspace reads recommendations through this Page, and the connection works. */
   connected: boolean;
+  /** This workspace has a connection to this Page that needs reconnecting (or was made through an earlier Social media account for it): connecting it again repairs that one. */
+  reconnect: boolean;
 }
 
 export interface SiteView {
@@ -103,13 +107,16 @@ export function assertManageSites(actor: CrmActor): string {
 
 /** The Pages connected for Social media in this workspace, with whether each could be read for recommendations. */
 async function pageOptions(db: Queryable, orgId: string): Promise<PageOption[]> {
-  const { rows } = await db.query<{ id: string; name: string; adapter: string; scopes: string[]; connected: boolean }>(
+  // A connection belongs to the Page (its address), not to the Social media account it happens to be read through: a Page connected again in Social media is a new account.
+  const { rows } = await db.query<{ id: string; name: string; adapter: string; scopes: string[]; connected: boolean; reconnect: boolean }>(
     `select a.id, a.name, a.adapter, a.scopes,
-            exists (select 1 from review_connections c where c.org_id = a.org_id and c.social_account_id = a.id and c.status <> 'disconnected') as connected
+            exists (select 1 from review_connections c where c.org_id = a.org_id and c.provider = 'facebook' and c.external_location_id = a.external_id and c.social_account_id = a.id and c.status = 'connected') as connected,
+            exists (select 1 from review_connections c where c.org_id = a.org_id and c.provider = 'facebook' and c.external_location_id = a.external_id and c.status <> 'disconnected'
+                      and not (c.social_account_id = a.id and c.status = 'connected')) as reconnect
      from social_accounts a where a.org_id = $1 and a.platform = 'facebook' and a.status = 'connected' order by a.connected_at desc`,
     [orgId],
   );
-  return rows.map((a) => ({ socialAccountId: a.id, name: a.name, hasPermission: a.adapter === "simulated" || (a.scopes ?? []).includes(META_READ_SCOPE), connected: a.connected }));
+  return rows.map((a) => ({ socialAccountId: a.id, name: a.name, hasPermission: a.adapter === "simulated" || (a.scopes ?? []).includes(META_READ_SCOPE), connected: a.connected, reconnect: a.reconnect }));
 }
 
 export async function listConnections(actor: CrmActor, opts: { includePast?: boolean } = {}): Promise<ConnectionView[]> {
@@ -188,7 +195,10 @@ export function replyPostable(c: Pick<ConnectionRow, "adapter" | "provider" | "s
   }
   const support = provider.replySupport();
   if (!support.ok) return support;
-  if (!c.can_reply) return { ok: false, reason: `The access given to ${PROVIDER_LABELS[c.provider]} doesn't let iAcquire post replies. Reconnect it and allow replies, or post the reply there yourself.` };
+  if (!c.can_reply) {
+    const again = c.provider === "facebook" ? "Reconnect the Page with review access in Settings, allow replies, and check the connection" : "Reconnect it and allow replies";
+    return { ok: false, reason: `The access given to ${PROVIDER_LABELS[c.provider]} doesn't let iAcquire post replies. ${again}, or post the reply there yourself.` };
+  }
   return { ok: true };
 }
 
@@ -245,21 +255,53 @@ export async function recordProviderFailure(db: Queryable, c: Pick<ConnectionRow
 // Connecting
 // ---------------------------------------------------------------------------
 
-async function insertConnection(
-  db: Queryable, actor: CrmActor, userId: string,
-  input: { provider: Site; adapter: ReviewAdapter; accountId: string | null; locationId: string; name: string; socialAccountId?: string | null; sealed?: string | null; scopes?: string[]; canReply: boolean },
-): Promise<string> {
+interface ConnectionInput { provider: Site; adapter: ReviewAdapter; accountId: string | null; locationId: string; name: string; socialAccountId?: string | null; sealed?: string | null; scopes?: string[]; canReply: boolean }
+
+const alreadyConnected = (input: ConnectionInput) =>
+  new AppError("conflict", input.adapter === "simulated" ? "That test connection already exists." : `That ${PROVIDER_LABELS[input.provider]} location is already connected to a workspace in iAcquire, so it can't be connected again. Disconnect it there first.`);
+
+/**
+ * Connects a location for this workspace. A location is one connection for as long as the workspace reads it:
+ *  * its own connection that needs reconnecting (the sign-in was revoked, the Page was linked again) gets its sign-in replaced IN PLACE, so its reviews and replies are untouched;
+ *  * its own connection that a person disconnected comes back as that same connection, with the reviews it read and the replies written to them, so no review is shown twice, no
+ *    reply is stranded and nothing it already announced is announced again. A reconnection after the reviews were cleared away (see housekeeping) starts over as a first read;
+ *  * only a location this workspace never had becomes a new connection.
+ * Another workspace's connections are never looked at: a location one workspace reads live cannot be taken by another (the database refuses it).
+ */
+async function saveConnection(db: Queryable, actor: CrmActor, userId: string, input: ConnectionInput): Promise<{ id: string; how: "added" | "replaced" | "reopened" }> {
+  const mine = (await db.query<{ id: string; status: ConnectionStatus; social_account_id: string | null }>(
+    `select id, status, social_account_id from review_connections where org_id = $1 and provider = $2 and adapter = $3 and external_location_id = $4
+     order by (status <> 'disconnected') desc, coalesce(disconnected_at, connected_at) desc limit 1 for update`,
+    [actor.orgId, input.provider, input.adapter, input.locationId],
+  )).rows[0];
   try {
+    if (mine) {
+      // A working connection to the same Page through the same Social media account has nothing to replace.
+      if (mine.status === "connected" && input.provider === "facebook" && mine.social_account_id === (input.socialAccountId ?? null)) {
+        throw new AppError("conflict", `That ${PROVIDER_LABELS[input.provider]} Page is already connected in this workspace and working.`);
+      }
+      await db.query(
+        `update review_connections set name = $3, external_account_id = $4, social_account_id = $5, credentials = $6, scopes = $7, status = 'connected', status_detail = null, can_reply = $8,
+           sync_cursor = '{}'::jsonb, last_sync_at = null, connected_by = $9,
+           last_complete_at = case when disconnected_at is not null and disconnected_at < now() - make_interval(days => $10::int) then null else last_complete_at end,
+           connected_at = case when status = 'disconnected' then now() else connected_at end, disconnected_at = null
+         where id = $1 and org_id = $2`,
+        [mine.id, actor.orgId, input.name.slice(0, 200), input.accountId, input.socialAccountId ?? null, input.sealed ?? null, input.scopes ?? [], input.canReply, userId, MIRROR_DAYS_AFTER_DISCONNECT],
+      );
+      const how = mine.status === "disconnected" ? "reopened" : "replaced";
+      await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "reputation.connection_reconnected", targetType: "review_connection", targetId: mine.id, result: "success", metadata: { provider: input.provider, adapter: input.adapter, how, from: mine.status } }, db);
+      return { id: mine.id, how };
+    }
     const { rows } = await db.query<{ id: string }>(
       `insert into review_connections (org_id, provider, adapter, external_account_id, external_location_id, name, social_account_id, credentials, scopes, status, can_reply, connected_by)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'connected', $10, $11) returning id`,
       [actor.orgId, input.provider, input.adapter, input.accountId, input.locationId, input.name.slice(0, 200), input.socialAccountId ?? null, input.sealed ?? null, input.scopes ?? [], input.canReply, userId],
     );
-    return rows[0].id;
+    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "reputation.connection_added", targetType: "review_connection", targetId: rows[0].id, result: "success", metadata: { provider: input.provider, adapter: input.adapter } }, db);
+    return { id: rows[0].id, how: "added" };
   } catch (e) {
-    if (String((e as Error).message).match(/review_connections_(location|simulated)_idx|duplicate key/)) {
-      throw new AppError("conflict", input.adapter === "simulated" ? "That test connection already exists." : `That ${PROVIDER_LABELS[input.provider]} location is already connected to a workspace in iAcquire, so it can't be connected again. Disconnect it there first.`);
-    }
+    if (e instanceof AppError) throw e;
+    if (String((e as Error).message).match(/review_connections_(location|simulated)_idx|duplicate key/)) throw alreadyConnected(input);
     throw e;
   }
 }
@@ -269,21 +311,31 @@ const clientOnly = async (db: Queryable, orgId: string) => {
   if (kind !== "client") throw new AppError("forbidden", "Public reviews belong to a client's own workspace. They are not available in an agency workspace.");
 };
 
-/** A made-up connection for trying the screens in a test workspace. Reads sample reviews that carry a "Simulated" badge, reaches nothing, and is refused in production. */
-export async function connectSimulatedSite(actor: CrmActor, input: { provider: Site; name?: string }): Promise<ConnectionView> {
+/**
+ * A made-up connection for trying the screens in a test workspace. Reads sample reviews that carry a "Simulated" badge, reaches nothing, and is refused in production. With
+ * `reuseEarlier` (what the "Use a test connection" button asks for) a test site the workspace disconnected comes back as that same connection, as a real site does, so its sample
+ * reviews are not listed twice; without it every call is a new test site.
+ */
+export async function connectSimulatedSite(actor: CrmActor, input: { provider: Site; name?: string; reuseEarlier?: boolean }): Promise<ConnectionView> {
   const userId = assertManageSites(actor);
   if (!simulatedAllowed()) throw new AppError("forbidden", "Test review sites are not available here.");
   const name = (input.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || `${PROVIDER_LABELS[input.provider]} test location`;
   const id = await withSystem(async (db) => {
     await clientOnly(db, actor.orgId);
     await assertExternalReviewsEnabled(db, actor.orgId);
-    const locationId = `sim-${randomToken(6)}`;
-    const connectionId = await insertConnection(db, actor, userId, {
+    const earlier = input.reuseEarlier
+      ? (await db.query<{ external_location_id: string }>(
+          `select external_location_id from review_connections c where org_id = $1 and provider = $2 and adapter = 'simulated' and status = 'disconnected'
+             and not exists (select 1 from review_connections l where l.org_id = c.org_id and l.provider = c.provider and l.external_location_id = c.external_location_id and l.status <> 'disconnected')
+           order by disconnected_at desc nulls last limit 1`,
+          [actor.orgId, input.provider],
+        )).rows[0]?.external_location_id
+      : undefined;
+    const locationId = earlier ?? `sim-${randomToken(6)}`;
+    return (await saveConnection(db, actor, userId, {
       provider: input.provider, adapter: "simulated", accountId: input.provider === "google" ? "accounts/sim" : null, locationId, name,
       sealed: input.provider === "google" ? sealReview({ refreshToken: "sim_valid" }) : null, scopes: ["simulated.reviews"], canReply: true,
-    });
-    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "reputation.connection_added", targetType: "review_connection", targetId: connectionId, result: "success", metadata: { provider: input.provider, adapter: "simulated" } }, db);
-    return connectionId;
+    })).id;
   });
   return (await listConnections(actor)).find((c) => c.id === id) as ConnectionView;
 }
@@ -303,18 +355,19 @@ export async function connectFacebookPage(actor: CrmActor, socialAccountId: stri
     if (!simulated) {
       const env = siteEnvironment("facebook");
       if (!env.ready) throw new AppError("unavailable", env.missing ?? "Reading Facebook recommendations isn't set up yet.");
-      if (!(social.scopes ?? []).includes(META_READ_SCOPE)) throw new AppError("forbidden", "Your Facebook Page hasn't been given permission to read recommendations. Reconnect the Page in Social media and allow the extra access.");
+      if (!(social.scopes ?? []).includes(META_READ_SCOPE)) throw new AppError("forbidden", "Your Facebook Page hasn't been given permission to read recommendations. Use \"Reconnect with review access\" below, allow the extra access, and choose the Page again.");
       // The Page is asked once, with its own token, whether recommendations can be read at all, before anything is saved as connected.
       const token = openSocialCredentials(social.credentials)?.accessToken;
       if (!token) throw new AppError("forbidden", "The Facebook Page's sign-in can't be used. Reconnect the Page in Social media.");
       const health = await (deps.provider ?? reviewProviderFor("meta")).health({ accessToken: token }, { provider: "facebook", accountId: null, locationId: social.external_id });
       if (health.status !== "connected") throw new AppError("forbidden", health.detail);
     }
-    const connectionId = await insertConnection(db, actor, userId, {
-      provider: "facebook", adapter: simulated ? "simulated" : "meta", accountId: null, locationId: social.external_id, name: social.name, socialAccountId: social.id, scopes: social.scopes ?? [], canReply: false,
-    });
-    await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "reputation.connection_added", targetType: "review_connection", targetId: connectionId, result: "success", metadata: { provider: "facebook", adapter: simulated ? "simulated" : "meta" } }, db);
-    return connectionId;
+    // Whether replies can be posted comes from what the Page was actually given (its granted permissions), not from the environment alone: a Page without the reply permission
+    // never shows replies as postable. A test Page learns it when it is checked.
+    return (await saveConnection(db, actor, userId, {
+      provider: "facebook", adapter: simulated ? "simulated" : "meta", accountId: null, locationId: social.external_id, name: social.name, socialAccountId: social.id, scopes: social.scopes ?? [],
+      canReply: !simulated && metaRepliesReady() && (social.scopes ?? []).includes(META_REPLY_SCOPE),
+    })).id;
   });
   return (await listConnections(actor)).find((c) => c.id === id) as ConnectionView;
 }
@@ -353,7 +406,10 @@ export interface LocationChoice {
   accountId: string;
   locationId: string;
   title: string;
+  /** Another workspace in iAcquire reads this location, so it cannot be connected here. */
   alreadyConnected: boolean;
+  /** This workspace already reads this location (and may be repairing the connection): choosing it replaces that connection's sign-in in place. */
+  reconnect: boolean;
 }
 
 /**
@@ -418,8 +474,14 @@ export async function pendingLocations(actor: CrmActor, stateId: string): Promis
   const userId = assertManageSites(actor);
   return withSystem(async (db) => {
     const p = await openPending(db, actor, userId, stateId);
-    const live = new Set((await db.query<{ id: string }>("select external_location_id as id from review_connections where provider = 'google' and adapter = 'google' and status <> 'disconnected'")).rows.map((r) => r.id));
-    return p.locations.map((l) => ({ ...l, alreadyConnected: live.has(l.locationId) }));
+    // A location this workspace reads itself (a connection that needs reconnecting, say) is its own to reconnect; only another workspace's makes it unavailable.
+    const live = (await db.query<{ id: string; org_id: string }>(
+      "select external_location_id as id, org_id from review_connections where provider = 'google' and adapter = 'google' and status <> 'disconnected' and external_location_id = any($1::text[])",
+      [p.locations.map((l) => l.locationId)],
+    )).rows;
+    const elsewhere = new Set(live.filter((r) => r.org_id !== actor.orgId).map((r) => r.id));
+    const here = new Set(live.filter((r) => r.org_id === actor.orgId).map((r) => r.id));
+    return p.locations.map((l) => ({ ...l, alreadyConnected: elsewhere.has(l.locationId), reconnect: here.has(l.locationId) && !elsewhere.has(l.locationId) }));
   });
 }
 
@@ -434,13 +496,9 @@ export async function connectChosenLocation(actor: CrmActor, stateId: string, pi
     await withSystem((db) => assertExternalReviewsEnabled(db, actor.orgId));
     const health = await google.health({ refreshToken: pending.refreshToken }, { provider: "google", accountId: loc.accountId, locationId: loc.locationId });
     if (health.status !== "connected") throw new AppError("forbidden", health.detail);
-    const id = await withSystem(async (db) => {
-      const connectionId = await insertConnection(db, actor, userId, {
-        provider: "google", adapter: "google", accountId: loc.accountId, locationId: loc.locationId, name: loc.title, sealed: sealReview({ refreshToken: pending.refreshToken }), scopes: health.scopes, canReply: health.canReply,
-      });
-      await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "reputation.connection_added", targetType: "review_connection", targetId: connectionId, result: "success", metadata: { provider: "google", adapter: "google" } }, db);
-      return connectionId;
-    });
+    const id = await withSystem(async (db) => (await saveConnection(db, actor, userId, {
+      provider: "google", adapter: "google", accountId: loc.accountId, locationId: loc.locationId, name: loc.title, sealed: sealReview({ refreshToken: pending.refreshToken }), scopes: health.scopes, canReply: health.canReply,
+    })).id);
     return (await listConnections(actor)).find((c) => c.id === id) as ConnectionView;
   } catch (e) {
     if (e instanceof ProviderError) throw new AppError("upstream_error", e.message);
@@ -454,6 +512,24 @@ export async function connectChosenLocation(actor: CrmActor, stateId: string, pi
 // ---------------------------------------------------------------------------
 // Checking and disconnecting
 // ---------------------------------------------------------------------------
+
+/** The permissions the Facebook Page was given, as the Page's connection in Social media last read them (empty when that connection is gone). */
+async function grantedPageScopes(db: Queryable, c: Pick<ConnectionRow, "org_id" | "social_account_id">): Promise<string[]> {
+  if (!c.social_account_id) return [];
+  const { rows } = await db.query<{ scopes: string[] }>("select scopes from social_accounts where id = $1 and org_id = $2", [c.social_account_id, c.org_id]);
+  return rows[0]?.scopes ?? [];
+}
+
+/**
+ * A reply was refused for lack of permission. Replying is the optional part of a connection: only replies are switched off (until the connection is checked again or reconnected with
+ * the permission), and reading carries on. The connection is not marked as needing to be reconnected, because it does not.
+ */
+export async function markRepliesNotAllowed(db: Queryable, c: Pick<ConnectionRow, "id" | "org_id" | "provider">): Promise<void> {
+  await db.query(
+    "update review_connections set can_reply = false, status_detail = $3 where id = $1 and org_id = $2 and status = 'connected'",
+    [c.id, c.org_id, `${PROVIDER_LABELS[c.provider]} did not allow a reply with the access it was given, so replies are switched off for this connection. Reviews are still being read.`],
+  );
+}
 
 /** Asks the site now whether the connection works, for the person looking at it. Only the answer changes the status; a site that cannot be reached leaves it as it was. */
 export async function checkConnection(actor: CrmActor, id: string, deps: { provider?: ReviewProvider; now?: Date } = {}): Promise<ConnectionStatus> {
@@ -474,10 +550,18 @@ export async function checkConnection(actor: CrmActor, id: string, deps: { provi
     const h = await provider.health(got.creds, locationOf(c));
     await withSystem(async (db) => {
       const connected = h.status === "connected";
+      let canReply = connected && h.canReply;
+      let scopes = h.scopes;
+      // A Facebook Page can reply only if it was given the reply permission. Facebook's own answer to a health check does not list permissions, so they are read from the Page's
+      // connection in Social media, which keeps them current. Without it the reply is never shown as postable.
+      if (c.adapter === "meta") {
+        scopes = await grantedPageScopes(db, c);
+        canReply = canReply && scopes.includes(META_REPLY_SCOPE);
+      }
       await db.query(
         `update review_connections set status = $3, status_detail = $4, can_reply = $5, scopes = case when cardinality($6::text[]) > 0 then $6::text[] else scopes end, last_sync_at = coalesce(last_sync_at, $7)
          where id = $1 and org_id = $2 and status <> 'disconnected'`,
-        [c.id, c.org_id, connected ? "connected" : "needs_reauth", connected ? null : h.detail.slice(0, 400), connected && h.canReply, h.scopes, now],
+        [c.id, c.org_id, connected ? "connected" : "needs_reauth", connected ? null : h.detail.slice(0, 400), canReply, scopes, now],
       );
     });
     return h.status === "connected" ? "connected" : "needs_reauth";

@@ -68,6 +68,7 @@ export const REMINDER_REASON_TEXT: Record<string, string> = {
   invoice_changed: "The invoice changed before the reminder was sent.",
   invoice_link_unavailable: "The invoice can no longer be paid online, so the reminder was not sent.",
   no_channel_allowed: "No channel is allowed for reminders.",
+  reminder_text_invalid: "The reminder's wording failed its own check (a web address in the business name or in the customer's name is the usual cause), so it was not sent.",
 };
 
 export const reminderReasonText = (code: string | null | undefined): string => (code ? REMINDER_REASON_TEXT[code] ?? "It could not be sent." : "");

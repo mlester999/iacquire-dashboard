@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Download, Hourglass, Link2Off, Lock } from "lucide-react";
 import { Monogram } from "@/app/book/_components/shell";
-import { CODE_TEXT, DECIDE_TEXT, PUBLIC_STATE_TEXT, type CodeOutcome, type DecideOutcome } from "@/lib/proposals/share";
+import { CODE_TEXT, DECIDE_TEXT, PUBLIC_STATE_TEXT, wordAgrees, type CodeOutcome, type DecideOutcome } from "@/lib/proposals/share";
 import { formatDay } from "@/lib/proposals/validity";
 import type { PublicProposalView } from "@/server/proposals/public";
 import { AnswerPanel, ContactLinks, NoticeBanner, linkClass, type Notice } from "@/components/proposals/public/answer-panel";
@@ -54,6 +54,16 @@ export function noticeFor(kind: "r" | "c", word: string | undefined, attemptsLef
   const n = CODE_TEXT[word as CodeOutcome];
   const left = Number(attemptsLeft);
   return word === "wrong" && Number.isInteger(left) && left >= 0 && left <= 5 ? { ...n, text: `${n.text} You have ${left} ${left === 1 ? "try" : "tries"} left for this code.` } : n;
+}
+
+/**
+ * What the page shows for the address's `r` and `c` words: the notice for a word only when the record agrees with it (src/lib/proposals/share.ts wordAgrees). The address is not a
+ * record, so "?r=accepted" on a proposal nobody has answered shows nothing.
+ */
+export function recordedNotice(kind: "r" | "c", word: string | undefined, view: Pick<PublicProposalView, "state" | "answer" | "changeRequests" | "verified">, attemptsLeft?: string): Notice | null {
+  if (!word || !Object.hasOwn(kind === "r" ? DECIDE_TEXT : CODE_TEXT, word)) return null;
+  if (!wordAgrees(kind, word, { state: view.state, answer: view.answer?.decision ?? null, changeRequests: view.changeRequests, verified: view.verified !== null })) return null;
+  return noticeFor(kind, word, attemptsLeft);
 }
 
 export function PublicProposal({ token, view, result, code }: { token: string; view: PublicProposalView; result: Notice | null; code: Notice | null }) {

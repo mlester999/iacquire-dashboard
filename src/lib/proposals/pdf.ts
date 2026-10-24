@@ -4,6 +4,10 @@
 // It shows exactly what the snapshot holds, which is what the reviewer approved and what the customer's page shows: the wording, the priced lines, each billing group's totals,
 // the terms and the valid-until date. It says nothing about enforceability: how a customer answers is on their page, not in this file. A proposal that needs a signature ends
 // with one extra page holding an empty, labelled signature area at a fixed place (signatureBox), so a signing service can put its signature field there; the copy is not signed.
+//
+// The customer's email address is NOT printed: their page lists the name and company only and masks the address its code goes to, and anyone holding the link can download this
+// file. A PDF stored before that change keeps its bytes, address included, because the stored file is served while it matches the sha256 recorded with it (documents.ts);
+// making it again would give it a new hash.
 import { formatMinor, formatQuantity, type CurrencyCode } from "@/lib/money";
 import { BILLINGS, BILLING_LABELS, type Billing } from "@/lib/proposals/doc";
 import { bpsLabel } from "@/lib/proposals/money";
@@ -118,7 +122,7 @@ export function renderProposalPdfBytes(input: ProposalPdfInput): Buffer {
   flow.rule();
   flow.space(2);
 
-  keyValue(flow, "Prepared for", [s.client.name, s.client.company, s.client.email ?? ""].filter((x) => x.trim()).join("\n"));
+  keyValue(flow, "Prepared for", [s.client.name, s.client.company].filter((x) => x.trim()).join("\n"));
   keyValue(flow, "Prepared by", [s.sender.name ?? "", s.business.name, s.business.website ?? ""].filter((x) => x.trim()).join("\n"));
   if (s.validUntil) keyValue(flow, "Valid until", formatDay(s.validUntil));
   keyValue(flow, "Currency", s.currency);

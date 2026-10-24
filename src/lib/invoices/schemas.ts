@@ -45,6 +45,8 @@ export const draftInputSchema = z.object({
   notes: z.string().max(2000, { error: "The notes can't be longer than 2,000 characters." }).nullish(),
   terms: z.string().max(2000, { error: "The terms can't be longer than 2,000 characters." }).nullish(),
   closesDeal: z.boolean().optional(),
+  /** A test invoice: made on purpose to try the payment account in test mode. Nothing is owed on it and no money moves. Only someone who may run test payments can set it. */
+  isTest: z.boolean().optional(),
   /** A repeated request with the same key makes one invoice (a double click, a redelivered event). */
   idempotencyKey: z.string().min(8).max(120).nullish(),
 });
@@ -81,8 +83,22 @@ export const refundSchema = z.object({
   amount: z.string().max(30),
   reason: z.string().min(3, { error: "Say why the money was handed back." }).max(400),
   idempotencyKey: z.string().min(8).max(120).nullish(),
+  /** The person says this is a different refund from the one the payment provider already reported for the same amount. */
+  separateFromProvider: z.boolean().optional(),
 });
 export type RefundInput = z.infer<typeof refundSchema>;
+
+/** A dispute the owner records on a payment the provider confirmed: the provider's own notice never reached this product (a PayMongo dispute, a PayPal reversal). */
+export const disputeOpenSchema = z.object({ note: z.string().max(400).nullish() });
+export type DisputeOpenInput = z.infer<typeof disputeOpenSchema>;
+
+/** How a dispute ended, from the owner: won, or lost with what the buyer got back. */
+export const disputeResultSchema = z.object({
+  outcome: z.enum(["won", "lost"], { error: "Say whether you won or lost the dispute." }),
+  amount: z.string().max(30).nullish(),
+  note: z.string().max(400).nullish(),
+});
+export type DisputeResultInput = z.infer<typeof disputeResultSchema>;
 
 export const reasonSchema = z.object({ reason: z.string().min(5, { error: "Give a reason of at least a few words." }).max(400) });
 

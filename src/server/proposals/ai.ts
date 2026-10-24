@@ -14,7 +14,7 @@ import { isCurrency, sumLines, type CurrencyCode, type LineAmounts } from "@/lib
 import type { Billing } from "@/lib/proposals/doc";
 import { lineFigures } from "@/lib/proposals/money";
 import {
-  AI_KNOWLEDGE_SECTIONS, AI_LIMITS, aiSections, aiSystemPrompt, aiUserPrompt, allowedNumberSet, normalizeAiOutput, plainAmount, screenList, screenText, validQuantity,
+  AI_KNOWLEDGE_SECTIONS, AI_LIMITS, aiSections, aiSystemPrompt, aiUserPrompt, allowedNumberSet, normalizeAiOutput, plainAmount, screenList, screenText, unbackedPromises, validQuantity,
   type Dropped, type PriceBookEntry, type TextChecks,
 } from "@/lib/proposals/ai";
 import { loadProposalRow, memberUserId, readSettings, type ProposalRow } from "@/server/proposals/core";
@@ -205,7 +205,9 @@ export async function draftProposalWithAi(actor: CrmActor, input: AiDraftInput =
   ]);
   // The claim filter's idea of what is backed: the approved knowledge, the price book as the workspace wrote it, and the draft's own figures.
   const grounding = [knowledge.text, ...ctx.catalog.map((c) => `${c.name} ${c.description} ${ctx.currency} ${plainAmount(Number(c.unit_price_minor), ctx.currency)}`), figures.map((n) => `${ctx.currency} ${n}`).join(" ")].join("\n");
-  const checks: TextChecks = { allowed, claims: (t) => unsupportedClaims(t, grounding) };
+  // A length of time is also backed by a chosen item priced per day, hour, week or month ("3 day" for three days of training), which is the draft's own figure and not a promise.
+  const promiseBacking = [grounding, ...templateLines.map((l) => `${l.quantityMilli / 1000} ${l.row.unit_label}`), ...chosen.map((c) => `${c.quantity} ${c.row.unit_label}`)].join("\n");
+  const checks: TextChecks = { allowed, claims: (t) => [...unsupportedClaims(t, grounding), ...unbackedPromises(t, promiseBacking)] };
 
   const intro = screenText("intro", parsed.intro, AI_LIMITS.intro, checks);
   const scope = screenText("scope", parsed.scopeSummary, AI_LIMITS.scope, checks);

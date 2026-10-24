@@ -51,17 +51,17 @@ const cases = (): Case[] => [
 ];
 
 describe("the pure rule", () => {
-  const typed: DestinationFacts = { createdVia: "website_chat", verified: false };
+  const typed: DestinationFacts = { typedByVisitor: true, verified: false };
   const facts = (over: Partial<SendFacts> = {}): SendFacts => ({ actor: "ai", approvedByPerson: false, scope: "reply", purpose: "service", ...over });
 
-  it("only ever applies to an unverified address on a contact the website chat made", () => {
+  it("only ever applies to an unverified address that a visitor typed (the address carries that, whatever contact holds it)", () => {
     expect(typedByVisitorOnly(typed)).toBe(true);
-    expect(typedByVisitorOnly({ createdVia: "website_chat", verified: true })).toBe(false);
-    expect(typedByVisitorOnly({ createdVia: "website_chat", verified: null })).toBe(false);
-    for (const via of ["manual", "inbound_message", "website_form", "form", "booking", "import", "api", "agent", "workflow", "call", "ghl_migration", null]) {
-      expect(typedByVisitorOnly({ createdVia: via, verified: false }), String(via)).toBe(false);
-      expect(unverifiedIdentityRefusal({ createdVia: via, verified: false }, facts({ scope: "followup" })), String(via)).toBeNull();
-    }
+    expect(typedByVisitorOnly({ typedByVisitor: true, verified: true })).toBe(false);
+    expect(typedByVisitorOnly({ typedByVisitor: true, verified: null })).toBe(false);
+    // An address nobody typed in the chat (staff entered it, a form, an import, a booking) is not covered, unverified or not.
+    expect(typedByVisitorOnly({ typedByVisitor: false, verified: false })).toBe(false);
+    expect(typedByVisitorOnly({ typedByVisitor: false, verified: null })).toBe(false);
+    expect(unverifiedIdentityRefusal({ typedByVisitor: false, verified: false }, facts({ scope: "followup" }))).toBeNull();
   });
 
   it("refuses with the plain reason, and lets through only a person's one-to-one service message", () => {

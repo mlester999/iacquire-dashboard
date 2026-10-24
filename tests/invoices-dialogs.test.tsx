@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 const mocks = vi.hoisted(() => {
   const names = [
     "createInvoiceDraftAction", "updateInvoiceDraftAction", "discardInvoiceDraftAction", "searchInvoiceDealsAction", "submitInvoiceAction", "withdrawInvoiceAction", "requestInvoiceChangesAction",
-    "issueInvoiceAction", "voidInvoiceAction", "writeOffInvoiceAction", "recordPaymentAction", "recordRefundAction", "getInvoiceLinkAction", "rotateInvoiceLinkAction", "saveInvoiceSettingsAction",
+    "issueInvoiceAction", "voidInvoiceAction", "writeOffInvoiceAction", "recordPaymentAction", "recordRefundAction", "recordDisputeOpenedAction", "recordDisputeResultAction", "getInvoiceLinkAction", "rotateInvoiceLinkAction", "saveInvoiceSettingsAction",
     "authorizeRemindersAction", "switchOffRemindersAction", "connectProviderAction", "saveWebhookSecretAction", "replaceKeysAction", "recheckConnectionAction", "confirmLiveAction",
     "pauseConnectionAction", "disconnectConnectionAction", "recentDeliveriesAction", "startTestPaymentAction",
   ] as const;
@@ -61,7 +61,7 @@ afterEach(cleanup);
 
 const ownerFacts: ActionFacts = {
   status: "issued", paymentStatus: "unpaid", writtenOff: false, balanceMinor: 150000, paidMinor: 0, createdVia: "manual", isAuthor: true, approvalRequiredForCreators: true, hasTestConnection: true,
-  can: { create: true, approve: true, send: true, recordPayment: true, void: true, refund: true, connect: true },
+  isTest: false, can: { create: true, approve: true, send: true, recordPayment: true, void: true, refund: true, connect: true },
 };
 const actions = (over: Partial<ActionFacts> = {}) => (
   <InvoiceActions invoiceId="11111111-1111-4111-8111-111111111111" version={1} number="INV-0007" status="issued" currency="PHP" balanceMinor={150000} totalMinor={150000} facts={{ ...ownerFacts, ...over }} tz="UTC" hasCustomer closeRuleNote={null} />
@@ -116,20 +116,23 @@ describe("recording a payment by hand", () => {
 });
 
 describe("a test payment", () => {
-  it("warns that the test is recorded against this very invoice and shows as paid, and that an invoice made for testing should be used", () => {
-    render(actions());
+  it("says the test is recorded against this test invoice, marked as a test, and that a real invoice is never marked paid by one", () => {
+    render(actions({ isTest: true }));
     fireEvent.click(screen.getByRole("button", { name: /Pay as a test/ }));
     const d = dialog("Pay this invoice as a test?");
     expect(within(d).getByText(/no real money moves/)).toBeTruthy();
-    expect(within(d).getByText(/that is recorded against THIS invoice: it will show as paid in your records \(marked as a test\)/)).toBeTruthy();
-    expect(within(d).getByText("Use an invoice you made only for testing, not one a customer owes.")).toBeTruthy();
+    expect(within(d).getByText(/recorded against this test invoice, marked as a test/)).toBeTruthy();
+    expect(within(d).getByText("Only a test invoice can be paid as a test: a real invoice is never marked paid by one.")).toBeTruthy();
   });
 
-  it("is not offered to anyone who is not the owner, or when there is no test account", () => {
-    render(actions({ can: { ...ownerFacts.can, connect: false } }));
+  it("is not offered to anyone who is not the owner, when there is no test account, or on a real invoice", () => {
+    render(actions({ isTest: true, can: { ...ownerFacts.can, connect: false } }));
     expect(screen.queryByRole("button", { name: /Pay as a test/ })).toBeNull();
     cleanup();
-    render(actions({ hasTestConnection: false }));
+    render(actions({ isTest: true, hasTestConnection: false }));
+    expect(screen.queryByRole("button", { name: /Pay as a test/ })).toBeNull();
+    cleanup();
+    render(actions({ isTest: false }));
     expect(screen.queryByRole("button", { name: /Pay as a test/ })).toBeNull();
   });
 });
@@ -195,11 +198,100 @@ describe("a refund", () => {
     expect(mocks.actions.recordRefundAction.mock.calls[0][1]).toMatchObject({ amount: "1000.00", reason: "Customer returned an item" });
   });
 
+  it("warns when the provider already reported the same refund, keeps the button closed until the owner says it is a different one, and sends that", async () => {
+    mocks.actions.recordRefundAction.mockResolvedValue(ok({ duplicate: false, reviewTaskCreated: false }));
+    const theirs = { id: "r1", paymentId: payment.id, amountMinor: 100000, status: "succeeded", source: "provider_event", reason: "Refunded at the provider", createdAt: new Date().toISOString(), recordedByName: null };
+    render(<PaymentsPanel payments={[payment]} refunds={[theirs]} currency="PHP" canRefund tz="UTC" />);
+    fireEvent.click(screen.getByRole("button", { name: /Record a refund/ }));
+    const d = dialog("Record a refund");
+    type("Why?", "Refunded in the dashboard");
+    // The amount offered is what is left (1000.00), which is exactly what the provider reported: counted twice if recorded again.
+    expect(within(d).getByRole("note").textContent).toMatch(/already reported a refund of ₱1,000\.00 on this payment/);
+    const confirm = within(d).getByRole("button", { name: "Record refund" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    // Another amount is another refund: no warning.
+    type(/Amount refunded/, "250");
+    expect(within(d).queryByRole("note")).toBeNull();
+    expect(confirm.disabled).toBe(false);
+    type(/Amount refunded/, "1000.00");
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(within(d).getByRole("checkbox", { name: /This is a different refund/ }));
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.actions.recordRefundAction).toHaveBeenCalledTimes(1));
+    expect(mocks.actions.recordRefundAction.mock.calls[0][1]).toMatchObject({ amount: "1000.00", separateFromProvider: true });
+  });
+
   it("offers no refund on a payment that was refunded in full, or to anyone but the owner", () => {
     const { rerender } = render(<PaymentsPanel payments={[{ ...payment, status: "refunded", refundedMinor: 150000 }]} refunds={[]} currency="PHP" canRefund tz="UTC" />);
     expect(screen.queryByRole("button", { name: /Record a refund/ })).toBeNull();
     rerender(<PaymentsPanel payments={[payment]} refunds={[]} currency="PHP" canRefund={false} tz="UTC" />);
     expect(screen.queryByRole("button", { name: /Record a refund/ })).toBeNull();
+  });
+});
+
+describe("a dispute the owner records", () => {
+  const received: PaymentView = {
+    id: "33333333-3333-4333-8333-333333333333", amountMinor: 150000, currency: "PHP", provider: "paypal", verification: "provider_confirmed", method: "paypal", status: "succeeded", livemode: true,
+    receivedAt: "2026-10-23T01:00:00.000Z", evidence: null, taxPortionMinor: 0, refundedMinor: 0, recordedByName: null,
+  };
+  const panel = (p: PaymentView, canRefund = true) => <PaymentsPanel payments={[p]} refunds={[]} currency="PHP" canRefund={canRefund} tz="UTC" />;
+
+  it("can be opened on a payment the provider confirmed, and says what it does to reminders and revenue", async () => {
+    mocks.actions.recordDisputeOpenedAction.mockResolvedValue(ok({ status: "disputed" }));
+    render(panel(received));
+    fireEvent.click(screen.getByRole("button", { name: /Record a dispute/ }));
+    const d = dialog("Record a dispute");
+    expect(within(d).getByText(/Reminders for the invoice stop, and the payment is held out of your revenue until you record how the dispute ended/)).toBeTruthy();
+    type("Note (optional)", "The bank phoned");
+    fireEvent.click(within(d).getByRole("button", { name: "Record dispute" }));
+    await waitFor(() => expect(mocks.actions.recordDisputeOpenedAction).toHaveBeenCalledTimes(1));
+    expect(mocks.actions.recordDisputeOpenedAction.mock.calls[0]).toEqual([received.id, { note: "The bank phoned" }]);
+  });
+
+  it("is offered to the owner only, and never on a payment recorded by hand, one still waiting, or one already refunded in full", () => {
+    const { rerender } = render(panel(received, false));
+    expect(screen.queryByRole("button", { name: /Record a dispute/ })).toBeNull();
+    rerender(panel({ ...received, provider: "manual", verification: "manual", livemode: true, evidence: "Cash" }));
+    expect(screen.queryByRole("button", { name: /Record a dispute/ })).toBeNull();
+    rerender(panel({ ...received, status: "pending" }));
+    expect(screen.queryByRole("button", { name: /Record a dispute/ })).toBeNull();
+    rerender(panel({ ...received, status: "refunded", refundedMinor: 150000 }));
+    expect(screen.queryByRole("button", { name: /Record a dispute/ })).toBeNull();
+  });
+
+  it("is closed with how it ended: nothing can be sent until the owner says, and a loss needs how much the buyer got back", async () => {
+    mocks.actions.recordDisputeResultAction.mockResolvedValue(ok({ status: "refunded", reviewTaskCreated: false }));
+    render(panel({ ...received, status: "disputed", refundedMinor: 50000 }));
+    expect(screen.getByText(/Under dispute: held out of your revenue until the result is recorded/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Record how the dispute ended/ }));
+    const d = dialog("Record how the dispute ended");
+    expect(within(d).getByText(/Nothing is put back as received until you do/)).toBeTruthy();
+    const confirm = within(d).getByRole("button", { name: "Record result" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(within(d).getByRole("radio", { name: /We lost/ }));
+    // It starts from what is left of the payment, and never offers more.
+    expect((screen.getByLabelText(/How much the buyer got back/) as HTMLInputElement).value).toBe("1000.00");
+    expect(within(d).getByText(/Most it can be: 1000\.00/)).toBeTruthy();
+    type(/How much the buyer got back/, "");
+    expect(confirm.disabled).toBe(true);
+    type(/How much the buyer got back/, "400");
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.actions.recordDisputeResultAction).toHaveBeenCalledTimes(1));
+    expect(mocks.actions.recordDisputeResultAction.mock.calls[0]).toEqual([received.id, { outcome: "lost", amount: "400", note: null }]);
+  });
+
+  it("sends a win without an amount", async () => {
+    mocks.actions.recordDisputeResultAction.mockResolvedValue(ok({ status: "succeeded", reviewTaskCreated: false }));
+    render(panel({ ...received, status: "disputed" }));
+    fireEvent.click(screen.getByRole("button", { name: /Record how the dispute ended/ }));
+    const d = dialog("Record how the dispute ended");
+    fireEvent.click(within(d).getByRole("radio", { name: /We won/ }));
+    expect(screen.queryByLabelText(/How much the buyer got back/)).toBeNull();
+    fireEvent.click(within(d).getByRole("button", { name: "Record result" }));
+    await waitFor(() => expect(mocks.actions.recordDisputeResultAction).toHaveBeenCalledTimes(1));
+    expect(mocks.actions.recordDisputeResultAction.mock.calls[0]).toEqual([received.id, { outcome: "won", note: null }]);
   });
 });
 

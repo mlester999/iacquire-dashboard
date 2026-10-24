@@ -5,7 +5,7 @@ import { eventSentence, formatDay, formatInstant, money } from "@/lib/invoices/l
 import { formatBps } from "@/lib/invoices/lines";
 import { stepLabel } from "@/lib/invoices/reminders";
 import type { InvoiceFullDetail } from "@/server/invoices/invoices";
-import { OverdueBadge, PaymentBadge, StatusBadge } from "@/components/invoices/status";
+import { OverdueBadge, PaymentBadge, StatusBadge, TestBadge } from "@/components/invoices/status";
 
 // The read-only parts of an invoice page: what it says, what happened to it, and what will be said to the customer. Nothing here changes anything.
 
@@ -16,14 +16,16 @@ export function InvoiceSummary({ detail, tz }: { detail: InvoiceFullDetail; tz: 
     <section aria-label="Summary" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={i.status} />
-        {i.status === "issued" && <PaymentBadge status={i.paymentStatus} />}
+        {i.isTest && <TestBadge />}
+        {i.status === "issued" && (!i.isTest || i.paymentStatus !== "unpaid") && <PaymentBadge status={i.paymentStatus} />}
         {i.overdue && <OverdueBadge days={i.daysOverdue} />}
         {i.writtenOffAt && <Badge tone="outline" title={i.writeOffReason ?? undefined}>Written off</Badge>}
         {i.createdVia !== "manual" && <Badge tone="violet">Made by {i.createdVia === "workflow" ? "an automation" : "a deal"}</Badge>}
       </div>
+      {i.isTest && <p role="note" className="rounded-xl border border-violet-ink/20 bg-violet-soft px-3 py-2 text-[13px] text-violet-ink">This is a test invoice: nothing is owed on it and no money moves. It has its own numbers, is never reminded about, is left out of what is owed, overdue, your revenue and your deals, and can be voided or deleted even after a test payment.</p>}
       <dl className="grid gap-x-8 gap-y-3 text-[13.5px] sm:grid-cols-2 lg:grid-cols-3">
-        <div><dt className="text-muted">Customer</dt><dd className="font-medium text-ink">{i.contactId ? <Link href={`/crm/contacts/${i.contactId}`} className="underline-offset-2 hover:underline">{i.contactName ?? "Customer"}</Link> : <span className="text-warning-ink">Not chosen yet</span>}{i.companyName ? <span className="font-normal text-ink-2"> · {i.companyName}</span> : null}</dd></div>
-        {dealHref && <div><dt className="text-muted">Deal</dt><dd className="font-medium text-ink"><Link href={dealHref} className="underline-offset-2 hover:underline">{i.opportunityName ?? "Deal"}</Link></dd></div>}
+        <div><dt className="text-muted">Customer</dt><dd className="font-medium text-ink">{i.contactId ? <Link href={`/crm/contacts/${i.contactId}`} className="inline-flex min-h-11 items-center underline-offset-2 hover:underline sm:min-h-0">{i.contactName ?? "Customer"}</Link> : <span className="text-warning-ink">Not chosen yet</span>}{i.companyName ? <span className="font-normal text-ink-2"> · {i.companyName}</span> : null}</dd></div>
+        {dealHref && <div><dt className="text-muted">Deal</dt><dd className="font-medium text-ink"><Link href={dealHref} className="inline-flex min-h-11 items-center underline-offset-2 hover:underline sm:min-h-0">{i.opportunityName ?? "Deal"}</Link></dd></div>}
         <div><dt className="text-muted">Issued</dt><dd className="text-ink">{i.issueOn ? formatDay(i.issueOn) : "Not issued yet"}</dd></div>
         <div><dt className="text-muted">Due</dt><dd className="text-ink">{i.dueOn ? formatDay(i.dueOn) : "Set when it is issued"}</dd></div>
         <div><dt className="text-muted">Version</dt><dd className="text-ink">{i.version}{i.approvedVersion ? ` · approved version ${i.approvedVersion}${i.approvedByName ? ` by ${i.approvedByName}` : ""}` : ""}</dd></div>
@@ -92,7 +94,9 @@ export function RemindersList({ detail, tz }: { detail: InvoiceFullDetail; tz: s
   return (
     <section aria-labelledby="inv-reminders" className="space-y-2">
       <h2 id="inv-reminders" className="flex items-center gap-2 text-[15px] font-semibold text-ink"><BellRing className="size-4 text-muted" aria-hidden />Reminders</h2>
-      {rows.length === 0 ? (
+      {rows.length === 0 && detail.invoice.isTest ? (
+        <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">A test invoice is never reminded about: nothing is owed on it, so no customer is asked to pay it.</p>
+      ) : rows.length === 0 ? (
         <p className="rounded-2xl border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-2">No reminders are planned for this invoice. Reminders go out only after the owner has authorized their exact wording in the invoice settings, and only to a customer who has agreed to receive service messages. They are checked when the scheduler runs, not live.</p>
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface" aria-label="Reminders">

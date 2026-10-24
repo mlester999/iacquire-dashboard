@@ -99,10 +99,11 @@ export async function getConversationDetail(ctx: OrgContext, conversationId: str
   return withUser(ctx.user.id, async (db) => {
     const conv = await db.query<{ subject: string | null; last_inbound_at: Date | null }>("select subject, last_inbound_at from conversations where id = $1", [conversationId]);
     const k = await db.query<{ id: string; display_name: string; lifecycle_stage: string; temperature: string | null; source: string }>("select id, display_name, lifecycle_stage, temperature, source from contacts where id = $1", [base.contactId]);
-    // typed: a website visitor typed this address and nothing has confirmed it, so only a person's own reply can reach it (src/lib/webchat/identity.ts).
+    // typed: a website visitor typed this address and nothing has confirmed it, so only a person's own reply can reach it (src/lib/webchat/identity.ts). Read from the
+    // address itself, so it still shows after the contact it was typed for was merged into another.
     const ids = await db.query<{ id: string; kind: string; value: string; verified: boolean; typed: boolean }>(
-      `select i.id, i.kind, i.value, i.verified, (not i.verified and k.created_via = 'website_chat') as typed
-       from contact_identities i join contacts k on k.id = i.contact_id and k.org_id = i.org_id where i.contact_id = $1 order by i.kind, i.created_at`,
+      `select i.id, i.kind, i.value, i.verified, (not i.verified and i.typed_by_visitor) as typed
+       from contact_identities i where i.contact_id = $1 order by i.kind, i.created_at`,
       [base.contactId],
     );
     const consent = await db.query<{ channel: string; purpose: string; status: string }>(

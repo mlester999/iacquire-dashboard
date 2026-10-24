@@ -6,9 +6,14 @@
 --   * customer_invoice_settings: the client's legal details for the document, the number counter and prefix, and the reminder and close-rule choices.
 --   * customer_invoices + customer_invoice_lines: the document. Money is bigint minor units in a currency from an allow-list. The totals must equal the sum of
 --     the lines when an invoice is submitted or issued, and an invoice is frozen once it leaves draft (money, lines, dates, wording, snapshots), enforced by
---     triggers, not only by code. paid / refunded / payment_status can change only to what the payment and refund rows add up to.
+--     triggers, not only by code. An invoice is inserted as a draft and starts unpaid when it is issued; after that paid / refunded / payment_status can change only to
+--     what the payment and refund rows add up to.
 --   * customer_payments + customer_refunds: what was received and what was handed back. A payment names its invoice AND its currency in one composite foreign
 --     key, so it can never be in another workspace's invoice or another currency. Amounts never change after insert.
+--   * A TEST INVOICE (customer_invoices.is_test) is made on purpose to try a payment account in a provider's test mode: nothing is owed on it and no money moves. The database
+--     keeps the two kinds of money apart: a payment a provider ran in test mode (livemode false) can sit only on a test invoice, and a live payment (or one recorded by hand)
+--     never sits on one. The mark is fixed when the invoice leaves draft, a test invoice has its own number counter and is never reminded about, and, unlike a real invoice,
+--     it can be voided or deleted together with its test payments.
 --   * customer_payment_connections + customer_payment_attempts + customer_payment_events: the client's own PayMongo / PayPal account, the checkouts started,
 --     and the durable receipt of every webhook. The credentials column is sealed and has no grant; the receipts have no grant at all.
 --   * customer_invoice_events (append-only), customer_invoice_reminders.
@@ -50,6 +55,8 @@ create table customer_invoice_settings (
   -- The number is assigned when an invoice is issued, from this counter, in the issuing transaction: prefix + next_number padded to four digits.
   number_prefix text not null default 'INV-' check (number_prefix ~ '^[A-Za-z0-9._/-]{0,12}$'),
   next_number bigint not null default 1 check (next_number >= 1 and next_number < 1000000000000),
+  -- A test invoice is numbered from its own counter ("TEST-0001"), so the business's real sequence never has a gap for a test.
+  next_test_number bigint not null default 1 check (next_test_number >= 1 and next_test_number < 1000000000000),
   default_currency text check (default_currency in ('USD', 'PHP', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'JPY')),
   payment_terms_days integer not null default 14 check (payment_terms_days between 0 and 365),
   default_payment_instructions text check (char_length(default_payment_instructions) <= 1000),
@@ -160,6 +167,9 @@ create table customer_invoices (
   approved_at timestamptz,
   -- Set by a person for this one invoice: paying it in full may close the linked deal as won, when the owner's close rule allows it.
   closes_deal boolean not null default false,
+  -- Made on purpose to try the payment path in a provider's test mode: nothing is owed and no money moves. Chosen while it is a draft, by someone who may run test payments, and
+  -- fixed from then on. It takes only test-mode payments (see app.customer_payment_guard), is never reminded about, and is kept out of what is owed, overdue, revenue and deals.
+  is_test boolean not null default false,
   public_token_version integer not null default 1 check (public_token_version >= 1),
   -- sha256 of the customer's link token (the token is derived from the invoice id with a server key and never stored). The application role cannot read it.
   public_token_hash text check (public_token_hash is null or public_token_hash ~ '^[0-9a-f]{64}$'),
@@ -187,7 +197,10 @@ create table customer_invoices (
   check (due_on is null or issue_on is null or due_on >= issue_on),
   check (approved_version is null or approved_version <= version),
   check (status not in ('issued', 'void') or (number is not null and content_hash is not null and issue_on is not null and due_on is not null and total_minor > 0 and issued_at is not null and approved_version is not null)),
-  check (status <> 'void' or (voided_at is not null and paid_minor = 0)),
+  -- A real invoice that took money cannot be voided (a refund is recorded instead); a test invoice can, with its test payments, because none of that was real.
+  check (status <> 'void' or (voided_at is not null and (is_test or paid_minor = 0))),
+  -- A test never closes a deal.
+  check (not is_test or not closes_deal),
   check (status in ('issued', 'void') or (paid_minor = 0 and refunded_minor = 0 and payment_status = 'unpaid' and written_off_at is null)),
   check (payment_status <> 'unpaid' or paid_minor = 0),
   check (payment_status <> 'partially_paid' or (paid_minor > 0 and paid_minor < total_minor)),
@@ -347,7 +360,8 @@ create table customer_refunds (
   amount_minor bigint not null check (amount_minor > 0 and amount_minor <= 9007199254740991),
   tax_portion_minor bigint not null default 0 check (tax_portion_minor >= 0 and tax_portion_minor <= amount_minor),
   status text not null default 'succeeded' check (status in ('pending', 'succeeded', 'failed')),
-  -- manual_record: a person says the refund was made in the provider's dashboard (this release moves no money). provider_event: a verified event said so.
+  -- manual_record: a person says the refund was made in the provider's dashboard (this release moves no money). provider_event: a verified event said so. chargeback: a dispute was
+  -- lost and the buyer got that money back (recorded from the provider's close of the dispute, or by the owner).
   source text not null check (source in ('provider_event', 'manual_record', 'chargeback', 'api_initiated')),
   provider_refund_id text check (char_length(provider_refund_id) between 1 and 120),
   reason text not null check (char_length(reason) between 3 and 400),
@@ -400,8 +414,17 @@ declare
   disputed boolean;
   expected text;
 begin
+  -- An invoice is born a draft with nothing paid: the only way to an issued invoice is through the issue transition below, which starts unpaid too. (The application only ever
+  -- inserts drafts; this keeps a direct write from making an invoice that is issued, void or paid with no payment rows behind it.)
+  if tg_op = 'INSERT' then
+    if new.status <> 'draft' or new.paid_minor <> 0 or new.refunded_minor <> 0 or new.payment_status <> 'unpaid' or new.written_off_at is not null then
+      raise exception 'An invoice is created as a draft' using errcode = '23514';
+    end if;
+    return new;
+  end if;
   if tg_op = 'DELETE' then
-    if old.status = 'draft' or current_setting('iaq.purge', true) = 'on' then
+    -- A draft, a test invoice (its payments and checkouts were test-mode ones: the guards below let them go first) and a departed client's purge are the only deletes.
+    if old.status = 'draft' or old.is_test or current_setting('iaq.purge', true) = 'on' then
       return old;
     end if;
     raise exception 'An invoice that has left draft cannot be deleted' using errcode = '42501';
@@ -417,6 +440,10 @@ begin
     or (old.status = 'issued' and new.status = 'void')) then
     raise exception 'An invoice cannot go from % to %', old.status, new.status using errcode = '42501';
   end if;
+  -- Whether it is a test invoice is chosen while it is a draft and fixed from the moment it leaves draft (and cannot change on the way back to one either).
+  if new.is_test <> old.is_test and (old.status <> 'draft' or new.status <> 'draft') then
+    raise exception 'Whether this is a test invoice was fixed when it left draft' using errcode = '42501';
+  end if;
   -- Submitting or issuing: the totals are exactly the sum of the lines, and there is at least one line.
   if new.status in ('pending_approval', 'issued') and new.status <> old.status then
     select count(*), coalesce(sum(ex_tax_minor), 0), coalesce(sum(tax_minor), 0), coalesce(sum(total_minor), 0)
@@ -425,6 +452,11 @@ begin
     if line_count = 0 or line_subtotal <> new.subtotal_minor or line_tax <> new.tax_minor or line_total <> new.total_minor then
       raise exception 'The invoice totals must equal the sum of its lines' using errcode = '23514';
     end if;
+  end if;
+  -- An invoice starts unpaid: whatever reaches issued, from a draft or from approval, has no payment, no refund, no dispute and no write-off yet. (The reconciliation of the paid
+  -- amount against the payment rows below applies to an invoice that is already issued; without this, the way in could set them to anything the table's checks allow.)
+  if new.status = 'issued' and old.status <> 'issued' and (new.paid_minor <> 0 or new.refunded_minor <> 0 or new.payment_status <> 'unpaid' or new.written_off_at is not null) then
+    raise exception 'An invoice starts unpaid when it is issued' using errcode = '23514';
   end if;
   if old.status = 'draft' then
     return new;
@@ -475,7 +507,7 @@ begin
   end if;
   return new;
 end $$;
-create trigger customer_invoices_guard before update or delete on customer_invoices for each row execute function app.customer_invoice_guard();
+create trigger customer_invoices_guard before insert or update or delete on customer_invoices for each row execute function app.customer_invoice_guard();
 
 create or replace function app.customer_invoice_line_guard() returns trigger
 language plpgsql as $$
@@ -516,12 +548,24 @@ begin
 end $$;
 create trigger customer_invoice_events_guard before update or delete on customer_invoice_events for each row execute function app.customer_invoice_event_guard();
 
--- A payment's amount, currency, invoice, source and time never change after it is recorded; only its status moves, and a failed payment stays failed.
+-- A payment's amount, currency, invoice, source and time never change after it is recorded; only its status moves, and a failed payment stays failed. A payment a provider ran
+-- in test mode (livemode false) sits on a test invoice and only on one, and a live payment (or one recorded by hand) never sits on a test invoice: test money and real money are
+-- never on the same invoice, whatever status the row has. A payment is deleted only with a departed client's purge, or with the test invoice it belongs to.
 create or replace function app.customer_payment_guard() returns trigger
 language plpgsql as $$
+declare
+  test_invoice boolean;
 begin
+  if tg_op = 'INSERT' then
+    select is_test into test_invoice from customer_invoices where id = new.invoice_id and org_id = new.org_id;
+    -- No such invoice: the foreign key says so. Otherwise the payment's mode must be the opposite of the invoice's "is a test" (test invoice: test mode; real invoice: live).
+    if found and test_invoice = new.livemode then
+      raise exception '%', case when new.livemode then 'A test invoice takes only payments made in a payment provider''s test mode' else 'A payment made in a payment provider''s test mode can only be recorded on a test invoice' end using errcode = '23514';
+    end if;
+    return new;
+  end if;
   if tg_op = 'DELETE' then
-    if current_setting('iaq.purge', true) = 'on' then
+    if current_setting('iaq.purge', true) = 'on' or exists (select 1 from customer_invoices where id = old.invoice_id and org_id = old.org_id and is_test) then
       return old;
     end if;
     raise exception 'customer_payments rows are never deleted' using errcode = '42501';
@@ -543,7 +587,7 @@ begin
   end if;
   return new;
 end $$;
-create trigger customer_payments_guard before update or delete on customer_payments for each row execute function app.customer_payment_guard();
+create trigger customer_payments_guard before insert or update or delete on customer_payments for each row execute function app.customer_payment_guard();
 
 -- A checkout attempt asked for one amount, in one currency, for one invoice, through one connection, under one reference: none of that changes afterwards, and a
 -- finished attempt stays finished (a late event cannot revive an expired or cancelled one).
@@ -551,7 +595,7 @@ create or replace function app.customer_payment_attempt_guard() returns trigger
 language plpgsql as $$
 begin
   if tg_op = 'DELETE' then
-    if current_setting('iaq.purge', true) = 'on' then
+    if current_setting('iaq.purge', true) = 'on' or exists (select 1 from customer_invoices where id = old.invoice_id and org_id = old.org_id and is_test) then
       return old;
     end if;
     raise exception 'customer_payment_attempts rows are never deleted' using errcode = '42501';
@@ -597,15 +641,17 @@ declare
   others bigint;
 begin
   if tg_op = 'DELETE' then
-    if current_setting('iaq.purge', true) = 'on' then
+    if current_setting('iaq.purge', true) = 'on' or exists (select 1 from customer_invoices where id = old.invoice_id and org_id = old.org_id and is_test) then
       return old;
     end if;
     raise exception 'customer_refunds rows are never deleted' using errcode = '42501';
   end if;
   if tg_op = 'UPDATE' then
+    -- The one change a refund's identity allows: a refund recorded by hand takes the provider's id once, when the provider reports that same refund (the two are one refund).
     if new.id <> old.id or new.org_id <> old.org_id or new.payment_id <> old.payment_id or new.invoice_id <> old.invoice_id or new.amount_minor <> old.amount_minor
-       or new.currency <> old.currency or new.source <> old.source or new.provider_refund_id is distinct from old.provider_refund_id or new.reason <> old.reason
-       or (new.recorded_by is distinct from old.recorded_by and new.recorded_by is not null) or new.created_at <> old.created_at then
+       or new.currency <> old.currency or new.source <> old.source
+       or (new.provider_refund_id is distinct from old.provider_refund_id and not (old.provider_refund_id is null and new.provider_refund_id is not null and old.source = 'manual_record'))
+       or new.reason <> old.reason or (new.recorded_by is distinct from old.recorded_by and new.recorded_by is not null) or new.created_at <> old.created_at then
       raise exception 'A recorded refund cannot be changed, only its status can move' using errcode = '42501';
     end if;
     if old.status <> 'pending' and new.status <> old.status then
@@ -626,6 +672,18 @@ begin
   return new;
 end $$;
 create trigger customer_refunds_guard before insert or update or delete on customer_refunds for each row execute function app.customer_refund_guard();
+
+-- A test invoice is never reminded about: a customer is never asked to pay something that is not owed. A reminder row for one is not created (the insert is skipped without an error,
+-- so planning reminders for every invoice that is issued needs no special case), whatever code asks for it.
+create or replace function app.customer_invoice_reminder_guard() returns trigger
+language plpgsql as $$
+begin
+  if exists (select 1 from customer_invoices where id = new.invoice_id and org_id = new.org_id and is_test) then
+    return null;
+  end if;
+  return new;
+end $$;
+create trigger customer_invoice_reminders_guard before insert on customer_invoice_reminders for each row execute function app.customer_invoice_reminder_guard();
 
 -- ---------------------------------------------------------------------------
 -- Row-level security: read under the signed-in member's access, write only from trusted server code
@@ -649,7 +707,7 @@ grant select on customer_invoice_settings, customer_invoice_lines, customer_invo
 -- An invoice is readable except its link hash.
 grant select (id, org_id, contact_id, company_id, opportunity_id, source_type, source_id, status, payment_status, written_off_at, written_off_by, write_off_reason, number, currency,
   tax_inclusive, subtotal_minor, tax_minor, total_minor, paid_minor, refunded_minor, balance_minor, overpaid_minor, issue_on, due_on, bill_to, bill_from, payment_instructions, notes,
-  terms, content_hash, version, approved_version, approved_by, approved_at, closes_deal, public_token_version, first_viewed_at, issued_at, issued_by, voided_at, voided_by,
+  terms, content_hash, version, approved_version, approved_by, approved_at, closes_deal, is_test, public_token_version, first_viewed_at, issued_at, issued_by, voided_at, voided_by,
   void_reason, idempotency_key, created_by, created_via, created_at, updated_at) on customer_invoices to iaq_app_user;
 -- A connection is readable except its credentials.
 grant select (id, org_id, provider, mode, public_key, account_label, webhook_ref, supported_currencies, status, authorized_by, authorized_at, authorization_text_version, live_confirmed_at,

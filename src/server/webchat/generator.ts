@@ -5,12 +5,14 @@ import { meterModelUse, modelCallKey } from "@/server/llm/meter";
 import { noteDailyCapReached, takeDailyAiReply } from "@/server/webchat/switch";
 import { customerInstructions, parseReply, type ReplyContext, type ReplyGenerator } from "@/server/messaging/responder";
 import { getWidgetByOrg } from "@/server/webchat/config";
+import { ungroundedAmounts } from "@/server/webchat/amounts";
+import { unsupportedReplyClaims } from "@/server/webchat/reply-check";
 import { KNOWLEDGE_SECTION_KEYS, type KnowledgeSectionKey } from "@/lib/webchat/rules";
 
 // The website assistant. An anonymous visitor gets least privilege: the assistant sees ONLY the company-knowledge sections the workspace exposed to
 // the widget (and only content that is approved, never content held back for review), the conversation so far, and the real calendar when booking is
-// switched on. It has no tools. What the visitor types is data, not instructions. A reply that quotes a price that is not in the approved text is
-// not sent: a person looks at the chat instead.
+// switched on. It has no tools. What the visitor types is data, not instructions. A reply that quotes a price, or makes an offer, a discount, a promise or an
+// "it's free" that is not in the approved text, is not sent: a person looks at the chat instead (src/server/webchat/amounts.ts and reply-check.ts).
 
 const SECTION_TITLES: Record<KnowledgeSectionKey, string> = {
   business_description: "About the business",
@@ -50,42 +52,9 @@ export async function widgetKnowledge(orgId: string, sections: readonly Knowledg
   return { text: text.trim(), used };
 }
 
-/** Money-like amounts in a reply: a currency sign or code beside digits. */
-const MONEY = /(?:[$€£₱¥]|\b(?:USD|PHP|EUR|GBP|AUD|CAD|SGD)\b)\s?\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s?(?:USD|PHP|EUR|GBP|AUD|CAD|SGD|dollars|pesos|euros)\b/gi;
-
-/** A whole number, wherever it stands in a text: not part of a longer run of digits, so the 12 in "120" and the 20 in "2020" are not numbers of their own. */
-export const NUMBER_TOKEN = /(?<![\d.,])\d[\d,]*(?:\.\d+)?(?!\d)/g;
-
-/** A number as a plain value, so "1,200", "1200" and "1200.00" are the same amount and "12" is never "120". */
-export function plainNumber(raw: string): string {
-  const n = Number(raw.replace(/,/g, ""));
-  return Number.isFinite(n) ? String(n) : raw;
-}
-
-// Clock times and percentages say nothing about a price: "open 9am-5pm" does not make "$5" a stated amount.
-const TIME_OR_PERCENT = /\b\d{1,2}(?::\d{2})?\s?(?:am|pm|a\.m\.|p\.m\.)|\b\d{1,2}:\d{2}\b|\d+(?:\.\d+)?\s?(?:%|percent)/gi;
-
-/** The amounts an approved text states: figures beside a currency, and bare numbers (a price list may leave the sign off) other than times and percentages. */
-function statedAmounts(knowledge: string): Set<string> {
-  const out = new Set<string>();
-  for (const m of knowledge.match(MONEY) ?? []) out.add(plainNumber(m.match(/\d[\d,]*(?:\.\d+)?/)?.[0] ?? ""));
-  for (const n of knowledge.replace(TIME_OR_PERCENT, " ").match(NUMBER_TOKEN) ?? []) out.add(plainNumber(n));
-  return out;
-}
-
-/**
- * Amounts a reply states that the approved text does not contain. An amount is grounded only by the same whole number in the text ($12 is not backed by
- * "$120", and $1,200 is backed by 1200). An empty list means every figure was grounded (or none was stated).
- */
-export function ungroundedAmounts(reply: string, knowledge: string): string[] {
-  const stated = statedAmounts(knowledge);
-  const bad: string[] = [];
-  for (const m of reply.match(MONEY) ?? []) {
-    const digits = m.match(/\d[\d,]*(?:\.\d+)?/)?.[0] ?? "";
-    if (digits && !stated.has(plainNumber(digits))) bad.push(m.trim().replace(/,$/, ""));
-  }
-  return bad;
-}
+// The amount helpers live in their own file so the claim check can use them without importing this one back; they are re-exported here for the callers that always
+// took them from the generator.
+export { NUMBER_TOKEN, plainNumber, ungroundedAmounts } from "@/server/webchat/amounts";
 
 function systemBase(input: { businessName: string; knowledge: string; hasPricing: boolean; widgetTitle: string }): string {
   return `You are the website chat assistant for ${input.businessName}. You answer visitors who are using the chat window on the business's own website, titled "${input.widgetTitle}".
@@ -138,6 +107,11 @@ export function createWebChatGenerator(deps: GeneratorDeps = {}): ReplyGenerator
     if (outcome.kind === "reply") {
       const bad = ungroundedAmounts(outcome.text, knowledge.text);
       if (bad.length) return { kind: "unavailable", reason: `The assistant quoted an amount (${bad[0]}) that is not in the approved knowledge, so the reply was not sent.` };
+      // The same net the AI drafts get (offers, discounts, guarantees, awards, contact details the business never gave), plus a bare "it is free": a visitor can talk
+      // the model into saying it, and on an autonomous employee nobody reads the reply first. The visitor's own words never back a claim; they only excuse repeating their own contact details.
+      const visitorSaid = [...ctx.history.filter((h) => h.role === "user").map((h) => h.content), ctx.customerMessage].join("\n");
+      const claims = unsupportedReplyClaims(outcome.text, knowledge.text, visitorSaid);
+      if (claims.length) return { kind: "unavailable", reason: `The assistant made a claim ("${claims[0].slice(0, 60)}") that is not in the approved knowledge, so the reply was not sent.` };
       // An obvious leak of the rules themselves is never sent.
       if (/approved business knowledge|untrusted text|## (what you may use|prices)/i.test(outcome.text)) return { kind: "unavailable", reason: "The reply repeated the assistant's own instructions, so it was not sent." };
     }

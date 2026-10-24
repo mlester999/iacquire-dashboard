@@ -177,7 +177,7 @@ describe("the invoice and its frame", () => {
     number: "INV-0007", issueOn: "2026-10-20", dueOn: "2026-11-03", currency: "PHP", taxInclusive: false, billTo: { name: "Mara Villanueva", company: null, addressLines: ["12 Mango Street"] },
     lines: [{ position: 1, description: "Annual boiler service", quantity: "1", unitPriceMinor: 480000, discountMinor: 0, taxRateBps: 1200, amountMinor: 480000 }],
     subtotalMinor: 480000, taxMinor: 57600, totalMinor: 537600, paidMinor: 0, balanceMinor: 537600, paymentStatus: "unpaid", overdue: false, paymentInstructions: "Bank transfer to QA Bank.", notes: null, terms: null, footerNote: "Thank you.",
-    hasPendingPayment: false, canPayOnline: true, banner: { kind: "pay_online", tone: "info" },
+    hasPendingPayment: false, canPayOnline: true, isTest: false, banner: { kind: "pay_online", tone: "info" },
   };
 
   it("reads as an invoice: the business, the customer, the lines, tax shown as the owner entered it, the balance and how to pay, with no script needed", () => {

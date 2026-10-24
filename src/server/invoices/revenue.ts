@@ -12,9 +12,9 @@ const COUNTED = COUNTED_PAYMENT_STATUSES.map((s) => `'${s}'`).join(", ");
 const PROVIDERS = REVENUE_PROVIDERS.map((s) => `'${s}'`).join(", ");
 
 /** What a payment is, by the same words as classifyPayment. */
-const IS_VERIFIED = `(p_status in (${COUNTED}) and verification = 'provider_confirmed' and livemode and provider in (${PROVIDERS}))`;
-const IS_BY_HAND = `(p_status in (${COUNTED}) and verification = 'manual')`;
-const IS_TEST = `(p_status in (${COUNTED}) and verification = 'provider_confirmed' and not (livemode and provider in (${PROVIDERS})))`;
+const IS_VERIFIED = `(p_status in (${COUNTED}) and not inv_test and verification = 'provider_confirmed' and livemode and provider in (${PROVIDERS}))`;
+const IS_BY_HAND = `(p_status in (${COUNTED}) and not inv_test and verification = 'manual')`;
+const IS_TEST = `(p_status in (${COUNTED}) and (inv_test or (verification = 'provider_confirmed' and not (livemode and provider in (${PROVIDERS})))))`;
 
 interface PaymentScope {
   /** Extra columns for each payment row, with a trailing comma ("l.source,"). */
@@ -34,7 +34,7 @@ interface PaymentScope {
  */
 function paymentRows(s: PaymentScope): string {
   return `pay as (
-    select ${s.select} p.currency, p.verification, p.status as p_status, p.provider, p.livemode,
+    select ${s.select} p.currency, p.verification, p.status as p_status, p.provider, p.livemode, i.is_test as inv_test,
       p.amount_minor - p.tax_portion_minor as paid_ex,
       least(coalesce(rf.amount, 0) - least(coalesce(rf.tax, 0), p.tax_portion_minor), p.amount_minor - p.tax_portion_minor) as refunded_ex
     from ${s.from}

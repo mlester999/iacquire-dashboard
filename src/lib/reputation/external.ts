@@ -72,10 +72,31 @@ export function providerState(f: ProviderFacts): ProviderStateView {
   }
   if (f.provider === "facebook") {
     if (!f.pageConnected) return view("available_not_connected", "Connect your Facebook Page in Social media first. iAcquire reads recommendations through that connection, so there is no second sign-in.");
-    if (f.pageLacksPermission) return view("needs_permission", "Your Facebook Page is connected for posting, but it hasn't been given permission to read recommendations. Reconnect the Page in Social media and allow the extra access.");
+    if (f.pageLacksPermission) return view("needs_permission", "Your Facebook Page is connected for posting, but it hasn't been given permission to read recommendations. Use \"Reconnect with review access\" below and allow the extra access.");
     return view("available_not_connected", "Your Facebook Page is connected. Choose to read its recommendations.", true);
   }
   return view("available_not_connected", `Connect your ${site} Business Profile location to read its reviews here.`, true);
+}
+
+/** The address that starts "Reconnect with review access": the Social media sign-in with the extra permissions. A plain link on purpose (it leaves for Facebook; nothing may prefetch it). */
+export const REVIEW_ACCESS_HREF = "/api/reputation/oauth/meta/start";
+
+/**
+ * Whether to offer Facebook's "Reconnect with review access" on a site's card, and in which words: reading recommendations is set up for iAcquire, and either the Page cannot be read
+ * yet (no Page connected for Social media, or one without the permission) or a working connection cannot reply although replies are switched on. Never for a test connection.
+ */
+export function offersReviewAccess(site: {
+  provider: ReviewProvider;
+  environment: { ready: boolean; repliesReady: boolean };
+  pages: ReadonlyArray<{ hasPermission: boolean }>;
+  connection: { status: ConnectionStatus; canReply: boolean; simulated: boolean } | null;
+}): "connect" | "reconnect" | null {
+  if (site.provider !== "facebook" || !site.environment.ready) return null;
+  const c = site.connection;
+  if (c?.simulated) return null;
+  if (c && c.status === "connected") return site.environment.repliesReady && !c.canReply ? "reconnect" : null;
+  if (!site.pages.length) return "connect";
+  return site.pages.some((p) => !p.hasPermission) ? "reconnect" : null;
 }
 
 // ---------------------------------------------------------------------------

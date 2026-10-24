@@ -4,7 +4,7 @@
 // it writes a few paragraphs of plain wording. The server builds the priced lines from the price book rows it looks up itself. Every sentence the model writes is checked before
 // anyone sees it: a sentence that states a number the workspace did not give it, an amount in words, a claim the approved knowledge does not back, a web address or a
 // placeholder is DROPPED (not trimmed), and what was dropped is recorded. What is left is only ever a draft that a person edits and approves.
-import { toDecimalString, type CurrencyCode } from "@/lib/money";
+import { CURRENCY_CODES, toDecimalString, type CurrencyCode } from "@/lib/money";
 import { BILLING_LABELS, markdownProblem, unsupportedCharacters, type Billing } from "@/lib/proposals/doc";
 import type { KnowledgeSectionKey } from "@/lib/webchat/rules";
 
@@ -77,11 +77,13 @@ export const validQuantity = (q: number): boolean => Number.isInteger(q) && q >=
 // A number is a whole run of digits, with the commas and dots that sit between digits: the 12 in "120" and the 20 in "2020" are not numbers of their own, and "$12" is never
 // backed by "$120". It reads the same as NUMBER_TOKEN in src/server/webchat/generator.ts wherever that one finds a number (a test keeps the two in step), and it is stricter in one
 // place: a number that follows a dot or a comma with no space ("total.49", "price,49") is still a number here. A fraction or a superscript digit is a number too.
-const NUMBER_TOKEN = /\d+(?:[.,]\d+)*|[¼½¾²³¹]/g;
+const SIMPLE_NUMBER = /\d+(?:[.,]\d+)*|[¼½¾²³¹]/g;
+// Digit groups written with a space between them ("1 500", also with a no-break or thin space) are ONE number: read as "1" and "500" they would each pass for a small allowed figure.
+const NUMBER_TOKEN = /(?<!\d)\d{1,3}(?:[^\S\r\n]\d{3})+(?:[.,]\d+)*(?!\d)|\d+(?:[.,]\d+)*|[¼½¾²³¹]/g;
 
-/** A number as a plain value, so "1,500", "1500" and "1500.00" are one amount. */
+/** A number as a plain value, so "1,500", "1 500", "1500" and "1500.00" are one amount. */
 export function plainNumber(raw: string): string {
-  const n = Number(raw.replace(/,/g, ""));
+  const n = Number(raw.replace(/[,\s]/g, ""));
   return Number.isFinite(n) ? String(n) : raw;
 }
 
@@ -97,7 +99,11 @@ export function allowedNumberSet(sources: ReadonlyArray<string | number | null |
   for (const s of sources) {
     if (typeof s === "number") {
       if (Number.isFinite(s)) out.add(String(s));
-    } else if (s) for (const n of numbersIn(s)) out.add(n);
+    } else if (s) {
+      // The workspace's own words may be read either way ("Pack of 1 100" holds 1100, and also a 1 and a 100): more is allowed here, never less.
+      for (const n of numbersIn(s)) out.add(n);
+      for (const n of s.match(SIMPLE_NUMBER) ?? []) out.add(plainNumber(n));
+    }
   }
   return out;
 }
@@ -110,17 +116,130 @@ export function disallowedNumbers(text: string, allowed: ReadonlySet<string>): s
 }
 
 const NUMBER_WORD = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|half|quarter";
-const MONEY_WORD = "dollars?|pesos?|euros?|pounds?|bucks|cents?|yen|usd|php|eur|gbp|aud|cad|sgd|percent|per cent|per-cent";
-// An amount written out in words ("two thousand dollars", "twenty percent"): the exact-number check cannot see it, so it is looked for on its own.
-const SPELLED_AMOUNT = new RegExp(String.raw`\b(?:${NUMBER_WORD})(?:[\s-]+(?:${NUMBER_WORD}|and))*[\s-]+(?:${MONEY_WORD})\b`, "gi");
+// Every currency the product can total is a money word, in the code's own letters ("five hundred JPY"), not a list somebody has to remember to extend.
+const CURRENCY_WORD = CURRENCY_CODES.map((c) => c.toLowerCase()).join("|");
+const MONEY_WORD = `dollars?|pesos?|euros?|pounds?|bucks|cents?|centavos?|yen|quid|grand|k|${CURRENCY_WORD}|percent|per cent|per-cent`;
+const SMALL_WORD = "one|two|three|four|five|six|seven|eight|nine";
+const BIG_WORD = "ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion";
+const MAGNITUDE_WORD = "hundred|thousand|million|billion|grand";
+const NUMBER_RUN = String.raw`(?:${NUMBER_WORD})(?:[\s-]+(?:${NUMBER_WORD}|and))*`;
+// A run of number words that is at least ten ("two hundred", "twenty five"): "three a week" is a cadence, "two hundred a week" is a price.
+const BIG_RUN = String.raw`(?:(?:${SMALL_WORD})[\s-]+)*(?:${BIG_WORD})(?:[\s-]+(?:${NUMBER_WORD}|and))*`;
+const MONEY_SIGN = "[$€£₱¥]";
+// An amount written out in words: the exact-number check cannot see it, so it is looked for on its own. Four shapes: a number and a money word ("two thousand dollars", "five hundred
+// JPY"), a number and a percent sign ("fifteen %"), a big number and a period tail ("two hundred a month", "two hundred/month"), and a number after a currency sign or code ("USD five hundred").
+const SPELLED_AMOUNT = new RegExp(
+  [
+    String.raw`\b${NUMBER_RUN}[\s-]+(?:${MONEY_WORD})\b`,
+    String.raw`\b${NUMBER_RUN}\s*%`,
+    String.raw`\b${BIG_RUN}(?:\s*/\s*|[\s-]+(?:a|an|per|each|every)\s+)(?:month|year|week|hour|day)\b`,
+    String.raw`(?:${MONEY_SIGN}|\b(?:${CURRENCY_WORD}))\s*${NUMBER_RUN}\b`,
+  ].join("|"),
+  "gi",
+);
+// Money talk followed by a number in words that reaches a hundred or more ("Cost is fifteen hundred", "The investment is one thousand five hundred"): a price with no noun to give it away.
+const MONEY_CONTEXT = new RegExp(String.raw`\b(?:cost|costs|price|priced|pricing|fee|fees|rate|rates|investment|total|budget|charge|charges|charged|payment|payments|pay|paid|worth|quote|quoted|subtotal|deposit|retainer|balance|due)\b(?:\W+\w+){0,3}?\W+(${NUMBER_RUN})`, "gi");
+const HAS_MAGNITUDE = new RegExp(String.raw`\b(?:${MAGNITUDE_WORD})\b`, "i");
 
 /** Amounts written in words. The model is told to write no amounts at all, so any is dropped. */
-export const spelledAmounts = (text: string): string[] => [...new Set((text.match(SPELLED_AMOUNT) ?? []).map((m) => m.trim()))];
+export function spelledAmounts(text: string): string[] {
+  const found = (text.match(SPELLED_AMOUNT) ?? []).map((m) => m.trim());
+  for (const m of text.matchAll(MONEY_CONTEXT)) if (HAS_MAGNITUDE.test(m[1])) found.push(m[0].trim());
+  return [...new Set(found)];
+}
 
 // A web address or contact detail the model wrote: a full link, "www.", a bare domain, an email address or a telephone number. People add those themselves.
 const WEB_ADDRESS = /\bhttps?:\/\/\S+|\bwww\.\S+|(?<![@\w.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|io|co|us|ca|uk|au|ph|sg|biz|info|app|dev|ly|me|site|shop|store|online|ai|tv|xyz|club|today|page|link)\b(?:\/\S*)?|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/i;
 const PHONE = /(?<![\w.$])(?:\+?\d{1,3}[\s.-])?(?:\(\d{3}\)\s?|\d{3}[\s.-])\d{3}[\s.-]\d{4}(?!\d)/;
 export const hasWebAddress = (text: string): boolean => WEB_ADDRESS.test(text) || PHONE.test(text);
+
+// ---------------------------------------------------------------------------
+// Turnaround and refund promises
+// ---------------------------------------------------------------------------
+
+// A time to finish, a deadline, a trial, a refund or a way out of the contract is something the business promises. The model is told to write none of them; this is the net behind that
+// instruction, the way src/server/social/claims.ts is for offers and credentials (which has no rule for these). A length of time is backed when the approved knowledge, the price book
+// or the draft's own lines state the same length (in digits or in words); a deadline, a refund or a way out when they use the same words.
+const TIME_UNIT = String.raw`(?:(?:business|working|calendar)[\s-]+)?(?:hour|day|week|month|year)s?`;
+// "a" counts on its own ("in a week") but never ahead of a number ("a sixty day refund" is sixty days).
+const DURATION_COUNT = String.raw`(?:\d+(?:[.,]\d+)*|${NUMBER_RUN}|an?)`;
+// Two groups: the count and the unit.
+const DURATION = String.raw`\b(${DURATION_COUNT})[\s-]+(${TIME_UNIT})\b`;
+const PROMISE_NOUN = String.raw`(?:turnaround|delivery|lead[\s-]time|refund|guarantee|trial|cancellation|timeline|window)`;
+const WEEKDAY = "monday|tuesday|wednesday|thursday|friday|saturday|sunday";
+// "may" is left out: it is a verb far more often than a month.
+const MONTH = "january|february|march|april|june|july|august|september|october|november|december";
+const PERIOD = "day|week|month|quarter|year";
+
+const DURATION_PROMISES = [
+  // "within 3 days", "in three weeks", "takes about two months"
+  new RegExp(String.raw`\b(?:within|inside|in|takes?|taking)\s+(?:(?:about|around|roughly|approximately|up to|under|less than|no more than|at most|just|only)\s+)?${DURATION}`, "gi"),
+  // "a sixty day refund", "a 30-day trial", "a two-week turnaround"
+  new RegExp(String.raw`${DURATION}[\s-]+(?:(?:full|money[\s-]+back)[\s-]+)?(${PROMISE_NOUN})\b`, "gi"),
+];
+const PHRASE_PROMISES = new RegExp(
+  [
+    String.raw`\b(?:same|next)[\s-]day\b|\bovernight\b|\bturn[\s-]?around\b|\blead[\s-]time\b|\bexpedited\b|\brush\s+(?:order|delivery|service|job|fees?)\b`,
+    // A deadline: "by Friday", "by the end of the month", "before October 30".
+    String.raw`\b(?:by|before|no later than)\s+(?:(?:the\s+)?end\s+of\s+(?:the\s+)?(?:${PERIOD})|(?:next\s+)?(?:${WEEKDAY})|(?:${MONTH})(?:\s+\d{1,2})?)\b`,
+    // A refund or a way out.
+    String.raw`\brefund(?:s|ed|able)?\b|\bmoney[\s-]back\b|\bnon[\s-]?refundable\b|\bcancel(?:l?ation)?\s+(?:at any time|anytime|any time)\b`,
+  ].join("|"),
+  "gi",
+);
+
+const NUMBER_VALUE: Record<string, number> = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
+  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+
+/** A count written in digits or in words as a number ("fourteen", "one hundred and twenty", "3"), or null for a word it cannot read ("half"). */
+function countOf(raw: string): number | null {
+  const t = raw.toLowerCase().trim();
+  if (/^\d/.test(t)) {
+    const n = Number(t.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  let total = 0;
+  let current = 0;
+  for (const w of t.split(/[\s-]+/)) {
+    if (w === "and") continue;
+    if (w === "hundred") current = (current || 1) * 100;
+    else if (w === "thousand") {
+      total += (current || 1) * 1000;
+      current = 0;
+    } else if (w in NUMBER_VALUE) current += NUMBER_VALUE[w];
+    else return null;
+  }
+  return total + current;
+}
+
+/** "14 day", "60 day", "5 business day": a length of time the same whatever way it was written. */
+const durationKey = (count: string, unit: string): string => `${countOf(count) ?? count.toLowerCase()} ${unit.toLowerCase().replace(/[\s-]+/g, " ").replace(/s$/, "")}`;
+
+const stem = (w: string) => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w);
+const wordsOfText = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean).map(stem).join(" ");
+
+/**
+ * The turnaround, deadline, trial and refund promises in a text that `backing` (the approved knowledge, the price book, the draft's own lines) does not state, each once, as written.
+ * Empty when there are none or all are backed.
+ */
+export function unbackedPromises(text: string, backing: string): string[] {
+  if (!text) return [];
+  const lengths = new Set<string>();
+  for (const m of backing.matchAll(new RegExp(DURATION, "gi"))) lengths.add(durationKey(m[1], m[2]));
+  const words = ` ${wordsOfText(backing)} `;
+  const found = new Set<string>();
+  for (const re of DURATION_PROMISES) {
+    for (const m of text.matchAll(re)) {
+      // The second rule names what is promised ("refund"), and the backing must use that word too.
+      if (lengths.has(durationKey(m[1], m[2])) && (m[3] === undefined || words.includes(` ${wordsOfText(m[3])} `))) continue;
+      found.add(m[0].trim());
+    }
+  }
+  for (const m of text.matchAll(PHRASE_PROMISES)) if (!words.includes(` ${wordsOfText(m[0])} `)) found.add(m[0].trim());
+  return [...found];
+}
 
 // ---------------------------------------------------------------------------
 // Cleaning and checking the model's wording

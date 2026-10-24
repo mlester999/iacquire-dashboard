@@ -151,14 +151,15 @@ type Step = "none" | "paced" | "not_sending" | "queued" | "excluded" | "failed" 
 
 /**
  * How many more customers this batch may ask now: its pace in any minute, less those asked in the last minute and those whose message hasn't gone yet (so a slow dispatcher
- * can't pile them up). Read inside the transaction that holds the batch's row, so two turns at once can't both spend the same room.
+ * can't pile them up). A message waiting for the sending window (quiet hours, business hours) hasn't gone either: it counts, so the window opening releases at most one
+ * minute of the approved pace and not the whole night's queue. Read inside the transaction that holds the batch's row, so two turns at once can't both spend the same room.
  */
 async function paceRoom(db: Queryable, p: Prepared, now: Date): Promise<number> {
   const { rows } = await db.query<{ recent: string; backlog: string }>(
     `select (select count(*) from review_request_batch_items where batch_id = $1 and org_id = $2 and queued_at > $3::timestamptz - interval '60 seconds')::text as recent,
             (select count(*) from review_request_batch_items i join crm_review_requests r on r.id = i.request_id and r.org_id = i.org_id
                join conversation_messages m on m.id = r.message_id and m.org_id = r.org_id
-               where i.batch_id = $1 and i.org_id = $2 and i.status = 'queued' and m.status = 'queued' and m.send_after <= $3)::text as backlog`,
+               where i.batch_id = $1 and i.org_id = $2 and i.status = 'queued' and m.status = 'queued')::text as backlog`,
     [p.id, p.orgId, now.toISOString()],
   );
   return Math.max(0, Math.min(p.ratePerMinute - Number(rows[0].recent), p.ratePerMinute - Number(rows[0].backlog)));
@@ -290,6 +291,9 @@ export async function advanceBatch(id: string, orgId: string, now: Date, out: Ba
 /**
  * Scheduler entry point. Safe to run twice at once or back to back: each batch is claimed with its row lock, each customer moves from waiting to asked in the same transaction as
  * their message, and the message's dedupe key refuses a second one for the same customer.
+ *
+ * Every workspace is considered, a suspended or archived one included: prepare() is the only place that parks a batch's queued messages when the workspace may not send, so a
+ * workspace that was suspended with messages waiting must still reach it. It starts nothing there; it only holds.
  */
 export async function processReviewBatches(opts: { now?: Date; limit?: number } = {}): Promise<BatchJobResult> {
   const now = opts.now ?? new Date();
@@ -297,7 +301,6 @@ export async function processReviewBatches(opts: { now?: Date; limit?: number } 
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; org_id: string }>(
       `select b.id, b.org_id from review_request_batches b
-       join organizations o on o.id = b.org_id and o.status = 'active'
        join org_features f on f.org_id = b.org_id and f.feature = $3 and f.enabled
        where b.status in ('approved', 'sending') and coalesce((b.counts->>'waitUntil')::timestamptz, '-infinity'::timestamptz) <= $1::timestamptz
        order by coalesce(b.started_at, b.approved_at), b.id limit $2`,

@@ -56,7 +56,7 @@ import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
 import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
-import { runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
+import { RECONCILE_BUDGET_MS, runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
 import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
 import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
 
@@ -231,9 +231,10 @@ export const JOBS: ScheduledJob[] = [
   } },
   // Customer payments (a business's own PayMongo account, for its own invoices). Deliveries that were received and never applied are applied again, stale checkouts are closed,
   // open checkouts are read back so a lost webhook still settles, each connection is checked once a day, and deal rules an interrupted payment skipped run now. No real provider
-  // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. Like every job here it runs only when the scheduler does, and in a staged start
-  // only when named in SCHEDULER_JOBS_ONLY.
-  { name: "customerPaymentReconcile", everyMinutes: 15, run: () => runCustomerPaymentReconcile() },
+  // is contacted unless CUSTOMER_PAYMENTS_WRITES_ENABLED is on; nothing is sent to a customer. It spends at most RECONCILE_BUDGET_MS waiting on providers (the tick is cut off at
+  // 120 seconds and the jobs after it wait): a provider that does not answer is given up on for this run. Like every job here it runs only when the scheduler does, and in a
+  // staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "customerPaymentReconcile", everyMinutes: 15, run: () => runCustomerPaymentReconcile({ budgetMs: RECONCILE_BUDGET_MS }) },
   // Customer invoices. The overdue sweep notices an unpaid invoice past its due date (one history line, one notice to the owner and one announcement per invoice and due date) and
   // sends nothing to anyone. The reminders job takes the reminders that have come due and hands each to the consent-gated send chain (scope "billing"); it does nothing for a workspace
   // whose owner has not authorized the exact wording, and a reminder is never sent more than a day late. Like every job here they run only when the scheduler does, and in a staged

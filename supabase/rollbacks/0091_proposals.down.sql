@@ -51,6 +51,8 @@ drop function app.proposal_events_append_only();
 drop function app.proposal_versions_frozen();
 
 delete from role_permissions where permission in ('proposals.view', 'proposals.create', 'proposals.discount', 'proposals.approve', 'proposals.send', 'proposals.record_decision', 'proposals.catalog', 'proposals.settings');
+-- A workspace a Super Admin had switched proposals on for loses that switch with the tables it was for, so applying 0091 again leaves it off (as 0093 and 0095 do for theirs).
+delete from org_features where feature = 'proposals';
 
 -- The notification kinds added by 0091 are removed from the live allow-list (every other kind is left exactly as it is).
 do $$

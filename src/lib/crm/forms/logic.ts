@@ -204,7 +204,8 @@ export function formatAnswer(q: Pick<FormQuestion, "type" | "options"> | undefin
 export function renderDealName(template: string, data: { firstName?: string | null; lastName?: string | null; fullName?: string | null; formName: string; answers: Answers; questions: readonly FormQuestion[] }): string {
   const byKey = new Map(data.questions.map((q) => [q.key, q]));
   const full = data.fullName?.trim() || [data.firstName, data.lastName].map((s) => s?.trim()).filter(Boolean).join(" ");
-  const out = template.replace(/\{\{\s*([^{}]*?)\s*\}\}/g, (_m, key: string) => {
+  const out = template.replace(/\{\{([^{}]*)\}\}/g, (_m, inner: string) => {
+    const key = inner.trim(); // trimmed in code: a \s* beside [^{}]* made a long run of spaces take minutes
     if (key === "contact.first_name") return data.firstName?.trim() ?? "";
     if (key === "contact.last_name") return data.lastName?.trim() ?? "";
     if (key === "contact.full_name") return full;

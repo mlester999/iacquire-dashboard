@@ -11,7 +11,7 @@ import { setAdapterForTests } from "@/server/customer-payments/providers";
 import { simulatedPlatform } from "@/server/customer-payments/providers/simulated";
 import { ProviderCallError } from "@/server/customer-payments/providers/types";
 import { setInvoicesEnabled } from "@/server/invoices/feature";
-import { invoiceOrg, issuedInvoice, providerPayment, rows } from "./support/invoices";
+import { invoiceOrg, issuedInvoice, issuedTestInvoice, providerPayment, rows } from "./support/invoices";
 import { AUTHORIZATION, attempt, connect, deliver, fakePaymongo, paymongoPaid, q } from "./support/customer-payments";
 
 const TEST_KEY = "sk_test_AbCdEfGh90abcdef";
@@ -171,14 +171,32 @@ describe("connecting PayMongo", () => {
     expect(await q("select id from customer_payment_connections where org_id = $1", [io.orgId])).toEqual([]);
   });
 
-  it("rotates the keys without losing the signing secret, checks them first, and never carries a live confirmation to a new key", async () => {
+  it("rotates the keys of the same mode without losing the signing secret, but never carries it from test to live: the live connection waits for its own", async () => {
     const io = await invoiceOrg();
     accept();
     const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
+    // The same mode: a rotated key keeps the webhook's secret, which is still the webhook's.
+    const rotated = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: "sk_test_Rotated000000000", authorization: AUTHORIZATION });
+    expect(rotated).toMatchObject({ mode: "test", status: "connected", webhookSecretSaved: true });
+    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: "sk_test_Rotated000000000", webhookSecret: WH });
+    // Test to live: the test webhook's secret belongs to the test webhook, so it is dropped, the connection goes back to waiting for the live one, and what the test
+    // webhook last said is not shown as the live connection's last message.
+    await withSystem((db) => db.query("update customer_payment_connections set last_event_at = now() where id = $1", [view.id]));
     const live = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: LIVE_KEY, authorization: AUTHORIZATION });
-    expect(live).toMatchObject({ mode: "live", status: "connected", webhookSecretSaved: true, liveConfirmedAt: null });
-    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: LIVE_KEY, webhookSecret: WH });
+    expect(live).toMatchObject({ mode: "live", status: "pending_verification", webhookSecretSaved: false, liveConfirmedAt: null, lastEventAt: null });
+    expect(live.liveConfirmBlock).toMatch(/webhook signing secret/);
+    expect(live.statusExplain).toMatch(/webhook signing secret has not been saved/);
+    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: LIVE_KEY, webhookSecret: null });
+    // Pasting the live webhook's secret with the live key connects it.
+    const LIVE_WH = "whsk_89abcdef0123456789abcdef";
+    const paired = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: LIVE_KEY, webhookSecret: LIVE_WH, authorization: AUTHORIZATION });
+    expect(paired).toMatchObject({ mode: "live", status: "connected", webhookSecretSaved: true });
+    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ webhookSecret: LIVE_WH });
+    // And live back to test drops it again.
+    const back = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: TEST_KEY, authorization: AUTHORIZATION });
+    expect(back).toMatchObject({ mode: "test", status: "pending_verification", webhookSecretSaved: false });
     // A key the provider refuses leaves the saved one exactly as it was.
+    await replaceCredentials(io.ctx("owner"), view.id, { apiKey: LIVE_KEY, webhookSecret: LIVE_WH, authorization: AUTHORIZATION });
     f.on(() => true, { status: 401, json: null });
     await expect(replaceCredentials(io.ctx("owner"), view.id, { apiKey: "sk_live_Nope000000000000", authorization: AUTHORIZATION })).rejects.toThrow(/did not accept this key/);
     expect(credentialVault.open((await stored(view.id)).credentials)?.apiKey).toBe(LIVE_KEY);
@@ -212,10 +230,15 @@ describe("connecting PayMongo", () => {
     accept();
     const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
     await expect(confirmLive(io.ctx("owner"), view.id)).rejects.toThrow(/test keys/);
-    // A test payment the provider confirmed, recorded the way a webhook records it.
-    const inv = (await issuedInvoice(io)).invoice;
+    // A test payment the provider confirmed, recorded the way a webhook records it. It sits on a test invoice: that is the only kind that takes one.
+    const inv = (await issuedTestInvoice(io)).invoice;
     await providerPayment(io, inv.id, view.id, 50_000, { provider: "paymongo", livemode: false });
-    const live = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: LIVE_KEY, authorization: AUTHORIZATION });
+    // (The live webhook has a secret of its own; the test webhook's is not carried over.)
+    const noSecret = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: LIVE_KEY, authorization: AUTHORIZATION });
+    expect(noSecret).toMatchObject({ status: "pending_verification", hasConfirmedTestPayment: true });
+    expect(noSecret.liveConfirmBlock).toMatch(/Save the webhook signing secret first/);
+    await expect(confirmLive(io.ctx("owner"), view.id)).rejects.toThrow(/Save the webhook signing secret first/);
+    const live = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: LIVE_KEY, webhookSecret: "whsk_89abcdef0123456789abcdef", authorization: AUTHORIZATION });
     expect(live).toMatchObject({ mode: "live", hasConfirmedTestPayment: true, customerCheckoutBlock: { code: "live_off" } });
     expect(live.liveConfirmBlock).toMatch(/whole service/);
     await expect(confirmLive(io.ctx("owner"), view.id)).rejects.toThrow(/Live payments are switched off for the whole service/);
@@ -245,8 +268,9 @@ describe("connecting PayMongo", () => {
     accept();
     const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: LIVE_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
     const inv = (await issuedInvoice(io)).invoice;
+    const testInv = (await issuedTestInvoice(io)).invoice;
     const sim = await connect(io, { provider: "simulated" });
-    await providerPayment(io, inv.id, sim.id, 1000, { provider: "simulated", livemode: false });
+    await providerPayment(io, testInv.id, sim.id, 1000, { provider: "simulated", livemode: false });
     expect((await listConnections(io.ctx("owner")))[0].hasConfirmedTestPayment).toBe(false);
     await providerPayment(io, inv.id, view.id, 1000, { provider: "paymongo", livemode: true });
     expect((await listConnections(io.ctx("owner")))[0].hasConfirmedTestPayment).toBe(false);
@@ -272,6 +296,84 @@ describe("with the environment's calls switch off", () => {
     } finally {
       setAdapterForTests("paymongo", null);
     }
+  });
+});
+
+describe("pausing and resuming a real provider's account", () => {
+  const f = fakePaymongo();
+  beforeAll(() => {
+    setAdapterForTests("paymongo", createPaymongoProvider({ http: f.http }));
+    process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED = "true";
+    resetEnvCache();
+  });
+  afterAll(() => {
+    setAdapterForTests("paymongo", null);
+    delete process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED;
+    resetEnvCache();
+  });
+  const accept = () => f.on(() => true, OK_LIST);
+  const refuse = () => f.on(() => true, { status: 401, json: null });
+
+  it("does not pause an account that needs attention: pausing would hide that the provider refused its key", async () => {
+    const io = await invoiceOrg();
+    accept();
+    const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
+    refuse();
+    expect((await recheckConnection(io.ctx("owner"), view.id)).status).toBe("needs_attention");
+    await expect(setConnectionPaused(io.ctx("owner"), view.id, true)).rejects.toThrow(/needs attention.*Check the keys now.*replace/i);
+    expect(await stored(view.id)).toMatchObject({ status: "needs_attention", last_error: expect.stringMatching(/did not accept this key/) });
+    expect(await rows("select id from audit_logs where org_id = $1 and action = 'payments.connection_paused'", [io.orgId])).toEqual([]);
+  });
+
+  it("asks the provider before it resumes: a key the provider has since refused does not come back as connected", async () => {
+    const io = await invoiceOrg();
+    accept();
+    const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
+    expect((await setConnectionPaused(io.ctx("owner"), view.id, true)).status).toBe("disabled");
+    refuse();
+    const resumed = await setConnectionPaused(io.ctx("owner"), view.id, false);
+    expect(resumed).toMatchObject({ status: "needs_attention", lastError: expect.stringMatching(/did not accept this key/) });
+    expect(resumed.teamCheckoutBlock?.code).toBe("needs_attention");
+    expect(await stored(view.id)).toMatchObject({ status: "needs_attention" });
+  });
+
+  it("resumes to connected with a clean note when the provider accepts the key, and to waiting when the signing secret was never saved", async () => {
+    const io = await invoiceOrg();
+    accept();
+    const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
+    await setConnectionPaused(io.ctx("owner"), view.id, true);
+    await withSystem((db) => db.query("update customer_payment_connections set last_error = 'An old problem' where id = $1", [view.id]));
+    const before = f.calls.length;
+    const resumed = await setConnectionPaused(io.ctx("owner"), view.id, false);
+    expect(f.calls.slice(before)).toMatchObject([{ method: "GET", path: "/v1/webhooks", apiKey: TEST_KEY }]);
+    expect(resumed).toMatchObject({ status: "connected", lastError: null });
+    expect(resumed.lastCheckedAt).not.toBeNull();
+    const audit = await rows<{ metadata: Record<string, unknown> }>("select metadata from audit_logs where org_id = $1 and action = 'payments.connection_resumed'", [io.orgId]);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].metadata).toMatchObject({ provider: "paymongo", status: "connected" });
+    const other = await invoiceOrg();
+    const waiting = await connectProvider(other.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, authorization: AUTHORIZATION });
+    await setConnectionPaused(other.ctx("owner"), waiting.id, true);
+    expect((await setConnectionPaused(other.ctx("owner"), waiting.id, false)).status).toBe("pending_verification");
+  });
+
+  it("stays paused, and says why, when the provider cannot be asked just now", async () => {
+    const io = await invoiceOrg();
+    accept();
+    const view = await connectProvider(io.ctx("owner"), { provider: "paymongo", apiKey: TEST_KEY, webhookSecret: WH, authorization: AUTHORIZATION });
+    await setConnectionPaused(io.ctx("owner"), view.id, true);
+    f.on(() => true, { status: 503, json: null });
+    await expect(setConnectionPaused(io.ctx("owner"), view.id, false)).rejects.toMatchObject({ code: "upstream_error", message: expect.stringMatching(/stays paused.*busy or having trouble/) });
+    expect((await stored(view.id)).status).toBe("disabled");
+    accept();
+  });
+
+  it("is also what resuming does when the saved keys can no longer be read: the owner pastes them again", async () => {
+    const io = await invoiceOrg();
+    const conn = await connect(io, { provider: "paymongo" });
+    await withSystem((db) => db.query("update customer_payment_connections set status = 'disabled', credentials = 'v1.garbage.garbage.garbage' where id = $1", [conn.id]));
+    const resumed = await setConnectionPaused(io.ctx("owner"), conn.id, false);
+    expect(resumed).toMatchObject({ status: "needs_attention", lastError: expect.stringMatching(/can no longer be read/) });
   });
 });
 

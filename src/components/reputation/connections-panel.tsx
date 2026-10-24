@@ -10,7 +10,7 @@ import { RelativeTime } from "@/components/crm/relative-time";
 import {
   checkConnectionAction, connectFacebookPageAction, connectGoogleLocationAction, connectSimulatedSiteAction, disconnectConnectionAction, readReviewsNowAction, startGoogleConnectAction,
 } from "@/app/actions/reputation";
-import { syncedAgainstReported, PROVIDER_REVIEW_WORD } from "@/lib/reputation/external";
+import { offersReviewAccess, REVIEW_ACCESS_HREF, syncedAgainstReported, PROVIDER_REVIEW_WORD } from "@/lib/reputation/external";
 import type { CrmScope } from "@/server/crm/page";
 import type { LocationChoice, SiteView } from "@/server/reputation/connections";
 
@@ -24,6 +24,9 @@ export const SIGN_IN_NOTICES: Record<string, string> = {
   not_enabled: "Public reviews aren't switched on for this workspace yet. Ask your iAcquire contact to switch them on.",
   forbidden: "Only the business owner or a manager can connect a review site.",
   failed: "Google couldn't finish the sign-in. Start it again in a moment.",
+  facebook_expired: "That Facebook sign-in didn't start from iAcquire, so it was ignored. Use the button on this page.",
+  facebook_unavailable: "Facebook review access can't be asked for yet: reading Facebook recommendations isn't switched on or set up for iAcquire. Your Facebook review link works as usual.",
+  facebook_failed: "Facebook couldn't start the sign-in. Try again in a moment.",
 };
 
 const toneOf = (t: SiteView["state"]["tone"]) => t;
@@ -67,6 +70,7 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
   const c = site.connection;
   const word = PROVIDER_REVIEW_WORD[site.provider];
   const chosen = pending?.find((l) => `${l.accountId}|${l.locationId}` === pick) ?? null;
+  const access = offersReviewAccess(site);
 
   const startGoogle = async () => {
     const r = await run("google", () => startGoogleConnectAction(scope.orgId));
@@ -107,17 +111,27 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
           )}
         </div>
       )}
-      {canManage && enabled && !c && site.provider === "facebook" && site.pages.length > 0 && (
+      {canManage && enabled && site.provider === "facebook" && (!c || c.status !== "connected") && site.pages.length > 0 && (
         <ul className="space-y-2" aria-label="Facebook Pages you can read recommendations from">
           {site.pages.map((p) => (
             <li key={p.socialAccountId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2">
               <span className="min-w-0 break-words text-[13px] text-ink">{p.name}</span>
-              <Button size="sm" variant="secondary" disabled={!p.hasPermission || p.connected || !site.state.canConnect} loading={busy(`page-${p.socialAccountId}`)} onClick={() => run(`page-${p.socialAccountId}`, () => connectFacebookPageAction(scope.orgId, p.socialAccountId), "Connected. Its recommendations are read next.")}>
-                {p.connected ? "Connected" : p.hasPermission ? "Read its recommendations" : "Needs more permission"}
+              <Button size="sm" variant="secondary" disabled={!p.hasPermission || p.connected || !site.state.canConnect || Boolean(c && !p.reconnect)} loading={busy(`page-${p.socialAccountId}`)} onClick={() => run(`page-${p.socialAccountId}`, () => connectFacebookPageAction(scope.orgId, p.socialAccountId), p.reconnect ? "Reconnected. Its recommendations are read next." : "Connected. Its recommendations are read next.")}>
+                {p.connected ? "Connected" : !p.hasPermission ? "Needs more permission" : p.reconnect ? "Reconnect this Page" : "Read its recommendations"}
               </Button>
             </li>
           ))}
         </ul>
+      )}
+      {canManage && enabled && access && (
+        <div className="space-y-1.5 rounded-xl border border-line p-3">
+          <a href={REVIEW_ACCESS_HREF} className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink shadow-soft transition-colors hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8">
+            <Link2 className="size-4" aria-hidden />{access === "connect" ? "Connect Facebook with review access" : "Reconnect with review access"}
+          </a>
+          <p className="text-[12.5px] leading-relaxed text-muted">
+            Facebook asks you to allow iAcquire to read your Page&apos;s recommendations{site.environment.repliesReady ? " and to reply to them" : ""}. You choose the Page on the next screen; come back here afterwards to read its recommendations.
+          </p>
+        </div>
       )}
       {canManage && enabled && site.provider === "google" && pending && pending.length > 0 && stateId && (
         <fieldset className="space-y-2 rounded-xl border border-line p-3">
@@ -126,11 +140,11 @@ function SiteCard({ scope, site, canManage, enabled, pending, stateId }: { scope
             {pending.map((l) => (
               <label key={`${l.accountId}|${l.locationId}`} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 text-[14px] text-ink hover:bg-surface-2 sm:min-h-9">
                 <input type="radio" name="google-location" className="size-5 shrink-0 accent-[var(--color-primary,#2563eb)]" disabled={l.alreadyConnected} checked={pick === `${l.accountId}|${l.locationId}`} onChange={() => setPick(`${l.accountId}|${l.locationId}`)} />
-                <span className="min-w-0 break-words">{l.title}{l.alreadyConnected ? <span className="text-muted"> · already connected to a workspace</span> : null}</span>
+                <span className="min-w-0 break-words">{l.title}{l.alreadyConnected ? <span className="text-muted"> · already connected to a workspace</span> : l.reconnect ? <span className="text-muted"> · connected here; this reconnects it</span> : null}</span>
               </label>
             ))}
           </div>
-          <Button size="sm" disabled={!chosen} loading={busy("choose")} onClick={() => chosen && run("choose", () => connectGoogleLocationAction(scope.orgId, stateId, chosen.accountId, chosen.locationId), "Connected. Its reviews are read next.")}>Connect this location</Button>
+          <Button size="sm" disabled={!chosen} loading={busy("choose")} onClick={() => chosen && run("choose", () => connectGoogleLocationAction(scope.orgId, stateId, chosen.accountId, chosen.locationId), chosen.reconnect ? "Reconnected. Its reviews are read next." : "Connected. Its reviews are read next.")}>{chosen?.reconnect ? "Reconnect this location" : "Connect this location"}</Button>
         </fieldset>
       )}
       <ConfirmDialog

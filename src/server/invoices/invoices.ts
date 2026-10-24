@@ -7,7 +7,7 @@ import type { OrgContext } from "@/server/tenancy/context";
 import type { Permission } from "@/lib/permissions";
 import { formatMinor, isCurrency, toDecimalString, type CurrencyCode } from "@/lib/money";
 import { canEditDraft, canTransition, dueFromTerms, invoiceProblems, issueBlockedReason, todayIn, voidBlockedReason, type InvoiceStatus } from "@/lib/invoices/state";
-import { formatInvoiceNumber } from "@/lib/invoices/number";
+import { formatInvoiceNumber, TEST_NUMBER_PREFIX } from "@/lib/invoices/number";
 import { canonicalJson, invoiceContentHash, type HashedLine } from "@/lib/invoices/hash";
 import { freeTextProblem } from "@/lib/invoices/guards";
 import { reminderReasonText } from "@/lib/invoices/reminder-rules";
@@ -39,6 +39,13 @@ async function authorize(db: Queryable, ctx: OrgContext, permission: Permission,
 }
 
 const notFound = () => new AppError("not_found", "That invoice was not found.");
+
+/**
+ * Making an invoice a test invoice (or taking the mark off a draft) is for the person who may run test payments: the mark takes an invoice out of what is owed, overdue, reminded
+ * about and counted as revenue, so someone who writes invoices must not be able to use it on a real one.
+ */
+const mustMarkTest = (ctx: { can(permission: Permission): boolean }) =>
+  must(ctx, "invoices.connect_payments", "Only the business owner can make an invoice a test invoice, or take that off. A test invoice is kept out of what is owed.");
 const money = (minor: number, currency: CurrencyCode) => formatMinor(minor, currency, "code");
 
 async function orgFacts(db: Queryable, orgId: string): Promise<{ name: string; timezone: string }> {
@@ -54,6 +61,8 @@ export interface InvoiceFilter {
   status?: InvoiceStatus[];
   paymentStatus?: Array<"unpaid" | "partially_paid" | "paid" | "disputed">;
   overdueOnly?: boolean;
+  /** Test invoices apart from the rest: only them, or none of them. */
+  tests?: "only" | "exclude";
   contactId?: string;
   opportunityId?: string;
   search?: string;
@@ -84,9 +93,12 @@ export async function listInvoices(ctx: InvoiceReader, f: InvoiceFilter = {}, de
     if (f.paymentStatus?.length) add("i.payment_status = any(?::text[])", f.paymentStatus);
     if (f.contactId) add("i.contact_id = ?", f.contactId);
     if (f.opportunityId) add("i.opportunity_id = ?", f.opportunityId);
+    if (f.tests === "only") where.push("i.is_test");
+    if (f.tests === "exclude") where.push("not i.is_test");
     if (f.overdueOnly) {
       params.push(todayIn(now, ctx.org.timezone));
-      where.push(`i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on < $${params.length}::date`);
+      // Nothing is owed on a test invoice, so it is never overdue.
+      where.push(`i.status = 'issued' and not i.is_test and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on < $${params.length}::date`);
     }
     const q = f.search?.trim().slice(0, 80);
     if (q) {
@@ -109,16 +121,16 @@ export interface ReceivablesRow {
   overdueMinor: number;
   openCount: number;
   overdueCount: number;
-  /** Real money received on issued invoices less the refunds recorded, so far. A payment the provider ran in test mode is not in it. */
+  /** Real money received on issued invoices less the refunds recorded, so far. A test invoice and its test payments are not in it. */
   netReceivedMinor: number;
-  /** Payments the provider ran in test mode that count toward an invoice's paid amount. No real money moved. */
-  testPaidMinor: number;
 }
 
 export interface ReceivablesSummary {
   byCurrency: ReceivablesRow[];
   drafts: number;
   pendingApproval: number;
+  /** Issued test invoices: nothing is owed on them and no money moved, so they are in none of the figures above. */
+  testInvoices: number;
 }
 
 /** What is owed to the workspace, per currency (amounts in different currencies are never added together). Checked when it is read, not live. */
@@ -127,6 +139,7 @@ export async function receivablesSummary(ctx: OrgContext, deps: { now?: Date } =
   const today = todayIn(deps.now ?? new Date(), ctx.org.timezone);
   return withUser(ctx.user.id, async (db) => {
     await assertInvoicesAvailable(db, ctx);
+    // A test invoice is never owed, overdue or received: it is left out of every figure here.
     const owing = "i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null";
     const { rows } = await db.query<{ currency: CurrencyCode; outstanding: string; overdue: string; open_count: number; overdue_count: number }>(
       `select i.currency,
@@ -134,32 +147,34 @@ export async function receivablesSummary(ctx: OrgContext, deps: { now?: Date } =
          coalesce(sum(i.balance_minor) filter (where ${owing} and i.due_on < $2::date), 0)::text as overdue,
          (count(*) filter (where ${owing}))::int as open_count,
          (count(*) filter (where ${owing} and i.due_on < $2::date))::int as overdue_count
-       from customer_invoices i where i.org_id = $1 and i.status in ('issued') group by i.currency order by i.currency`,
+       from customer_invoices i where i.org_id = $1 and i.status in ('issued') and not i.is_test group by i.currency order by i.currency`,
       [ctx.org.orgId, today],
     );
-    // Money that really arrived (a payment recorded by hand, or one a provider took in live mode) less what was handed back, apart from what a provider ran in test mode.
-    const received = await db.query<{ currency: CurrencyCode; live_paid: string; live_refunded: string; test_paid: string }>(
+    // Money that really arrived (a payment recorded by hand, or one a provider took in live mode) less what was handed back. A test invoice has none.
+    const received = await db.query<{ currency: CurrencyCode; live_paid: string; live_refunded: string }>(
       `select p.currency,
          coalesce(sum(p.amount_minor) filter (where p.livemode), 0)::text as live_paid,
-         coalesce(sum((select coalesce(sum(r.amount_minor), 0) from customer_refunds r where r.payment_id = p.id and r.org_id = p.org_id and r.status = 'succeeded')) filter (where p.livemode), 0)::text as live_refunded,
-         coalesce(sum(p.amount_minor) filter (where not p.livemode), 0)::text as test_paid
-       from customer_payments p where p.org_id = $1 and p.status in ('succeeded', 'partially_refunded', 'refunded', 'disputed') group by p.currency`,
+         coalesce(sum((select coalesce(sum(r.amount_minor), 0) from customer_refunds r where r.payment_id = p.id and r.org_id = p.org_id and r.status = 'succeeded')) filter (where p.livemode), 0)::text as live_refunded
+       from customer_payments p join customer_invoices i on i.id = p.invoice_id and i.org_id = p.org_id
+       where p.org_id = $1 and not i.is_test and p.status in ('succeeded', 'partially_refunded', 'refunded', 'disputed') group by p.currency`,
       [ctx.org.orgId],
     );
     const receivedBy = new Map(received.rows.map((r) => [r.currency, r]));
-    const counts = (await db.query<{ drafts: number; pending: number }>(
-      `select (count(*) filter (where status = 'draft'))::int as drafts, (count(*) filter (where status = 'pending_approval'))::int as pending from customer_invoices where org_id = $1`, [ctx.org.orgId],
+    const counts = (await db.query<{ drafts: number; pending: number; tests: number }>(
+      `select (count(*) filter (where status = 'draft'))::int as drafts, (count(*) filter (where status = 'pending_approval'))::int as pending, (count(*) filter (where is_test and status = 'issued'))::int as tests
+       from customer_invoices where org_id = $1`, [ctx.org.orgId],
     )).rows[0];
     return {
       byCurrency: rows.map((r) => {
         const m = receivedBy.get(r.currency);
         return {
           currency: r.currency, outstandingMinor: toMinor(r.outstanding), overdueMinor: toMinor(r.overdue), openCount: r.open_count, overdueCount: r.overdue_count,
-          netReceivedMinor: m ? toMinor(m.live_paid) - toMinor(m.live_refunded) : 0, testPaidMinor: m ? toMinor(m.test_paid) : 0,
+          netReceivedMinor: m ? toMinor(m.live_paid) - toMinor(m.live_refunded) : 0,
         };
       }),
       drafts: counts?.drafts ?? 0,
       pendingApproval: counts?.pending ?? 0,
+      testInvoices: counts?.tests ?? 0,
     };
   });
 }
@@ -359,6 +374,8 @@ export async function createDraft(ctx: OrgContext, rawInput: unknown, opts: { vi
   const input: DraftInput = draftInputSchema.parse(rawInput);
   return withSystem(async (db) => {
     await authorize(db, ctx, "invoices.create", "Your role can't write invoices.");
+    const isTest = input.isTest === true;
+    if (isTest) mustMarkTest(ctx);
     const org = await orgFacts(db, ctx.org.orgId);
     if (input.idempotencyKey) {
       const existing = await db.query<{ id: string }>("select id from customer_invoices where org_id = $1 and idempotency_key = $2", [ctx.org.orgId, input.idempotencyKey]);
@@ -374,11 +391,11 @@ export async function createDraft(ctx: OrgContext, rawInput: unknown, opts: { vi
     const terms = cleanFreeText("The terms", input.terms);
     const { rows } = await db.query<{ id: string }>(
       `insert into customer_invoices (org_id, contact_id, company_id, opportunity_id, currency, tax_inclusive, subtotal_minor, tax_minor, total_minor, due_on, bill_to, payment_instructions, notes, terms,
-         closes_deal, idempotency_key, created_by, created_via)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18)
+         closes_deal, is_test, idempotency_key, created_by, created_via)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19)
        on conflict (org_id, idempotency_key) where idempotency_key is not null do nothing returning id`,
       [ctx.org.orgId, links.contactId, links.companyId, links.opportunityId, currency, taxInclusive, parsed.totals.subtotal, parsed.totals.tax, parsed.totals.total, input.dueOn ?? null,
-        JSON.stringify(cleanBillTo(input.billTo)), payment, notes, terms, input.closesDeal ?? false, input.idempotencyKey ?? null, ctx.user.id, opts.via ?? "manual"],
+        JSON.stringify(cleanBillTo(input.billTo)), payment, notes, terms, isTest ? false : input.closesDeal ?? false, isTest, input.idempotencyKey ?? null, ctx.user.id, opts.via ?? "manual"],
     );
     if (!rows[0]) {
       // A twin request with the same key won the insert a moment ago: it is the same invoice.
@@ -387,7 +404,7 @@ export async function createDraft(ctx: OrgContext, rawInput: unknown, opts: { vi
       return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, twin.id)) as InvoiceRow, org.timezone);
     }
     await writeLines(db, ctx.org.orgId, rows[0].id, parsed.lines);
-    await addInvoiceEvent(db, ctx.org.orgId, rows[0].id, "created", { id: ctx.user.id, kind: "user" }, { currency, lines: parsed.lines.length, via: opts.via ?? "manual" });
+    await addInvoiceEvent(db, ctx.org.orgId, rows[0].id, "created", { id: ctx.user.id, kind: "user" }, { currency, lines: parsed.lines.length, via: opts.via ?? "manual", ...(isTest ? { test: true } : {}) });
     await announceCreated(db, ctx.org.orgId, rows[0].id, { id: ctx.user.id, kind: "user" });
     return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, rows[0].id)) as InvoiceRow, org.timezone);
   });
@@ -416,6 +433,9 @@ export async function updateDraft(ctx: OrgContext, id: string, rawPatch: unknown
       : { contactId: row.contact_id, companyId: row.company_id, opportunityId: row.opportunity_id };
     const inputs = patch.lines ?? formLines(stored, row.currency);
     const parsed = asAppError(() => parseLines(inputs, currency, taxInclusive));
+    // Turning the test mark on or off is the owner's alone; sending the mark it already has changes nothing and needs nothing.
+    const isTest = patch.isTest ?? row.is_test;
+    if (isTest !== row.is_test) mustMarkTest(ctx);
     const next = {
       contact_id: links.contactId, company_id: links.companyId, opportunity_id: links.opportunityId, currency, tax_inclusive: taxInclusive,
       due_on: patch.dueOn !== undefined ? patch.dueOn : row.due_on,
@@ -423,7 +443,9 @@ export async function updateDraft(ctx: OrgContext, id: string, rawPatch: unknown
       payment_instructions: patch.paymentInstructions !== undefined ? cleanFreeText("The payment instructions", patch.paymentInstructions) : row.payment_instructions,
       notes: patch.notes !== undefined ? cleanFreeText("The notes", patch.notes) : row.notes,
       terms: patch.terms !== undefined ? cleanFreeText("The terms", patch.terms) : row.terms,
-      closes_deal: patch.closesDeal ?? row.closes_deal,
+      // A test never closes a deal.
+      closes_deal: isTest ? false : patch.closesDeal ?? row.closes_deal,
+      is_test: isTest,
     };
     const changed: string[] = [];
     for (const k of Object.keys(next) as Array<keyof typeof next>) if (canonicalJson(next[k]) !== canonicalJson(row[k])) changed.push(k);
@@ -432,10 +454,10 @@ export async function updateDraft(ctx: OrgContext, id: string, rawPatch: unknown
     await writeLines(db, ctx.org.orgId, id, parsed.lines);
     await db.query(
       `update customer_invoices set contact_id = $3, company_id = $4, opportunity_id = $5, currency = $6, tax_inclusive = $7, subtotal_minor = $8, tax_minor = $9, total_minor = $10,
-         due_on = $11, bill_to = $12::jsonb, payment_instructions = $13, notes = $14, terms = $15, closes_deal = $16, version = version + 1
+         due_on = $11, bill_to = $12::jsonb, payment_instructions = $13, notes = $14, terms = $15, closes_deal = $16, is_test = $17, version = version + 1
        where id = $1 and org_id = $2`,
       [id, ctx.org.orgId, next.contact_id, next.company_id, next.opportunity_id, next.currency, next.tax_inclusive, parsed.totals.subtotal, parsed.totals.tax, parsed.totals.total, next.due_on,
-        JSON.stringify(next.bill_to), next.payment_instructions, next.notes, next.terms, next.closes_deal],
+        JSON.stringify(next.bill_to), next.payment_instructions, next.notes, next.terms, next.closes_deal, next.is_test],
     );
     await addInvoiceEvent(db, ctx.org.orgId, id, "edited", { id: ctx.user.id, kind: "user" }, { changed, version: row.version + 1 });
     return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, id)) as InvoiceRow, org.timezone);
@@ -596,8 +618,12 @@ export async function issueInvoice(ctx: OrgContext, id: string, input: { version
 
     // The counter row exists from the first issue; a workspace that never saved settings gets the defaults, at version 0 so its first save still matches.
     await db.query("insert into customer_invoice_settings (org_id, version) values ($1, 0) on conflict (org_id) do nothing", [ctx.org.orgId]);
+    // A test invoice is numbered from its own counter, so the business's real sequence never has a gap for a test.
     const taken = (await db.query<{ n: string; number_prefix: string }>(
-      "update customer_invoice_settings set next_number = next_number + 1 where org_id = $1 returning (next_number - 1)::text as n, number_prefix", [ctx.org.orgId],
+      row.is_test
+        ? "update customer_invoice_settings set next_test_number = next_test_number + 1 where org_id = $1 returning (next_test_number - 1)::text as n, $2::text as number_prefix"
+        : "update customer_invoice_settings set next_number = next_number + 1 where org_id = $1 returning (next_number - 1)::text as n, number_prefix",
+      row.is_test ? [ctx.org.orgId, TEST_NUMBER_PREFIX] : [ctx.org.orgId],
     )).rows[0];
     const number = formatInvoiceNumber(taken.number_prefix, toMinor(taken.n));
     const dueOn = row.due_on ?? dueFromTerms(issueOn, settings.paymentTermsDays);
@@ -625,8 +651,8 @@ export async function issueInvoice(ctx: OrgContext, id: string, input: { version
     );
     const actor = { id: ctx.user.id, kind: "user" as const };
     if (wasPending) await addInvoiceEvent(db, ctx.org.orgId, id, "approved", actor, { version: row.version });
-    await addInvoiceEvent(db, ctx.org.orgId, id, "issued", actor, { number, total: toDecimalString(toMinor(row.total_minor), row.currency), currency: row.currency, dueOn, version: row.version });
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "invoice.issued", targetType: "customer_invoice", targetId: id, result: "success", metadata: { number, version: row.version, total: toDecimalString(toMinor(row.total_minor), row.currency), currency: row.currency, contentHash: hash } }, db);
+    await addInvoiceEvent(db, ctx.org.orgId, id, "issued", actor, { number, total: toDecimalString(toMinor(row.total_minor), row.currency), currency: row.currency, dueOn, version: row.version, ...(row.is_test ? { test: true } : {}) });
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "invoice.issued", targetType: "customer_invoice", targetId: id, result: "success", metadata: { number, version: row.version, total: toDecimalString(toMinor(row.total_minor), row.currency), currency: row.currency, contentHash: hash, ...(row.is_test ? { test: true } : {}) } }, db);
     if (row.created_by && row.created_by !== ctx.user.id) {
       await notifyUser(db, row.created_by, ctx.org.orgId, { kind: "invoice_approval_decided", title: "Your invoice was approved and issued", body: number, link: `/invoices/${id}`, dedupeKey: `invoice-decided:${id}:${row.version}:approved` });
     }
@@ -643,7 +669,7 @@ export async function issueInvoice(ctx: OrgContext, id: string, input: { version
 
 /**
  * Voids an issued invoice that took no money. It keeps its number (never reused), its customer link stops working, and its scheduled reminders are cancelled. An invoice
- * with any payment, or with a checkout a customer may be using, cannot be voided: a refund is recorded instead.
+ * with any payment, or with a checkout a customer may be using, cannot be voided: a refund is recorded instead. A test invoice can be voided whatever test payments it has.
  */
 export async function voidInvoice(ctx: OrgContext, id: string, rawInput: unknown): Promise<InvoiceDetail> {
   const { reason } = reasonSchema.parse(rawInput);
@@ -656,8 +682,10 @@ export async function voidInvoice(ctx: OrgContext, id: string, rawInput: unknown
       `select 1 from customer_payments where invoice_id = $1 and org_id = $2 and status in ('succeeded', 'partially_refunded', 'refunded', 'disputed', 'pending', 'needs_review')
        union all select 1 from customer_payment_attempts where invoice_id = $1 and org_id = $2 and status in ('created', 'redirected', 'needs_review') limit 1`, [id, ctx.org.orgId],
     );
-    const blocked = voidBlockedReason({ status: row.status, paidMinor: toMinor(row.paid_minor), hasOpenPayment: open.rows.length > 0 });
+    const blocked = voidBlockedReason({ status: row.status, paidMinor: toMinor(row.paid_minor), hasOpenPayment: open.rows.length > 0, isTest: row.is_test });
     if (blocked) throw new AppError("conflict", blocked);
+    // No customer can be paying a test invoice and its payments moved no money, so a test is voided as it stands; the checkouts still open on it are closed with it.
+    if (row.is_test) await db.query("update customer_payment_attempts set status = 'cancelled' where invoice_id = $1 and org_id = $2 and status in ('created', 'redirected', 'needs_review')", [id, ctx.org.orgId]);
     await db.query("update customer_invoices set status = 'void', voided_at = now(), voided_by = $3, void_reason = $4, public_token_hash = null where id = $1 and org_id = $2", [id, ctx.org.orgId, ctx.user.id, reason.trim()]);
     await stopReminders(db, ctx.org.orgId, "invoice_voided", id);
     await addInvoiceEvent(db, ctx.org.orgId, id, "voided", { id: ctx.user.id, kind: "user" }, { number: row.number, reason: reason.trim().slice(0, 200) });

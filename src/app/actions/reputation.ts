@@ -105,7 +105,7 @@ const replyBody = z.string().max(5000);
 const version = z.number().int().min(1);
 
 export async function connectSimulatedSiteAction(orgId: string | null, provider: "google" | "facebook", name?: string) {
-  return act(orgId, "reviews.manage", (actor) => connectSimulatedSite(actor, { provider: siteArg.parse(provider), name: z.string().max(200).optional().parse(name) }));
+  return act(orgId, "reviews.manage", (actor) => connectSimulatedSite(actor, { provider: siteArg.parse(provider), name: z.string().max(200).optional().parse(name), reuseEarlier: true }));
 }
 
 export async function connectFacebookPageAction(orgId: string | null, socialAccountId: string) {

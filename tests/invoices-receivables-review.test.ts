@@ -9,7 +9,7 @@ import { WORKFORCE_CAPABILITIES, capabilitiesForRole, roleMayUseCapability } fro
 import { applyDisputeInTx } from "@/server/invoices/apply";
 import { recordManualPayment } from "@/server/invoices/payments";
 import { agentId } from "./support/fixtures";
-import { connectionFor, contactIn, draftBy, invoiceOrg, issuedInvoice, providerPayment, rows, type InvoiceOrg } from "./support/invoices";
+import { connectionFor, contactIn, draftBy, invoiceOrg, issuedInvoice, issuedTestInvoice, providerPayment, rows, type InvoiceOrg } from "./support/invoices";
 
 const LONG_AGO = new Date("2026-01-10T12:00:00Z");
 const cash = (amount: string, over: Record<string, unknown> = {}) => ({ amount, receivedOn: "2026-01-10", method: "cash" as const, evidence: "Cash, receipt 12", ...over });
@@ -145,6 +145,30 @@ describe("what it reports", () => {
     expect(by.receivables_overdue).toBeUndefined();
     expect(r.result.findings[0].key).toBe("receivables_connection_attention");
     expect(r.summary).toMatch(/Receivables review found 9 signals/);
+  });
+
+  it("leaves a test invoice out of every finding and every count: nothing is owed on one, however late, disputed or overpaid it looks", async () => {
+    const io = await invoiceOrg();
+    await readyAnalyst(io);
+    const conn = await connectionFor(io);
+    const contactId = await contactIn(io);
+    await issuedTestInvoice(io, { contactId, dueOn: "2026-01-20" }, LONG_AGO);
+    const held = await issuedTestInvoice(io, { contactId, dueOn: "2099-01-01" }, LONG_AGO);
+    await providerPayment(io, held.invoice.id, conn, 700, { status: "needs_review" });
+    await providerPayment(io, held.invoice.id, conn, 800, { status: "failed" });
+    const disputed = await issuedTestInvoice(io, { contactId, dueOn: "2099-01-01" }, LONG_AGO);
+    const part = await providerPayment(io, disputed.invoice.id, conn, 50_000);
+    await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: part.paymentId, open: true, actor: { id: null, kind: "provider" } }));
+    const over = await issuedTestInvoice(io, { contactId, dueOn: "2099-01-01" }, LONG_AGO);
+    await providerPayment(io, over.invoice.id, conn, 200_000);
+    const waiting = await draftBy(io, "owner", { isTest: true });
+    await withSystem((db) => db.query("update customer_invoices set status = 'pending_approval' where id = $1", [waiting.invoice.id]));
+    await withSystem((db) => db.query("insert into customer_invoice_events (org_id, invoice_id, at, kind, actor_kind) values ($1, $2, now() - interval '3 days', 'submitted', 'user')", [io.orgId, waiting.invoice.id]));
+
+    const r = await review(io);
+    expect(r.status).toBe("completed");
+    expect(r.result.findings).toEqual([]);
+    expect(r.result.metrics.map((m) => [m.key, m.value])).toEqual([["receivables_open_invoices", 0], ["receivables_overdue_invoices", 0], ["receivables_paid_invoices", 0]]);
   });
 });
 

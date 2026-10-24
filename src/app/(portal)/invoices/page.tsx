@@ -41,7 +41,9 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           ? { title: "No invoices match that search", description: "Try a different number or name, or clear the search." }
           : filter === "open"
             ? { title: "Nothing is owed right now", description: canCreate ? "Start an invoice for a customer or a deal. Nothing is sent to anyone until you issue it and give the customer the link." : "Invoices your team issues appear here.", action: newLink }
-            : { title: "Nothing here", description: "No invoice is in this group." }}
+            : filter === "test"
+              ? { title: "No test invoices", description: "A test invoice lets you try your payment account in test mode without anything being owed. Nothing on it counts toward what you are owed, your revenue or your deals." }
+              : { title: "Nothing here", description: "No invoice is in this group." }}
       />
     </div>
   );

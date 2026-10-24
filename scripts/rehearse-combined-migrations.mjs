@@ -712,7 +712,11 @@ SEEDS["0087_website_chat"] = async (db, ctx) => {
       const contact = await seedContact(db, org, `Seed-0087 visitor ${i}`, { created_via: "website_chat" });
       const conv = (await one(db, "insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'web_chat', 'open', 'unassigned') returning id", [org, contact])).id;
       await db.query("insert into web_chat_sessions (org_id, token_hash, surface, origin_host, contact_id, conversation_id) values ($1, md5($2::text) || md5($2::text || 'x'), 'embed', 'www.example.test', $3, $4)", [org, `${key}${i}`, contact, conv]);
+      if (i === 1) await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'phone', $3, false, true)", [org, contact, `+1555008700${key === "a" ? 1 : key === "b" ? 2 : 3}`]);
     }
+    // An address a visitor typed that was merged into a contact the chat did not make: the rollback must see it there too.
+    const keeper = await seedContact(db, org, "Seed-0087 merged keeper");
+    await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'email', $3, false, true)", [org, keeper, `seed-0087-${key}@example.test`]);
     await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'web_chat_lead', 'Seed chat lead')", [org, owner]);
   });
 };
@@ -720,6 +724,8 @@ CLEAN["0087_website_chat"] = {
   guard: async (db, ctx) => {
     await db.query("delete from notifications where kind = 'web_chat_lead'");
     await db.query("delete from web_chat_sessions");
+    await db.query("delete from contact_identities where typed_by_visitor");
+    await db.query("delete from contacts where display_name = 'Seed-0087 merged keeper'");
     await db.query("delete from contacts where created_via = 'website_chat'");
     await db.query("delete from web_chat_widgets where org_id = $1", [ctx.orgs.a.id]);
   },
@@ -771,6 +777,8 @@ SEEDS["0091_proposals"] = async (db, ctx) => {
   await db.query("insert into proposal_settings (org_id) values ($1)", [ctx.orgs.a.id]);
   await forOrgs(ctx, async (org, key, owner) => {
     const contact = (await one(db, "select id from contacts where org_id = $1 order by id limit 1", [org])).id;
+    // A Super Admin switched proposals on: the rollback must take the switch away with the tables, or applying 0091 again turns the module back on.
+    await db.query("insert into org_features (org_id, feature, enabled) values ($1, 'proposals', true) on conflict do nothing", [org]);
     const tax = (await one(db, "insert into proposal_tax_rates (org_id, name, rate_bps) values ($1, 'Seed tax', 1200) returning id", [org])).id;
     await db.query("insert into proposal_catalog_items (org_id, name, unit_price_minor, currency, tax_rate_id) values ($1, 'Seed item', 150000, 'USD', $2)", [org, tax]);
     const template = (await one(db, "insert into proposal_templates (org_id, key, name) values ($1, 'seed-template', 'Seed template') returning id", [org])).id;
@@ -794,7 +802,8 @@ SEEDS["0091_proposals"] = async (db, ctx) => {
   });
 };
 // Decisions and events are append-only by design, so removing them (what an operator exports first) means switching their append-only triggers off for the clean-up.
-// The default settings row of workspace a and the number counters are configuration, not history: they stay and go with their tables.
+// The default settings row of workspace a and the number counters are configuration, not history: they stay and go with their tables. So does the workspace switch: the
+// rollback deletes it (the row count of org_features is compared after the rollback, so a rollback that left the switch would fail here).
 CLEAN["0091_proposals"] = {
   guard: async (db) => {
     await db.query("alter table proposal_events disable trigger proposal_events_immutable");
@@ -811,6 +820,7 @@ CLEAN["0091_proposals"] = {
 // A simulated connection with a signature request out for the seeded proposal, and one delivery on its history. The history is append-only, so the clean-up switches its trigger off.
 SEEDS["0092_esign"] = async (db, ctx) => {
   await forOrgs(ctx, async (org, key, owner) => {
+    await db.query("insert into org_features (org_id, feature, enabled) values ($1, 'esign', true) on conflict do nothing", [org]);
     const connection = (await one(db, "insert into esign_connections (org_id, provider, mode, webhook_token_hash, credentials, status, connected_by) values ($1, 'simulated', 'simulated', md5($2::text) || md5($2::text || 'w'), 'sealed-seed', 'connected', $3) returning id", [org, org, owner])).id;
     const proposal = (await one(db, "select id from proposals where org_id = $1 and number = 'P-0001'", [org])).id;
     const request = (await one(db, `insert into signature_requests (org_id, proposal_id, proposal_version, version_hash, pdf_sha256, connection_id, provider, mode, status, signer_name, signer_email, provider_document_id, idempotency_key, sent_at, created_by)
@@ -818,6 +828,7 @@ SEEDS["0092_esign"] = async (db, ctx) => {
     await db.query("insert into signature_events (org_id, request_id, kind, source, provider_event_id) values ($1, $2, 'sent', 'provider_webhook', $3)", [org, request, `seed-event-${key}`]);
   });
 };
+// The 'esign' workspace switch is not history: the rollback deletes it.
 CLEAN["0092_esign"] = {
   guard: async (db) => {
     await db.query("alter table signature_events disable trigger signature_events_immutable");
@@ -833,6 +844,7 @@ SEEDS["0094_reputation_followthrough"] = async (db, ctx) => {
   await db.query("insert into reputation_settings (org_id, escalate_at_or_below, acknowledge_within_hours, outcome_nudges_enabled) values ($1, 3, 12, true)", [ctx.orgs.a.id]);
   await db.query("insert into reputation_settings (org_id) values ($1)", [ctx.orgs.b.id]);
   await forOrgs(ctx, async (org, key, owner) => {
+    for (const feature of ["reputation_surveys", "reputation_batches"]) await db.query("insert into org_features (org_id, feature, enabled) values ($1, $2, true) on conflict do nothing", [org, feature]);
     const contact = await seedContact(db, org, `Seed-0094 customer ${key}`);
     // A satisfaction survey that began from a program, answered on the zero-to-ten scale, found low, acknowledged and then resolved.
     const request = (await one(db, `insert into crm_review_requests (org_id, contact_id, channel, token_hash, status, requested_via, kind, scale, expires_at)
@@ -855,7 +867,7 @@ SEEDS["0094_reputation_followthrough"] = async (db, ctx) => {
     await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'feedback_follow_up_overdue', 'Seed feedback reminder')", [org, owner]);
   });
 };
-// The settings of both workspaces are configuration, not history: they stay and go with the table. Everything the rollback guards is removed first (the feedback, then the
+// The settings of both workspaces are configuration, not history: they stay and go with the table, and so do the two workspace switches (the rollback deletes them). Everything the rollback guards is removed first (the feedback, then the
 // seeded customers with the requests that hang off them).
 CLEAN["0094_reputation_followthrough"] = {
   guard: async (db) => {
@@ -881,10 +893,13 @@ SEEDS["0095_external_reviews"] = async (db, ctx) => {
     const reply = (await one(db, "insert into review_replies (org_id, review_id, body, origin, author_id) values ($1, $2, 'Thank you for telling us. Please get in touch so we can put this right.', 'human', $3) returning id", [org, review, owner])).id;
     await db.query("insert into review_reply_events (org_id, reply_id, kind, actor_id) values ($1, $2, 'created', $3)", [org, reply, owner]);
     await db.query("insert into review_oauth_states (org_id, user_id, provider, state_hash, expires_at, pending) values ($1, $2, 'google', md5($3::text) || md5($3::text || 'x'), now() + interval '10 minutes', 'encrypted-locations')", [org, owner, `0095-${key}`]);
+    // A survey answer typed next to an email that matches an existing customer: kept with no customer and the possible match beside it, waiting for a person to confirm.
+    await db.query("insert into customer_feedback (org_id, possible_contact_id, source, scale, rating, comment, low_score) values ($1, $2, 'survey', 'csat5', 2, 'Seed possible match', true)", [org, contact]);
   });
 };
 CLEAN["0095_external_reviews"] = {
   guard: async (db) => {
+    await db.query("delete from customer_feedback where comment = 'Seed possible match'");
     for (const t of ["review_reply_events", "review_replies", "external_reviews", "review_oauth_states", "review_connections"]) await db.query(`delete from ${t}`);
     await db.query("delete from contacts where display_name like 'Seed-0095 %'");
   },
@@ -899,11 +914,18 @@ SEEDS["0093_customer_invoices_payments"] = async (db, ctx) => {
     const contact = await seedContact(db, org, `Seed-0093 customer ${key}`);
     const connection = (await one(db, "insert into customer_payment_connections (org_id, provider, mode, public_key, credentials, status) values ($1, 'simulated', 'test', 'cpk_' || substr(md5($2::text), 1, 20), 'sealed-secret', 'connected') returning id", [org, `0093-${key}`])).id;
     // An invoice is written as a draft with its lines, then issued: the database insists the totals equal the lines, and that an issued invoice has its number, hash and approval.
-    const invoice = (await one(db, "insert into customer_invoices (org_id, contact_id, currency, subtotal_minor, tax_minor, total_minor, due_on, created_by) values ($1, $2, 'PHP', 10000, 0, 10000, '2026-12-01', $3) returning id", [org, contact, owner])).id;
-    await db.query(`insert into customer_invoice_lines (org_id, invoice_id, position, description, quantity_milli, unit_price_minor, gross_minor, discount_minor, net_minor, tax_minor, total_minor, ex_tax_minor)
-      values ($1, $2, 1, 'Seed line', 1000, 10000, 10000, 0, 10000, 0, 10000, 10000)`, [org, invoice]);
-    await db.query(`update customer_invoices set status = 'issued', number = $3, issue_on = '2026-11-01', due_on = '2026-12-01', content_hash = repeat('a', 64), approved_version = 1, approved_by = $4, approved_at = now(),
-      issued_at = now(), issued_by = $4, public_token_hash = md5($1::text) || md5($2::text) where id = $1 and org_id = $2`, [invoice, org, `SEED-${key.toUpperCase()}-0001`, owner]);
+    // A payment in a provider's test mode sits only on a TEST invoice (and a real invoice takes no test money), so the seed has one of each: the test invoice carries the test payment,
+    // its refund and its checkout; the real one carries the reminder (a test invoice is never reminded about, the database drops a reminder row for one).
+    const issueSeedInvoice = async (isTest, number) => {
+      const id = (await one(db, "insert into customer_invoices (org_id, contact_id, currency, subtotal_minor, tax_minor, total_minor, due_on, created_by, is_test) values ($1, $2, 'PHP', 10000, 0, 10000, '2026-12-01', $3, $4) returning id", [org, contact, owner, isTest])).id;
+      await db.query(`insert into customer_invoice_lines (org_id, invoice_id, position, description, quantity_milli, unit_price_minor, gross_minor, discount_minor, net_minor, tax_minor, total_minor, ex_tax_minor)
+        values ($1, $2, 1, 'Seed line', 1000, 10000, 10000, 0, 10000, 0, 10000, 10000)`, [org, id]);
+      await db.query(`update customer_invoices set status = 'issued', number = $3, issue_on = '2026-11-01', due_on = '2026-12-01', content_hash = repeat('a', 64), approved_version = 1, approved_by = $4, approved_at = now(),
+        issued_at = now(), issued_by = $4, public_token_hash = md5($1::text) || md5($2::text) where id = $1 and org_id = $2`, [id, org, number, owner]);
+      return id;
+    };
+    const invoice = await issueSeedInvoice(true, `TEST-${key.toUpperCase()}-0001`);
+    const real = await issueSeedInvoice(false, `SEED-${key.toUpperCase()}-0001`);
     // A payment of 40.00 confirmed in test mode, 10.00 of it refunded: the invoice's paid and refunded amounts must equal what these rows add up to.
     const payment = (await one(db, `insert into customer_payments (org_id, invoice_id, connection_id, provider, provider_payment_id, amount_minor, currency, livemode, verification, status, received_at)
       values ($1, $2, $3, 'simulated', $4, 4000, 'PHP', false, 'provider_confirmed', 'succeeded', now()) returning id`, [org, invoice, connection, `pay_seed_${key}`])).id;
@@ -912,8 +934,8 @@ SEEDS["0093_customer_invoices_payments"] = async (db, ctx) => {
     await db.query("update customer_invoices set paid_minor = 4000, refunded_minor = 1000, payment_status = 'partially_paid' where id = $1 and org_id = $2", [invoice, org]);
     await db.query("insert into customer_payment_attempts (org_id, invoice_id, connection_id, currency, amount_minor, reference, status) values ($1, $2, $3, 'PHP', 6000, 'CP-' || substr(md5($4::text), 1, 24), 'expired')", [org, invoice, connection, `0093-${key}`]);
     await db.query("insert into customer_payment_events (org_id, connection_id, provider_event_id, event_type, livemode, outcome, payload_sha256) values ($1, $2, $3, 'payment.paid', false, 'processed', repeat('c', 64))", [org, connection, `evt_seed_${key}`]);
-    await db.query("insert into customer_invoice_reminders (org_id, invoice_id, step_key, due_at, status) values ($1, $2, 'on_due:0', '2026-12-01T01:00:00Z', 'scheduled')", [org, invoice]);
-    await db.query("insert into customer_invoice_events (org_id, invoice_id, kind, actor_kind, actor_id) values ($1, $2, 'issued', 'user', $3)", [org, invoice, owner]);
+    await db.query("insert into customer_invoice_reminders (org_id, invoice_id, step_key, due_at, status) values ($1, $2, 'on_due:0', '2026-12-01T01:00:00Z', 'scheduled')", [org, real]);
+    await db.query("insert into customer_invoice_events (org_id, invoice_id, kind, actor_kind, actor_id) select $1, i, 'issued', 'user', $3 from unnest($2::uuid[]) as i", [org, [invoice, real], owner]);
     const conv = (await one(db, "insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'sms', 'open', 'unassigned') returning id", [org, contact])).id;
     await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, failed_at, failure_kind, scope) values ($1, $2, 'outbound', 'human', 'Seed invoice reminder', 'failed', now(), 'rejected', 'billing')", [org, conv]);
     await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'invoice_paid', 'Seed invoice paid')", [org, owner]);

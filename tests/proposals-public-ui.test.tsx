@@ -1,12 +1,15 @@
 // The customer's proposal page, rendered from real service output (a seeded synthetic workspace), not hand-written fixtures. It checks what a customer is told and not told, that
 // each state shows the right forms and only those, that nothing prints undefined / NaN / [object Object], that a person's typing can never become markup, and the accessibility
 // basics a static render can show (one h1, labelled fields, status and alert roles). The browser behaviours (the viewed beacon, the layout at 375 and 1280) are for the lead's check.
+import fs from "node:fs";
+import path from "node:path";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { Monogram } from "@/app/book/_components/shell";
 import { Wording, ProposalDocument } from "@/components/proposals/public/document";
-import { noticeFor, PublicProposal } from "@/components/proposals/public/public-proposal";
+import { noticeFor, PublicProposal, recordedNotice } from "@/components/proposals/public/public-proposal";
 import { CODE_TEXT, DECIDE_TEXT, PUBLIC_STATE_TEXT } from "@/lib/proposals/share";
 import { decideOnProposal, loadPublicProposal, type PublicProposalView } from "@/server/proposals/public";
 import { freeze } from "@/lib/proposals/snapshot";
@@ -187,6 +190,23 @@ describe("a link that cannot be used", () => {
   });
 });
 
+describe("the business tile", () => {
+  it("is the shared Monogram, so the initials rule lives in one place and the proposal page cannot drift from the invoice page", () => {
+    const business = { contactEmail: null, contactPhone: null, timezone: "UTC", brandColor: null };
+    const tile = (markup: string) => /<span aria-hidden="true"[^>]*>([^<]*)<\/span>/.exec(markup)?.[1];
+    for (const name of ["Harbor Home Services (QA)", "(QA) Harbor", "A & B Plumbing", "9 to 5 Co", "Ñandú Café", "Acme"]) {
+      const view: PublicProposalView = { state: "withdrawn", business: { name, ...business }, proposal: null, answer: null, changeRequests: 0, recipient: { maskedEmail: null }, verified: null, acknowledgement: null, signing: null };
+      const shared = tile(html(<Monogram name={name} color={null} />));
+      expect(shared, name).toBeTruthy();
+      expect(tile(page("x", view)), name).toBe(shared);
+    }
+    // The page does not carry an initials routine of its own.
+    for (const file of ["src/components/proposals/public/public-proposal.tsx", "src/components/proposals/public/answer-panel.tsx", "src/components/proposals/public/document.tsx"]) {
+      expect(fs.readFileSync(path.resolve(process.cwd(), file), "utf8"), file).not.toMatch(/initialsOf|function initials/);
+    }
+  });
+});
+
 describe("what the page says about what just happened", () => {
   it("shows only words it knows, with the right role, and ignores everything else in the address", () => {
     for (const key of Object.keys(DECIDE_TEXT)) expect(noticeFor("r", key)).toEqual(DECIDE_TEXT[key as keyof typeof DECIDE_TEXT]);
@@ -199,6 +219,46 @@ describe("what the page says about what just happened", () => {
     expect(noticeFor("c", "wrong", "1")?.text).toContain("You have 1 try left");
     expect(noticeFor("c", "wrong", "99")?.text).toBe(CODE_TEXT.wrong.text);
     expect(noticeFor("c", "wrong", "<b>")?.text).toBe(CODE_TEXT.wrong.text);
+  });
+
+  it("never lets the address say something was recorded, declined or confirmed that the record does not hold", async () => {
+    const p = await proposalOrg();
+    const { token, email } = await sentWithLink(p);
+    const open = await loadPublicProposal(token, ctx());
+    // Anyone holding the link can type ?r=accepted or ?c=verified. On a proposal nobody has answered, that is not a fact and the page does not repeat it.
+    for (const word of ["accepted", "declined", "already", "conflict", "changes_requested", "expired", "unavailable"]) expect(recordedNotice("r", word, open), word).toBeNull();
+    for (const word of ["verified", "unavailable"]) expect(recordedNotice("c", word, open), word).toBeNull();
+    const crafted = text(page(token, open, { result: recordedNotice("r", "accepted", open), code: recordedNotice("c", "verified", open) }));
+    expect(crafted).not.toContain("Your acceptance was recorded");
+    expect(crafted).not.toContain("Your email address is confirmed");
+    expect(crafted).toContain("6-digit code");
+    // A word that only guides says nothing was recorded, so it stays.
+    for (const word of ["not_verified", "needs_note", "ack_required", "stale", "rate_limited", "invalid", "no_email"]) expect(recordedNotice("r", word, open), word).toEqual(DECIDE_TEXT[word as keyof typeof DECIDE_TEXT]);
+    for (const word of ["sent", "cooldown", "wrong", "locked", "no_code", "invalid"]) expect(recordedNotice("c", word, open)?.text.startsWith(CODE_TEXT[word as keyof typeof CODE_TEXT].text), word).toBe(true);
+    expect(recordedNotice("r", "", open)).toBeNull();
+    expect(recordedNotice("r", "constructor", open)).toBeNull();
+
+    // Once the database holds a request for changes, that word is true.
+    const session = await verifiedSession(token, email);
+    await decideOnProposal(token, { decision: "request_changes", note: "Lower the price" }, ctx(session));
+    const asked = await loadPublicProposal(token, ctx(session));
+    expect(recordedNotice("r", "changes_requested", asked)).toEqual(DECIDE_TEXT.changes_requested);
+    expect(recordedNotice("r", "accepted", asked)).toBeNull();
+    // Once it holds the acceptance, "accepted" is true and "declined" is not.
+    await decideOnProposal(token, { decision: "accept", acknowledged: "1" }, ctx(session));
+    const answered = await loadPublicProposal(token, ctx(session));
+    expect(recordedNotice("r", "accepted", answered)).toEqual(DECIDE_TEXT.accepted);
+    expect(recordedNotice("r", "already", answered)).toEqual(DECIDE_TEXT.already);
+    expect(recordedNotice("r", "conflict", answered)).toEqual(DECIDE_TEXT.conflict);
+    expect(recordedNotice("r", "declined", answered)).toBeNull();
+    expect(text(page(token, answered, { result: recordedNotice("r", "accepted", answered) }))).toContain("Your acceptance was recorded.");
+    expect(text(page(token, answered, { result: recordedNotice("r", "declined", answered) }))).not.toContain("Your answer was recorded.");
+  });
+
+  it("is what the proposal page uses to read the address, not the bare dictionary", () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), "src/app/proposal/[token]/page.tsx"), "utf8");
+    expect(source).toContain("recordedNotice(");
+    expect(source).not.toMatch(/\bnoticeFor\(/);
   });
 
   it("puts an error where the customer is looking and announces it, and a success as a status", async () => {

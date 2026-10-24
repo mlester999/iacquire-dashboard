@@ -5,6 +5,7 @@ import { withSystem } from "@/server/db";
 import { getInvoiceSettings, saveInvoiceSettings } from "@/server/invoices/settings";
 import { createDraft, getInvoiceDetail, issueInvoice } from "@/server/invoices/invoices";
 import { recordManualPayment, recordRefund } from "@/server/invoices/payments";
+import { recordDisputeOpened, recordDisputeResult } from "@/server/invoices/disputes";
 import { applyDisputeInTx } from "@/server/invoices/apply";
 import { runCloseRule, runRefundReview } from "@/server/invoices/close-rules";
 import { connectionFor, contactIn, dealFor, invoiceOrg, line, providerPayment, rows, type InvoiceOrg } from "./support/invoices";
@@ -174,6 +175,31 @@ describe("a refund after the deal was won", () => {
     expect(second.reviewTaskId).toBeTruthy();
     expect(await tasksFor(inv.dealId)).toHaveLength(2);
     expect((await getInvoiceDetail(io.ctx("owner"), inv.invoice.id)).invoice.paymentStatus).toBe("paid");
+  });
+
+  it("treats a lost dispute the same: the chargeback never reopens the deal, and a task asks its owner to look again", async () => {
+    const io = await invoiceOrg();
+    await setRule(io, "auto_won");
+    const conn = await connectionFor(io);
+    const inv = await dealInvoice(io, { closesDeal: true });
+    const p = await providerPayment(io, inv.invoice.id, conn, 150000, { livemode: true });
+    await runCloseRule(io.orgId, inv.invoice.id);
+    expect(await dealStatus(inv.dealId)).toBe("won");
+    await recordDisputeOpened(io.ctx("owner"), p.paymentId, {});
+    // While it is open nothing about the deal changes, and no task is asked for.
+    expect(await dealStatus(inv.dealId)).toBe("won");
+    expect(await tasksFor(inv.dealId)).toEqual([]);
+    const lost = await recordDisputeResult(io.ctx("owner"), p.paymentId, { outcome: "lost", amount: "1500.00" });
+    expect(lost.reviewTaskId).toBeTruthy();
+    expect(await dealStatus(inv.dealId)).toBe("won");
+    expect(await tasksFor(inv.dealId)).toEqual([expect.objectContaining({ title: "A refund was recorded on invoice INV-0001: review the deal", assigned_user_id: io.c.people.sales.id })]);
+    // A dispute that was won is not a refund and asks for nothing.
+    const other = await dealInvoice(io, { closesDeal: true });
+    const q = await providerPayment(io, other.invoice.id, conn, 150000, { livemode: true });
+    await runCloseRule(io.orgId, other.invoice.id);
+    await recordDisputeOpened(io.ctx("owner"), q.paymentId, {});
+    expect((await recordDisputeResult(io.ctx("owner"), q.paymentId, { outcome: "won" })).reviewTaskId).toBeNull();
+    expect(await tasksFor(other.dealId)).toEqual([]);
   });
 
   it("does not ask when the rule never marked the deal won", async () => {

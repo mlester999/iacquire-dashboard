@@ -83,6 +83,11 @@ export async function issuedInvoice(io: InvoiceOrg, over: Partial<DraftInput> = 
   return (await issueInvoice(io.ctx("owner"), d.invoice.id, { version: d.invoice.version }, { now })).detail;
 }
 
+/** An issued TEST invoice: made on purpose to try a payment account in test mode (written and issued by the owner, the only person who may make one). */
+export async function issuedTestInvoice(io: InvoiceOrg, over: Partial<DraftInput> = {}, now?: Date): Promise<InvoiceDetail> {
+  return issuedInvoice(io, { isTest: true, ...over }, now);
+}
+
 /** A submitted invoice, waiting for an approver. */
 export async function submittedInvoice(io: InvoiceOrg, who: InvoiceWho = "sales", over: Partial<DraftInput> = {}): Promise<InvoiceDetail> {
   const d = await draftBy(io, who, over);
@@ -104,13 +109,17 @@ export async function connectionFor(io: InvoiceOrg, over: { provider?: "paymongo
 }
 
 let paymentCounter = 0;
-/** What a verified provider event would record: a payment confirmed by the provider, through the same function a webhook calls. */
-export function providerPayment(io: InvoiceOrg, invoiceId: string, connectionId: string, amountMinor: number, over: Partial<ApplyPaymentInput> = {}): Promise<ApplyPaymentResult> {
+/**
+ * What a verified provider event would record: a payment confirmed by the provider, through the same function a webhook calls. Its mode follows the invoice's, as the database
+ * insists: a test invoice takes test-mode payments (livemode false), a real invoice takes live ones. A test that wants the other pairing says so and expects it to be refused.
+ */
+export async function providerPayment(io: InvoiceOrg, invoiceId: string, connectionId: string, amountMinor: number, over: Partial<ApplyPaymentInput> = {}): Promise<ApplyPaymentResult> {
   paymentCounter += 1;
+  const isTest = (await rows<{ is_test: boolean }>("select is_test from customer_invoices where id = $1", [invoiceId]))[0]?.is_test === true;
   return withSystem((db) =>
     applyPaymentInTx(db, {
       orgId: io.orgId, invoiceId, amountMinor, currency: "PHP", provider: "simulated", verification: "provider_confirmed", connectionId, providerPaymentId: `pay_${uid()}_${paymentCounter}`,
-      livemode: false, receivedAt: new Date("2026-10-23T12:00:00Z"), actor: { id: null, kind: "provider" }, ...over,
+      livemode: !isTest, receivedAt: new Date("2026-10-23T12:00:00Z"), actor: { id: null, kind: "provider" }, ...over,
     }),
   );
 }

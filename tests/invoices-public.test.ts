@@ -20,16 +20,42 @@ import { attempt, connect, fakePaymongo, q } from "./support/customer-payments";
 const CUSTOMER_EMAIL = "maria.santos.private@example.test";
 const CUSTOMER_PHONE = "+639171234567";
 
-/** A workspace with an issued invoice for a customer whose private details we can look for, and a connection a customer may pay through. */
+/**
+ * A workspace with an issued TEST invoice for a customer whose private details we can look for, and the simulated connection a customer may pay it through (the testing checkout
+ * takes test invoices only). Its page says it is a test first, whatever its payment state: the tests of the banners use `liveSetup`.
+ */
 async function setup(over: { connect?: boolean; email?: string } = {}) {
   const io = await invoiceOrg();
   const contactId = await contactIn(io, { firstName: "Maria", lastName: "Santos", email: over.email ?? CUSTOMER_EMAIL, phone: CUSTOMER_PHONE });
-  const inv = (await issuedInvoice(io, { contactId })).invoice;
+  const inv = (await issuedInvoice(io, { contactId, isTest: true })).invoice;
   const conn = over.connect === false ? null : await connect(io, { provider: "simulated" });
   const token = await linkTokenOf(io, inv.id);
   return { io, inv, conn, token, contactId };
 }
 type S = Awaited<ReturnType<typeof setup>>;
+
+/** A REAL invoice and a live account that is confirmed, so a customer may pay it online: the page's banners are those of a real invoice. Needs `live()` around the test. */
+async function liveSetup() {
+  const io = await invoiceOrg();
+  const contactId = await contactIn(io, { firstName: "Maria", lastName: "Santos", email: CUSTOMER_EMAIL, phone: CUSTOMER_PHONE });
+  const inv = (await issuedInvoice(io, { contactId })).invoice;
+  const conn = await connect(io, { provider: "paymongo", mode: "live", liveConfirmed: true });
+  const token = await linkTokenOf(io, inv.id);
+  return { io, inv, conn, token, contactId };
+}
+/** The environment's two switches for real money, on for the length of `fn`. */
+async function live<T>(fn: () => Promise<T>): Promise<T> {
+  process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED = "true";
+  process.env.CUSTOMER_PAYMENTS_LIVE_ENABLED = "true";
+  resetEnvCache();
+  try {
+    return await fn();
+  } finally {
+    delete process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED;
+    delete process.env.CUSTOMER_PAYMENTS_LIVE_ENABLED;
+    resetEnvCache();
+  }
+}
 const ctx = () => ({ ip: freshIp() });
 const view = async (token: string) => {
   const r = await loadPublicInvoice(token, ctx());
@@ -40,13 +66,13 @@ const pay = (token: string, ip = freshIp()) => startPublicPayment(token, { ip })
 
 describe("the invoice a link opens", () => {
   it("shows the customer their invoice as issued: the business, the lines, the amounts and the way to pay, and nothing that is only the business's", async () => {
-    const s = await setup();
-    const r = await loadPublicInvoice(s.token, ctx());
+    const s = await liveSetup();
+    const r = await live(() => loadPublicInvoice(s.token, ctx()));
     expect(r.state).toBe("ok");
-    const i = await view(s.token);
+    const i = await live(() => view(s.token));
     expect(i).toMatchObject({
       number: "INV-0001", currency: "PHP", subtotalMinor: 150000, taxMinor: 0, totalMinor: 150000, paidMinor: 0, balanceMinor: 150000, paymentStatus: "unpaid", overdue: false, hasPendingPayment: false, canPayOnline: true,
-      banner: { kind: "pay_online", tone: "info" }, billTo: { name: "Maria Santos" },
+      isTest: false, banner: { kind: "pay_online", tone: "info" }, billTo: { name: "Maria Santos" },
     });
     expect(i.lines).toEqual([expect.objectContaining({ position: 1, description: "Service call", quantity: "1", unitPriceMinor: 150000, amountMinor: 150000 })]);
     expect(i.business.name).toBeTruthy();
@@ -86,10 +112,10 @@ describe("the invoice a link opens", () => {
     // The new link works, the old one does not, and one workspace's link never opens another's invoice.
     const fresh = await linkTokenOf(s.io, s.inv.id);
     expect(fresh).not.toBe(s.token);
-    expect((await view(fresh)).number).toBe("INV-0001");
+    expect((await view(fresh)).number).toBe("TEST-0001");
     expect(draft.invoice.number).toBeNull();
     const theirs = await view(other.token);
-    expect(theirs.number).toBe("INV-0001");
+    expect(theirs.number).toBe("TEST-0001");
     expect(JSON.stringify(theirs)).not.toContain(s.io.orgId);
   });
 
@@ -111,23 +137,48 @@ describe("the invoice a link opens", () => {
 
 describe("whether the page may offer to pay, and what its banner says", () => {
   it("offers to pay only while the invoice owes something and an account may take it, and says paid only when the invoice is paid", async () => {
+    const s = await liveSetup();
+    await live(async () => {
+      expect((await view(s.token)).canPayOnline).toBe(true);
+      // Part paid: still payable, for the rest.
+      await providerPayment(s.io, s.inv.id, s.conn.id, 50000, { provider: "paymongo" });
+      const part = await view(s.token);
+      expect(part).toMatchObject({ paymentStatus: "partially_paid", paidMinor: 50000, balanceMinor: 100000, canPayOnline: true, banner: { kind: "partly_paid" } });
+      await providerPayment(s.io, s.inv.id, s.conn.id, 100000, { provider: "paymongo" });
+      const done = await view(s.token);
+      expect(done).toMatchObject({ paymentStatus: "paid", balanceMinor: 0, canPayOnline: false, banner: { kind: "paid", tone: "ok" } });
+    });
+  });
+
+  it("says it is a test first, whatever the state of a test invoice, offers the testing checkout, and is never called overdue", async () => {
     const s = await setup();
-    expect((await view(s.token)).canPayOnline).toBe(true);
-    // Part paid: still payable, for the rest.
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 50000, { provider: "simulated", livemode: true });
-    const part = await view(s.token);
-    expect(part).toMatchObject({ paymentStatus: "partially_paid", paidMinor: 50000, balanceMinor: 100000, canPayOnline: true, banner: { kind: "partly_paid" } });
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 100000, { provider: "simulated", livemode: true });
-    const done = await view(s.token);
-    expect(done).toMatchObject({ paymentStatus: "paid", balanceMinor: 0, canPayOnline: false, banner: { kind: "paid", tone: "ok" } });
+    const fresh = await view(s.token);
+    expect(fresh).toMatchObject({ isTest: true, number: "TEST-0001", canPayOnline: true, banner: { kind: "test", tone: "info" } });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 50000, { provider: "simulated" });
+    expect(await view(s.token)).toMatchObject({ paymentStatus: "partially_paid", canPayOnline: true, banner: { kind: "test" } });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 100000, { provider: "simulated" });
+    expect(await view(s.token)).toMatchObject({ paymentStatus: "paid", canPayOnline: false, banner: { kind: "test" } });
+    const late = await loadPublicInvoice(s.token, { ip: freshIp(), now: new Date("2030-01-01T00:00:00Z") });
+    expect(late.state === "ok" && late.invoice).toMatchObject({ overdue: false, banner: { kind: "test" } });
   });
 
   it("does not offer to pay without a connected account, with a paused one, with a test-mode account, or when the invoice was written off", async () => {
     const none = await setup({ connect: false });
-    expect(await view(none.token)).toMatchObject({ canPayOnline: false, banner: { kind: "pay_other_way" } });
+    expect(await view(none.token)).toMatchObject({ canPayOnline: false, banner: { kind: "test" } });
+    // A real invoice with no account says to pay another way.
+    const realIo = await invoiceOrg();
+    const realNone = (await issuedInvoice(realIo)).invoice;
+    expect(await view(await linkTokenOf(realIo, realNone.id))).toMatchObject({ canPayOnline: false, banner: { kind: "pay_other_way" } });
     const paused = await setup();
+    expect((await view(paused.token)).canPayOnline).toBe(true);
     await withSystem((db) => db.query("update customer_payment_connections set status = 'disabled' where id = $1", [paused.conn!.id]));
     expect((await view(paused.token)).canPayOnline).toBe(false);
+    // A real invoice is offered the live account only: the testing checkout is for a test invoice.
+    const realWithTestingTill = await liveSetup();
+    await connect(realWithTestingTill.io, { provider: "simulated" });
+    await live(async () => expect((await view(realWithTestingTill.token)).canPayOnline).toBe(true));
+    await withSystem((db) => db.query("update customer_payment_connections set status = 'disabled' where id = $1", [realWithTestingTill.conn.id]));
+    await live(async () => expect((await view(realWithTestingTill.token)).canPayOnline).toBe(false));
     // A real provider's test mode moves no money, so a customer is never sent there.
     const test = await setup({ connect: false });
     await connect(test.io, { provider: "paymongo", mode: "test" });
@@ -141,25 +192,25 @@ describe("whether the page may offer to pay, and what its banner says", () => {
   });
 
   it("shows a payment in progress, and a dispute, as exactly that: neither is paid, and neither lets the customer pay again", async () => {
-    const s = await setup();
-    const a = await attempt(s.inv.id, s.conn!);
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", livemode: true, status: "pending", attemptId: a.id });
-    expect(await view(s.token)).toMatchObject({ hasPendingPayment: true, paymentStatus: "unpaid", banner: { kind: "pending", tone: "wait" } });
+    const s = await liveSetup();
+    const a = await attempt(s.inv.id, s.conn);
+    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "paymongo", status: "pending", attemptId: a.id });
+    await live(async () => expect(await view(s.token)).toMatchObject({ hasPendingPayment: true, paymentStatus: "unpaid", banner: { kind: "pending", tone: "wait" } }));
 
-    const d = await setup();
-    const paid = await providerPayment(d.io, d.inv.id, d.conn!.id, 150000, { provider: "simulated", livemode: true });
+    const d = await liveSetup();
+    const paid = await providerPayment(d.io, d.inv.id, d.conn.id, 150000, { provider: "paymongo" });
     await withSystem((db) => applyDisputeInTx(db, { orgId: d.io.orgId, paymentId: paid.paymentId, open: true, actor: { id: null, kind: "provider" } }));
-    const disputed = await view(d.token);
+    const disputed = await live(() => view(d.token));
     expect(disputed).toMatchObject({ paymentStatus: "disputed", canPayOnline: false, banner: { kind: "under_review" } });
   });
 
   it("says overdue only past the due day in the workspace's own time zone, and the business's name comes from the invoice as it was issued", async () => {
-    const s = await setup();
+    const s = await liveSetup();
     const now = new Date("2030-01-01T00:00:00Z");
-    const r = await loadPublicInvoice(s.token, { ip: freshIp(), now });
+    const r = await live(() => loadPublicInvoice(s.token, { ip: freshIp(), now }));
     // Overdue is said first, and the customer can still pay.
     expect(r.state === "ok" && r.invoice).toMatchObject({ overdue: true, canPayOnline: true, banner: { kind: "overdue", tone: "problem" } });
-    const early = await loadPublicInvoice(s.token, { ip: freshIp(), now: new Date("2020-01-01T00:00:00Z") });
+    const early = await live(() => loadPublicInvoice(s.token, { ip: freshIp(), now: new Date("2020-01-01T00:00:00Z") }));
     expect(early.state === "ok" && early.invoice).toMatchObject({ overdue: false, banner: { kind: "pay_online" } });
     await withSystem((db) => db.query("update customer_invoice_settings set legal_name = 'Changed Name Ltd' where org_id = $1", [s.io.orgId]));
     expect((await view(s.token)).business.name).not.toBe("Changed Name Ltd");
@@ -182,7 +233,7 @@ describe("paying", () => {
   it("asks for the new balance, and closes the old checkout, after part of the invoice is paid some other way", async () => {
     const s = await setup();
     const first = await pay(s.token);
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 50000, { provider: "simulated", livemode: true });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 50000, { provider: "simulated" });
     const second = await pay(s.token);
     expect(second).toMatchObject({ ok: true, reused: false });
     expect(first.ok && second.ok && first.url !== second.url).toBe(true);
@@ -197,7 +248,7 @@ describe("paying", () => {
     expect(await pay("A".repeat(43))).toMatchObject({ ok: false, reason: "invalid", message: expect.stringMatching(/This link is not valid/) });
     const none = await setup({ connect: false });
     expect(await pay(none.token)).toMatchObject({ ok: false, reason: "unavailable", message: expect.stringMatching(/Online payment is not available for this invoice right now/) });
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", livemode: true });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated" });
     expect(await pay(s.token)).toMatchObject({ ok: false, reason: "paid", message: "This invoice has already been paid." });
     const v = await setup();
     await voidInvoice(v.io.ctx("owner"), v.inv.id, { reason: "Raised for the wrong job" });
@@ -287,13 +338,13 @@ describe("coming back from the provider", () => {
     const a = await started(s);
     const before = await returned(a.reference);
     expect(before.description).toMatchObject({ state: "confirming", headline: "We are confirming your payment", polling: true });
-    expect(before).toMatchObject({ invoiceNumber: "INV-0001", amountMinor: 150000, currency: "PHP", reference: a.reference });
+    expect(before).toMatchObject({ invoiceNumber: "TEST-0001", amountMinor: 150000, currency: "PHP", reference: a.reference, isTest: true });
     // The attempt is marked succeeded by something other than a payment row: still not a payment.
     await withSystem((db) => db.query("update customer_payment_attempts set status = 'succeeded' where id = $1", [a.id]));
     expect((await returned(a.reference)).description.state).toBe("confirming");
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", livemode: true, attemptId: a.id });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", attemptId: a.id });
     const after = await returned(a.reference);
-    expect(after.description).toMatchObject({ state: "received", headline: "We have received your payment", polling: false, tone: "ok" });
+    expect(after.description).toMatchObject({ state: "received", headline: "The test payment went through", polling: false, tone: "ok" });
   });
 
   it("tells what became of a checkout that did not complete: cancelled, expired, failed, held for review, the invoice void, or no word from the provider in time", async () => {
@@ -305,7 +356,7 @@ describe("coming back from the provider", () => {
     await withSystem((db) => db.query("update customer_payment_attempts set status = 'failed' where id = $1", [old.id]));
     expect((await returned(old.reference)).description.state).toBe("failed");
     const review = await attempt(s.inv.id, s.conn!, { status: "needs_review" });
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", livemode: true, status: "needs_review", attemptId: review.id });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", status: "needs_review", attemptId: review.id });
     expect((await returned(review.reference)).description).toMatchObject({ state: "review", polling: false });
     expect((await invoiceStatus(s.inv.id)).payment_status).toBe("unpaid");
     // An invoice with a checkout still open cannot be voided; once the checkout is closed it can, and the page a customer returns to then says so.
@@ -325,7 +376,7 @@ describe("coming back from the provider", () => {
     expect(r.state).toBe("ok");
     const text = JSON.stringify(r);
     for (const secret of [s.token, s.io.orgId, s.inv.id, s.conn!.id, a.id, a.checkoutId!, CUSTOMER_EMAIL, CUSTOMER_PHONE, "Maria", "Santos"]) expect(text, secret).not.toContain(secret);
-    expect(Object.keys(r.state === "ok" ? r.view : {}).sort()).toEqual(["amountMinor", "business", "currency", "description", "invoiceNumber", "reference"]);
+    expect(Object.keys(r.state === "ok" ? r.view : {}).sort()).toEqual(["amountMinor", "business", "currency", "description", "invoiceNumber", "isTest", "reference"]);
   });
 
   it("reads the same recomputed answer for the page that polls", async () => {
@@ -357,16 +408,16 @@ describe("coming back from the provider", () => {
 
 describe("where an invoice stands, by its link", () => {
   it("reports the payment status the database holds and says paid only when the invoice is paid", async () => {
-    const s = await setup();
+    const s = await liveSetup();
     const status = async () => {
       const r = await paymentStatusByToken(s.token, { ip: freshIp() });
       if (r.state !== "ok") throw new Error(r.state);
       return r.status;
     };
     expect(await status()).toMatchObject({ paymentStatus: "unpaid", balanceMinor: 150000, currency: "PHP", hasPendingPayment: false, banner: { kind: "pay_online" } });
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 50000, { provider: "simulated", livemode: true, status: "pending" });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 50000, { provider: "paymongo", status: "pending" });
     expect(await status()).toMatchObject({ paymentStatus: "unpaid", hasPendingPayment: true, banner: { kind: "pending" } });
-    await providerPayment(s.io, s.inv.id, s.conn!.id, 150000, { provider: "simulated", livemode: true });
+    await providerPayment(s.io, s.inv.id, s.conn.id, 150000, { provider: "paymongo" });
     expect(await status()).toMatchObject({ paymentStatus: "paid", balanceMinor: 0, banner: { kind: "paid" } });
     expect((await paymentStatusByToken("A".repeat(43), { ip: freshIp() })).state).toBe("invalid");
     expect((await paymentStatusByToken(s.token.slice(1), { ip: freshIp() })).state).toBe("invalid");

@@ -54,7 +54,8 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     <input
       ref={ref}
       className={cn(
-        "h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-[15px] text-ink shadow-soft outline-none transition",
+        // 16 px below sm: iOS Safari zooms the page when a field under 16 px is focused.
+        "h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-[16px] text-ink shadow-soft outline-none transition",
         "placeholder:text-faint focus:border-primary focus:ring-4 focus:ring-primary/12 disabled:opacity-60 sm:h-10 sm:text-sm",
         "aria-[invalid=true]:border-danger aria-[invalid=true]:ring-danger/10",
         className,
@@ -70,7 +71,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
       <textarea
         ref={ref}
         className={cn(
-          "min-h-[96px] w-full resize-y rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-[15px] leading-relaxed text-ink shadow-soft outline-none transition",
+          "min-h-[96px] w-full resize-y rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-[16px] leading-relaxed text-ink shadow-soft outline-none transition",
           "placeholder:text-faint focus:border-primary focus:ring-4 focus:ring-primary/12 sm:text-sm",
           "aria-[invalid=true]:border-danger",
           className,
@@ -90,7 +91,7 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
       <select
         ref={ref}
         className={cn(
-          "h-11 w-full appearance-none rounded-xl border border-line-strong bg-surface pl-3.5 pr-9 text-[15px] text-ink shadow-soft outline-none transition",
+          "h-11 w-full appearance-none rounded-xl border border-line-strong bg-surface pl-3.5 pr-9 text-[16px] text-ink shadow-soft outline-none transition",
           "focus:border-primary focus:ring-4 focus:ring-primary/12 sm:h-10 sm:text-sm",
           className,
         )}

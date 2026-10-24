@@ -21,47 +21,13 @@ import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from "@/components/ui/overlays";
 import { CLIENT_NAV } from "@/components/shell/sidebar";
+import { titleFor } from "@/components/shell/titles";
 import { useLogoutConfirmation } from "@/components/auth/logout-confirmation";
 import { useTheme } from "@/components/providers";
 import { useShell } from "@/components/shell/shell-context";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { switchOrgAction } from "@/app/actions/shell";
 import { cn, currentTime, initials } from "@/lib/utils";
-
-const TITLES: Array<[RegExp, string]> = [
-  [/^\/overview/, "Overview"],
-  [/^\/setup/, "Setup"],
-  [/^\/employees\/[^/]+\/configure/, "Configure employee"],
-  [/^\/employees/, "AI Employees"],
-  [/^\/leads/, "Leads"],
-  [/^\/appointments/, "Appointments"],
-  [/^\/sales/, "Sales Pipeline"],
-  [/^\/proposals/, "Proposals"],
-  [/^\/retention/, "Customer Retention"],
-  [/^\/analytics/, "Analytics"],
-  [/^\/approvals/, "Approval Center"],
-  [/^\/knowledge/, "Knowledge Center"],
-  [/^\/activity/, "Activity"],
-  [/^\/notifications/, "Notifications"],
-  [/^\/support/, "Support"],
-  [/^\/crm\/contacts/, "Contacts"],
-  [/^\/crm\/companies/, "Companies"],
-  [/^\/crm\/smart-lists/, "Smart Lists"],
-  [/^\/crm\/tags/, "Tags & Segments"],
-  [/^\/crm\/fields/, "Custom Fields"],
-  [/^\/crm\/pipelines/, "Pipelines"],
-  [/^\/crm\/opportunities/, "Opportunities"],
-  [/^\/crm\/tasks/, "Tasks"],
-  [/^\/crm\/settings/, "CRM Settings"],
-  [/^\/crm/, "CRM"],
-  [/^\/inbox/, "Inbox"],
-  [/^\/settings/, "Settings"],
-  [/^\/add-ons/, "Custom Projects & Add-ons"],
-  [/^\/projects/, "My Projects"],
-  [/^\/our-work/, "Selected Work"],
-  [/^\/maintenance/, "Maintenance"],
-  [/^\/automation-studio/, "Automation Studio"],
-];
 
 function ThemeMenuItems() {
   const { theme, setTheme } = useTheme();
@@ -99,7 +65,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [navigationOpen, setNavigationOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const { resolved, setTheme } = useTheme();
-  const title = TITLES.find(([re]) => re.test(pathname))?.[1] ?? "iAcquire";
+  const title = titleFor(pathname);
   const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && !(n.feature && !(shell.features ?? []).includes(n.feature)) && n.label.toLowerCase().includes(search.toLowerCase()));
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setNavigationOpen((s) => !s); } };

@@ -8,11 +8,13 @@ import { requireOrgContextOrThrow, type OrgContext } from "@/server/tenancy/cont
 import type { Permission } from "@/lib/permissions";
 import { createDraft, discardDraft, issueInvoice, requestChanges, submitForApproval, updateDraft, voidInvoice, withdrawFromApproval, writeOffInvoice } from "@/server/invoices/invoices";
 import { recordManualPayment, recordRefund } from "@/server/invoices/payments";
+import { recordDisputeOpened, recordDisputeResult } from "@/server/invoices/disputes";
 import { getInvoiceLink, rotateInvoiceLink } from "@/server/invoices/share";
 import { saveInvoiceSettings } from "@/server/invoices/settings";
 import { authorizeReminders, switchOffReminders } from "@/server/invoices/reminders";
 import { searchDealsForInvoice } from "@/server/invoices/search";
 import { startTestPayment } from "@/server/invoices/test-payment";
+import { deleteTestInvoice } from "@/server/invoices/test-invoice";
 import { confirmLive, connectProvider, listRecentDeliveries, recheckConnection, replaceCredentials, revokeConnection, saveWebhookSecret, setConnectionPaused } from "@/server/customer-payments/connections";
 
 // Server actions for customer invoices and the business's payment account. What each person may do is decided in src/server/invoices and src/server/customer-payments (every
@@ -25,12 +27,14 @@ const refresh = () => {
   revalidatePath("/settings/payments");
 };
 
-async function act<T>(permission: Permission, fn: (ctx: OrgContext) => Promise<T>) {
+// An action that only reads passes `refresh: false`: Next re-renders the page it was called from after a server function revalidates, and a re-render moves the version the
+// screen's next save is checked against.
+async function act<T>(permission: Permission, fn: (ctx: OrgContext) => Promise<T>, opts: { refresh?: boolean } = {}) {
   return guard(async () => {
     const ctx = await requireOrgContextOrThrow();
     if (!ctx.can(permission)) throw new AppError("forbidden", "Your role doesn't allow this action. Ask a workspace owner for access.");
     const out = await fn(ctx);
-    refresh();
+    if (opts.refresh !== false) refresh();
     return out;
   });
 }
@@ -55,7 +59,7 @@ export async function discardInvoiceDraftAction(id: string) {
 }
 
 export async function searchInvoiceDealsAction(q: string) {
-  return act("invoices.create", (ctx) => searchDealsForInvoice(ctx, z.string().max(80).parse(q)));
+  return act("invoices.create", (ctx) => searchDealsForInvoice(ctx, z.string().max(80).parse(q)), { refresh: false });
 }
 
 // Approval and issue --------------------------------------------------------------
@@ -103,6 +107,18 @@ export async function recordRefundAction(paymentId: string, input: unknown) {
   return act("invoices.refund", async (ctx) => {
     const r = await recordRefund(ctx, uuid.parse(paymentId), input);
     return { duplicate: r.duplicate, reviewTaskCreated: r.reviewTaskId !== null };
+  });
+}
+
+/** The owner records a dispute the provider never told this product about, and later how it ended. */
+export async function recordDisputeOpenedAction(paymentId: string, input: unknown) {
+  return act("invoices.refund", async (ctx) => ({ status: (await recordDisputeOpened(ctx, uuid.parse(paymentId), input)).paymentStatus }));
+}
+
+export async function recordDisputeResultAction(paymentId: string, input: unknown) {
+  return act("invoices.refund", async (ctx) => {
+    const r = await recordDisputeResult(ctx, uuid.parse(paymentId), input);
+    return { status: r.paymentStatus, reviewTaskCreated: r.reviewTaskId !== null };
   });
 }
 
@@ -177,10 +193,18 @@ export async function disconnectConnectionAction(id: string) {
 }
 
 export async function recentDeliveriesAction(id: string) {
-  return act("invoices.connect_payments", (ctx) => listRecentDeliveries(ctx, uuid.parse(id)));
+  return act("invoices.connect_payments", (ctx) => listRecentDeliveries(ctx, uuid.parse(id)), { refresh: false });
 }
 
-/** Opens the provider's payment page for one of the owner's own invoices, through an account in test mode. Moves no real money. */
+/** Opens the provider's payment page for one of the owner's own TEST invoices, through an account in test mode. Moves no real money. */
 export async function startTestPaymentAction(invoiceId: string) {
   return act("invoices.connect_payments", async (ctx) => ({ url: (await startTestPayment(ctx, uuid.parse(invoiceId))).url }));
+}
+
+/** Deletes a test invoice with its test payments. A real invoice is refused. */
+export async function deleteTestInvoiceAction(invoiceId: string) {
+  return act("invoices.connect_payments", async (ctx) => {
+    const done = await deleteTestInvoice(ctx, uuid.parse(invoiceId));
+    return { number: done.number };
+  });
 }

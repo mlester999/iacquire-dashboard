@@ -514,7 +514,7 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "social.publish": { label: "Schedule and publish approved social posts", group: "Social media", note: "Only an approved version publishes; client scope still applies." },
   "social.connect": { label: "Connect client social accounts", group: "Social media", note: "The account belongs to the client: owner or manager." },
   "social.settings": { label: "Change social media approval settings", group: "Social media", note: "Reserved for the client owner." },
-  "proposals.view": { label: "View client proposals", group: "Proposals", note: "Client scope still applies; changes to a client's records go through an audited support session." },
+  "proposals.view": { label: "View client proposals", group: "Proposals", note: "Client scope still applies. Opening a client's proposal files (frozen copies, signed copies, certificates) needs an active support session. Whether the proposal records themselves also need one at the database level is a founder decision still open; no screen shows an agency person these records today." },
   "proposals.create": { label: "Draft client proposals", group: "Proposals", note: "Client scope still applies. An AI draft always needs the client's approval." },
   "proposals.discount": { label: "Give discounts and override catalog prices on proposals", group: "Proposals", note: "Reserved for the client's owner and manager." },
   "proposals.approve": { label: "Approve proposals before they are sent", group: "Proposals", note: "Reserved for the client's owner and manager." },

@@ -20,7 +20,7 @@ vi.mock("next/cache", () => ({ revalidatePath() {} }));
 const { stub } = vi.hoisted(() => ({ stub: async () => ({ ok: false, error: "not in tests" }) }));
 vi.mock("@/app/actions/crm-reviews", () => Object.fromEntries([
   "createReviewDestinationAction", "updateReviewDestinationAction", "setReviewDestinationActiveAction", "moveReviewDestinationAction", "deleteReviewDestinationAction",
-  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction",
+  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction", "confirmSurveyMatchAction", "dismissSurveyMatchAction",
 ].map((n) => [n, stub])));
 vi.mock("@/app/actions/reputation", () => Object.fromEntries([
   "saveReputationSettingsAction", "createBatchAction", "updateBatchAction", "duplicateBatchAction", "requestBatchApprovalAction", "approveBatchAction", "returnBatchAction",
@@ -112,7 +112,7 @@ describe("the status card on the Overview", () => {
 });
 
 describe("the review sites in Settings", () => {
-  const panel = (over: { sites?: SiteView[]; enabled?: boolean; canManage?: boolean; sc?: CrmScope; pending?: Array<{ accountId: string; locationId: string; title: string; alreadyConnected: boolean }> | null; notice?: string | null } = {}) =>
+  const panel = (over: { sites?: SiteView[]; enabled?: boolean; canManage?: boolean; sc?: CrmScope; pending?: Array<{ accountId: string; locationId: string; title: string; alreadyConnected: boolean; reconnect: boolean }> | null; notice?: string | null } = {}) =>
     renderToStaticMarkup(React.createElement(ConnectionsPanel, { scope: over.sc ?? scope, sites: over.sites ?? sites, enabled: over.enabled ?? true, canManage: over.canManage ?? true, pending: over.pending ?? null, pendingStateId: over.pending ? "0b5f9c1e-7a52-4a0e-9a1d-2f4f2f6f1a11" : null, notice: over.notice ?? null }));
 
   it("offers Read now, Check and Disconnect for a connection, and a test connection only where one is allowed and none exists", () => {
@@ -151,13 +151,56 @@ describe("the review sites in Settings", () => {
   });
 
   it("lists the Google locations to choose from, without the sign-in, and disables one that belongs to a workspace already", () => {
-    const html = panel({ pending: [{ accountId: "accounts/1", locationId: "locations/2", title: "Harbor Dental, Main", alreadyConnected: false }, { accountId: "accounts/1", locationId: "locations/3", title: "Harbor Dental, Pier", alreadyConnected: true }] });
+    const html = panel({ pending: [{ accountId: "accounts/1", locationId: "locations/2", title: "Harbor Dental, Main", alreadyConnected: false, reconnect: false }, { accountId: "accounts/1", locationId: "locations/3", title: "Harbor Dental, Pier", alreadyConnected: true, reconnect: false }] });
     expect(html).toContain("Choose the location to read");
     expect(html).toContain("Harbor Dental, Main");
     expect(html).toContain("already connected to a workspace");
     expect(html).toMatch(/type="radio"[^>]*disabled=""[^>]*/);
     expect(html).toContain("Connect this location");
     expect(html).not.toMatch(/refresh|token|accounts\/1/i);
+  });
+
+  it("offers a location this workspace already reads for reconnecting, not as taken by another workspace", () => {
+    const html = panel({ pending: [{ accountId: "accounts/1", locationId: "locations/2", title: "Harbor Dental, Main", alreadyConnected: false, reconnect: true }] });
+    expect(html).toContain("connected here; this reconnects it");
+    expect(html).not.toContain("already connected to a workspace");
+    expect(html).not.toMatch(/type="radio"[^>]*disabled=""/);
+  });
+
+  const facebookOf = (over: Partial<SiteView>): SiteView => ({ ...(bareSites.find((x) => x.provider === "facebook") as SiteView), ...over });
+  const withSite = (site: SiteView) => panel({ sites: [site], enabled: true });
+  const READY = { ready: true, repliesReady: false };
+  const PAGE = { socialAccountId: "11111111-1111-4111-8111-111111111111", name: "Harbor Home Page", hasPermission: true, connected: false, reconnect: false };
+  const broken = { id: "c1", provider: "facebook", adapter: "meta", simulated: false, name: "Harbor Home Page", status: "needs_reauth", statusDetail: null, canReply: false } as unknown as NonNullable<SiteView["connection"]>;
+
+  it("offers a Facebook connection that needs reconnecting a way to reconnect its Page, and says nothing is connected twice", () => {
+    const html = withSite(facebookOf({ environment: READY, connection: broken, state: { state: "needs_reauth", label: "Needs to be reconnected", tone: "warning", detail: "Facebook no longer accepts the saved sign-in.", canConnect: true }, pages: [{ ...PAGE, reconnect: true }] }));
+    expect(html).toContain("Reconnect this Page");
+    expect(html).toContain("Harbor Home Page");
+    expect(html).not.toContain(">Connected<");
+    // A Page that is not the one needing repair is not offered while a connection is waiting to be repaired.
+    const other = withSite(facebookOf({ environment: READY, connection: broken, state: { state: "needs_reauth", label: "Needs to be reconnected", tone: "warning", detail: "x", canConnect: true }, pages: [{ ...PAGE, socialAccountId: "22222222-2222-4222-8222-222222222222", name: "Another Page" }] }));
+    expect(other).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Read its recommendations/);
+  });
+
+  it("offers 'Reconnect with review access' as a plain link, only where Facebook can be read and the Page lacks the permission (or none is connected), and never for a test connection", () => {
+    const state = { state: "needs_permission", label: "Needs more permission", tone: "warning", detail: "x", canConnect: false } as const;
+    const lacking = withSite(facebookOf({ environment: READY, connection: null, state, pages: [{ ...PAGE, hasPermission: false }] }));
+    expect(lacking).toContain(`href="/api/reputation/oauth/meta/start"`);
+    expect(lacking).toContain("Reconnect with review access");
+    expect(lacking).toContain("Needs more permission");
+    expect(lacking).not.toContain("Reconnect the Page in Social media");
+    const none = withSite(facebookOf({ environment: READY, connection: null, pages: [] }));
+    expect(none).toContain("Connect Facebook with review access");
+    // Not while reading Facebook is not switched on, not for a Page that already has the permission, not for a test connection, and not for someone who may not connect.
+    expect(withSite(facebookOf({ environment: { ready: false, repliesReady: false }, connection: null, pages: [] }))).not.toContain("review access");
+    expect(withSite(facebookOf({ environment: READY, connection: null, pages: [PAGE] }))).not.toContain("/api/reputation/oauth/meta/start");
+    expect(withSite(facebookOf({ environment: READY, connection: { ...broken, simulated: true, adapter: "simulated" } as never, pages: [] }))).not.toContain("/api/reputation/oauth/meta/start");
+    expect(panel({ sites: [facebookOf({ environment: READY, connection: null, pages: [] })], canManage: false })).not.toContain("/api/reputation/oauth/meta/start");
+    // A working connection that cannot reply although replies are switched on can ask for the reply permission too.
+    const working = { ...broken, status: "connected", canReply: false } as NonNullable<SiteView["connection"]>;
+    expect(withSite(facebookOf({ environment: { ready: true, repliesReady: true }, connection: working, pages: [PAGE] }))).toContain("Reconnect with review access");
+    expect(withSite(facebookOf({ environment: { ready: true, repliesReady: true }, connection: { ...working, canReply: true }, pages: [PAGE] }))).not.toContain("review access");
   });
 
   it("explains a sign-in that did not finish with a fixed sentence, whatever the address said", () => {

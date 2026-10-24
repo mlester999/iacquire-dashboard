@@ -31,6 +31,8 @@ const EMPTY_CHAT_CONTACT = `
   and not exists (select 1 from contact_memories m where m.contact_id = c.id)
   and not exists (select 1 from crm_call_records r where r.org_id = c.org_id and r.contact_id = c.id)
   and not exists (select 1 from customer_invoices ci where ci.org_id = c.org_id and ci.contact_id = c.id)
+  and not exists (select 1 from proposals pr where pr.org_id = c.org_id and pr.contact_id = c.id)
+  and not exists (select 1 from signature_requests sr where sr.org_id = c.org_id and sr.signer_contact_id = c.id)
   and not exists (select 1 from conversations v where v.org_id = c.org_id and v.contact_id = c.id and v.channel <> 'web_chat')`;
 
 async function removeChats(db: Queryable, where: string, params: unknown[]): Promise<{ chats: number; contacts: number }> {

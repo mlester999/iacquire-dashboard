@@ -395,6 +395,33 @@ describe("the frozen copy", () => {
     expect(snapshot.groups.one_time.total).toBe(168_000);
   });
 
+  it("fills the placeholders in the title, a unit label and a tax name like any other wording, so no raw braces reach the customer's page or PDF", () => {
+    const f = freeze(input({
+      title: "Proposal for {{client.name}}",
+      doc: docOf([line({ unitLabel: "{{client.first_name}}'s hour", taxRateId: TAX_ID, taxName: "{{business.name}} tax", taxBps: 1200 })], { sections: [{ id: "intro-01", heading: "About", body: "This is {{proposal.title}}." }] }),
+    }));
+    expect(f.missing).toEqual([]);
+    expect(f.unknown).toEqual([]);
+    expect(f.snapshot.title).toBe("Proposal for Maria Santos");
+    expect(f.snapshot.lines[0]).toMatchObject({ unitLabel: "Maria's hour", taxName: "Harbor Home tax" });
+    // The title token in the wording is the title as the customer reads it, not the text with braces in it.
+    expect(f.snapshot.sections[0].body).toBe("This is Proposal for Maria Santos.");
+    expect(collectStrings(f.snapshot).join("\n")).not.toMatch(/\{\{|\}\}/);
+  });
+
+  it("reports a placeholder in the title or a unit label that cannot be filled, so the proposal is blocked instead of showing it", () => {
+    const f = freeze(input({ title: "For {{client.company}} {{nope}}", client: { name: "Maria", company: "", email: null }, doc: docOf([line({ unitLabel: "{{typo.here}}" })]) }));
+    expect(f.missing).toEqual(["client.company"]);
+    expect(f.unknown.sort()).toEqual(["nope", "typo.here"]);
+    expect(f.snapshot.title).not.toMatch(/\{\{|\}\}/);
+    // A title cannot be made of its own text.
+    const self = freeze(input({ title: "About {{proposal.title}}" }));
+    expect(self.missing).toEqual(["proposal.title"]);
+    expect(self.snapshot.title).not.toMatch(/\{\{|\}\}/);
+    // An unfinished placeholder is never printed as written either.
+    expect(freeze(input({ title: "Proposal for {{client.name", doc: docOf([line({ unitLabel: "each}}" })]) })).snapshot).toMatchObject({ title: "Proposal for {client.name" });
+  });
+
   it("holds nothing internal: no catalog link, no price book price, no note for the team", () => {
     const text = JSON.stringify(freeze(input()).snapshot);
     expect(text).not.toContain(CATALOG_ID);

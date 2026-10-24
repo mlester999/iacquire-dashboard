@@ -2,8 +2,9 @@
 import { describe, expect, it } from "vitest";
 import {
   AI_LIMITS, aiSections, aiSystemPrompt, aiUserPrompt, allowedNumberSet, checkText, cleanModelText, disallowedNumbers, fenceUntrusted, hasWebAddress, normalizeAiOutput,
-  numbersIn, plainAmount, plainNumber, screenList, screenText, spelledAmounts, validQuantity, type PriceBookEntry, type TextChecks,
+  numbersIn, plainAmount, plainNumber, screenList, screenText, spelledAmounts, unbackedPromises, validQuantity, type PriceBookEntry, type TextChecks,
 } from "@/lib/proposals/ai";
+import { CURRENCY_CODES } from "@/lib/money";
 import { NUMBER_TOKEN, plainNumber as generatorPlainNumber, ungroundedAmounts } from "@/server/webchat/generator";
 
 const none = (): string[] => [];
@@ -80,6 +81,21 @@ describe("numbers are matched as whole numbers, never as pieces of other numbers
     const set = allowedNumberSet(["Pack of 10 for $99.50", 3, null, undefined, "", NaN]);
     expect([...set].sort()).toEqual(["10", "3", "99.5"]);
   });
+
+  it("reads digit groups separated by a space as one number, so '1 500' is not two small numbers that are each allowed", () => {
+    // A price of 500 and a chosen quantity of 1: both small readings would pass, the amount 1500 is the one the sentence states.
+    const allowed = allowedNumberSet(["500", 1, 3]);
+    // A space, a no-break space (U+00A0), a thin space (U+2009) and a narrow no-break space (U+202F), built by code so they are visible in this file.
+    for (const sep of [" ", ...[0x00a0, 0x2009, 0x202f].map((c) => String.fromCharCode(c))]) {
+      expect(disallowedNumbers(`The fee is 1${sep}500 for the build.`, allowed), JSON.stringify(sep)).toEqual([`1${sep}500`]);
+      expect(disallowedNumbers(`The fee is 2${sep}500 for the build.`, allowedNumberSet(["500", 2])), JSON.stringify(sep)).toEqual([`2${sep}500`]);
+      expect(disallowedNumbers(`The fee is 1${sep}500.`, allowedNumberSet(["1500"])), JSON.stringify(sep)).toEqual([]);
+    }
+    expect(numbersIn("Then 12 000 000 and 1 500.50 and 2026 500 and 7 3000.")).toEqual(["12000000", "1500.5", "2026", "500", "7", "3000"]);
+    expect(plainNumber("1 500")).toBe("1500");
+    // What the workspace itself wrote may be read either way, so a price list line like "Items 1 100" never makes its own small numbers unusable.
+    expect([...allowedNumberSet(["Pack of 1 100"])].sort()).toEqual(["1", "1100", "100"].sort());
+  });
 });
 
 describe("amounts written in words", () => {
@@ -90,8 +106,76 @@ describe("amounts written in words", () => {
     expect(spelledAmounts(t).length, t).toBeGreaterThan(0);
   });
 
-  it.each(["We will meet three times.", "Five pages are included.", "The first phase takes shape in the second week.", "A quarter of the work is design."])("leaves alone: %s", (t) => {
+  // The ones a reviewer passed through the old net: no money noun after the number, a percent sign, a currency code the list lacked, or a period tail.
+  it.each([
+    "The monthly fee is five hundred per month.", "The investment is one thousand five hundred.", "Cost is fifteen hundred.", "An introductory rate of two hundred a month applies.",
+    "A fifteen % reduction applies.", "A fifteen% reduction applies.", "Total is five hundred JPY.", "Our price is one hundred a month.", "It is twenty five thousand each year.", "Two hundred/month all in.",
+    "It is USD five hundred.", "Pay ₱ five hundred.", "About five grand.", "A forty per cent saving.", "A fifty-five percent saving.", "Fees of three hundred every week.",
+  ])("finds one in: %s", (t) => {
+    expect(spelledAmounts(t).length, t).toBeGreaterThan(0);
+  });
+
+  it("knows every currency the product can total, not a short list of them", () => {
+    for (const code of CURRENCY_CODES) {
+      expect(spelledAmounts(`Total is five hundred ${code}.`).length, code).toBeGreaterThan(0);
+      expect(spelledAmounts(`Total is five hundred ${code.toLowerCase()}.`).length, code).toBeGreaterThan(0);
+      expect(spelledAmounts(`Total is ${code} five hundred.`).length, code).toBeGreaterThan(0);
+    }
+  });
+
+  it.each([
+    "We will meet three times.", "Five pages are included.", "The first phase takes shape in the second week.", "A quarter of the work is design.", "Three days of training are included.",
+    "We will meet three times a week.", "Ten pages are included each month.", "One call per customer is included.", "Two rounds of design.", "The site has a hundred little details.",
+  ])("leaves alone: %s", (t) => {
     expect(spelledAmounts(t), t).toEqual([]);
+  });
+});
+
+describe("turnaround and refund promises", () => {
+  const knowledgeOf = "We repair furnaces and build websites. Most websites are delivered within fourteen days. Refunds are explained in the policy.";
+
+  it.each([
+    "We will complete the work within 3 days.", "Delivery in three weeks.", "We offer a sixty day refund.", "The work takes about two months.", "A 30-day trial is included.", "Expect a two-week turnaround.",
+    "We deliver same-day.", "Overnight delivery is available.", "It will be ready by Friday.", "All done by the end of the month.", "Cancel anytime.", "Refunds are available.", "Deposits are non-refundable.",
+    "Fast turnaround on every job.", "Done in a week.", "Finished inside five business days.",
+  ])("finds a promise nothing backs in: %s", (t) => {
+    expect(unbackedPromises(t, "We repair furnaces."), t).not.toEqual([]);
+  });
+
+  it("is backed by the same duration or word in the approved knowledge, written in digits or in words", () => {
+    expect(unbackedPromises("Delivery within fourteen days.", knowledgeOf)).toEqual([]);
+    expect(unbackedPromises("Delivery within 14 days.", knowledgeOf)).toEqual([]);
+    expect(unbackedPromises("Delivery within 15 days.", knowledgeOf)).toEqual(["within 15 days"]);
+    expect(unbackedPromises("Delivery in two weeks.", knowledgeOf)).toEqual(["in two weeks"]);
+    expect(unbackedPromises("Refunds are available.", knowledgeOf)).toEqual([]);
+    expect(unbackedPromises("We offer a sixty day refund.", knowledgeOf)).toEqual(["sixty day refund"]);
+    expect(unbackedPromises("We offer a sixty day refund.", `${knowledgeOf} Our sixty day refund policy is simple.`)).toEqual([]);
+    expect(unbackedPromises("Done in one hundred and twenty days.", "Plans run 120 days.")).toEqual([]);
+  });
+
+  it("leaves ordinary wording alone", () => {
+    for (const t of [
+      "We will design and build the website you described.", "The first phase takes shape in the second week.", "Hosting is billed monthly.", "Training is three sessions.", "Review and approve this proposal.",
+      "We will meet three times a week.", "The kickoff call lasts one hour.", "A day of onsite training.", "In the first week we gather your photos.",
+    ]) expect(unbackedPromises(t, ""), t).toEqual([]);
+  });
+
+  it("reads a long run of spaces or number words quickly (a model's whole answer is a few thousand characters)", () => {
+    const traps = [`cost${" ".repeat(20_000)}five hundred`, `two hundred${" ".repeat(20_000)}x`, `in ${"one-".repeat(1500)}x`, `within ${" ".repeat(20_000)}days`, `${"1 ".repeat(10_000)}500`];
+    const start = performance.now();
+    for (const t of traps) {
+      spelledAmounts(t);
+      unbackedPromises(t, t);
+      disallowedNumbers(t, new Set());
+    }
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  it("is dropped as a claim by the sentence screen when it is added to the claim check", () => {
+    const claims = (t: string) => unbackedPromises(t, "");
+    const r = screenText("scope", "We will build the site. Delivery in three weeks. A fifteen % reduction applies. We offer a sixty day refund. We will complete the work within 3 days.", 2000, checks(["3"], claims));
+    expect(r.text).toBe("We will build the site.");
+    expect(r.dropped.map((d) => d.reason)).toEqual(["claim", "amount_in_words", "claim", "claim"]);
   });
 });
 

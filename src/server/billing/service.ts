@@ -2,7 +2,7 @@ import "server-only";
 import { withSystem, withUser } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
-import { CREDIT_PRESETS_USD, MICROS_PER_USD, OPERATING_RESERVE_PER_SETUP_USD, SETUP_FEE_USD, UNIT_LABELS, applyMarkup, isUnitType, usdToMicros } from "@/lib/billing";
+import { CREDIT_PRESETS_USD, MICROS_PER_USD, OPERATING_RESERVE_PER_SETUP_USD, SETUP_FEE_USD, applyMarkup, isUnitType, rateUnitLabel, usdToMicros } from "@/lib/billing";
 import { createPaymentCheckout, type CheckoutInput } from "@/server/billing/payments";
 import { paymongoStatus, type FetchLike } from "@/server/billing/paymongo";
 import { adjustCredits, currentRate } from "@/server/billing/ledger";
@@ -205,16 +205,19 @@ export async function adjustOrgCredits(user: AgencyUser, input: { orgId: string;
 export async function publishUnitRate(user: AgencyUser, input: { provider: string; unitType: string; wholesaleMicrosPerUnit: number; note?: string }) {
   requireSuper(user);
   if (!isUnitType(input.unitType)) throw new AppError("invalid_input", "Choose a known usage unit.");
-  if (!Number.isInteger(input.wholesaleMicrosPerUnit) || input.wholesaleMicrosPerUnit <= 0) throw new AppError("invalid_input", "Enter the provider's wholesale cost per unit in micro-dollars (1 USD = 1,000,000).");
+  if (!Number.isInteger(input.wholesaleMicrosPerUnit) || input.wholesaleMicrosPerUnit <= 0) {
+    const per = input.unitType === "ai_tokens_in" || input.unitType === "ai_tokens_out" ? "per 1,000 tokens" : "per unit";
+    throw new AppError("invalid_input", `Enter the provider's wholesale cost ${per} in micro-dollars (1 USD = 1,000,000).`);
+  }
   return withSystem(async (db) => {
     const rate = await currentRate(db);
     const client = applyMarkup(input.wholesaleMicrosPerUnit, rate.markupBps);
     await db.query(
       `insert into usage_unit_rates (rate_version_id, provider, unit_type, unit_label, wholesale_micros_per_unit, client_micros_per_unit, note)
        values ($1, $2, $3, $4, $5, $6, $7)
-       on conflict (rate_version_id, provider, unit_type) do update set wholesale_micros_per_unit = excluded.wholesale_micros_per_unit,
+       on conflict (rate_version_id, provider, unit_type) do update set unit_label = excluded.unit_label, wholesale_micros_per_unit = excluded.wholesale_micros_per_unit,
          client_micros_per_unit = excluded.client_micros_per_unit, note = excluded.note, published_at = now()`,
-      [rate.id, input.provider.slice(0, 60), input.unitType, UNIT_LABELS[input.unitType] ?? input.unitType, input.wholesaleMicrosPerUnit, client, input.note?.slice(0, 300) ?? null],
+      [rate.id, input.provider.slice(0, 60), input.unitType, rateUnitLabel(input.unitType), input.wholesaleMicrosPerUnit, client, input.note?.slice(0, 300) ?? null],
     );
     await recordAudit({ actorUserId: user.id, actorKind: "agency", action: "billing.unit_rate_published", targetType: "usage_unit_rate", targetId: `${input.provider}:${input.unitType}`, result: "success", metadata: { wholesaleMicrosPerUnit: input.wholesaleMicrosPerUnit, clientMicrosPerUnit: client } }, db);
     return { clientMicrosPerUnit: client };

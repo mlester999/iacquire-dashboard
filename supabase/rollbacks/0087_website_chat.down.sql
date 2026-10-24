@@ -7,10 +7,14 @@ begin
   if exists (select 1 from web_chat_sessions)
      or exists (select 1 from conversations where channel = 'web_chat')
      or exists (select 1 from contacts where created_via = 'website_chat')
+     or exists (select 1 from contact_identities where typed_by_visitor)
      or exists (select 1 from web_chat_widgets where enabled or cardinality(allowed_origins) > 0 or last_seen_at is not null) then
-    raise exception 'Rollback refused: website chat sessions, web_chat conversations, contacts created through the chat, or a switched-on widget exist. Export them deliberately first.';
+    raise exception 'Rollback refused: website chat sessions, web_chat conversations, contacts created through the chat, addresses a visitor typed (they may have been merged into another contact), or a switched-on widget exist. Export them deliberately first.';
   end if;
 end $$;
+
+-- Safe only after the guard above: no address is marked as typed by a visitor, so the mark loses nothing.
+alter table contact_identities drop column typed_by_visitor;
 
 drop function if exists app.site_chat_widget(text);
 

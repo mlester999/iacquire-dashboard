@@ -6,7 +6,6 @@ import { env, resetEnvCache } from "@/server/env";
 import { invoiceTokenFor } from "@/server/invoices/links";
 import { voidInvoice, writeOffInvoice } from "@/server/invoices/invoices";
 import { setInvoicesEnabled } from "@/server/invoices/feature";
-import { recordManualPayment } from "@/server/invoices/payments";
 import { applyDisputeInTx } from "@/server/invoices/apply";
 import { startCheckout, ATTEMPT_TTL_HOURS } from "@/server/customer-payments/attempts";
 import { createPaymongoProvider } from "@/server/customer-payments/providers/paymongo";
@@ -18,7 +17,6 @@ import { connect, deliver, fakePaymongo, q } from "./support/customer-payments";
 
 const NOW = new Date("2026-10-23T12:00:00Z");
 const PUBLIC_WORDS = "Online payment is not available for this invoice right now. Please contact the business to arrange payment.";
-const pay = { receivedOn: "2026-10-23", method: "bank_transfer" as const, evidence: "Bank transfer ref 4410" };
 
 afterEach(() => {
   setAdapterForTests("simulated", null);
@@ -27,7 +25,9 @@ afterEach(() => {
 
 async function setup(over: Parameters<typeof connect>[1] | null = { provider: "simulated" }) {
   const io = await invoiceOrg();
-  const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+  // Test money and real money never meet: an account in test mode (the simulated provider is always one) takes a TEST invoice, and a live account takes a real one.
+  const isTest = over === null || (over.mode ?? "test") === "test";
+  const inv = (await issuedInvoice(io, { isTest }, NOW)).invoice;
   const conn = over === null ? null : await connect(io, over);
   return { io, inv, conn };
 }
@@ -56,7 +56,7 @@ describe("starting a payment", () => {
     expect(new Date(a.expires_at).getTime()).toBe(NOW.getTime() + ATTEMPT_TTL_HOURS * 3_600_000);
     expect(w.asked).toHaveLength(1);
     const asked = w.asked[0];
-    expect(asked).toMatchObject({ reference: a.reference, amountMinor: 150000, currency: "PHP", description: "Invoice INV-0001" });
+    expect(asked).toMatchObject({ reference: a.reference, amountMinor: 150000, currency: "PHP", description: "Invoice TEST-0001" });
     // The invoice's link is a bearer credential: it goes to nobody, and the provider's return address carries the checkout's own reference instead.
     expect(asked.successUrl).toBe(`${env().APP_URL.replace(/\/+$/, "")}/pay/return/${a.reference}`);
     expect(asked.cancelUrl).toBe(`${asked.successUrl}?result=cancelled`);
@@ -104,7 +104,7 @@ describe("starting a payment", () => {
   it("asks for what is owed NOW: a payment since the last checkout closes the old one and starts another for the new balance; an expired one is replaced", async () => {
     const s = await setup();
     const first = await start(s, "public", NOW);
-    await recordManualPayment(s.io.ctx("owner"), s.inv.id, { ...pay, amount: "500", overrideOpenAttempt: true }, { now: NOW });
+    await providerPayment(s.io, s.inv.id, s.conn!.id, 50_000);
     const second = await start(s, "public", NOW);
     expect(second).toMatchObject({ reused: false, amountMinor: 100000 });
     expect(second.attemptId).not.toBe(first.attemptId);
@@ -123,7 +123,13 @@ describe("what is refused, and what a customer is told", () => {
 
   it("says nothing of the business's setup to a customer, and the reason to the team, when nothing can take the payment", async () => {
     const none = await setup(null);
-    await refused(none, /No payment account is connected/);
+    await refused(none, /No payment account in test mode is connected/);
+    // A real invoice with no account at all says it plainly; with only an account in test mode it says that account takes test invoices only.
+    const io = await invoiceOrg();
+    const real = (await issuedInvoice(io, {}, NOW)).invoice;
+    await refused({ io, inv: real }, /No payment account is connected/);
+    await connect(io, { provider: "simulated" });
+    await refused({ io, inv: real }, /real invoice, and the payment account connected is in test mode/);
     const cases: Array<[Parameters<typeof connect>[1], RegExp]> = [
       [{ provider: "simulated", status: "disabled" }, /Online payments are paused/],
       [{ provider: "simulated", status: "pending_verification" }, /webhook signing secret has not been saved/],
@@ -210,6 +216,22 @@ describe("when the provider does not answer well", () => {
     await expect(start(t, "public")).rejects.toThrow("The payment page could not be opened just now. Nothing was charged. Please try again in a few minutes.");
   });
 
+  it("flags the account as needing attention, and tells the owner once, when the provider says it does not accept the saved key; any other refusal leaves the account alone", async () => {
+    const s = await setup();
+    // A refusal that is about this order (a currency the account cannot take) says nothing about the key.
+    simulatedPlatform.failNext("create", new ProviderCallError("rejected", "The platform cannot take that currency.", 422));
+    await expect(start(s, "member")).rejects.toMatchObject({ code: "integration_unavailable" });
+    expect((await q<{ status: string }>("select status from customer_payment_connections where id = $1", [s.conn!.id]))[0].status).toBe("connected");
+    // A refused key is: the connection stops offering Pay online at once.
+    simulatedPlatform.failNext("create", new ProviderCallError("rejected", "The platform did not accept this key.", 401));
+    await expect(start(s, "public")).rejects.toThrow("The payment page could not be opened just now. Nothing was charged.");
+    expect((await q<{ status: string; last_error: string | null }>("select status, last_error from customer_payment_connections where id = $1", [s.conn!.id]))[0]).toEqual({ status: "needs_attention", last_error: "The platform did not accept this key." });
+    await expect(start(s, "public")).rejects.toThrow(PUBLIC_WORDS);
+    await expect(start(s, "member")).rejects.toThrow(/needs attention/);
+    const told = await rows<{ title: string; link: string | null }>("select title, link from notifications where org_id = $1 and kind = 'payment_connection_attention' and user_id = $2", [s.io.orgId, s.io.c.people.owner.id]);
+    expect(told).toEqual([{ title: "Your payment account needs attention", link: "/settings/payments" }]);
+  });
+
   it("keeps the attempt when it cannot know whether the provider made a checkout, tells the payer to wait, and closes it only after the wait", async () => {
     const s = await setup();
     simulatedPlatform.failNext("create", new ProviderCallError("unreachable", "The platform could not be reached."));
@@ -257,7 +279,7 @@ describe("a real provider", () => {
 
   it("cannot collect an invoice in a currency the provider does not settle", async () => {
     const io = await invoiceOrg();
-    const usd = (await issuedInvoice(io, { currency: "USD" }, NOW)).invoice;
+    const usd = (await issuedInvoice(io, { currency: "USD", isTest: true }, NOW)).invoice;
     await connect(io, { provider: "paymongo", mode: "test" });
     answer();
     await expect(start({ io, inv: usd }, "member")).rejects.toThrow(/cannot collect USD/);

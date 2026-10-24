@@ -46,8 +46,9 @@ describe("a customer's privacy request", () => {
     const p = await signingOrg();
     const email = `nia-${uid()}@example.test`;
     const contact = await createContact(p.actor("owner"), { firstName: "Nia", lastName: "Lopez", email });
-    const h = await handedOver(p, { contactId: contact.id, clientEmail: email, clientName: "Nia Lopez" });
+    const h = await handedOver(p, { contactId: contact.id, clientEmail: email, clientName: "Nia Lopez", title: undefined });
     await signerActs(p, h.requestId, "complete");
+    expect((await rows<{ title: string }>("select title from proposals where id = $1", [h.proposal.id]))[0].title).toBe("Proposal for Nia Lopez");
     const r = await withSystem((db) => eraseProposalsForContact(db, p.org.id, contact.id));
     // The proposal is accepted (not open), so nothing is withdrawn or ended; its frozen version, the recorded signature and the signing request remain.
     expect(r).toMatchObject({ withdrawn: 0, signingEnded: 0 });
@@ -55,7 +56,8 @@ describe("a customer's privacy request", () => {
     expect(await requestRow(h.requestId)).toMatchObject({ status: "completed" });
     expect(await rows("select 1 from proposal_decisions where proposal_id = $1", [h.proposal.id])).toHaveLength(1);
     // The working copy no longer holds the person's name or address.
-    expect((await rows<{ client_name: string; client_email: string | null }>("select client_name, client_email from proposals where id = $1", [h.proposal.id]))[0]).toEqual({ client_name: "", client_email: null });
+    expect((await rows<{ client_name: string; client_email: string | null; title: string }>("select client_name, client_email, title from proposals where id = $1", [h.proposal.id]))[0]).toEqual({ client_name: "", client_email: null, title: `Proposal ${h.proposal.number}` });
+    expect(r).toMatchObject({ titlesReset: 1 });
   });
 
   it("completes through the contact's own redaction, and does not need the signing tables to exist", async () => {

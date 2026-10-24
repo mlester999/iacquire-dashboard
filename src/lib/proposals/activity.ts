@@ -43,7 +43,10 @@ export function describeEvent(e: ActivityInput): { text: string; tone: ActivityT
   switch (e.kind) {
     case "created": return { text: e.detail.duplicatedFrom ? `${who(e)} started this as a copy of another proposal.` : `${who(e)} started this proposal.`, tone: "neutral" };
     case "ai_drafted": return { text: "The AI wrote a first draft. It is a draft only: a person has to read, edit and approve it before it can go anywhere.", tone: "neutral" };
-    case "duplicated": return { text: `${who(e)} copied ${str(e.detail.number) || "another proposal"}.`, tone: "neutral" };
+    case "duplicated": {
+      const left = Number(e.detail.discountsRemoved) > 0 || Number(e.detail.pricesReset) > 0;
+      return { text: `${who(e)} copied ${str(e.detail.number) || "another proposal"}.${left ? " Its discounts and changed prices were left out of the copy, because only someone with the discount permission can give them." : ""}`, tone: left ? "warning" : "neutral" };
+    }
     case "edited": return { text: flag(e.detail.approvalVoided) ? `${who(e)} changed the proposal${v}. The earlier approval no longer applies.` : flag(e.detail.content) ? `${who(e)} changed the proposal${v}.` : `${who(e)} updated the notes or links.`, tone: flag(e.detail.approvalVoided) ? "warning" : "neutral" };
     case "submitted": return { text: `${who(e)} sent the proposal${v} for approval.`, tone: "neutral" };
     case "approved": return { text: `${who(e)} approved${v}.`, tone: "good" };

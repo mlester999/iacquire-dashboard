@@ -8,7 +8,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/app/actions/invoices", () => Object.fromEntries([
   "createInvoiceDraftAction", "updateInvoiceDraftAction", "discardInvoiceDraftAction", "searchInvoiceDealsAction", "submitInvoiceAction", "withdrawInvoiceAction", "requestInvoiceChangesAction",
-  "issueInvoiceAction", "voidInvoiceAction", "writeOffInvoiceAction", "recordPaymentAction", "recordRefundAction", "getInvoiceLinkAction", "rotateInvoiceLinkAction", "saveInvoiceSettingsAction",
+  "issueInvoiceAction", "voidInvoiceAction", "writeOffInvoiceAction", "recordPaymentAction", "recordRefundAction", "recordDisputeOpenedAction", "recordDisputeResultAction", "getInvoiceLinkAction", "rotateInvoiceLinkAction", "saveInvoiceSettingsAction",
   "authorizeRemindersAction", "switchOffRemindersAction", "connectProviderAction", "saveWebhookSecretAction", "replaceKeysAction", "recheckConnectionAction", "confirmLiveAction",
   "pauseConnectionAction", "disconnectConnectionAction", "recentDeliveriesAction", "startTestPaymentAction",
 ].map((name) => [name, vi.fn()])));
@@ -57,24 +57,29 @@ const connectionView = (over: Partial<ConnectionView> = {}): ConnectionView => (
 });
 
 describe("the list", () => {
-  it("shows what is owed per currency, each on its own and never converted, with test-mode payments labelled and the scheduler caveat said", async () => {
+  it("shows what is owed per currency, each on its own and never converted, says how many test invoices are kept apart, and says the scheduler caveat", async () => {
     const summary = await receivablesSummary(io.ctx("owner"));
     const out = text(<ReceivablesCards summary={summary} />);
     expect(summary.byCurrency.map((r) => r.currency).sort()).toEqual(["PHP", "USD"]);
     for (const code of ["PHP", "USD"]) expect(out).toContain(code);
     expect(out).toContain("Overdue");
     expect(out).toContain("Received, net of refunds");
-    expect(out).toContain("Paid in test mode");
+    // The two test invoices are in none of the figures: nothing is owed on a test, and no money moved.
+    expect(summary.testInvoices).toBe(2);
+    expect(out).toContain("2 test invoices are kept apart: nothing is owed on a test invoice, so it is never counted here.");
+    expect(out).not.toContain("Paid in test mode");
     expect(out).toContain("Each currency is shown on its own and is never converted");
     expect(out).toContain("only while the scheduler runs");
-    expect(html(<ReceivablesCards summary={{ byCurrency: [], drafts: 0, pendingApproval: 0 }} />)).toBe("");
+    expect(html(<ReceivablesCards summary={{ byCurrency: [], drafts: 0, pendingApproval: 0, testInvoices: 0 }} />)).toBe("");
   });
 
   it("lists every invoice with its number, customer, due date, status and what is left, marks the overdue one, and is empty with a reason", async () => {
     const rows = await listInvoices(io.ctx("owner"), { limit: 200 });
-    expect(rows).toHaveLength(14);
+    expect(rows).toHaveLength(16);
     const out = text(<InvoiceList rows={rows} empty={{ title: "x", description: "y" }} />);
     expect(out).toContain("INV-0001");
+    expect(out).toContain("TEST-0001");
+    expect(out.match(/Test invoice/g)).toHaveLength(2);
     expect(out).toContain("Draft");
     expect(out).toContain("Mara Villanueva");
     expect(out).toMatch(/\d+ days? overdue/);
@@ -173,6 +178,16 @@ describe("one invoice", () => {
     expect(deal).toContain("Kitchen repipe (QA)");
   });
 
+  it("makes the customer and the deal links full-height targets on a phone, not an 18 px line of text", async () => {
+    const out = html(<InvoiceSummary detail={await detailOf("Kitchen repipe")} tz="UTC" />);
+    for (const href of ["/crm/contacts/", "/crm/opportunities/"]) {
+      const tag = out.match(new RegExp(`<a\\b[^>]*href="${href}[^"]*"[^>]*>`))?.[0];
+      expect(tag, href).toBeTruthy();
+      expect(tag, href).toContain("min-h-11");
+      expect(tag, href).toContain("inline-flex");
+    }
+  });
+
   it("lays out the lines with quantity, price, tax and amount, and a tax-inclusive invoice says its prices include tax", async () => {
     const usd = text(<LinesTable detail={await detailOf("Remote monitoring set-up")} />);
     expect(usd).toContain("Subtotal (before tax)");
@@ -203,25 +218,32 @@ describe("one invoice", () => {
     const d = await detailOf("Sump pump installation");
     const out = text(<Timeline detail={d} tz="Asia/Manila" />);
     expect(out).toContain("History");
-    expect(out).toContain("A test payment was confirmed by the payment provider");
-    expect(out).toContain("Test mode: no real money moved.");
+    expect(out).toContain("A payment was recorded by hand");
     expect(out).toContain("A refund was recorded");
-    expect(out).toContain("Payment provider ·");
     expect(out.indexOf("A refund was recorded")).toBeLessThan(out.indexOf("Draft created."));
     expect(out).not.toMatch(/customer\.example\.test|petra\.soriano/i);
+    // A test invoice's payment is the provider's, in test mode.
+    const test = text(<Timeline detail={await detailOf("Testing the payment account: paid")} tz="Asia/Manila" />);
+    expect(test).toContain("A test payment was confirmed by the payment provider");
+    expect(test).toContain("Test mode: no real money moved.");
+    expect(test).toContain("Payment provider ·");
   });
 
   it("lists payments with who vouched for each, marks a test one as test, shows refunds, and offers a refund only to the owner", async () => {
     const d = await detailOf("Sump pump installation");
     const owner = text(<PaymentsPanel payments={d.payments} refunds={d.refunds} currency="PHP" canRefund tz="UTC" />);
     expect(owner).toContain("Payments and refunds");
-    expect(owner).toContain("Test mode");
-    expect(owner).toContain("Confirmed by the payment provider in test mode. No real money moved.");
     expect(owner).toContain("₱500.00 refunded");
     expect(owner).toContain("Goodwill credit for a late arrival (QA)");
     expect(owner).toContain("Recorded by hand");
     expect(owner).toContain("Record a refund");
     expect(text(<PaymentsPanel payments={d.payments} refunds={d.refunds} currency="PHP" canRefund={false} tz="UTC" />)).not.toContain("Record a refund");
+    // A test invoice's payment is marked as a test, and there is nothing to refund or dispute on it.
+    const testInvoice = await detailOf("Testing the payment account: paid");
+    const test = text(<PaymentsPanel payments={testInvoice.payments} refunds={testInvoice.refunds} currency="PHP" canRefund isTest tz="UTC" />);
+    expect(test).toContain("Test mode");
+    expect(test).toContain("Confirmed by the payment provider in test mode. No real money moved.");
+    expect(test).not.toContain("Record a refund");
     const manual = await detailOf("Drain clearing");
     const hand = text(<PaymentsPanel payments={manual.payments} refunds={manual.refunds} currency="PHP" canRefund tz="UTC" />);
     expect(hand).toMatch(/Recorded by .* from their own word: Cash, receipt book page 12/);
@@ -234,7 +256,7 @@ describe("one invoice", () => {
 describe("what can be done", () => {
   const facts = (d: InvoiceFullDetail, over: Partial<ActionFacts> = {}): ActionFacts => ({
     status: d.invoice.status, paymentStatus: d.invoice.paymentStatus, writtenOff: d.invoice.writtenOffAt !== null, balanceMinor: d.invoice.balanceMinor, paidMinor: d.invoice.paidMinor, createdVia: d.invoice.createdVia,
-    isAuthor: true, approvalRequiredForCreators: true, hasTestConnection: true, can: { create: true, approve: true, send: true, recordPayment: true, void: true, refund: true, connect: true }, ...over,
+    isAuthor: true, approvalRequiredForCreators: true, hasTestConnection: true, isTest: d.invoice.isTest, can: { create: true, approve: true, send: true, recordPayment: true, void: true, refund: true, connect: true }, ...over,
   });
   const actions = (d: InvoiceFullDetail, over: Partial<ActionFacts> = {}, hasCustomer = true) => {
     const i = d.invoice;
@@ -243,7 +265,12 @@ describe("what can be done", () => {
 
   it("offers the owner what an issued invoice that is owed allows, and nothing for a void one", async () => {
     const out = text(actions(await detailOf("Water heater inspection")));
-    for (const label of ["Get the customer's link", "Record a payment", "Pay as a test", "Write off", "Void"]) expect(out).toContain(label);
+    for (const label of ["Get the customer's link", "Record a payment", "Write off", "Void"]) expect(out).toContain(label);
+    // A real invoice is never paid as a test or deleted; a test invoice is paid as a test, voided or deleted, and has nothing to record or write off.
+    expect(out).not.toMatch(/Pay as a test|Delete test invoice/);
+    const test = text(actions(await detailOf("Testing the payment account: open")));
+    for (const label of ["Get the customer's link", "Pay as a test", "Void", "Delete test invoice"]) expect(test).toContain(label);
+    expect(test).not.toMatch(/Record a payment|Write off/);
     expect(text(actions(await detailOf("Gas line check")))).not.toMatch(/Get the customer's link|Record a payment|Void/);
   });
 
@@ -383,7 +410,7 @@ describe("the payment account", () => {
     expect(out).toContain("It has not run against a PayMongo account yet.");
     expect(out).toContain("Event names are from PayMongo's documentation and have not been checked against a live account.");
     expect(out).toContain("Webhook signing secret saved. It is not shown again.");
-    expect(out).toContain("This account is in test mode, so customers are not sent to it.");
+    expect(out).toContain("This account is in test mode, so customers are not sent to it and it takes test invoices only.");
     expect(out).toContain("A test payment confirmed by the provider: not yet");
     expect(html(<ConnectionsPanel connections={[test]} providers={["paymongo"]} callsEnabled liveEnabled={false} tz="UTC" />)).toContain(test.webhookUrl);
     const live = text(<ConnectionsPanel connections={[connectionView({ mode: "live", id: "c2" })]} providers={[]} callsEnabled liveEnabled={false} tz="UTC" />);
@@ -415,8 +442,12 @@ describe("the payment account", () => {
     const broken = text(<ConnectionsPanel connections={[connectionView({ credentialsReadable: false, lastError: "PayMongo did not accept this key.", status: "needs_attention", statusLabel: "Needs attention" })]} providers={[]} callsEnabled liveEnabled={false} tz="UTC" />);
     expect(broken).toContain("The saved keys can no longer be read. Replace them to use this account.");
     expect(broken).toContain("PayMongo did not accept this key.");
-    expect(broken).toContain("Pause online payments");
+    // A refused key is checked or replaced, not paused (pausing would hide it); a healthy account can be paused.
+    expect(broken).not.toContain("Pause online payments");
+    expect(broken).toContain("Check the keys now");
+    expect(broken).toContain("Replace the keys");
     expect(broken).toContain("Disconnect");
+    expect(text(<ConnectionsPanel connections={[connectionView({})]} providers={[]} callsEnabled liveEnabled={false} tz="UTC" />)).toContain("Pause online payments");
     const paused = text(<ConnectionsPanel connections={[connectionView({ status: "disabled", statusLabel: "Paused" })]} providers={[]} callsEnabled liveEnabled={false} tz="UTC" />);
     expect(paused).toContain("Resume online payments");
     expect(paused).not.toContain("Pause online payments");

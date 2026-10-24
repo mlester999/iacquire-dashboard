@@ -19,6 +19,7 @@ import type { ConnectionView, DeliveryView } from "@/server/customer-payments/co
 // owner has seen a test payment succeed and confirmed. iAcquire never holds the money; customers pay the provider, which pays the business.
 
 const input16 = "text-[16px] sm:text-[14px]";
+const ACTION = "w-full sm:w-auto";
 const TONE: Record<ConnectionView["status"], React.ComponentProps<typeof Badge>["tone"]> = { pending_verification: "warning", connected: "success", needs_attention: "danger", disabled: "outline", revoked: "outline" };
 
 export interface ConnectionsPanelProps {
@@ -60,18 +61,33 @@ function WebhookHelp({ provider }: { provider: PaymentProviderId }) {
 }
 
 function Deliveries({ id, tz }: { id: string; tz: string }) {
+  // `rows` stays null until the server has answered with a list (possibly an empty one): "nothing has arrived" is said only then, never because the load failed.
   const [rows, setRows] = React.useState<DeliveryView[] | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [problem, setProblem] = React.useState<string | null>(null);
   const load = async () => {
     setLoading(true);
-    const r = await recentDeliveriesAction(id);
-    setRows(r.ok ? (r.data as DeliveryView[]) : []);
-    setLoading(false);
+    setProblem(null);
+    try {
+      const r = await recentDeliveriesAction(id);
+      if (r.ok) setRows(r.data as DeliveryView[]);
+      else setProblem(r.error);
+    } catch {
+      setProblem("Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
   return (
-    <details className="rounded-xl border border-line px-3 py-2" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open && rows === null) void load(); }}>
+    <details className="rounded-xl border border-line px-3 py-2" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open && rows === null && !loading) void load(); }}>
       <summary className="min-h-11 cursor-pointer text-[13px] font-medium text-ink-2 sm:min-h-8">What the provider has sent</summary>
       {loading && <p className="mt-2 text-[12.5px] text-muted">Loading…</p>}
+      {problem && (
+        <div role="alert" className="mt-2 space-y-2 rounded-xl bg-warning-soft px-3 py-2.5 text-[12.5px] text-warning-ink">
+          <p><span className="font-medium">Could not load what the provider has sent.</span> {problem}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void load()}>Try again</Button>
+        </div>
+      )}
       {rows && rows.length === 0 && <p className="mt-2 text-[12.5px] text-muted">Nothing has arrived from this provider yet. After you set up the webhook, run a test payment and it should appear here.</p>}
       {rows && rows.length > 0 && (
         <ul className="mt-2 divide-y divide-line text-[12.5px]" aria-label="Recent deliveries">
@@ -122,14 +138,17 @@ function ConnectionCard({ c, tz, callsEnabled, liveEnabled }: { c: ConnectionVie
       {c.provider !== "simulated" && !c.webhookSecretSaved && (
         <div className="space-y-2">
           <Field label={secretLabel} htmlFor={`sec-${c.id}`} hint="Until this is saved, messages from the provider are refused and payments cannot be confirmed."><Input id={`sec-${c.id}`} type="password" autoComplete="off" spellCheck={false} className={input16} value={secret} onChange={(e) => setSecret(e.target.value)} /></Field>
-          <Button variant="secondary" loading={busy("secret")} disabled={!secret.trim()} onClick={async () => { const r = await run("secret", () => saveWebhookSecretAction(c.id, { webhookSecret: secret }), `${secretLabel} saved.`); if (r) setSecret(""); }}>Save {secretLabel.toLowerCase()}</Button>
+          <Button className={ACTION} variant="secondary" loading={busy("secret")} disabled={!secret.trim()} onClick={async () => { const r = await run("secret", () => saveWebhookSecretAction(c.id, { webhookSecret: secret }), `${secretLabel} saved.`); if (r) setSecret(""); }}>Save {secretLabel.toLowerCase()}</Button>
         </div>
       )}
       {c.webhookSecretSaved && c.provider !== "simulated" && <p className="flex items-center gap-1.5 text-[13px] text-success-ink"><CheckCircle2 className="size-4" aria-hidden />{secretLabel} saved. It is not shown again.</p>}
 
       <div className="rounded-xl bg-surface-2/60 px-3 py-2.5 text-[13px] text-ink-2">
         <p className="flex items-center gap-1.5 font-medium text-ink"><FlaskConical className="size-4" aria-hidden />Run a test payment</p>
-        <p className="mt-1">Make a small invoice only for testing, issue it, and press <span className="font-medium">Pay as a test</span> on it. The provider reports the payment in test mode; no real money moves, but the test invoice will show as paid in your records. <Link href="/invoices/new" className="font-medium text-primary-ink underline">Start an invoice</Link></p>
+        <p className="mt-1">Make a <span className="font-medium">test invoice</span>, issue it, and press <span className="font-medium">Pay as a test</span> on it. The provider reports the payment in test mode; no real money moves. Only a test invoice can be paid this way: it is marked as a test everywhere, is never reminded about, is left out of what you are owed and your revenue, and can be voided or deleted afterwards. A real invoice is never marked paid by a test.</p>
+        {c.mode === "test"
+          ? <Link href="/invoices/new?test=1" className="mt-1 inline-flex min-h-11 items-center font-medium text-primary-ink underline">Start a test invoice</Link>
+          : <p className="mt-1 text-[12.5px] text-muted">This account is live, so it takes real invoices only. A test needs an account in test mode.</p>}
       </div>
 
       {c.mode === "live" && (
@@ -137,19 +156,21 @@ function ConnectionCard({ c, tz, callsEnabled, liveEnabled }: { c: ConnectionVie
           <p className="font-medium text-ink">Going live</p>
           {c.liveConfirmedAt ? <p className="text-success-ink">You confirmed on {formatInstant(c.liveConfirmedAt, tz)}. Customers can be sent to pay.</p> : <p className="text-ink-2">{c.liveConfirmBlock ?? "Everything needed is in place. Confirm when you are ready for customers to pay with real money."}</p>}
           {!liveEnabled && <p className="text-muted">Live payments are switched off for the whole service until iAcquire turns them on. That is a separate step from your confirmation.</p>}
-          {!c.liveConfirmedAt && <Button variant="brand" disabled={Boolean(c.liveConfirmBlock)} loading={busy("live")} onClick={() => setDialog("live")}>Confirm going live</Button>}
+          {!c.liveConfirmedAt && <Button className={ACTION} variant="brand" disabled={Boolean(c.liveConfirmBlock)} loading={busy("live")} onClick={() => setDialog("live")}>Confirm going live</Button>}
         </div>
       )}
-      {c.mode === "test" && c.provider !== "simulated" && <p className="text-[12.5px] text-muted">This account is in test mode, so customers are not sent to it. To take real payments, replace the keys with your live ones, run a test payment, then confirm going live.</p>}
+      {c.mode === "test" && c.provider !== "simulated" && <p className="text-[12.5px] text-muted">This account is in test mode, so customers are not sent to it and it takes test invoices only. To take real payments, run a test payment first, then replace the keys with your live ones and confirm going live.</p>}
       {!callsEnabled && c.provider !== "simulated" && <p className="text-[12.5px] text-muted">Calls to real payment providers are switched off in this environment, so keys cannot be checked and checkouts cannot be started until iAcquire turns them on.</p>}
 
-      <div className="flex flex-wrap gap-2">
-        {c.provider !== "simulated" && <Button variant="secondary" loading={busy("recheck")} onClick={() => run("recheck", () => recheckConnectionAction(c.id), "Checked.")}>Check the keys now</Button>}
-        {c.provider !== "simulated" && <Button variant="secondary" onClick={() => setDialog("keys")}>Replace the keys</Button>}
+      {/* One full-width 44 px button per row on a phone; side by side from the small breakpoint up. */}
+      <div className="grid gap-2 sm:flex sm:flex-wrap">
+        {c.provider !== "simulated" && <Button className={ACTION} variant="secondary" loading={busy("recheck")} onClick={() => run("recheck", () => recheckConnectionAction(c.id), "Checked.")}>Check the keys now</Button>}
+        {c.provider !== "simulated" && <Button className={ACTION} variant="secondary" onClick={() => setDialog("keys")}>Replace the keys</Button>}
         {c.status === "disabled"
-          ? <Button variant="secondary" loading={busy("resume")} onClick={() => run("resume", () => pauseConnectionAction(c.id, false), "Online payments resumed.")}>Resume online payments</Button>
-          : <Button variant="outline" loading={busy("pause")} onClick={() => run("pause", () => pauseConnectionAction(c.id, true), "Online payments paused.")}>Pause online payments</Button>}
-        <Button variant="ghost" onClick={() => setDialog("disconnect")}>Disconnect</Button>
+          ? <Button className={ACTION} variant="secondary" loading={busy("resume")} onClick={() => run("resume", () => pauseConnectionAction(c.id, false), "Online payments resumed.")}>Resume online payments</Button>
+          : c.status === "needs_attention" ? null
+            : <Button className={ACTION} variant="outline" loading={busy("pause")} onClick={() => run("pause", () => pauseConnectionAction(c.id, true), "Online payments paused.")}>Pause online payments</Button>}
+        <Button className={ACTION} variant="ghost" onClick={() => setDialog("disconnect")}>Disconnect</Button>
       </div>
       <Deliveries id={c.id} tz={tz} />
 
@@ -176,8 +197,8 @@ function ConnectionCard({ c, tz, callsEnabled, liveEnabled }: { c: ConnectionVie
           {isPaypal && <Field label="PayPal app" htmlFor="rk-env"><Select id="rk-env" className={input16} value={keys.environment} onChange={(e) => setKeys({ ...keys, environment: e.target.value as PaypalEnvironment })}><option value="sandbox">Sandbox (testing)</option><option value="live">Live</option></Select></Field>}
           <Field label={isPaypal ? "Client ID" : "Secret key"} htmlFor="rk-key"><Input id="rk-key" type={isPaypal ? "text" : "password"} autoComplete="off" spellCheck={false} className={input16} value={keys.apiKey} onChange={(e) => setKeys({ ...keys, apiKey: e.target.value })} /></Field>
           {isPaypal && <Field label="Client secret" htmlFor="rk-secret"><Input id="rk-secret" type="password" autoComplete="off" spellCheck={false} className={input16} value={keys.apiSecret} onChange={(e) => setKeys({ ...keys, apiSecret: e.target.value })} /></Field>}
-          <Field label={`${secretLabel} (only if it changed)`} htmlFor="rk-wh" optional><Input id="rk-wh" type="password" autoComplete="off" spellCheck={false} className={input16} value={keys.webhookSecret} onChange={(e) => setKeys({ ...keys, webhookSecret: e.target.value })} /></Field>
-          <label className="flex min-h-11 items-start gap-3 text-[12.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={keys.accept} onChange={(e) => setKeys({ ...keys, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
+          <Field label={`${secretLabel} (only if it changed)`} htmlFor="rk-wh" optional hint="Needed when you switch between test and live keys: the test webhook and the live webhook have different ones, so the old one is not kept for the other mode."><Input id="rk-wh" type="password" autoComplete="off" spellCheck={false} className={input16} value={keys.webhookSecret} onChange={(e) => setKeys({ ...keys, webhookSecret: e.target.value })} /></Field>
+          <label className="flex min-h-11 items-start gap-3 text-[12.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={keys.accept} onChange={(e) => setKeys({ ...keys, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
         </div>
       </ConfirmDialog>
     </li>
@@ -227,11 +248,11 @@ export function ConnectionsPanel({ connections, providers, callsEnabled, liveEna
           <div className="space-y-2 rounded-xl border border-line bg-surface-2/50 p-3">
             <p className="text-[12px] font-semibold uppercase tracking-[.08em] text-muted">What you are agreeing to</p>
             <p className="rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning-ink">This wording is proposed and has not been reviewed by a lawyer.</p>
-            <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={f.accept} onChange={(e) => setF({ ...f, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
+            <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={f.accept} onChange={(e) => setF({ ...f, accept: e.target.checked })} /><span>{AUTHORIZATION_TEXTS[CURRENT_AUTHORIZATION_VERSION]}</span></label>
           </div>
           <div>
             <Button
-              variant="brand" loading={busy("connect")} disabled={!ready}
+              className={ACTION} variant="brand" loading={busy("connect")} disabled={!ready}
               onClick={async () => {
                 const done = await run("connect", () => connectProviderAction({ provider, ...(simulated ? {} : { apiKey: f.apiKey, webhookSecret: f.webhookSecret || null }), ...(isPaypal ? { apiSecret: f.apiSecret, environment: f.environment } : {}), accountLabel: f.label || null, authorization: { accepted: true, version: CURRENT_AUTHORIZATION_VERSION } }), "Connected. The keys are saved and are not shown again.");
                 // What was typed (a key that can move money) does not stay in the page once it has been saved.

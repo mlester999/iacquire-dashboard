@@ -7,13 +7,13 @@ import { LIST_FILTER_LABELS, LIST_FILTERS, type ListFilter } from "@/lib/invoice
 import type { InvoiceView } from "@/server/invoices/views";
 import type { ReceivablesSummary } from "@/server/invoices/invoices";
 import type { NeedsLookRow } from "@/server/invoices/search";
-import { OverdueBadge, PaymentBadge, StatusBadge } from "@/components/invoices/status";
+import { OverdueBadge, PaymentBadge, StatusBadge, TestBadge } from "@/components/invoices/status";
 
 // The invoices list and what sits above it. Nothing here changes anything. Amounts are per currency and are never added across currencies. "Overdue" is true when the page is
 // read; the scheduled sweep that raises the notice runs only when the scheduler does, and the page says so.
 
 export function ReceivablesCards({ summary }: { summary: ReceivablesSummary }) {
-  if (summary.byCurrency.length === 0) return null;
+  if (summary.byCurrency.length === 0 && summary.testInvoices === 0) return null;
   return (
     <section aria-label="What is owed" className="space-y-2">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -27,12 +27,11 @@ export function ReceivablesCards({ summary }: { summary: ReceivablesSummary }) {
               <dd className={cn("text-right tabular-nums", r.overdueMinor > 0 ? "font-medium text-danger-ink" : "text-ink-2")}>{money(r.overdueMinor, r.currency)}{r.overdueCount > 0 ? ` (${r.overdueCount})` : ""}</dd>
               <dt className="text-muted">Received, net of refunds</dt>
               <dd className="text-right tabular-nums text-ink-2">{money(r.netReceivedMinor, r.currency)}</dd>
-              {r.testPaidMinor > 0 && (<><dt className="text-muted">Paid in test mode</dt><dd className="text-right tabular-nums text-ink-2" title="The payment provider ran these in test mode. No real money moved.">{money(r.testPaidMinor, r.currency)}</dd></>)}
             </dl>
           </div>
         ))}
       </div>
-      <p className="text-[12.5px] text-muted">Each currency is shown on its own and is never converted. Overdue is worked out when you open this page; the reminder and overdue notices go out only while the scheduler runs. Payments the provider ran in test mode are never counted as received.</p>
+      <p className="text-[12.5px] text-muted">Each currency is shown on its own and is never converted. Overdue is worked out when you open this page; the reminder and overdue notices go out only while the scheduler runs.{summary.testInvoices > 0 ? ` ${summary.testInvoices} test ${summary.testInvoices === 1 ? "invoice is" : "invoices are"} kept apart: nothing is owed on a test invoice, so it is never counted here.` : ""}</p>
     </section>
   );
 }
@@ -71,7 +70,8 @@ export function InvoiceList({ rows, empty }: { rows: InvoiceView[]; empty: { tit
             </span>
             <span className="flex flex-wrap items-center gap-1.5">
               <StatusBadge status={i.status} />
-              {i.status === "issued" && <PaymentBadge status={i.paymentStatus} />}
+              {i.isTest && <TestBadge />}
+              {i.status === "issued" && (!i.isTest || i.paymentStatus !== "unpaid") && <PaymentBadge status={i.paymentStatus} />}
               {i.overdue && <OverdueBadge days={i.daysOverdue} />}
             </span>
             <span className="min-w-24 text-right">

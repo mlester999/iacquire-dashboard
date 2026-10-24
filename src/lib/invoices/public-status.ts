@@ -23,6 +23,8 @@ export interface ReturnFacts {
   ageMinutes: number;
   /** The address said the customer pressed cancel. It only changes the wording of "not completed"; it never changes the state. */
   saidCancelled?: boolean;
+  /** The checkout was for a test invoice: whatever happened, it moved no money. */
+  isTest?: boolean;
 }
 
 export interface ReturnDescription {
@@ -37,6 +39,9 @@ export interface ReturnDescription {
 /** What to tell a customer who has come back from the provider's page. */
 export function describeReturn(f: ReturnFacts): ReturnDescription {
   if (f.payment && paymentIsCounted(f.payment.status)) {
+    if (f.isTest) {
+      return { state: "received", headline: "The test payment went through", detail: "This was a test invoice: no money moved and nothing is owed. A record of the test is on the invoice.", polling: false, tone: "ok" };
+    }
     return { state: "received", headline: "We have received your payment", detail: "Thank you. A record of it is on your invoice. You do not need to do anything else.", polling: false, tone: "ok" };
   }
   if (f.payment?.status === "needs_review") {
@@ -78,9 +83,11 @@ export interface InvoiceBannerFacts {
   hasPendingPayment: boolean;
   canPayOnline: boolean;
   overdue: boolean;
+  /** A test invoice says so first, whatever its payment state. */
+  isTest?: boolean;
 }
 
-export type InvoiceBannerKind = "paid" | "partly_paid" | "under_review" | "pending" | "overdue" | "pay_online" | "pay_other_way";
+export type InvoiceBannerKind = "test" | "paid" | "partly_paid" | "under_review" | "pending" | "overdue" | "pay_online" | "pay_other_way";
 
 export interface InvoiceBanner {
   kind: InvoiceBannerKind;
@@ -89,6 +96,8 @@ export interface InvoiceBanner {
 
 /** The one line at the top of an invoice page, chosen only from what the database holds. "Paid" is the database's word for it. */
 export function invoiceBanner(f: InvoiceBannerFacts): InvoiceBanner {
+  // A test invoice is never "overdue" or "pay online": nothing is owed on it, and a test is the first thing anybody who opens it should read.
+  if (f.isTest) return { kind: "test", tone: "info" };
   if (f.paymentStatus === "paid") return { kind: "paid", tone: "ok" };
   if (f.paymentStatus === "disputed") return { kind: "under_review", tone: "wait" };
   if (f.hasPendingPayment) return { kind: "pending", tone: "wait" };

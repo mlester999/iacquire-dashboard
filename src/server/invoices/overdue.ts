@@ -39,7 +39,7 @@ export async function runInvoiceOverdueSweep(opts: { now?: Date; limit?: number 
        from customer_invoices i
        join organizations o on o.id = i.org_id and o.kind = 'client' and o.status not in ('suspended', 'archived')
        join org_features f on f.org_id = i.org_id and f.feature = 'invoices' and f.enabled
-       where i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on is not null
+       where i.status = 'issued' and not i.is_test and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on is not null
          and i.due_on <= ($1::timestamptz at time zone 'UTC')::date
          and not exists (select 1 from customer_invoice_events e where e.invoice_id = i.id and e.org_id = i.org_id and e.kind = 'overdue' and e.detail->>'dueOn' = to_char(i.due_on, 'YYYY-MM-DD'))
        order by i.due_on, i.id limit $2`,
@@ -61,11 +61,11 @@ export async function runInvoiceOverdueSweep(opts: { now?: Date; limit?: number 
 async function markOverdue(c: Candidate, now: Date): Promise<boolean> {
   return withSystem(async (db) => {
     // Locked and read again: a payment, a void or a write-off in the meantime wins.
-    const inv = (await db.query<{ status: "draft" | "pending_approval" | "issued" | "void"; payment_status: InvoicePaymentStatus; written_off_at: Date | null; due_on: string; number: string | null; currency: CurrencyCode; balance_minor: string }>(
-      `select status, payment_status, written_off_at, to_char(due_on, 'YYYY-MM-DD') as due_on, number, currency, balance_minor::text as balance_minor from customer_invoices where id = $1 and org_id = $2 for update`,
+    const inv = (await db.query<{ status: "draft" | "pending_approval" | "issued" | "void"; payment_status: InvoicePaymentStatus; written_off_at: Date | null; due_on: string; number: string | null; currency: CurrencyCode; balance_minor: string; is_test: boolean }>(
+      `select status, payment_status, written_off_at, to_char(due_on, 'YYYY-MM-DD') as due_on, number, currency, balance_minor::text as balance_minor, is_test from customer_invoices where id = $1 and org_id = $2 for update`,
       [c.id, c.org_id],
     )).rows[0];
-    if (!inv || !isOverdue({ status: inv.status, paymentStatus: inv.payment_status, dueOn: inv.due_on, writtenOff: inv.written_off_at !== null }, now, c.timezone)) return false;
+    if (!inv || !isOverdue({ status: inv.status, paymentStatus: inv.payment_status, dueOn: inv.due_on, writtenOff: inv.written_off_at !== null, isTest: inv.is_test }, now, c.timezone)) return false;
     const seen = await db.query("select 1 from customer_invoice_events where invoice_id = $1 and org_id = $2 and kind = 'overdue' and detail->>'dueOn' = $3 limit 1", [c.id, c.org_id, inv.due_on]);
     if (seen.rows[0]) return false;
     const days = daysOverdue(inv.due_on, now, c.timezone);

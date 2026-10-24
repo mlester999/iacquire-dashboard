@@ -18,7 +18,7 @@ import { readZip } from "@/server/offboarding/zip";
 import { closeBilling, executeDeletion, getOffboarding, requestOffboardingAsAgency, shutdownClient } from "@/server/offboarding/service";
 import { eraseProposalsForContact } from "@/server/proposals/erase";
 import { decideOnProposal, loadPublicProposal, requestEmailCode } from "@/server/proposals/public";
-import { getProposal } from "@/server/proposals/proposals";
+import { getProposal, listProposals } from "@/server/proposals/proposals";
 import { agencyPeople } from "./support/crm";
 import { uid } from "./support/fixtures";
 import { draftBy, freshIp, NOW, proposalOrg, rows, sentWithLink, verifiedSession, type ProposalOrg } from "./support/proposals";
@@ -126,20 +126,38 @@ describe("a customer's privacy request", () => {
     const owner = p.actor("owner");
     const maria = await createContact(owner, { firstName: "Maria", lastName: "Santos", email: `maria-${uid()}@example.test` });
     const other = await createContact(owner, { firstName: "Omar", lastName: "Reyes", email: `omar-${uid()}@example.test` });
-    const open = await sentWithLink(p, { contactId: maria.id });
+    // No title typed: the form says "leave empty to use the customer's name", so these are titled "Proposal for Maria Santos".
+    const open = await sentWithLink(p, { contactId: maria.id, title: undefined });
     await verifiedSession(open.token, open.email);
-    const done = await sentWithLink(p, { contactId: maria.id });
+    const done = await sentWithLink(p, { contactId: maria.id, title: undefined });
     await accept(done.token, done.email);
-    const draft = await draftBy(p, "sales", { contactId: maria.id });
-    const theirs = await sentWithLink(p, { contactId: other.id });
+    const draft = await draftBy(p, "sales", { contactId: maria.id, title: undefined });
+    const typed = await draftBy(p, "sales", { contactId: maria.id, title: "Santos kitchen job" });
+    const theirs = await sentWithLink(p, { contactId: other.id, title: undefined });
+    const noticesOf = (id: string) => rows<{ body: string | null }>("select body from notifications where org_id = $1 and link = $2", [p.org.id, `/proposals/${id}`]);
+    expect((await noticesOf(open.proposal.id)).map((n) => n.body).join(" ")).toContain("Maria Santos");
+    expect((await noticesOf(theirs.proposal.id)).map((n) => n.body).join(" ")).toContain("Maria Santos");
+    expect((await rows<{ title: string }>("select title from proposals where id = $1", [draft.id]))[0].title).toMatch(/Maria Santos/);
 
     await redactContact(owner, maria.id, "Privacy request from the customer, 2026-10-23.");
 
-    const state = (id: string) => rows<{ status: string; closed_at: Date | null; client_name: string; client_company: string; client_email: string | null }>("select status, closed_at, client_name, client_company, client_email::text as client_email from proposals where id = $1", [id]).then((r) => r[0]);
+    const state = (id: string) => rows<{ status: string; closed_at: Date | null; title: string; number: string; client_name: string; client_company: string; client_email: string | null }>("select status, closed_at, title, number, client_name, client_company, client_email::text as client_email from proposals where id = $1", [id]).then((r) => r[0]);
     expect(await state(open.proposal.id)).toMatchObject({ status: "withdrawn", client_name: "", client_company: "", client_email: null });
     expect((await state(open.proposal.id)).closed_at).not.toBeNull();
     expect(await state(draft.id)).toMatchObject({ status: "withdrawn", client_name: "", client_email: null });
     expect(await state(done.proposal.id)).toMatchObject({ status: "accepted", client_name: "", client_email: null });
+    // The name derived from the contact leaves the title too, on the open, the withdrawn and the accepted alike; a title the business typed without the name stays.
+    for (const id of [open.proposal.id, done.proposal.id, draft.id]) {
+      const s = await state(id);
+      expect(s.title, id).toBe(`Proposal ${s.number}`);
+      expect(s.title).not.toMatch(/Maria|Santos/);
+    }
+    expect((await state(typed.id)).title).toBe("Santos kitchen job");
+    // Nothing finds her by name in the list any more, and the notices that quoted the title no longer do.
+    expect(await listProposals(owner, { search: "Maria" })).toEqual([expect.objectContaining({ id: theirs.proposal.id })]);
+    expect(await listProposals(owner, { search: "Santos" })).toEqual(expect.arrayContaining([expect.objectContaining({ id: typed.id })]));
+    for (const id of [open.proposal.id, done.proposal.id, draft.id]) for (const n of await noticesOf(id)) expect(n.body, id).toBeNull();
+    expect((await noticesOf(theirs.proposal.id)).map((n) => n.body).join(" ")).toContain("Maria Santos");
     expect((await rows<{ detail: { reason: string; wasSent: boolean } }>("select detail from proposal_events where proposal_id = $1 and kind = 'withdrawn'", [open.proposal.id]))[0].detail).toEqual({ reason: "privacy_request", wasSent: true });
     // Their links are closed and hold no name or address; the codes and sessions are gone.
     const links = await rows<{ revoked_at: Date | null; recipient_email: string | null; recipient_name: string | null }>("select revoked_at, recipient_email::text as recipient_email, recipient_name from proposal_share_links where proposal_id = any($1::uuid[])", [[open.proposal.id, done.proposal.id]]);
@@ -163,17 +181,19 @@ describe("a customer's privacy request", () => {
     const p = await proposalOrg();
     const owner = p.actor("owner");
     const c = await createContact(owner, { firstName: "Lina", lastName: "Cruz", email: `lina-${uid()}@example.test` });
-    const a = await sentWithLink(p, { contactId: c.id });
+    const a = await sentWithLink(p, { contactId: c.id, title: undefined });
     const b = await sentWithLink(p, { contactId: c.id });
     await accept(b.token, b.email);
     const r = await withSystem((db) => eraseProposalsForContact(db, p.org.id, c.id));
-    // One was open; both working copies are blanked; the frozen versions and the one recorded answer remain.
-    expect(r).toEqual({ withdrawn: 1, redacted: 2, retainedRecords: 3, signingEnded: 0 });
+    // One was open; both working copies are blanked; the frozen versions and the one recorded answer remain. One title carried her name and was reset; both proposals still hold
+    // the wording the business typed (the terms), which it is left to review.
+    expect(r).toEqual({ withdrawn: 1, redacted: 2, retainedRecords: 3, signingEnded: 0, titlesReset: 1, typedTextKept: 2 });
     expect((await rows<{ status: string }>("select status from proposals where id = $1", [a.proposal.id]))[0].status).toBe("withdrawn");
+    expect((await rows<{ title: string }>("select title from proposals where id = $1", [b.proposal.id]))[0].title).toBe("Website proposal");
     // Asked again, there is nothing left to do.
-    expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, c.id))).toMatchObject({ withdrawn: 0 });
+    expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, c.id))).toMatchObject({ withdrawn: 0, titlesReset: 0 });
     // A person with no proposals costs nothing.
-    expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, crypto.randomUUID()))).toEqual({ withdrawn: 0, redacted: 0, retainedRecords: 0, signingEnded: 0 });
+    expect(await withSystem((db) => eraseProposalsForContact(db, p.org.id, crypto.randomUUID()))).toEqual({ withdrawn: 0, redacted: 0, retainedRecords: 0, signingEnded: 0, titlesReset: 0, typedTextKept: 0 });
   });
 });
 

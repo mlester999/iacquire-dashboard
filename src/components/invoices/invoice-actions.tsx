@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { ConfirmDialog, useCrmAction } from "@/components/crm/ui";
 import {
-  discardInvoiceDraftAction, getInvoiceLinkAction, issueInvoiceAction, recordPaymentAction, requestInvoiceChangesAction, rotateInvoiceLinkAction, startTestPaymentAction,
+  deleteTestInvoiceAction, discardInvoiceDraftAction, getInvoiceLinkAction, issueInvoiceAction, recordPaymentAction, requestInvoiceChangesAction, rotateInvoiceLinkAction, startTestPaymentAction,
   submitInvoiceAction, voidInvoiceAction, withdrawInvoiceAction, writeOffInvoiceAction,
 } from "@/app/actions/invoices";
 import { amountText, money } from "@/lib/invoices/labels";
@@ -21,7 +21,7 @@ import type { CurrencyCode } from "@/lib/money";
 // What a person can do with an invoice right now. The server decides every one of these again; this only offers what the status and the person's role allow, and says why
 // when something is not offered. Money and quantities go to the server as the text the person typed.
 
-type Dialog = null | "issue" | "changes" | "discard" | "void" | "write_off" | "payment" | "rotate" | "test";
+type Dialog = null | "issue" | "changes" | "discard" | "void" | "write_off" | "payment" | "rotate" | "test" | "delete_test";
 
 export interface InvoiceActionsProps {
   invoiceId: string;
@@ -101,6 +101,7 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
         {has("test_payment") && <Button variant="outline" onClick={() => setDialog("test")}><FlaskConical className="size-4" aria-hidden />Pay as a test</Button>}
         {has("write_off") && <Button variant="outline" onClick={() => setDialog("write_off")}>Write off</Button>}
         {has("void") && <Button variant="outline" onClick={() => setDialog("void")}>Void</Button>}
+        {has("delete_test") && <Button variant="ghost" onClick={() => setDialog("delete_test")}>Delete test invoice</Button>}
         {has("discard") && <Button variant="ghost" onClick={() => setDialog("discard")}>Discard draft</Button>}
       </div>
       {!hasCustomer && (has("submit") || has("issue") || has("approve_issue")) && <p className="text-[12.5px] text-warning-ink">Choose the customer on the draft before it can be sent for approval or issued.</p>}
@@ -138,7 +139,7 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
       />
       <ConfirmDialog
         open={dialog === "void"} onOpenChange={(o) => !o && close()} title={`Void ${number ?? "this invoice"}?`} confirmLabel="Void invoice" danger loading={busy("void")} confirmDisabled={reason.trim().length < 5}
-        description="It keeps its number, the customer's link stops working and its reminders are cancelled. An invoice with a payment cannot be voided."
+        description={facts.isTest ? "It keeps its number and the customer's link stops working. A test invoice can be voided even after a test payment, because no money moved." : "It keeps its number, the customer's link stops working and its reminders are cancelled. An invoice with a payment cannot be voided."}
         onConfirm={async () => { const r = await run("void", () => voidInvoiceAction(invoiceId, { reason }), "Invoice voided."); if (r) close(); }}
       >
         <Field label="Why is it being voided?" htmlFor="inv-void"><Textarea id="inv-void" rows={2} className={input16} maxLength={400} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
@@ -157,8 +158,13 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
       />
       <ConfirmDialog
         open={dialog === "test"} onOpenChange={(o) => !o && close()} title="Pay this invoice as a test?" confirmLabel="Open the test payment page" loading={busy("test")}
-        description={<span className="space-y-2"><span className="block">Your payment account is in test mode, so no real money moves. But the provider will report the payment as made, and that is recorded against THIS invoice: it will show as paid in your records (marked as a test), reminders for it stop, and the customer&apos;s page will read as paid.</span><span className="block font-medium text-ink">Use an invoice you made only for testing, not one a customer owes.</span></span>}
+        description={<span className="space-y-2"><span className="block">Your payment account is in test mode, so no real money moves. The provider will report the payment as made, and it is recorded against this test invoice, marked as a test. It is not counted in what you are owed or earned, and it changes no deal.</span><span className="block font-medium text-ink">Only a test invoice can be paid as a test: a real invoice is never marked paid by one.</span></span>}
         onConfirm={testPay}
+      />
+      <ConfirmDialog
+        open={dialog === "delete_test"} onOpenChange={(o) => !o && close()} title={`Delete ${number ?? "this test invoice"}?`} confirmLabel="Delete test invoice" danger loading={busy("delete_test")}
+        description="The test invoice is deleted for good, with its test payments, its checkouts and the lines it left on the customer's timeline. Nothing on it was real, so nothing real is lost. A real invoice can never be deleted: it is voided instead. Deleting also deletes the proof of a test payment that lets you go live; to keep that proof, void the test invoice instead."
+        onConfirm={async () => { const r = await run("delete_test", () => deleteTestInvoiceAction(invoiceId), "Test invoice deleted."); if (r) router.push("/invoices"); }}
       />
       <ConfirmDialog
         open={dialog === "payment"} onOpenChange={(o) => !o && close()} title="Record a payment you received" confirmLabel="Record payment" loading={busy("payment")}
@@ -171,11 +177,11 @@ export function InvoiceActions({ invoiceId, version, number, status, currency, b
           <Field label="Received on" htmlFor="pay-date"><Input id="pay-date" type="date" className={input16} value={pay.receivedOn} max={todayIn(new Date(), tz)} onChange={(e) => setPay({ ...pay, receivedOn: e.target.value })} /></Field>
           <Field label="How was it paid?" htmlFor="pay-method"><Select id="pay-method" className={input16} value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}>{PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</Select></Field>
           <Field label="How do you know? (kept with the payment)" htmlFor="pay-evidence" hint="A transfer reference, a receipt number, who handed over the cash. Never a card number."><Textarea id="pay-evidence" rows={2} className={input16} maxLength={600} value={pay.evidence} onChange={(e) => setPay({ ...pay, evidence: e.target.value })} /></Field>
-          <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={pay.overpayment} onChange={(e) => setPay({ ...pay, overpayment: e.target.checked })} />The customer paid more than the invoice is for</label>
+          <label className="flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={pay.overpayment} onChange={(e) => setPay({ ...pay, overpayment: e.target.checked })} />The customer paid more than the invoice is for</label>
           <details className="rounded-xl border border-line px-3 py-2">
             <summary className="min-h-11 cursor-pointer text-[13px] text-ink-2 sm:min-h-8">If the customer may also be paying online</summary>
             <p className="mt-2 text-[12.5px] text-muted">A payment page may be open for this invoice. Recording a payment while one is open is refused, because it could be the same money twice. If this is a different payment, tick below.</p>
-            <label className="mt-2 flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={pay.override} onChange={(e) => setPay({ ...pay, override: e.target.checked })} />This is a different payment from the one the customer may be making online. Record it anyway.</label>
+            <label className="mt-2 flex min-h-11 items-start gap-3 text-[13px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={pay.override} onChange={(e) => setPay({ ...pay, override: e.target.checked })} />This is a different payment from the one the customer may be making online. Record it anyway.</label>
           </details>
           <p className="flex items-start gap-2 text-[12.5px] text-muted"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />Recorded by hand, this payment is shown apart and does not count as verified revenue unless the owner chose that in the invoice settings.</p>
         </div>

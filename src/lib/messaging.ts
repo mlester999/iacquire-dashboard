@@ -79,6 +79,7 @@ export const BLOCK_REASON_LABELS: Record<string, string> = {
   contact_unreachable: "The contact has no address for this channel",
   invoice_link_unavailable: "The invoice can no longer be paid online, so its reminder was not sent",
   invoice_changed: "The invoice was paid, voided or written off before this reminder was sent",
+  held_by_person: "A person on your team excluded this customer from automatic messages",
 };
 
 // ---------------------------------------------------------------------------

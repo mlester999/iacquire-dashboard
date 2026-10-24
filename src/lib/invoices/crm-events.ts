@@ -34,6 +34,8 @@ export interface AnnounceFacts {
   verification?: "provider_confirmed" | "manual";
   /** false for a provider's test mode: no real money moved. */
   livemode?: boolean;
+  /** The invoice is a test invoice: nothing is owed on it, so nothing it does starts anything and its lines on the timeline say so. */
+  isTest?: boolean;
 }
 
 /** The only keys a payload may have. A test keeps every announcement inside this list. */
@@ -80,12 +82,17 @@ export function dedupeKeyFor(type: InvoiceEventType, f: AnnounceFacts): string {
 }
 
 /**
- * Whether the announcement may start a workflow. Money that moved in a provider's test mode is a test: it is on the timeline, labelled, but never starts something that
- * would message a customer or change a deal. Everything else is announced.
+ * Whether the announcement may start a workflow. Money that moved in a provider's test mode, and everything about a test invoice, is a test: it is on the timeline, labelled,
+ * but never starts something that would message a customer or change a deal. Everything else is announced.
  */
-export const startsAutomations = (_type: InvoiceEventType, f: AnnounceFacts): boolean => f.livemode !== false;
+export const startsAutomations = (_type: InvoiceEventType, f: AnnounceFacts): boolean => f.livemode !== false && f.isTest !== true;
 
 export function activityFor(type: InvoiceEventType | TimelineOnlyKind, f: AnnounceFacts): { kind: string; summary: string } {
+  const out = activityLine(type, f);
+  return f.isTest ? { kind: out.kind, summary: `${out.summary} (a test invoice: nothing is owed)`.slice(0, 300) } : out;
+}
+
+function activityLine(type: InvoiceEventType | TimelineOnlyKind, f: AnnounceFacts): { kind: string; summary: string } {
   const n = f.number ?? "(not numbered yet)";
   const money = formatMinor(f.amountMinor ?? f.totalMinor, f.currency, "code");
   const test = f.livemode === false ? " (test mode: no real money moved)" : "";

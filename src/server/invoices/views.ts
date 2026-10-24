@@ -56,6 +56,8 @@ export interface InvoiceView {
   approvedByName: string | null;
   approvedAt: string | null;
   closesDeal: boolean;
+  /** A test invoice: nothing is owed on it and no money moves. Kept out of what is owed, overdue notices, reminders, revenue and deals. */
+  isTest: boolean;
   writtenOffAt: string | null;
   writeOffReason: string | null;
   issuedAt: string | null;
@@ -90,7 +92,7 @@ export async function viewsFor(db: Queryable, orgId: string, rows: InvoiceRow[],
   const deals = new Map((dealIds.length ? (await db.query<{ id: string; name: string }>("select id, name from crm_opportunities where org_id = $1 and id = any($2::uuid[])", [orgId, dealIds])).rows : []).map((c) => [c.id, c.name]));
   const users = new Map((userIds.length ? (await db.query<{ id: string; full_name: string }>("select id, full_name from users where id = any($1::uuid[])", [userIds])).rows : []).map((u) => [u.id, u.full_name]));
   return rows.map((r): InvoiceView => {
-    const overdueFacts = { status: r.status, paymentStatus: r.payment_status, dueOn: r.due_on, writtenOff: r.written_off_at !== null };
+    const overdueFacts = { status: r.status, paymentStatus: r.payment_status, dueOn: r.due_on, writtenOff: r.written_off_at !== null, isTest: r.is_test };
     const overdue = isOverdue(overdueFacts, now, tz);
     return {
       id: r.id, number: r.number, status: r.status, paymentStatus: r.payment_status, currency: r.currency, taxInclusive: r.tax_inclusive,
@@ -99,7 +101,7 @@ export async function viewsFor(db: Queryable, orgId: string, rows: InvoiceRow[],
       subtotalMinor: toMinor(r.subtotal_minor), taxMinor: toMinor(r.tax_minor), totalMinor: toMinor(r.total_minor), paidMinor: toMinor(r.paid_minor), refundedMinor: toMinor(r.refunded_minor),
       balanceMinor: toMinor(r.balance_minor), overpaidMinor: toMinor(r.overpaid_minor), issueOn: r.issue_on, dueOn: r.due_on, billTo: r.bill_to, billFrom: r.bill_from,
       paymentInstructions: r.payment_instructions, notes: r.notes, terms: r.terms, version: r.version, approvedVersion: r.approved_version,
-      approvedByName: r.approved_by ? users.get(r.approved_by) ?? null : null, approvedAt: iso(r.approved_at), closesDeal: r.closes_deal, writtenOffAt: iso(r.written_off_at),
+      approvedByName: r.approved_by ? users.get(r.approved_by) ?? null : null, approvedAt: iso(r.approved_at), closesDeal: r.closes_deal, isTest: r.is_test, writtenOffAt: iso(r.written_off_at),
       writeOffReason: r.write_off_reason, issuedAt: iso(r.issued_at), voidedAt: iso(r.voided_at), voidReason: r.void_reason, firstViewedAt: iso(r.first_viewed_at), createdBy: r.created_by,
       createdByName: r.created_by ? users.get(r.created_by) ?? null : null, createdVia: r.created_via, createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString(),
       overdue, daysOverdue: overdue ? daysOverdue(r.due_on, now, tz) : 0,

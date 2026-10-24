@@ -577,16 +577,24 @@ export async function duplicateProposal(actor: CrmActor, id: string, deps: Deps 
     const tz = await workspaceTimezone(db, actor.orgId);
     const today = todayIn(tz, deps.now ?? new Date());
     const number = await nextNumber(db, actor.orgId);
+    // A discount, or a price set off the price book, is the manager's to give. A copy made by someone without that permission comes without them (its lines are the price book's again,
+    // and the totals are worked out again), so the copy cannot carry a discount to a new customer that nobody who may give it has looked at. The history says so.
+    const doc = rowDoc(src);
+    const given = !actor.can("proposals.discount") ? priceChanges([], doc.lines) : null;
+    const stripped = given && needsDiscountPermission(given)
+      ? { ...doc, lines: doc.lines.map((l) => ({ ...l, discount: null, unitPriceMinor: l.catalogPriceMinor ?? l.unitPriceMinor })) }
+      : null;
+    const strippedTotals = stripped ? totalsFor(stripped).totals : null;
     const { rows } = await db.query<{ id: string }>(
       `insert into proposals (org_id, number, title, contact_id, company_id, opportunity_id, template_id, template_version, owner_user_id, currency, valid_until, requires_signature, client_name, client_company,
          client_email, doc, one_time_total_minor, monthly_total_minor, yearly_total_minor, internal_notes, origin, ai_run_id, created_by)
        select org_id, $3, title, contact_id, company_id, opportunity_id, template_id, template_version, $4, currency, case when valid_until >= $5::date then valid_until end, requires_signature, client_name, client_company,
-         client_email, doc, one_time_total_minor, monthly_total_minor, yearly_total_minor, internal_notes, origin, case when origin = 'ai' then ai_run_id end, $4
+         client_email, coalesce($6::jsonb, doc), coalesce($7::bigint, one_time_total_minor), coalesce($8::bigint, monthly_total_minor), coalesce($9::bigint, yearly_total_minor), internal_notes, origin, case when origin = 'ai' then ai_run_id end, $4
        from proposals where id = $1 and org_id = $2 returning id`,
-      [id, actor.orgId, number, userId, today],
+      [id, actor.orgId, number, userId, today, stripped ? JSON.stringify(stripped) : null, strippedTotals?.one_time ?? null, strippedTotals?.monthly ?? null, strippedTotals?.yearly ?? null],
     );
     await addEvent(db, actor.orgId, rows[0].id, 1, "created", asUser(userId), { duplicatedFrom: id, origin: src.origin });
-    await addEvent(db, actor.orgId, rows[0].id, 1, "duplicated", asUser(userId), { from: id, number: src.number });
+    await addEvent(db, actor.orgId, rows[0].id, 1, "duplicated", asUser(userId), { from: id, number: src.number, ...(given && stripped ? { discountsRemoved: given.discounts.length, pricesReset: given.overrides.length } : {}) });
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "proposals.created", targetType: "proposal", targetId: rows[0].id, result: "success", metadata: { number, duplicatedFrom: src.number } }, db);
     return buildDetail(db, actor, (await loadProposalRow(db, actor.orgId, rows[0].id)) as ProposalRow, deps.now);
   });

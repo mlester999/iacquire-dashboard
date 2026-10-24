@@ -516,6 +516,104 @@ describe("what pauses a batch for a person", () => {
   });
 });
 
+describe("a workspace that is suspended or paused while a batch has messages waiting", () => {
+  const suspend = (org: string, status = "suspended") => withSystem((db) => db.query("update organizations set status = $2 where id = $1", [org, status]));
+
+  it("holds what the batch already queued when the workspace is suspended, even before the next tick, and sends it after the workspace is back", async () => {
+    await putOthersAside();
+    const s = await reputationShop("Suspended Mid Shop");
+    const b = await readyBatch(s, 6, { ratePerMinute: 3 });
+    await advanceBatch(b.id, b.org, T);
+    expect(await statusCounts(b.id)).toEqual({ pending: 3, queued: 3 });
+
+    await suspend(b.org);
+    // The dispatcher alone, before the batch job has looked: nothing goes, and nothing is lost.
+    const rec = recordingProvider("twilio");
+    await dispatchDue({ transport: rec.transport, now: secs(1), limit: 100 });
+    expect(await sentBy(rec, b.id)).toHaveLength(0);
+    for (const r of await requestsFor(b.id)) expect(await messageFor(b.org, r.contact_id)).toMatchObject({ status: "queued", blocked_reason: null });
+
+    // The batch job considers the suspended workspace and parks its messages and the batch.
+    expect(await processReviewBatches({ now: secs(61) })).toMatchObject({ waiting: 1, queued: 0 });
+    expect((await getBatch(s.owner, b.id)).counts.notice).toMatchObject({ code: "workspace_paused" });
+    for (const r of await requestsFor(b.id)) expect(await messageFor(b.org, r.contact_id)).toMatchObject({ status: "queued", status_detail: "Held: the batch is paused." });
+    await dispatchDue({ transport: rec.transport, now: secs(62), limit: 100 });
+    expect(await sentBy(rec, b.id)).toHaveLength(0);
+    expect(await statusCounts(b.id)).toEqual({ pending: 3, queued: 3 });
+
+    // An archived workspace is held the same way.
+    await suspend(b.org, "archived");
+    await processReviewBatches({ now: secs(400) });
+    await dispatchDue({ transport: rec.transport, now: secs(401), limit: 100 });
+    expect(await sentBy(rec, b.id)).toHaveLength(0);
+
+    await suspend(b.org, "active");
+    await advanceBatch(b.id, b.org, secs(800));
+    expect((await getBatch(s.owner, b.id)).counts.notice).toBeNull();
+    await drain(b.id, b.org, rec, { from: 14 });
+    expect((await batchStatus(b.id)).status).toBe("completed");
+    expect(await sentBy(rec, b.id)).toHaveLength(6);
+  });
+
+  it("is refused by the dispatcher itself when the workspace pauses messaging between two ticks, and goes once the pause is lifted", async () => {
+    await putOthersAside();
+    const s = await reputationShop("Paused Between Ticks Shop");
+    const b = await readyBatch(s, 3, { ratePerMinute: 3 });
+    await advanceBatch(b.id, b.org, T);
+    await setClientPause(s.m.ctx("owner"), { scope: "messaging", paused: true, reason: "test" });
+    const rec = recordingProvider("twilio");
+    await dispatchDue({ transport: rec.transport, now: secs(1), limit: 100 });
+    expect(await sentBy(rec, b.id)).toHaveLength(0);
+    for (const r of await requestsFor(b.id)) {
+      const m = await messageFor(b.org, r.contact_id);
+      expect(m.status).toBe("queued");
+      expect(m.status_detail).toMatch(/paused/i);
+    }
+    await setClientPause(s.m.ctx("owner"), { scope: "messaging", paused: false });
+    // It checks again within minutes (it never sends a message of a paused workspace, and never forgets one).
+    await dispatchDue({ transport: rec.transport, now: secs(6 * 60), limit: 100 });
+    expect(await sentBy(rec, b.id)).toHaveLength(3);
+  });
+});
+
+describe("the pace when the sending window is closed", () => {
+  /** Business hours that are open for half an hour a day, starting six hours from now, so the window is closed for every tick of a test and opens later. */
+  async function windowOpensLater(org: string) {
+    const h = (T.getUTCHours() + 6) % 24;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const hours = Object.fromEntries(["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((d) => [d, [[`${pad(h)}:00`, `${pad(h)}:30`]]]));
+    await withSystem((db) => db.query("update messaging_settings set business_hours = $2::jsonb where org_id = $1", [org, JSON.stringify(hours)]));
+    const opens = new Date(T);
+    opens.setUTCHours(h, 5, 0, 0);
+    if (opens.getTime() <= T.getTime() + 3600_000) opens.setUTCDate(opens.getUTCDate() + 1);
+    return opens;
+  }
+
+  it("counts messages waiting for the window against the pace, so opening the window never releases more than the pace in a minute", async () => {
+    await putOthersAside();
+    const s = await reputationShop("Window Shop");
+    const b = await readyBatch(s, 12, { ratePerMinute: 3 });
+    const opens = await windowOpensLater(b.org);
+    // Closed: ten minutes of ticks queue what the pace allows and then wait; they do not pile up for the window.
+    for (let i = 0; i < 10; i += 1) await advanceBatch(b.id, b.org, secs(i * 61));
+    expect(await statusCounts(b.id)).toEqual({ pending: 9, queued: 3 });
+    for (const r of await requestsFor(b.id)) expect((await messageFor(b.org, r.contact_id)).send_after.getTime()).toBeGreaterThan(secs(10 * 61).getTime());
+
+    // Open: no minute sends more than the approved pace.
+    const rec = recordingProvider("twilio");
+    let seen = 0;
+    for (let i = 0; i < 6; i += 1) {
+      const at = new Date(opens.getTime() + i * 61_000);
+      await advanceBatch(b.id, b.org, at);
+      await dispatchDue({ transport: rec.transport, now: at, limit: 200 });
+      const mine = (await sentBy(rec, b.id)).length;
+      expect(mine - seen, `minute ${i + 1} after the window opened`).toBeLessThanOrEqual(3);
+      seen = mine;
+    }
+    expect(seen).toBe(12);
+  });
+});
+
 describe("cancelling a batch under way", () => {
   it("stops what hasn't gone, leaves what was sent, and asks nobody else", async () => {
     const s = await reputationShop("Cancel Shop");

@@ -3,7 +3,7 @@ import { Plus, Receipt } from "lucide-react";
 import { EmptyState } from "@/components/ui/primitives";
 import { formatDay, money } from "@/lib/invoices/labels";
 import type { InvoiceView } from "@/server/invoices/views";
-import { OverdueBadge, PaymentBadge, StatusBadge } from "@/components/invoices/status";
+import { OverdueBadge, PaymentBadge, StatusBadge, TestBadge } from "@/components/invoices/status";
 
 /** The invoices of one customer or deal, for the Invoices tab on their page. Rows open the invoice; nothing here changes anything. */
 export function InvoicesPanel({ rows, newHref, canCreate }: { rows: InvoiceView[]; newHref: string; canCreate: boolean }) {
@@ -21,7 +21,8 @@ export function InvoicesPanel({ rows, newHref, canCreate }: { rows: InvoiceView[
                 <span className="block text-[12.5px] text-muted">{i.dueOn ? `Due ${formatDay(i.dueOn)}` : "No due date yet"}</span>
               </span>
               <StatusBadge status={i.status} />
-              {i.status === "issued" && <PaymentBadge status={i.paymentStatus} />}
+              {i.isTest && <TestBadge />}
+              {i.status === "issued" && (!i.isTest || i.paymentStatus !== "unpaid") && <PaymentBadge status={i.paymentStatus} />}
               {i.overdue && <OverdueBadge days={i.daysOverdue} />}
               <span className="shrink-0 text-[13px] font-medium tabular-nums text-ink">{money(i.totalMinor, i.currency)}</span>
             </Link>

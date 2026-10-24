@@ -14,10 +14,11 @@ import { PERSON_FILTERS, isEditableStatus, type PersonFilter } from "@/lib/reput
 import { getSites, pendingLocations } from "@/server/reputation/connections";
 import { publicReviewsData, publicReviewsStatus } from "@/server/reputation/public-reviews";
 import { isReviewFilter } from "@/lib/reputation/external";
+import { REVIEWS_TABS } from "@/lib/reputation/review-tabs";
 
 type SP = Record<string, string | string[] | undefined>;
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
-const TABS: readonly ReviewsTab[] = ["overview", "requests", "feedback", "satisfaction", "public", "batches", "settings"];
+const TABS: readonly ReviewsTab[] = REVIEWS_TABS.map(([k]) => k);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**

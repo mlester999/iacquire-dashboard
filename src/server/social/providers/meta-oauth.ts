@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { env } from "@/server/env";
 import { classifyProviderFailure, type ProviderErrorBody } from "@/lib/social/errors";
 import { graphCall, metaSettings, type GraphCall, type MetaSettings } from "@/server/social/providers/meta";
+import { META_READ_SCOPE, META_REPLY_SCOPE } from "@/server/reputation/providers/meta-reviews";
 import { ProviderError } from "@/server/social/providers/types";
 import type { Platform } from "@/lib/social/rules";
 
@@ -23,14 +24,21 @@ export const metaConfigured = (s: MetaSettings = metaSettings()) => Boolean(s.ap
 
 export const redirectUri = () => `${env().APP_URL.replace(/\/+$/, "")}/api/social/oauth/meta/callback`;
 
-export function authorizeUrl(state: string, platform: Platform, s: MetaSettings = metaSettings()): string {
+/**
+ * The sign-in address. `reviews` adds the permissions to read a Page's recommendations (and, with `replies`, to answer them) for the "reconnect with review access" step of CRM →
+ * Reviews. They are never part of the ordinary Social media sign-in: a permission Meta has not approved for the live app works only for the app's own testers, so asking every
+ * Social media connection for it could stop other people's sign-ins before Meta approves it. Facebook only.
+ */
+export function authorizeUrl(state: string, platform: Platform, s: MetaSettings = metaSettings(), opts: { reviews?: boolean; replies?: boolean } = {}): string {
   if (!s.appId) throw new ProviderError("transient", "The Meta app is not configured in this deployment.");
   const u = new URL(`https://www.facebook.com/${s.version}/dialog/oauth`);
   u.searchParams.set("client_id", s.appId);
   u.searchParams.set("redirect_uri", redirectUri());
   u.searchParams.set("state", state);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", META_SCOPES[platform].join(","));
+  const scopes = [...META_SCOPES[platform]];
+  if (opts.reviews && platform === "facebook") scopes.push(META_READ_SCOPE, ...(opts.replies ? [META_REPLY_SCOPE] : []));
+  u.searchParams.set("scope", scopes.join(","));
   // A permission someone declined once is not offered again unless it is asked for again; without this, "reconnect and allow it" could loop. Harmless on a
   // first connection, where nothing has been declined.
   u.searchParams.set("auth_type", "rerequest");

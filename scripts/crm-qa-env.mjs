@@ -150,6 +150,10 @@ export const CRM_QA_ENV = {
   WEBCHAT_DAILY_AI_REPLIES: "",
   // And for the customer's proposal pages: the global switch is pinned off so a run never looks at a page that answers "temporarily unavailable".
   PROPOSALS_PUBLIC_DISABLED: "false",
+  // And for the customer's invoice page: pinned off, so a run never looks at /pay/<token> answering "temporarily unavailable".
+  INVOICES_PUBLIC_DISABLED: "false",
+  // And for the customer's review page: pinned off, so a run never looks at /r/<token> answering "temporarily unavailable".
+  REVIEWS_PUBLIC_DISABLED: "false",
   // Electronic signatures: no real signing service is ever reached in a QA run; the simulated one is what QA uses.
   ESIGN_WRITES_ENABLED: "false",
   // Customers' payments: no payment provider is ever called and nothing live is open. The simulated provider and its testing checkout page are what QA uses.

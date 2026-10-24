@@ -20,7 +20,12 @@
 -- ---------------------------------------------------------------------------
 
 -- View: the whole team that works with customers, read-only viewers, and the agency (an agency person is limited to a client's proposals by assignment and works
--- inside the audited support session in the application). Create (drafts, submit for approval): owner, manager, team member, sales rep. Discount (set or change a
+-- inside the audited support session in the application). FOUNDER DECISION STILL OPEN: the select policies of the tables below use app.permitted_orgs('proposals.view'), which
+-- (unlike contacts.view) does not require a support session for an agency caller, so at the database an assigned agency person is limited by assignment alone. Nothing reaches
+-- them that way today: the browser roles hold no privilege on these tables, and no screen offers an agency person these records (the proposal pages are the client's own people's).
+-- The files are different: 0090 makes the proposal-documents bucket require an active support session for an agency caller. If the founder wants the tables gated the same way, a later
+-- migration adds 'proposals.view' to the session-gated list of app.permitted_orgs and app.has_permission (both replaced from their live definitions, with their rollbacks and
+-- tests/rls-initplan-equivalence.test.ts); until then this paragraph is the record of the decision. Create (drafts, submit for approval): owner, manager, team member, sales rep. Discount (set or change a
 -- discount or override a catalog price) and approve: the client's owner and manager. Send: owner, manager, sales rep. Record a decision made outside the product:
 -- owner and manager. Catalog (price book, templates, tax rates): owner and manager, and the agency as a setup service. Settings: the owner.
 insert into role_permissions (role, permission) values

@@ -55,7 +55,9 @@ export function eventSentence(kind: string, d: Detail): string {
     case "overpaid": return `Paid more than the invoice total${str(d.overpaid) ? ` (${str(d.currency)} ${str(d.overpaid)} extra)` : ""}. Nothing was refunded.`;
     case "refund_recorded": return `A refund was recorded${amount ? `: ${amount}` : ""}.`;
     case "dispute_opened": return "The customer disputed a payment with their bank.";
-    case "dispute_closed": return "A payment dispute was closed.";
+    case "dispute_closed": return d.outcome === "won" ? "A payment dispute was closed in your favour. The money stays received." : d.outcome === "lost" ? `A payment dispute was lost${str(d.lost) && str(d.currency) ? `: ${str(d.currency)} ${str(d.lost)} was taken back` : ""}.` : "A payment dispute was closed.";
+    case "dispute_result_unknown": return "A payment dispute was closed, but how it ended is not known. The payment stays disputed until you record the result.";
+    case "refund_matched": return `A refund the payment provider reported matched one recorded by hand${amount ? ` (${amount})` : ""}. It is counted once.`;
     case "overdue": return "The invoice became overdue.";
     case "voided": return `Voided${str(d.reason) ? `: ${str(d.reason)}` : "."}`;
     case "written_off": return `Written off${str(d.reason) ? `: ${str(d.reason)}` : "."}`;

@@ -127,7 +127,7 @@ describe("what is never overdue", () => {
     await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: part.paymentId, open: true, actor: { id: null, kind: "provider" } }));
     await runInvoiceOverdueSweep({ now: new Date("2026-11-20T10:00:00Z") });
     expect(await overdueEvents(inv.invoice.id)).toHaveLength(0);
-    await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: part.paymentId, open: false, actor: { id: null, kind: "provider" } }));
+    await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: part.paymentId, open: false, outcome: "won", actor: { id: null, kind: "provider" } }));
     await runInvoiceOverdueSweep({ now: new Date("2026-11-21T10:00:00Z") });
     await runInvoiceOverdueSweep({ now: new Date("2026-11-22T10:00:00Z") });
     expect(await overdueEvents(inv.invoice.id)).toHaveLength(1);

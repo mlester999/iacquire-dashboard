@@ -10,9 +10,10 @@ import { searchContactsAction } from "@/app/actions/crm";
 import { createInvoiceDraftAction, searchInvoiceDealsAction, updateInvoiceDraftAction } from "@/app/actions/invoices";
 import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from "@/lib/money";
 import type { LineFormInput } from "@/lib/invoices/lines";
-import type { InvoiceFormState } from "@/lib/invoices/form-state";
+import { sameFormState, type InvoiceFormState } from "@/lib/invoices/form-state";
 import { blankLine, filledLines, previewLines } from "@/lib/invoices/screens";
 import { money } from "@/lib/invoices/labels";
+import { syncVersions } from "@/lib/social/edit-sync";
 
 // Writing an invoice. Everything a person types stays text until the server reads it with the same money rules this screen previews with: the totals shown here are a
 // preview, and the server works the real ones out again. Saving makes (or updates) a draft; nothing is sent to anyone, and nothing can be paid until it is issued.
@@ -32,14 +33,30 @@ export function formPayload(s: InvoiceFormState) {
     lines: filledLines(s.lines).map((l) => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice, discountPercent: l.discountPercent || null, discountAmount: l.discountAmount || null, taxPercent: l.taxPercent || null })),
     dueOn: s.dueOn || null,
     billTo: { name: s.billTo.name, company: s.billTo.company, email: s.billTo.email, phone: s.billTo.phone, addressLines: address, taxId: s.billTo.taxId },
-    paymentInstructions: s.paymentInstructions || null, notes: s.notes || null, terms: s.terms || null, closesDeal: s.deal ? s.closesDeal : false,
+    paymentInstructions: s.paymentInstructions || null, notes: s.notes || null, terms: s.terms || null, closesDeal: s.deal && !s.isTest ? s.closesDeal : false, isTest: s.isTest,
   };
 }
 
-export function InvoiceForm({ mode, initial, termsDays }: { mode: InvoiceFormMode; initial: InvoiceFormState; termsDays: number }) {
+/** `canMarkTest`: the person may make a test invoice (the owner, while a payment account in test mode is connected). The choice is also shown, fixed, on a draft that already is one. */
+export function InvoiceForm({ mode, initial, termsDays, canMarkTest = false }: { mode: InvoiceFormMode; initial: InvoiceFormState; termsDays: number; canMarkTest?: boolean }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
   const [s, setS] = React.useState<InvoiceFormState>(initial);
+  // The saved version these fields started from, and what it held. A save is checked against that version, never against the one the page shows now: the page changes under
+  // the form whenever a teammate saves or anything re-renders it, and the fields do not follow by themselves.
+  const [loaded, setLoaded] = React.useState({ version: mode.kind === "edit" ? mode.version : 0, state: initial });
+  // A newer version from the page: followed silently when nothing was typed or when it holds what was typed, otherwise a conflict that blocks Save. A new invoice has no version.
+  const sync = mode.kind === "edit" ? syncVersions({ loadedVersion: loaded.version, currentVersion: mode.version, loaded: loaded.state, current: initial, mine: s, same: sameFormState }) : "in_sync";
+  const adoptCurrent = () => {
+    if (mode.kind !== "edit") return;
+    setS(initial);
+    setLoaded({ version: mode.version, state: initial });
+  };
+  // Adjusting state while rendering is the pattern React documents for state that follows a prop: it re-renders at once, before anything is shown.
+  if (mode.kind === "edit") {
+    if (sync === "mark_current") setLoaded({ version: mode.version, state: initial });
+    else if (sync === "adopt_current") adoptCurrent();
+  }
   const set = <K extends keyof InvoiceFormState>(k: K, v: InvoiceFormState[K]) => setS((p) => ({ ...p, [k]: v }));
   const setLine = (i: number, patch: Partial<LineFormInput>) => setS((p) => ({ ...p, lines: p.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
   const preview = React.useMemo(() => previewLines(s.lines, s.currency, s.taxInclusive), [s.lines, s.currency, s.taxInclusive]);
@@ -62,13 +79,25 @@ export function InvoiceForm({ mode, initial, termsDays }: { mode: InvoiceFormMod
       const r = await run("save", () => createInvoiceDraftAction(body), "Draft saved.");
       if (r) router.push(`/invoices/${(r as { id: string }).id}`);
     } else {
-      const r = await run("save", () => updateInvoiceDraftAction(mode.id, body, mode.version), "Draft saved.");
-      if (r) router.push(`/invoices/${mode.id}`);
+      const sent = s;
+      const r = await run("save", () => updateInvoiceDraftAction(mode.id, body, loaded.version), "Draft saved.");
+      if (r) {
+        // The server now holds what was sent, so the page's own refresh with the new version is this save coming back, not someone else's change.
+        setLoaded({ version: r.version, state: sent });
+        router.push(`/invoices/${mode.id}`);
+      }
     }
   }
 
   return (
-    <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); if (canSave) void save(); }} aria-label={mode.kind === "new" ? "New invoice" : "Edit invoice"}>
+    <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); if (canSave && sync !== "conflict") void save(); }} aria-label={mode.kind === "new" ? "New invoice" : "Edit invoice"}>
+      {sync === "conflict" && (
+        <div role="alert" className="rounded-xl border border-warning-ink/30 bg-warning-soft px-3 py-2.5 text-[13px] text-warning-ink">
+          <p className="font-medium">Someone changed this invoice while you were editing it.</p>
+          <p className="mt-0.5">You started from version {loaded.version}; it is now version {mode.kind === "edit" ? mode.version : loaded.version}. Your edits are kept below, but they cannot be saved over the newer version. Copy anything you want to keep, then load the latest version.</p>
+          <Button type="button" size="sm" variant="outline" className="mt-2" onClick={adoptCurrent}>Load the latest version</Button>
+        </div>
+      )}
       <section aria-labelledby="inv-customer" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
         <h2 id="inv-customer" className="text-[15px] font-semibold text-ink">Customer</h2>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -157,16 +186,29 @@ export function InvoiceForm({ mode, initial, termsDays }: { mode: InvoiceFormMod
         <Field label="How to pay" htmlFor="inv-pay" optional hint="Shown on the invoice: bank details, a mobile wallet number, anything the customer needs. Never type a card number."><Textarea id="inv-pay" rows={3} className={input16} maxLength={1000} value={s.paymentInstructions} onChange={(e) => set("paymentInstructions", e.target.value)} /></Field>
         <Field label="Notes" htmlFor="inv-notes" optional><Textarea id="inv-notes" rows={2} className={input16} maxLength={2000} value={s.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
         <Field label="Terms" htmlFor="inv-terms" optional><Textarea id="inv-terms" rows={2} className={input16} maxLength={2000} value={s.terms} onChange={(e) => set("terms", e.target.value)} /></Field>
-        {s.deal && (
+        {s.deal && !s.isTest && (
           <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2">
-            <input type="checkbox" className="mt-0.5 size-5" checked={s.closesDeal} onChange={(e) => set("closesDeal", e.target.checked)} />
+            <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.closesDeal} onChange={(e) => set("closesDeal", e.target.checked)} />
             <span>Paying this invoice in full may mark the deal &ldquo;{s.deal.name}&rdquo; as won. <span className="text-muted">It only happens if the owner has turned that rule on in the invoice settings, and only for a payment the payment provider confirmed.</span></span>
           </label>
         )}
       </section>
 
+      {(canMarkTest || s.isTest) && (
+        <section aria-labelledby="inv-test" className="space-y-2 rounded-2xl border border-line bg-surface p-4 sm:p-5">
+          <h2 id="inv-test" className="text-[15px] font-semibold text-ink">Trying your payment account</h2>
+          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2">
+            <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.isTest} disabled={!canMarkTest} onChange={(e) => setS((p) => ({ ...p, isTest: e.target.checked, closesDeal: e.target.checked ? false : p.closesDeal }))} />
+            <span>
+              <span className="font-medium text-ink">This is a test invoice.</span> Nothing is owed on it and no money moves.{" "}
+              <span className="text-muted">Use it with Pay as a test while your payment account is in test mode. It has its own TEST- number, is never reminded about, is left out of what you are owed, your revenue and your deals, and can be voided or deleted even after a test payment. It cannot be changed back once it is issued.{!canMarkTest ? " Only the business owner can change this." : ""}</span>
+            </span>
+          </label>
+        </section>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="brand" loading={busy("save")} disabled={!canSave}>{mode.kind === "new" ? "Save draft" : "Save changes"}</Button>
+        <Button type="submit" variant="brand" loading={busy("save")} disabled={!canSave || sync === "conflict"}>{mode.kind === "new" ? "Save draft" : "Save changes"}</Button>
         <Button type="button" variant="ghost" onClick={() => router.push(mode.kind === "edit" ? `/invoices/${mode.id}` : "/invoices")}>Cancel</Button>
         {!canSave && <p className="text-[12.5px] text-muted">{filled.length === 0 ? "Add at least one line to save." : "Fix the lines marked above to save."}</p>}
       </div>

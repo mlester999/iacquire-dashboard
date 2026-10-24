@@ -356,8 +356,16 @@ async function applyAfterPayment(db: Queryable, c: ApplyContext): Promise<Applie
   const actor = { id: null, kind: "provider" as const };
 
   if (e.kind === "dispute.opened" || e.kind === "dispute.closed") {
-    const r = await guarded(db, () => applyDisputeInTx(db, { orgId: c.orgId, paymentId: pay.id, open: e.kind === "dispute.opened", actor }));
-    return r.ok ? finish("processed", r.value.changed ? "The dispute was recorded." : "Nothing changed.") : finish("rejected", r.error.message);
+    const open = e.kind === "dispute.opened";
+    const r = await guarded(db, () => applyDisputeInTx(db, { orgId: c.orgId, paymentId: pay.id, open, outcome: open ? null : e.disputeOutcome, lostMinor: open ? null : e.amountMinor, actor }));
+    if (!r.ok) return finish("rejected", r.error.message);
+    const d = r.value;
+    if (open) return finish("processed", d.changed ? "The dispute was recorded." : "Nothing changed.");
+    // The provider's word is not enough to put money back: a close with no clear outcome leaves the payment disputed for the owner to settle.
+    if (d.outcome === "unknown") return finish("processed", "The dispute was closed, but the provider did not say who won. The payment stays disputed until the owner records the result.");
+    if (!d.changed) return finish("processed", "Nothing changed.");
+    return finish("processed", d.outcome === "won" ? "The dispute was closed in the seller's favour; the payment counts again." : d.chargebackMinor > 0 ? `The dispute was lost; ${toDecimalString(d.chargebackMinor, pay.currency)} ${pay.currency} was recorded as a chargeback.` : "The dispute was lost; refunds already recorded cover it.",
+      effectsFor(c.orgId, { refundReview: d.chargebackRefundId ? { invoiceId: pay.invoice_id, refundId: d.chargebackRefundId } : null }));
   }
 
   // A refund of money this product recorded. The reduction of what was kept is the business's to see; the deal is never reopened.
@@ -374,6 +382,7 @@ async function applyAfterPayment(db: Queryable, c: ApplyContext): Promise<Applie
     });
     return finish("rejected", r.error.message);
   }
+  if (r.value.matched) return finish("processed", "This refund matches one the owner recorded by hand, so it is counted once.");
   return finish("processed", r.value.duplicate ? "This refund was already recorded; nothing changed." : `A refund of ${toDecimalString(e.amountMinor, pay.currency)} ${pay.currency} was recorded.`, effectsFor(c.orgId, { refundReview: r.value.duplicate ? null : { invoiceId: pay.invoice_id, refundId: r.value.refundId } }));
 }
 

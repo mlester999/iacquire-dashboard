@@ -21,7 +21,7 @@ function remember() {
 /** Where the browser goes. A seam so the page's behaviour can be tested without a real navigation. */
 const goTo = (url: string) => window.location.assign(url);
 
-export function PayPanel({ token, canPay, balanceMinor, currency, navigate = goTo }: { token: string; canPay: boolean; balanceMinor: number; currency: CurrencyCode; navigate?: (url: string) => void }) {
+export function PayPanel({ token, canPay, balanceMinor, currency, isTest = false, navigate = goTo }: { token: string; canPay: boolean; balanceMinor: number; currency: CurrencyCode; isTest?: boolean; navigate?: (url: string) => void }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -50,7 +50,7 @@ export function PayPanel({ token, canPay, balanceMinor, currency, navigate = goT
         {canPay && (
           <Button variant="brand" size="lg" className="w-full sm:w-auto" loading={busy} onClick={pay}>
             <CreditCard className="size-4" aria-hidden />
-            {busy ? "Opening the payment page" : `Pay ${money(balanceMinor, currency)} online`}
+            {busy ? "Opening the payment page" : isTest ? `Pay ${money(balanceMinor, currency)} as a test` : `Pay ${money(balanceMinor, currency)} online`}
           </Button>
         )}
         <Button variant="secondary" size="lg" className="w-full sm:w-auto" onClick={() => window.print()}>
@@ -58,7 +58,8 @@ export function PayPanel({ token, canPay, balanceMinor, currency, navigate = goT
           Print or save as PDF
         </Button>
       </div>
-      {canPay && <p className="text-[12.5px] leading-relaxed text-muted">You will be taken to your payment provider&apos;s own page to pay. Your card details are entered there, not on this page.</p>}
+      {canPay && !isTest && <p className="text-[12.5px] leading-relaxed text-muted">You will be taken to your payment provider&apos;s own page to pay. Your card details are entered there, not on this page.</p>}
+      {canPay && isTest && <p className="text-[12.5px] leading-relaxed text-muted">This is a test invoice. You will be taken to a testing page; no card is asked for and no money moves.</p>}
       <noscript><p className="text-[12.5px] text-muted">Paying online needs JavaScript. You can still pay using the instructions on the invoice.</p></noscript>
       {error && (
         <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13.5px] text-danger-ink">

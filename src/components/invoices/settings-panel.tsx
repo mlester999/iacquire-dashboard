@@ -8,7 +8,7 @@ import { useCrmAction } from "@/components/crm/ui";
 import { authorizeRemindersAction, saveInvoiceSettingsAction, switchOffRemindersAction } from "@/app/actions/invoices";
 import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from "@/lib/money";
 import { CLOSE_RULES, CLOSE_RULE_LABELS, type CloseRule } from "@/lib/invoices/close-rule";
-import { describeOffsets, offsetsToText, parseOffsetsText } from "@/lib/invoices/screens";
+import { describeOffsets, nextNumberChange, offsetsToText, parseOffsetsText } from "@/lib/invoices/screens";
 import { REMINDER_CHANNEL_LABELS, REMINDER_CHANNELS, type ReminderChannel } from "@/lib/invoices/reminder-text";
 import { formatInstant } from "@/lib/invoices/labels";
 import type { InvoiceSettings } from "@/server/invoices/settings";
@@ -29,19 +29,20 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
   const { run, busy } = useCrmAction();
   const [s, setS] = React.useState({
     legalName: settings.legalName ?? "", address: settings.addressLines.join("\n"), taxLabel: settings.taxLabel ?? "", taxId: settings.taxId ?? "", replyToEmail: settings.replyToEmail ?? "",
-    numberPrefix: settings.numberPrefix, nextNumber: String(settings.nextNumber), defaultCurrency: settings.defaultCurrency ?? "", paymentTermsDays: String(settings.paymentTermsDays),
+    numberPrefix: settings.numberPrefix, nextNumber: null as string | null, defaultCurrency: settings.defaultCurrency ?? "", paymentTermsDays: String(settings.paymentTermsDays),
     defaultPaymentInstructions: settings.defaultPaymentInstructions ?? "", footerNote: settings.footerNote ?? "", approvalRequiredForCreators: settings.approvalRequiredForCreators,
     closeRule: settings.closeRule as CloseRule, countManualAsVerified: settings.countManualAsVerified,
   });
   const set = <K extends keyof typeof s>(k: K, v: (typeof s)[K]) => setS((p) => ({ ...p, [k]: v }));
-  const nextNumber = Number(s.nextNumber);
+  // The next number is null until the person types in it: the field then shows the counter as the page knows it, and a save leaves it out. What they typed is checked against that counter.
+  const next = nextNumberChange(s.nextNumber, settings.nextNumber);
   const terms = Number(s.paymentTermsDays);
-  const problem = !Number.isInteger(nextNumber) || nextNumber < settings.nextNumber ? `The next number can be raised but not lowered (it is ${settings.nextNumber}).` : !Number.isInteger(terms) || terms < 0 || terms > 365 ? "Payment terms are a number of days from 0 to 365." : null;
+  const problem = next.problem ?? (!Number.isInteger(terms) || terms < 0 || terms > 365 ? "Payment terms are a number of days from 0 to 365." : null);
 
   const save = () =>
     run("save", () => saveInvoiceSettingsAction({
       legalName: s.legalName, addressLines: s.address.split("\n").map((l) => l.trim()).filter(Boolean), taxLabel: s.taxLabel, taxId: s.taxId, replyToEmail: s.replyToEmail, numberPrefix: s.numberPrefix,
-      nextNumber, defaultCurrency: s.defaultCurrency || null, paymentTermsDays: terms, defaultPaymentInstructions: s.defaultPaymentInstructions, footerNote: s.footerNote,
+      ...(next.send !== undefined ? { nextNumber: next.send } : {}), defaultCurrency: s.defaultCurrency || null, paymentTermsDays: terms, defaultPaymentInstructions: s.defaultPaymentInstructions, footerNote: s.footerNote,
       approvalRequiredForCreators: s.approvalRequiredForCreators, closeRule: s.closeRule, countManualAsVerified: s.countManualAsVerified,
     }, settings.version), "Settings saved.");
 
@@ -67,7 +68,7 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
           <h2 id="set-num" className="text-[15px] font-semibold text-ink">Numbers, currency and terms</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Number prefix" htmlFor="set-prefix" hint="Up to 12 letters, digits or . _ / -"><Input id="set-prefix" className={input16} maxLength={12} value={s.numberPrefix} onChange={(e) => set("numberPrefix", e.target.value)} /></Field>
-            <Field label="Next number" htmlFor="set-next" hint="Can be raised, never lowered: a number given out is never reused."><Input id="set-next" inputMode="numeric" className={input16} value={s.nextNumber} onChange={(e) => set("nextNumber", e.target.value)} /></Field>
+            <Field label="Next number" htmlFor="set-next" hint="Can be raised, never lowered: a number given out is never reused."><Input id="set-next" inputMode="numeric" className={input16} value={s.nextNumber ?? String(settings.nextNumber)} onChange={(e) => set("nextNumber", e.target.value)} /></Field>
             <Field label="Usual currency" htmlFor="set-currency" optional>
               <Select id="set-currency" className={input16} value={s.defaultCurrency} onChange={(e) => set("defaultCurrency", e.target.value)}>
                 <option value="">Use the workspace currency</option>
@@ -78,7 +79,7 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
           </div>
           <Field label="How customers can pay (printed on every invoice)" htmlFor="set-pay" optional hint="Bank details or a wallet number. Never type a card number."><Textarea id="set-pay" rows={3} className={input16} maxLength={1000} value={s.defaultPaymentInstructions} onChange={(e) => set("defaultPaymentInstructions", e.target.value)} /></Field>
           <Field label="Footer note" htmlFor="set-footer" optional><Textarea id="set-footer" rows={2} className={input16} maxLength={600} value={s.footerNote} onChange={(e) => set("footerNote", e.target.value)} /></Field>
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={s.approvalRequiredForCreators} onChange={(e) => set("approvalRequiredForCreators", e.target.checked)} /><span>People who write invoices need the owner or a manager to approve them before they are issued. <span className="text-muted">Turn it off only if you trust them to issue their own.</span></span></label>
+          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.approvalRequiredForCreators} onChange={(e) => set("approvalRequiredForCreators", e.target.checked)} /><span>People who write invoices need the owner or a manager to approve them before they are issued. <span className="text-muted">Turn it off only if you trust them to issue their own.</span></span></label>
         </section>
 
         <section aria-labelledby="set-paid" className="space-y-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
@@ -87,13 +88,13 @@ export function InvoiceSettingsPanel({ settings, canEdit }: { settings: InvoiceS
             <legend className="sr-only">What happens to the linked deal</legend>
             {CLOSE_RULES.map((r) => (
               <label key={r} className="flex min-h-11 items-start gap-3 rounded-xl border border-line px-3 py-2 text-[13.5px] has-[:checked]:border-primary has-[:checked]:bg-primary-soft/40">
-                <input type="radio" name="close-rule" className="mt-0.5 size-5" checked={s.closeRule === r} onChange={() => set("closeRule", r)} />
+                <input type="radio" name="close-rule" className="mt-0.5 size-5 shrink-0" checked={s.closeRule === r} onChange={() => set("closeRule", r)} />
                 <span><span className="font-medium text-ink">{CLOSE_RULE_LABELS[r]}</span><span className="block text-[12.5px] text-muted">{CLOSE_RULE_WORDS[r]}</span></span>
               </label>
             ))}
           </fieldset>
           <p className="text-[12.5px] text-muted">A part-payment, a deposit or a refund never changes a deal, and a refund after a deal was marked won only creates a task.</p>
-          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={s.countManualAsVerified} onChange={(e) => set("countManualAsVerified", e.target.checked)} /><span>Count payments I record by hand as verified revenue in the Lead Sources report. <span className="text-muted">Off by default: a payment you record is your word, not the payment provider&apos;s. When off, they are shown on their own line and never added to revenue. Turning it on is your choice and is shown on the report.</span></span></label>
+          <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={s.countManualAsVerified} onChange={(e) => set("countManualAsVerified", e.target.checked)} /><span>Count payments I record by hand as verified revenue in the Lead Sources report. <span className="text-muted">Off by default: a payment you record is your word, not the payment provider&apos;s. When off, they are shown on their own line and never added to revenue. Turning it on is your choice and is shown on the report.</span></span></label>
         </section>
       </fieldset>
       {canEdit && (
@@ -149,7 +150,7 @@ export function RemindersPanel({ settings, overview, canEdit, canSwitchOff, tz }
       <fieldset className="space-y-1" disabled={!canEdit}>
         <legend className="text-[13px] font-medium text-ink-2">Send reminders by</legend>
         {REMINDER_CHANNELS.map((c) => (
-          <label key={c} className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5" checked={channels.includes(c)} onChange={() => toggle(c)} /><span><span className="font-medium text-ink">{REMINDER_CHANNEL_LABELS[c]}</span> <span className="text-muted">{CHANNEL_NOTE[c]}</span></span></label>
+          <label key={c} className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2"><input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={channels.includes(c)} onChange={() => toggle(c)} /><span><span className="font-medium text-ink">{REMINDER_CHANNEL_LABELS[c]}</span> <span className="text-muted">{CHANNEL_NOTE[c]}</span></span></label>
         ))}
       </fieldset>
       {canEdit && (
@@ -178,7 +179,7 @@ export function RemindersPanel({ settings, overview, canEdit, canSwitchOff, tz }
       {canEdit && (
         <div className="space-y-3 border-t border-line pt-4">
           <label className="flex min-h-11 items-start gap-3 text-[13.5px] text-ink-2">
-            <input type="checkbox" className="mt-0.5 size-5" checked={read} onChange={(e) => setRead(e.target.checked)} />
+            <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={read} onChange={(e) => setRead(e.target.checked)} />
             <span>I have read these messages. I authorize iAcquire to send exactly these reminders, on {parsed.ok ? describeOffsets(parsed.offsets).toLowerCase().replace(/\.$/, "") : "the days above"}, by {channels.map((c) => REMINDER_CHANNEL_LABELS[c].toLowerCase()).join(" and ")}, to customers who have agreed to receive service messages, for up to 90 days. <span className="text-muted">The authorization is recorded with your name and the exact wording.</span></span>
           </label>
           <div className="flex flex-wrap gap-2">

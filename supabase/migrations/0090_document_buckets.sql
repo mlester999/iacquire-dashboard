@@ -1,6 +1,7 @@
 -- Phase 5 and 6: the two private-file buckets the next modules need, added once so no later migration has to re-create app.file_permission.
 --
---   * proposal-documents: the PDF of each frozen proposal version, signed copies and signing certificates. Read needs proposals.view, write proposals.create.
+--   * proposal-documents: the PDF of each frozen proposal version, signed copies and signing certificates. Read needs proposals.view, write proposals.create. An agency person
+--     (staff, manager or Super Admin) also needs an active support session on that client, as for a customer's details in the CRM.
 --   * staff-messages: attachments in the agency's internal staff Messages. Writes need an agency user holding agency.messages.use, on the agency workspace.
 --     Reads are false for every browser: the server route checks the person's membership of the conversation, then reads through the private-file service.
 --     These files are stored with visibility 'client' so the rule above is the only gate; the rule, not the visibility, keeps them agency-only.
@@ -38,7 +39,19 @@ as $$
       when 'aqi-attachments' then
         not app.is_agency_staff() and app.has_permission(p_org, 'agents.use')
       when 'social-media' then app.has_permission(p_org, case when p_write then 'social.create' else 'social.view' end)
-      when 'proposal-documents' then app.has_permission(p_org, case when p_write then 'proposals.create' else 'proposals.view' end)
+      -- A frozen proposal, a signed copy and a certificate hold the customer's name, email and signature. The client's own people need only the permission; an agency person
+      -- (staff, manager or Super Admin) must also have an active support session on this client, the audited-session rule the CRM follows for a customer's details. A read session
+      -- opens reading; only a write session opens writing. (The proposals tables keep their read policy as built: see the header of 0091.)
+      when 'proposal-documents' then
+        app.has_permission(p_org, case when p_write then 'proposals.create' else 'proposals.view' end)
+        and (
+          not app.is_agency_staff()
+          or exists (
+            select 1 from public.crm_support_sessions s
+            where s.org_id = p_org and s.user_id = app.current_user_id() and s.ended_at is null and s.expires_at > now()
+              and (s.mode = 'write' or (s.mode = 'read' and not p_write))
+          )
+        )
       -- Staff messages belong to the agency workspace. Browsers never read them directly: a server route checks the person's membership of the conversation first.
       when 'staff-messages' then
         p_write and app.is_agency_staff()

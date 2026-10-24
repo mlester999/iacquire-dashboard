@@ -150,6 +150,7 @@ export const REPLY_EVENT_LABELS: Record<string, string> = {
   posted_confirmed: "Confirmed on the review site",
   outcome_unknown: "The review site did not say whether it took it",
   posting_interrupted: "Sending was interrupted",
+  check_requested: "The owner and managers were asked to look at the review site",
   failed: "Not posted",
   not_posted: "Checked: not on the review site",
   resolved_by_person: "A person said what happened",

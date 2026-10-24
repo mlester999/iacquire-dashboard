@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requestMeta } from "@/server/auth/session";
 import { loadPublicInvoice } from "@/server/invoices/public";
+import { INVOICES_DISABLED_NOTICE, INVOICE_UNAVAILABLE_NOTICE } from "@/lib/invoices/public-http";
 import { InvoiceDocument } from "@/components/invoices/public/invoice-document";
 import { PayPanel } from "@/components/invoices/public/pay-panel";
 import { PublicNotice, PublicShell } from "@/components/invoices/public/shell";
@@ -28,6 +29,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
       </PublicShell>
     );
   }
+  if (result.state === "disabled" || result.state === "unavailable") {
+    const notice = result.state === "disabled" ? INVOICES_DISABLED_NOTICE : INVOICE_UNAVAILABLE_NOTICE;
+    return (
+      <PublicShell business={null}>
+        <PublicNotice kind="wait" title={notice.title}>
+          <p>{notice.body}</p>
+        </PublicNotice>
+      </PublicShell>
+    );
+  }
   if (result.state === "invalid") {
     return (
       <PublicShell business={null}>
@@ -41,7 +52,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
   return (
     <PublicShell business={i.business} wide>
       <InvoiceDocument invoice={i} />
-      <PayPanel token={token} canPay={i.canPayOnline} balanceMinor={i.balanceMinor} currency={i.currency} />
+      <PayPanel token={token} canPay={i.canPayOnline} balanceMinor={i.balanceMinor} currency={i.currency} isTest={i.isTest} />
     </PublicShell>
   );
 }

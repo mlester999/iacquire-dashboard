@@ -46,7 +46,7 @@ describe("in production", () => {
 
   it("cannot be connected, cannot start a checkout, and a delivery to a simulated address gets the same 403 as any unknown address", async () => {
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    const inv = (await issuedInvoice(io, { isTest: true })).invoice;
     const sim = await connect(io, { provider: "simulated" });
     const fresh = await invoiceOrg();
     mode.nodeEnv = "production";
@@ -64,7 +64,7 @@ describe("in production", () => {
     setAdapterForTests("paymongo", createPaymongoProvider({ http: f.http }));
     try {
       const io = await invoiceOrg();
-      const inv = (await issuedInvoice(io)).invoice;
+      const inv = (await issuedInvoice(io, { isTest: true })).invoice;
       const conn = await connect(io, { provider: "paymongo", mode: "test" });
       mode.nodeEnv = "production";
       await expect(startCheckout({ orgId: io.orgId, invoiceId: inv.id, audience: "member" })).rejects.toThrow(/Calls to payment providers are switched off/);

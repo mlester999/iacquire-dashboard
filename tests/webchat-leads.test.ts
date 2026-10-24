@@ -257,6 +257,19 @@ describe("how long chats are kept, and what a privacy request removes", () => {
     expect(await rows("select 1 from contacts where id = $1", [s.contact_id])).toHaveLength(1); // a task was added: the contact stays
   });
 
+  it("never deletes a contact a proposal names, so the proposal is not left without its customer", async () => {
+    const mine = await chatOrg({ anonymousRetentionDays: 1 });
+    const t = await start(mine);
+    await embedCall(mine, { action: "send", token: t, body: { text: "Hi", clientMessageId: clientId() }, generate: answer("Hello.").generate });
+    const s = (await rows<{ contact_id: string }>("select contact_id from web_chat_sessions where token_hash = $1", [hashOf(t)]))[0];
+    await withSystem((db) => db.query("insert into proposals (org_id, number, title, currency, contact_id) values ($1, 'P-0001', 'Quote', 'PHP', $2)", [mine.m.org.id, s.contact_id]));
+    await withSystem((db) => db.query("update web_chat_sessions set last_seen_at = now() - interval '5 days' where token_hash = $1", [hashOf(t)]));
+    await purgeExpiredWebChats();
+    expect(await rows("select 1 from web_chat_sessions where token_hash = $1", [hashOf(t)])).toHaveLength(0);
+    expect(await rows("select 1 from contacts where id = $1", [s.contact_id])).toHaveLength(1);
+    expect(await rows("select contact_id from proposals where org_id = $1", [mine.m.org.id])).toEqual([{ contact_id: s.contact_id }]);
+  });
+
   it("clears what the visitor typed and where they came from when a privacy request is made for their contact", async () => {
     const t = await start(c, { landing: "/pricing?utm_source=google", referrer: "https://www.google.com/" });
     await embedCall(c, { action: "send", token: t, body: { text: "Hello", clientMessageId: clientId() }, generate: answer("Hi.").generate });

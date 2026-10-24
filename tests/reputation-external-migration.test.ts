@@ -364,6 +364,64 @@ describe("migration 0095: who can read it", () => {
   });
 });
 
+describe("migration 0095: a survey answer that may belong to a customer", () => {
+  const FEEDBACK = "insert into customer_feedback (org_id, contact_id, possible_contact_id, source, scale, rating, comment) values ($1, $2, $3, 'survey', 'csat5', 2, 'Typed next to an address') returning id";
+  const contact = async (db: Db, orgId: string) => (await db.query<{ id: string }>("insert into contacts (org_id, display_name, email) values ($1, 'Elena Ruiz', $2) returning id", [orgId, `elena-${unique()}@example.test`])).rows[0].id;
+
+  it("keeps the possible customer beside an answer with no customer, within the same workspace only, and never both at once", async () => {
+    const w = await world();
+    await expect(withSystem(async (db) => {
+      const mine = await contact(db, w.org.id);
+      const theirs = await contact(db, w.other.id);
+      expect((await db.query(FEEDBACK, [w.org.id, null, mine])).rows).toHaveLength(1);
+      // Another workspace's customer cannot be the possible match.
+      let r = await accepted(db, FEEDBACK, [w.org.id, null, theirs]);
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/customer_feedback_possible_contact_fk|foreign key/);
+      // An answer is a customer's own or only perhaps theirs, not both.
+      r = await accepted(db, FEEDBACK, [w.org.id, mine, mine]);
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/customer_feedback_possible_contact_check/);
+      // Removing the customer leaves the answer, with no one attached.
+      await db.query("delete from contacts where id = $1", [mine]);
+      expect((await db.query("select 1 from customer_feedback where possible_contact_id is null and comment = 'Typed next to an address' and org_id = $1", [w.org.id])).rows).toHaveLength(1);
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+  });
+
+  it("has an index for finding what waits on a customer, and the application role still only reads it", async () => {
+    await expect(withSystem(async (db) => {
+      const { rows } = await db.query<{ indexname: string }>("select indexname from pg_indexes where tablename = 'customer_feedback' and indexname = 'customer_feedback_possible_contact_idx'");
+      expect(rows).toHaveLength(1);
+      expect((await db.query<{ ok: boolean }>("select has_column_privilege('iaq_app_user', 'customer_feedback', 'possible_contact_id', 'UPDATE') as ok")).rows[0].ok).toBe(false);
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+  });
+
+  it("stops the rollback while an answer waits for a person, and lets it run once none does", async () => {
+    const w = await world();
+    await expect(withSystem(async (db) => {
+      const c = await contact(db, w.org.id);
+      await db.query(FEEDBACK, [w.org.id, null, c]);
+      let message = "";
+      await db.query("savepoint down");
+      try {
+        for (const stmt of statements(down)) await db.query(stmt);
+      } catch (e) {
+        message = String((e as Error).message);
+      }
+      await db.query("rollback to savepoint down");
+      expect(message).toMatch(/Rollback refused: survey answers waiting for someone to confirm/);
+      // Decided (here: dismissed), nothing is lost, and the rollback drops what it added.
+      await db.query("update customer_feedback set possible_contact_id = null where org_id = $1", [w.org.id]);
+      for (const stmt of statements(down)) await db.query(stmt);
+      expect((await db.query("select 1 from information_schema.columns where table_name = 'customer_feedback' and column_name = 'possible_contact_id'")).rows).toHaveLength(0);
+      expect((await db.query("select 1 from pg_indexes where indexname = 'customer_feedback_possible_contact_idx'")).rows).toHaveLength(0);
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+  });
+});
+
 describe("migration 0095: its rollback", () => {
   const runDown = async (db: Db) => {
     for (const stmt of statements(down)) await db.query(stmt);

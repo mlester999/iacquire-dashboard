@@ -90,14 +90,16 @@ export interface OverdueFacts {
   paymentStatus: InvoicePaymentStatus;
   dueOn: string | null;
   writtenOff: boolean;
+  /** A test invoice: nothing is owed on it, so it is never overdue. */
+  isTest?: boolean;
 }
 
 /**
- * Overdue: issued, still owing, not written off, not under dispute, and the due date is before today in the workspace's time zone. The due day itself is not
+ * Overdue: issued, still owing, not written off, not under dispute, not a test invoice, and the due date is before today in the workspace's time zone. The due day itself is not
  * overdue. Nothing here claims to be live: it is true when it is read, and the sweep that raises the notice runs only when the scheduler does.
  */
 export function isOverdue(f: OverdueFacts, now: Date, tz: string): boolean {
-  if (f.status !== "issued" || f.writtenOff || !f.dueOn || !isDay(f.dueOn)) return false;
+  if (f.status !== "issued" || f.writtenOff || f.isTest || !f.dueOn || !isDay(f.dueOn)) return false;
   if (f.paymentStatus !== "unpaid" && f.paymentStatus !== "partially_paid") return false;
   return f.dueOn < todayIn(now, tz);
 }
@@ -167,11 +169,14 @@ export interface VoidFacts {
   paidMinor: number;
   /** A payment that is waiting, being reviewed, or an open checkout a customer may be paying through. */
   hasOpenPayment: boolean;
+  /** A test invoice has only test payments, so none of what blocks a real invoice applies. */
+  isTest?: boolean;
 }
 
-/** Why an invoice cannot be voided, or null. A voided invoice that took money would hide it. */
+/** Why an invoice cannot be voided, or null. A voided invoice that took money would hide it. A test invoice took none, whatever its test payments say. */
 export function voidBlockedReason(f: VoidFacts): string | null {
   if (f.status !== "issued") return f.status === "void" ? "This invoice is already void." : "Only an issued invoice can be voided. A draft can be discarded.";
+  if (f.isTest) return null;
   if (f.paidMinor > 0) return "This invoice has a payment recorded against it, so it cannot be voided. Record a refund instead.";
   if (f.hasOpenPayment) return "A customer may be paying this invoice, or a payment is waiting for review. Resolve that first.";
   return null;

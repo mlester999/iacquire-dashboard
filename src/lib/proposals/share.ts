@@ -158,6 +158,36 @@ export const DECIDE_TEXT: Record<DecideOutcome, { tone: "ok" | "error"; text: st
   invalid: { tone: "error", text: "Something in the form wasn't right. Please try again." },
 };
 
+/** What the record holds about the link that the words in the address can be checked against. */
+export interface AnswerFacts {
+  state: string;
+  /** The recorded answer for this version, if there is one. */
+  answer: "accepted" | "declined" | null;
+  /** How many times the customer asked for changes to this version. */
+  changeRequests: number;
+  /** This browser holds a session for the confirmed address. */
+  verified: boolean;
+}
+
+/**
+ * Whether a word in the page's address (?r=, ?c=) may be shown. Anyone holding the link can type any word, so one that says something was recorded, declined or confirmed is shown
+ * only when the record says so too. A word that only guides or reports a refusal ("confirm your email first", "that code isn't right") claims nothing was recorded and stays; one that
+ * says the proposal can't be answered (expired, unavailable) is never true of a page that is open or answered, which is the only kind that shows a banner.
+ */
+export function wordAgrees(kind: "r" | "c", word: string, f: AnswerFacts): boolean {
+  if (kind === "c") return word === "verified" ? f.verified : word !== "unavailable";
+  switch (word) {
+    case "accepted": return f.state === "answered" && f.answer === "accepted";
+    case "declined": return f.state === "answered" && f.answer === "declined";
+    case "already":
+    case "conflict": return f.state === "answered";
+    case "changes_requested": return f.changeRequests > 0;
+    case "expired":
+    case "unavailable": return false;
+    default: return true;
+  }
+}
+
 export type CodeOutcome = "sent" | "cooldown" | "rate_limited" | "unavailable" | "no_email" | "email_failed" | "invalid" | "verified" | "wrong" | "locked" | "no_code";
 
 export const CODE_TEXT: Record<CodeOutcome, { tone: "ok" | "error"; text: string }> = {

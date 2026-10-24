@@ -8,7 +8,7 @@ import { createApproval } from "@/server/approvals/service";
 import { queueOutbound } from "@/server/messaging/send";
 import { systemActor, type CrmActor } from "@/server/crm/actor";
 import { isSwitching, loadWorkspace } from "@/server/crm/workspace";
-import { computeSlots, DRAFT_CALENDAR_MESSAGE, loadBookingContext } from "@/server/calendars/availability";
+import { computeSlots, loadBookingContext } from "@/server/calendars/availability";
 import { resolveNativeAppointmentType as resolveType } from "@/server/calendars/native-availability";
 import { bookNativeAppointment } from "@/server/calendars/booking";
 import { formatSlot } from "@/lib/appointments";

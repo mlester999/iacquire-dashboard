@@ -2,7 +2,7 @@ import "server-only";
 import { providerRequest } from "@/server/calendars/adapters/http";
 import { isCurrency, parseAmount, toDecimalString, type CurrencyCode } from "@/lib/money";
 import { paypalModeOf, PROVIDER_CURRENCIES } from "@/lib/invoices/connection-rules";
-import { emptyEvent, looksLikeOurReference, type NormalizedEvent } from "@/lib/invoices/payment-events";
+import { emptyEvent, looksLikeOurReference, type DisputeOutcome, type NormalizedEvent } from "@/lib/invoices/payment-events";
 import type { ProviderCredentials } from "@/server/customer-payments/credentials";
 import { ProviderCallError, type CanonicalCheckout, type CheckoutInput, type CheckoutResult, type CredentialCheck, type HeaderReader, type ParsedWebhook, type PaymentProviderAdapter, type SignatureCheck } from "@/server/customer-payments/providers/types";
 
@@ -16,6 +16,8 @@ import { ProviderCallError, type CanonicalCheckout, type CheckoutInput, type Che
 //   2. That approving does NOT take the money: the order is captured by a second call, POST /v2/checkout/orders/{id}/capture, made after the buyer returns (completeCheckout).
 //   3. The event names and their shapes: PAYMENT.CAPTURE.COMPLETED / PENDING / DENIED / REFUNDED / REVERSED, CUSTOMER.DISPUTE.CREATED / RESOLVED, and CHECKOUT.ORDER.APPROVED.
 //      Where each carries our reference (custom_id), the order id (supplementary_data.related_ids.order_id) and the capture a refund belongs to (a link with rel "up").
+//      And, on CUSTOMER.DISPUTE.RESOLVED, that the dispute's outcome is dispute_outcome.outcome_code (RESOLVED_SELLER_FAVOUR, CANCELED_BY_BUYER, RESOLVED_BUYER_FAVOUR,
+//      RESOLVED_WITH_PAYOUT and others) and the amount the buyer got back is dispute_outcome.amount_refunded (or dispute_amount): see disputeOutcomeOf.
 //   4. Webhook verification by asking PayPal: POST /v1/notifications/verify-webhook-signature with the five transmission headers, the webhook id and the event body exactly as
 //      received, answered with verification_status SUCCESS. (The offline algorithm, a CRC32 of the body and an RSA check against the certificate at PAYPAL-CERT-URL, is not built.)
 //   5. The read-only call that proves a client id and secret: the OAuth token call, and GET /v1/notifications/webhooks to see whether a webhook for our address is registered.
@@ -146,6 +148,16 @@ function canonicalOf(order: unknown, checkoutId: string): CanonicalCheckout {
   return { checkoutId, reference: str(unit.custom_id), status, payments };
 }
 
+/**
+ * Who won a resolved dispute, from PayPal's outcome code. Only the codes that say so plainly are read: the seller's favour, or the buyer withdrawing, is a win; the buyer's
+ * favour, or a payout to the buyer, is a loss. Anything else (accepted, denied, empty, a code this product has never seen, no code) is unknown, and a person says how it ended.
+ */
+export function disputeOutcomeOf(code: unknown): DisputeOutcome {
+  if (code === "RESOLVED_SELLER_FAVOUR" || code === "CANCELED_BY_BUYER") return "won";
+  if (code === "RESOLVED_BUYER_FAVOUR" || code === "RESOLVED_WITH_PAYOUT") return "lost";
+  return "unknown";
+}
+
 function normalize(ev: Record<string, unknown>, connectionLive: boolean): NormalizedEvent {
   const base = { eventId: str(ev.id) ?? "", type: str(ev.event_type) ?? "unknown", livemode: connectionLive };
   const r = isRecord(ev.resource) ? ev.resource : {};
@@ -179,7 +191,12 @@ function normalize(ev: Record<string, unknown>, connectionLive: boolean): Normal
     case "CUSTOMER.DISPUTE.CREATED":
     case "CUSTOMER.DISPUTE.RESOLVED": {
       const tx = Array.isArray(r.disputed_transactions) && isRecord(r.disputed_transactions[0]) ? r.disputed_transactions[0] : {};
-      return { ...emptyEvent(base.type === "CUSTOMER.DISPUTE.CREATED" ? "dispute.opened" : "dispute.closed", base), paymentId: str(tx.seller_transaction_id), occurredAt };
+      if (base.type === "CUSTOMER.DISPUTE.CREATED") return { ...emptyEvent("dispute.opened", base), paymentId: str(tx.seller_transaction_id), occurredAt };
+      // How it ended is read from the dispute's outcome and nothing else; what the buyer got back is the amount at stake when it ended in their favour.
+      const outcome = isRecord(r.dispute_outcome) ? r.dispute_outcome : {};
+      const back = isRecord(outcome.amount_refunded) ? outcome.amount_refunded : isRecord(r.dispute_amount) ? r.dispute_amount : {};
+      const backCurrency = currencyOf(back.currency_code);
+      return { ...emptyEvent("dispute.closed", base), paymentId: str(tx.seller_transaction_id), occurredAt, disputeOutcome: disputeOutcomeOf(outcome.outcome_code), amountMinor: minorOf(back.value, backCurrency), currency: backCurrency };
     }
     case "CHECKOUT.ORDER.APPROVED":
       // The buyer approved. That is not payment: the money is counted when the capture completes.

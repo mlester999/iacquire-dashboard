@@ -45,6 +45,10 @@ export async function eraseReputationRecords(db: Queryable, orgId: string, conta
     [orgId, contactId],
   );
 
+  // A survey answer that only MAY be this customer's (typed next to their address, nobody confirmed it) is not their record, but it was typed in a submission that is erased below, and
+  // it must not keep pointing at them: the link goes, and so do the words. The score stays for the counts, with no person attached.
+  const possible = await db.query("update customer_feedback set comment = null, possible_contact_id = null where org_id = $1 and possible_contact_id = $2", [orgId, contactId]);
+
   // A review request that has not been answered stops taking feedback (the page still shows the public links, as for any closed request). A message that has not
   // gone out is stopped and its credit hold released.
   const waiting = await db.query<{ id: string; message_id: string | null }>(
@@ -68,5 +72,5 @@ export async function eraseReputationRecords(db: Queryable, orgId: string, conta
   const links = await db.query("update external_reviews set contact_id = null, contact_linked_by = null, contact_linked_at = null where org_id = $1 and contact_id = $2", [orgId, contactId]);
 
   const programs = await cancelRetention(db, orgId, contactId, "contact_removed");
-  return { feedbackRows: cleared.rowCount ?? 0, requestsCancelled: waiting.rows.length, submissions: submissions.rowCount ?? 0, programsStopped: programs.enrollments, reviewLinks: links.rowCount ?? 0 };
+  return { feedbackRows: (cleared.rowCount ?? 0) + (possible.rowCount ?? 0), requestsCancelled: waiting.rows.length, submissions: submissions.rowCount ?? 0, programsStopped: programs.enrollments, reviewLinks: links.rowCount ?? 0 };
 }

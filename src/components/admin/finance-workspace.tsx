@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, 
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { Dialog, Segmented, Switch } from "@/components/ui/overlays";
 import { MetricCard, SectionLabel } from "@/components/ui/workspace";
+import { rateFieldHint, rateFieldLabel, ratePlaceholder, rateSanityNote, rateUnitLabel } from "@/lib/billing";
 import { CATEGORIES, ENTRY_KINDS, KIND_HELP, KIND_LABEL, PERIOD_LABEL, signedUsd, type EntryKind, type PeriodKey } from "@/lib/finance";
 import { formatDate, formatDateTime, sentenceCase } from "@/lib/utils";
 import type { FinancialReport } from "@/server/billing/finance";
@@ -242,6 +243,14 @@ function Entries({ r, canManage }: { r: FinancialReport; canManage: boolean }) {
   );
 }
 
+/** What stands under the rate field: what the number is for, and a warning (never a block) when a token rate looks like a price per single token or per million. */
+function rateHint(unit: string, typed: string) {
+  const hint = rateFieldHint(unit);
+  const warning = rateSanityNote(unit, Number(typed));
+  if (!hint && !warning) return undefined;
+  return <>{hint}{warning && <span role="status" className="mt-1 block font-medium text-warning-ink">{warning}</span>}</>;
+}
+
 function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverview; rates: UnitRateRow[]; r: FinancialReport; canManage: boolean }) {
   const router = useRouter();
   const [fx, setFx] = React.useState(overview.fx.usdPhpRate ? String(overview.fx.usdPhpRate) : "");
@@ -302,8 +311,8 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
           {canManage && (
             <form className="grid gap-3 border-t border-line p-5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_2fr_auto]" onSubmit={(e) => { e.preventDefault(); void act("rate", () => publishUnitRateAction(rate.provider, rate.unit, Number(rate.wholesale), rate.note), "Rate published"); }}>
               <Field label="Provider" htmlFor="rate-prov"><Input id="rate-prov" value={rate.provider} onChange={(e) => setRate({ ...rate, provider: e.target.value })} /></Field>
-              <Field label="Unit" htmlFor="rate-unit"><Select id="rate-unit" value={rate.unit} onChange={(e) => setRate({ ...rate, unit: e.target.value })}>{["sms_segment", "whatsapp_message", "email_send", "ai_tokens_in", "ai_tokens_out", "ai_research_call", "premium_api_call", "automation_execution", "other"].map((u) => <option key={u} value={u}>{sentenceCase(u)}</option>)}</Select></Field>
-              <Field label="We pay (USD per unit)" htmlFor="rate-w"><Input id="rate-w" inputMode="decimal" value={rate.wholesale} onChange={(e) => setRate({ ...rate, wholesale: e.target.value })} placeholder="0.008" /></Field>
+              <Field label="Unit" htmlFor="rate-unit"><Select id="rate-unit" value={rate.unit} onChange={(e) => setRate({ ...rate, unit: e.target.value })}>{["sms_segment", "whatsapp_message", "email_send", "ai_tokens_in", "ai_tokens_out", "ai_research_call", "premium_api_call", "automation_execution", "other"].map((u) => <option key={u} value={u}>{rateUnitLabel(u)}</option>)}</Select></Field>
+              <Field label={rateFieldLabel(rate.unit)} htmlFor="rate-w" hint={rateHint(rate.unit, rate.wholesale)}><Input id="rate-w" inputMode="decimal" value={rate.wholesale} onChange={(e) => setRate({ ...rate, wholesale: e.target.value })} placeholder={ratePlaceholder(rate.unit)} /></Field>
               <Field label="Where this came from" htmlFor="rate-note" optional><Input id="rate-note" value={rate.note} onChange={(e) => setRate({ ...rate, note: e.target.value })} placeholder="Provider invoice or price page" /></Field>
               <div className="flex items-end"><Button type="submit" variant="secondary" loading={busy === "rate"} disabled={!(Number(rate.wholesale) > 0)}>Publish</Button></div>
             </form>

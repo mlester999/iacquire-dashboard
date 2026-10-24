@@ -7,8 +7,9 @@
  *   node scripts/run-invoices-qa-seed.mjs      (this; with the QA server stopped)
  *
  * It switches customer invoices ON for that one QA workspace (the switch a Super Admin would use), which is the only change outside the invoice tables. The customer addresses it
- * prints (and writes to .data/crm-qa/invoices-seed-summary.json) are bearer links to FICTIONAL invoices in the throwaway QA database. One invoice is paid by a fictional "live" payment
- * so the Lead Sources report has verified revenue to look at; the world's own header says so. Idempotent: when the workspace already has invoices it adds nothing.
+ * prints (and writes to .data/crm-qa/invoices-seed-summary.json) are bearer links to FICTIONAL invoices in the throwaway QA database. A few invoices carry a fictional "live" payment
+ * so the Lead Sources report has verified revenue, a dispute and a payment kept for review to look at, and two are TEST invoices (TEST-0001, TEST-0002) that the testing checkout pays;
+ * the world's own header says so. Idempotent: when the workspace already has invoices it adds nothing.
  */
 import fs from "node:fs";
 import path from "node:path";

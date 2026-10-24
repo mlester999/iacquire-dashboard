@@ -22,7 +22,14 @@ export function safeBackPath(value: unknown): string | null {
 
 export const looksLikeReference = (v: unknown): v is string => typeof v === "string" && REFERENCE_RE.test(v);
 
-export type PayFailure = "invalid" | "rate_limited" | "paid" | "unavailable" | "try_again";
+export type PayFailure = "invalid" | "rate_limited" | "paid" | "unavailable" | "disabled" | "try_again";
+
+/** What a customer reads when the invoice they opened cannot be shown: the business is not taking customers right now, or the whole side is switched off. Neither says why. */
+export const INVOICE_UNAVAILABLE_NOTICE = { title: "This invoice isn't available right now", body: "Please contact the business directly." } as const;
+export const INVOICES_DISABLED_NOTICE = { title: "Invoices are temporarily unavailable", body: "Please try again later, or contact the business directly." } as const;
+/** The sentence for the pay button and the status check, in the same two cases. */
+export const PAY_UNAVAILABLE_MESSAGE = "Online payment is not available for this invoice right now. Please contact the business to arrange payment.";
+export const PAY_DISABLED_MESSAGE = "Invoices are temporarily unavailable. Please try again later, or contact the business directly.";
 
 export interface PayResponse {
   url?: string;

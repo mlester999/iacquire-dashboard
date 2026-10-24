@@ -7,14 +7,15 @@
  *   node scripts/run-inbox-qa-seed.mjs        (first, once)
  *   node scripts/run-reputation-qa-seed.mjs   (this; with the QA server stopped)
  *
- * Idempotent, section by section: batches are added only when the workspace has no review request batch, and public reviews only when it has no review site connection.
+ * Idempotent, section by section: batches are added only when the workspace has no review request batch, public reviews only when it has no review site connection, and the survey
+ * answers that wait for a person only when none of them exists yet.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { it } from "vitest";
 import { closeDb, withSystem } from "../src/server/db/index";
 import { env } from "../src/server/env";
-import { memberActor, type CrmActor } from "../src/server/crm/actor";
+import { memberActor, systemActor, type CrmActor } from "../src/server/crm/actor";
 import { createContact, setContactConsent } from "../src/server/crm/contacts";
 import { approveTemplate, createTemplate, updateTemplate } from "../src/server/crm/message-templates";
 import { createReviewDestination, requestReview, reviewTokenFor, submitReviewFeedback } from "../src/server/crm/reviews";
@@ -27,6 +28,7 @@ import { connectFacebookPage, connectSimulatedSite } from "../src/server/reputat
 import { syncConnection } from "../src/server/reputation/sync";
 import { decideReply, postReply, resolveReply, startReply, submitReply, insertReply } from "../src/server/reputation/replies";
 import { saveReputationSettings } from "../src/server/reputation/settings";
+import { saveSurveyFeedback } from "../src/server/reputation/survey-feedback";
 import { simulatedReviews } from "../src/server/reputation/providers/simulated";
 import { REPLY_AI_PROMPT_VERSION } from "../src/lib/reputation/reply-draft";
 import { permissionsFor, roleHasPermission, type OrgRole } from "../src/lib/permissions";
@@ -63,12 +65,43 @@ async function seed() {
   if (!org) throw new Error("Run node scripts/run-inbox-qa-seed.mjs first: the Inbox QA workspace does not exist.");
   const hasBatches = (await q("select 1 from review_request_batches where org_id = $1", [org.id])).length > 0;
   const hasReviews = (await q("select 1 from review_connections where org_id = $1", [org.id])).length > 0;
-  if (hasBatches && hasReviews) {
+  const hasMatches = (await q("select 1 from customer_feedback where org_id = $1 and comment like 'QA possible match%'", [org.id])).length > 0;
+  if (hasBatches && hasReviews && hasMatches) {
     console.log("The reputation QA data already exists; nothing added.");
     return;
   }
   if (!hasBatches) await seedBatches(org, memberActor(await personCtx(org, "owner")), memberActor(await personCtx(org, "manager")));
   if (!hasReviews) await seedPublicReviews(org);
+  if (!hasMatches) await seedSurveyMatches(org, memberActor(await personCtx(org, "owner")));
+}
+
+/**
+ * Survey answers that wait for a person. A public survey form knows people only by the email they typed, and anyone can type anyone's, so an answer next to an existing customer's
+ * unverified address is kept with no customer and "May be from ..." beside it: nothing is done for that customer until the owner or a manager says it is them. One low answer (it
+ * also tells the owner and managers) and one good one, each next to a different customer, written through the same service the survey form uses.
+ */
+async function seedSurveyMatches(org: Org, owner: CrmActor) {
+  await q("insert into org_features (org_id, feature, enabled) values ($1, 'reputation_surveys', true) on conflict (org_id, feature) do update set enabled = true", [org.id]);
+  const form = (await q<{ id: string }>("insert into crm_forms (org_id, key, name, kind, purpose) values ($1, 'qa-possible-match', 'How did we do (QA survey)', 'survey', 'survey') on conflict do nothing returning id", [org.id]))[0]?.id
+    ?? (await q<{ id: string }>("select id from crm_forms where org_id = $1 and key = 'qa-possible-match'", [org.id]))[0].id;
+  const version = (await q<{ id: string }>("insert into crm_form_versions (org_id, form_id, version, fields, content_hash) values ($1, $2, 1, '[]'::jsonb, repeat('b', 64)) on conflict do nothing returning id", [org.id, form]))[0]?.id
+    ?? (await q<{ id: string }>("select id from crm_form_versions where org_id = $1 and form_id = $2 and version = 1", [org.id, form]))[0].id;
+  const answers: Array<{ first: string; last: string; email: string; score: number; comment: string }> = [
+    { first: "Elena", last: "Ruiz", email: "elena.ruiz.qa@example.test", score: 2, comment: "QA possible match: the technician arrived two hours late." },
+    { first: "Marco", last: "Silva", email: "marco.silva.qa@example.test", score: 5, comment: "QA possible match: quick, tidy and friendly." },
+  ];
+  for (const [i, a] of answers.entries()) {
+    const contact = await createContact(owner, { firstName: a.first, lastName: a.last, email: a.email });
+    const submission = (await q<{ id: string }>(
+      "insert into crm_form_submissions (org_id, form_id, version_id, source, answers, dedupe_key, contact_id, status) values ($1, $2, $3, 'hosted', $4::jsonb, $5, $6, 'processed') returning id",
+      [org.id, form, version, JSON.stringify({ score: a.score }), `qa-possible-match-${i}`, contact.id],
+    ))[0].id;
+    await withSystem((db) => saveSurveyFeedback(db, systemActor({ id: org.id, name: org.name, timezone: TIMEZONE }, "Form: How did we do (QA survey)"), {
+      submissionId: submission, formName: "How did we do (QA survey)", contactId: contact.id, contactCreated: false, typed: { email: a.email, phone: null },
+      feedback: { scale: "csat5", score: a.score, comment: a.comment, rejected: [] }, receivedAt: new Date(Date.now() - (i + 1) * 3_600_000), now: new Date(),
+    }));
+  }
+  console.log("Survey answers waiting for a person are ready (two, each next to a different customer's unverified email; Reviews → Private feedback shows \"May be from ...\").");
 }
 
 async function seedBatches(org: Org, owner: CrmActor, manager: CrmActor) {

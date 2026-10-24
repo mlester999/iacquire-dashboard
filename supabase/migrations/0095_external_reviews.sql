@@ -8,6 +8,9 @@
 --   * review_replies and review_reply_events: a reply to one review, bound to the exact version a person approved, with the history of every step. A reply is drafted by a
 --     person or by the AI assist for a person, approved by the client's owner or manager, and posted only if its text still equals what was approved.
 --
+--   * customer_feedback.possible_contact_id (private feedback, not public reviews): a survey answer typed by a visitor next to an email or phone that matches an existing customer
+--     is not that customer's own answer until a person says so. It is kept without a customer, with the possible match beside it for the team to confirm or dismiss.
+--
 -- Additive. No existing row changes. Every table is workspace-keyed with composite foreign keys, has row-level security, and gives the application role SELECT only:
 -- every write runs in trusted server code after its own authorization check. Nothing here contacts a provider. The permissions (reviews.view, reviews.respond,
 -- reviews.reply_publish) and the notification kinds came with 0094.
@@ -190,6 +193,18 @@ create table review_reply_events (
   foreign key (reply_id, org_id) references review_replies (id, org_id) on delete cascade
 );
 create index review_reply_events_reply_idx on review_reply_events (reply_id, id);
+
+-- ---------------------------------------------------------------------------
+-- Survey answers that may belong to a customer
+-- ---------------------------------------------------------------------------
+
+-- A public survey form identifies people only by what they typed. When the typed email or phone matches an existing customer whose address nobody has verified, the answer is
+-- stored with no customer (contact_id null) and the customer it may be from here. Nothing is done about that customer (no timeline entry, no event, no stop to their programs, no
+-- named count) until a person confirms the match, which moves it to contact_id; a person who says it is not them clears it. Never both at once.
+alter table customer_feedback add column possible_contact_id uuid;
+alter table customer_feedback add constraint customer_feedback_possible_contact_fk foreign key (possible_contact_id, org_id) references contacts (id, org_id) on delete set null (possible_contact_id);
+alter table customer_feedback add constraint customer_feedback_possible_contact_check check (possible_contact_id is null or contact_id is null);
+create index customer_feedback_possible_contact_idx on customer_feedback (org_id, possible_contact_id) where possible_contact_id is not null;
 
 -- ---------------------------------------------------------------------------
 -- Row-level security: read under the signed-in member's access, write only from trusted server code

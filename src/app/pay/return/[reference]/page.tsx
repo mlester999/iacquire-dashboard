@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requestMeta } from "@/server/auth/session";
 import { loadReturn } from "@/server/invoices/public";
+import { INVOICES_DISABLED_NOTICE } from "@/lib/invoices/public-http";
 import { money } from "@/lib/invoices/labels";
 import { ReturnStatus } from "@/components/invoices/public/return-status";
 import { PublicNotice, PublicShell } from "@/components/invoices/public/shell";
@@ -31,6 +32,15 @@ export default async function PaymentReturnPage({ params, searchParams }: { para
       </PublicShell>
     );
   }
+  if (result.state === "disabled") {
+    return (
+      <PublicShell business={null}>
+        <PublicNotice kind="wait" title={INVOICES_DISABLED_NOTICE.title}>
+          <p>{INVOICES_DISABLED_NOTICE.body} If you just paid and want to check on it, contact the business and tell them the time you paid.</p>
+        </PublicNotice>
+      </PublicShell>
+    );
+  }
   if (result.state === "invalid") {
     return (
       <PublicShell business={null}>
@@ -46,7 +56,7 @@ export default async function PaymentReturnPage({ params, searchParams }: { para
     <PublicShell business={v.business}>
       <ReturnStatus reference={v.reference} initial={{ state: v.description.state, headline: v.description.headline, detail: v.description.detail, polling: v.description.polling, tone: v.description.tone }} approvedCheckoutId={approved && /^[A-Za-z0-9_-]{4,120}$/.test(approved) && v.description.polling ? approved : null} />
       <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-2xl border border-line bg-surface px-5 py-4 text-[13.5px]">
-        {v.invoiceNumber && <><dt className="text-muted">Invoice</dt><dd className="font-medium tabular-nums text-ink">{v.invoiceNumber}</dd></>}
+        {v.invoiceNumber && <><dt className="text-muted">Invoice</dt><dd className="font-medium tabular-nums text-ink">{v.invoiceNumber}{v.isTest ? " (a test invoice: no money moves)" : ""}</dd></>}
         <dt className="text-muted">Amount of this payment</dt><dd className="font-medium tabular-nums text-ink">{money(v.amountMinor, v.currency)}</dd>
         <dt className="text-muted">Reference</dt><dd className="break-all font-mono text-[12.5px] text-ink-2">{v.reference}</dd>
       </dl>

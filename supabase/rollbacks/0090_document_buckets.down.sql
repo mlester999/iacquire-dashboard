@@ -16,6 +16,8 @@ alter table private_files drop constraint if exists private_files_bucket_check;
 alter table private_files add constraint private_files_bucket_check
   check (bucket in ('company-documents', 'support-attachments', 'project-files', 'project-uploads', 'portfolio-assets', 'brand-assets', 'aqi-attachments', 'social-media'));
 
+-- Back to 0089's definition: it has no proposal-documents or staff-messages branch, so the support-session rule 0090 puts on an agency person's access to proposal documents
+-- goes with the branch, and every earlier bucket answers exactly as it did.
 create or replace function app.file_permission(p_org uuid, p_bucket text, p_write boolean, p_visibility text)
 returns boolean language sql stable security definer set search_path = ''
 as $$

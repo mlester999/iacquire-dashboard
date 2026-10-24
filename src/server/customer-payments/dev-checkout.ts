@@ -9,7 +9,8 @@ import { SIGNATURE_HEADER, signSimulatedBody, simulatedBody, simulatedPlatform }
 
 // The testing checkout: what a customer sees instead of a payment provider's page when the business's connection is the simulated provider. It exists so the whole path can
 // be clicked through without any provider account. It does what a provider does, no more: it takes the amount the checkout asked for, and tells this product by posting a
-// SIGNED event to the real webhook route, which authenticates it with the connection's own secret like any other delivery. It never writes a payment itself.
+// SIGNED event to the real webhook route, which authenticates it with the connection's own secret like any other delivery. It never writes a payment itself. It exists only for a
+// test invoice: the simulated provider moves no money, and a test payment never lands on an invoice a customer owes.
 //
 // Development and tests only. It does not exist in production (simulatedAllowed), and the simulated provider cannot be connected there either.
 
@@ -27,14 +28,14 @@ export interface SimulatedAttempt {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** The checkout of a simulated connection, by the attempt's id; null for anything else (another provider's attempt is not this page's to act on). */
+/** The checkout of a simulated connection for a TEST invoice, by the attempt's id; null for anything else (another provider's attempt, and anything for a real invoice, is not this page's to act on). */
 export async function loadSimulatedAttempt(attemptId: string): Promise<SimulatedAttempt | null> {
   if (!simulatedAllowed() || !UUID.test(attemptId)) return null;
   const { rows } = await withSystem((db) =>
     db.query<{ id: string; reference: string; provider_checkout_id: string | null; amount_minor: string; currency: CurrencyCode; status: string; number: string | null; public_key: string; credentials: string | null }>(
       `select a.id, a.reference, a.provider_checkout_id, a.amount_minor::text as amount_minor, a.currency, a.status, i.number, c.public_key, c.credentials
        from customer_payment_attempts a join customer_payment_connections c on c.id = a.connection_id and c.org_id = a.org_id join customer_invoices i on i.id = a.invoice_id and i.org_id = a.org_id
-       where a.id = $1 and c.provider = 'simulated' and c.status <> 'revoked'`, [attemptId],
+       where a.id = $1 and c.provider = 'simulated' and c.status <> 'revoked' and i.is_test`, [attemptId],
     ),
   );
   const r = rows[0];

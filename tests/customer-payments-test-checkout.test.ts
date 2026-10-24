@@ -20,7 +20,7 @@ import { startTestPayment, testPaymentPossible } from "@/server/invoices/test-pa
 import { loadReturn } from "@/server/invoices/public";
 import SimulatedCheckoutPage from "@/app/dev/simulated-checkout/[attemptId]/page";
 import { POST as completeRoute } from "@/app/dev/simulated-checkout/[attemptId]/complete/route";
-import { freshIp, invoiceOrg, issuedInvoice, rows } from "./support/invoices";
+import { freshIp, invoiceOrg, issuedInvoice, issuedTestInvoice, rows } from "./support/invoices";
 import { connect, deliver, fakePaymongo, invoiceNow, paymentsOf, paymongoPaid, q, receipts } from "./support/customer-payments";
 
 afterEach(() => {
@@ -33,11 +33,11 @@ afterAll(() => {
   resetEnvCache();
 });
 
-/** An issued invoice, a simulated connection, and the customer's checkout started the way the pay page starts it. */
+/** An issued TEST invoice (the testing checkout takes no other kind), a simulated connection, and the customer's checkout started the way the pay page starts it. */
 async function started() {
   simulatedPlatform.reset();
   const io = await invoiceOrg();
-  const inv = (await issuedInvoice(io)).invoice;
+  const inv = (await issuedTestInvoice(io)).invoice;
   const conn = await connect(io, { provider: "simulated" });
   const r = await startCheckout({ orgId: io.orgId, invoiceId: inv.id, audience: "public" });
   return { io, inv, conn, attemptId: r.attemptId };
@@ -60,7 +60,7 @@ function watching(): { deliver: Deliver; sent: Array<{ url: string; headers: Rec
 describe("the testing checkout", () => {
   it("knows the checkout of a simulated connection by its attempt, and nothing else: another provider's attempt, a malformed id and an unknown id are not found", async () => {
     const s = await started();
-    expect(await loadSimulatedAttempt(s.attemptId)).toMatchObject({ attemptId: s.attemptId, amountMinor: 150000, currency: "PHP", status: "redirected", invoiceNumber: "INV-0001", publicKey: s.conn.publicKey });
+    expect(await loadSimulatedAttempt(s.attemptId)).toMatchObject({ attemptId: s.attemptId, amountMinor: 150000, currency: "PHP", status: "redirected", invoiceNumber: "TEST-0001", publicKey: s.conn.publicKey });
     expect(await loadSimulatedAttempt("not-a-uuid")).toBeNull();
     expect(await loadSimulatedAttempt("00000000-0000-4000-8000-000000000000")).toBeNull();
     const other = await invoiceOrg();
@@ -135,7 +135,7 @@ describe("the testing checkout's page and button", () => {
     const html = renderToStaticMarkup(await SimulatedCheckoutPage({ params: Promise.resolve({ attemptId: s.attemptId }) }));
     expect(html).toContain("Testing checkout");
     expect(html).toContain("No card is asked for and no money moves");
-    expect(html).toContain("INV-0001");
+    expect(html).toContain("TEST-0001");
     expect(html).toMatch(/Pay .*1,500\.00/);
     expect(html.match(/<form /g)).toHaveLength(3);
     expect(html.match(new RegExp(`action="/dev/simulated-checkout/${s.attemptId}/complete"`, "g"))).toHaveLength(3);
@@ -186,7 +186,7 @@ describe("the owner's test payment", () => {
 
   it("is the owner's alone, needs a connection in test mode, and does not touch a live account a customer may be using", async () => {
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    const inv = (await issuedTestInvoice(io)).invoice;
     for (const who of ["manager", "sales", "viewer", "support", "member"] as const) {
       expect(await testPaymentPossible(io.ctx(who), "PHP"), who).toBe(false);
       await expect(startTestPayment(io.ctx(who), inv.id), who).rejects.toThrow(/Only the business owner can run a test payment/);
@@ -206,15 +206,15 @@ describe("the owner's test payment", () => {
     setAdapterForTests("paymongo", createPaymongoProvider({ http: f.http }));
     f.on((r) => r.method === "POST", { status: 200, json: { data: { id: "cs_test_1", attributes: { checkout_url: "https://checkout.paymongo.com/cs_test_1_client_abc" } } } });
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    const inv = (await issuedTestInvoice(io)).invoice;
     const conn = await connect(io, { provider: "paymongo", mode: "test" });
     expect(await testPaymentPossible(io.ctx("owner"), "PHP")).toBe(true);
     expect(await testPaymentPossible(io.ctx("owner"), "USD")).toBe(false);
     const r = await startTestPayment(io.ctx("owner"), inv.id);
-    expect(r).toEqual({ url: "https://checkout.paymongo.com/cs_test_1_client_abc", invoiceNumber: "INV-0001", amountMinor: 150000 });
+    expect(r).toEqual({ url: "https://checkout.paymongo.com/cs_test_1_client_abc", invoiceNumber: "TEST-0001", amountMinor: 150000 });
     const audit = await rows<{ metadata: Record<string, unknown> }>("select metadata from audit_logs where org_id = $1 and action = 'payments.test_payment_started'", [io.orgId]);
     expect(audit).toHaveLength(1);
-    expect(audit[0].metadata).toMatchObject({ number: "INV-0001", provider: "paymongo", amount: "1500.00", currency: "PHP" });
+    expect(audit[0].metadata).toMatchObject({ number: "TEST-0001", provider: "paymongo", amount: "1500.00", currency: "PHP" });
     expect(JSON.stringify(audit)).not.toContain("checkout.paymongo.com");
     expect((await listConnections(io.ctx("owner")))[0].hasConfirmedTestPayment).toBe(false);
     // The provider confirms it in test mode: that is what a test payment is, and it is not live revenue.

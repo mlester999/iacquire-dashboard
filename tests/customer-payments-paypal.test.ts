@@ -10,14 +10,17 @@ import { credentialVault, type ProviderCredentials } from "@/server/customer-pay
 import { connectProvider, listConnections, replaceCredentials, saveWebhookSecret } from "@/server/customer-payments/connections";
 import { startCheckout } from "@/server/customer-payments/attempts";
 import { setAdapterForTests } from "@/server/customer-payments/providers";
-import { createPaypalProvider, paypalHttp, type PaypalRequest } from "@/server/customer-payments/providers/paypal";
+import { createPaypalProvider, disputeOutcomeOf, paypalHttp, type PaypalRequest } from "@/server/customer-payments/providers/paypal";
 import { ProviderCallError } from "@/server/customer-payments/providers/types";
 import { newReference } from "@/server/customer-payments/ids";
+import { runCustomerPaymentReconcileDetailed } from "@/server/customer-payments/reconcile";
+import { SWITCHED_OFF_RETRY_SECONDS } from "@/server/customer-payments/webhooks";
 import { completeApprovedCheckout } from "@/server/invoices/public";
-import { invoiceOrg, issuedInvoice, rows } from "./support/invoices";
+import { createDraft, issueInvoice } from "@/server/invoices/invoices";
+import { contactIn, dealFor, invoiceOrg, issuedInvoice, line, rows } from "./support/invoices";
 import { uid } from "./support/fixtures";
 import {
-  AUTHORIZATION, PAYPAL_CERT_URL, attempt, attemptNow, connect, fakePaypal, invoiceNow, paymentsOf, paypalCaptureCompleted, paypalCaptureOther, paypalDeliver, paypalDispute, paypalOrder, paypalOrderApproved,
+  AUTHORIZATION, PAYPAL_CERT_URL, attempt, attemptNow, connect, fakePaypal, invoiceNow, paymentsOf, paypalCaptureCompleted, paypalCaptureOther, paypalDeliver, paypalDispute, paypalDisputeResolved, paypalOrder, paypalOrderApproved,
   paypalRefunded, paypalSignatureFor, q, receipts, type FakePaypal,
 } from "./support/customer-payments";
 
@@ -362,7 +365,18 @@ describe("PayPal: reading a delivery into facts", () => {
     // The resource of a refund event is the refund; the capture it belongs to is the link that points up.
     expect(parse(paypalRefunded({ refundId: "REFX", captureId: "CAP7", amount: 5000, note: "Customer changed their mind" }))).toMatchObject({ kind: "refund.succeeded", refundId: "REFX", paymentId: "CAP7", amountMinor: 5000, currency: "PHP", reason: "Customer changed their mind" });
     expect(parse(paypalDispute("CUSTOMER.DISPUTE.CREATED", { captureId: "CAP8" }))).toMatchObject({ kind: "dispute.opened", paymentId: "CAP8" });
-    expect(parse(paypalDispute("CUSTOMER.DISPUTE.RESOLVED", { captureId: "CAP8" }))).toMatchObject({ kind: "dispute.closed", paymentId: "CAP8" });
+    expect(parse(paypalDispute("CUSTOMER.DISPUTE.RESOLVED", { captureId: "CAP8" }))).toMatchObject({ kind: "dispute.closed", paymentId: "CAP8", disputeOutcome: "unknown" });
+  });
+
+  it("reads who won a resolved dispute from its outcome code, and anything it does not know plainly as unknown", () => {
+    const outcome = (code: string | null, refunded?: number) => parse(paypalDisputeResolved({ captureId: "CAP9", outcomeCode: code, refunded }));
+    for (const code of ["RESOLVED_SELLER_FAVOUR", "CANCELED_BY_BUYER"]) expect(outcome(code), code).toMatchObject({ kind: "dispute.closed", paymentId: "CAP9", disputeOutcome: "won" });
+    // A loss carries what the buyer got back.
+    expect(outcome("RESOLVED_BUYER_FAVOUR", 5000)).toMatchObject({ disputeOutcome: "lost", amountMinor: 5000, currency: "PHP" });
+    expect(outcome("RESOLVED_WITH_PAYOUT", 7000)).toMatchObject({ disputeOutcome: "lost", amountMinor: 7000 });
+    expect(outcome("RESOLVED_BUYER_FAVOUR")).toMatchObject({ disputeOutcome: "lost", amountMinor: null });
+    for (const code of ["ACCEPTED", "DENIED", "EMPTY", "SOMETHING_NEW", "", null]) expect(outcome(code), String(code)).toMatchObject({ disputeOutcome: "unknown" });
+    expect(disputeOutcomeOf(undefined)).toBe("unknown");
   });
 
   it("does not take a reference that is not ours, and ignores a type it does not use or a currency it does not know", () => {
@@ -483,12 +497,21 @@ describe("PayPal: the owner connects an app", () => {
     f.on((r) => r.path === "/v1/oauth2/token", { status: 200, json: { access_token: "A21AAfixtureToken" } });
   });
 
-  it("keeps the webhook's id when the keys are replaced, checks the new keys first, and never carries a live confirmation over", async () => {
+  it("keeps the webhook's id when the app's keys are rotated, but not from the sandbox app to the live one (their webhooks are different), checks the new keys first, and never carries a live confirmation over", async () => {
     const io = await invoiceOrg();
     const view = await connectProvider(io.ctx("owner"), { provider: "paypal", apiKey: CLIENT_ID, apiSecret: CLIENT_SECRET, environment: "sandbox", webhookSecret: WH, authorization: AUTHORIZATION });
+    // The same environment: the sandbox webhook is still the sandbox webhook.
+    const rotated = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: "RotatedClientIdRotated12", apiSecret: "RotatedClientSecretRotated1", authorization: AUTHORIZATION });
+    expect(rotated).toMatchObject({ mode: "test", environment: "sandbox", status: "connected", webhookSecretSaved: true });
+    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: "RotatedClientIdRotated12", webhookSecret: WH });
+    // Sandbox to live: the sandbox app's webhook id means nothing to the live app, so it is dropped and the connection waits for the live webhook's id.
     const live = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: "LiveClientIdLiveClientId12", apiSecret: "LiveClientSecretLiveClientSecret1", environment: "live", authorization: AUTHORIZATION });
-    expect(live).toMatchObject({ mode: "live", environment: "live", status: "connected", webhookSecretSaved: true, liveConfirmedAt: null });
-    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: "LiveClientIdLiveClientId12", apiSecret: "LiveClientSecretLiveClientSecret1", webhookSecret: WH, settings: { environment: "live" } });
+    expect(live).toMatchObject({ mode: "live", environment: "live", status: "pending_verification", webhookSecretSaved: false, liveConfirmedAt: null });
+    expect(live.liveConfirmBlock).toMatch(/webhook signing secret/);
+    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ apiKey: "LiveClientIdLiveClientId12", apiSecret: "LiveClientSecretLiveClientSecret1", webhookSecret: null, settings: { environment: "live" } });
+    const paired = await replaceCredentials(io.ctx("owner"), view.id, { apiKey: "LiveClientIdLiveClientId12", apiSecret: "LiveClientSecretLiveClientSecret1", environment: "live", webhookSecret: "LIVEWEBHOOK1234567890", authorization: AUTHORIZATION });
+    expect(paired).toMatchObject({ mode: "live", status: "connected", webhookSecretSaved: true });
+    expect(credentialVault.open((await stored(view.id)).credentials)).toMatchObject({ webhookSecret: "LIVEWEBHOOK1234567890" });
     await withSystem((db) => db.query("update customer_payment_connections set live_confirmed_at = now(), live_confirmed_by = $2 where id = $1", [view.id, io.c.people.owner.id]));
     f.on((r) => r.path === "/v1/oauth2/token", { status: 401, json: null });
     await expect(replaceCredentials(io.ctx("owner"), view.id, { apiKey: CLIENT_ID, apiSecret: CLIENT_SECRET, environment: "sandbox", authorization: AUTHORIZATION })).rejects.toThrow(/did not accept/);
@@ -535,7 +558,8 @@ describe("PayPal: starting a customer's payment", () => {
 
   async function ready(over: Parameters<typeof connect>[1] = {}) {
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    // A sandbox app takes a TEST invoice and a live app a real one: test money and real money never meet on an invoice.
+    const inv = (await issuedInvoice(io, { isTest: (over.mode ?? "test") === "test" })).invoice;
     const conn = await connect(io, { provider: "paypal", ...over });
     f = fakePaypal(conn.webhookSecret);
     setAdapterForTests("paypal", createPaypalProvider({ http: f.http }));
@@ -549,7 +573,7 @@ describe("PayPal: starting a customer's payment", () => {
     const first = await startCheckout({ orgId: s.io.orgId, invoiceId: s.inv.id, audience: "member", actorUserId: s.io.c.people.owner.id });
     expect(first).toMatchObject({ provider: "paypal", amountMinor: 150000, currency: "PHP", reused: false, checkoutUrl: `https://www.sandbox.paypal.com/checkoutnow?token=${s.order}` });
     const body = sentOf(f.to("/v2/checkout/orders")[0]);
-    expect(body.purchase_units[0]).toMatchObject({ amount: { currency_code: "PHP", value: "1500.00" }, description: expect.stringMatching(/^Invoice INV-/) });
+    expect(body.purchase_units[0]).toMatchObject({ amount: { currency_code: "PHP", value: "1500.00" }, description: expect.stringMatching(/^Invoice TEST-/) });
     expect(body.purchase_units[0].custom_id).toMatch(/^CP-[A-Za-z0-9]{20,40}$/);
     expect(body.payment_source.paypal.experience_context.return_url).toContain(`/pay/return/${body.purchase_units[0].custom_id}`);
     expect(await q("select provider_checkout_id, status from customer_payment_attempts where id = $1", [first.attemptId])).toEqual([{ provider_checkout_id: s.order, status: "redirected" }]);
@@ -597,7 +621,7 @@ describe("PayPal: a delivery reaches the books only through the webhook's checks
 
   async function setup(over: Parameters<typeof connect>[1] = {}) {
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    const inv = (await issuedInvoice(io, { isTest: (over.mode ?? "test") === "test" })).invoice;
     const conn = await connect(io, { provider: "paypal", ...over });
     const fake = fakePaypal(conn.webhookSecret);
     setAdapterForTests("paypal", createPaypalProvider({ http: fake.http }));
@@ -770,8 +794,67 @@ describe("PayPal: a delivery reaches the books only through the webhook's checks
     await paypalDeliver(d.conn, completed(d));
     expect((await paypalDeliver(d.conn, paypalCaptureOther("PAYMENT.CAPTURE.REVERSED", { captureId: "CAPONE", orderId: d.order, reference: d.a.reference, amount: d.a.amountMinor }))).outcome).toBe("processed");
     expect((await invoiceNow(d.inv.id)).payment_status).toBe("disputed");
+    // A resolution that does not say who won clears nothing: the hold the reversal set stays until a person says how it ended.
     expect((await paypalDeliver(d.conn, paypalDispute("CUSTOMER.DISPUTE.RESOLVED", { captureId: "CAPONE" }))).outcome).toBe("processed");
-    expect((await invoiceNow(d.inv.id)).payment_status).toBe("paid");
+    expect((await invoiceNow(d.inv.id)).payment_status).toBe("disputed");
+  });
+
+  it("settles a dispute by how PayPal says it ended: a win puts the payment back, a loss is a chargeback, and anything else waits for the owner", async () => {
+    const disputed = async () => {
+      const s = await setup();
+      orderIs(s, "COMPLETED", [{ id: "CAPONE", status: "COMPLETED" }]);
+      await paypalDeliver(s.conn, completed(s));
+      // PayPal often reports the reversed capture first and the resolution after it.
+      await paypalDeliver(s.conn, paypalCaptureOther("PAYMENT.CAPTURE.REVERSED", { captureId: "CAPONE", orderId: s.order, reference: s.a.reference, amount: s.a.amountMinor }));
+      expect((await invoiceNow(s.inv.id)).payment_status).toBe("disputed");
+      return s;
+    };
+    const paymentStatus = async (s: S) => (await paymentsOf(s.inv.id))[0].status;
+
+    const won = await disputed();
+    expect((await paypalDeliver(won.conn, paypalDisputeResolved({ captureId: "CAPONE", outcomeCode: "RESOLVED_SELLER_FAVOUR" }))).outcome).toBe("processed");
+    expect(await paymentStatus(won)).toBe("succeeded");
+    expect(await invoiceNow(won.inv.id)).toMatchObject({ payment_status: "paid", refunded_minor: "0" });
+    expect(await kinds(won.inv.id)).toContain("dispute_closed");
+
+    const lost = await disputed();
+    expect((await paypalDeliver(lost.conn, paypalDisputeResolved({ captureId: "CAPONE", outcomeCode: "RESOLVED_BUYER_FAVOUR", refunded: lost.a.amountMinor }))).outcome).toBe("processed");
+    expect(await paymentStatus(lost)).toBe("refunded");
+    expect(await invoiceNow(lost.inv.id)).toMatchObject({ payment_status: "paid", paid_minor: "150000", refunded_minor: "150000" });
+    expect(await q("select source, status, amount_minor::text as amount from customer_refunds where invoice_id = $1", [lost.inv.id])).toEqual([{ source: "chargeback", status: "succeeded", amount: "150000" }]);
+    expect((await rows<{ title: string }>("select title from notifications where org_id = $1 and kind = 'payment_review_needed' and user_id = $2 order by created_at", [lost.io.orgId, lost.io.c.people.owner.id])).map((n) => n.title)).toContain("A dispute on TEST-0001 was lost");
+
+    // A buyer's win with no amount, and a code PayPal uses that this product does not read, are not guessed at.
+    for (const code of ["RESOLVED_BUYER_FAVOUR", "ACCEPTED", null]) {
+      const open = await disputed();
+      expect((await paypalDeliver(open.conn, paypalDisputeResolved({ captureId: "CAPONE", outcomeCode: code }))).outcome).toBe("processed");
+      expect(await paymentStatus(open), String(code)).toBe("disputed");
+      expect(await invoiceNow(open.inv.id)).toMatchObject({ payment_status: "disputed", refunded_minor: "0" });
+      expect(await kinds(open.inv.id)).toContain("dispute_result_unknown");
+    }
+  });
+
+  it("asks the deal's owner to look again when a dispute is lost after the deal was marked won, and never reopens the deal", async () => {
+    const io = await invoiceOrg();
+    await withSystem((db) => db.query("insert into customer_invoice_settings (org_id, close_rule) values ($1, 'auto_won') on conflict (org_id) do update set close_rule = 'auto_won'", [io.orgId]));
+    const dealId = await dealFor(io, await contactIn(io), { ownerId: io.c.people.sales.id });
+    const d = await createDraft(io.ctx("owner"), { opportunityId: dealId, currency: "PHP", lines: [line({ unitPrice: "1500" })], closesDeal: true });
+    const inv = (await issueInvoice(io.ctx("owner"), d.invoice.id, { version: d.invoice.version })).detail.invoice;
+    const conn = await connect(io, { provider: "paypal", mode: "live", liveConfirmed: true });
+    const fake = fakePaypal(conn.webhookSecret);
+    setAdapterForTests("paypal", createPaypalProvider({ http: fake.http }));
+    const order = `ORD${uid()}${uid()}`.toUpperCase();
+    const a = await attempt(inv.id, conn, { checkoutId: order });
+    const s = { io, inv, conn, a, order, fake };
+    orderIs(s, "COMPLETED", [{ id: "CAPONE", status: "COMPLETED" }]);
+    expect((await paypalDeliver(conn, completed(s))).outcome).toBe("processed");
+    const status = async () => (await rows<{ status: string }>("select status from crm_opportunities where id = $1", [dealId]))[0].status;
+    expect(await status()).toBe("won");
+    await paypalDeliver(conn, paypalCaptureOther("PAYMENT.CAPTURE.REVERSED", { captureId: "CAPONE", orderId: order, reference: a.reference, amount: a.amountMinor }));
+    expect(await rows("select 1 from tasks where opportunity_id = $1", [dealId])).toEqual([]);
+    expect((await paypalDeliver(conn, paypalDisputeResolved({ captureId: "CAPONE", outcomeCode: "RESOLVED_BUYER_FAVOUR", refunded: a.amountMinor }))).outcome).toBe("processed");
+    expect(await status()).toBe("won");
+    expect(await rows<{ title: string }>("select title from tasks where opportunity_id = $1", [dealId])).toEqual([{ title: "A refund was recorded on invoice INV-0001: review the deal" }]);
   });
 
   it("is inert for another workspace: a delivery that PayPal verifies for one app but that names another workspace's checkout finds nothing there", async () => {
@@ -806,7 +889,7 @@ describe("PayPal: the customer comes back from PayPal", () => {
 
   async function setup(over: Parameters<typeof connect>[1] = {}) {
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    const inv = (await issuedInvoice(io, { isTest: (over.mode ?? "test") === "test" })).invoice;
     const conn = await connect(io, { provider: "paypal", ...over });
     const fake = fakePaypal(conn.webhookSecret);
     f = fake;
@@ -907,7 +990,7 @@ describe("PayPal: through the real route", () => {
   it("hands PayPal's five headers and the exact body to the handler, so a genuine delivery is recorded and a tampered one is the same bare 403 as any stranger's", async () => {
     const { POST } = await import("@/app/api/webhooks/customer-payments/[provider]/[key]/route");
     const io = await invoiceOrg();
-    const inv = (await issuedInvoice(io)).invoice;
+    const inv = (await issuedInvoice(io, { isTest: true })).invoice;
     const conn = await connect(io, { provider: "paypal" });
     const fake = fakePaypal(conn.webhookSecret);
     setAdapterForTests("paypal", createPaypalProvider({ http: fake.http }));
@@ -932,5 +1015,68 @@ describe("PayPal: through the real route", () => {
     expect(genuine.headers.get("cache-control")).toBe("no-store");
     expect(await paymentsOf(inv.id)).toEqual([expect.objectContaining({ status: "succeeded", provider_payment_id: "CAPROUTE" })]);
     expect((await invoiceNow(inv.id)).payment_status).toBe("paid");
+  });
+});
+
+describe("PayPal: a delivery while the environment's calls switch is off", () => {
+  afterAll(() => {
+    setAdapterForTests("paypal", null);
+    delete process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED;
+    resetEnvCache();
+  });
+
+  it("is turned away with a 503 and a retry time before PayPal is asked anything, stores nothing, and is recorded by the scheduled check once the switch is on", async () => {
+    delete process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED;
+    resetEnvCache();
+    const { POST } = await import("@/app/api/webhooks/customer-payments/[provider]/[key]/route");
+    const io = await invoiceOrg();
+    const inv = (await issuedInvoice(io, { isTest: true })).invoice;
+    const conn = await connect(io, { provider: "paypal" });
+    const fake = fakePaypal(conn.webhookSecret);
+    setAdapterForTests("paypal", createPaypalProvider({ http: fake.http }));
+    const order = `ORD${uid()}${uid()}`.toUpperCase();
+    // A checkout the customer opened three quarters of an hour ago and paid; PayPal's notice of it is what arrives while the switch is off.
+    const a = await attempt(inv.id, conn, { checkoutId: order, ageMinutes: 45 });
+    const body = paypalCaptureCompleted({ orderId: order, reference: a.reference, amount: a.amountMinor, captureId: "CAPSWITCH" });
+    const sign = (raw: string) => {
+      const id = `tx-${uid()}${uid()}`;
+      return { "paypal-auth-algo": "SHA256withRSA", "paypal-cert-url": PAYPAL_CERT_URL, "paypal-transmission-id": id, "paypal-transmission-sig": paypalSignatureFor(conn.webhookSecret, id, raw), "paypal-transmission-time": new Date().toISOString() };
+    };
+    const post = (raw: string, headers: Record<string, string>, key = conn.publicKey) =>
+      POST(new Request(`http://localhost:3000/api/webhooks/customer-payments/paypal/${key}`, { method: "POST", body: raw, headers }), { params: Promise.resolve({ provider: "paypal", key }) });
+
+    const off = await post(body, sign(body));
+    expect(off.status).toBe(503);
+    expect(off.headers.get("retry-after")).toBe(String(SWITCHED_OFF_RETRY_SECONDS));
+    expect(await off.json()).toEqual({ received: false, error: "unavailable" });
+    // Not even the token call: no real provider is called while the switch is off. Nothing was stored, and the connection did not hear anything either.
+    expect(fake.calls).toEqual([]);
+    expect(await receipts(conn.id)).toEqual([]);
+    expect(await paymentsOf(inv.id)).toEqual([]);
+    expect((await q<{ last_event_at: string | null }>("select last_event_at from customer_payment_connections where id = $1", [conn.id]))[0].last_event_at).toBeNull();
+    // Every address gets the same answer, so it says nothing about which connections exist; a forged body is no different, and PayMongo's local check is not touched by it.
+    expect((await post(body, sign(body), "cpk_zzzzzzzzzzzzzzzzzzzz")).status).toBe(503);
+    expect((await post(`${body} `, sign(body))).status).toBe(503);
+    expect(fake.calls).toEqual([]);
+    const mongo = await connect(io, { provider: "paymongo" });
+    const local = await POST(new Request(`http://localhost:3000/api/webhooks/customer-payments/paymongo/${mongo.publicKey}`, { method: "POST", body: "{}" }), { params: Promise.resolve({ provider: "paymongo", key: mongo.publicKey }) });
+    expect(local.status).toBe(403);
+
+    // The switch is on again: nothing was lost, because the scheduled check reads the open checkout back from PayPal and records the payment through the same receipt path.
+    process.env.CUSTOMER_PAYMENTS_WRITES_ENABLED = "true";
+    resetEnvCache();
+    fake.on((r) => r.method === "GET" && r.path === `/v2/checkout/orders/${order}`, { status: 200, json: paypalOrder({ orderId: order, reference: a.reference, status: "COMPLETED", amount: a.amountMinor, captures: [{ id: "CAPSWITCH", status: "COMPLETED" }] }) });
+    await withSystem(async (db) => {
+      await db.query("update customer_payment_attempts set status = 'cancelled' where status in ('created', 'redirected') and id <> $1", [a.id]);
+      await db.query("update customer_payment_events set outcome = 'ignored' where outcome in ('received', 'error', 'deferred')");
+      await db.query("update customer_payment_connections set last_checked_at = now() where last_checked_at is null or last_checked_at < now() - interval '24 hours'");
+    });
+    const report = await runCustomerPaymentReconcileDetailed({ now: new Date(Date.now() + 60_000) });
+    expect(report.recordedFromPoll).toBeGreaterThanOrEqual(1);
+    expect(await paymentsOf(inv.id)).toEqual([expect.objectContaining({ status: "succeeded", provider_payment_id: "CAPSWITCH", verification: "provider_confirmed" })]);
+    expect((await invoiceNow(inv.id)).payment_status).toBe("paid");
+    // And PayPal's own retry of the notice, now that the switch is on, finds it already recorded.
+    expect(await paypalDeliver(conn, body)).toMatchObject({ status: 200, outcome: "processed" });
+    expect(await paymentsOf(inv.id)).toHaveLength(1);
   });
 });

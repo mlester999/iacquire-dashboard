@@ -4,7 +4,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { withSystem } from "@/server/db";
 import { env, resetEnvCache } from "@/server/env";
 import { createContact } from "@/server/crm/contacts";
@@ -52,6 +52,18 @@ async function withEnv(vars: Record<string, string>, run: () => Promise<void>) {
 
 afterEach(() => resetEnvCache());
 
+/** Runs with the clock held at the middle of a fixed rate-limit window (a minute, an hour), so nothing in `run` can straddle two windows however slow the machine is. Only Date is held. */
+async function inOneWindow(windowSeconds: number, run: () => Promise<void>) {
+  const ms = windowSeconds * 1000;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(new Date(Math.floor(NOW.getTime() / ms) * ms + ms / 2));
+    await run();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe("a link that is not a link", () => {
   it("shows nothing for a token of the wrong shape or one nobody was given, and writes nothing", async () => {
     const p = await proposalOrg();
@@ -94,38 +106,43 @@ describe("the limits that come before any lookup", () => {
     const p = await proposalOrg();
     const { token, linkId } = await sentWithLink(p);
     const ip = freshIp();
-    let refusedAt = 0;
-    for (let i = 1; i <= 400 && !refusedAt; i++) {
-      const v = await loadPublicProposal(`${"B".repeat(42)}${i % 2 ? "A" : "C"}`, { ip, now: NOW });
-      if (v.state === "rate_limited") refusedAt = i;
-    }
-    // 120 a minute; a fixed window can roll once while this runs, which allows at most 120 more.
-    expect(refusedAt).toBeGreaterThan(100);
-    expect(refusedAt).toBeLessThanOrEqual(241);
-    const opensBefore = (await linkRow(linkId)).open_count;
-    const v = await loadPublicProposal(token, { ip, now: NOW });
-    expect(v).toMatchObject({ state: "rate_limited", business: null, proposal: null });
-    expect((await linkRow(linkId)).open_count).toBe(opensBefore);
-    expect(await requestEmailCode(token, { ip, now: NOW })).toEqual({ outcome: "rate_limited" });
-    expect(await decideOnProposal(token, ACCEPT, { ip, now: NOW })).toEqual({ outcome: "rate_limited" });
-    expect(await loadPublicPdf(token, { ip, now: NOW })).toEqual({ ok: false, state: "rate_limited" });
-    // Another address is not held back by it.
-    expect((await loadPublicProposal(token, ctx())).state).toBe("open");
+    // The limits count in fixed windows of the real clock, so the whole run is pinned inside one: a window that rolled between the loop and the checks after it (it can, under load)
+    // would forget the count and let the next request through.
+    await inOneWindow(60, async () => {
+      let refusedAt = 0;
+      for (let i = 1; i <= 400 && !refusedAt; i++) {
+        const v = await loadPublicProposal(`${"B".repeat(42)}${i % 2 ? "A" : "C"}`, { ip, now: NOW });
+        if (v.state === "rate_limited") refusedAt = i;
+      }
+      // 120 a minute: the 121st request from the address is the first refused.
+      expect(refusedAt).toBe(121);
+      const opensBefore = (await linkRow(linkId)).open_count;
+      const v = await loadPublicProposal(token, { ip, now: NOW });
+      expect(v).toMatchObject({ state: "rate_limited", business: null, proposal: null });
+      expect((await linkRow(linkId)).open_count).toBe(opensBefore);
+      expect(await requestEmailCode(token, { ip, now: NOW })).toEqual({ outcome: "rate_limited" });
+      expect(await decideOnProposal(token, ACCEPT, { ip, now: NOW })).toEqual({ outcome: "rate_limited" });
+      expect(await loadPublicPdf(token, { ip, now: NOW })).toEqual({ ok: false, state: "rate_limited" });
+      // Another address is not held back by it.
+      expect((await loadPublicProposal(token, ctx())).state).toBe("open");
+    });
   });
 
   it("holds one link to a sensible pace per hour whoever asks", async () => {
     const p = await proposalOrg();
     const { token } = await sentWithLink(p);
-    let ok = 0;
-    let limited = false;
-    for (let i = 0; i < 100 && !limited; i++) {
-      const v = await loadPublicProposal(token, ctx());
-      if (v.state === "rate_limited") limited = true;
-      else ok += 1;
-    }
-    expect(limited).toBe(true);
-    expect(ok).toBeLessThanOrEqual(60);
-    expect(ok).toBeGreaterThanOrEqual(1);
+    await inOneWindow(3600, async () => {
+      let ok = 0;
+      let limited = false;
+      for (let i = 0; i < 100 && !limited; i++) {
+        const v = await loadPublicProposal(token, ctx());
+        if (v.state === "rate_limited") limited = true;
+        else ok += 1;
+      }
+      expect(limited).toBe(true);
+      expect(ok).toBeLessThanOrEqual(60);
+      expect(ok).toBeGreaterThanOrEqual(1);
+    });
   });
 
   it("answers 'temporarily unavailable' for everything, before any database read, while the platform switch is on", async () => {

@@ -24,7 +24,7 @@ afterEach(() => {
 
 async function setup() {
   const io = await invoiceOrg();
-  const inv = (await issuedInvoice(io)).invoice;
+  const inv = (await issuedInvoice(io, { isTest: true })).invoice;
   const conn = await connect(io);
   const a = await attempt(inv.id, conn);
   return { io, inv, conn, a };

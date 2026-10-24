@@ -7,7 +7,7 @@ import { emitEvent } from "@/server/crm/events";
 import { externalReviewsEnabledIn, REVIEWS_NOT_ENABLED_MESSAGE } from "@/server/reputation/entitlement";
 import { assertManageSites, connectionCredentials, loadConnection, locationOf, recordProviderFailure, type ConnectionRow } from "@/server/reputation/connections";
 import { reviewProviderFor, siteEnvironment } from "@/server/reputation/providers";
-import { ProviderError, squashReply, type ProviderReview, type ReviewProvider } from "@/server/reputation/providers/types";
+import { BudgetExceeded, ProviderError, squashReply, within, type ProviderReview, type ReviewProvider } from "@/server/reputation/providers/types";
 import { reconcileDueReplies } from "@/server/reputation/replies";
 import { loadSettings } from "@/server/reputation/settings";
 import { isLowPublicReview, PROVIDER_LABELS } from "@/lib/reputation/external";
@@ -40,6 +40,8 @@ export interface SyncDeps {
   provider?: ReviewProvider;
   now?: Date;
   maxPages?: number;
+  /** Epoch milliseconds after which the site is no longer waited on (the scheduler's budget). A page that was stored stays stored; the pass resumes where it stopped. */
+  deadline?: number;
 }
 
 export interface SyncOutcome {
@@ -288,11 +290,21 @@ export async function syncConnection(connectionId: string, deps: SyncDeps & { ma
     const first = row.last_complete_at === null;
     let reportedCount: number | null = null;
     const maxPages = Math.max(1, deps.maxPages ?? SYNC_MAX_PAGES_PER_RUN);
+    // The time the scheduler gave this pass ran out: what was stored stays stored and the next run resumes. It says nothing about the site, so nothing is recorded against it.
+    let timeUp = false;
     for (let i = 0; i < maxPages; i += 1) {
+      if (deps.deadline !== undefined && Date.now() >= deps.deadline) {
+        timeUp = true;
+        break;
+      }
       let page;
       try {
-        page = await provider.fetchPage(creds.creds, locationOf(row), token, SYNC_PAGE_SIZE);
+        page = await within(() => provider.fetchPage(creds.creds, locationOf(row), token, SYNC_PAGE_SIZE), deps.deadline);
       } catch (e) {
+        if (e instanceof BudgetExceeded) {
+          timeUp = true;
+          break;
+        }
         if (e instanceof ProviderError && e.kind === "blocked") return { ...out, status: "skipped", reason: e.message };
         if (token && e instanceof ProviderError && e.kind === "invalid_content") {
           // The place in the list is no longer valid: start over next time. This says nothing about the connection itself.
@@ -320,6 +332,7 @@ export async function syncConnection(connectionId: string, deps: SyncDeps & { ma
         break;
       }
     }
+    if (timeUp && out.pages === 0) return { ...out, status: "skipped", reason: "The time for this run was used up before it could be read." };
     await withSystem(async (db) => {
       if (out.complete) {
         // The totals the site reported while this pass ran (stored with the page that carried them) decide whether the list can be trusted to mark removals.
@@ -338,6 +351,7 @@ export async function syncConnection(connectionId: string, deps: SyncDeps & { ma
       }
     });
     out.status = out.complete ? "synced" : "partial";
+    if (timeUp && !out.complete) out.reason = "The time for this run was used up; the rest is read next time.";
     return out;
   } finally {
     await release(row).catch(() => undefined);
@@ -366,14 +380,15 @@ export interface DueSyncResult {
   failed: number;
 }
 
-/** The scheduler's pass: every due connection, one at a time, stopping early when the time given is used up. */
+/** The scheduler's pass: every due connection, one at a time, stopping early when the time given is used up (a site still being waited on then is abandoned, not waited for). */
 export async function syncDueConnections(opts: { now?: Date; budgetMs?: number; limit?: number; orgId?: string | null; provider?: ReviewProvider } = {}): Promise<DueSyncResult> {
   const now = opts.now ?? new Date();
   const started = Date.now();
+  const deadline = opts.budgetMs === undefined ? undefined : started + opts.budgetMs;
   const total: DueSyncResult = { connections: 0, inserted: 0, updated: 0, removed: 0, failed: 0 };
   for (const id of await dueConnectionIds(now, opts.limit ?? MAX_CONNECTIONS_PER_RUN, opts.orgId ?? null)) {
-    if (opts.budgetMs !== undefined && Date.now() - started > opts.budgetMs) break;
-    const r = await syncConnection(id, { now, provider: opts.provider });
+    if (deadline !== undefined && Date.now() >= deadline) break;
+    const r = await syncConnection(id, { now, provider: opts.provider, deadline });
     if (r.status === "skipped") continue;
     total.connections += 1;
     total.inserted += r.inserted;
@@ -384,13 +399,19 @@ export async function syncDueConnections(opts: { now?: Date; budgetMs?: number; 
   return total;
 }
 
+/** The most time the reviewSync job may take in all, reading and checking together. The scheduler's tick has 120 seconds for every job it runs. */
+export const REVIEW_SYNC_BUDGET_MS = 60_000;
+
 /**
  * The scheduler's job (reviewSync): read every due connection, then check the replies whose result is unknown. It posts nothing: a reply is posted only by a person pressing Post,
- * and the check only ever settles a reply a person already started posting. Returns the amount of work done, which the job's heartbeat shows.
+ * and the check only ever settles a reply a person already started posting. Both parts share one time budget (two thirds for reading, the rest for checking); a review site that never
+ * answers costs the budget and no more. Returns the amount of work done, which the job's heartbeat shows.
  */
-export async function runReviewSync(opts: { now?: Date } = {}): Promise<number> {
-  const synced = await syncDueConnections({ now: opts.now, budgetMs: 60_000 });
-  const checked = await reconcileDueReplies({ now: opts.now });
+export async function runReviewSync(opts: { now?: Date; budgetMs?: number; provider?: ReviewProvider } = {}): Promise<number> {
+  const budget = opts.budgetMs ?? REVIEW_SYNC_BUDGET_MS;
+  const started = Date.now();
+  const synced = await syncDueConnections({ now: opts.now, budgetMs: Math.floor((budget * 2) / 3), provider: opts.provider });
+  const checked = await reconcileDueReplies({ now: opts.now, budgetMs: Math.max(0, budget - (Date.now() - started)), provider: opts.provider });
   return synced.inserted + synced.updated + synced.removed + checked.posted + checked.failed;
 }
 

@@ -6,12 +6,12 @@ import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { sha256 } from "@/server/security/crypto";
 import { createDraft, issueInvoice } from "@/server/invoices/invoices";
-import { runCustomerPaymentReconcileDetailed, MAX_ATTEMPTS } from "@/server/customer-payments/reconcile";
+import { runCustomerPaymentReconcileDetailed, MAX_ATTEMPTS, RECONCILE_BUDGET_MS } from "@/server/customer-payments/reconcile";
 import { markReceiptError, storeReceipt } from "@/server/customer-payments/events";
 import { createPaymongoProvider } from "@/server/customer-payments/providers/paymongo";
 import { setAdapterForTests } from "@/server/customer-payments/providers";
-import { simulatedPlatform } from "@/server/customer-payments/providers/simulated";
-import { ProviderCallError } from "@/server/customer-payments/providers/types";
+import { simulatedPlatform, simulatedProvider } from "@/server/customer-payments/providers/simulated";
+import { ProviderCallError, type PaymentProviderAdapter } from "@/server/customer-payments/providers/types";
 import { emptyEvent } from "@/lib/invoices/payment-events";
 import { contactIn, dealFor, invoiceOrg, issuedInvoice, line, providerPayment, rows } from "./support/invoices";
 import { attempt, attemptNow, connect, deliver, fakePaymongo, invoiceNow, paymentsOf, paymongoPaid, paymongoRefundUpdated, q, receipts, simulatedSetup } from "./support/customer-payments";
@@ -31,7 +31,8 @@ const run = (minutes: number, deps: Parameters<typeof runCustomerPaymentReconcil
 
 async function setup(over: Parameters<typeof connect>[1] = {}, attemptOver: Parameters<typeof attempt>[2] = {}) {
   const io = await invoiceOrg();
-  const inv = (await issuedInvoice(io)).invoice;
+  // An account in test mode takes a TEST invoice and a live one a real invoice: test money and real money never meet.
+  const inv = (await issuedInvoice(io, { isTest: (over.mode ?? "test") === "test" })).invoice;
   const conn = await connect(io, over);
   const a = await attempt(inv.id, conn, attemptOver);
   return { io, inv, conn, a };
@@ -218,6 +219,59 @@ describe("a payment whose webhook was lost", () => {
       expect(await paymentsOf(u.inv.id)).toMatchObject([{ status: "needs_review" }]);
       expect(await invoiceNow(u.inv.id)).toMatchObject({ payment_status: "unpaid" });
     });
+  });
+});
+
+describe("a provider that never answers", () => {
+  // The tick that runs this job is cut off at 120 seconds, and every job after it waits: a hung provider must cost the run its share of the budget and no more.
+  const hang = (): PaymentProviderAdapter => ({ ...simulatedProvider, fetchCheckout: () => new Promise(() => undefined), verifyCredentials: () => new Promise(() => undefined) });
+
+  it("is given up on within the budget at each step, the items waiting are put back in line, and the work that asks no provider still runs", async () => {
+    // The state: a stale delivery that needs the provider read back, open checkouts nobody paid, a connection due for its daily check, and a checkout whose time is up.
+    const s = await setup({ provider: "simulated" });
+    const stale = await storeReceipt({ id: s.conn.id, orgId: s.io.orgId }, succeeded(s, "pay_hang"), sha256("hang"));
+    const second = await setup({ provider: "simulated" }, { ageMinutes: 45 });
+    const third = await setup({ provider: "simulated" }, { ageMinutes: 45 });
+    const timedOut = await setup({ provider: "simulated" }, { expiresInHours: -1 });
+    // (Only the first connection is due its daily check; the other workspaces' were just set up too, and are not the subject here.)
+    await withSystem((db) => db.query("update customer_payment_connections set last_checked_at = case when id = $1 then null else now() end", [s.conn.id]));
+    const budgetMs = 900;
+    const started = Date.now();
+    const report = await run(11, { budgetMs, providerFor: hang });
+    const took = Date.now() - started;
+    // Three provider steps, each with a share of 900 ms, and each hangs: well under the 3 seconds that would show the job waiting for nothing.
+    expect(took).toBeLessThan(3_000);
+    expect(report).toMatchObject({ cutShort: true, retried: 0, polled: 0, recordedFromPoll: 0 });
+    // The step that asks nobody ran: the checkout whose time was up was closed.
+    expect(report.expired).toBe(1);
+    expect(await attemptNow(timedOut.a.id)).toMatchObject({ status: "expired" });
+    // The delivery that was being read back counted the try (so the ones behind it get their turn), and is still open; the payment is not recorded.
+    expect((await receipts(s.conn.id)).find((r) => r.id === stale.receiptId)).toMatchObject({ outcome: "error", attempts: 1, detail: { error: expect.stringMatching(/did not answer in time/) } });
+    expect(await paymentsOf(s.inv.id)).toEqual([]);
+    // The checkout that was being read back was put at the back of the line; the one behind it was not reached.
+    const order = await q<{ id: string }>("select id from customer_payment_attempts where id = any($1::uuid[]) order by updated_at desc", [[second.a.id, third.a.id]]);
+    expect(order).toHaveLength(2);
+    // The connection that was being checked has its note updated and is not at the front of the line tomorrow.
+    expect((await q<{ last_error: string | null; last_checked_at: string | null }>("select last_error, last_checked_at from customer_payment_connections where id = $1", [s.conn.id]))[0]).toMatchObject({ last_error: "The provider did not answer in time." });
+    expect((await q<{ last_checked_at: string | null }>("select last_checked_at from customer_payment_connections where id = $1", [s.conn.id]))[0].last_checked_at).not.toBeNull();
+  });
+
+  it("does not wait at all once the budget is spent, and says nothing was cut short when the provider answers", async () => {
+    const s = await simulatedSetup({ ageMinutes: 45 });
+    simulatedPlatform.pay(s.a.checkoutId!, s.conn.webhookSecret);
+    const none = await run(0, { budgetMs: 0 });
+    expect(none).toMatchObject({ polled: 0, recordedFromPoll: 0 });
+    expect(await paymentsOf(s.inv.id)).toEqual([]);
+    const fine = await run(1);
+    expect(fine).toMatchObject({ polled: 1, recordedFromPoll: 1, cutShort: false });
+    expect(await paymentsOf(s.inv.id)).toMatchObject([{ status: "succeeded" }]);
+  });
+
+  it("is told its budget by the scheduler", async () => {
+    const { readFileSync } = await import("node:fs");
+    const tick = readFileSync("src/server/ops/tick.ts", "utf8");
+    expect(tick).toMatch(/name: "customerPaymentReconcile".*runCustomerPaymentReconcile\(\{ budgetMs: RECONCILE_BUDGET_MS \}\)/);
+    expect(RECONCILE_BUDGET_MS).toBeLessThanOrEqual(30_000);
   });
 });
 

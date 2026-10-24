@@ -112,7 +112,7 @@ export function ReturnStatus({ reference, initial, approvedCheckoutId }: { refer
         </div>
       )}
       {back && (
-        <p className="text-[13.5px]"><a href={back} className="font-medium text-primary-ink underline">Back to your invoice</a></p>
+        <p className="text-[13.5px]"><a href={back} className="inline-flex min-h-11 items-center font-medium text-primary-ink underline">Back to your invoice</a></p>
       )}
     </div>
   );

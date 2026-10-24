@@ -13,10 +13,11 @@ import { startManualRun, startTestRun } from "@/server/crm/workflows/runs";
 import { processWorkflowRuns } from "@/server/crm/workflows/runner";
 import type { WorkflowDefinition, WorkflowStep } from "@/lib/crm/workflow/spec";
 import { confirmContactIdentity } from "@/server/messaging/consent-identity";
+import { mergeContacts } from "@/server/messaging/contacts";
 import { queueOutreach, type OutreachRequest } from "@/server/messaging/outreach";
 import { dispatchDue } from "@/server/messaging/send";
 import { inbound, recordingProvider } from "./support/messaging";
-import { identityOf, nativeChatOrg, typedLead, channelConversation } from "./support/unverified";
+import { identityOf, nativeChatOrg, typedLead, channelConversation, uniqueEmail } from "./support/unverified";
 import { answer, clientId, embedCall, hashOf, start, type ChatOrg } from "./support/webchat";
 
 const NOW = new Date("2026-10-21T12:00:00Z");
@@ -115,6 +116,27 @@ describe("a workflow started by the details form", () => {
     const res = await startTestRun(memberActor(c.m.ctx("owner")), manualWorkflow, { contactId: lead.contactId });
     expect(res.steps.at(-1)).toMatchObject({ stepKey: "send", outcome: "would_skip" });
     expect(res.steps.at(-1)?.detail).toMatch(/visitor typed this number or address and it has not been confirmed/);
+  });
+});
+
+describe("a typed chat contact that staff merged into a customer", () => {
+  it("is still blocked by a real run of the same step and shown as 'would be blocked' in a test run, because the address stays typed after the merge", async () => {
+    const owner = memberActor(c.m.ctx("owner"));
+    const keptEmail = uniqueEmail();
+    const kept = await createContact(owner, { firstName: "Gus", lastName: "Dela Cruz", email: keptEmail });
+    const lead = await typedLead(c, { email: keptEmail });
+    await mergeContacts(c.m.ctx("owner"), { keptId: kept.id, mergedId: lead.contactId, reason: "Same person, confirmed by the team" });
+    expect(await identityOf(c.m.org.id, "phone", lead.phone!)).toMatchObject({ contact_id: kept.id, verified: false });
+
+    const test = await startTestRun(owner, manualWorkflow, { contactId: kept.id });
+    expect(test.steps.at(-1)).toMatchObject({ stepKey: "send", outcome: "would_skip" });
+    expect(test.steps.at(-1)?.detail).toMatch(/visitor typed this number or address and it has not been confirmed/);
+
+    await startManualRun(owner, manualWorkflow, { contactId: kept.id });
+    await processWorkflowRuns();
+    expect((await stepResults(manualWorkflow)).at(-1)).toMatchObject({ status: "skipped", result: { outcome: "blocked", reason: "identity_unverified" } });
+    expect(await outboundFor(kept.id)).toEqual([]);
+    expect((await whatLeaves()).sent.every((x) => x.to !== lead.phone)).toBe(true);
   });
 });
 

@@ -7,6 +7,8 @@
 --     escalation, CRM context and lead-scoring events all apply). Nothing about the provider-send configuration (messaging_channels, consent
 --     events, suppressions, templates) changes: a reply to a visitor is a stored message the open widget collects, never a provider send.
 --   * contacts.created_via accepts 'website_chat'.
+--   * contact_identities.typed_by_visitor marks an address a visitor typed into the chat's details form. The "typed, not confirmed" rule belongs to the address, not to the
+--     contact it happens to sit on, so it survives a merge into a contact that was not made by the chat (verified_via cannot carry it: it says how an address WAS verified).
 --   * One notification kind, web_chat_lead.
 --
 -- Additive and nullable-first. No existing row changes. Every new table is workspace-keyed with composite foreign keys, has row-level security, and
@@ -136,6 +138,10 @@ alter table conversations add constraint conversations_channel_check check (chan
 alter table contacts drop constraint contacts_created_via_check;
 alter table contacts add constraint contacts_created_via_check check (created_via in (
   'inbound_message', 'manual', 'import', 'website_form', 'form', 'booking', 'api', 'agent', 'workflow', 'ghl_migration', 'call', 'website_chat'));
+
+-- An address a website visitor typed. It counts as typed only while it is unverified (the application reads "not verified and typed_by_visitor"), and it stays set after
+-- the address is verified so the history of where it came from is kept. A merge moves the identity row, so the mark moves with it.
+alter table contact_identities add column typed_by_visitor boolean not null default false;
 
 -- ---------------------------------------------------------------------------
 -- Row-level security: read under the signed-in member's access, write only from trusted server code

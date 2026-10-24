@@ -32,6 +32,7 @@ const RESULTS: Record<string, { tone: "ok" | "error"; text: string }> = {
   invalid: { tone: "error", text: "Something in the form wasn't right. Please try again." },
   closed: { tone: "error", text: "This link no longer accepts feedback." },
   rate_limited: { tone: "error", text: "Too many attempts in a short while. Wait a few minutes, then try again." },
+  unavailable: { tone: "error", text: "Feedback was unavailable for a moment, so nothing was sent. Please try again." },
   link_missing: { tone: "error", text: "That review link isn't available any more. Use one of the links below." },
   error: { tone: "error", text: "That didn't go through. Please try again." },
 };
@@ -226,6 +227,16 @@ export default async function ReviewRequestPage({ params, searchParams }: { para
   const result = typeof r === "string" ? RESULTS[r] ?? null : null;
   const view = await loadReviewPage(token);
 
+  // The platform-wide emergency switch: the same plain notice for every address, valid or not, and nothing about the business (nothing was read).
+  if (view.state === "disabled") {
+    return (
+      <Shell business={null}>
+        <Notice icon={Hourglass} title="Feedback is temporarily unavailable">
+          <p>Please try again later, or contact the business directly.</p>
+        </Notice>
+      </Shell>
+    );
+  }
   if (view.state === "rate_limited") {
     return (
       <Shell business={null}>

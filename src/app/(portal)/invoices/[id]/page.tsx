@@ -32,10 +32,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const [settings, testPossible] = await Promise.all([getInvoiceSettings(ctx), testPaymentPossible(ctx, i.currency)]);
   const facts: ActionFacts = {
     status: i.status, paymentStatus: i.paymentStatus, writtenOff: i.writtenOffAt !== null, balanceMinor: i.balanceMinor, paidMinor: i.paidMinor, createdVia: i.createdVia,
-    isAuthor: i.createdBy === ctx.user.id, approvalRequiredForCreators: settings.approvalRequiredForCreators, hasTestConnection: testPossible,
+    isAuthor: i.createdBy === ctx.user.id, approvalRequiredForCreators: settings.approvalRequiredForCreators, hasTestConnection: testPossible, isTest: i.isTest,
     can: { create: ctx.can("invoices.create"), approve: ctx.can("invoices.approve"), send: ctx.can("invoices.send"), recordPayment: ctx.can("invoices.record_payment"), void: ctx.can("invoices.void"), refund: ctx.can("invoices.refund"), connect: ctx.can("invoices.connect_payments") },
   };
-  const closeRuleNote = i.opportunityId && detail.closeRule !== "none" && i.status !== "void"
+  const closeRuleNote = i.opportunityId && !i.isTest && detail.closeRule !== "none" && i.status !== "void"
     ? `Rule for the linked deal: ${CLOSE_RULE_LABELS[detail.closeRule]}.${detail.closeRule === "auto_won" && !i.closesDeal ? " This invoice is not marked to close the deal, so nothing will change it." : ""}`
     : null;
   return (
@@ -50,7 +50,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         hasCustomer={i.contactId !== null} closeRuleNote={closeRuleNote}
       />
       <LinesTable detail={detail} />
-      {(detail.payments.length > 0 || i.status === "issued") && <PaymentsPanel payments={detail.payments} refunds={detail.refunds} currency={i.currency} canRefund={ctx.can("invoices.refund")} tz={tz} />}
+      {(detail.payments.length > 0 || i.status === "issued") && <PaymentsPanel payments={detail.payments} refunds={detail.refunds} currency={i.currency} canRefund={ctx.can("invoices.refund")} isTest={i.isTest} tz={tz} />}
       <RemindersList detail={detail} tz={tz} />
       <Timeline detail={detail} tz={tz} />
     </div>

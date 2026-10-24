@@ -228,6 +228,48 @@ describe("the wording is checked sentence by sentence", () => {
     expect(run.output.droppedCount).toBe(out.dropped.length);
   });
 
+  it("drops a price or a promise written in words, with a percent sign, in JPY or as '1 500', and a turnaround or refund nobody approved", async () => {
+    const p = await aiOrg();
+    const out = await draftProposalWithAi(p.actor("sales"), {}, deps(stubModel(answer(p, {
+      items: [{ catalogItemId: p.item.id, quantity: 3, note: "Three rounds of design." }],
+      intro: "We are glad to help. An introductory rate of two hundred a month applies. Total is five hundred JPY.",
+      scopeSummary: "We will build the site. A fifteen % reduction applies. The fee is 2 500 for the build. Delivery in three weeks. We will complete the work within 3 days. We offer a sixty day refund. The pages are reviewed with you.",
+      assumptions: ["The customer supplies the photos.", "Cancel anytime.", "It will be ready by Friday."],
+      nextSteps: ["Review this proposal.", "The investment is one thousand five hundred."],
+    }))));
+    const sections = Object.fromEntries(out.proposal.doc.sections.map((s) => [s.heading, s.body]));
+    expect(sections.Introduction).toBe("We are glad to help.");
+    expect(sections.Scope).toBe("We will build the site. The pages are reviewed with you.");
+    expect(sections.Assumptions).toBe("- The customer supplies the photos.");
+    expect(sections["Next steps"]).toBe("1. Review this proposal.");
+    expect(out.proposal.doc.lines[0].note).toBe("Three rounds of design.");
+    expect(out.dropped.map((d) => [d.reason, d.text])).toEqual([
+      ["amount_in_words", "An introductory rate of two hundred a month applies."],
+      ["amount_in_words", "Total is five hundred JPY."],
+      ["amount_in_words", "A fifteen % reduction applies."],
+      ["number", "The fee is 2 500 for the build."],
+      ["claim", "Delivery in three weeks."],
+      ["claim", "We will complete the work within 3 days."],
+      ["claim", "We offer a sixty day refund."],
+      ["claim", "Cancel anytime."],
+      ["claim", "It will be ready by Friday."],
+      ["amount_in_words", "The investment is one thousand five hundred."],
+    ]);
+  });
+
+  it("keeps a turnaround or refund that the approved knowledge states, or that the draft's own line is priced in", async () => {
+    const p = await aiOrg();
+    await knowledge(p.org.id, "products_services", "We build websites. Most websites are delivered within fourteen days. Refunds are explained in our policy.");
+    const training = await createCatalogItem(p.actor("owner"), { name: "Onsite training", description: "Hands-on training at your office.", unitLabel: "day", unitPriceMinor: 90_000, currency: "USD", billing: "one_time" });
+    const out = await draftProposalWithAi(p.actor("sales"), {}, deps(stubModel(answer(p, {
+      items: [{ catalogItemId: p.item.id, quantity: 1, note: "" }, { catalogItemId: training.id, quantity: 3, note: "Training takes three days." }],
+      scopeSummary: "Delivery is within fourteen days. Delivery is within twenty days. Refunds are available.",
+    }))));
+    expect(out.proposal.doc.sections.find((s) => s.heading === "Scope")?.body).toBe("Delivery is within fourteen days. Refunds are available.");
+    expect(out.proposal.doc.lines.find((l) => l.name === "Onsite training")?.note).toBe("Training takes three days.");
+    expect(out.dropped.map((d) => [d.reason, d.text])).toEqual([["claim", "Delivery is within twenty days."]]);
+  });
+
   it("allows the numbers the workspace gave it: the price book's prices, its approved pricing, and the draft's own figures", async () => {
     const p = await aiOrg();
     await knowledge(p.org.id, "approved_pricing", "Hosting is USD 25 per month. Training is USD 90 per hour.");

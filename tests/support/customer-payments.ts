@@ -13,7 +13,7 @@ import { SIGNATURE_HEADER, signSimulatedBody, simulatedBody, simulatedPlatform, 
 import type { PaymongoHttp, PaymongoRequest, PaymongoResponse } from "@/server/customer-payments/providers/paymongo";
 import type { PaypalHttp, PaypalRequest, PaypalResponse } from "@/server/customer-payments/providers/paypal";
 import { uid } from "./fixtures";
-import { invoiceOrg, issuedInvoice, type InvoiceOrg } from "./invoices";
+import { invoiceOrg, issuedTestInvoice, type InvoiceOrg } from "./invoices";
 
 // Nothing in these tests may reach a payment provider, or anything else on the network. The real network layer of an adapter calls fetch, so fetch is replaced for every
 // test that imports this file by one that records the attempt and fails, and a test that made an attempt fails (an adapter that swallows the error cannot hide it).
@@ -104,13 +104,14 @@ export async function attempt(
 }
 
 /**
- * A workspace with an issued invoice and a simulated connection whose checkout really exists on the simulated platform, so the authenticated read-back (which the
- * simulated provider supports) finds it. Resets the platform: one such workspace at a time per test.
+ * A workspace with an issued TEST invoice (the simulated provider is always in test mode, and a test invoice is the only kind that takes its payments) and a simulated connection
+ * whose checkout really exists on the simulated platform, so the authenticated read-back (which the simulated provider supports) finds it. Resets the platform: one such
+ * workspace at a time per test.
  */
 export async function simulatedSetup(over: { ageMinutes?: number } = {}) {
   simulatedPlatform.reset();
   const io = await invoiceOrg();
-  const inv = (await issuedInvoice(io)).invoice;
+  const inv = (await issuedTestInvoice(io)).invoice;
   const conn = await connect(io, { provider: "simulated" });
   const balance = Number((await withSystem((db) => db.query<{ b: string }>("select balance_minor::text as b from customer_invoices where id = $1", [inv.id]))).rows[0].b);
   const reference = newReference();
@@ -349,4 +350,13 @@ export function paypalDeliver(
   set("paypal-transmission-sig", over.signature === undefined ? paypalSignatureFor(over.webhookId ?? conn.webhookSecret, transmissionId, rawBody) : over.signature);
   set("paypal-transmission-time", over.time ?? new Date().toISOString());
   return handleCustomerPaymentWebhook({ provider: "paypal", key: over.key ?? conn.publicKey, rawBody, headers, ip: over.ip ?? null, now: over.now });
+}
+
+/** A resolved PayPal dispute with the outcome PayPal would name (null: the dispute carries no outcome at all) and what the buyer got back, if anything. */
+export function paypalDisputeResolved(o: { eventId?: string; captureId: string; outcomeCode: string | null; refunded?: number; currency?: string }): string {
+  const currency = o.currency ?? "PHP";
+  return paypalEnvelope(o.eventId ?? `WH-${uid()}${uid()}`, "CUSTOMER.DISPUTE.RESOLVED", "dispute", {
+    dispute_id: "PP-D-1", status: "RESOLVED", disputed_transactions: [{ seller_transaction_id: o.captureId }],
+    ...(o.outcomeCode === null ? {} : { dispute_outcome: { outcome_code: o.outcomeCode, ...(o.refunded ? { amount_refunded: { currency_code: currency, value: decimal(o.refunded, currency) } } : {}) } }),
+  });
 }

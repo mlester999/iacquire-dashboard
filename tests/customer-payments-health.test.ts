@@ -22,7 +22,7 @@ describe("what the health check sees of customers' payments", () => {
   it("raises, for the workspace that has them and in plain words for its owner, deliveries that failed or were never finished, payments waiting for a person, and an account in trouble; and resolves each when it is put right", async () => {
     const a = await invoiceOrg();
     const b = await invoiceOrg();
-    const invA = (await issuedInvoice(a)).invoice;
+    const invA = (await issuedInvoice(a, { isTest: true })).invoice;
     const conn = await connect(a);
     // Two deliveries: one that failed, one that arrived and was never applied.
     const failed = await storeReceipt({ id: conn.id, orgId: a.orgId }, facts("evt_failed_one"), sha256("1"));
@@ -151,7 +151,8 @@ describe("a client with payment accounts closing down", () => {
 
     async function seeded() {
       const io = await invoiceOrg();
-      const inv = (await issuedInvoice(io)).invoice;
+      // A test invoice carries the test-mode payment and its refund (an account in test mode takes only a test invoice); a real one carries a checkout nobody paid.
+      const inv = (await issuedInvoice(io, { isTest: true })).invoice;
       const conn = await connect(io);
       const at = await attempt(inv.id, conn);
       await deliver(conn, paymongoPaid({ checkoutId: at.checkoutId!, reference: at.reference, amount: at.amountMinor, paymentId: "pay_seed" }));

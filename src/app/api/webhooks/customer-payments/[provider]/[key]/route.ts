@@ -28,7 +28,8 @@ async function readLimited(req: Request): Promise<string | null> {
 /**
  * A business's payment provider delivers an event for one of its connections. No session: the delivery is trusted only by its signature, over the raw body, checked
  * with that connection's own secret. The body is read as text before anything is parsed, because parsing first would change the bytes that were signed. Any 2xx
- * acknowledges the delivery; a 5xx makes the provider send it again, which is safe because applying an event is idempotent.
+ * acknowledges the delivery; a 5xx makes the provider send it again, which is safe because applying an event is idempotent. A provider that is checked by asking it (PayPal)
+ * gets a 503 with Retry-After while the environment's switch for real provider calls is off, and nothing is stored.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ provider: string; key: string }> }) {
   const { provider, key } = await params;
@@ -37,7 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ provide
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null;
   try {
     const r = await handleCustomerPaymentWebhook({ provider, key, rawBody, headers: req.headers, ip });
-    return Response.json(r.body, { status: r.status, headers: HEADERS });
+    return Response.json(r.body, { status: r.status, headers: r.retryAfterSeconds ? { ...HEADERS, "Retry-After": String(r.retryAfterSeconds) } : HEADERS });
   } catch {
     // Nothing about the request, the workspace or the provider is logged here.
     console.error("[iacquire] customer payment webhook failed before it could be recorded");

@@ -11,6 +11,10 @@ import { REFERENCE_RE } from "@/lib/invoices/connection-rules";
 export const EVENT_KINDS = ["payment.succeeded", "payment.failed", "payment.pending", "refund.succeeded", "refund.failed", "refund.pending", "dispute.opened", "dispute.closed", "ignored"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
+/** How a dispute ended, for the seller: won (the seller's favour, or the buyer withdrew it), lost (the buyer's favour, or paid out), unknown (the provider did not say, or said something this product does not read). */
+export const DISPUTE_OUTCOMES = ["won", "lost", "unknown"] as const;
+export type DisputeOutcome = (typeof DISPUTE_OUTCOMES)[number];
+
 export interface NormalizedEvent {
   kind: EventKind;
   /** The provider's id for the event: the replay key. */
@@ -33,13 +37,15 @@ export interface NormalizedEvent {
   reason: string | null;
   /** When the provider says it happened, as an ISO instant. */
   occurredAt: string | null;
+  /** Only on a dispute that closed: how it ended. The amount, when the provider gave one, is amountMinor: what the buyer got back. */
+  disputeOutcome: DisputeOutcome | null;
 }
 
 const text = (v: unknown, max: number): string | null => (typeof v === "string" && v ? v.slice(0, max) : null);
 const minor = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
 
 export function emptyEvent(kind: EventKind, base: Pick<NormalizedEvent, "eventId" | "type" | "livemode">): NormalizedEvent {
-  return { kind, ...base, checkoutId: null, reference: null, paymentId: null, refundId: null, amountMinor: null, currency: null, feeMinor: null, method: null, reason: null, occurredAt: null };
+  return { kind, ...base, checkoutId: null, reference: null, paymentId: null, refundId: null, amountMinor: null, currency: null, feeMinor: null, method: null, reason: null, occurredAt: null, disputeOutcome: null };
 }
 
 /** Reads facts back from a stored receipt. Returns null for anything that is not exactly the shape this code writes. */
@@ -55,6 +61,7 @@ export function readFacts(value: unknown): NormalizedEvent | null {
     kind: v.kind as EventKind, eventId, type, livemode: v.livemode, checkoutId: text(v.checkoutId, 120), reference: text(v.reference, 60), paymentId: text(v.paymentId, 120),
     refundId: text(v.refundId, 120), amountMinor: minor(v.amountMinor), currency: currency && isCurrency(currency) ? currency : null, feeMinor: minor(v.feeMinor), method: text(v.method, 40),
     reason: text(v.reason, 200), occurredAt: text(v.occurredAt, 40),
+    disputeOutcome: (DISPUTE_OUTCOMES as readonly unknown[]).includes(v.disputeOutcome) ? (v.disputeOutcome as DisputeOutcome) : null,
   };
 }
 
@@ -87,7 +94,13 @@ export interface AttemptFacts {
   settingUp: boolean;
   amountMinor: number;
   currency: string;
+  /** The checkout is for a test invoice. Test-mode money belongs on a test invoice and only on one; live money never does. */
+  invoiceIsTest: boolean;
 }
+
+/** Why an event whose mode is not the one its invoice takes is refused. A test invoice takes only test-mode payments and a real invoice only live ones. */
+const wrongKindOfMoney = (invoiceIsTest: boolean) =>
+  invoiceIsTest ? "A live payment cannot be recorded on a test invoice, which takes only test-mode payments." : "A payment made in test mode cannot be recorded on a real invoice: only a test invoice takes one.";
 
 /** What the provider says when asked directly with the business's own key: the authenticated read-back. */
 export interface Canonical {
@@ -113,6 +126,7 @@ export function decideSucceeded(i: SucceededInput): EventDecision {
   if (e.livemode !== i.connectionLive) return { action: "reject", reason: "The event is from the other mode (test or live) than this connection." };
   if (!looksLikeOurReference(e.reference)) return { action: "ignore", reason: "Not one of this product's checkouts." };
   if (!i.attempt) return { action: "reject", reason: "No checkout on this connection has that reference." };
+  if (e.livemode === i.attempt.invoiceIsTest) return { action: "reject", reason: wrongKindOfMoney(i.attempt.invoiceIsTest) };
   if (!e.paymentId) return { action: "reject", reason: "The event names no payment, so there is nothing to record." };
   if (i.attempt.checkoutId === null && i.attempt.settingUp) return { action: "defer", reason: "The checkout for that reference is still being set up." };
   // The amount can only be recorded when it is a valid amount in the invoice's own currency.
@@ -136,6 +150,7 @@ export function decideNotSucceeded(i: { event: NormalizedEvent; connectionLive: 
   if (e.livemode !== i.connectionLive) return { action: "reject", reason: "The event is from the other mode (test or live) than this connection." };
   if (!looksLikeOurReference(e.reference) || !i.attempt) return { action: "ignore", reason: "Not one of this product's checkouts." };
   if (e.checkoutId && i.attempt.checkoutId && e.checkoutId !== i.attempt.checkoutId) return { action: "ignore", reason: "The checkout does not belong to that reference." };
+  if (e.livemode === i.attempt.invoiceIsTest) return { action: "reject", reason: wrongKindOfMoney(i.attempt.invoiceIsTest) };
   return { action: "apply" };
 }
 
@@ -147,7 +162,8 @@ export interface PaymentFactsForRefund {
 
 /**
  * A verified refund or dispute event. It can only be applied to a payment this product recorded and counted. One that arrives before its payment is deferred (events
- * can be reordered); one for a payment still waiting for review is deferred too. A refund in another currency is refused, whatever the payment's status.
+ * can be reordered); one for a payment still waiting for review is deferred too, and so is the close of a dispute that is not open here yet. A refund (or the amount a lost
+ * dispute took back) in another currency is refused, whatever the payment's status.
  */
 export function decideAfterPayment(i: { event: NormalizedEvent; connectionLive: boolean; payment: PaymentFactsForRefund | null }): EventDecision {
   const e = i.event;
@@ -156,6 +172,8 @@ export function decideAfterPayment(i: { event: NormalizedEvent; connectionLive: 
   if (!i.payment) return { action: "defer", reason: "The payment this refers to has not been recorded here (yet)." };
   if (i.payment.status === "pending" || i.payment.status === "needs_review") return { action: "defer", reason: "The payment this refers to is waiting for review." };
   if (i.payment.status === "failed") return { action: "reject", reason: "The payment this refers to failed, so there is nothing to refund." };
-  if (e.kind.startsWith("refund.") && e.currency !== null && e.currency !== i.payment.currency) return { action: "reject", reason: "The refund is in a different currency from the payment." };
+  if ((e.kind.startsWith("refund.") || e.kind === "dispute.closed") && e.currency !== null && e.currency !== i.payment.currency) return { action: "reject", reason: "The amount is in a different currency from the payment." };
+  // Events can be reordered: a close that comes before its dispute was opened here waits for it, so a lost dispute is not dropped for arriving first.
+  if (e.kind === "dispute.closed" && i.payment.status !== "disputed") return { action: "defer", reason: "The dispute this closes has not been opened here (yet)." };
   return { action: "apply" };
 }

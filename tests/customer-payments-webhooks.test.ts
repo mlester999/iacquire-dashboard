@@ -7,6 +7,7 @@ import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { sha256 } from "@/server/security/crypto";
 import { createDraft, issueInvoice, voidInvoice } from "@/server/invoices/invoices";
+import { recordRefund } from "@/server/invoices/payments";
 import { processReceipt } from "@/server/customer-payments/events";
 import { MAX_BODY_BYTES, MAX_REDELIVERIES } from "@/server/customer-payments/webhooks";
 import { createPaymongoProvider } from "@/server/customer-payments/providers/paymongo";
@@ -18,9 +19,10 @@ import { contactIn, dealFor, invoiceOrg, issuedInvoice, line, rows, type Invoice
 import { attempt, attemptNow, connect, deliver, fakePaymongo, invoiceNow, paymentsOf, paymongoFailed, paymongoOther, paymongoPaid, paymongoRefundUpdated, paymongoSignature, q, receipts, simulatedDelivery, simulatedSetup } from "./support/customer-payments";
 import { uid } from "./support/fixtures";
 
+/** A workspace with an issued invoice, a connection and a checkout. An account in test mode takes a TEST invoice (number TEST-0001) and a live account a real one (INV-0001). */
 async function setup(over: Parameters<typeof connect>[1] = {}, attemptOver: Parameters<typeof attempt>[2] = {}) {
   const io = await invoiceOrg();
-  const inv = (await issuedInvoice(io)).invoice;
+  const inv = (await issuedInvoice(io, { isTest: (over.mode ?? "test") === "test" })).invoice;
   const conn = await connect(io, over);
   const a = await attempt(inv.id, conn, attemptOver);
   return { io, inv, conn, a };
@@ -98,7 +100,7 @@ describe("a genuine payment", () => {
     expect((await q<{ payload_sha256: string }>("select payload_sha256 from customer_payment_events where connection_id = $1", [s.conn.id]))[0].payload_sha256).toBe(sha256(withPayer));
     expect((await q<{ last_event_at: string | null }>("select last_event_at from customer_payment_connections where id = $1", [s.conn.id]))[0].last_event_at).not.toBeNull();
     expect(await kinds(s.inv.id)).toEqual(["created", "issued", "payment_verified", "paid"]);
-    expect((await notes(s.io, "invoice_paid"))[0].title).toBe("INV-0001 was paid");
+    expect((await notes(s.io, "invoice_paid"))[0].title).toBe("TEST-0001 was paid as a test");
     expect(JSON.stringify(await q("select detail from customer_invoice_events where invoice_id = $1", [s.inv.id]))).not.toMatch(/Maria|maria\.santos/);
   });
 
@@ -147,7 +149,7 @@ describe("what is not counted", () => {
       expect(await paymentsOf(s.inv.id)).toMatchObject([{ status: "needs_review", amount_minor: String(amount), verification: "provider_confirmed" }]);
       expect(await invoiceNow(s.inv.id)).toMatchObject({ payment_status: "unpaid", paid_minor: "0" });
       expect((await attemptNow(s.a.id)).status).toBe("needs_review");
-      expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("A payment for INV-0001 needs a look");
+      expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("A payment for TEST-0001 needs a look");
       expect((await receipts(s.conn.id))[0].detail.note).toMatch(/^Kept for review: its amount is not what the checkout asked for/);
     }
   });
@@ -257,7 +259,7 @@ describe("what is not counted", () => {
     expect((await deliver(s.conn, paid(s, { paymentId: "pay_2" }))).outcome).toBe("processed");
     expect(await invoiceNow(s.inv.id)).toMatchObject({ payment_status: "paid", paid_minor: "300000", overpaid_minor: "150000", balance_minor: "0", refunded_minor: "0" });
     expect(await kinds(s.inv.id)).toContain("overpaid");
-    expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("INV-0001 was paid more than it was for");
+    expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("TEST-0001 was paid more than it was for");
     expect(await q("select id from customer_refunds where invoice_id = $1", [s.inv.id])).toEqual([]);
   });
 });
@@ -340,6 +342,24 @@ describe("refunds and disputes", () => {
     expect(await notes(s.io, "invoice_refund_recorded")).toHaveLength(2);
   });
 
+  it("pairs a refund the provider reports with the one the owner recorded by hand first: a full refund is not refused, and nothing is counted twice or reported as a problem", async () => {
+    // Real money: a refund recorded by hand is for a payment that moved some, so this is a live account and a real invoice.
+    const s = await setup({ mode: "live", liveConfirmed: true });
+    await deliver(s.conn, paid(s, { paymentId: "pay_known", livemode: true }));
+    const refund = (over: Partial<Parameters<typeof paymongoRefundUpdated>[0]> & { amount: number }) => deliver(s.conn, paymongoRefundUpdated({ paymentId: "pay_known", livemode: true, ...over }));
+    const pay = (await paymentsOf(s.inv.id))[0];
+    await recordRefund(s.io.ctx("owner"), pay.id, { amount: "1500.00", reason: "Refunded in the provider's dashboard" });
+    const r = await refund({ refundId: "ref_dash", amount: 150000 });
+    expect(r).toMatchObject({ status: 200, outcome: "processed" });
+    expect((await receipts(s.conn.id)).at(-1)).toMatchObject({ outcome: "processed", detail: { note: expect.stringMatching(/matches one the owner recorded by hand/) } });
+    expect(await q("select source, provider_refund_id from customer_refunds where invoice_id = $1", [s.inv.id])).toEqual([{ source: "manual_record", provider_refund_id: "ref_dash" }]);
+    expect(await invoiceNow(s.inv.id)).toMatchObject({ payment_status: "paid", refunded_minor: "150000" });
+    expect((await notes(s.io, "payment_review_needed")).map((n) => n.title)).not.toContain("A refund for INV-0001 could not be recorded");
+    // The provider sending that refund again changes nothing.
+    expect((await refund({ refundId: "ref_dash", amount: 150000, eventId: "evt_dash_again" })).outcome).toBe("processed");
+    expect(await q("select id from customer_refunds where invoice_id = $1", [s.inv.id])).toHaveLength(1);
+  });
+
   it("records a refund once, however many events carry it", async () => {
     const s = await paidSetup();
     await refund(s, { refundId: "ref_same", eventId: "evt_refund_a", amount: 5000 });
@@ -354,7 +374,7 @@ describe("refunds and disputes", () => {
     expect(r).toMatchObject({ status: 200, outcome: "rejected" });
     expect((await invoiceNow(s.inv.id)).refunded_minor).toBe("0");
     expect(await paymentRow(s)).toBe("succeeded");
-    expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("A refund for INV-0001 could not be recorded");
+    expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("A refund for TEST-0001 could not be recorded");
     await refund(s, { refundId: "ref_all", amount: 150000 });
     expect((await refund(s, { refundId: "ref_more", amount: 100 })).outcome).toBe("rejected");
     expect(await q("select id from customer_refunds where invoice_id = $1", [s.inv.id])).toHaveLength(1);
@@ -396,9 +416,35 @@ describe("refunds and disputes", () => {
     expect((await invoiceNow(s.inv.id)).payment_status).toBe("disputed");
     expect((await simulatedDelivery(s.conn, { kind: "dispute.opened", paymentId: sim_pay, eventId: "evt_again" })).outcome).toBe("processed");
     expect(await q("select id from customer_invoice_events where invoice_id = $1 and kind = 'dispute_opened'", [s.inv.id])).toHaveLength(1);
+    // A close that does not say who won puts nothing back: the payment stays disputed and the owner is asked.
     expect((await simulatedDelivery(s.conn, { kind: "dispute.closed", paymentId: sim_pay })).outcome).toBe("processed");
+    expect((await invoiceNow(s.inv.id)).payment_status).toBe("disputed");
+    expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("A payment for TEST-0001 is disputed");
+    expect((await notes(s.io, "payment_review_needed")).map((n) => n.title)).toContain("A dispute on TEST-0001 was closed, but how it ended is not known");
+    // The seller's win puts it back.
+    expect((await simulatedDelivery(s.conn, { kind: "dispute.closed", paymentId: sim_pay, disputeOutcome: "won" })).outcome).toBe("processed");
     expect((await invoiceNow(s.inv.id)).payment_status).toBe("paid");
-    expect((await notes(s.io, "payment_review_needed"))[0].title).toBe("A payment for INV-0001 is disputed");
+    expect(await paymentsOf(s.inv.id)).toMatchObject([{ status: "succeeded" }]);
+  });
+
+  it("records a lost dispute as a chargeback, so the books follow the money, and does not drop a close that arrives before its dispute", async () => {
+    const s = await simulatedSetup();
+    const p = simulatedPlatform.pay(s.a.checkoutId!, s.conn.webhookSecret, {});
+    await deliver(s.conn, p.rawBody, { signature: p.signature });
+    // The close comes first: it waits for its dispute instead of being dropped.
+    const early = await simulatedDelivery(s.conn, { kind: "dispute.closed", paymentId: p.paymentId, disputeOutcome: "lost", amountMinor: 50000, currency: "PHP" });
+    expect(early.outcome).toBe("deferred");
+    expect(await paymentsOf(s.inv.id)).toMatchObject([{ status: "succeeded" }]);
+    await simulatedDelivery(s.conn, { kind: "dispute.opened", paymentId: p.paymentId });
+    const [receipt] = (await receipts(s.conn.id)).filter((r) => r.detail.facts?.kind === "dispute.closed");
+    expect((await processReceipt(receipt.id)).outcome).toBe("processed");
+    expect(await paymentsOf(s.inv.id)).toMatchObject([{ status: "partially_refunded" }]);
+    expect(await invoiceNow(s.inv.id)).toMatchObject({ payment_status: "paid", paid_minor: "150000", refunded_minor: "50000" });
+    expect(await q("select source, amount_minor::text as amount from customer_refunds where invoice_id = $1", [s.inv.id])).toEqual([{ source: "chargeback", amount: "50000" }]);
+    // The same close sent again changes nothing; one in another currency is refused.
+    expect((await simulatedDelivery(s.conn, { kind: "dispute.closed", paymentId: p.paymentId, disputeOutcome: "lost", amountMinor: 50000, currency: "PHP", eventId: "evt_close_again" })).outcome).toBe("deferred");
+    expect((await simulatedDelivery(s.conn, { kind: "dispute.closed", paymentId: p.paymentId, disputeOutcome: "lost", amountMinor: 50000, currency: "USD", eventId: "evt_close_usd" })).outcome).toBe("rejected");
+    expect(await q("select id from customer_refunds where invoice_id = $1", [s.inv.id])).toHaveLength(1);
   });
 });
 
@@ -474,7 +520,7 @@ describe("the owner's deal rule runs once the payment is safely recorded", () =>
     const io = await invoiceOrg();
     await withSystem((db) => db.query("insert into customer_invoice_settings (org_id, close_rule) values ($1, 'task') on conflict (org_id) do update set close_rule = 'task'", [io.orgId]));
     const dealId = await dealFor(io, await contactIn(io), { ownerId: io.c.people.sales.id });
-    const d = await createDraft(io.ctx("owner"), { opportunityId: dealId, currency: "PHP", lines: [line({ unitPrice: "1500" })] });
+    const d = await createDraft(io.ctx("owner"), { opportunityId: dealId, currency: "PHP", lines: [line({ unitPrice: "1500" })], isTest: true });
     const inv = (await issueInvoice(io.ctx("owner"), d.invoice.id, { version: d.invoice.version })).detail.invoice;
     const conn = await connect(io);
     const a = await attempt(inv.id, conn);

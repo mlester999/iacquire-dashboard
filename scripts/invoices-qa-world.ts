@@ -1,12 +1,15 @@
 /**
  * The fictional customer invoices used for isolated local browser QA and for the test that proves this script works: a business's invoice settings, a testing payment
- * connection, six customers and fourteen invoices in every state a customer or the team can meet. It writes through the application's own services and contacts NO ONE: no
- * payment provider exists (the connection is the simulated one, and the only "payments" through it are test-mode ones made on its testing checkout page), no message is sent, and
- * every name, address, account number and price is made up. The prices are not a price list: they exist so the totals have something to add up.
+ * connection, six customers and sixteen invoices in every state a customer or the team can meet. It writes through the application's own services and contacts NO ONE: no
+ * payment provider exists (the connection is the simulated one, and the only payments through it are test-mode ones made on its testing checkout page, which takes TEST invoices
+ * only), no message is sent, and every name, address, account number and price is made up. The prices are not a price list: they exist so the totals have something to add up.
  *
- * One thing in it is fiction on purpose and says so: so that the Lead Sources report's verified-revenue column can be looked at, one invoice is paid by a "live" PayMongo payment
- * that was inserted through the application's own payment function against a placeholder connection (paused, with no keys). No PayMongo account exists behind it. It is in the
- * throwaway QA database only, and `revenueFiction: false` leaves it out.
+ * Two of the sixteen are TEST invoices (TEST-0001 and TEST-0002, numbered from their own counter): one already paid at the testing checkout and one a customer can open and pay
+ * there. Nothing else is paid with test money: a real invoice takes money a person recorded or a provider took live, and a test invoice takes only test-mode payments.
+ *
+ * Some of it is fiction on purpose and says so: so that the Lead Sources report's verified-revenue column and the dispute and review screens can be looked at, three invoices carry a
+ * "live" PayMongo payment that was inserted through the application's own payment function against a placeholder connection (paused, with no keys): one paid, one disputed, one
+ * kept for review. No PayMongo account exists behind them. They are in the throwaway QA database only, and `revenueFiction: false` leaves them out.
  *
  * It is a plain module (no vitest, no database setup) so that both scripts/ui-qa-invoices-seed.qa.ts and tests/invoices-qa-seed.test.ts can run it.
  */
@@ -73,7 +76,7 @@ export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date
 
   // The testing payment connection: the simulated provider, which moves no money and reaches nothing.
   const existing = await listConnections(a.owner);
-  const connection = existing.find((c) => c.provider === "simulated") ?? (await connectProvider(a.owner, { provider: "simulated", accountLabel: "Testing till (QA)", authorization: AUTHORIZATION }));
+  if (!existing.find((c) => c.provider === "simulated")) await connectProvider(a.owner, { provider: "simulated", accountLabel: "Testing till (QA)", authorization: AUTHORIZATION });
 
   const customer = async (first: string, last: string, source: string | null) => {
     const id = (await createContact(a.ownerActor, { firstName: first, lastName: last, email: `${first}.${last}@customer.example.test`.toLowerCase(), phone: null })).id;
@@ -104,7 +107,7 @@ export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date
   const submitted = await submitForApproval(a.sales, d2.invoice.id, d2.invoice.version);
   await record("Leak detection survey", "waiting for approval", submitted.invoice.id, null, false);
 
-  // 3. Issued, not yet due: the customer can open it and pay at the testing checkout.
+  // 3. Issued, not yet due. A real invoice is paid by hand or through a live account, and no live account exists here, so its page offers the payment instructions only.
   const d3 = await draft(a.owner, mara, [line("Annual boiler service", "4800.00", { taxPercent: "12" })]);
   const i3 = await issue(d3.invoice.id, d3.invoice.version);
   await record("Annual boiler service", "issued, due soon, with tax", i3.invoice.id, i3.invoice.number, true);
@@ -126,14 +129,13 @@ export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date
   await recordManualPayment(a.owner, i6.invoice.id, { amount: "950.00", receivedOn: day(-9), method: "cash", evidence: "Cash, receipt book page 12 (made up)" }, { now: ago(9) });
   await record("Drain clearing", "paid by hand", i6.invoice.id, i6.invoice.number, true);
 
-  // 7. Paid at the testing checkout (test mode: a provider-confirmed test payment, never revenue), then partly refunded.
+  // 7. Paid by hand in full, then partly refunded (recorded by the owner, who handed the money back outside this product).
   const d7 = await draft(a.owner, petra, [line("Sump pump installation", "6400.00", { taxPercent: "12" })]);
   const i7 = await issue(d7.invoice.id, d7.invoice.version, ago(6));
-  const started7 = await startCheckout({ orgId, invoiceId: i7.invoice.id, audience: "member", actorUserId: a.owner.user.id, onlyMode: "test" });
-  await completeSimulatedCheckout(started7.attemptId, "pay", { origin: TESTING_ORIGIN });
+  await recordManualPayment(a.owner, i7.invoice.id, { amount: "7168.00", receivedOn: day(-5), method: "bank_transfer", evidence: "Bank transfer ref QA-5530 (made up)" }, { now: ago(5) });
   const paid7 = (await withSystem((db) => db.query<{ id: string }>("select id from customer_payments where invoice_id = $1", [i7.invoice.id]))).rows[0];
   await recordRefund(a.owner, paid7.id, { amount: "500.00", reason: "Goodwill credit for a late arrival (QA)" });
-  await record("Sump pump installation", "paid at the testing checkout, partly refunded", i7.invoice.id, i7.invoice.number, true);
+  await record("Sump pump installation", "paid by hand, partly refunded", i7.invoice.id, i7.invoice.number, true);
 
   // 8. Voided.
   const d8 = await draft(a.owner, tomas, [line("Gas line check", "2100.00")]);
@@ -152,36 +154,36 @@ export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date
   await writeOffInvoice(a.owner, i10.invoice.id, { reason: "The customer closed their business (QA)" });
   await record("Seasonal tune-up", "written off", i10.invoice.id, i10.invoice.number, true);
 
-  // 11. Paid at the testing checkout, then disputed by the customer's bank.
-  const d11 = await draft(a.owner, noel, [line("Pressure valve replacement", "3300.00")]);
-  const i11 = await issue(d11.invoice.id, d11.invoice.version, ago(8));
-  const started11 = await startCheckout({ orgId, invoiceId: i11.invoice.id, audience: "member", actorUserId: a.owner.user.id, onlyMode: "test" });
-  await completeSimulatedCheckout(started11.attemptId, "pay", { origin: TESTING_ORIGIN });
-  const paid11 = (await withSystem((db) => db.query<{ id: string }>("select id from customer_payments where invoice_id = $1", [i11.invoice.id]))).rows[0];
-  await withSystem((db) => applyDisputeInTx(db, { orgId, paymentId: paid11.id, open: true, actor: { id: null, kind: "provider" } }));
-  await record("Pressure valve replacement", "paid, then disputed", i11.invoice.id, i11.invoice.number, true);
-
-  // 12. A payment the provider reported that does not match, kept for a person to look at: counted for nothing.
-  const d12 = await draft(a.owner, petra, [line("Radiator bleed", "800.00")]);
-  const i12 = await issue(d12.invoice.id, d12.invoice.version, ago(4));
-  await withSystem((db) => applyPaymentInTx(db, {
-    orgId, invoiceId: i12.invoice.id, amountMinor: 70_000, currency: "PHP", provider: "simulated", verification: "provider_confirmed", connectionId: connection.id, providerPaymentId: "qa-review-1",
-    livemode: false, receivedAt: ago(1), status: "needs_review", actor: { id: null, kind: "provider" },
-  }));
-  await record("Radiator bleed", "a payment kept for review", i12.invoice.id, i12.invoice.number, true);
-
-  // 13 and 14. The Lead Sources report: a fictional live payment (see the top of this file) and a hand-recorded one, with a cost, so verified revenue and a return can be looked at.
+  // 11 to 14 (a fictional live account). A real invoice that a provider took money on needs a live payment, and no live account exists here: these are inserted through the application's
+  // own payment function against a placeholder connection (see the top of this file). Left out with `revenueFiction: false`.
   if (opts.revenueFiction !== false) {
     const placeholder = (await withSystem((db) => db.query<{ id: string }>(
       `insert into customer_payment_connections (org_id, provider, mode, public_key, account_label, credentials, supported_currencies, status)
        values ($1, 'paymongo', 'live', $2, 'QA placeholder: no real account', null, '{PHP}', 'disabled') returning id`, [orgId, newPublicKey()],
     ))).rows[0];
+    const liveFiction = (invoiceId: string, amountMinor: number, providerPaymentId: string, receivedAt: Date, status?: "needs_review") =>
+      withSystem((db) => applyPaymentInTx(db, {
+        orgId, invoiceId, amountMinor, currency: "PHP", provider: "paymongo", verification: "provider_confirmed", connectionId: placeholder.id, providerPaymentId,
+        livemode: true, method: "card", receivedAt, ...(status ? { status } : {}), actor: { id: null, kind: "provider" },
+      }));
+
+    // 11. Paid by a fictional live payment, then disputed by the customer's bank.
+    const d11 = await draft(a.owner, noel, [line("Pressure valve replacement", "3300.00")]);
+    const i11 = await issue(d11.invoice.id, d11.invoice.version, ago(8));
+    const paid11 = await liveFiction(i11.invoice.id, 330_000, "qa-fiction-live-2", ago(7));
+    await withSystem((db) => applyDisputeInTx(db, { orgId, paymentId: paid11.paymentId, open: true, actor: { id: null, kind: "provider" } }));
+    await record("Pressure valve replacement", "paid by a FICTIONAL live payment, then disputed", i11.invoice.id, i11.invoice.number, true);
+
+    // 12. A payment the provider reported that does not match, kept for a person to look at: counted for nothing.
+    const d12 = await draft(a.owner, petra, [line("Radiator bleed", "800.00")]);
+    const i12 = await issue(d12.invoice.id, d12.invoice.version, ago(4));
+    await liveFiction(i12.invoice.id, 70_000, "qa-review-1", ago(1), "needs_review");
+    await record("Radiator bleed", "a payment kept for review", i12.invoice.id, i12.invoice.number, true);
+
+    // 13 and 14. The Lead Sources report: a fictional live payment and a hand-recorded one, with a cost, so verified revenue and a return can be looked at.
     const d13 = await draft(a.owner, mara, [line("Whole-house water filter", "7000.00", { taxPercent: "12" })]);
     const i13 = await issue(d13.invoice.id, d13.invoice.version, ago(3));
-    await withSystem((db) => applyPaymentInTx(db, {
-      orgId, invoiceId: i13.invoice.id, amountMinor: 784_000, currency: "PHP", provider: "paymongo", verification: "provider_confirmed", connectionId: placeholder.id, providerPaymentId: "qa-fiction-live-1",
-      livemode: true, method: "card", receivedAt: ago(2), actor: { id: null, kind: "provider" },
-    }));
+    await liveFiction(i13.invoice.id, 784_000, "qa-fiction-live-1", ago(2));
     await record("Whole-house water filter", "paid by a FICTIONAL live payment (counts as verified revenue in the QA report)", i13.invoice.id, i13.invoice.number, true);
     const d14 = await draft(a.owner, tomas, [line("Sprinkler repair", "1500.00")]);
     const i14 = await issue(d14.invoice.id, d14.invoice.version, ago(3));
@@ -189,5 +191,16 @@ export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date
     await record("Sprinkler repair", "paid by hand (shown apart in the report)", i14.invoice.id, i14.invoice.number, true);
     await addCost(a.ownerActor, { source: "google", periodStart: day(-1), periodEnd: day(-1), amount: 1500, currency: "PHP", note: "Search ads (QA)" });
   }
+
+  // 15 and 16. TEST invoices, made on purpose to try the payment account in test mode: nothing is owed on them and no money moves. They have their own numbers (TEST-0001, TEST-0002) and
+  // the testing checkout takes them only. One is paid there already; the other is open for a customer to pay there from the link.
+  const d15 = await draft(a.owner, tomas, [line("Testing the payment account: paid", "1000.00")], { isTest: true });
+  const i15 = await issue(d15.invoice.id, d15.invoice.version, ago(2));
+  const started15 = await startCheckout({ orgId, invoiceId: i15.invoice.id, audience: "member", actorUserId: a.owner.user.id, onlyMode: "test" });
+  await completeSimulatedCheckout(started15.attemptId, "pay", { origin: TESTING_ORIGIN });
+  await record("Testing the payment account: paid", "a TEST invoice, paid at the testing checkout", i15.invoice.id, i15.invoice.number, true);
+  const d16 = await draft(a.owner, dario, [line("Testing the payment account: open", "1000.00")], { isTest: true });
+  const i16 = await issue(d16.invoice.id, d16.invoice.version, ago(1));
+  await record("Testing the payment account: open", "a TEST invoice a customer can open and pay at the testing checkout", i16.invoice.id, i16.invoice.number, true);
   return rows;
 }

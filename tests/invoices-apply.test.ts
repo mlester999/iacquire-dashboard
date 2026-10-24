@@ -154,7 +154,8 @@ describe("a payment a provider confirmed", () => {
   it("adds up several payments to paid, keeps test-mode payments marked, and counts a second checkout's duplicate money as an overpayment, never as more revenue than was received", async () => {
     const io = await invoiceOrg();
     const conn = await connectionFor(io);
-    const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+    // Test-mode money sits on a test invoice (a real invoice takes live money only).
+    const inv = (await issuedInvoice(io, { isTest: true }, NOW)).invoice;
     const first = await providerPayment(io, inv.id, conn, 100000);
     expect(first).toMatchObject({ counted: true, justPaid: false, invoice: { paymentStatus: "partially_paid" } });
     const second = await providerPayment(io, inv.id, conn, 50000);
@@ -291,6 +292,102 @@ describe("refunds", () => {
     expect(done.invoice.refundedMinor).toBe(50000);
   });
 
+  describe("the same refund recorded by hand and reported by the provider", () => {
+    const viaProvider = (io: InvoiceOrg, paymentId: string, amountMinor: number, providerRefundId: string) =>
+      withSystem((db) => applyRefundInTx(db, { orgId: io.orgId, paymentId, amountMinor, source: "provider_event", providerRefundId, reason: "Refunded in the provider dashboard", actor: { id: null, kind: "provider" } }));
+    const refundRows = (paymentId: string) => rows<{ source: string; provider_refund_id: string | null; amount: string }>("select source, provider_refund_id, amount_minor::text as amount from customer_refunds where payment_id = $1 order by created_at", [paymentId]);
+
+    it("is one refund when the owner recorded it first: the provider's refund pairs with it, nothing is counted twice, and the owner is told", async () => {
+      const io = await invoiceOrg();
+      const conn = await connectionFor(io);
+      const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+      const p = await providerPayment(io, inv.id, conn, 100000);
+      const mine = await recordRefund(io.ctx("owner"), p.paymentId, { amount: "400", reason: "Refunded in the provider's dashboard" });
+      const theirs = await viaProvider(io, p.paymentId, 40000, "re_x");
+      expect(theirs).toMatchObject({ duplicate: true, matched: true, refundId: mine.refundId, invoice: { refundedMinor: 40000 } });
+      expect(await refundRows(p.paymentId)).toEqual([{ source: "manual_record", provider_refund_id: "re_x", amount: "40000" }]);
+      expect((await invoiceRow(inv.id)).refunded_minor).toBe("40000");
+      expect(await kinds(inv.id)).toEqual(["created", "issued", "payment_verified", "refund_recorded", "refund_matched"]);
+      expect((await notes(io, "invoice_refund_recorded")).map((n) => n.title)).toEqual(["A refund was recorded on INV-0001", "A refund on INV-0001 was confirmed by the provider"]);
+      // The same provider refund again finds its pair by the provider's id and changes nothing.
+      expect(await viaProvider(io, p.paymentId, 40000, "re_x")).toMatchObject({ duplicate: true, refundId: mine.refundId });
+      expect(await refundRows(p.paymentId)).toHaveLength(1);
+      // Another refund of a different amount is a different refund; so is a second one of the same amount once the first is paired.
+      expect(await viaProvider(io, p.paymentId, 10000, "re_y")).toMatchObject({ duplicate: false });
+      expect(await viaProvider(io, p.paymentId, 40000, "re_z")).toMatchObject({ duplicate: false });
+      expect((await invoiceRow(inv.id)).refunded_minor).toBe("90000");
+    });
+
+    it("pairs each hand-recorded refund with one provider refund of the same amount, no more", async () => {
+      const io = await invoiceOrg();
+      const conn = await connectionFor(io);
+      const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+      const p = await providerPayment(io, inv.id, conn, 100000);
+      await recordRefund(io.ctx("owner"), p.paymentId, { amount: "100", reason: "First goodwill refund" });
+      await recordRefund(io.ctx("owner"), p.paymentId, { amount: "100", reason: "Second goodwill refund" });
+      expect((await viaProvider(io, p.paymentId, 10000, "re_1")).matched).toBe(true);
+      expect((await viaProvider(io, p.paymentId, 10000, "re_2")).matched).toBe(true);
+      expect(await viaProvider(io, p.paymentId, 10000, "re_3")).toMatchObject({ duplicate: false });
+      expect((await invoiceRow(inv.id)).refunded_minor).toBe("30000");
+    });
+
+    it("pairs a full refund too, instead of refusing it as more than is left", async () => {
+      const io = await invoiceOrg();
+      const conn = await connectionFor(io);
+      const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+      const p = await providerPayment(io, inv.id, conn, 100000);
+      await recordRefund(io.ctx("owner"), p.paymentId, { amount: "1000", reason: "Refunded in full in the dashboard" });
+      expect(await viaProvider(io, p.paymentId, 100000, "re_full")).toMatchObject({ duplicate: true, matched: true, paymentStatus: "refunded" });
+      expect(await refundRows(p.paymentId)).toEqual([{ source: "manual_record", provider_refund_id: "re_full", amount: "100000" }]);
+    });
+
+    it("refuses a refund recorded by hand that the provider already reported, unless the owner says it is a different one", async () => {
+      const io = await invoiceOrg();
+      const conn = await connectionFor(io);
+      const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+      const p = await providerPayment(io, inv.id, conn, 100000);
+      await viaProvider(io, p.paymentId, 40000, "re_first");
+      await expect(recordRefund(io.ctx("owner"), p.paymentId, { amount: "400", reason: "Refunded in the dashboard" })).rejects.toThrow(/provider already reported a refund of PHP 400\.00 on this payment, and it is counted/);
+      expect((await invoiceRow(inv.id)).refunded_minor).toBe("40000");
+      // A different amount is a different refund; and the owner can say that this one is too.
+      await expect(recordRefund(io.ctx("owner"), p.paymentId, { amount: "100", reason: "A goodwill refund in cash" })).resolves.toMatchObject({ duplicate: false });
+      await expect(recordRefund(io.ctx("owner"), p.paymentId, { amount: "400", reason: "A second, separate refund", separateFromProvider: true })).resolves.toMatchObject({ duplicate: false });
+      expect((await invoiceRow(inv.id)).refunded_minor).toBe("90000");
+    });
+
+    it("lets go of the match after a fortnight: an old refund is not taken for a new one", async () => {
+      const io = await invoiceOrg();
+      const conn = await connectionFor(io);
+      const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+      const p = await providerPayment(io, inv.id, conn, 100000);
+      // A refund recorded by hand twenty days ago (a recorded refund's time never changes, so it is written with its age).
+      await withSystem(async (db) => {
+        await db.query(
+          `insert into customer_refunds (org_id, payment_id, invoice_id, currency, amount_minor, status, source, reason, created_at)
+           values ($1, $2, $3, 'PHP', 40000, 'succeeded', 'manual_record', 'Refunded in the dashboard', now() - interval '20 days')`, [io.orgId, p.paymentId, inv.id],
+        );
+        await db.query("update customer_payments set status = 'partially_refunded' where id = $1", [p.paymentId]);
+        await recomputeInvoice(db, io.orgId, inv.id);
+      });
+      expect(await viaProvider(io, p.paymentId, 40000, "re_late")).toMatchObject({ duplicate: false });
+      expect((await invoiceRow(inv.id)).refunded_minor).toBe("80000");
+    });
+
+    it("never lets a refund's identity change in the database except for that one pairing", async () => {
+      const io = await invoiceOrg();
+      const conn = await connectionFor(io);
+      const inv = (await issuedInvoice(io, {}, NOW)).invoice;
+      const p = await providerPayment(io, inv.id, conn, 100000);
+      await viaProvider(io, p.paymentId, 10000, "re_p");
+      const manual = await recordRefund(io.ctx("owner"), p.paymentId, { amount: "200", reason: "Cash goodwill refund" });
+      const change = (sql: string, params: unknown[]) => withSystem((db) => db.query(sql, params));
+      await expect(change("update customer_refunds set provider_refund_id = 're_changed' where payment_id = $1 and source = 'provider_event'", [p.paymentId])).rejects.toThrow(/cannot be changed/);
+      await expect(change("update customer_refunds set provider_refund_id = 're_set' where id = $1", [manual.refundId])).resolves.toBeDefined();
+      await expect(change("update customer_refunds set provider_refund_id = 're_set_again' where id = $1", [manual.refundId])).rejects.toThrow(/cannot be changed/);
+      await expect(change("update customer_refunds set provider_refund_id = null where id = $1", [manual.refundId])).rejects.toThrow(/cannot be changed/);
+    });
+  });
+
   it("take the tax back in proportion", async () => {
     const io = await invoiceOrg();
     const conn = await connectionFor(io);
@@ -316,11 +413,14 @@ describe("disputes", () => {
     // While it is open a refund is recorded against the payment but it stays disputed.
     const part = await withSystem((db) => applyRefundInTx(db, { orgId: io.orgId, paymentId: p.paymentId, amountMinor: 50000, source: "manual_record", reason: "Partly refunded meanwhile", actor: { id: null, kind: "system" } }));
     expect(part.paymentStatus).toBe("disputed");
-    const closed = await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, actor: { id: null, kind: "provider" } }));
+    // A close that says nothing about who won puts nothing back (tests/invoices-disputes.test.ts); a win does.
+    const unsaid = await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, actor: { id: null, kind: "provider" } }));
+    expect(unsaid).toMatchObject({ paymentStatus: "disputed", changed: false, invoice: { paymentStatus: "disputed" } });
+    const closed = await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, outcome: "won", actor: { id: null, kind: "provider" } }));
     expect(closed).toMatchObject({ paymentStatus: "partially_refunded", invoice: { paymentStatus: "paid", paidMinor: 150000, refundedMinor: 50000 } });
-    const none = await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, actor: { id: null, kind: "provider" } }));
+    const none = await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: p.paymentId, open: false, outcome: "won", actor: { id: null, kind: "provider" } }));
     expect(none.changed).toBe(false);
-    expect(await kinds(inv.id)).toEqual(["created", "issued", "payment_verified", "paid", "dispute_opened", "refund_recorded", "dispute_closed"]);
+    expect(await kinds(inv.id)).toEqual(["created", "issued", "payment_verified", "paid", "dispute_opened", "refund_recorded", "dispute_result_unknown", "dispute_closed"]);
   });
 
   it("can only be opened on a payment that was received and is not fully refunded", async () => {
@@ -363,7 +463,9 @@ describe("the books always add up", () => {
           await withSystem((db) => applyRefundInTx(db, { orgId: io.orgId, paymentId: target.id, amountMinor: 1 + Math.floor(r() * Number(target.amount_minor)), source: "manual_record", reason: "Random refund", actor: { id: null, kind: "system" } }));
         } else if (payments.length) {
           const target = pick(payments);
-          await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: target.id, open: target.status !== "disputed", actor: { id: null, kind: "provider" } }));
+          // A dispute opens, and closes any of the three ways: won, lost for part or all of what is left, or with no result (which changes nothing).
+          const how = pick(["won", "lost", "unknown"] as const);
+          await withSystem((db) => applyDisputeInTx(db, { orgId: io.orgId, paymentId: target.id, open: target.status !== "disputed", outcome: how, lostMinor: 1 + Math.floor(r() * Number(target.amount_minor)), actor: { id: null, kind: "provider" } }));
         }
         operations += 1;
       } catch (e) {
@@ -411,10 +513,17 @@ describe("the books always add up", () => {
       ["sets the payment status", /\bpayment_status\s*=\s*(?!any\()[^=>\s]/],
       ["writes payment or refund rows", /\b(insert\s+into|update|delete\s+from)\s+customer_(payments|refunds)\b/i],
     ];
+    // The one other place that touches those rows: deleting a TEST invoice with its test payments. It only deletes (the database allows that for a test invoice and nothing else).
+    const testInvoice = path.join(root, "server", "invoices", "test-invoice.ts");
     const hits: string[] = [];
     for (const f of files) {
       if (f === apply) continue;
       const text = fs.readFileSync(f, "utf8");
+      if (f === testInvoice) {
+        for (const [what, re] of forbidden.slice(0, 3)) if (re.test(text)) hits.push(`${path.relative(root, f)} ${what}`);
+        if (/\b(insert\s+into|update)\s+customer_(payments|refunds)\b/i.test(text)) hits.push(`${path.relative(root, f)} writes payment or refund rows other than deleting them`);
+        continue;
+      }
       for (const [what, re] of forbidden) if (re.test(text)) hits.push(`${path.relative(root, f)} ${what}`);
     }
     expect(hits).toEqual([]);

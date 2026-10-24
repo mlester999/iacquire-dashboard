@@ -453,13 +453,14 @@ export function formContextFrom(o: {
 }
 
 const NAME_TOKENS = ["contact.first_name", "contact.last_name", "contact.full_name", "form.name"] as const;
-const TOKEN_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// The key is trimmed in code: a \s* beside [^{}]* made a long run of spaces take minutes to scan.
+const TOKEN_RE = /\{\{([^{}]*)\}\}/g;
 
 /** The placeholders in a deal name template that aren't known (with answer keys checked against the questions). */
 export function unknownNameTokens(template: string, questionKeys: ReadonlySet<string>): string[] {
   const out: string[] = [];
   for (const m of template.matchAll(TOKEN_RE)) {
-    const key = m[1];
+    const key = m[1].trim();
     if ((NAME_TOKENS as readonly string[]).includes(key)) continue;
     if (key.startsWith("answer.") && questionKeys.has(key.slice(7))) continue;
     out.push(m[0]);

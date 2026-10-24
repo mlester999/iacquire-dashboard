@@ -67,8 +67,10 @@ const schema = z.object({
   PAYMONGO_PAYMENT_METHODS: z.string().default("card"),
   // Customer payments: the business's OWN PayMongo (or PayPal) account, used to collect on invoices it sends to its customers. Nothing here touches iAcquire's own billing above.
   // CUSTOMER_PAYMENTS_WRITES_ENABLED is the master switch for any call to a real payment provider (checking a pasted key, starting a checkout, reading a payment back); off,
-  // only the simulated provider works, and a received webhook is still recorded because money that arrived is recorded whatever a switch says. CUSTOMER_PAYMENTS_LIVE_ENABLED
-  // is the global kill switch for real money: off, no live-mode checkout is started anywhere and no workspace can confirm live. Both are founder-approved switches.
+  // only the simulated provider works, and a received PayMongo webhook is still recorded because money that arrived is recorded whatever a switch says. A PayPal delivery can
+  // only be checked by calling PayPal, so while this is off it is answered 503 with Retry-After and nothing is stored: PayPal sends it again, and the scheduled check of open
+  // checkouts records the payment once this is on. CUSTOMER_PAYMENTS_LIVE_ENABLED is the global kill switch for real money: off, no live-mode checkout is started anywhere and no
+  // workspace can confirm live. Both are founder-approved switches.
   CUSTOMER_PAYMENTS_WRITES_ENABLED: bool,
   CUSTOMER_PAYMENTS_LIVE_ENABLED: bool,
   // Shared secret for scheduled worker endpoints (reservation expiry, escalation timers, follow-ups).
@@ -137,6 +139,14 @@ const schema = z.object({
   // Switches the customer-facing side of proposals off for every workspace at once: /proposal/<token>, its PDF and its API answer "temporarily unavailable" before any database
   // read, and no emailed code is sent. Proposals the team is writing are not touched. Unset or false (the default) = each workspace follows its own switch.
   PROPOSALS_PUBLIC_DISABLED: bool,
+  // The same for the customer's invoice page: /pay/<token>, the page a payment provider sends the customer back to (/pay/return/<reference>) and the three /api/public/invoices
+  // routes answer "temporarily unavailable" for every workspace at once, before any database read. Invoices the team is writing, payments a provider reports to its webhook and
+  // the reminders already queued are not touched. Unset or false (the default) = each workspace follows its own switch.
+  INVOICES_PUBLIC_DISABLED: bool,
+  // The same for the customer's review page: /r/<token> and the two forms on it (private feedback, and the click on a public review link) answer "temporarily unavailable" for every
+  // workspace at once, before any database read, and nothing is recorded. Requests already sent, the team's Reviews screens and public reviews read from a review site are not
+  // touched. Unset or false (the default) = the page works as usual.
+  REVIEWS_PUBLIC_DISABLED: bool,
   // The master switch for anything that creates or sends a signing request at a REAL signing service (PandaDoc): off (the default), a request for a real connection waits
   // untouched and nothing leaves the machine. Reading what a service reports (checking a pasted key, a request's status, fetching a signed copy) is not a write and is not
   // held by it. The simulated service reaches nothing and is not affected; it is refused in production. A founder-approved switch, like the other provider write switches.

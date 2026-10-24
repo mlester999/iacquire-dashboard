@@ -254,7 +254,9 @@ export async function saveWebhookSecret(ctx: OrgContext, id: string, rawInput: u
 
 /**
  * Replaces the keys (a rotated key, or test keys exchanged for live ones). The new key is checked before anything changes. A replaced key is a new relationship with
- * the provider, possibly another account, so a live confirmation never carries over: the owner confirms again.
+ * the provider, possibly another account, so a live confirmation never carries over: the owner confirms again. The webhook's signing secret is carried over only when the
+ * mode stays the same (a rotated key): the test webhook and the live webhook (for PayPal, the sandbox app's and the live app's) are different webhooks with secrets of their
+ * own, so exchanging test keys for live ones, or the reverse, waits for the other mode's secret instead of reading as connected while no delivery could be believed.
  */
 export async function replaceCredentials(ctx: OrgContext, id: string, rawInput: unknown): Promise<ConnectionView> {
   const input = replaceCredentialsSchema.parse(rawInput);
@@ -266,16 +268,19 @@ export async function replaceCredentials(ctx: OrgContext, id: string, rawInput: 
   const adapter = adapterFor(row.provider);
   assertCallsAllowed(row.provider);
   const kept = credentialVault.open(row.credentials);
-  const { creds, mode } = credentialsFrom(row.provider, { apiKey: input.apiKey, apiSecret: input.apiSecret, environment: input.environment ?? kept?.settings?.environment, webhookSecret: input.webhookSecret ?? kept?.webhookSecret ?? null }, adapter);
+  const typed = credentialsFrom(row.provider, { apiKey: input.apiKey, apiSecret: input.apiSecret, environment: input.environment ?? kept?.settings?.environment, webhookSecret: input.webhookSecret ?? null }, adapter);
+  const { mode } = typed;
+  const creds: ProviderCredentials = typed.creds.webhookSecret || mode !== row.mode ? typed.creds : { ...typed.creds, webhookSecret: kept?.webhookSecret ?? null };
   const check = await adapter.verifyCredentials(creds, { webhookUrl: webhookUrlFor(row.provider, row.public_key) });
   if (!check.ok) refuse(check);
 
   return withSystem(async (db) => {
     await authorize(db, ctx);
     const locked = await loadOwn(db, ctx, id, true);
+    // (In the update, `mode` on the right of an assignment is the mode before it: what the other mode's webhook last said is not shown as this connection's last message.)
     await db.query(
       `update customer_payment_connections set credentials = $3, mode = $4, status = $5, live_confirmed_at = null, live_confirmed_by = null, authorized_by = $6, authorized_at = now(),
-         authorization_text_version = $7, last_checked_at = now(), last_error = null where id = $1 and org_id = $2`,
+         authorization_text_version = $7, last_checked_at = now(), last_error = null, last_event_at = case when mode <> $4 then null else last_event_at end where id = $1 and org_id = $2`,
       [id, ctx.org.orgId, credentialVault.seal(creds), mode, creds.webhookSecret ? "connected" : "pending_verification", ctx.user.id, input.authorization.version],
     );
     await recordAudit({
@@ -332,20 +337,45 @@ export async function confirmLive(ctx: OrgContext, id: string): Promise<Connecti
   });
 }
 
-/** Stops new online payments without disconnecting. Payments already in progress are still recorded when the provider confirms them. */
+/**
+ * Stops new online payments without disconnecting. Payments already in progress are still recorded when the provider confirms them. An account that needs attention is not
+ * paused (the pause would hide that the provider refused its key): the owner checks or replaces the keys. Resuming never trusts what was true before the pause: the provider
+ * is asked about the saved key again, and the account comes back as connected only if it accepts it.
+ */
 export async function setConnectionPaused(ctx: OrgContext, id: string, paused: boolean): Promise<ConnectionView> {
+  if (paused) {
+    return withSystem(async (db) => {
+      await authorize(db, ctx);
+      const row = await loadOwn(db, ctx, id, true);
+      if (row.status === "disabled") return viewOf(db, row);
+      if (row.status === "needs_attention") throw new AppError("conflict", "This payment account needs attention: the provider did not accept its key, so it is not taking new payments already. Use Check the keys now, or replace the keys, instead of pausing it.");
+      await db.query("update customer_payment_connections set status = 'disabled' where id = $1 and org_id = $2", [id, ctx.org.orgId]);
+      await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "payments.connection_paused", targetType: "customer_payment_connection", targetId: id, result: "success", metadata: { provider: row.provider } }, db);
+      return viewOf(db, await loadOwn(db, ctx, id));
+    });
+  }
+
+  const row = await withSystem(async (db) => {
+    await authorize(db, ctx);
+    return loadOwn(db, ctx, id);
+  });
+  if (row.status !== "disabled") return withSystem(async (db) => viewOf(db, row));
+  const adapter = adapterFor(row.provider);
+  assertCallsAllowed(row.provider);
+  const creds = credentialVault.open(row.credentials);
+  const check: CredentialCheck = creds
+    ? await adapter.verifyCredentials(creds, { webhookUrl: webhookUrlFor(row.provider, row.public_key) })
+    : { ok: false, reason: "rejected", message: "The saved keys can no longer be read. Paste the secret key again with Replace keys." };
+  // Not known whether the provider accepts the key: it stays paused, and the person is told why, rather than going live on a guess.
+  if (!check.ok && check.reason === "unreachable") throw new AppError("upstream_error", `The account stays paused: the provider could not be asked about its key just now. ${check.message}`);
+
   return withSystem(async (db) => {
     await authorize(db, ctx);
-    const row = await loadOwn(db, ctx, id, true);
-    if (paused) {
-      if (row.status === "disabled") return viewOf(db, row);
-      await db.query("update customer_payment_connections set status = 'disabled' where id = $1 and org_id = $2", [id, ctx.org.orgId]);
-    } else {
-      if (row.status !== "disabled") return viewOf(db, row);
-      const creds = credentialVault.open(row.credentials);
-      await db.query("update customer_payment_connections set status = $3 where id = $1 and org_id = $2", [id, ctx.org.orgId, creds?.webhookSecret ? "connected" : "pending_verification"]);
-    }
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: paused ? "payments.connection_paused" : "payments.connection_resumed", targetType: "customer_payment_connection", targetId: id, result: "success", metadata: { provider: row.provider } }, db);
+    const locked = await loadOwn(db, ctx, id, true);
+    if (locked.status !== "disabled") return viewOf(db, locked);
+    const status: ConnectionStatus = !check.ok ? "needs_attention" : creds?.webhookSecret ? "connected" : "pending_verification";
+    await db.query("update customer_payment_connections set status = $3, last_checked_at = now(), last_error = $4 where id = $1 and org_id = $2", [id, ctx.org.orgId, status, check.ok ? null : check.message.slice(0, 400)]);
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "payments.connection_resumed", targetType: "customer_payment_connection", targetId: id, result: check.ok ? "success" : "failure", metadata: { provider: row.provider, status } }, db);
     return viewOf(db, await loadOwn(db, ctx, id));
   });
 }

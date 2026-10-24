@@ -357,12 +357,13 @@ export async function captureLead(input: {
       const [firstName, ...rest] = name.split(/\s+/);
       await db.query("update contacts set display_name = $3, first_name = $4, last_name = $5, version = version + 1 where id = $2 and org_id = $1", [s.orgId, conv.contactId, name, firstName.slice(0, 100), rest.join(" ").slice(0, 100) || null]);
     }
+    // Each is marked as typed by the visitor: the mark stays with the address if the contact is merged into another one (src/lib/webchat/identity.ts).
     if (email && !emailTaken) {
-      await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified) values ($1, $2, 'email', $3, false) on conflict do nothing", [s.orgId, conv.contactId, email]);
+      await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'email', $3, false, true) on conflict do nothing", [s.orgId, conv.contactId, email]);
       await db.query("update contacts set email = $3, version = version + 1 where id = $2 and org_id = $1 and email is null", [s.orgId, conv.contactId, email]);
     }
     if (phone && !phoneTaken) {
-      await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified) values ($1, $2, 'phone', $3, false) on conflict do nothing", [s.orgId, conv.contactId, phone]);
+      await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'phone', $3, false, true) on conflict do nothing", [s.orgId, conv.contactId, phone]);
       await db.query("update contacts set phone = $3, version = version + 1 where id = $2 and org_id = $1 and phone is null", [s.orgId, conv.contactId, phone]);
     }
 

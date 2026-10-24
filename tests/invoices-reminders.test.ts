@@ -16,9 +16,11 @@ import { writeOffInvoice, voidInvoice } from "@/server/invoices/invoices";
 import { recordManualPayment } from "@/server/invoices/payments";
 import { applyDisputeInTx } from "@/server/invoices/apply";
 import { saveInvoiceSettings } from "@/server/invoices/settings";
-import { authorizeReminders, getReminderOverview, invoiceLinkForMessage, runInvoiceReminders, stopReminders, switchOffReminders } from "@/server/invoices/reminders";
+import { authorizeReminders, getReminderOverview, invoiceLinkForMessage, runInvoiceReminders, stopReminders, switchOffReminders, syncInvoiceReminders } from "@/server/invoices/reminders";
+import { setRetentionPaused } from "@/server/retention/service";
+import { reminderReasonText } from "@/lib/invoices/reminder-rules";
 import { renderReminder } from "@/lib/invoices/reminder-text";
-import { addMessaging, connectionFor, consentTo, contactIn, invoiceOrg, issuedInvoice, providerPayment, rows, uniquePhone, type InvoiceOrg } from "./support/invoices";
+import { addMessaging, connectionFor, consentTo, contactIn, invoiceOrg, issuedInvoice, issuedTestInvoice, providerPayment, rows, uniquePhone, type InvoiceOrg } from "./support/invoices";
 import { recordingProvider } from "./support/messaging";
 
 const ISSUED = new Date("2026-10-23T12:00:00Z");
@@ -674,5 +676,123 @@ describe("recovering and keeping workspaces apart", () => {
     expect(second.dedupe_key).toBe(`${first.dedupe_key}:1`);
     expect((await rows<{ status: string }>("select status from conversation_messages where id = $1", [first.id]))[0].status).toBe("blocked");
     expect((await stepsOf(inv.invoice.id))).toMatchObject({ "before_due:-3": "queued", "on_due:0": "scheduled" });
+  });
+});
+
+describe("a person's hold on automatic messages to a customer", () => {
+  it("withdraws a reminder already queued (here waiting out quiet hours), gives its credit back, and keeps the later ones from going while the hold stands", async () => {
+    const s = await shop();
+    await authorize(s.io);
+    const inv = await issuedInvoice(s.io, { contactId: s.contactId, dueOn: DUE }, ISSUED);
+    try {
+      await withSystem((db) => db.query("update messaging_policy set quiet_hours_start = '09:00', quiet_hours_end = '12:00'"));
+      expect((await runInvoiceReminders({ now: FIRST })).queued).toBe(1);
+      const m = await messageOf(inv.invoice.id, "before_due:-3");
+      expect(m.status).toBe("queued");
+      expect(new Date(m.send_after).getTime()).toBeGreaterThanOrEqual(new Date("2026-11-03T12:00:00Z").getTime());
+
+      await setRetentionPaused(s.io.ctx("owner"), s.contactId, true, "Dispute about the work");
+
+      const after = await messageOf(inv.invoice.id, "before_due:-3");
+      expect(after).toMatchObject({ status: "blocked", blocked_reason: "held_by_person" });
+      expect((await rows<{ status: string }>("select status from usage_reservations where id = $1", [m.reservation_id]))[0].status).not.toBe("held");
+      expect((await remindersOf(inv.invoice.id))[0]).toMatchObject({ step_key: "before_due:-3", status: "skipped", reason: "held_by_person" });
+      expect(await eventKinds(inv.invoice.id)).toContain("reminder_not_sent");
+      const rec = recordingProvider("resend");
+      expect((await dispatchMessage(m.id, { transport: rec.transport, now: new Date("2026-11-03T12:30:00Z") })).status).toBe("skipped");
+      expect(rec.calls).toHaveLength(0);
+      // The next reminder, on its day, is skipped for the same reason while the hold stands.
+      await runInvoiceReminders({ now: ON_DAY });
+      expect((await stepsOf(inv.invoice.id))["on_due:0"]).toBe("skipped");
+    } finally {
+      await withSystem((db) => db.query("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'"));
+    }
+  });
+
+  it("is also checked when the dispatcher sends, so a hold set any other way still stops a reminder that was queued before it", async () => {
+    const { io, contactId } = await shop();
+    await authorize(io);
+    const inv = await issuedInvoice(io, { contactId, dueOn: DUE }, ISSUED);
+    await runInvoiceReminders({ now: FIRST });
+    const m = await messageOf(inv.invoice.id, "before_due:-3");
+    await withSystem((db) => db.query("update contacts set retention_paused = true where id = $1", [contactId]));
+    const rec = recordingProvider("resend");
+    expect((await dispatchMessage(m.id, { transport: rec.transport, now: FIRST })).status).toBe("blocked");
+    expect(rec.calls).toHaveLength(0);
+    expect(await messageOf(inv.invoice.id, "before_due:-3")).toMatchObject({ status: "blocked", blocked_reason: "held_by_person" });
+    // The reminder row says so on the next pass; it is never left queued with no outcome.
+    await runInvoiceReminders({ now: new Date(FIRST.getTime() + 3600_000) });
+    expect((await remindersOf(inv.invoice.id))[0]).toMatchObject({ status: "blocked", reason: "held_by_person" });
+  });
+
+  it("does not touch the reminders of another customer", async () => {
+    const { io, contactId } = await shop();
+    const other = await contactIn(io, { firstName: "Olga" });
+    await consentTo(io, other, "email");
+    await authorize(io);
+    const mine = await issuedInvoice(io, { contactId, dueOn: DUE }, ISSUED);
+    const theirs = await issuedInvoice(io, { contactId: other, dueOn: DUE }, ISSUED);
+    await runInvoiceReminders({ now: FIRST });
+    await setRetentionPaused(io.ctx("owner"), contactId, true);
+    expect((await messageOf(mine.invoice.id, "before_due:-3")).status).toBe("blocked");
+    expect((await messageOf(theirs.invoice.id, "before_due:-3")).status).toBe("queued");
+  });
+});
+
+describe("a reminder whose text fails its own check", () => {
+  it("ends as blocked with a reason a person can read and an event, instead of failing quietly for a day, and is not tried again", async () => {
+    const { io, contactId } = await shop({ firstName: "www.acme" });
+    await authorize(io);
+    const inv = await issuedInvoice(io, { contactId, dueOn: DUE }, ISSUED);
+    const run = await runInvoiceReminders({ now: FIRST });
+    expect(run).toMatchObject({ queued: 0, blocked: 1 });
+    expect((await remindersOf(inv.invoice.id))[0]).toMatchObject({ step_key: "before_due:-3", status: "blocked", reason: "reminder_text_invalid", message_id: null });
+    const ev = await rows<{ detail: { step: string; reason: string; why: string } }>("select detail from customer_invoice_events where invoice_id = $1 and kind = 'reminder_blocked'", [inv.invoice.id]);
+    expect(ev).toHaveLength(1);
+    expect(ev[0].detail).toMatchObject({ step: "before_due:-3", reason: "reminder_text_invalid" });
+    expect(ev[0].detail.why).toMatch(/web address/);
+    expect(reminderReasonText("reminder_text_invalid")).toMatch(/web address/);
+    expect(await rows("select 1 from conversation_messages where org_id = $1", [io.orgId])).toHaveLength(0);
+    // Nothing brings it back: a later run neither retries it nor repeats the event.
+    expect(await runInvoiceReminders({ now: new Date(FIRST.getTime() + 3 * 3600_000) })).toMatchObject({ queued: 0, blocked: 0, reconciled: 0 });
+    expect((await eventKinds(inv.invoice.id)).filter((k) => k === "reminder_blocked")).toHaveLength(1);
+  });
+
+  it("is the same for a business name with a web address on an invoice issued before the name was fixed; authorizing with such a name is refused up front", async () => {
+    const { io, contactId } = await shop();
+    const v0 = await getReminderOverview(io.ctx("owner"), { now: ISSUED });
+    await saveInvoiceSettings(io.ctx("owner"), { legalName: "Pizza www.acme.ph" }, v0.settingsVersion);
+    const inv = await issuedInvoice(io, { contactId, dueOn: DUE }, ISSUED);
+    const o = await getReminderOverview(io.ctx("owner"), { now: ISSUED });
+    await expect(authorizeReminders(io.ctx("owner"), { wordingHash: o.wordingHash, settingsVersion: o.settingsVersion }, { now: ISSUED })).rejects.toThrow(/business name .* web address/i);
+    await saveInvoiceSettings(io.ctx("owner"), { legalName: "Acme Pizza" }, o.settingsVersion);
+    await authorize(io);
+    // The invoice froze the old name when it was issued.
+    expect(await runInvoiceReminders({ now: FIRST })).toMatchObject({ queued: 0, blocked: 1 });
+    expect((await remindersOf(inv.invoice.id))[0]).toMatchObject({ status: "blocked", reason: "reminder_text_invalid" });
+  });
+});
+
+describe("a test invoice", () => {
+  const stored = async () => Number((await rows<{ n: string }>("select count(*)::text as n from customer_invoice_reminders"))[0].n);
+
+  it("is never planned for, and the job's count of what it scheduled is only what was really stored", async () => {
+    const { io, contactId } = await shop();
+    await authorize(io);
+    const real = await issuedInvoice(io, { contactId, dueOn: DUE }, ISSUED);
+    const test = await issuedTestInvoice(io, { contactId, dueOn: DUE }, ISSUED);
+    expect((await remindersOf(real.invoice.id)).length).toBeGreaterThan(0);
+    expect(await remindersOf(test.invoice.id)).toEqual([]);
+
+    // Planning by hand: nothing is stored for it, so nothing is reported as planned.
+    expect(await withSystem((db) => syncInvoiceReminders(db, io.orgId, test.invoice.id, ISSUED))).toEqual({ inserted: 0, cancelled: 0 });
+
+    // The job plans any owed invoice that has no rows. A test invoice would stay on that list for ever, crowd out real ones, and report work that was never done.
+    await withSystem((db) => db.query("delete from customer_invoice_reminders where invoice_id = $1", [real.invoice.id]));
+    const before = await stored();
+    const run = await runInvoiceReminders({ now: ISSUED });
+    expect(run.scheduled).toBe((await stored()) - before);
+    expect((await remindersOf(real.invoice.id)).length).toBeGreaterThan(0);
+    expect(await remindersOf(test.invoice.id)).toEqual([]);
   });
 });

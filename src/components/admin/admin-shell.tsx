@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { adminCrumbs, isNavActive } from "@/lib/admin-breadcrumb";
 import { motion } from "motion/react";
-import { Activity, ArrowLeftRight, BarChart3, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, Layers, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
+import { Activity, ArrowLeftRight, BarChart3, Blocks, Boxes, Briefcase, Building2, ChevronDown, Contact, ChevronRight, Command, FolderKanban, Gauge, HeartPulse, Inbox, Landmark, Layers, LogOut, Menu as MenuIcon, MonitorSmartphone, Moon, PanelLeftClose, PanelLeftOpen, ScrollText, Search, ShieldCheck, Sparkles, Sun, UserPlus, Users, Wallet, Wrench } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Dialog, Sheet, Tooltip } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
@@ -38,6 +38,8 @@ const NAV = [
   { href: "/admin/setup-templates", label: "Setup templates", icon: ScrollText, superOnly: true, group: "Platform" },
   { href: "/admin/integrations", label: "Integrations", icon: ArrowLeftRight, superOnly: true, group: "Platform" },
   { href: "/admin/inbox-rollout", label: "Inbox rollout", icon: Inbox, superOnly: true, group: "Platform" },
+  // Super Admin only: switches proposals, signing, customer invoices and the reputation tools on per client workspace (each stays dormant until then).
+  { href: "/admin/module-rollout", label: "Module rollout", icon: Blocks, superOnly: true, group: "Platform" },
   { href: "/admin/health", label: "System health", icon: HeartPulse, group: "Platform" },
   { href: "/admin/billing", label: "Billing & finance", icon: Landmark, group: "Platform" },
   { href: "/admin/usage", label: "Usage & costs", icon: Wallet, group: "Platform" },

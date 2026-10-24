@@ -17,9 +17,12 @@ export function typedConsentEvidence(notice: string, host: string): string {
   return `Typed by the visitor in the website chat, unverified. ${notice} Website chat form on ${host}.`;
 }
 
-/** What is known about the address a message would go to. `verified` is null when no identity row was found. */
+/**
+ * What is known about the address a message would go to, read from the address itself (contact_identities) and not from the contact it sits on: a merge moves the address
+ * to another contact, and it must stay typed. `verified` is null when no identity row was found.
+ */
 export interface DestinationFacts {
-  createdVia: string | null;
+  typedByVisitor: boolean;
   verified: boolean | null;
 }
 
@@ -33,7 +36,10 @@ export interface SendFacts {
 }
 
 /** The address came only from a website visitor's typing and nothing has confirmed it since. */
-export const typedByVisitorOnly = (dest: DestinationFacts): boolean => dest.createdVia === "website_chat" && dest.verified === false;
+export const typedByVisitorOnly = (dest: DestinationFacts): boolean => dest.typedByVisitor && dest.verified === false;
+
+/** Added to the evidence of a typed consent grant that a merge carries to the kept contact. The grant keeps its source and its words; this only says it was carried. */
+export const MERGE_CARRIED_NOTE = "Carried to this contact when two contacts were merged.";
 
 /** The scopes that are one message to one person. Every other scope (follow-ups, reminders, program messages, and any added later) is a program and fails closed. */
 const ONE_TO_ONE_SCOPES = new Set(["reply", "human"]);

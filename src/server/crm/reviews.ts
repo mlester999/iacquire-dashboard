@@ -16,7 +16,7 @@ import { detectEscalationSignal } from "@/server/messaging/ingest";
 import { REVIEW_LINK_PLACEHOLDER } from "@/server/messaging/redact";
 import { changeFeedbackFollowUp, followThroughLowFeedback, sendFollowThroughEmails } from "@/server/reputation/feedback";
 import { loadSettings, thresholdsOf } from "@/server/reputation/settings";
-import { SURVEYS_NOT_ENABLED_MESSAGE, surveysEnabledIn } from "@/server/reputation/entitlement";
+import { SURVEYS_NOT_ENABLED_MESSAGE, reviewsPublicDisabled, surveysEnabledIn } from "@/server/reputation/entitlement";
 import { describeScore, isLowScore, isFeedbackScale, isRequestKind, parseScore, type FeedbackScale, type RequestKind } from "@/lib/reputation/scores";
 import { reviewIncentiveFindings } from "@/lib/reputation/incentives";
 import { withoutNegatedComplaints } from "@/lib/reputation/signals";
@@ -808,6 +808,11 @@ export async function listReviewRequests(actor: CrmActor, opts: { filter?: Reque
 
 export interface FeedbackView extends FeedbackSummary {
   contact: { id: string; name: string } | null;
+  /**
+   * A survey answer typed next to an existing customer's email or phone that nobody has verified: it may be theirs, and nothing was done for them. A person confirms or dismisses
+   * it (src/server/reputation/survey-feedback.ts). Null for every answer that is attributed, anonymous or already decided.
+   */
+  possibleContact: { id: string; name: string } | null;
   source: "manual" | "review_request" | "survey" | "import";
   reviewRequestId: string | null;
   acknowledgedAt: string | null;
@@ -843,14 +848,16 @@ export async function listFeedback(actor: CrmActor, opts: { filter?: FeedbackFil
     const from = `from customer_feedback f left join contacts c on c.id = f.contact_id and c.org_id = f.org_id and c.deleted_at is null
       left join human_escalations e on e.id = f.escalation_id and e.org_id = f.org_id
       left join tasks t on t.id = f.escalated_task_id and t.org_id = f.org_id
+      left join lateral (select coalesce((select m.kept_contact_id from contact_merges m where m.merged_contact_id = f.possible_contact_id and m.org_id = f.org_id order by m.created_at desc limit 1), f.possible_contact_id) as id) pk on f.possible_contact_id is not null
+      left join contacts pc on pc.id = pk.id and pc.org_id = f.org_id and pc.deleted_at is null
       left join users ua on ua.id = f.acknowledged_by left join users ur on ur.id = f.resolved_by where ${where.join(" and ")}`;
     const total = Number((await db.query<{ n: string }>(`select count(*)::text as n ${from}`, [actor.orgId])).rows[0].n);
     const { rows } = await db.query<{
       id: string; rating: number | null; nps_score: number | null; scale: FeedbackScale; comment: string | null; received_at: Date; follow_up_status: FeedbackFollowUp; escalated_task_id: string | null; low_score: boolean;
-      contact_id: string | null; contact_name: string | null; source: FeedbackView["source"]; review_request_id: string | null; acknowledged_at: Date | null; acknowledged_by_name: string | null;
+      contact_id: string | null; contact_name: string | null; possible_id: string | null; possible_name: string | null; source: FeedbackView["source"]; review_request_id: string | null; acknowledged_at: Date | null; acknowledged_by_name: string | null;
       resolved_at: Date | null; resolved_by_name: string | null; resolution_note: string | null; conversation_id: string | null; assigned_to_you: boolean;
     }>(
-      `select f.id, f.rating, f.nps_score, f.scale, f.comment, f.received_at, f.follow_up_status, f.escalated_task_id, f.low_score, c.id as contact_id, c.display_name as contact_name, f.source, f.review_request_id,
+      `select f.id, f.rating, f.nps_score, f.scale, f.comment, f.received_at, f.follow_up_status, f.escalated_task_id, f.low_score, c.id as contact_id, c.display_name as contact_name, pc.id as possible_id, pc.display_name as possible_name, f.source, f.review_request_id,
               f.acknowledged_at, nullif(ua.full_name, '') as acknowledged_by_name, f.resolved_at, nullif(ur.full_name, '') as resolved_by_name, f.resolution_note, e.conversation_id,
               (t.assigned_user_id is not null and t.assigned_user_id = $4::uuid) as assigned_to_you
        ${from} order by f.received_at desc, f.id limit $2 offset $3`,
@@ -860,7 +867,8 @@ export async function listFeedback(actor: CrmActor, opts: { filter?: FeedbackFil
       total, page, pageSize,
       rows: rows.map((r) => ({
         id: r.id, rating: r.rating, npsScore: r.nps_score, scale: r.scale, comment: r.comment, receivedAt: iso(r.received_at)!, followUpStatus: r.follow_up_status, escalatedTaskId: r.escalated_task_id, lowScore: r.low_score,
-        contact: r.contact_id ? { id: r.contact_id, name: r.contact_name || "Unnamed contact" } : null, source: r.source, reviewRequestId: r.review_request_id,
+        contact: r.contact_id ? { id: r.contact_id, name: r.contact_name || "Unnamed contact" } : null, possibleContact: r.possible_id ? { id: r.possible_id, name: r.possible_name || "Unnamed contact" } : null,
+        source: r.source, reviewRequestId: r.review_request_id,
         acknowledgedAt: iso(r.acknowledged_at), acknowledgedByName: r.acknowledged_by_name, resolvedAt: iso(r.resolved_at), resolvedByName: r.resolved_by_name, resolutionNote: r.resolution_note,
         conversationId: r.conversation_id, assignedToYou: r.assigned_to_you,
       })),
@@ -958,8 +966,8 @@ export interface PublicReviewDestination {
 }
 
 export interface ReviewPageView {
-  /** open: feedback can be given. closed: the link expired or the request was cancelled (the public links still work). */
-  state: "open" | "closed" | "invalid" | "rate_limited";
+  /** open: feedback can be given. closed: the link expired or the request was cancelled (the public links still work). disabled: the platform-wide switch is on (REVIEWS_PUBLIC_DISABLED). */
+  state: "open" | "closed" | "invalid" | "rate_limited" | "disabled";
   closedReason: "expired" | "cancelled" | null;
   /** What the request is (a review request or a survey) and the scale its question is asked on. Neither changes which public links are shown. */
   kind: RequestKind;
@@ -1018,6 +1026,8 @@ const customerActor = (r: PublicRequestRow) => systemActor({ id: r.org_id, name:
  */
 export async function loadReviewPage(token: string, opts: { now?: Date } = {}): Promise<ReviewPageView> {
   const empty = (state: ReviewPageView["state"]): ReviewPageView => ({ state, closedReason: null, kind: "review", scale: "csat5", business: null, destinations: [], feedback: null });
+  // The emergency switch comes first: nothing is read, counted or recorded, whatever the address.
+  if (reviewsPublicDisabled()) return empty("disabled");
   if (!looksLikeReviewToken(token)) return empty("invalid");
   if (!(await consumeRateLimit(PAGE_VIEWS, limitKey(token))).allowed) return empty("rate_limited");
   const now = opts.now ?? new Date();
@@ -1042,7 +1052,7 @@ export async function loadReviewPage(token: string, opts: { now?: Date } = {}): 
   });
 }
 
-export type FeedbackOutcome = "saved" | "already" | "closed" | "invalid" | "empty" | "rate_limited";
+export type FeedbackOutcome = "saved" | "already" | "closed" | "invalid" | "empty" | "rate_limited" | "unavailable";
 
 /** Plain text a customer typed: control characters removed, line breaks kept, at most FEEDBACK_COMMENT_MAX characters. */
 export function cleanFeedbackComment(v: unknown): string | null {
@@ -1064,6 +1074,7 @@ export function parseRating(v: unknown): number | null | "invalid" {
  * changes what the customer sees: the page shows the same public review links before and after, whatever the score.
  */
 export async function submitReviewFeedback(token: string, input: { rating?: unknown; comment?: unknown }, opts: { now?: Date } = {}): Promise<{ outcome: FeedbackOutcome; escalated?: boolean; feedbackId?: string }> {
+  if (reviewsPublicDisabled()) return { outcome: "unavailable" };
   if (!looksLikeReviewToken(token)) return { outcome: "invalid" };
   // The form's number is checked for shape here, and for range once the request (and so its scale) is known.
   const chosen = parseScore("nps10", input.rating);
@@ -1126,7 +1137,7 @@ export async function submitReviewFeedback(token: string, input: { rating?: unkn
  * them. The address always comes from the business's own active list, never from the request. Null for an unknown token or link.
  */
 export async function recordReviewClick(token: string, destinationId: string, opts: { now?: Date } = {}): Promise<{ url: string } | null> {
-  if (!looksLikeReviewToken(token) || !UUID.test(destinationId)) return null;
+  if (reviewsPublicDisabled() || !looksLikeReviewToken(token) || !UUID.test(destinationId)) return null;
   const now = opts.now ?? new Date();
   const allowed = (await consumeRateLimit(CLICKS, limitKey(token))).allowed;
   return withSystem(async (db) => {

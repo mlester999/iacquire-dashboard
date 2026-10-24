@@ -145,7 +145,8 @@ describe("reading and storing the facts of an event", () => {
 });
 
 describe("what a verified 'payment succeeded' event may do", () => {
-  const attempt: AttemptFacts = { reference: REF, checkoutId: "cs_1", settingUp: false, amountMinor: 150000, currency: "PHP" };
+  // Test-mode events (livemode false) belong to a TEST invoice's checkout: test money and real money never meet on an invoice.
+  const attempt: AttemptFacts = { reference: REF, checkoutId: "cs_1", settingUp: false, amountMinor: 150000, currency: "PHP", invoiceIsTest: true };
   const event: NormalizedEvent = { ...emptyEvent("payment.succeeded", { eventId: "evt_1", type: "t", livemode: false }), checkoutId: "cs_1", reference: REF, paymentId: "pay_1", amountMinor: 150000, currency: "PHP" };
   const input = (e: Partial<NormalizedEvent> = {}, a: AttemptFacts | null = attempt, canonical: Canonical | "missing" | null = null, live = false) => ({ event: { ...event, ...e }, connectionLive: live, attempt: a, canonical });
   const paid: Canonical = { status: "paid", amountMinor: 150000, currency: "PHP", reference: REF, checkoutId: "cs_1" };
@@ -154,7 +155,21 @@ describe("what a verified 'payment succeeded' event may do", () => {
     expect(decideSucceeded(input()).action).toBe("apply");
     expect(decideSucceeded(input({}, attempt, paid)).action).toBe("apply");
     expect(decideSucceeded(input({}, attempt, { ...paid, reference: null, checkoutId: null })).action).toBe("apply");
-    expect(decideSucceeded(input({ livemode: true }, attempt, null, true)).action).toBe("apply");
+    expect(decideSucceeded(input({ livemode: true }, { ...attempt, invoiceIsTest: false }, null, true)).action).toBe("apply");
+  });
+
+  it("refuses test money on a real invoice and live money on a test invoice, before anything else is looked at", () => {
+    const real = { ...attempt, invoiceIsTest: false };
+    expect(decideSucceeded(input({}, real))).toMatchObject({ action: "reject", reason: expect.stringMatching(/test mode cannot be recorded on a real invoice: only a test invoice takes one/) });
+    expect(decideSucceeded(input({ livemode: true }, attempt, null, true))).toMatchObject({ action: "reject", reason: expect.stringMatching(/live payment cannot be recorded on a test invoice/) });
+    // Not even a checkout that does not match, or an amount that is wrong, can put the money anywhere: it is not the invoice's kind of money.
+    expect(decideSucceeded(input({ checkoutId: "cs_other", amountMinor: 1 }, real))).toMatchObject({ action: "reject" });
+    expect(decideSucceeded(input({ livemode: true, amountMinor: 1 }, attempt, null, true))).toMatchObject({ action: "reject" });
+    // A failed or pending try is a payment row too, so the same holds.
+    const failed: NormalizedEvent = { ...emptyEvent("payment.failed", { eventId: "evt_f", type: "payment.failed", livemode: false }), reference: REF, paymentId: "pay_f" };
+    expect(decideNotSucceeded({ event: failed, connectionLive: false, attempt: real })).toMatchObject({ action: "reject", reason: expect.stringMatching(/only a test invoice takes one/) });
+    expect(decideNotSucceeded({ event: { ...failed, livemode: true }, connectionLive: true, attempt })).toMatchObject({ action: "reject", reason: expect.stringMatching(/test invoice/) });
+    expect(decideNotSucceeded({ event: failed, connectionLive: false, attempt })).toEqual({ action: "apply" });
   });
 
   it("says why each disagreement is not applied", () => {
@@ -195,15 +210,17 @@ describe("what a verified 'payment succeeded' event may do", () => {
       const hasPayment = r() < 0.95;
       const canon = pick<Canonical | "missing" | null>(null, null, paid, { ...paid, status: "pending" }, { ...paid, amountMinor: 5 }, "missing");
       const settingUp = r() < 0.3;
+      // Whether the checkout is for the kind of invoice that takes this kind of money: a test invoice takes test-mode events and a real one live ones.
+      const kindOk = r() < 0.85;
       const e: Partial<NormalizedEvent> = {
         livemode: modeOk ? live : !live, reference: refKind === "ours" ? REF : refKind === "foreign" ? "IAQ-0123456789ABCDEF0123" : null,
         checkoutId: checkoutKind === "match" ? "cs_1" : checkoutKind === "other" ? "cs_2" : null, amountMinor: amountKind === "match" ? 150000 : amountKind === "less" ? 149999 : 150001,
         currency: currencyOk ? "PHP" : "USD", paymentId: hasPayment ? "pay_1" : null,
       };
-      const a: AttemptFacts | null = attemptKind === "found" ? { ...attempt, checkoutId: stored, settingUp: stored === null && settingUp } : null;
+      const a: AttemptFacts | null = attemptKind === "found" ? { ...attempt, checkoutId: stored, settingUp: stored === null && settingUp, invoiceIsTest: kindOk ? !live : live } : null;
       const d = decideSucceeded(input(e, a, canon, live));
       const canonOk = canon === null || (canon !== "missing" && canon.status === "paid" && canon.amountMinor === 150000 && canon.currency === "PHP");
-      const allAgree = modeOk && refKind === "ours" && attemptKind === "found" && hasPayment && stored === "cs_1" && checkoutKind === "match" && amountKind === "match" && currencyOk && canonOk;
+      const allAgree = modeOk && kindOk && refKind === "ours" && attemptKind === "found" && hasPayment && stored === "cs_1" && checkoutKind === "match" && amountKind === "match" && currencyOk && canonOk;
       expect(d.action === "apply", JSON.stringify({ e, a, canon })).toBe(allAgree);
       if (d.action === "apply") applied += 1;
     }
@@ -232,5 +249,21 @@ describe("what a verified 'payment succeeded' event may do", () => {
     expect(decide({ ...refund, paymentId: null }, pay("succeeded"))).toMatchObject({ action: "ignore" });
     expect(decide(refund, pay("succeeded"), true)).toMatchObject({ action: "reject" });
     expect(decide({ ...refund, kind: "dispute.opened", currency: null }, pay("succeeded")).action).toBe("apply");
+  });
+
+  it("applies the close of a dispute only to a payment that is under one, waits for the dispute otherwise, and refuses an amount in another currency", () => {
+    const closed: NormalizedEvent = { ...emptyEvent("dispute.closed", { eventId: "evt_c", type: "c", livemode: false }), paymentId: "pay_1", disputeOutcome: "lost", amountMinor: 1000, currency: "PHP" };
+    const pay = (status: "succeeded" | "disputed" | "partially_refunded" | "refunded") => ({ status, currency: "PHP", amountMinor: 150000 });
+    expect(decideAfterPayment({ event: closed, connectionLive: false, payment: pay("disputed") })).toEqual({ action: "apply" });
+    for (const s of ["succeeded", "partially_refunded", "refunded"] as const) expect(decideAfterPayment({ event: closed, connectionLive: false, payment: pay(s) }), s).toMatchObject({ action: "defer", reason: expect.stringMatching(/not been opened here/) });
+    expect(decideAfterPayment({ event: { ...closed, currency: "USD" }, connectionLive: false, payment: pay("disputed") })).toMatchObject({ action: "reject", reason: expect.stringMatching(/currency/) });
+    expect(decideAfterPayment({ event: { ...closed, disputeOutcome: "won", amountMinor: null, currency: null }, connectionLive: false, payment: pay("disputed") })).toEqual({ action: "apply" });
+  });
+
+  it("reads and stores how a dispute ended, and drops anything that is not one of the three", () => {
+    const closed: NormalizedEvent = { ...emptyEvent("dispute.closed", { eventId: "evt_c", type: "c", livemode: false }), paymentId: "pay_1", disputeOutcome: "lost", amountMinor: 1000, currency: "PHP" };
+    expect(readFacts(JSON.parse(JSON.stringify(storableFacts(closed))))).toEqual(closed);
+    expect(readFacts({ ...closed, disputeOutcome: "maybe" })?.disputeOutcome).toBeNull();
+    expect(readFacts({ ...closed, disputeOutcome: undefined })?.disputeOutcome).toBeNull();
   });
 });

@@ -64,6 +64,8 @@ export interface InvoiceRow {
   approved_by: string | null;
   approved_at: Date | null;
   closes_deal: boolean;
+  /** A test invoice: made to try the payment account in test mode. Nothing is owed on it and no money moves. */
+  is_test: boolean;
   public_token_version: number;
   first_viewed_at: Date | null;
   issued_at: Date | null;
@@ -83,7 +85,7 @@ export const INVOICE_COLUMNS = `i.id, i.org_id, i.contact_id, i.company_id, i.op
   i.write_off_reason, i.number, i.currency, i.tax_inclusive, i.subtotal_minor::text as subtotal_minor, i.tax_minor::text as tax_minor, i.total_minor::text as total_minor,
   i.paid_minor::text as paid_minor, i.refunded_minor::text as refunded_minor, i.balance_minor::text as balance_minor, i.overpaid_minor::text as overpaid_minor,
   to_char(i.issue_on, 'YYYY-MM-DD') as issue_on, to_char(i.due_on, 'YYYY-MM-DD') as due_on, i.bill_to, i.bill_from, i.payment_instructions, i.notes, i.terms, i.content_hash,
-  i.version, i.approved_version, i.approved_by, i.approved_at, i.closes_deal, i.public_token_version, i.first_viewed_at, i.issued_at, i.issued_by, i.voided_at, i.voided_by,
+  i.version, i.approved_version, i.approved_by, i.approved_at, i.closes_deal, i.is_test, i.public_token_version, i.first_viewed_at, i.issued_at, i.issued_by, i.voided_at, i.voided_by,
   i.void_reason, i.idempotency_key, i.created_by, i.created_via, i.created_at, i.updated_at`;
 
 export async function loadInvoiceRow(db: Queryable, orgId: string, id: string, lock = false): Promise<InvoiceRow | null> {

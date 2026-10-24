@@ -115,6 +115,73 @@ describe("migration 0090: the document buckets", () => {
     }
   });
 
+  it("lets an agency person read proposal documents only inside an active support session on that client (founder decision: the audited-session rule covers the files too)", async () => {
+    const w = await world();
+    const other = await createOrg({ name: "Other Session Co" });
+    const staff = await createUser({ platformRole: "agency_staff" });
+    const manager = await createUser({ platformRole: "agency_manager" });
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    const unassigned = await createUser({ platformRole: "agency_staff" });
+    const read = (db: Db, userId: string, orgId: string, write = false) => db.query<{ ok: boolean }>("select app.file_permission($1, 'proposal-documents', $2, 'client') as ok", [orgId, write]).then((r) => r.rows[0].ok);
+    const as = (db: Db, userId: string) => db.query("select set_config('app.user_id', $1, true)", [userId]);
+    const session = (db: Db, userId: string, orgId: string, mode: "read" | "write", when: "active" | "ended" | "expired" = "active") =>
+      db.query(
+        `insert into crm_support_sessions (org_id, user_id, mode, reason, started_at, expires_at, ended_at)
+         values ($1, $2, $3, 'Looking at a signed copy for the client', ${when === "expired" ? "now() - interval '3 hours'" : "now()"}, ${when === "expired" ? "now() - interval '1 hour'" : "now() + interval '1 hour'"}, ${when === "ended" ? "now()" : "null"})`,
+        [orgId, userId, mode],
+      );
+    const out: Record<string, boolean | [boolean, boolean]> = {};
+    await expect(
+      withSystem(async (db) => {
+        await withoutModulePermissions(db);
+        // The same grants 0091 seeds: the client's team and the three agency roles can view; only the client's own roles create.
+        await db.query(
+          `insert into role_permissions (role, permission) values ('owner', 'proposals.view'), ('owner', 'proposals.create'), ('viewer', 'proposals.view'),
+             ('agency_staff', 'proposals.view'), ('agency_manager', 'proposals.view'), ('agency_super_admin', 'proposals.view')`,
+        );
+        await db.query("insert into staff_assignments (org_id, user_id) values ($1, $2)", [w.org.id, staff.id]);
+        // No session: the person is assigned (or, for a manager and a Super Admin, may reach every client), holds the permission, and still cannot read the files.
+        for (const [name, id] of [["staff", staff.id], ["manager", manager.id], ["admin", admin.id], ["unassigned", unassigned.id]] as const) {
+          await as(db, id);
+          out[`${name}|none`] = await read(db, id, w.org.id);
+        }
+        // The client's own people are not affected: no session is involved for them.
+        await as(db, w.people.owner.id);
+        out["owner|none"] = [await read(db, w.people.owner.id, w.org.id), await read(db, w.people.owner.id, w.org.id, true)];
+        await as(db, w.people.viewer.id);
+        out["viewer|none"] = await read(db, w.people.viewer.id, w.org.id);
+        // A read session on that client opens the read, for each of the three roles, and opens nothing for writing.
+        for (const [name, id] of [["staff", staff.id], ["manager", manager.id], ["admin", admin.id]] as const) {
+          await session(db, id, w.org.id, "read");
+          await as(db, id);
+          out[`${name}|read-session`] = [await read(db, id, w.org.id), await read(db, id, w.org.id, true)];
+        }
+        // A session on another client, one that has ended and one that has run out open nothing; neither does a session for a person who is not assigned.
+        await session(db, unassigned.id, w.org.id, "read");
+        await as(db, unassigned.id);
+        out["unassigned|read-session"] = await read(db, unassigned.id, w.org.id);
+        await db.query("delete from crm_support_sessions");
+        await session(db, staff.id, other.id, "read");
+        await as(db, staff.id);
+        out["staff|other-client-session"] = await read(db, staff.id, w.org.id);
+        await db.query("delete from crm_support_sessions");
+        await session(db, staff.id, w.org.id, "read", "ended");
+        out["staff|ended-session"] = await read(db, staff.id, w.org.id);
+        await db.query("delete from crm_support_sessions");
+        await session(db, staff.id, w.org.id, "read", "expired");
+        out["staff|expired-session"] = await read(db, staff.id, w.org.id);
+        throw new Done();
+      }),
+    ).rejects.toBeInstanceOf(Done);
+    expect(out).toEqual({
+      "staff|none": false, "manager|none": false, "admin|none": false, "unassigned|none": false,
+      "owner|none": [true, true], "viewer|none": true,
+      "staff|read-session": [true, false], "manager|read-session": [true, false], "admin|read-session": [true, false],
+      "unassigned|read-session": false,
+      "staff|other-client-session": false, "staff|ended-session": false, "staff|expired-session": false,
+    });
+  });
+
   it("lets only an agency user holding the messages permission write staff attachments, on the agency workspace, and lets nobody read them directly", async () => {
     const w = await world();
     let t: Record<string, boolean> = {};

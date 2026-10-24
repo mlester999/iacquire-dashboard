@@ -19,7 +19,7 @@ vi.mock("next/cache", () => ({ revalidatePath() {} }));
 const { stub } = vi.hoisted(() => ({ stub: async () => ({ ok: false, error: "not in tests" }) }));
 vi.mock("@/app/actions/crm-reviews", () => Object.fromEntries([
   "createReviewDestinationAction", "updateReviewDestinationAction", "setReviewDestinationActiveAction", "moveReviewDestinationAction", "deleteReviewDestinationAction",
-  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction",
+  "previewReviewRequestAction", "requestReviewAction", "cancelReviewRequestAction", "setFeedbackFollowUpAction", "confirmSurveyMatchAction", "dismissSurveyMatchAction",
 ].map((n) => [n, stub])));
 vi.mock("@/app/actions/reputation", () => ({ saveReputationSettingsAction: stub }));
 vi.mock("@/app/actions/records", () => Object.fromEntries(["addFeedbackAction", "addServiceEventAction", "createTaskAction", "saveAccountAction"].map((n) => [n, stub])));
@@ -154,7 +154,7 @@ describe("the Retention page's pointer to low feedback", () => {
 describe("the private feedback list", () => {
   const row = (over: Partial<FeedbackView> = {}): FeedbackView => ({
     id: "00000000-0000-4000-8000-000000000001", rating: 1, npsScore: null, scale: "csat5", comment: "Cold room.", receivedAt: new Date(Date.now() - 3_600_000).toISOString(), followUpStatus: "escalated", escalatedTaskId: "11111111-1111-4111-8111-111111111111",
-    lowScore: true, contact: { id: "33333333-3333-4333-8333-333333333333", name: "Lena Ortiz" }, source: "review_request", reviewRequestId: null, acknowledgedAt: null, acknowledgedByName: null,
+    lowScore: true, contact: { id: "33333333-3333-4333-8333-333333333333", name: "Lena Ortiz" }, possibleContact: null, source: "review_request", reviewRequestId: null, acknowledgedAt: null, acknowledgedByName: null,
     resolvedAt: null, resolvedByName: null, resolutionNote: null, conversationId: "22222222-2222-4222-8222-222222222222", assignedToYou: false, ...over,
   });
   const list = (rows: FeedbackView[], props: { canFollowUp?: boolean; scope?: CrmScope } = {}) =>
@@ -181,6 +181,28 @@ describe("the private feedback list", () => {
     expect(html).toContain("Acknowledged by Sam Sales");
     expect(html).toContain("Resolved by Mia Manager");
     expect(html).toContain("Refunded the fee.");
+  });
+
+  it("shows an answer that may be a customer's with their name and what was not done, and offers the choice to owners and managers only", () => {
+    const maybe = row({ contact: null, possibleContact: { id: "55555555-5555-4555-8555-555555555555", name: "Elena Ruiz" }, source: "survey", escalatedTaskId: null, conversationId: null, followUpStatus: "new" });
+    const html = list([maybe], { canFollowUp: true });
+    expect(html).toContain("May be from");
+    expect(html).toContain("Elena Ruiz");
+    expect(html).toContain('href="/crm/contacts/55555555-5555-4555-8555-555555555555"');
+    expect(html).toContain("Not confirmed.");
+    expect(html).toContain("anyone can type anyone&#x27;s");
+    expect(html).toContain("no follow-up was opened in their name");
+    expect(html).toContain(">It is them<");
+    expect(html).toContain(">It is not them<");
+    // Not for someone who cannot decide, nor in an iAcquire support session (the service refuses both); the possible match is still shown.
+    for (const quiet of [list([maybe]), list([maybe], { canFollowUp: true, scope: { ...scope, agency: true, readOnly: true } }), list([maybe], { canFollowUp: true, scope: { ...scope, readOnly: true } })]) {
+      expect(quiet).toContain("May be from");
+      expect(quiet).not.toContain(">It is them<");
+      expect(quiet).not.toContain(">It is not them<");
+    }
+    // A good answer's wording does not talk about a follow-up, and an attributed answer shows no such notice at all.
+    expect(list([row({ ...maybe, lowScore: false, rating: 5 })], { canFollowUp: true })).not.toContain("no follow-up was opened");
+    expect(list([row()], { canFollowUp: true })).not.toContain("May be from");
   });
 
   it("offers no inbox link in an iAcquire support session", () => {

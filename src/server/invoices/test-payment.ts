@@ -12,9 +12,17 @@ import { startCheckout } from "@/server/customer-payments/attempts";
 import { paymentSwitches } from "@/server/customer-payments/switches";
 import type { ProviderResolver } from "@/server/customer-payments/providers";
 
-// A test payment: the owner opens the provider's payment page for one of their own issued invoices through a connection that is in TEST mode, to see that the whole path
-// works before any customer is sent there. A test moves no real money. It is recorded as a payment the provider confirmed in test mode, which counts toward THAT invoice's
-// paid amount (and so marks it paid) but never as revenue, never starts an automation and never changes a deal. Use an invoice made for the purpose.
+// A test payment: the owner opens the provider's payment page for one of their own TEST invoices through a connection that is in TEST mode, to see that the whole path
+// works before any customer is sent there. A test invoice is made on purpose (see isTest in src/server/invoices/invoices.ts): nothing is owed on it and no money moves. The
+// payment is recorded as one the provider confirmed in test mode, which counts toward that test invoice's paid amount but never toward what is owed, never as revenue, never
+// starts an automation and never changes a deal. A real invoice cannot be paid this way, and a test invoice cannot be paid any other way.
+
+/** Whether the workspace has an account in test mode (not disconnected) that a test invoice could be paid through: what decides whether the invoice form offers "test invoice". */
+export async function hasTestConnection(ctx: OrgContext): Promise<boolean> {
+  if (!ctx.can("invoices.connect_payments")) return false;
+  const { rows } = await withSystem((db) => db.query("select 1 from customer_payment_connections where org_id = $1 and mode = 'test' and status <> 'revoked' limit 1", [ctx.org.orgId]));
+  return rows.length > 0;
+}
 
 /** Whether a test payment could be started in this currency now: a connection in test mode that is ready and authorized, and the owner is the one asking. */
 export async function testPaymentPossible(ctx: OrgContext, currency: CurrencyCode): Promise<boolean> {
@@ -40,6 +48,8 @@ export async function startTestPayment(ctx: OrgContext, invoiceId: string, deps:
     await assertInvoicesAvailable(db, ctx);
     const row = await loadInvoiceRow(db, ctx.org.orgId, invoiceId);
     if (!row) throw new AppError("not_found", "That invoice was not found.");
+    // A test payment is for a test invoice and nothing else: it can never mark an invoice a customer owes as paid.
+    if (!row.is_test) throw new AppError("conflict", "Pay as a test is only for a test invoice, and this is a real one. Make a test invoice (tick \"This is a test invoice\" when you write it) and run the test on that.");
     return row;
   });
   const started = await startCheckout({ orgId: ctx.org.orgId, invoiceId, audience: "member", actorUserId: ctx.user.id, onlyMode: "test" }, { providerFor: deps.providerFor, now: deps.now });

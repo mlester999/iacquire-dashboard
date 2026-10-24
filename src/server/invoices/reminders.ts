@@ -74,7 +74,7 @@ interface InvoiceRowFacts {
   contact_id: string | null;
 }
 
-const INVOICE_FACTS_SQL = `select id, status, payment_status, written_off_at, balance_minor::text as balance_minor, to_char(due_on, 'YYYY-MM-DD') as due_on, contact_id from customer_invoices`;
+const INVOICE_FACTS_SQL = `select id, status, payment_status, written_off_at, balance_minor::text as balance_minor, to_char(due_on, 'YYYY-MM-DD') as due_on, contact_id, is_test from customer_invoices`;
 
 const factsOf = (i: InvoiceRowFacts, hasCustomer: boolean): InvoiceFacts => ({
   status: i.status, paymentStatus: i.payment_status, writtenOff: i.written_off_at !== null, balanceMinor: toMinor(i.balance_minor), dueOn: i.due_on, hasCustomer,
@@ -107,8 +107,10 @@ async function applyPlan(db: Queryable, orgId: string, invoiceId: string, ops: P
  * scheduled rows withdrawn for an invoice that can no longer be reminded about or when reminders are off. Safe to run again at any time.
  */
 export async function syncInvoiceReminders(db: Queryable, orgId: string, invoiceId: string, now = new Date()): Promise<{ inserted: number; cancelled: number }> {
-  const inv = (await db.query<InvoiceRowFacts>(`${INVOICE_FACTS_SQL} where id = $1 and org_id = $2`, [invoiceId, orgId])).rows[0];
+  const inv = (await db.query<InvoiceRowFacts & { is_test: boolean }>(`${INVOICE_FACTS_SQL} where id = $1 and org_id = $2`, [invoiceId, orgId])).rows[0];
   if (!inv) return { inserted: 0, cancelled: 0 };
+  // Nothing is owed on a test invoice, so it is never reminded about. The database drops a reminder row for one anyway (0093); planning none keeps it off the job's list of invoices without rows.
+  if (inv.is_test) return { inserted: 0, cancelled: 0 };
   const settings = await readSettings(db, orgId);
   const tz = (await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [orgId])).rows[0]?.timezone ?? "UTC";
   const existing = (await db.query<{ step_key: string; status: ReminderRowStatus; reason: string | null }>("select step_key, status, reason from customer_invoice_reminders where invoice_id = $1 and org_id = $2 for update", [invoiceId, orgId])).rows;
@@ -145,6 +147,33 @@ export async function stopReminders(db: Queryable, orgId: string, reason: string
   }
   if (stopped && invoiceId) await addInvoiceEvent(db, orgId, invoiceId, "reminders_stopped", { id: null, kind: "system" }, { reason, count: stopped });
   return stopped;
+}
+
+/**
+ * A person's hold on automatic messages to a customer (src/server/retention/service.ts setRetentionPaused) withdraws the reminders about that customer's invoices that were already
+ * handed to the send chain and have not gone out (one waiting out quiet hours, say): the message is stopped, its credit hold released, and the reminder ends as skipped with the
+ * reason. Reminders still scheduled are left alone: each is skipped on its day while the hold stands, and goes if the hold ends first. Returns how many were withdrawn.
+ */
+export async function withdrawQueuedRemindersForContact(db: Queryable, orgId: string, contactId: string, reason = "held_by_person"): Promise<number> {
+  const queued = await db.query<{ id: string; message_id: string; invoice_id: string; step_key: string }>(
+    `select r.id, r.message_id, r.invoice_id, r.step_key from customer_invoice_reminders r join customer_invoices i on i.id = r.invoice_id and i.org_id = r.org_id
+     where r.org_id = $1 and i.contact_id = $2 and r.status = 'queued' and r.message_id is not null`,
+    [orgId, contactId],
+  );
+  let withdrawn = 0;
+  for (const r of queued.rows) {
+    // The dispatcher claims a message with the same status check, so exactly one side wins: a message already on its way is not withdrawn.
+    const m = (await db.query<{ reservation_id: string | null }>(
+      "update conversation_messages set status = 'blocked', blocked_reason = $3, status_detail = 'Stopped before sending.' where id = $1 and org_id = $2 and status in ('draft', 'queued') returning reservation_id",
+      [r.message_id, orgId, reason],
+    )).rows[0];
+    if (!m) continue;
+    if (m.reservation_id) await releaseReservation(db, { orgId, reservationId: m.reservation_id, reason: `Stopped: ${reason}` });
+    await db.query("update customer_invoice_reminders set status = 'skipped', reason = $2 where id = $1 and status = 'queued'", [r.id, reason]);
+    await addInvoiceEvent(db, orgId, r.invoice_id, "reminder_not_sent", { id: null, kind: "system" }, { step: r.step_key, reason });
+    withdrawn += 1;
+  }
+  return withdrawn;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,11 +268,16 @@ export async function authorizeReminders(ctx: OrgContext, input: AuthorizeInput,
     if (hash !== input.wordingHash) throw new AppError("conflict", "The wording, the days or the channels changed since you read them. Read the reminders again before you authorize them.");
     const setup = normalizeSetup(setupOf(s));
     if (!setup.offsetsDays.length) throw new AppError("invalid_input", "Choose at least one reminder day before you authorize reminders.");
-    // Every wording the product could send must pass its own checks; a reminder that fails them is never queued, so an authorization for it would promise nothing.
+    // Every wording the product could send must pass its own checks; a reminder that fails them is never queued, so an authorization for it would promise nothing. The business's
+    // own name is part of what is sent, so it is checked too: a name with a web address in it would make every reminder fail.
+    const org = (await db.query<{ name: string }>("select name from organizations where id = $1", [ctx.org.orgId])).rows[0];
+    const business = s.legalName ?? org?.name ?? "Business";
     for (const offset of setup.offsetsDays) {
       const phase = phaseOfStepKey(stepKeyFor(offset));
-      const problem = phase ? reminderTextProblem(renderReminder({ phase, firstName: "Maria", business: "Business", number: "INV-0001", totalMinor: 100, currency: "PHP", dueOn: "2026-11-06" }).body) : "Unknown reminder.";
+      const check = (name: string) => (phase ? reminderTextProblem(renderReminder({ phase, firstName: "Maria", business: name, number: "INV-0001", totalMinor: 100, currency: "PHP", dueOn: "2026-11-06" }).body) : "Unknown reminder.");
+      const problem = check("Business");
       if (problem) throw new AppError("internal", problem);
+      if (check(business)) throw new AppError("invalid_input", "Your business name carries a web address, and a reminder is not allowed to. Take it out in the invoice settings, then authorize the reminders again.");
     }
     const saved = await db.query(
       `update customer_invoice_settings set reminders_enabled = true, reminders_authorized_by = $2, reminders_authorized_at = $3, reminders_body_hash = $4, version = version + 1, updated_by = $2
@@ -257,7 +291,7 @@ export async function authorizeReminders(ctx: OrgContext, input: AuthorizeInput,
     }, db);
     // Invoices already issued and still owed get their reminders from now on.
     const open = await db.query<{ id: string }>(
-      `select id from customer_invoices where org_id = $1 and status = 'issued' and payment_status in ('unpaid', 'partially_paid') and written_off_at is null and due_on is not null order by due_on limit ${RESYNC_LIMIT}`,
+      `select id from customer_invoices where org_id = $1 and status = 'issued' and not is_test and payment_status in ('unpaid', 'partially_paid') and written_off_at is null and due_on is not null order by due_on limit ${RESYNC_LIMIT}`,
       [ctx.org.orgId],
     );
     for (const r of open.rows) await syncInvoiceReminders(db, ctx.org.orgId, r.id, now);
@@ -332,7 +366,7 @@ async function backfill(now: Date): Promise<number> {
       `select i.id, i.org_id from customer_invoices i
        join customer_invoice_settings s on s.org_id = i.org_id and s.reminders_enabled
        join org_features f on f.org_id = i.org_id and f.feature = 'invoices' and f.enabled
-       where i.status = 'issued' and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on is not null and i.contact_id is not null
+       where i.status = 'issued' and not i.is_test and i.payment_status in ('unpaid', 'partially_paid') and i.written_off_at is null and i.due_on is not null and i.contact_id is not null
          and not exists (select 1 from customer_invoice_reminders r where r.invoice_id = i.id)
        order by i.due_on limit ${BACKFILL_LIMIT}`,
     );
@@ -379,14 +413,14 @@ interface QueueResult {
 /** Hands the reminder to the send chain on the first allowed channel the customer can be reached on. The chain decides every rule; this only chooses where to try. */
 async function queueOnChannels(
   db: Queryable,
-  p: { orgId: string; contactId: string; invoiceId: string; dedupeKey: string; channels: readonly ReminderChannel[]; authorizerId: string | null; render: () => { subject: string; body: string }; now: Date },
+  p: { orgId: string; contactId: string; invoiceId: string; dedupeKey: string; channels: readonly ReminderChannel[]; authorizerId: string | null; text: { subject: string; body: string }; now: Date },
 ): Promise<QueueResult> {
   // The reason shown is the first channel's: the one the business would most expect to have worked.
   const refusals: Array<{ reason: string; detail: string }> = [];
   const note = (reason: string, detail: string) => {
     if (!refusals.length) refusals.push({ reason, detail });
   };
-  const text = p.render();
+  const text = p.text;
   for (const channel of CHANNEL_ORDER.filter((c) => p.channels.includes(c))) {
     if (!(await contactAddress(db, p.orgId, p.contactId, channel))) {
       note("contact_unreachable", `There is no ${channel === "email" ? "email address" : "phone number"} on file for this customer, so a ${REMINDER_CHANNEL_LABELS[channel].toLowerCase()} reminder cannot go to them.`);
@@ -479,18 +513,20 @@ async function processReminder(c: Claimed, now: Date): Promise<Outcome> {
       await finish("cancelled", "invoice_changed");
       return "cancelled";
     }
-    const render = () => {
-      const r = renderReminder({ phase, firstName: contact?.first ?? null, business: inv.bill_from?.name ?? "", number: inv.number as string, totalMinor: toMinor(inv.total_minor), currency: inv.currency, dueOn: inv.due_on as string });
-      const problem = reminderTextProblem(r.body);
-      if (problem) throw new AppError("internal", problem);
-      return r;
-    };
+    const text = renderReminder({ phase, firstName: contact?.first ?? null, business: inv.bill_from?.name ?? "", number: inv.number as string, totalMinor: toMinor(inv.total_minor), currency: inv.currency, dueOn: inv.due_on as string });
+    // Text that fails its own check is never queued, and it is not retried: a business name or a customer's first name with a web address in it fails the same way every time.
+    // The reminder ends here with the reason, and the invoice's history says so, like every other reminder that does not go.
+    if (reminderTextProblem(text.body)) {
+      await finish("blocked", "reminder_text_invalid");
+      await addInvoiceEvent(db, c.org_id, c.invoice_id, "reminder_blocked", { id: null, kind: "system" }, { step: c.step_key, reason: "reminder_text_invalid", why: reminderReasonText("reminder_text_invalid").slice(0, 200) });
+      return "blocked";
+    }
     // One message per reminder: the key names the invoice and the day. A reminder that was withdrawn and later reopened asks again under the next number, because the key of the
     // withdrawn message is spent.
     const base = `invoice-reminder:${c.invoice_id}:${c.step_key}`;
     const spent = Number((await db.query<{ n: string }>("select count(*)::text as n from conversation_messages where org_id = $1 and (dedupe_key = $2 or dedupe_key like $2 || ':%')", [c.org_id, base])).rows[0].n);
     const result = await queueOnChannels(db, {
-      orgId: c.org_id, contactId: inv.contact_id, invoiceId: c.invoice_id, dedupeKey: spent ? `${base}:${spent}` : base, channels: settings.reminderChannels, authorizerId: settings.remindersAuthorizedBy, render, now,
+      orgId: c.org_id, contactId: inv.contact_id, invoiceId: c.invoice_id, dedupeKey: spent ? `${base}:${spent}` : base, channels: settings.reminderChannels, authorizerId: settings.remindersAuthorizedBy, text, now,
     });
     if (result.status === "blocked") {
       await finish("blocked", result.reason);

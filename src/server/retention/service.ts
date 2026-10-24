@@ -6,6 +6,8 @@ import { recordAudit } from "@/server/audit";
 import { createStandingAuthorization } from "@/server/approvals/service";
 import { ensureDefaultPrograms, programHash, type ProgramRow } from "@/server/retention/engine";
 import { cancelLinkRequests, cancelRetention } from "@/server/retention/cancel";
+import { withdrawAutomaticReviewAsks } from "@/server/retention/hold";
+import { withdrawQueuedRemindersForContact } from "@/server/invoices/reminders";
 import { releaseReservation } from "@/server/billing/ledger";
 import { assertSurveysEnabled } from "@/server/reputation/entitlement";
 import { defaultFor, hasFeedbackLink, isProgramKind, MAX_BODY, MAX_STEPS, validateSteps, type ProgramKind, type ProgramState, type ProgramStep, type StepIssue } from "@/lib/retention";
@@ -207,10 +209,19 @@ export async function setRetentionPaused(ctx: OrgContext, contactId: string, pau
   await withSystem(async (db) => {
     const res = await db.query("update contacts set retention_paused = $3 where id = $1 and org_id = $2 and deleted_at is null", [contactId, ctx.org.orgId, paused]);
     if (!res.rowCount) throw new AppError("not_found", "Contact not found.");
-    if (paused) await cancelRetention(db, ctx.org.orgId, contactId, "contact_excluded");
+    let withdrawn = { reviewAsks: 0, reminders: 0 };
+    if (paused) {
+      await cancelRetention(db, ctx.org.orgId, contactId, "contact_excluded");
+      // Anything automatic that is already queued for them goes too, not only what has not been made yet: a review ask waiting for a sending window, an invoice reminder
+      // waiting out quiet hours. A person's own message is never one of these.
+      withdrawn = {
+        reviewAsks: await withdrawAutomaticReviewAsks(db, ctx.org.orgId, contactId),
+        reminders: await withdrawQueuedRemindersForContact(db, ctx.org.orgId, contactId),
+      };
+    }
     await recordAudit({
       orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: paused ? "contact.retention_paused" : "contact.retention_resumed", targetType: "contact", targetId: contactId, result: "success",
-      metadata: why ? { reason: why } : undefined,
+      metadata: { ...(why ? { reason: why } : {}), ...(withdrawn.reviewAsks || withdrawn.reminders ? { withdrawnReviewAsks: withdrawn.reviewAsks, withdrawnReminders: withdrawn.reminders } : {}) },
     }, db);
   });
 }

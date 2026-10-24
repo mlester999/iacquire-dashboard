@@ -25,11 +25,12 @@ interface Brief {
   company_id: string | null;
   opportunity_id: string | null;
   due_on: string | null;
+  is_test: boolean;
 }
 
 async function briefOf(db: Queryable, orgId: string, invoiceId: string): Promise<Brief | null> {
   const { rows } = await db.query<Brief>(
-    `select number, currency, total_minor::text as total_minor, balance_minor::text as balance_minor, contact_id, company_id, opportunity_id, to_char(due_on, 'YYYY-MM-DD') as due_on
+    `select number, currency, total_minor::text as total_minor, balance_minor::text as balance_minor, contact_id, company_id, opportunity_id, to_char(due_on, 'YYYY-MM-DD') as due_on, is_test
      from customer_invoices where id = $1 and org_id = $2`,
     [invoiceId, orgId],
   );
@@ -66,7 +67,7 @@ async function announce(db: Queryable, orgId: string, invoiceId: string, type: I
   const b = await briefOf(db, orgId, invoiceId);
   if (!b) return;
   const facts: AnnounceFacts = {
-    invoiceId, number: b.number, currency: b.currency, totalMinor: toMinor(b.total_minor), balanceMinor: toMinor(b.balance_minor), dueOn: b.due_on, opportunityId: b.opportunity_id, ...extra,
+    invoiceId, number: b.number, currency: b.currency, totalMinor: toMinor(b.total_minor), balanceMinor: toMinor(b.balance_minor), dueOn: b.due_on, opportunityId: b.opportunity_id, isTest: b.is_test, ...extra,
   };
   const who = crmActorFor(orgId, actor);
   await guarded(db, orgId, invoiceId, type, async () => {

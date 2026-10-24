@@ -23,12 +23,14 @@ export interface PaymentFacts {
   livemode: boolean;
   status: PaymentStatus;
   receivedAt: Date;
+  /** The payment sits on a test invoice. Nothing on a test invoice is revenue, however the payment looks. */
+  invoiceIsTest?: boolean;
 }
 
 /**
  * verified:  a live payment the provider confirmed, received.
  * by_hand:   a payment a person recorded, received.
- * test:      a provider-confirmed payment that moved no real money (a provider's test mode, or the simulated provider).
+ * test:      a payment that moved no real money (a provider's test mode, the simulated provider, or anything on a test invoice).
  * held:      a payment under an open dispute: held out until it is settled.
  * not_money: pending, failed, kept for review, or not received yet as of the report.
  */
@@ -38,6 +40,7 @@ export function classifyPayment(p: PaymentFacts, asOf: Date): RevenueClass {
   if (p.receivedAt.getTime() > asOf.getTime()) return "not_money";
   if (p.status === "disputed") return "held";
   if (!(COUNTED_PAYMENT_STATUSES as readonly string[]).includes(p.status)) return "not_money";
+  if (p.invoiceIsTest) return "test";
   if (p.verification === "manual") return "by_hand";
   if (p.livemode && (REVENUE_PROVIDERS as readonly string[]).includes(p.provider)) return "verified";
   return "test";
