@@ -235,4 +235,36 @@ describe("on-demand operations review", () => {
     const { rows } = await withSystem((db) => db.query<{ status: string; failure_code: string | null }>("select status, failure_code from ai_work_jobs where id = $1", [job.id]));
     expect(rows[0]).toMatchObject({ status: "blocked", failure_code: "capability_not_allowed" });
   });
+
+  it("routes a running job with no active lease to recovery attention, not Running now", async () => {
+    const before = await workBoardSummary(ctxFor(owner, org, "owner"));
+    const stale = await withSystem(async (db) => {
+      const created = await createWorkJob(db, {
+        orgId: org.id,
+        agentId: operationsManagerId,
+        requestedBy: owner.id,
+        capability: "proactive_review",
+        title: "Expired worker lease",
+        idempotencyKey: `expired-board-${crypto.randomUUID()}`,
+        input: {},
+      });
+      await db.query(
+        `update ai_work_jobs set status='running', stage='reviewing', lease_owner=null, lease_expires_at=now() - interval '1 minute' where id=$1`,
+        [created.id],
+      );
+      return created;
+    });
+
+    const all = await listWorkBoardJobs(ctxFor(owner, org, "owner"), "all");
+    const active = await listWorkBoardJobs(ctxFor(owner, org, "owner"), "active");
+    const attention = await listWorkBoardJobs(ctxFor(owner, org, "owner"), "attention");
+    const staleJob = all.find((job) => job.id === stale.id);
+    expect(staleJob).toMatchObject({ status: "running", statusLabel: "Recovery pending", recoveryPending: true });
+    expect(active.some((job) => job.id === stale.id)).toBe(false);
+    expect(attention.some((job) => job.id === stale.id)).toBe(true);
+
+    const after = await workBoardSummary(ctxFor(owner, org, "owner"));
+    expect(after.active).toBe(before.active);
+    expect(after.needsAttention).toBe(before.needsAttention + 1);
+  });
 });

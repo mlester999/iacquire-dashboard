@@ -238,9 +238,9 @@ export function WorkBoard({
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MetricCard label="Running now" value={summary.active} detail="Persisted running jobs" icon={<Activity />} tone="violet" />
+        <MetricCard label="Running now" value={summary.active} detail="Jobs with an active worker lease" icon={<Activity />} tone="violet" />
         <MetricCard label="Waiting for approval" value={summary.waiting} detail="A person must decide" icon={<ShieldCheck />} tone="amber" />
-        <MetricCard label="Needs attention" value={summary.failed} detail="Failed jobs" icon={<AlertTriangle />} tone="amber" />
+        <MetricCard label="Needs attention" value={summary.needsAttention} detail="Failed, blocked or awaiting recovery" icon={<AlertTriangle />} tone="amber" />
         <MetricCard label="Completed today" value={summary.completedToday} detail="In this workspace's time zone" icon={<CheckCircle2 />} tone="green" />
       </div>
 
@@ -499,7 +499,7 @@ export function WorkBoard({
                     {meta ? <AgentAvatar role={meta} size="sm" /> : <IconTile tone="violet" size="sm"><Sparkles /></IconTile>}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill tone={STATUS_TONE[job.status] ?? "neutral"} size="sm" dot={job.status === "running"}>
+                        <StatusPill tone={job.recoveryPending ? "warning" : (STATUS_TONE[job.status] ?? "neutral")} size="sm" dot={job.status === "running" && !job.recoveryPending}>
                           {job.statusLabel}
                         </StatusPill>
                         <span className="text-[11.5px] text-muted">{job.employeeName}</span>
@@ -513,7 +513,11 @@ export function WorkBoard({
                       >
                         <span className="block truncate text-[13.5px] font-semibold text-ink" title={job.title}>{job.title}</span>
                         <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
-                          {job.status === "running" ? job.stageLabel ?? "Working…" : job.resultSummary ?? job.failureMessage ?? job.stageLabel ?? "No further detail recorded."}
+                          {job.recoveryPending
+                            ? "No active worker lease is recorded. Recovery is pending."
+                            : job.status === "running"
+                              ? job.stageLabel ?? "Working…"
+                              : job.resultSummary ?? job.failureMessage ?? job.stageLabel ?? "No further detail recorded."}
                         </span>
                       </button>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

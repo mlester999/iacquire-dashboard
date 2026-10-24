@@ -385,4 +385,25 @@ describe("Lead Hunter durable research", () => {
     const { rows } = await withSystem((db) => db.query<{ status: string }>("select status from ai_work_jobs where id=$1", [created.id]));
     expect(rows[0].status).toBe("queued");
   }, 30000);
+
+  it("marks a running job without an active lease as recovery pending in its authorized view", async () => {
+    const created = await withSystem((db) =>
+      createWorkJob(db, {
+        orgId: org.id,
+        agentId: hunterId,
+        requestedBy: owner.id,
+        capability: "lead_research",
+        title: "Lost lease view check",
+        idempotencyKey: `lost-lease-view-${crypto.randomUUID()}`,
+        input: {},
+      }),
+    );
+    await withSystem((db) => db.query(
+      `update ai_work_jobs set status='running', stage='reviewing', lease_owner=null, lease_expires_at=now() - interval '1 minute' where id=$1`,
+      [created.id],
+    ));
+
+    const view = await getWorkJobView(ctxFor(owner, org, "owner"), created.id);
+    expect(view).toMatchObject({ status: "running", statusLabel: "Recovery pending", recoveryPending: true });
+  }, 30000);
 });

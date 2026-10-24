@@ -26,6 +26,7 @@ export interface WorkJob {
   title: string;
   status: "queued" | "running" | "waiting_for_approval" | "blocked" | "failed" | "cancelled" | "completed";
   statusLabel: string;
+  recoveryPending: boolean;
   stage: string | null;
   stageLabel: string | null;
   progress: Record<string, unknown>;
@@ -212,22 +213,24 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
     ? (job.result.availability as { slots?: Array<{ start: string; end: string }>; timeZone?: string })
     : null;
   const availableSlots = (availability?.slots ?? []).slice(0, 12);
-  const running = job.status === "running";
+  const running = job.status === "running" && !job.recoveryPending;
 
   return (
     <section className={cn("overflow-hidden rounded-2xl border border-line bg-surface-2/40", className)} aria-label="Work progress" aria-live="polite">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/70 px-4 py-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone={TONE[job.status]} size="sm" dot={running}>
+            <StatusPill tone={job.recoveryPending ? "warning" : TONE[job.status]} size="sm" dot={running}>
               {job.statusLabel}
             </StatusPill>
-            {elapsed && job.startedAt && <span className="text-[11.5px] tabular-nums text-muted">{running ? `${elapsed} elapsed` : `Finished in ${elapsed}`}</span>}
+            {elapsed && job.startedAt && !job.recoveryPending && <span className="text-[11.5px] tabular-nums text-muted">{running ? `${elapsed} elapsed` : `Finished in ${elapsed}`}</span>}
             {job.cancelRequested && job.status === "running" && <span className="text-[11.5px] text-warning-ink">Stop requested</span>}
           </div>
           <p className="mt-1.5 truncate text-[13.5px] font-semibold text-ink" title={job.title}>{job.title}</p>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-            {running
+            {job.recoveryPending
+              ? "No active worker lease is recorded. This job is waiting for recovery; no completion has been recorded."
+              : running
               ? job.stageLabel ?? "Working on the next recorded step…"
               : job.status === "queued"
                 ? "Queued. The worker has not started this work yet."
@@ -459,7 +462,7 @@ export function WorkJobInlineActivity({ jobId }: { jobId: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted">
       <Search className="size-3.5" aria-hidden />
-      {job.statusLabel}{job.stageLabel ? ` · ${job.stageLabel}` : ""}
+      {job.statusLabel}{job.recoveryPending ? " · waiting for worker recovery" : job.stageLabel ? ` · ${job.stageLabel}` : ""}
     </span>
   );
 }

@@ -33,6 +33,7 @@ function job(overrides: Partial<WorkJob> = {}): WorkJob {
     title: "Find 20 real estate agencies in Miami",
     status: "running",
     statusLabel: "Working",
+    recoveryPending: false,
     stage: "reviewing",
     stageLabel: "Reviewing discovered company websites",
     progress: { searches: 3, pagesReviewed: 7, candidates: 4 },
@@ -221,5 +222,19 @@ describe("WorkJobPanel", () => {
     expect(await screen.findByText(/Queued. The worker has not started this work yet./i)).toBeTruthy();
     expect(screen.queryByText(/search queries/i)).toBeNull();
     expect(screen.queryByText(/source pages reviewed/i)).toBeNull();
+  });
+
+  it("shows a lost lease as awaiting recovery without a running indicator or elapsed claim", async () => {
+    stubJob(job({
+      recoveryPending: true,
+      statusLabel: "Recovery pending",
+      elapsedMs: 42 * 60 * 1000,
+    }));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Recovery pending")).toBeTruthy();
+    expect(screen.getByText(/waiting for recovery; no completion has been recorded/i)).toBeTruthy();
+    expect(screen.queryByText(/completion time is uncertain/i)).toBeNull();
+    expect(screen.queryByText(/42m elapsed/)).toBeNull();
+    expect(screen.queryByText("Working")).toBeNull();
   });
 });

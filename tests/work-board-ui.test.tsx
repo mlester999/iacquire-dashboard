@@ -52,6 +52,7 @@ function job(overrides: Partial<WorkBoardJob> = {}): WorkBoardJob {
     title: "Find 20 real estate agencies in Miami",
     status: "running",
     statusLabel: "Working",
+    recoveryPending: false,
     stage: "reviewing",
     stageLabel: "Reviewing discovered company websites",
     resultSummary: null,
@@ -68,7 +69,7 @@ function job(overrides: Partial<WorkBoardJob> = {}): WorkBoardJob {
   };
 }
 
-const summary = { active: 1, waiting: 0, failed: 1, completedToday: 2 };
+const summary = { active: 1, waiting: 0, needsAttention: 1, completedToday: 2 };
 
 const reviewActions = [
   { capability: "proactive_review" as const, label: "On-demand operations review", description: "Read persisted records and recommend next actions.", employeeName: "Operations Manager", available: true, reason: null },
@@ -151,6 +152,14 @@ describe("AI Work Board", () => {
     expect(screen.getByRole("button", { name: /Start review/ }).hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("combobox", { name: "Review to run" })).toBeTruthy();
     expect(screen.queryByText(/%/)).toBeNull();
+  });
+
+  it("shows an expired worker lease as awaiting recovery, not as active work", () => {
+    render(<WorkBoard jobs={[job({ recoveryPending: true, statusLabel: "Recovery pending" })]} summary={{ ...summary, active: 0, needsAttention: 2 }} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} />);
+    expect(screen.getByText("Recovery pending")).toBeTruthy();
+    expect(screen.getByText("No active worker lease is recorded. Recovery is pending.")).toBeTruthy();
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.getByText("Failed, blocked or awaiting recovery")).toBeTruthy();
   });
 
   it("starts a real on-demand review when access allows it", async () => {

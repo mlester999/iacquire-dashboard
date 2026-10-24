@@ -479,6 +479,7 @@ export interface WorkJobView {
   title: string;
   status: WorkJobStatus;
   statusLabel: string;
+  recoveryPending: boolean;
   stage: string | null;
   stageLabel: string | null;
   progress: Record<string, unknown>;
@@ -519,7 +520,13 @@ function canViewJob(ctx: OrgContext, job: WorkJobRow): boolean {
 export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { afterId?: string | null } = {}): Promise<WorkJobView | null> {
   if (!ctx.can("agents.use") && !ctx.can("activity.view")) throw new AppError("forbidden", "Your role can't view AI work.");
   const data = await withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<WorkJobRow>("select * from ai_work_jobs where id = $1 and org_id = $2", [jobId, ctx.org.orgId]);
+    const { rows } = await db.query<WorkJobRow & { lease_active: boolean }>(
+      `select j.*,
+              (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now()) as lease_active
+         from ai_work_jobs j
+        where j.id = $1 and j.org_id = $2`,
+      [jobId, ctx.org.orgId],
+    );
     const job = rows[0];
     if (!job) return null;
     const events = await listWorkJobEvents(db, { orgId: ctx.org.orgId, jobId, afterId: options.afterId, limit: 200 });
@@ -529,6 +536,7 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
   if (!canViewJob(ctx, data.job)) throw new AppError("forbidden", "You don't have access to this work.");
   const job = data.job;
   const cancelPermission = CAPABILITY_CANCEL_PERMISSION[job.capability] ?? "agents.use";
+  const recoveryPending = job.status === "running" && !job.lease_active;
   const elapsedEnd = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
   const started = job.started_at ? new Date(job.started_at).getTime() : null;
   return {
@@ -536,7 +544,8 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
     capability: job.capability,
     title: job.title,
     status: job.status,
-    statusLabel: WORK_JOB_STATUS_LABELS[job.status],
+    statusLabel: recoveryPending ? "Recovery pending" : WORK_JOB_STATUS_LABELS[job.status],
+    recoveryPending,
     stage: job.stage,
     stageLabel: workJobStageLabel(job.stage),
     progress: job.progress ?? {},

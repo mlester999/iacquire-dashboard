@@ -11,6 +11,8 @@ export interface WorkBoardJob {
   title: string;
   status: WorkJobStatus;
   statusLabel: string;
+  /** True when the persisted running state has no unexpired worker lease. */
+  recoveryPending: boolean;
   stage: string | null;
   stageLabel: string | null;
   resultSummary: string | null;
@@ -28,7 +30,7 @@ export interface WorkBoardJob {
 export interface WorkBoardSummary {
   active: number;
   waiting: number;
-  failed: number;
+  needsAttention: number;
   completedToday: number;
 }
 
@@ -44,11 +46,6 @@ function iso(value: Date | null | undefined): string | null {
 export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter = "all"): Promise<WorkBoardJob[]> {
   if (!ctx.can("agents.use") && !ctx.can("activity.view")) return [];
   const scopeAll = ctx.can("activity.view");
-  const statuses: string[] | null =
-    filter === "active" ? ["queued", "running", "waiting_for_approval"]
-      : filter === "attention" ? ["failed", "blocked", "waiting_for_approval"]
-        : filter === "completed" ? ["completed"]
-          : null;
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{
       id: string; capability: string; title: string; status: WorkJobStatus; stage: string | null;
@@ -56,11 +53,13 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       conversation_id: string | null; created_at: Date; started_at: Date | null; finished_at: Date | null;
       employee_name: string; employee_role: string;
       event_message: string | null; event_kind: string | null; event_at: Date | null;
+      recovery_pending: boolean;
     }>(
       `select j.id, j.capability, j.title, j.status, j.stage, j.result_summary, j.result_count, j.failure_message,
               j.conversation_id, j.created_at, j.started_at, j.finished_at,
               a.display_name as employee_name, a.role_key as employee_role,
-              e.message as event_message, e.kind as event_kind, e.created_at as event_at
+              e.message as event_message, e.kind as event_kind, e.created_at as event_at,
+              (j.status = 'running' and not (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now())) as recovery_pending
          from ai_work_jobs j
          join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
          left join lateral (
@@ -69,19 +68,25 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
          ) e on true
         where j.org_id = $1
           and ($2::boolean or j.requested_by = $3)
-          and ($4::text[] is null or j.status = any($4::text[]))
+          and (
+            $4::text = 'all'
+            or ($4 = 'active' and (j.status in ('queued', 'waiting_for_approval') or (j.status = 'running' and j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now())))
+            or ($4 = 'attention' and (j.status in ('failed', 'blocked', 'waiting_for_approval') or (j.status = 'running' and not (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now()))))
+            or ($4 = 'completed' and j.status = 'completed')
+          )
         order by
           case j.status when 'running' then 0 when 'waiting_for_approval' then 1 when 'queued' then 2 when 'blocked' then 3 when 'failed' then 4 else 5 end,
           coalesce(j.finished_at, j.started_at, j.created_at) desc
         limit 100`,
-      [ctx.org.orgId, scopeAll, ctx.user.id, statuses],
+      [ctx.org.orgId, scopeAll, ctx.user.id, filter],
     );
     return rows.map((row) => ({
       id: row.id,
       capability: row.capability,
       title: row.title,
       status: row.status,
-      statusLabel: WORK_JOB_STATUS_LABELS[row.status],
+      statusLabel: row.recovery_pending ? "Recovery pending" : WORK_JOB_STATUS_LABELS[row.status],
+      recoveryPending: row.recovery_pending,
       stage: row.stage,
       stageLabel: workJobStageLabel(row.stage),
       resultSummary: row.result_summary,
@@ -101,14 +106,14 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
 }
 
 export async function workBoardSummary(ctx: OrgContext): Promise<WorkBoardSummary> {
-  if (!ctx.can("agents.use") && !ctx.can("activity.view")) return { active: 0, waiting: 0, failed: 0, completedToday: 0 };
+  if (!ctx.can("agents.use") && !ctx.can("activity.view")) return { active: 0, waiting: 0, needsAttention: 0, completedToday: 0 };
   const scopeAll = ctx.can("activity.view");
   return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<{ active: number; waiting: number; failed: number; completed_today: number }>(
+    const { rows } = await db.query<{ active: number; waiting: number; needs_attention: number; completed_today: number }>(
       `select
-         count(*) filter (where status = 'running')::int as active,
+         count(*) filter (where status = 'running' and lease_owner is not null and lease_expires_at is not null and lease_expires_at > now())::int as active,
          count(*) filter (where status = 'waiting_for_approval')::int as waiting,
-         count(*) filter (where status = 'failed')::int as failed,
+         count(*) filter (where status in ('failed', 'blocked') or (status = 'running' and not (lease_owner is not null and lease_expires_at is not null and lease_expires_at > now())))::int as needs_attention,
          count(*) filter (
            where status = 'completed'
              and finished_at >= (date_trunc('day', now() at time zone $4) at time zone $4)
@@ -121,7 +126,7 @@ export async function workBoardSummary(ctx: OrgContext): Promise<WorkBoardSummar
     return {
       active: row?.active ?? 0,
       waiting: row?.waiting ?? 0,
-      failed: row?.failed ?? 0,
+      needsAttention: row?.needs_attention ?? 0,
       completedToday: row?.completed_today ?? 0,
     };
   });
