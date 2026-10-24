@@ -25,6 +25,7 @@ describe("employee chat assignment routing", () => {
     expect(parseWorkforceChatAssignment("sales_assistant", "Review the pipeline")?.acknowledgement).toContain("does not prepare personalized message drafts");
     expect(parseWorkforceChatAssignment("crm_manager", "Review duplicates in the CRM")?.acknowledgement).toContain("will not edit, merge, delete or import");
     expect(parseWorkforceChatAssignment("appointment_setter", "Check calendar availability")?.acknowledgement).toContain("does not hold a slot");
+    expect(parseWorkforceChatAssignment("appointment_setter", "Check calendar availability")?.acknowledgement).toContain("continue in Appointments");
     expect(parseWorkforceChatAssignment("performance_analyst", "Analyze this month's performance")?.input).toEqual({ period: "current_month" });
   });
 

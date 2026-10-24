@@ -1,14 +1,6 @@
 # AI employee execution foundation and Lead Hunter activation
 
-Status: **implemented and verified locally; migrations 0077–0080 were reported applied to the hosted database
-on 2026-10-21; migration 0081 is a local RLS hardening change and has not been applied; application deployment
-and production configuration are pending; no production automation or provider run was activated.** Lead Hunter
-has a prior isolated 6/6 and sandbox research report against the Hermes test double; this does not verify its
-effective deployed SOUL or establish production readiness. An AI Work Board and person-triggered, read-only reviews for the Operations Manager, CRM Manager,
-Sales Assistant, Appointment Setter and Performance Analyst sit on the same durable job foundation.
-Tenant-scoped schedules and event triggers exist but are each disabled by two independent switches
-and have not been activated. Production activation remains behind the explicit approval checkpoint at
-the end of this page.
+Status: the workforce foundation and client-provisioning work are implemented and locally verified. Hosted migrations through `0086_lead_scoring` were confirmed applied in the 2026-10-24 read-only preflight. Production activation remains incomplete: Zeng and Lead Hunter are 6/6; the four remaining internal employees have no applied configuration and remain unavailable. The current, authoritative snapshot is [Internal AI Workforce production preflight (2026-10-24)](internal-workforce-production-preflight-2026-10-24.md). The Hermes API still cannot attest to effective deployed SOUL instructions. No production configuration, profile, acknowledgement, worker or schedule was changed by that preflight.
 
 ## 1. Lead Hunter configuration
 
@@ -28,9 +20,7 @@ The internal iAcquire business facts are now supplied and recorded in
 `src/lib/internal-business-profile.ts` (business description, products/services, ideal customers and
 operating area), with configurable initial prospecting defaults (industries, United States geography
 and Canada only when explicitly approved). They are a fallback for the **agency workspace only**; a
-confirmed saved value wins, and a client tenant never receives them. The local agency profile was
-filled with the empty-only script and now reports **4/4 company facts**. Production remains **0/4**
-because no production write has been authorized.
+confirmed saved value wins, and a client tenant never receives them. The local agency profile was filled with the empty-only script. The 2026-10-24 read-only production check also reports **4/4 company facts**; it did not apply any of the four missing employee configurations.
 
 ## 2. Durable AI work jobs
 
@@ -79,6 +69,9 @@ that arrives from another process is detected at the next safe check. Retries ar
 - `WorkJobPanel` polls the permission-checked `/api/work/jobs/[id]` endpoint and renders only persisted status,
   stage, counts, elapsed time and events. It has honest queued/running/failed/cancelled/completed states, no
   invented percentage or ETA, cancel/retry controls with server checks, and a review link only when leads exist.
+- Completed appointment-availability jobs show the returned slots in the workspace time zone and link to the existing
+  Appointments flow, where a person selects the contact and requests a time. The booking path checks availability again
+  and applies the workspace's approval rules; the availability review itself never holds or books a slot.
 - Chat and the Leads workspace show the real job stage. The full panel appears for a new request and in the chat
   turn that created it.
 
@@ -92,7 +85,13 @@ that arrives from another process is detected at the next safe check. Retries ar
 - Normal requests still start immediately in the web process. If that process dies, the job remains visibly
   queued/running until the worker or recovery sweep handles it; it is never reported as completed.
 
-## 6. Verification (local, 2026-10-21)
+## 6. Existing detailed verification (local, 2026-10-21)
+
+Current focused acceptance on the isolated `codex/iacquire-workforce-completion` branch passed 13 test files (158 tests),
+including the appointment handoff and persisted job progress. App and script TypeScript checks passed, ESLint passed on the changed
+code, and the Next.js 16.4.2 Webpack production build completed. The default Turbopack build could not resolve dependencies
+through this isolated worktree's external `node_modules` link. Production Hermes and employee activation were not part of these
+local checks; see the current production preflight below.
 
 | Check | Result |
 | --- | --- |
@@ -117,35 +116,11 @@ CRM import or production data write took place.
 
 ## 7. Production blockers and approval checkpoint
 
-A read-only production audit was run on 2026-10-21 with `scripts/lead-hunter-readiness-audit.ts --live`. It
-performs only `SELECT` queries and changed nothing. Result:
+The 2026-10-21 audit is superseded by the current 2026-10-24 all-six employee and live Hermes evidence, including the actual readiness, inventory, company-fact and migration state, is recorded in [the current production preflight](internal-workforce-production-preflight-2026-10-24.md). It confirms two employees at 6/6 and four at 0/6. The four recommended configurations preview complete against the saved company profile, but remain unapplied.
 
-| Evidence | Production value |
-| --- | --- |
-| Readiness | **0/6 — Setup required**, chat unavailable |
-| Applied configuration | none |
-| Last health check | exists, but `last_health_ok = false` because no configuration is applied |
-| Runtime inventory | 6 reviewed tools across 5 toolsets; digest recorded (the run gate still refuses without an applied configuration) |
-| Saved credential | current |
-| Identity check current | false |
-| Super Admin acknowledgement current | false |
-| Company facts (description, services, ideal customers, operating area) | **0/4 present** (approved facts exist in the repository fallback; production not written) |
+The production activation sequence is still guarded: apply each reviewed configuration through the existing versioned path; run profile-specific health and inventory checks; verify current profile identity; record the authorized Super Admin acknowledgement; and obtain host-side evidence for effective SOUL instructions. The existing profile IDs must be retained. Do not write readiness flags directly, start the worker, activate schedules or triggers, or run research as part of configuration setup.
 
-1. **Migrations 0077, 0078, 0079 and 0080 are applied to the hosted database** (2026-10-21, after a custom-format
-   backup). The read-only preflight reports all four applied, no prefix collisions and every expected table/column
-   present. The application deployment that reads them is still pending.
-2. **Lead Hunter has no applied configuration in production.** The agency workspace must save the complete
-   role configuration through Configure. The approved iAcquire facts now exist in the repository and can be
-   written with `scripts/apply-internal-business-profile.ts --apply`; production still needs that authorized
-   write, and the configuration must then be applied and checked.
-3. **Production Hermes profile activation is a guarded change.** The exact existing process must be used:
-   apply configuration → health check with complete inventory → agency profile check → Super Admin Full Hermes
-   Capabilities acknowledgement. No readiness score may be written directly.
-4. **Do not deploy/activate automation, save production configuration, run a live research job or enable the
-   worker without the remaining release approval.** Migrations are the only production write performed here.
-
-The Hermes six-tool whitelist was not changed. No MCP, Tool Search, filesystem, database, browser or general API
-access was enabled. No autonomous schedule was activated.
+The hosted ledger now includes the RLS hardening migration `0081_ai_work_job_rls_hardening` and continues through `0086_lead_scoring`. No workforce schema migration in this range is pending. A production deployment SHA and effective SOUL attestation remain unverified, so the current application release and profile configuration cannot yet be called production-ready.
 
 ## 8. AI Work Board and on-demand proactivity
 
@@ -299,9 +274,7 @@ Lead Hunter always researches for the business that owns the employee.
 `tests/lead-hunter-business-context.test.ts` covers the agency fallback, confirmed-value
 precedence, client-owned facts, empty-client refusal to assume, compiled-instruction isolation and
 research-prompt isolation. Local evidence: the empty-only profile script wrote the approved internal
-facts, and the readiness audit reports **4/4 company facts**, still **0/6 readiness** because no
-configuration is applied, no connection check passed, no identity is current and no Super Admin
-acknowledgement exists.
+facts. Current production readiness and employee-specific blockers are listed in the 2026-10-24 preflight snapshot; the company profile is complete, while the four remaining employee configurations are not applied.
 
 ## 12. Proactive employee layer
 
@@ -328,10 +301,4 @@ Full design, safety boundaries, tests and activation checkpoint: [Proactive AI e
 
 ## 13. Exact next action after authorization
 
-Migrations 0077–0080 are applied. Deploy the application, apply the approved iAcquire internal profile to the
-agency workspace (`scripts/apply-internal-business-profile.ts --apply` with the production authorization), save
-the Lead Hunter configuration, run the health check and profile check, record the Super Admin acknowledgement,
-then run the read-only activation audit and one supervised research job. Keep
-`WORKFORCE_SCHEDULES_ENABLED`, `WORKFORCE_TRIGGERS_ENABLED` and `WORKFORCE_BRIEFINGS_ENABLED` false until
-separate supervised activations are approved. Only after that run should the job/evidence UI be described as
-production-proven.
+Use the consolidated activation checkpoint in [the 2026-10-24 production preflight](internal-workforce-production-preflight-2026-10-24.md). It covers the exact release SHA, the four reviewed configuration versions, profile checks, Super Admin acknowledgements, host-side SOUL evidence, backup and rollback, and bounded acceptance. Zeng and Lead Hunter remain unchanged. Keep `WORKFORCE_SCHEDULES_ENABLED`, `WORKFORCE_TRIGGERS_ENABLED`, `WORKFORCE_BRIEFINGS_ENABLED` and `WORKFORCE_WORKER_ENABLED` false until separate supervised activations are approved. Only after the checks and approvals pass should the four employees be described as production-ready.

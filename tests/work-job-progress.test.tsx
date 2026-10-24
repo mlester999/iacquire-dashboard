@@ -123,6 +123,7 @@ describe("WorkJobPanel", () => {
 
   it("shows real bookable availability returned by the job", async () => {
     stubJob(job({
+      capability: "appointment_availability",
       status: "completed",
       statusLabel: "Completed",
       stage: "completed",
@@ -147,6 +148,7 @@ describe("WorkJobPanel", () => {
     expect(await screen.findByText("Real bookable availability")).toBeTruthy();
     expect(screen.getAllByText(/2:00 PM|3:00 PM/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Nothing has been held or booked/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open appointments/i }).getAttribute("href")).toBe("/appointments");
   });
 
   it("shows a measured comparison period without treating every increase as good", async () => {

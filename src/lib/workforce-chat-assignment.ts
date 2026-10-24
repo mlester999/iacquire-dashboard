@@ -53,7 +53,7 @@ export function parseWorkforceChatAssignment(role: AgentRoleKey, content: string
       capability: "appointment_availability",
       title: "Calendar availability check",
       input: {},
-      acknowledgement: "I’ll check the workspace’s real bookable calendar slots and record the result. This check does not hold a slot, create or change a booking, or contact anyone.",
+      acknowledgement: "I’ll check the workspace’s real bookable calendar slots and record the result. This check does not hold a slot, create or change a booking, or contact anyone. Afterward, you can continue in Appointments to choose a contact and request a time; the calendar is checked again and any required approval still applies.",
     };
   }
 

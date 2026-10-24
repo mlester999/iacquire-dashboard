@@ -335,6 +335,15 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
           </div>
         )}
 
+        {job.capability === "appointment_availability" && job.status === "completed" && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-line bg-surface px-3 py-2.5">
+            <span className="text-[12px] text-ink-2">To continue, choose a contact and time in the booking flow. Availability is checked again before any booking.</span>
+            <Link href="/appointments" className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline">
+              Open appointments <ArrowRight className="size-3.5" aria-hidden />
+            </Link>
+          </div>
+        )}
+
         {findings.length > 0 && (
           <div className="space-y-2">
             <p className="text-[10.5px] font-semibold uppercase tracking-[.08em] text-faint">Findings and recommended actions</p>
