@@ -646,7 +646,7 @@ describe("reminders", () => {
   });
 
   it("are off until the owner turns them on, and turning them on records a standing authorization", async () => {
-    const early = ev({ kind: "create", contactId: ghl, startAt: at(4, 10) });
+    const early = ev({ kind: "create", contactId: ghl, startAt: new Date(Date.now() + 5 * 86_400_000) });
     await apply(early);
     expect(await reminders(early.appointmentId)).toEqual([]);
     await expect(savePolicy(m.ctx("support"), { remindersEnabled: true })).rejects.toMatchObject({ code: "forbidden" });
