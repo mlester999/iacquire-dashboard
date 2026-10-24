@@ -54,8 +54,8 @@ export async function saveAgentSettingsAction(role: string, input: unknown) {
   }
 }
 
-/** Generates a read-only style suggestion. The client reviews a visible draft before any version is saved. */
-export async function regenerateEmployeeStyleAction(role: string) {
+/** Generates read-only role behavior suggestions. The client reviews a visible draft before any version is saved. */
+export async function regenerateEmployeeSettingsAction(role: string) {
   try {
     const { ctx, agent } = await resolve(role);
     const session = await getOnboardingSession(ctx);
@@ -72,8 +72,15 @@ export async function regenerateEmployeeStyleAction(role: string) {
       return rows.map((row) => row.content);
     });
     const generated = (await generateEmployeeSettings(data, knowledge))[agent.role_key];
-    const { personality, characterTraits, communicationStyle, responseBehavior } = generated.settings;
-    return { ok: true as const, data: { personality, characterTraits, communicationStyle, responseBehavior, source: generated.source } };
+    const {
+      personality, characterTraits, communicationStyle, responseBehavior,
+      operatingProcedures, proactiveResponsibilities, reportingBehavior, responsibilities, goals,
+    } = generated.settings;
+    return { ok: true as const, data: {
+      personality, characterTraits, communicationStyle, responseBehavior,
+      operatingProcedures, proactiveResponsibilities, reportingBehavior, responsibilities, goals,
+      source: generated.source,
+    } };
   } catch (err) {
     return actionError(err);
   }

@@ -33,7 +33,7 @@ import { Tabs } from "@/components/ui/overlays";
 import { InfoChip } from "@/components/ui/status";
 import { GuidedChoiceField, GuidedField, GuidedSwitch, ChangeDecisionNotice, type FieldIssue } from "@/components/ui/guided-field";
 import { ConfigVersionHistory, type ConfigVersion } from "@/components/workforce/config-version-history";
-import { applyChangeAction, previewConfigAction, proposeChangeAction, regenerateEmployeeStyleAction, saveAgentSettingsAction } from "@/app/actions/workforce";
+import { applyChangeAction, previewConfigAction, proposeChangeAction, regenerateEmployeeSettingsAction, saveAgentSettingsAction } from "@/app/actions/workforce";
 import { LANGUAGES, LENGTH_COPY, TONE_COPY, TONES, type AgentSettings, type Tone } from "@/lib/agent-settings";
 import { changeFixForReason, configFieldElementId, employeeFieldGuidance, ROLE_TOOL_GUIDANCE, TOOL_BOUNDARY_NOTE } from "@/lib/employee-field-guidance";
 import type { ReviewReasonView } from "@/lib/config-review";
@@ -55,6 +55,26 @@ import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/r
 import { PROACTIVE_SEVERITY_LABELS, proactiveDutyForRole } from "@/lib/proactive";
 
 type Version = ConfigVersion;
+
+const EMPLOYEE_GENERATED_FIELDS = [
+  ["personality", "Personality"],
+  ["characterTraits", "Traits"],
+  ["communicationStyle", "Communication style"],
+  ["responseBehavior", "Response behavior"],
+  ["responsibilities", "Responsibilities"],
+  ["goals", "Goals"],
+  ["operatingProcedures", "Operating procedures"],
+  ["proactiveResponsibilities", "Proactive work"],
+  ["reportingBehavior", "Reporting"],
+] as const satisfies ReadonlyArray<readonly [keyof Pick<AgentSettings,
+  "personality" | "characterTraits" | "communicationStyle" | "responseBehavior" |
+  "operatingProcedures" | "proactiveResponsibilities" | "reportingBehavior" | "responsibilities" | "goals"
+>, string]>;
+
+type EmployeeGeneratedFields = Pick<AgentSettings,
+  "personality" | "characterTraits" | "communicationStyle" | "responseBehavior" |
+  "operatingProcedures" | "proactiveResponsibilities" | "reportingBehavior" | "responsibilities" | "goals"
+>;
 
 interface Props {
   meta: AgentRoleMeta;
@@ -375,7 +395,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
   const [nameTouched, setNameTouched] = React.useState(false);
   const [saveAttempted, setSaveAttempted] = React.useState(false);
   const [regenerating, setRegenerating] = React.useState(false);
-  const [styleSuggestion, setStyleSuggestion] = React.useState<Pick<AgentSettings, "personality" | "characterTraits" | "communicationStyle" | "responseBehavior"> & { source: "ai" | "safe_defaults" } | null>(null);
+  const [employeeSuggestion, setEmployeeSuggestion] = React.useState<EmployeeGeneratedFields & { source: "ai" | "safe_defaults" } | null>(null);
   const statusRef = React.useRef<HTMLDivElement>(null);
   const previewSequence = React.useRef(0);
   const set = <K extends keyof AgentSettings>(k: K, v: AgentSettings[K]) => {
@@ -430,21 +450,19 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
         : "Only blank fields were filled. Company-specific facts are left for you to provide, then save to apply.",
     });
   };
-  const regenerateStyle = async () => {
+  const regenerateEmployeeSettings = async () => {
     if (regenerating) return;
     setRegenerating(true);
-    const result = await regenerateEmployeeStyleAction(meta.key);
+    const result = await regenerateEmployeeSettingsAction(meta.key);
     setRegenerating(false);
     if (!result.ok) return void toast.error(result.error);
-    setStyleSuggestion(result.data);
+    setEmployeeSuggestion(result.data);
   };
-  const acceptStyle = () => {
-    if (!styleSuggestion) return;
-    setS((previous) => ({ ...previous,
-      personality: styleSuggestion.personality, characterTraits: styleSuggestion.characterTraits,
-      communicationStyle: styleSuggestion.communicationStyle, responseBehavior: styleSuggestion.responseBehavior,
-    }));
-    setStyleSuggestion(null);
+  const acceptEmployeeSettings = () => {
+    if (!employeeSuggestion) return;
+    const accepted = Object.fromEntries(EMPLOYEE_GENERATED_FIELDS.map(([key]) => [key, employeeSuggestion[key]])) as EmployeeGeneratedFields;
+    setS((previous) => ({ ...previous, ...accepted }));
+    setEmployeeSuggestion(null);
     setJustSaved(false);
     setCheck({ state: "checking" });
     toast.success("Suggestions added to your draft", { description: "Review the fields, then save to create a new version." });
@@ -653,16 +671,13 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
           <ConfigSection id="config-identity" step="01" title="Identity & communication" description={`How ${agent.displayName} introduces itself and sounds in conversation.`}>
             <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="max-w-lg text-[12px] leading-relaxed text-muted">Generate fresh style suggestions from your approved company information. Your current fields stay as they are until you accept the preview.</p>
-                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateStyle()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : "Regenerate style"}</Button>
+                <p className="max-w-lg text-[12px] leading-relaxed text-muted">Generate fresh role suggestions from your confirmed company information. Your current fields stay as they are until you accept the preview.</p>
+                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateEmployeeSettings()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : "Regenerate employee setup"}</Button>
               </div>
-              {styleSuggestion && <div className="mt-3 space-y-2 border-t border-line pt-3 text-[12px] text-ink-2">
-                <p className="font-semibold">Suggested style {styleSuggestion.source === "safe_defaults" ? "· safe role defaults" : "· AI draft"}</p>
-                <p><strong>Personality:</strong> {styleSuggestion.personality}</p>
-                <p><strong>Traits:</strong> {styleSuggestion.characterTraits}</p>
-                <p><strong>Communication:</strong> {styleSuggestion.communicationStyle}</p>
-                <p><strong>Responses:</strong> {styleSuggestion.responseBehavior}</p>
-                <div className="flex gap-2 pt-1"><Button type="button" size="sm" variant="brand" onClick={acceptStyle}>Use these in my draft</Button><Button type="button" size="sm" variant="ghost" onClick={() => setStyleSuggestion(null)}>Dismiss</Button></div>
+              {employeeSuggestion && <div className="mt-3 space-y-2 border-t border-line pt-3 text-[12px] text-ink-2">
+                <p className="font-semibold">Suggested employee setup {employeeSuggestion.source === "safe_defaults" ? "· safe role defaults" : "· AI draft"}</p>
+                {EMPLOYEE_GENERATED_FIELDS.map(([key, label]) => <p key={key}><strong>{label}:</strong> {employeeSuggestion[key]}</p>)}
+                <div className="flex gap-2 pt-1"><Button type="button" size="sm" variant="brand" onClick={acceptEmployeeSettings}>Use these in my draft</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEmployeeSuggestion(null)}>Dismiss</Button></div>
               </div>}
             </div>
             <GuidedField
