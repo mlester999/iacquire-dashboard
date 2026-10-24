@@ -1,5 +1,6 @@
 // Shared, side-effect-free rules for the Client Setup Center. Used by the server services (which
 // enforce them), the UI (which only presents them) and the tests.
+import { PAYMENT_UNVERIFIED_MESSAGE } from "@/lib/billing-clearance";
 
 export const TASK_STATUSES = ["pending", "in_progress", "waiting_for_client", "ready_for_review", "completed", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -146,7 +147,7 @@ export function estimateCompletion(tasks: Array<RuleTask & { estimatedCompletion
   return remaining.map((t) => t.estimatedCompletionAt as string).sort().at(-1) ?? null;
 }
 
-export type BlockerCode = "task_incomplete" | "task_blocked" | "dependency_unmet" | "check_failed" | "check_unverified" | "not_in_review" | "job_needs_attention";
+export type BlockerCode = "task_incomplete" | "task_blocked" | "dependency_unmet" | "check_failed" | "check_unverified" | "not_in_review" | "job_needs_attention" | "payment_unverified";
 
 export interface Blocker {
   code: BlockerCode;
@@ -172,8 +173,10 @@ export interface Readiness {
  * "Setup tasks completed" is not "ready for production". Activation additionally needs a verified
  * result from a provider check for every required integration check
  * behind a required task, with none failing, and the client setup in final review.
+ * Activation also needs the setup payment confirmed (paid or waived) when `payment` is given: it is not a setup task, so it never stops marking the setup ready for
+ * review. Every server caller that decides activation passes it (tests/payment-gate.test.ts scans for it); leaving it out means "not asked".
  */
-export function evaluateReadiness(input: { state: InstanceState; tasks: RuleTask[]; checks: Partial<Record<CheckKey, CheckStatus>> }): Readiness {
+export function evaluateReadiness(input: { state: InstanceState; tasks: RuleTask[]; checks: Partial<Record<CheckKey, CheckStatus>>; payment?: { cleared: boolean } }): Readiness {
   const byId = new Map(input.tasks.map((t) => [t.id, t]));
   const blockers: Blocker[] = [];
   const applicable = input.tasks.filter(isApplicable);
@@ -215,6 +218,8 @@ export function evaluateReadiness(input: { state: InstanceState; tasks: RuleTask
   }
 
   const activationBlockers = [...blockers, ...checkBlockers];
+  // First, so the message an agency member reads when activation is refused names the one blocker they can clear in a click.
+  if (input.payment && !input.payment.cleared) activationBlockers.unshift({ code: "payment_unverified", message: PAYMENT_UNVERIFIED_MESSAGE });
   if (input.state !== "ready_for_review") activationBlockers.push({ code: "not_in_review", message: "Mark the setup ready for final review first." });
   const canActivate = input.state === "ready_for_review" && activationBlockers.length === 0;
 
@@ -351,4 +356,6 @@ export interface AgencySetupSnapshot {
   checks: AgencyCheckView[];
   staff: Array<{ id: string; name: string; role: "agency_staff" | "agency_manager" | "agency_super_admin" }>;
   canActivate: boolean;
+  /** Where the setup fee stands (iAcquire's own billing). Absent in sample data. */
+  payment?: { status: string; cleared: boolean };
 }

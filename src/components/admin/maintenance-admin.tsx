@@ -18,7 +18,7 @@ import { PlanLifecycle } from "@/components/admin/plan-lifecycle";
 
 type AgencyData = Awaited<ReturnType<typeof listAgencyMaintenance>>;
 /** The plan's money side is optional here so sample data without it still draws; the real listing always has it. */
-type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"] }> };
+type Data = Omit<AgencyData, "subscriptions"> & { subscriptions: Array<Omit<AgencyData["subscriptions"][number], "lifecycle" | "blockedBy"> & { lifecycle?: AgencyData["subscriptions"][number]["lifecycle"]; blockedBy?: AgencyData["subscriptions"][number]["blockedBy"] }> };
 
 export function MaintenanceAdmin({ subscriptions, requests }: Data) {
   const [planFilter,setPlanFilter]=React.useState("all");const [requestFilter,setRequestFilter]=React.useState("all");
@@ -111,7 +111,10 @@ function PlanCard({ s }: { s: Data["subscriptions"][number] }) {
         {s.lifecycle && ["active", "past_due", "cancel_requested", "expired"].includes(s.status) && <PlanLifecycle subscriptionId={s.id} status={s.status} info={s.lifecycle} />}
         {!s.eligible && s.status === "requested" && (
           <p className="flex items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-[12.5px] text-warning-ink ring-1 ring-inset ring-warning/25">
-            <CalendarClock className="size-4 shrink-0" /> The core system isn&apos;t activated yet, so this can&apos;t start.
+            <CalendarClock className="size-4 shrink-0" />
+            {s.blockedBy === "setup_payment"
+              ? <span>The client&apos;s setup payment isn&apos;t confirmed yet, so this can&apos;t start. <Link href={`/admin/clients/${s.orgId}?tab=billing`} className="font-medium underline underline-offset-2">Open the client&apos;s billing</Link></span>
+              : "The core system isn't activated yet, so this can't start."}
           </p>
         )}
         <div className="flex flex-wrap items-end gap-2 border-t border-line pt-3">

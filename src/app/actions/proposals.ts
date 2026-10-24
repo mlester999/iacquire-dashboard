@@ -13,6 +13,8 @@ import {
   createProposal, decideProposal, duplicateProposal, recordOfflineDecision, reviseProposal, sendProposal, submitForApproval, updateProposal, withdrawProposal,
 } from "@/server/proposals/proposals";
 import { searchDealsForProposal } from "@/server/proposals/search";
+import { previewDelivery, sendDelivery } from "@/server/proposals/delivery";
+import { DELIVERY_CHANNELS } from "@/lib/proposals/delivery-text";
 import { getShareUrl, renewShareLink } from "@/server/proposals/share";
 import { saveProposalSettings } from "@/server/proposals/settings";
 import { approveTemplate, archiveTemplate, createTemplate, saveTemplate } from "@/server/proposals/templates";
@@ -160,6 +162,24 @@ export async function getShareUrlAction(id: string) {
 
 export async function renewShareLinkAction(id: string) {
   return act(null, "proposals.send", (actor) => renewShareLink(actor, uuid.parse(id)));
+}
+
+// ---------------------------------------------------------------------------
+// Carrying the link to the customer through the consent-gated send chain
+// ---------------------------------------------------------------------------
+
+const deliveryChannel = z.enum(DELIVERY_CHANNELS, { error: "Choose email, text message or WhatsApp." });
+
+/** The exact message and what the send chain would do with it. Writes nothing and sends nothing. */
+export async function previewDeliveryAction(id: string, channel: string) {
+  return act(null, "proposals.send", (actor) => previewDelivery(actor, uuid.parse(id), deliveryChannel.parse(channel)), { refresh: false });
+}
+
+const sendDeliveryInput = z.object({ channel: deliveryChannel, version: z.number().int().min(1), wordingHash: z.string().regex(/^[0-9a-f]{64}$/, { error: "Read the message again before you send it." }) });
+
+/** Queues the message the person read. Refused, with the send chain's reason, when it cannot go; a repeat of the same request returns the first message instead of sending another. */
+export async function sendDeliveryAction(id: string, input: unknown) {
+  return act(null, "proposals.send", (actor) => sendDelivery(actor, uuid.parse(id), sendDeliveryInput.parse(input)));
 }
 
 // ---------------------------------------------------------------------------

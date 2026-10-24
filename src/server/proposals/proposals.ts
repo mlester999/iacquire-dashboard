@@ -20,14 +20,16 @@ import { buildDoc, docFromTemplate, type DocInput } from "@/server/proposals/doc
 import { applyEffects } from "@/server/proposals/crm-effects";
 import { ensureVersionPdf, type ProposalPdfRenderer } from "@/server/proposals/documents";
 import { createShareLinkInTx } from "@/server/proposals/share";
+import { deliveriesFor, withdrawDeliveriesInTx } from "@/server/proposals/delivery";
 import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 import { assertVersionIntact, checkProposal, ensureVersion } from "@/server/proposals/versions";
 import { buildDetail, LIST_COLUMNS_SQL, namesOf, toSummary, type ProposalDetail, type ProposalSummary } from "@/server/proposals/view";
 
 // Writing a proposal, getting it approved, sending it, and every way it can be stopped, revised or answered. The server decides everything here; the interface only reads
-// the result. An approval is of one version: any change to what the customer will see makes a new version and voids it. Nothing here contacts the customer: a sent proposal is
-// a status, a frozen version, the customer's link and (made right after the send is saved) the version's PDF. The team copies the link and gives it to the customer; the
-// customer's side (the page, the emailed code, the answer) is src/server/proposals/public.ts.
+// the result. An approval is of one version: any change to what the customer will see makes a new version and voids it. Sending here contacts no one: a sent proposal is a
+// status, a frozen version, the customer's link and (made right after the send is saved) the version's PDF. The team copies the link and gives it to the customer, or asks for a
+// message to carry it through the consent-gated send chain, which is a separate, confirmed step (src/server/proposals/delivery.ts); the customer's side (the page, the emailed
+// code, the answer) is src/server/proposals/public.ts.
 
 export interface Deps {
   now?: Date;
@@ -106,11 +108,14 @@ export async function listProposals(actor: CrmActor, f: ProposalFilter = {}): Pr
 export async function getProposal(actor: CrmActor, id: string, deps: Deps = {}): Promise<ProposalDetail> {
   await assertProposalsEnabled(actor.orgId);
   assertCan(actor, "proposals.view", "Your role can't see proposals.");
-  return crmRead(actor, async (db) => {
+  const detail = await crmRead(actor, async (db) => {
     const row = await loadProposalRow(db, actor.orgId, id);
     if (!row) throw new AppError("not_found", "That proposal was not found.");
-    return buildDetail(db, actor, row, deps.now);
+    return buildDetail(db, actor, row, deps.now, { deliveries: false });
   });
+  // The messages come from the send chain's rows, which a member's own read does not cover: trusted code reads them, for this one proposal of this one workspace.
+  detail.deliveries = await withSystem((db) => deliveriesFor(db, actor.orgId, id, deps.now));
+  return detail;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,8 +461,8 @@ export async function decideProposal(actor: CrmActor, id: string, input: { decis
 
 /**
  * Marks an approved version as sent. Only a signed-in member who holds the send permission can do it: not an agent, an API key, a workflow or the system, and not the agency.
- * A proposal that needs no second look is approved by the author's own act of sending it, and its history says so. Nothing here reaches the customer yet: delivery is the
- * share link and PDF, added in a later change.
+ * A proposal that needs no second look is approved by the author's own act of sending it, and its history says so. Nothing here reaches the customer: the send freezes the
+ * version and makes the share link and PDF, and carrying the link to the customer is the confirmed step in delivery.ts.
  */
 export async function sendProposal(actor: CrmActor, id: string, input: { version?: number } = {}, deps: Deps = {}): Promise<ProposalDetail> {
   await assertProposalsEnabled(actor.orgId);
@@ -527,6 +532,8 @@ export async function withdrawProposal(actor: CrmActor, id: string, deps: Deps =
     const wasSent = row.status === "sent";
     await db.query("update proposals set status = 'withdrawn', closed_at = now() where id = $1 and org_id = $2", [id, actor.orgId]);
     await revokeLinks(db, actor.orgId, id);
+    // A message that carries the link and has not gone out yet is stopped with it.
+    await withdrawDeliveriesInTx(db, actor.orgId, id, "proposal_withdrawn");
     // A signing request that is out is withdrawn with the proposal: a signature that arrives later is kept as the service's fact and not applied.
     await voidLiveRequestsInTx(db, actor.orgId, id, "voided", "The proposal was withdrawn.", { userId, now: deps.now });
     await addEvent(db, actor.orgId, id, row.version, "withdrawn", asUser(userId), { wasSent });
@@ -554,6 +561,7 @@ export async function reviseProposal(actor: CrmActor, id: string, deps: Deps = {
          signature_state = case when signature_state = 'completed' then signature_state else 'none' end where id = $1 and org_id = $2`, [id, actor.orgId],
     );
     await revokeLinks(db, actor.orgId, id);
+    await withdrawDeliveriesInTx(db, actor.orgId, id, "proposal_revised");
     await db.query("update proposal_versions set superseded_at = now() where proposal_id = $1 and org_id = $2 and superseded_at is null", [id, actor.orgId]);
     // The version a signer was asked to sign is replaced. A request still out for it ends as superseded, and a signature that arrives for it is never applied to the new version.
     await voidLiveRequestsInTx(db, actor.orgId, id, "superseded", "The proposal was revised.", { userId, now: deps.now });
@@ -657,6 +665,7 @@ export async function recordOfflineDecision(actor: CrmActor, id: string, input: 
     );
     await db.query("update proposal_versions set sent_at = coalesce(sent_at, now()) where proposal_id = $1 and org_id = $2 and version = $3", [id, actor.orgId, row.version]);
     await revokeLinks(db, actor.orgId, id);
+    await withdrawDeliveriesInTx(db, actor.orgId, id, "proposal_answered");
     await addEvent(db, actor.orgId, id, row.version, input.decision, asUser(userId), { method: "recorded_by_staff", hasScan: Boolean(input.attestationFileId) });
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "proposals.decision_recorded", targetType: "proposal", targetId: id, result: "success", metadata: { decision: input.decision, version: row.version, name: await nameOf(db, userId) } }, db);
     const after = (await loadProposalRow(db, actor.orgId, id)) as ProposalRow;

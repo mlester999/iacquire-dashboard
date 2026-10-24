@@ -6,7 +6,8 @@
 --     portal's sign-in.
 --   * demo_messages: the AI chat transcript, with the idempotency key of each message and the state of its reservation. demo_events: the append-only timeline of a prospect.
 --     demo_usage_days: the platform's daily counters, for the daily caps.
---   * Two agency permissions (agency.prospects.view, agency.prospects.manage) and three agency notification kinds.
+--   * Two agency permissions (agency.prospects.view, agency.prospects.manage) and four agency notification kinds (a prospect confirmed their address, asked for a consultation,
+--     pressed Buy now, or the platform's daily demo budget was reached).
 --
 -- A prospect is never a user. Nothing here creates or references a user, an organization, a membership, an invitation or a sign-in for a prospect: the only links out are the agency
 -- person a prospect is assigned to and the actor of a timeline entry (both agency users), the access request a prospect also filed, and the client workspace a Super Admin
@@ -254,7 +255,7 @@ begin
   if kinds is null or cardinality(kinds) < 20 then
     raise exception 'could not read the current notification kinds from notifications_kind_check (read %); refusing to rewrite it', coalesce(cardinality(kinds), 0);
   end if;
-  kinds := array(select distinct k from unnest(kinds || array['demo_prospect_verified', 'demo_consultation_requested', 'demo_budget_reached']) as k order by k);
+  kinds := array(select distinct k from unnest(kinds || array['demo_prospect_verified', 'demo_consultation_requested', 'demo_purchase_started', 'demo_budget_reached']) as k order by k);
   alter table notifications drop constraint notifications_kind_check;
   execute 'alter table notifications add constraint notifications_kind_check check (kind in (' || (select string_agg(quote_literal(k), ', ' order by k) from unnest(kinds) as k) || '))';
 end $$;

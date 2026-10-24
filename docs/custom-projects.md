@@ -69,6 +69,34 @@ history), `/admin/portfolio` (review gate, images, import), `/admin/maintenance`
   not granted to the app role at all, so clients cannot read or change them.
 * Every significant change writes an audit entry (never message bodies, internal-note contents or secrets).
 
+## Changes to an agreed project, revisions and what is confirmed first (Phase 6, migration 0098)
+
+All of this is dormant until a Super Admin switches **Request a Change** on for the workspace (`org_features` `request_changes`, the Module rollout page); a switch that goes off stops new
+requests only, and a quote already waiting can still be answered. Nothing here prices a change, promises a date or charges anyone.
+
+* **Change requests** (`src/server/projects/change-orders.ts`, `src/lib/project-change-orders.ts`). After a project is agreed (`approved` to `ready_for_review`), an owner or admin
+  can ask for a change on its page (or tick "This changes what we agreed" on the Request a Change form, which files one request and one entry, linked). The team then looks at it:
+  `submitted` to `under_review` (or `needs_info` while a question is open), and either a **revision** the agreement includes (made, counted in `revisions_used`; refused once
+  `revisions_included`, when recorded, is used up) or something **outside what was agreed**, for which staff with `quotes.manage` write a quote: an extra cost in the project's currency
+  (0 means no extra charge), estimated extra weeks (an estimate, never a date), terms, an optional valid-until day and an optional item that must be confirmed first. One quote waits
+  at a time per project, and a changed quote is a new version. The quote is hashed with the change, the version and every term; the answer is recorded only against that hash.
+* **The owner's answer** (`decideChangeOrder`). Only the workspace owner (`projects.approve_quote`) accepts or declines. It is refused when the quote changed, expired (accepting only; the
+  quote is good through its valid-until day in the workspace's calendar), the project is on hold or closed, or someone answered first. An acceptance writes the decision, the status and a
+  scope amendment (the price and currency of the accepted quote) in one transaction. The original `client_projects.scope` is never rewritten: the agreed scope is the original plus its
+  amendments. A decision is append-only; a declined or withdrawn change stays on the list for good. Cancelling the project closes its open changes. Acknowledgement text is draft wording
+  for counsel and says it is not an electronic signature.
+* **Before work starts** (`src/server/projects/prerequisites.ts`). A prerequisite is a record of a person's check (the written agreement, a payment, access, content): who, when and what they
+  checked; nothing is detected and nothing is charged. Where the Super Admin switched "ask for the agreement and the payment" on (Support settings; off by default), accepting a quote asks
+  for the agreement and, when the quote has payment terms, the payment. Work cannot start (`approved` to `in_development`) while a required item is waiting unless it is confirmed or waived with a
+  reason (waiving needs `quotes.manage`), and the handover waits for items that block it and for open changes. The client reads the list ("Before we start") without the evidence.
+* **Revisions and support period.** `revisions_included` and `warranty_days` stay empty until staff record them (anytime before handover, or on the handover form); nothing is assumed from a
+  quote that is silent. The support period runs from the day of handover in the workspace's calendar. A finished project shows the date and links to report an issue with it or share feedback.
+* **Retries and notices.** A project request and a project message carry a retry key; sending twice makes one. Project notices carry dedupe keys and go only to team members who hold
+  `projects.view`. `projectReviewOverdue` (every 15 minutes, dormant until the scheduler runs) announces a review task that went past its time once; the first look is due in two days unless a
+  Super Admin set a review target in hours (shown to clients only if they choose).
+
+Not verified in a browser: the new panels (`/projects/[id]` Change requests and Before we start, the admin project page panels) were exercised in jsdom and static rendering only.
+
 ## Maintenance
 
 * Eligibility: the tenant's setup instance must be `activated`.

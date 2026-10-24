@@ -8,7 +8,7 @@ import type { OrgContext } from "@/server/tenancy/context";
 import type { AqiViewer } from "@/server/aqi/access";
 import { cleanText } from "@/lib/support/content";
 import { redactSecrets, suggestRequestKind } from "@/lib/support/suggest";
-import { CATEGORIES_BY_TYPE, REQUEST_TYPES, type RequestType } from "@/lib/support/lifecycle";
+import { ASSISTANT_REQUEST_TYPES, CATEGORIES_BY_TYPE, type RequestType } from "@/lib/support/lifecycle";
 import { clientExpectationText, loadSupportSettings } from "@/server/support/settings";
 
 // AQi can help a person prepare a support request, never send one. The flow is: AQi offers to prepare it -> the person reads and edits
@@ -125,7 +125,7 @@ export const aqiSupportSubmitSchema = z.object({
   conversationId: z.string().uuid(),
   subject: z.string().trim().min(3, "Add a short title.").max(160),
   description: z.string().trim().min(5, "Tell us a little more.").max(2500),
-  requestType: z.enum(REQUEST_TYPES).default("support"),
+  requestType: z.enum(ASSISTANT_REQUEST_TYPES).default("support"),
   category: z.string().max(40).default("general"),
   /** Share the excerpt of the AQi conversation with the team. Requires `consent`. */
   includeConversation: z.boolean().default(false),

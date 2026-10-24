@@ -1,7 +1,9 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
-import { currentPlan, entitlementFor, type PlanStatus, type StudioEntitlement } from "@/lib/automation-studio/plan";
+import type { StudioEntitlement } from "@/lib/automation-studio/plan";
+import { studioEntitlementOf } from "@/lib/entitlements";
+import { readCurrentPlan } from "@/server/entitlements";
 import type { PremiumFeature } from "@/lib/crm/workflow/spec";
 
 /**
@@ -13,21 +15,10 @@ import type { PremiumFeature } from "@/lib/crm/workflow/spec";
  * exporting a workflow never need the plan, so a lapsed workspace can always see and keep what it built.
  */
 
-interface PlanRowDb {
-  id: string;
-  status: PlanStatus;
-  grace_ends_at: Date | null;
-  paid_through_on: string | null;
-  created_at: Date;
-}
-
+// The plan is read, and the rule applied, in src/server/entitlements.ts and src/lib/entitlements.ts: the one place that decides what a plan entitles a workspace to, so this gate,
+// the engine's own checks, managed media storage and the portal menu cannot disagree.
 export async function studioEntitlement(db: Queryable, orgId: string, now = new Date()): Promise<StudioEntitlement> {
-  const { rows } = await db.query<PlanRowDb>(
-    "select id, status, grace_ends_at, paid_through_on::text as paid_through_on, created_at from maintenance_subscriptions where org_id = $1 order by created_at desc limit 20",
-    [orgId],
-  );
-  const plan = currentPlan(rows.map((r) => ({ id: r.id, status: r.status, graceEndsAt: r.grace_ends_at, paidThroughOn: r.paid_through_on, createdAt: r.created_at })));
-  return entitlementFor(plan, now);
+  return studioEntitlementOf(await readCurrentPlan(db, orgId), now);
 }
 
 /** Refuses with code "plan_required" (the interface shows the upgrade page) unless the workspace is entitled. `doing` completes "… needs". */

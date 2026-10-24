@@ -50,7 +50,7 @@ export function detailFixture(over: Partial<ProposalDetail> = {}): ProposalDetai
     totals: { one_time: 168_000, monthly: 0, yearly: 0 }, validUntil: "2026-11-30", ownerId: ME, ownerName: "Alex Rivera", version: 1, requiresSignature: true, contactId: null, companyId: null,
     opportunityId: null, sentAt: "2026-10-22T10:00:00.000Z", closedAt: null, createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-21T10:00:00.000Z", doc: d, liveTotals: computeDocTotals(d.lines).groups,
     clientEmail: "maria@example.test", internalNotes: null, templateId: null, templateVersion: null, approvedVersion: 1, approvedByName: "Sam Lee", approvedAt: "2026-10-21T10:00:00.000Z", decisionNote: null,
-    sentVersion: 1, sentByName: "Alex Rivera", signatureState: "none", problems: [], approval: { required: false, reasons: [] }, versions: [], decisions: [], events: [], share: null, preview: null,
+    sentVersion: 1, sentByName: "Alex Rivera", signatureState: "none", problems: [], approval: { required: false, reasons: [] }, versions: [], decisions: [], events: [], share: null, deliveries: [], preview: null,
     createdById: ME, viewer: { userId: ME, canEdit: false, isAuthor: true }, ai: null, signature: signature(), ...over,
   };
 }

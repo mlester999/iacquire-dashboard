@@ -1,7 +1,8 @@
 // The browser-QA world (scripts/proposals-qa-world.ts) proves itself on a synthetic workspace: every story ends in the state it says it does, nothing leaves the machine, and the
 // customer addresses it prints open the pages it describes. If this passes, the QA seed's logic works; only its wrapper (the isolated QA database) is not exercised here.
 import { describe, expect, it } from "vitest";
-import { seedProposalWorld } from "../scripts/proposals-qa-world";
+import { seedDeliveryWorld, seedProposalWorld } from "../scripts/proposals-qa-world";
+import { previewDelivery } from "@/server/proposals/delivery";
 import { loadPublicProposal } from "@/server/proposals/public";
 import { getProposal } from "@/server/proposals/proposals";
 import { freshIp, proposalOrg, rows } from "./support/proposals";
@@ -76,6 +77,22 @@ describe("the proposals QA world", () => {
     expect((await state("P-0016"))).toBe("answered");
     expect((await state("P-0017"))).toBe("open");
     expect((await state("P-0018"))).toBe("open");
+
+    // The delivery stories (opt-in): three customers who agreed to email can be sent their link, one who did not is told the chain would refuse it, and still nothing is sent.
+    const idOf = async (number: string) => (await rows<{ id: string }>("select id from proposals where org_id = $1 and number = $2", [p.org.id, number]))[0].id;
+    // (The test must not depend on the time of day it runs at: quiet hours would make a preview "waiting" instead of "ready".)
+    await rows("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'");
+    const delivery = await seedDeliveryWorld({ owner: p.actor("owner"), manager: p.actor("manager"), sales: p.actor("sales") });
+    expect(delivery).toEqual({ ready: ["elena.alvarez@example.test", "marcus.brooks@example.test", "linh.nguyen@example.test"], refused: ["dr.chen@example.test"] });
+    for (const number of ["P-0001", "P-0002", "P-0007"]) {
+      expect(await previewDelivery(p.actor("sales"), await idOf(number), "email"), number).toMatchObject({ available: true, verdict: { kind: "ready" } });
+    }
+    expect(await previewDelivery(p.actor("sales"), await idOf("P-0003"), "email")).toMatchObject({ available: true, verdict: { kind: "refused", reason: "no_consent" } });
+    expect(await rows("select 1 from conversation_messages where org_id = $1", [p.org.id])).toHaveLength(0);
+    expect((await rows<{ n: string }>("select count(*)::text as n from email_outbox where status <> 'captured'"))[0].n).toBe(emailsBefore);
+    // Run again, it changes nothing that matters.
+    await seedDeliveryWorld({ owner: p.actor("owner"), manager: p.actor("manager"), sales: p.actor("sales") });
+    expect(await rows("select 1 from messaging_channels where org_id = $1 and channel = 'email' and provider = 'resend'", [p.org.id])).toHaveLength(1);
   }, 120_000);
 
   it("adds only the signing stories to a workspace that was seeded before signing existed, and only once", async () => {

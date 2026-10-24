@@ -11,10 +11,14 @@ import { uploadPrivateFile, signPrivateFile, removePrivateFile } from "@/server/
 import type { OrgContext } from "@/server/tenancy/context";
 import { firstName } from "@/lib/utils";
 import { BUDGET_BANDS, QUOTE_ACKNOWLEDGEMENT, suggestServices, type ProjectStatus, type ServiceView } from "@/lib/projects";
+import { todayIn } from "@/lib/invoices/state";
 import {
   REQUEST_COLUMNS, iso, quoteContentHash, toQuoteView, toRequestView,
-  type DeliveryView, type FileView, type MessageView, type MilestoneView, type ProjectDetail, type QuoteRow, type RequestRow, type RequestView, type UpdateView,
+  type DeliveryView, type FileView, type MessageView, type MilestoneView, type PrerequisiteView, type ProjectDetail, type QuoteRow, type RequestRow, type RequestView, type UpdateView,
 } from "@/server/projects/shared";
+import { loadSupportSettings } from "@/server/support/settings";
+import { loadChangeOrders } from "@/server/projects/change-orders";
+import { seedDefaultPrerequisites } from "@/server/projects/prerequisites";
 
 // ---------------------------------------------------------------------------
 // Reading
@@ -69,7 +73,7 @@ function shownName(name: string | null, platformRole: string | null, teamView: b
  * Loads one project with everything the viewer is allowed to see. `internal` is true only for trusted agency
  * code; client calls run under row-level security and never receive internal notes, drafts or staff names.
  */
-export async function loadProjectDetail(db: Queryable, requestId: string, opts: { internal: boolean; orgId?: string }): Promise<ProjectDetail | null> {
+export async function loadProjectDetail(db: Queryable, requestId: string, opts: { internal: boolean; orgId?: string; timeZone?: string }): Promise<ProjectDetail | null> {
   const { rows } = await db.query<RequestRow>(
     `select ${REQUEST_COLUMNS} from client_project_requests r left join service_catalog s on s.id = r.service_id where r.id = $1 and ($2::uuid is null or r.org_id = $2)`,
     [requestId, opts.orgId ?? null],
@@ -86,8 +90,13 @@ export async function loadProjectDetail(db: Queryable, requestId: string, opts: 
      where q.request_id = $1 and ($2::boolean or q.status <> 'draft') order by q.version desc`,
     [requestId, internal],
   );
-  const delivery = (await db.query<{ agreed_price_cents: number; ongoing_monthly_cents: number | null; currency: string; scope: string; deliverables: string[]; timeline_text: string; agreed_at: Date; started_at: Date | null; expected_completion_on: string | null; completed_at: Date | null; handover_notes: string | null }>(
-    `select agreed_price_cents, ongoing_monthly_cents, currency, scope, deliverables, timeline_text, agreed_at, started_at, expected_completion_on::text as expected_completion_on, completed_at, handover_notes
+  const delivery = (await db.query<{
+    agreed_price_cents: number; ongoing_monthly_cents: number | null; currency: string; scope: string; deliverables: string[]; timeline_text: string; agreed_at: Date; started_at: Date | null;
+    expected_completion_on: string | null; completed_at: Date | null; handover_notes: string | null; warranty_days: number | null; warranty_ends_on: string | null; revisions_included: number | null;
+    revisions_used: number;
+  }>(
+    `select agreed_price_cents, ongoing_monthly_cents, currency, scope, deliverables, timeline_text, agreed_at, started_at, expected_completion_on::text as expected_completion_on, completed_at, handover_notes,
+            warranty_days, warranty_ends_on::text as warranty_ends_on, revisions_included, revisions_used
      from client_projects where request_id = $1`,
     [requestId],
   )).rows[0];
@@ -106,13 +115,25 @@ export async function loadProjectDetail(db: Queryable, requestId: string, opts: 
      where f.request_id = $1 and pf.status = 'ready' and ($2::boolean or f.visibility = 'client') order by f.created_at desc`,
     [requestId, internal],
   );
-  const messages = await db.query<{ id: string; author_kind: "client" | "agency" | "system"; author_name: string | null; author_role: string | null; kind: MessageView["kind"]; body: string; internal: boolean; created_at: Date }>(
-    `select m.id, m.author_kind, au.full_name as author_name, au.platform_role as author_role, m.kind, m.body, m.internal, m.created_at from project_messages m left join users au on au.id = m.author_id
+  const messages = await db.query<{ id: string; author_kind: "client" | "agency" | "system"; author_name: string | null; author_role: string | null; kind: MessageView["kind"]; body: string; internal: boolean; created_at: Date; change_order_id: string | null }>(
+    `select m.id, m.author_kind, au.full_name as author_name, au.platform_role as author_role, m.kind, m.body, m.internal, m.created_at, m.change_order_id from project_messages m left join users au on au.id = m.author_id
      where m.request_id = $1 and ($2::boolean or not m.internal) order by m.created_at asc`,
     [requestId, internal],
   );
   const tickets = await db.query<{ id: string; ref: string; subject: string; status: string }>(
     "select id, ref, subject, status from support_tickets where project_id = $1 order by created_at desc",
+    [requestId],
+  );
+  const today = todayIn(new Date(), opts.timeZone ?? "UTC");
+  const { changes, amendments } = await loadChangeOrders(db, requestId, { internal, today });
+  // What is asked before work starts. A client sees what is asked and whether it is done, never the team's evidence or who confirmed it; a change's confirmation shows once that change was accepted.
+  const prereq = await db.query<{
+    id: string; kind: PrerequisiteView["kind"]; label: string; required: boolean; blocks: PrerequisiteView["blocks"]; status: PrerequisiteView["status"]; satisfied_at: Date | null; waived_at: Date | null;
+    change_order_id: string | null; change_status: string | null; evidence_note?: string | null; waived_reason?: string | null; recorded_by_name?: string | null;
+  }>(
+    `select p.id, p.kind, p.label, p.required, p.blocks, p.status, p.satisfied_at, p.waived_at, p.change_order_id, c.status as change_status${internal ? ", p.evidence_note, p.waived_reason, coalesce(su.full_name, wu.full_name) as recorded_by_name" : ""}
+     from project_prerequisites p left join project_change_orders c on c.id = p.change_order_id${internal ? " left join users su on su.id = p.satisfied_by left join users wu on wu.id = p.waived_by" : ""}
+     where p.request_id = $1 order by p.created_at, p.kind, p.id`,
     [requestId],
   );
   return {
@@ -132,19 +153,32 @@ export async function loadProjectDetail(db: Queryable, requestId: string, opts: 
           expectedCompletionOn: delivery.expected_completion_on,
           completedAt: iso(delivery.completed_at),
           handoverNotes: delivery.handover_notes,
+          warrantyDays: delivery.warranty_days,
+          warrantyEndsOn: delivery.warranty_ends_on,
+          revisionsIncluded: delivery.revisions_included,
+          revisionsUsed: delivery.revisions_used,
         } satisfies DeliveryView)
       : null,
     milestones: milestones.rows.map((m) => ({ id: m.id, title: m.title, description: m.description, sortOrder: m.sort_order, status: m.status, dueOn: m.due_on, requiresClientApproval: m.requires_client_approval, clientApprovedAt: iso(m.client_approved_at), clientNote: m.client_note, completedAt: iso(m.completed_at) }) satisfies MilestoneView),
     updates: updates.rows.map((u) => ({ id: u.id, kind: u.kind, body: u.body, visibility: u.visibility, authorName: shownName(u.author_name, u.author_role, internal), createdAt: iso(u.created_at)! }) satisfies UpdateView),
     files: files.rows.map((f) => ({ id: f.id, filename: f.filename, mimeType: f.mime_type, sizeBytes: f.size_bytes, kind: f.kind, visibility: f.visibility, description: f.description, uploadedByKind: f.uploaded_by_kind, createdAt: iso(f.created_at)! }) satisfies FileView),
-    messages: messages.rows.map((m) => ({ id: m.id, authorKind: m.author_kind, authorName: shownName(m.author_name, m.author_role, internal), kind: m.kind, body: m.body, internal: m.internal, createdAt: iso(m.created_at)! }) satisfies MessageView),
+    messages: messages.rows.map((m) => ({ id: m.id, authorKind: m.author_kind, authorName: shownName(m.author_name, m.author_role, internal), kind: m.kind, body: m.body, internal: m.internal, createdAt: iso(m.created_at)!, changeOrderId: m.change_order_id }) satisfies MessageView),
     tickets: tickets.rows,
+    changes,
+    amendments,
+    prerequisites: prereq.rows
+      .filter((p) => internal || p.kind !== "change" || p.change_status === "accepted" || p.change_status === "applied")
+      .map((p) => ({
+        id: p.id, kind: p.kind, label: p.label, required: p.required, blocks: p.blocks, status: p.status, satisfiedAt: iso(p.satisfied_at), waivedAt: iso(p.waived_at),
+        changeOrderId: p.change_order_id, changeStatus: p.change_status,
+        ...(internal ? { evidenceNote: p.evidence_note ?? null, waivedReason: p.waived_reason ?? null, recordedByName: p.recorded_by_name ?? null } : {}),
+      }) satisfies PrerequisiteView),
   };
 }
 
 export async function getProject(ctx: OrgContext, requestId: string): Promise<ProjectDetail | null> {
   if (!z.string().uuid().safeParse(requestId).success) return null;
-  return withUser(ctx.user.id, (db) => loadProjectDetail(db, requestId, { internal: false, orgId: ctx.org.orgId }));
+  return withUser(ctx.user.id, (db) => loadProjectDetail(db, requestId, { internal: false, orgId: ctx.org.orgId, timeZone: ctx.org.timezone }));
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +194,8 @@ export const projectRequestSchema = z.object({
   preferredDeadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.").nullable().optional(),
   budgetRange: z.enum(BUDGET_BANDS).nullable().optional(),
   serviceSlug: z.string().max(80).nullable().optional(),
+  /** The form's retry key: sending the same form twice (a double click, a dropped connection) makes one request. */
+  idempotencyKey: z.string().min(8).max(80).optional(),
 });
 export type ProjectRequestInput = z.input<typeof projectRequestSchema>;
 
@@ -172,10 +208,15 @@ async function suggestionsFor(db: Queryable, text: string, tools: string[]): Pro
 }
 
 /** Saves the request, files it under the authenticated tenant, and creates the agency's review task. Never charges. */
-export async function createProjectRequest(ctx: OrgContext, input: ProjectRequestInput): Promise<{ id: string; ref: string }> {
+export async function createProjectRequest(ctx: OrgContext, input: ProjectRequestInput): Promise<{ id: string; ref: string; existing?: boolean }> {
   if (!ctx.can("projects.request")) throw new AppError("forbidden", "Your role can't request projects. Ask a workspace owner or admin.");
   const d = projectRequestSchema.parse(input);
   if (d.preferredDeadline && d.preferredDeadline < new Date().toISOString().slice(0, 10)) throw new AppError("invalid_input", "Choose a deadline that is today or later.");
+  // A retry of the same submission returns the request that already exists, before it counts against the rate limit or announces anything again.
+  if (d.idempotencyKey) {
+    const found = (await withSystem((db) => db.query<{ id: string; ref: string }>("select id, ref from client_project_requests where org_id = $1 and created_by = $2 and idempotency_key = $3", [ctx.org.orgId, ctx.user.id, d.idempotencyKey]))).rows[0];
+    if (found) return { ...found, existing: true };
+  }
   const limit = await consumeRateLimit(RATE_LIMITS.projectRequestByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You've sent several project requests recently. Please add details to an existing one.", { retryAfterSeconds: limit.retryAfterSeconds });
 
@@ -191,11 +232,17 @@ export async function createProjectRequest(ctx: OrgContext, input: ProjectReques
     }
     const suggestions = await suggestionsFor(db, `${d.title} ${d.problem} ${d.desiredOutcome} ${d.currentProcess}`, d.tools);
     const { rows } = await db.query<{ id: string; ref: string }>(
-      `insert into client_project_requests (org_id, created_by, service_id, title, summary, tools_used, preferred_deadline, budget_range, suggested_service_ids)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id, ref`,
-      [ctx.org.orgId, ctx.user.id, serviceId, d.title, d.problem, d.tools, d.preferredDeadline ?? null, d.budgetRange ?? null, suggestions],
+      `insert into client_project_requests (org_id, created_by, service_id, title, summary, tools_used, preferred_deadline, budget_range, suggested_service_ids, idempotency_key)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       on conflict (org_id, created_by, idempotency_key) where idempotency_key is not null do nothing returning id, ref`,
+      [ctx.org.orgId, ctx.user.id, serviceId, d.title, d.problem, d.tools, d.preferredDeadline ?? null, d.budgetRange ?? null, suggestions, d.idempotencyKey ?? null],
     );
     const r = rows[0];
+    if (!r) {
+      // Two identical submissions arrived together; the other one won, and it announced the request.
+      const won = (await db.query<{ id: string; ref: string }>("select id, ref from client_project_requests where org_id = $1 and created_by = $2 and idempotency_key = $3", [ctx.org.orgId, ctx.user.id, d.idempotencyKey ?? null])).rows[0];
+      return { ...won, serviceName, existing: true };
+    }
     const answers: Array<[string, string, string]> = [
       ["build", "What would you like us to build?", d.title],
       ["problem", "What business problem are you trying to solve?", d.problem],
@@ -208,12 +255,15 @@ export async function createProjectRequest(ctx: OrgContext, input: ProjectReques
     for (const [i, [key, label, answer]] of answers.entries()) {
       await db.query("insert into project_requirements (request_id, org_id, key, label, answer, sort_order) values ($1,$2,$3,$4,$5,$6)", [r.id, ctx.org.orgId, key, label, answer, i]);
     }
-    await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'initial_review',$3, now() + interval '2 days')", [r.id, ctx.org.orgId, `Review ${r.ref}: ${d.title}`.slice(0, 200)]);
+    // Two days unless the Super Admin set a review target: the team is told when this passes (projectReviewOverdue), and a client hears of it only if that was chosen.
+    const reviewHours = (await loadSupportSettings(db)).projectReviewTargetHours ?? 48;
+    await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'initial_review',$3, now() + make_interval(hours => $4::int))", [r.id, ctx.org.orgId, `Review ${r.ref}: ${d.title}`.slice(0, 200), reviewHours]);
     await db.query("insert into project_updates (request_id, org_id, author_id, kind, body) values ($1,$2,$3,'system','Request submitted. The iAcquire team will review it and reply here.')", [r.id, ctx.org.orgId, ctx.user.id]);
     await notifyAgency(db, ctx.org.orgId, { kind: "project_submitted", title: `${r.ref}: ${d.title}`, body: `${ctx.org.name} · ${serviceName ?? "Custom project"}`, link: `/admin/projects/${r.id}`, dedupeKey: `project:${r.id}:submitted` }, { permission: "projects.view" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "project.request_submitted", targetType: "project_request", targetId: r.id, result: "success", metadata: { ref: r.ref, service: d.serviceSlug ?? null } }, db);
-    return { ...r, serviceName };
+    return { ...r, serviceName, existing: false };
   });
+  if (created.existing) return { id: created.id, ref: created.ref, existing: true };
   // External alerts carry no request content: only the reference and the workspace name.
   await sendAgencySlackAlert(`New iAcquire project request ${created.ref} from ${ctx.org.name}.`);
   return { id: created.id, ref: created.ref };
@@ -229,22 +279,39 @@ async function ownRequest(db: Queryable, ctx: OrgContext, requestId: string) {
   return r;
 }
 
-export async function postClientMessage(ctx: OrgContext, requestId: string, body: string) {
+/** `clientMessageId` is the form's retry id: the same message sent twice (a double click, a dropped connection) is saved and announced once. */
+export async function postClientMessage(ctx: OrgContext, requestId: string, body: string, clientMessageId?: string): Promise<{ id: string; existing: boolean }> {
   if (!ctx.can("projects.request")) throw new AppError("forbidden", "Your role can't message about projects.");
   const text = body.trim();
   if (!text || text.length > 5000) throw new AppError("invalid_input", "Messages can be up to 5,000 characters.");
+  if (clientMessageId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientMessageId)) throw new AppError("invalid_input", "That message could not be read. Please try again.");
+  if (clientMessageId) {
+    const dup = (await withSystem((db) => db.query<{ id: string }>("select id from project_messages where request_id = $1 and org_id = $2 and client_message_id = $3", [requestId, ctx.org.orgId, clientMessageId]))).rows[0];
+    if (dup) return { id: dup.id, existing: true };
+  }
   const limit = await consumeRateLimit(RATE_LIMITS.projectActivityByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You're sending messages quickly. Give it a moment.");
-  await withSystem(async (db) => {
+  return withSystem(async (db) => {
     const r = await ownRequest(db, ctx, requestId);
     if (r.status === "cancelled" || r.status === "completed") throw new AppError("conflict", "This project is closed. Start a new request or open a support request.");
     const answering = r.status === "discovery_needed";
-    const message = (await db.query<{ id: string }>("insert into project_messages (request_id, org_id, author_id, author_kind, kind, body) values ($1,$2,$3,'client',$4,$5) returning id", [requestId, ctx.org.orgId, ctx.user.id, answering ? "info_response" : "message", text])).rows[0];
+    const inserted = await db.query<{ id: string }>(
+      `insert into project_messages (request_id, org_id, author_id, author_kind, kind, body, client_message_id) values ($1,$2,$3,'client',$4,$5,$6)
+       on conflict (request_id, client_message_id) where client_message_id is not null do nothing returning id`,
+      [requestId, ctx.org.orgId, ctx.user.id, answering ? "info_response" : "message", text, clientMessageId ?? null],
+    );
+    if (!inserted.rows[0]) {
+      // Two identical sends arrived together; the other one won and announced it.
+      const won = (await db.query<{ id: string }>("select id from project_messages where request_id = $1 and client_message_id = $2", [requestId, clientMessageId ?? null])).rows[0];
+      return { id: won.id, existing: true };
+    }
+    const message = inserted.rows[0];
     // Answering a question moves the project back to the agency's review queue.
     await db.query("update client_project_requests set last_activity_at = now(), status = case when status = 'discovery_needed' then 'under_review' else status end where id = $1", [requestId]);
     await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'respond_to_client',$3, now() + interval '1 day')", [requestId, ctx.org.orgId, `Reply to ${ctx.org.name} on ${r.ref}`.slice(0, 200)]);
     await notifyAgency(db, ctx.org.orgId, { kind: "project_message", title: `${r.ref}: ${answering ? "information provided" : "new message"} from ${ctx.org.name}`, link: `/admin/projects/${requestId}`, dedupeKey: `project:${requestId}:message:${message.id}` }, { permission: "projects.view" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "project.client_message", targetType: "project_request", targetId: requestId, result: "success", metadata: { answeringQuestion: answering } }, db);
+    return { id: message.id, existing: false };
   });
 }
 
@@ -392,6 +459,8 @@ export async function decideQuote(ctx: OrgContext, quoteId: string, decision: Qu
       );
       await db.query("update client_project_requests set status = 'approved', last_activity_at = now() where id = $1", [q.request_id]);
       await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'review_decision',$3, now() + interval '2 days')", [q.request_id, ctx.org.orgId, `Quote accepted on ${q.ref}: confirm the written agreement and schedule the start`]);
+      // Where the Super Admin switched it on, work does not start until a person confirms the agreement and the payment the quote's terms describe (never detected, never charged).
+      await seedDefaultPrerequisites(db, { id: q.request_id, org_id: ctx.org.orgId }, q.payment_terms);
     } else if (decision === "changes_requested") {
       await db.query("update client_project_requests set status = 'quote_preparing', last_activity_at = now() where id = $1", [q.request_id]);
       await db.query("insert into project_messages (request_id, org_id, author_id, author_kind, body) values ($1,$2,$3,'client',$4)", [q.request_id, ctx.org.orgId, ctx.user.id, `Requested changes to quote v${q.version}: ${clean}`]);

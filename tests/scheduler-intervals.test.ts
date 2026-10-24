@@ -217,6 +217,7 @@ describe("the registered jobs", () => {
     aiProactiveBriefings: 5,
     supportAutoClose: 60,
     supportAttachmentCleanup: 60,
+    projectReviewOverdue: 15,
     fairUseChecks: 60,
     inactivityReview: 360,
     offboardingReminders: 360,
@@ -231,6 +232,8 @@ describe("the registered jobs", () => {
     socialCleanup: 15,
     proposalExpiry: 60,
     proposalHousekeeping: 1440,
+    demoExpiry: 15,
+    demoRetention: 1440,
     feedbackSla: 15,
     appointmentOutcomeNudge: 1440,
     reviewSync: 60,
@@ -239,6 +242,7 @@ describe("the registered jobs", () => {
     customerPaymentReconcile: 15,
     invoiceOverdueSweep: 60,
     invoiceReminders: 15,
+    staffMessagesMaintenance: 60,
   };
 
   it("keeps setupEvidence on its own fleet-wide lease, not on an interval as well", () => {

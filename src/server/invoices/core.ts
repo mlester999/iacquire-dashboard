@@ -3,7 +3,7 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { InvoiceInputError } from "@/lib/invoices/errors";
 import { MoneyError, type CurrencyCode } from "@/lib/money";
-import type { InvoicePaymentStatus, InvoiceStatus } from "@/lib/invoices/state";
+import type { InvoiceCreatedVia, InvoicePaymentStatus, InvoiceStatus } from "@/lib/invoices/state";
 
 // What the invoice services share: the row shapes, the loaders, the history log and the few conversions between the database and the code. No permission checks live
 // here: the callers make them. Every query names the workspace; an id from another workspace is simply not found.
@@ -36,6 +36,8 @@ export interface InvoiceRow {
   opportunity_id: string | null;
   source_type: "proposal" | null;
   source_id: string | null;
+  /** The saved version of the proposal whose one-time lines were copied. */
+  source_version: number | null;
   status: InvoiceStatus;
   payment_status: InvoicePaymentStatus;
   written_off_at: Date | null;
@@ -75,13 +77,13 @@ export interface InvoiceRow {
   void_reason: string | null;
   idempotency_key: string | null;
   created_by: string | null;
-  created_via: "manual" | "workflow" | "deal";
+  created_via: InvoiceCreatedVia;
   created_at: Date;
   updated_at: Date;
 }
 
 /** Every readable column of an invoice (never the link hash), with the bigint columns as text and the dates as plain days. */
-export const INVOICE_COLUMNS = `i.id, i.org_id, i.contact_id, i.company_id, i.opportunity_id, i.source_type, i.source_id, i.status, i.payment_status, i.written_off_at, i.written_off_by,
+export const INVOICE_COLUMNS = `i.id, i.org_id, i.contact_id, i.company_id, i.opportunity_id, i.source_type, i.source_id, i.source_version, i.status, i.payment_status, i.written_off_at, i.written_off_by,
   i.write_off_reason, i.number, i.currency, i.tax_inclusive, i.subtotal_minor::text as subtotal_minor, i.tax_minor::text as tax_minor, i.total_minor::text as total_minor,
   i.paid_minor::text as paid_minor, i.refunded_minor::text as refunded_minor, i.balance_minor::text as balance_minor, i.overpaid_minor::text as overpaid_minor,
   to_char(i.issue_on, 'YYYY-MM-DD') as issue_on, to_char(i.due_on, 'YYYY-MM-DD') as due_on, i.bill_to, i.bill_from, i.payment_instructions, i.notes, i.terms, i.content_hash,

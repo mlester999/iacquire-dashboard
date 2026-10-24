@@ -9,6 +9,9 @@
 --     edited afterwards. One setup-fee checkout can be open at a time, so a second pay button can never double-charge.
 --   * app.setup_payment_cleared(org): the single yes/no every gate asks (paid or waived). A signed-in caller gets an answer only for a workspace it belongs to.
 --   * maintenance_subscriptions.last_payment_id: the payment a plan period was verified against, so the subscription and the money record agree.
+--   * (Milestone M2) maintenance_subscriptions.provider and provider_subscription_id: who bills the plan, reserved for recurring billing that no code uses yet (null today: an
+--     agency member verifies each period by hand); agency_billing_settings.auto_past_due: whether the renewal sweep may mark a plan past due when its paid period ended with
+--     no payment recorded (OFF unless a Super Admin switches it on); and an index for the sweep's look at stale pending checkouts.
 --   * Four notification kinds.
 --
 -- Additive, with two data steps that are marked below. Nothing here contacts a provider, charges anyone or enables anything.
@@ -136,6 +139,25 @@ grant execute on function app.setup_payment_cleared(uuid) to iaq_app_user;
 
 alter table maintenance_subscriptions add column last_payment_id uuid;
 alter table maintenance_subscriptions add constraint maintenance_subscriptions_last_payment_fk foreign key (last_payment_id, org_id) references payments (id, org_id);
+
+-- Who bills the plan. Null means an agency member verifies each period by hand, which is the only way today. A provider and its subscription id are reserved for recurring
+-- billing (PayPal does not exist in the code; PayMongo's recurring contract has never been checked), so they are set together or not at all, and one provider subscription is
+-- never shared by two plans. Neither column is granted to the application role (the table's grants are a column list).
+alter table maintenance_subscriptions
+  add column provider text check (provider in ('paymongo', 'paypal')),
+  add column provider_subscription_id text check (char_length(provider_subscription_id) between 3 and 120);
+alter table maintenance_subscriptions add constraint maintenance_subscriptions_provider_pair_check check ((provider is null) = (provider_subscription_id is null));
+create unique index maintenance_subscriptions_provider_sub_idx on maintenance_subscriptions (provider, provider_subscription_id) where provider_subscription_id is not null;
+
+-- The renewal sweep may mark a plan past due by itself when its paid period ended and no payment was recorded. That is OFF until a Super Admin switches it on, and the row
+-- says who and when (the application role has no access to this table at all).
+alter table agency_billing_settings
+  add column auto_past_due boolean not null default false,
+  add column auto_past_due_by uuid references users(id) on delete set null,
+  add column auto_past_due_at timestamptz;
+
+-- The sweep finds checkouts nobody completed by their age.
+create index payments_pending_age_idx on payments (created_at) where status = 'pending';
 
 -- ---------------------------------------------------------------------------
 -- Grants: select-only, column level where a column is internal

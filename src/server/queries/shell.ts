@@ -3,7 +3,8 @@ import { withUser } from "@/server/db";
 import type { OrgContext } from "@/server/tenancy/context";
 import { isAgentRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import type { Permission } from "@/lib/permissions";
-import { entitlementFor, type PlanStatus } from "@/lib/automation-studio/plan";
+import type { PlanStatus } from "@/lib/automation-studio/plan";
+import { studioEntitlementOf } from "@/lib/entitlements";
 
 export interface ShellAgent {
   role: AgentRoleKey;
@@ -144,8 +145,9 @@ export async function getShellData(ctx: OrgContext): Promise<ShellData> {
   const inboxAttention = data?.inbox_attention ?? 0;
   const requestsAttention = data?.requests_attention ?? 0;
   const crmMode = data?.crm_mode ?? (includeCrm ? "native" : null);
+  // The same rule the server gates apply (src/lib/entitlements.ts), to the four facts the person's role may read about the plan.
   const plan = data?.studio_plan;
-  const automationStudio = includeStudio ? { entitled: entitlementFor(plan ? { id: plan.id, status: plan.status, graceEndsAt: plan.grace_ends_at, paidThroughOn: plan.paid_through_on } : null).entitled } : undefined;
+  const automationStudio = includeStudio ? { entitled: studioEntitlementOf(plan ? { id: plan.id, status: plan.status, graceEndsAt: plan.grace_ends_at, paidThroughOn: plan.paid_through_on, createdAt: plan.created_at } : null).entitled } : undefined;
   return {
     user: { id: ctx.user.id, name: ctx.user.fullName || ctx.user.email, email: ctx.user.email, platformRole: ctx.user.platformRole },
     org: {

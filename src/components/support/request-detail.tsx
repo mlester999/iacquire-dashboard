@@ -16,6 +16,7 @@ import {
   REQUEST_TYPE_LABELS, categoryLabel, clientProgressSentence, featureLabel, statusLabelForClient, type FeedbackStage,
 } from "@/lib/support/lifecycle";
 import { describeDiagnostics } from "@/lib/support/content";
+import { CHANGE_ORDER_STATUS_LABEL, type ChangeOrderStatus } from "@/lib/project-change-orders";
 import { formatDateTime, relativeTime } from "@/lib/utils";
 import type { ClientRequestDetail } from "@/server/support/types";
 
@@ -165,6 +166,18 @@ export function RequestDetailView({ initial, timeZone }: { initial: ClientReques
           </div>
         )}
       </Card>
+
+      {detail.linkedChange && (
+        <Card className="p-5" role="region" aria-labelledby="linked-change-title">
+          <h2 id="linked-change-title" className="text-[15px] font-semibold tracking-tight text-ink">Also on your project&apos;s change list</h2>
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-[13.5px] text-ink-2">
+            <span className="font-mono text-[12px] text-muted">{detail.linkedChange.ref}</span> {detail.linkedChange.title}
+            <StatusPill size="sm" tone={detail.linkedChange.status === "quoted" ? "warning" : detail.linkedChange.status === "accepted" || detail.linkedChange.status === "applied" ? "success" : detail.linkedChange.status === "declined" || detail.linkedChange.status === "withdrawn" ? "neutral" : "primary"}>{CHANGE_ORDER_STATUS_LABEL[detail.linkedChange.status as ChangeOrderStatus] ?? detail.linkedChange.status}</StatusPill>
+          </p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">On {detail.linkedChange.projectRef} · {detail.linkedChange.projectTitle}. A quote, if the team sends one, waits there for the owner&apos;s decision.</p>
+          <Link href={`/projects/${detail.linkedChange.projectId}#project-changes`} className="mt-2 inline-flex min-h-11 items-center gap-1 text-[13px] font-medium text-primary-ink hover:underline">Open the project&apos;s change requests</Link>
+        </Card>
+      )}
 
       <section aria-labelledby="conv-title" className="space-y-4">
         <div className="flex items-center justify-between gap-3">

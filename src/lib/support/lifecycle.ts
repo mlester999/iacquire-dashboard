@@ -2,8 +2,10 @@
 // nothing here reads the database or the environment. supabase/migrations/0065_support_requests.sql mirrors the status
 // transition table and the category lists, and tests/support-lifecycle.test.ts fails if the two drift apart.
 
-export const REQUEST_TYPES = ["support", "issue", "feedback"] as const;
+export const REQUEST_TYPES = ["support", "issue", "feedback", "change"] as const;
 export type RequestType = (typeof REQUEST_TYPES)[number];
+/** The types a person can start from the assistant (AQi) and the help widget. A change needs a target and a project, so it has its own page. */
+export const ASSISTANT_REQUEST_TYPES = ["support", "issue", "feedback"] as const satisfies readonly RequestType[];
 
 /** One lifecycle for every request type. Feedback shows the same states under its own wording (see FEEDBACK_STAGES). */
 export const TICKET_STATUSES = ["new", "open", "in_progress", "waiting_for_client", "resolved", "closed"] as const;
@@ -51,15 +53,17 @@ export const isReopen = (from: TicketStatus, to: TicketStatus) => isDoneStatus(f
 export const SUPPORT_CATEGORIES = ["general", "account", "crm", "ai_employees", "integrations", "website", "billing", "other"] as const;
 export const ISSUE_CATEGORIES = ["feature_not_working", "crm", "ai_employees", "integrations", "website", "incorrect_information", "performance", "access", "other"] as const;
 export const FEEDBACK_CATEGORIES = ["feature_suggestion", "improvement", "ux_feedback", "positive_feedback", "general_suggestion"] as const;
+export const CHANGE_CATEGORIES = ["change_ai_employee", "change_website", "change_automation", "change_integration", "change_project", "change_other"] as const;
 export const LEGACY_CATEGORIES = ["bug", "onboarding", "project", "maintenance"] as const;
 
 export const CATEGORIES_BY_TYPE = {
   support: SUPPORT_CATEGORIES,
   issue: ISSUE_CATEGORIES,
   feedback: FEEDBACK_CATEGORIES,
+  change: CHANGE_CATEGORIES,
 } as const satisfies Record<RequestType, readonly string[]>;
 
-export const ALL_CATEGORIES = [...new Set<string>([...SUPPORT_CATEGORIES, ...ISSUE_CATEGORIES, ...FEEDBACK_CATEGORIES, ...LEGACY_CATEGORIES])] as readonly string[];
+export const ALL_CATEGORIES = [...new Set<string>([...SUPPORT_CATEGORIES, ...ISSUE_CATEGORIES, ...FEEDBACK_CATEGORIES, ...CHANGE_CATEGORIES, ...LEGACY_CATEGORIES])] as readonly string[];
 
 export const CATEGORY_LABELS: Record<string, { label: string; hint?: string }> = {
   general: { label: "General question", hint: "Anything that doesn't fit the other topics." },
@@ -79,6 +83,12 @@ export const CATEGORY_LABELS: Record<string, { label: string; hint?: string }> =
   ux_feedback: { label: "Ease of use", hint: "Something confusing, awkward or hard to find." },
   positive_feedback: { label: "What's working well", hint: "Tell us what you value." },
   general_suggestion: { label: "General suggestion" },
+  change_ai_employee: { label: "An AI employee", hint: "Change how an AI employee answers, behaves or what it knows." },
+  change_website: { label: "My website", hint: "Change a page, a form, the layout or the domain." },
+  change_automation: { label: "An automation or workflow", hint: "Change what happens automatically, and when." },
+  change_integration: { label: "A connected service", hint: "Change how a connected service is set up or used." },
+  change_project: { label: "A custom project", hint: "Change something about a custom project we are building for you." },
+  change_other: { label: "Something else" },
   bug: { label: "Bug report" },
   onboarding: { label: "Onboarding" },
   project: { label: "Custom project" },
@@ -97,6 +107,7 @@ export const REQUEST_TYPE_LABELS: Record<RequestType, { label: string; plural: s
   support: { label: "Support request", plural: "Support requests", verb: "asked for help" },
   issue: { label: "Issue report", plural: "Issue reports", verb: "reported an issue" },
   feedback: { label: "Feedback", plural: "Feedback", verb: "shared feedback" },
+  change: { label: "Change request", plural: "Change requests", verb: "asked for a change" },
 };
 
 /** Features a request can relate to. Stored as a short code; "page" in diagnostics is a separate, optional path. */
@@ -219,7 +230,7 @@ export function clientCanReopen(input: { status: string; resolvedAt: Date | stri
 
 export const EVENT_KINDS = [
   "created", "reply", "note", "attachment", "status_changed", "feedback_stage", "assigned", "unassigned", "priority_changed", "escalated", "de_escalated",
-  "reopened", "resolved", "closed", "linked", "merged", "sla_alert", "ai_assist",
+  "reopened", "resolved", "closed", "linked", "merged", "sla_alert", "ai_assist", "change_classified",
 ] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 /** Events a client may see on their own timeline. Everything else is for the team only. */

@@ -4,12 +4,13 @@ import { AppError } from "@/server/errors";
 import { env } from "@/server/env";
 import { ESIGN_FEATURE, PROPOSALS_FEATURE, setOrgFeature } from "@/server/proposals/features";
 import { INVOICES_FEATURE, setInvoicesEnabled } from "@/server/invoices/feature";
+import { REQUEST_CHANGES_FEATURE, setRequestChangesEnabled } from "@/server/support/change-feature";
 import { REPUTATION_BATCHES_FEATURE, REPUTATION_REVIEWS_FEATURE, REPUTATION_SURVEYS_FEATURE, setBatchesEnabled, setExternalReviewsEnabled, setSurveysEnabled } from "@/server/reputation/entitlement";
 import { MODULES, MODULE_KEYS, dependencyProblem, isModuleKey, type EnvSwitchState, type ModuleKey, type ModuleRolloutRow, type ModuleRolloutView, type ModuleSwitchResult } from "@/lib/admin/module-rollout";
 import type { SessionUser } from "@/server/auth/service";
 
 // The Super Admin's page for switching the Wave 1 modules on per client workspace. It decides nothing about a module itself: every change is made by the module's own service
-// (setOrgFeature, setInvoicesEnabled, setSurveysEnabled, setBatchesEnabled, setExternalReviewsEnabled), which checks the Super Admin again and writes the audit row. Nothing in this
+// (setOrgFeature, setInvoicesEnabled, setSurveysEnabled, setBatchesEnabled, setExternalReviewsEnabled, setRequestChangesEnabled), which checks the Super Admin again and writes the audit row. Nothing in this
 // file writes org_features, and what the page shows is read back from it. Switching a module on connects nothing, sends nothing and turns no provider on.
 
 const LIST_LIMIT = 500;
@@ -21,6 +22,7 @@ const FEATURE_OF: Record<ModuleKey, string> = {
   reputation_surveys: REPUTATION_SURVEYS_FEATURE,
   reputation_batches: REPUTATION_BATCHES_FEATURE,
   reputation_reviews: REPUTATION_REVIEWS_FEATURE,
+  request_changes: REQUEST_CHANGES_FEATURE,
 };
 
 function assertSuperAdmin(user: Pick<SessionUser, "platformRole">) {
@@ -133,6 +135,9 @@ export async function setModuleSwitch(user: SessionUser, input: { orgId: string;
       break;
     case "reputation_reviews":
       await setExternalReviewsEnabled(user, input.orgId, enabled);
+      break;
+    case "request_changes":
+      await setRequestChangesEnabled(user, input.orgId, enabled);
       break;
   }
   return { orgId: input.orgId, key, enabled, changed: true };

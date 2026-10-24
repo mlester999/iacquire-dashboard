@@ -13,6 +13,7 @@ import { contentHash } from "@/lib/proposals/hash";
 import { validityOn } from "@/lib/proposals/validity";
 import { addEvent as addProposalEvent, loadProposalRow, loadVersionRow, readSettings, type ProposalRow } from "@/server/proposals/core";
 import { applyEffects } from "@/server/proposals/crm-effects";
+import { withdrawDeliveriesInTx } from "@/server/proposals/delivery";
 import { addSigEvent, loadRequest, type EventSource, type RequestRow } from "@/server/esign/core";
 import { refreshSignatureState } from "@/server/esign/lifecycle";
 
@@ -216,6 +217,8 @@ async function completeRequest(db: Queryable, proposal: ProposalRow, req: Reques
   }
   // The customer's link is left as it is, like an acceptance on the page: it now shows their answer ("signed through a signing service") instead of "no longer active".
   await db.query("update proposals set status = 'accepted', closed_at = $3::timestamptz, signature_state = 'completed' where id = $1 and org_id = $2", [proposal.id, orgId, o.now.toISOString()]);
+  // A message that carries the link and is still waiting for sending hours would tell a customer who has signed that the proposal is ready for them.
+  await withdrawDeliveriesInTx(db, orgId, proposal.id, "proposal_answered");
   await db.query(`update signature_requests set ${common}, applied_at = $3::timestamptz where id = $1 and org_id = $2`, [req.id, orgId, o.now.toISOString()]);
   await addSigEvent(db, orgId, req.id, "signature_applied", "system", { version: req.proposal_version });
   await addProposalEvent(db, orgId, proposal.id, req.proposal_version, "accepted", { id: null, kind: "provider" }, { method: "provider_signature", requestId: req.id, provider: req.provider, signer: maskedEmail(req.signer_email) });

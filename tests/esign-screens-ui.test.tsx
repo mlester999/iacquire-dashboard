@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
     "getShareUrlAction", "renewShareLinkAction", "createProposalAction", "draftWithAiAction", "searchDealsAction", "saveProposalSettingsAction", "createCatalogItemAction", "updateCatalogItemAction",
     "createTaxRateAction", "updateTaxRateAction", "createTemplateAction", "saveTemplateAction", "approveTemplateAction", "archiveTemplateAction", "connectPandaDocAction", "connectSimulatedSigningAction",
     "checkSigningConnectionAction", "getSigningWebhookUrlAction", "disconnectSigningAction", "requestSignatureAction", "voidSignatureRequestAction", "actAsSimulatedSignerAction",
+    "previewDeliveryAction", "sendDeliveryAction",
   ] as const;
   const a = Object.fromEntries(names.map((n) => [n, vi.fn()])) as Record<(typeof names)[number], ReturnType<typeof vi.fn>>;
   return { push: vi.fn(), refresh: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn(), a };
@@ -50,10 +51,12 @@ beforeEach(() => {
   mocks.toastSuccess.mockReset();
   mocks.toastError.mockReset();
   for (const m of Object.values(mocks.a)) m.mockReset();
+  // The Delivery tab reads the message when it opens; these tests are about signing, so it is left reading.
+  mocks.a.previewDeliveryAction.mockImplementation(() => new Promise(() => {}));
 });
 afterEach(cleanup);
 
-const BAD = /undefined|NaN|\[object Object\]/;
+const BAD =/undefined|NaN|\[object Object\]/;
 const button = (name: string | RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
 const change = (el: HTMLElement, value: string) => fireEvent.change(el, { target: { value } });
 const ok = <T,>(data: T) => ({ ok: true as const, data });

@@ -42,6 +42,7 @@ import ModuleRolloutPage from "@/app/(admin)/admin/module-rollout/page";
 import { ModuleRolloutAdmin } from "@/app/(admin)/admin/module-rollout/module-rollout-admin";
 import { PROPOSALS_FEATURE, ESIGN_FEATURE } from "@/server/proposals/features";
 import { INVOICES_FEATURE } from "@/server/invoices/feature";
+import { REQUEST_CHANGES_FEATURE } from "@/server/support/change-feature";
 import { REPUTATION_BATCHES_FEATURE, REPUTATION_REVIEWS_FEATURE, REPUTATION_SURVEYS_FEATURE } from "@/server/reputation/entitlement";
 import { agencyUser, createOrg, createUser } from "./support/fixtures";
 
@@ -73,6 +74,7 @@ const ACTIONS: Record<ModuleKey, [on: string, off: string]> = {
   reputation_surveys: ["reputation.surveys_enabled", "reputation.surveys_disabled"],
   reputation_batches: ["reputation.batches_enabled", "reputation.batches_disabled"],
   reputation_reviews: ["reputation.reviews_enabled", "reputation.reviews_disabled"],
+  request_changes: ["feature.enabled", "feature.disabled"],
 };
 
 describe("who may use it", () => {
@@ -225,7 +227,7 @@ describe("what it shows", () => {
     const byId = new Map(view.rows.map((r) => [r.orgId, r]));
     expect(byId.has(archived.id)).toBe(false);
     const m = byId.get(mixed.id)!;
-    expect(Object.fromEntries(MODULE_KEYS.map((k) => [k, m.modules[k].on]))).toEqual({ proposals: true, esign: false, invoices: true, reputation_surveys: false, reputation_batches: false, reputation_reviews: false });
+    expect(Object.fromEntries(MODULE_KEYS.map((k) => [k, m.modules[k].on]))).toEqual({ proposals: true, esign: false, invoices: true, reputation_surveys: false, reputation_batches: false, reputation_reviews: false, request_changes: false });
     expect(m.modules.proposals.byName).toBe("Sasha Super");
     expect(m.modules.proposals.since).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(m.modules.esign.since).toBeNull();
@@ -320,7 +322,7 @@ describe("it is built on the existing services", () => {
   it("never writes org_features itself: the five services are the only writers", () => {
     const service = read("src/server/admin/module-rollout.ts");
     expect(service).not.toMatch(/(insert\s+into|update|delete\s+from)\s+org_features/i);
-    for (const call of ["setOrgFeature(", "setInvoicesEnabled(", "setSurveysEnabled(", "setBatchesEnabled(", "setExternalReviewsEnabled("]) expect(service, call).toContain(call);
+    for (const call of ["setOrgFeature(", "setInvoicesEnabled(", "setSurveysEnabled(", "setBatchesEnabled(", "setExternalReviewsEnabled(", "setRequestChangesEnabled("]) expect(service, call).toContain(call);
     const files: string[] = [];
     const walk = (dir: string) => {
       for (const name of fs.readdirSync(path.join(process.cwd(), dir))) {
@@ -334,7 +336,7 @@ describe("it is built on the existing services", () => {
   });
 
   it("uses the same keys the modules gate on", () => {
-    expect([...MODULE_KEYS].sort()).toEqual([ESIGN_FEATURE, INVOICES_FEATURE, PROPOSALS_FEATURE, REPUTATION_BATCHES_FEATURE, REPUTATION_REVIEWS_FEATURE, REPUTATION_SURVEYS_FEATURE].sort());
+    expect([...MODULE_KEYS].sort()).toEqual([ESIGN_FEATURE, INVOICES_FEATURE, PROPOSALS_FEATURE, REPUTATION_BATCHES_FEATURE, REPUTATION_REVIEWS_FEATURE, REPUTATION_SURVEYS_FEATURE, REQUEST_CHANGES_FEATURE].sort());
     expect(MODULES.map((m) => m.key)).toEqual([...MODULE_KEYS]);
     for (const k of MODULE_KEYS) expect(isModuleKey(k)).toBe(true);
     for (const k of ["inbox_rollout", "", "constructor", "__proto__", null, undefined, 3]) expect(isModuleKey(k)).toBe(false);
@@ -360,6 +362,7 @@ describe("it is built on the existing services", () => {
     ["reputation_surveys", /no longer saved as private feedback/i, [["src/server/crm/reviews.ts", /surveysEnabledIn\(db, orgId\)/], ["src/server/reputation/survey-feedback.ts", /surveysEnabledIn\(db, orgId\)/]]],
     ["reputation_batches", /asks no further customers/i, [["src/server/reputation/batch-job.ts", /batchesEnabledIn\(db, orgId\)/]]],
     ["reputation_reviews", /stay visible/i, [["src/server/reputation/sync.ts", /externalReviewsEnabledIn\(db, c\.org_id\)/], ["src/server/reputation/connections.ts", /externalReviewsEnabledIn\(db, row\.org_id\)/], ["src/server/reputation/public-reviews.ts", /connections or reviews stay visible/]]],
+    ["request_changes", /quote waiting for the owner can still be accepted/i, [["src/server/support/service.ts", /requestChangesEnabled\(ctx\.org\.orgId\)/], ["src/server/projects/change-orders.ts", /assertRequestChangesEnabled\(db, ctx\)/], ["src/server/support/change-form.ts", /requestChangesEnabled\(ctx\.org\.orgId\)/]]],
   ];
 
   it.each(OFF_CLAIMS)("says what switching %s off does, and the gate it describes is still in the code", (key, wording, gates) => {

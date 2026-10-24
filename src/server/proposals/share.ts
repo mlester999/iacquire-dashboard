@@ -7,10 +7,12 @@ import { assertCan, auditActor, crmWrite, type CrmActor } from "@/server/crm/act
 import { linkExpiresAt, seenLevel, type SeenLevel } from "@/lib/proposals/share";
 import { addEvent, loadProposalRow, type ProposalRow } from "@/server/proposals/core";
 import { assertProposalsEnabled } from "@/server/proposals/features";
+import { withdrawDeliveriesInTx } from "@/server/proposals/delivery";
 import { hashLinkToken, linkTokenFor, proposalUrl, tokenForStoredLink } from "@/server/proposals/link-token";
 
 // The customer's link to a sent proposal, as the team sees and manages it. The link is made when the proposal is sent. Its address is derived from a server key, so the team
-// can be shown it again (to copy into an email or a message) without it being stored; only a hash of it is kept. Nothing here sends the link to anyone: copy-link comes first.
+// can be shown it again (to copy into an email or a message) without it being stored; only a hash of it is kept. Nothing here sends the link to anyone: copying it is one way to
+// give it to the customer, and a message through the consent-gated send chain (src/server/proposals/delivery.ts) is the other.
 
 export interface ShareView {
   id: string;
@@ -129,6 +131,8 @@ export async function renewShareLink(actor: CrmActor, proposalId: string, deps: 
     if (!row) throw new AppError("not_found", "That proposal was not found.");
     if (row.status !== "sent" || row.sent_version !== row.version) throw new AppError("conflict", "Only a proposal that has been sent and not answered has a link to renew.");
     await db.query("update proposal_share_links set revoked_at = now() where proposal_id = $1 and org_id = $2 and revoked_at is null", [proposalId, actor.orgId]);
+    // A message that carries the old link and has not gone out yet would send a link that no longer opens: it is stopped (one already sent stays as it is).
+    await withdrawDeliveriesInTx(db, actor.orgId, proposalId, "proposal_link_renewed");
     const made = await createShareLinkInTx(db, row, row.version, userId, now);
     await recordAudit({ orgId: actor.orgId, ...auditActor(actor), action: "proposals.link_renewed", targetType: "proposal", targetId: proposalId, result: "success", metadata: { version: row.version, linkId: made.id } }, db);
     return addressOf(db, row, now);

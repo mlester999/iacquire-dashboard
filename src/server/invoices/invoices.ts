@@ -6,7 +6,7 @@ import { notifyOrgRoles, notifyUser } from "@/server/notifications";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { Permission } from "@/lib/permissions";
 import { formatMinor, isCurrency, toDecimalString, type CurrencyCode } from "@/lib/money";
-import { canEditDraft, canTransition, dueFromTerms, invoiceProblems, issueBlockedReason, todayIn, voidBlockedReason, type InvoiceStatus } from "@/lib/invoices/state";
+import { canEditDraft, canTransition, dueFromTerms, invoiceProblems, issueBlockedReason, todayIn, voidBlockedReason, type InvoiceCreatedVia, type InvoiceStatus } from "@/lib/invoices/state";
 import { formatInvoiceNumber, TEST_NUMBER_PREFIX } from "@/lib/invoices/number";
 import { canonicalJson, invoiceContentHash, type HashedLine } from "@/lib/invoices/hash";
 import { freeTextProblem } from "@/lib/invoices/guards";
@@ -17,6 +17,8 @@ import { assertInvoicesAvailable } from "@/server/invoices/feature";
 import { invoiceTokenHashFor } from "@/server/invoices/links";
 import { announceCreated, announceIssued, announceVoided } from "@/server/invoices/crm-effects";
 import { stopReminders, syncInvoiceReminders } from "@/server/invoices/reminders";
+import { invoiceDeliveriesFor, withdrawInvoiceDeliveriesInTx } from "@/server/invoices/delivery";
+import type { InvoiceDeliveryView } from "@/lib/invoices/delivery-state";
 import { addInvoiceEvent, asAppError, INVOICE_COLUMNS, loadInvoiceRow, loadLines, readSettings, toMinor, type InvoiceRow, type LineRow } from "@/server/invoices/core";
 import { detailFor, viewsFor, type InvoiceDetail, type InvoiceView } from "@/server/invoices/views";
 
@@ -227,18 +229,41 @@ export interface ReminderView {
   channel: string | null;
 }
 
+/** Where an invoice made from a proposal came from, and the lines of that proposal that were not copied because the customer pays them every month or every year. */
+export interface InvoiceSourceView {
+  proposalId: string;
+  proposalVersion: number;
+  /** Null for someone who cannot read proposals: they are told it came from one, and not which. */
+  proposalNumber: string | null;
+  recurring: Array<{ name: string; billing: "monthly" | "yearly"; totalMinor: number }>;
+}
+
 export interface InvoiceFullDetail extends InvoiceDetail {
   payments: PaymentView[];
   refunds: RefundView[];
   events: InvoiceEventView[];
   reminders: ReminderView[];
+  /** The messages that carried the customer's link to the customer through the send chain, newest first, each in the words the database supports (never "delivered" or "read"). */
+  deliveries: InvoiceDeliveryView[];
+  /** Set for an invoice made from an accepted proposal. */
+  source: InvoiceSourceView | null;
   /** The part of the workspace's settings the invoice screen needs to say what will happen next. */
   closeRule: "none" | "task" | "auto_won";
 }
 
+/** The recurring lines left off an invoice made from a proposal, as its first line of history recorded them. */
+function recurringOf(detail: Record<string, unknown> | undefined): InvoiceSourceView["recurring"] {
+  const list = detail?.recurring;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((r) => {
+    const x = r as { name?: unknown; billing?: unknown; totalMinor?: unknown };
+    return typeof x.name === "string" && (x.billing === "monthly" || x.billing === "yearly") && typeof x.totalMinor === "number" ? [{ name: x.name, billing: x.billing, totalMinor: x.totalMinor }] : [];
+  });
+}
+
 export async function getInvoiceDetail(ctx: OrgContext, id: string, deps: { now?: Date } = {}): Promise<InvoiceFullDetail> {
   must(ctx, "invoices.view", "Your role can't see invoices.");
-  return withUser(ctx.user.id, async (db) => {
+  const detail = await withUser(ctx.user.id, async (db) => {
     await assertInvoicesAvailable(db, ctx);
     const row = await loadInvoiceRow(db, ctx.org.orgId, id);
     if (!row) throw notFound();
@@ -262,8 +287,17 @@ export async function getInvoiceDetail(ctx: OrgContext, id: string, deps: { now?
        where r.invoice_id = $1 and r.org_id = $2 order by r.due_at`, [id, ctx.org.orgId],
     );
     const settings = await readSettings(db, ctx.org.orgId);
+    // The number of the proposal it came from, if the reader may read proposals (row-level security answers for the rest).
+    let source: InvoiceSourceView | null = null;
+    if (row.source_type === "proposal" && row.source_id && row.source_version) {
+      const proposal = (await db.query<{ number: string }>("select number from proposals where id = $1 and org_id = $2", [row.source_id, ctx.org.orgId])).rows[0];
+      const created = ev.rows.find((e) => e.kind === "created");
+      source = { proposalId: row.source_id, proposalVersion: row.source_version, proposalNumber: proposal?.number ?? null, recurring: recurringOf(created?.detail) };
+    }
     return {
       ...base,
+      deliveries: [] as InvoiceDeliveryView[],
+      source,
       payments: pay.rows.map((p) => ({
         id: p.id, amountMinor: toMinor(p.amount_minor), currency: p.currency, provider: p.provider, verification: p.verification, method: p.method, status: p.status, livemode: p.livemode,
         receivedAt: new Date(p.received_at).toISOString(), evidence: p.evidence, taxPortionMinor: toMinor(p.tax_portion_minor), refundedMinor: toMinor(p.refunded), recordedByName: p.full_name,
@@ -274,6 +308,9 @@ export async function getInvoiceDetail(ctx: OrgContext, id: string, deps: { now?
       closeRule: settings.closeRule,
     };
   });
+  // The messages come from the send chain's rows, which a member's own read does not cover: trusted code reads them, for this one invoice of this one workspace.
+  detail.deliveries = await withSystem((db) => invoiceDeliveriesFor(db, ctx.org.orgId, id, deps.now));
+  return detail;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,48 +403,66 @@ function formLines(rows: LineRow[], currency: CurrencyCode): LineFormInput[] {
   return rows.map((l) => lineToForm({ description: l.description, quantityMilli: l.quantity_milli, unitPriceMinor: toMinor(l.unit_price_minor), discountBps: l.discount_bps, discountMinor: toMinor(l.discount_minor), taxRateBps: l.tax_rate_bps }, currency, toDecimalString));
 }
 
+/** The proposal an invoice was made from, and the saved version whose one-time lines it copied (src/server/invoices/from-proposal.ts). */
+export interface DraftSource {
+  type: "proposal";
+  id: string;
+  version: number;
+  /** Short facts for the draft's first line of history: ids, numbers and counts, never a customer's details. */
+  eventDetail: Record<string, unknown>;
+}
+
 /**
  * Starts an invoice as a draft. The workspace's default currency, payment instructions and terms fill in what was left out. A repeated request with the same idempotency
  * key returns the draft it already made.
  */
 export async function createDraft(ctx: OrgContext, rawInput: unknown, opts: { via?: "manual" | "deal" } = {}): Promise<InvoiceDetail> {
   const input: DraftInput = draftInputSchema.parse(rawInput);
-  return withSystem(async (db) => {
-    await authorize(db, ctx, "invoices.create", "Your role can't write invoices.");
-    const isTest = input.isTest === true;
-    if (isTest) mustMarkTest(ctx);
-    const org = await orgFacts(db, ctx.org.orgId);
-    if (input.idempotencyKey) {
-      const existing = await db.query<{ id: string }>("select id from customer_invoices where org_id = $1 and idempotency_key = $2", [ctx.org.orgId, input.idempotencyKey]);
-      if (existing.rows[0]) return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, existing.rows[0].id)) as InvoiceRow, org.timezone);
-    }
-    const settings = await readSettings(db, ctx.org.orgId);
-    const links = await resolveLinks(db, ctx.org.orgId, input);
-    const currency = await defaultCurrency(db, ctx.org.orgId, input.currency && isCurrency(input.currency) ? input.currency : settings.defaultCurrency);
-    const taxInclusive = input.taxInclusive ?? false;
-    const parsed = asAppError(() => parseLines(input.lines ?? [], currency, taxInclusive));
-    const payment = cleanFreeText("The payment instructions", input.paymentInstructions) ?? settings.defaultPaymentInstructions;
-    const notes = cleanFreeText("The notes", input.notes);
-    const terms = cleanFreeText("The terms", input.terms);
-    const { rows } = await db.query<{ id: string }>(
-      `insert into customer_invoices (org_id, contact_id, company_id, opportunity_id, currency, tax_inclusive, subtotal_minor, tax_minor, total_minor, due_on, bill_to, payment_instructions, notes, terms,
-         closes_deal, is_test, idempotency_key, created_by, created_via)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19)
-       on conflict (org_id, idempotency_key) where idempotency_key is not null do nothing returning id`,
-      [ctx.org.orgId, links.contactId, links.companyId, links.opportunityId, currency, taxInclusive, parsed.totals.subtotal, parsed.totals.tax, parsed.totals.total, input.dueOn ?? null,
-        JSON.stringify(cleanBillTo(input.billTo)), payment, notes, terms, isTest ? false : input.closesDeal ?? false, isTest, input.idempotencyKey ?? null, ctx.user.id, opts.via ?? "manual"],
-    );
-    if (!rows[0]) {
-      // A twin request with the same key won the insert a moment ago: it is the same invoice.
-      const twin = (await db.query<{ id: string }>("select id from customer_invoices where org_id = $1 and idempotency_key = $2", [ctx.org.orgId, input.idempotencyKey])).rows[0];
-      if (!twin) throw new AppError("conflict", "That invoice could not be created. Try again.");
-      return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, twin.id)) as InvoiceRow, org.timezone);
-    }
-    await writeLines(db, ctx.org.orgId, rows[0].id, parsed.lines);
-    await addInvoiceEvent(db, ctx.org.orgId, rows[0].id, "created", { id: ctx.user.id, kind: "user" }, { currency, lines: parsed.lines.length, via: opts.via ?? "manual", ...(isTest ? { test: true } : {}) });
-    await announceCreated(db, ctx.org.orgId, rows[0].id, { id: ctx.user.id, kind: "user" });
-    return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, rows[0].id)) as InvoiceRow, org.timezone);
-  });
+  return withSystem(async (db) => (await createDraftInTx(db, ctx, input, opts)).detail);
+}
+
+/**
+ * The body of createDraft, for a caller that has its own transaction and has to know whether this call made the invoice or found the one a repeated request had already made
+ * (`created: false`). A source says the draft was made from an accepted proposal: it is then marked created_via "proposal" (an approver is needed to issue it).
+ */
+export async function createDraftInTx(db: Queryable, ctx: OrgContext, input: DraftInput, opts: { via?: "manual" | "deal"; source?: DraftSource } = {}): Promise<{ detail: InvoiceDetail; created: boolean }> {
+  await authorize(db, ctx, "invoices.create", "Your role can't write invoices.");
+  const isTest = input.isTest === true;
+  if (isTest) mustMarkTest(ctx);
+  const via: InvoiceCreatedVia = opts.source ? opts.source.type : opts.via ?? "manual";
+  const org = await orgFacts(db, ctx.org.orgId);
+  const found = async (id: string) => ({ detail: await detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, id)) as InvoiceRow, org.timezone), created: false });
+  if (input.idempotencyKey) {
+    const existing = await db.query<{ id: string }>("select id from customer_invoices where org_id = $1 and idempotency_key = $2", [ctx.org.orgId, input.idempotencyKey]);
+    if (existing.rows[0]) return found(existing.rows[0].id);
+  }
+  const settings = await readSettings(db, ctx.org.orgId);
+  const links = await resolveLinks(db, ctx.org.orgId, input);
+  const currency = await defaultCurrency(db, ctx.org.orgId, input.currency && isCurrency(input.currency) ? input.currency : settings.defaultCurrency);
+  const taxInclusive = input.taxInclusive ?? false;
+  const parsed = asAppError(() => parseLines(input.lines ?? [], currency, taxInclusive));
+  const payment = cleanFreeText("The payment instructions", input.paymentInstructions) ?? settings.defaultPaymentInstructions;
+  const notes = cleanFreeText("The notes", input.notes);
+  const terms = cleanFreeText("The terms", input.terms);
+  const { rows } = await db.query<{ id: string }>(
+    `insert into customer_invoices (org_id, contact_id, company_id, opportunity_id, currency, tax_inclusive, subtotal_minor, tax_minor, total_minor, due_on, bill_to, payment_instructions, notes, terms,
+       closes_deal, is_test, idempotency_key, created_by, created_via, source_type, source_id, source_version)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+     on conflict (org_id, idempotency_key) where idempotency_key is not null do nothing returning id`,
+    [ctx.org.orgId, links.contactId, links.companyId, links.opportunityId, currency, taxInclusive, parsed.totals.subtotal, parsed.totals.tax, parsed.totals.total, input.dueOn ?? null,
+      JSON.stringify(cleanBillTo(input.billTo)), payment, notes, terms, isTest ? false : input.closesDeal ?? false, isTest, input.idempotencyKey ?? null, ctx.user.id, via,
+      opts.source?.type ?? null, opts.source?.id ?? null, opts.source?.version ?? null],
+  );
+  if (!rows[0]) {
+    // A twin request with the same key won the insert a moment ago: it is the same invoice.
+    const twin = (await db.query<{ id: string }>("select id from customer_invoices where org_id = $1 and idempotency_key = $2", [ctx.org.orgId, input.idempotencyKey])).rows[0];
+    if (!twin) throw new AppError("conflict", "That invoice could not be created. Try again.");
+    return found(twin.id);
+  }
+  await writeLines(db, ctx.org.orgId, rows[0].id, parsed.lines);
+  await addInvoiceEvent(db, ctx.org.orgId, rows[0].id, "created", { id: ctx.user.id, kind: "user" }, { currency, lines: parsed.lines.length, via, ...(opts.source?.eventDetail ?? {}), ...(isTest ? { test: true } : {}) });
+  await announceCreated(db, ctx.org.orgId, rows[0].id, { id: ctx.user.id, kind: "user" });
+  return { detail: await detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, rows[0].id)) as InvoiceRow, org.timezone), created: true };
 }
 
 /**
@@ -689,6 +744,8 @@ export async function voidInvoice(ctx: OrgContext, id: string, rawInput: unknown
     await db.query("update customer_invoices set status = 'void', voided_at = now(), voided_by = $3, void_reason = $4, public_token_hash = null where id = $1 and org_id = $2", [id, ctx.org.orgId, ctx.user.id, reason.trim()]);
     await stopReminders(db, ctx.org.orgId, "invoice_voided", id);
     await addInvoiceEvent(db, ctx.org.orgId, id, "voided", { id: ctx.user.id, kind: "user" }, { number: row.number, reason: reason.trim().slice(0, 200) });
+    // A message with the customer's link that has not gone out is stopped: the link stopped working with the void.
+    await withdrawInvoiceDeliveriesInTx(db, ctx.org.orgId, id, "invoice_voided");
     await announceVoided(db, ctx.org.orgId, id, { id: ctx.user.id, kind: "user" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "invoice.voided", targetType: "customer_invoice", targetId: id, result: "success", metadata: { number: row.number } }, db);
     return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, id)) as InvoiceRow, org.timezone);
@@ -712,6 +769,7 @@ export async function writeOffInvoice(ctx: OrgContext, id: string, rawInput: unk
     await db.query("update customer_invoices set written_off_at = now(), written_off_by = $3, write_off_reason = $4 where id = $1 and org_id = $2", [id, ctx.org.orgId, ctx.user.id, reason.trim()]);
     await stopReminders(db, ctx.org.orgId, "written_off", id);
     await addInvoiceEvent(db, ctx.org.orgId, id, "written_off", { id: ctx.user.id, kind: "user" }, { number: row.number, balance: toDecimalString(toMinor(row.balance_minor), row.currency), currency: row.currency, reason: reason.trim().slice(0, 200) });
+    await withdrawInvoiceDeliveriesInTx(db, ctx.org.orgId, id, "invoice_written_off");
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "invoice.written_off", targetType: "customer_invoice", targetId: id, result: "success", metadata: { number: row.number, balance: toDecimalString(toMinor(row.balance_minor), row.currency), currency: row.currency } }, db);
     return detailFor(db, ctx.org.orgId, (await loadInvoiceRow(db, ctx.org.orgId, id)) as InvoiceRow, org.timezone);
   });

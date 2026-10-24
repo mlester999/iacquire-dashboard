@@ -63,6 +63,16 @@ const CRM_MIGRATION_NAMES = [
   // Payment controls for iAcquire's own billing: columns on billing_accounts, payments and maintenance_subscriptions, a function and four notification kinds; its rollback
   // refuses while a payment recorded by hand, a waiver a person made or a plan period tied to a payment exists (none does here).
   "0099_payment_controls.sql",
+  // Requests completion: eight tables with read policies on app.permitted_orgs (change classifications, change orders and their decisions, scope amendments, prerequisites,
+  // mentions, triage records, surveys), columns on client_projects and support_settings and five notification kinds; its rollback refuses while a Request a Change request,
+  // a change order, a prerequisite, a mention, a triage record or a survey exists (none does here). It is rolled back after 0099 and before 0096.
+  "0098_requests_completion.sql",
+  // The prospect demo funnel: seven tables with row-level security and no grant for any application role, two agency.prospects.* permission rows and four notification kinds; its
+  // rollback refuses while a prospect, a transcript, a session, a link or a timeline exists, or a demo notification (none does here). It is rolled back first of all.
+  "0100_demo_funnel.sql",
+  // Onboarding completion: a snapshot column on onboarding_responses, the 'onboarding' origin of a draft calendar and one optional step in the default checklist; its rollback
+  // refuses while a snapshot, a calendar drafted from onboarding answers or a media storage step a person worked on exists (none does here). Rolled back before 0100.
+  "0102_onboarding_snapshot.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

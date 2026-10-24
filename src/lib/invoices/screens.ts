@@ -1,7 +1,7 @@
 import { MoneyError, type CurrencyCode } from "@/lib/money";
 import { InvoiceInputError } from "@/lib/invoices/errors";
 import { parseLine, parseLines, type LineFormInput } from "@/lib/invoices/lines";
-import { canEditDraft, issueBlockedReason, type InvoicePaymentStatus, type InvoiceStatus } from "@/lib/invoices/state";
+import { canEditDraft, issueBlockedReason, type InvoiceCreatedVia, type InvoicePaymentStatus, type InvoiceStatus } from "@/lib/invoices/state";
 
 // What the invoice screens decide for themselves, kept out of the components so it can be tested: which list a filter means, what the form's lines come to as the person types,
 // and which buttons an invoice offers a person. The server decides every one of these again; this only decides what to offer.
@@ -126,7 +126,7 @@ export interface ActionFacts {
   writtenOff: boolean;
   balanceMinor: number;
   paidMinor: number;
-  createdVia: "manual" | "workflow" | "deal";
+  createdVia: InvoiceCreatedVia;
   isAuthor: boolean;
   approvalRequiredForCreators: boolean;
   can: { create: boolean; approve: boolean; send: boolean; recordPayment: boolean; void: boolean; refund: boolean; connect: boolean };

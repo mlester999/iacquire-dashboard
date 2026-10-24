@@ -15,6 +15,9 @@ import { Dialog } from "@/components/ui/overlays";
 import { ProjectStatusBadge, bytesLabel, useRunner } from "@/components/projects/common";
 import { decideQuoteAction, markQuoteViewedAction, postProjectMessageAction, respondToMilestoneAction } from "@/app/actions/projects";
 import { createTicketAction } from "@/app/actions/support";
+import { ChangeRequestsSection } from "@/components/projects/change-requests";
+import { formatDay } from "@/lib/project-change-orders";
+import { PrerequisitesCard } from "@/components/projects/prerequisites-card";
 import { MILESTONE_LABEL, PROJECT_FLOW, PROJECT_STATUS_LABEL, QUOTE_ACKNOWLEDGEMENT, QUOTE_STATUS_LABEL, formatMoney, type ProjectStatus } from "@/lib/projects";
 import type { MilestoneView, ProjectDetail, QuoteView } from "@/server/projects/shared";
 import { cn, formatDate, formatDateTime, relativeTime } from "@/lib/utils";
@@ -59,6 +62,8 @@ export function ProjectWorkspace({
   canApproveQuote,
   canOpenSupport,
   justSubmitted,
+  changesEnabled = false,
+  reviewExpectation = null,
 }: {
   project: ProjectDetail;
   timeZone: string;
@@ -66,6 +71,10 @@ export function ProjectWorkspace({
   canApproveQuote: boolean;
   canOpenSupport: boolean;
   justSubmitted: boolean;
+  /** Request a Change is switched on for this workspace (new changes can be asked for). */
+  changesEnabled?: boolean;
+  /** "We aim to look at a new request within N hours", only when the Super Admin set a target and chose to show it. */
+  reviewExpectation?: string | null;
 }) {
   const r = project.request;
   const closed = r.status === "cancelled" || r.status === "completed";
@@ -87,6 +96,7 @@ export function ProjectWorkspace({
         </motion.div>
       )}
 
+      {reviewExpectation && r.status === "submitted" && <Notice tone="neutral" title="When to expect a first look" body={reviewExpectation} />}
       {r.status === "on_hold" && <Notice tone="neutral" title="This project is on hold" body="We'll update this page when work resumes. Message us below if you have questions." />}
       {r.status === "cancelled" && <Notice tone="danger" title="This project was cancelled" body={r.cancelReason ?? "No reason was recorded."} />}
       {r.status === "discovery_needed" && (
@@ -101,12 +111,14 @@ export function ProjectWorkspace({
           Current stage <ProjectStatusBadge status={r.status} />
         </p>
       </Card>
-      <nav aria-label="Project workspace sections" className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 shadow-card [scrollbar-width:none]"><a href="#project-milestones" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Milestones</a>{project.quotes.length>0&&<a href="#project-quotes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Scope & quotes</a>}<a href="#project-conversation" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Conversation <span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{project.messages.length}</span></a><a href="#project-updates" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Activity</a></nav>
+      <nav aria-label="Project workspace sections" className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 shadow-card [scrollbar-width:none]"><a href="#project-milestones" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Milestones</a>{project.quotes.length>0&&<a href="#project-quotes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Scope & quotes</a>}{project.delivery&&<a href="#project-changes" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Changes{project.changes.length>0&&<span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{project.changes.length}</span>}</a>}<a href="#project-conversation" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Conversation <span className="ml-1.5 rounded-md bg-surface-3 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-ink-2">{project.messages.length}</span></a><a href="#project-updates" className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-primary-soft hover:text-primary-ink">Activity</a></nav>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-5">
           {project.quotes.length > 0 && <div id="project-quotes" className="scroll-mt-24"><QuoteSection requestId={r.id} quotes={project.quotes} timeZone={timeZone} canAct={canRequest} canApprove={canApproveQuote}/></div>}
+          <PrerequisitesCard items={project.prerequisites} timeZone={timeZone} />
           {project.delivery && <DeliveryCard project={project} timeZone={timeZone} />}
+          <div id="project-changes" className="scroll-mt-24"><ChangeRequestsSection project={project} timeZone={timeZone} canRequest={canRequest} canApprove={canApproveQuote} changesEnabled={changesEnabled} /></div>
           <div id="project-milestones" className="scroll-mt-24"><MilestonesCard requestId={r.id} milestones={project.milestones} canAct={canRequest} timeZone={timeZone}/></div>
           <div id="project-updates" className="scroll-mt-24"><UpdatesCard updates={project.updates} timeZone={timeZone}/></div>
           <div ref={threadRef} id="project-conversation" className="scroll-mt-24">
@@ -376,15 +388,30 @@ function DeliveryCard({ project, timeZone }: { project: ProjectDetail; timeZone:
           <InfoChip icon={<CalendarClock />}>Agreed {formatDate(d.agreedAt, timeZone)}</InfoChip>
           {d.startedAt && <InfoChip icon={<Flag />}>Started {formatDate(d.startedAt, timeZone)}</InfoChip>}
           {d.timelineText && <InfoChip>{d.timelineText}</InfoChip>}
+          {d.revisionsIncluded !== null && <InfoChip>Revisions used {d.revisionsUsed} of {d.revisionsIncluded}</InfoChip>}
+          {d.revisionsIncluded === null && d.revisionsUsed > 0 && <InfoChip>{d.revisionsUsed} revision{d.revisionsUsed === 1 ? "" : "s"} made</InfoChip>}
+          {d.warrantyDays !== null && !d.warrantyEndsOn && <InfoChip>Support period {d.warrantyDays} days after handover</InfoChip>}
+          {d.warrantyEndsOn && <InfoChip icon={<ShieldCheck />}>Support until {formatDay(d.warrantyEndsOn)}</InfoChip>}
         </div>
         <Block title="Scope">
           <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-2">{d.scope}</p>
         </Block>
+        {project.amendments.map((a) => (
+          <Block key={a.id} title={`Added: ${a.changeRef}`}>
+            <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-2">{a.addedScope.split("\n\n").slice(1).join("\n\n") || a.addedScope}</p>
+          </Block>
+        ))}
         <ListBlock title="Deliverables" items={d.deliverables} />
         {d.handoverNotes && (
           <div className="rounded-xl border border-success/25 bg-success-soft/60 p-4">
             <p className="text-[13px] font-semibold text-success-ink">Handover{d.completedAt ? ` · ${formatDate(d.completedAt, timeZone)}` : ""}</p>
             <p className="mt-1 whitespace-pre-wrap text-[13.5px] leading-relaxed text-success-ink/90">{d.handoverNotes}</p>
+          </div>
+        )}
+        {d.completedAt && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+            <Link href={`/support/report-issue?project=${project.request.id}`} className="inline-flex min-h-11 items-center gap-1.5 font-medium text-primary-ink hover:underline"><LifeBuoy className="size-4" aria-hidden /> Report an issue with this project</Link>
+            <Link href={`/support/feedback?project=${project.request.id}`} className="inline-flex min-h-11 items-center gap-1.5 font-medium text-primary-ink hover:underline"><MessageSquare className="size-4" aria-hidden /> Share feedback about it</Link>
           </div>
         )}
       </CardContent>
@@ -523,10 +550,13 @@ function ThreadCard({ requestId, messages, canPost, timeZone }: { requestId: str
   const reduce = useReducedMotion();
   const { run, isPending } = useRunner();
   const [body, setBody] = React.useState("");
+  // The same message sent twice (a double click, a retry after a dropped connection) is saved once; the id changes after each message that went through.
+  const messageId = React.useRef<string | undefined>(globalThis.crypto?.randomUUID?.());
   async function send() {
-    const ok = await run("msg", () => postProjectMessageAction(requestId, body));
+    const ok = await run("msg", () => postProjectMessageAction(requestId, body, messageId.current));
     if (ok !== null) {
       setBody("");
+      messageId.current = globalThis.crypto?.randomUUID?.();
       router.refresh();
     }
   }

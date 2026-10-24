@@ -28,7 +28,7 @@ export const BLUEPRINT_SECTIONS = [
 export const ADMIN_SECTIONS: Record<string, string> = {
   clients: "Clients", crm: "Client CRMs", "crm-blueprints": "CRM Blueprints", employees: "AI Employees", support: "Requests", notifications: "Notifications", "website-studio": "Website Studio", projects: "Custom projects",
   maintenance: "Maintenance", services: "Service catalog", portfolio: "Portfolio", "setup-templates": "Setup templates", integrations: "Integrations", "inbox-rollout": "Inbox rollout", "module-rollout": "Module rollout", aqi: "AQi Management", operations: "AQi Operations",
-  health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", team: "Agency team", audit: "Audit log",
+  health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", prospects: "Demo prospects", team: "Agency team", audit: "Audit log",
 };
 
 /**
@@ -95,6 +95,7 @@ export function adminCrumbs(pathname: string): Crumb[] {
     } else if (area === "crm" && a === "reports") trail.push({ label: "CRM operations" });
     else if (area === "projects" && a) trail.push({ label: "Project" });
     else if (area === "support" && a) trail.push({ label: a === "analytics" ? "Analytics" : a === "settings" ? "Settings" : "Request" });
+    else if (area === "prospects" && a) trail.push({ label: a === "settings" ? "Settings" : "Prospect" });
   }
   // The last crumb is where the reader is, so it is not a link.
   return trail.map((crumb, i) => (i === trail.length - 1 ? { label: crumb.label } : crumb));

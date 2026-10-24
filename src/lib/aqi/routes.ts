@@ -44,6 +44,7 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/support", label: "Get Support", description: "Ask the iAcquire team for help.", permission: "support.use" },
   { path: "/support/report-issue", label: "Report an Issue", description: "Tell the iAcquire team about something that isn't working.", permission: "support.use" },
   { path: "/support/feedback", label: "Provide Feedback", description: "Share a suggestion or comment with the iAcquire team.", permission: "support.use" },
+  { path: "/support/change", label: "Request a Change", description: "Ask the iAcquire team to change something about your setup or a custom project.", permission: "support.use" },
   { path: "/support/requests", label: "My Requests", description: "Follow your support requests, issue reports and feedback.", permission: "support.use" },
   { path: "/projects", label: "Projects", description: "Custom projects, quotes and deliverables.", permission: "projects.view" },
   { path: "/website", label: "Website", description: "Your website and publishing status.", permission: "website.view" },
@@ -56,6 +57,7 @@ export const AQI_ROUTES: AqiRoute[] = [
   { path: "/admin/health", label: "Health", description: "Platform health and incidents.", agency: "staff", permission: "agency.security.manage" },
   { path: "/admin/usage", label: "Usage", description: "Platform usage and limits.", agency: "staff" },
   { path: "/admin/support", label: "Requests", description: "Client support requests, issue reports and feedback.", agency: "staff" },
+  { path: "/admin/prospects", label: "Demo prospects", description: "People who asked for a demo, their demo windows and the demo settings.", agency: "staff", permission: "agency.prospects.view" },
   { path: "/admin/aqi", label: "AQi Management", description: "Configure AQi, its knowledge and publishing.", agency: "super_admin" },
   { path: "/admin/operations", label: "AQi Operations", description: "The Super Admin AI Platform Operations Copilot.", agency: "super_admin" },
 ];

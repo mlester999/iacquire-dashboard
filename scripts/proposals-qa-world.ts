@@ -6,9 +6,11 @@
  *
  * It is a plain module (no vitest, no database setup) so that both scripts/ui-qa-proposals-seed.qa.ts and tests/proposals-qa-seed.test.ts can run it.
  */
+import crypto from "node:crypto";
 import { withSystem } from "../src/server/db/index";
 import type { CrmActor } from "../src/server/crm/actor";
-import { createContact } from "../src/server/crm/contacts";
+import { createContact, setContactConsent } from "../src/server/crm/contacts";
+import { saveCredential } from "../src/server/security/credentials";
 import { adjustCredits, getBalance } from "../src/server/billing/ledger";
 import { draftProposalWithAi } from "../src/server/proposals/ai";
 import { createCatalogItem, createTaxRate, listCatalogItems, type CatalogItemView } from "../src/server/proposals/catalog";
@@ -240,6 +242,54 @@ export async function seedProposalWorld(a: ProposalWorldActors, opts: { now?: Da
   rows.push(...(await seedSigningWorld(a, { now })));
 
   return rows;
+}
+
+/**
+ * Makes some of the world's sent proposals sendable to their customers from the Delivery tab, for browser QA of "Send it to the customer". It contacts NO ONE: the workspace's email
+ * goes through a native Resend channel with a made-up credential, and the QA environment keeps RESEND_WRITES_ENABLED off, so a message that is confirmed is queued and then
+ * blocked by the dispatcher ("Sending through this channel's provider is not switched on") instead of leaving. The workspace is given credits and a published email rate, and these
+ * customers have the service consent for email that a business would have recorded:
+ *
+ *   - P-0001 Elena Alvarez, P-0002 Marcus Brooks and P-0007 Linh Nguyen: consent on record, so the preview is ready and a confirmed message is queued;
+ *   - P-0003 Wei Chen: no consent on record, so the preview says the send chain would refuse it.
+ *
+ * It replaces the workspace's email channel with the native one (one email channel per workspace), so it is separate from seedProposalWorld and runs only when asked for.
+ */
+export async function seedDeliveryWorld(a: ProposalWorldActors): Promise<{ ready: string[]; refused: string[] }> {
+  const orgId = a.owner.orgId;
+  const ownerId = a.owner.userId as string;
+  await withSystem(async (db) => {
+    // Only an agency Super Admin may store a credential. The throwaway QA database has one from the other seeds, or gets one here.
+    const admin = (await db.query<{ id: string }>("select id from users where platform_role = 'agency_super_admin' order by created_at limit 1")).rows[0]
+      ?? (await db.query<{ id: string }>("insert into users (email, full_name, email_verified_at, platform_role) values ('qa-delivery-admin@example.test', 'QA Super Admin', now(), 'agency_super_admin') returning id")).rows[0];
+    const saved = await saveCredential(db, { orgId, provider: "resend", label: "Resend (made up, for QA)", secret: `qa-made-up-${crypto.randomBytes(12).toString("hex")}`, actorId: admin.id });
+    await db.query(
+      `insert into messaging_channels (org_id, channel, provider, enabled, sender_identity, sender_verified_at, registration_status, provider_sender_id, credential_id, capability_test, capability_tested_at)
+       values ($1, 'email', 'resend', true, 'Harbor Home Services <hello@harbor.example.test>', now(), 'not_required', $2, $3, $4::jsonb, now())
+       on conflict (org_id, channel) do update set provider = 'resend', enabled = true, sender_identity = excluded.sender_identity, sender_verified_at = now(), registration_status = 'not_required',
+         provider_sender_id = excluded.provider_sender_id, provider_account_id = null, credential_id = excluded.credential_id, capability_test = excluded.capability_test, capability_tested_at = now()`,
+      [orgId, crypto.randomUUID(), saved.id, JSON.stringify({ ok: true, checkedAt: new Date().toISOString(), checks: [{ label: "Made up for QA", ok: true, detail: "Nothing was checked with the provider." }] })],
+    );
+    const version = (await db.query<{ id: string }>("select id from usage_rate_versions order by version desc limit 1")).rows[0];
+    if (!version) throw new Error("No usage rate version exists, so an email cannot be priced.");
+    await db.query(
+      "insert into usage_unit_rates (rate_version_id, provider, unit_type, unit_label, wholesale_micros_per_unit, client_micros_per_unit) values ($1, 'resend', 'email_send', 'email_send', 900, 1170) on conflict do nothing",
+      [version.id],
+    );
+  });
+  const balance = await withSystem((db) => getBalance(db, orgId));
+  if (balance.availableMicros < 5_000_000) {
+    await withSystem((db) => adjustCredits(db, { orgId, deltaMicros: 5_000_000, reason: "QA credit for sending messages (isolated QA database)", userId: ownerId }));
+  }
+  const contactOf = async (email: string) => (await withSystem((db) => db.query<{ id: string }>("select id from contacts where org_id = $1 and email = $2 and deleted_at is null", [orgId, email]))).rows[0]?.id;
+  const ready: string[] = [];
+  for (const email of ["elena.alvarez@example.test", "marcus.brooks@example.test", "linh.nguyen@example.test"]) {
+    const id = await contactOf(email);
+    if (!id) throw new Error(`The QA customer ${email} does not exist: seed the proposals world first.`);
+    await setContactConsent(a.owner, id, { channel: "email", purpose: "service", status: "granted", evidence: "Agreed to messages about their work on the intake form (QA data)" });
+    ready.push(email);
+  }
+  return { ready, refused: ["dr.chen@example.test"] };
 }
 
 /**

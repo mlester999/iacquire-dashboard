@@ -18,7 +18,8 @@ import type { ProposalDetail } from "@/server/proposals/view";
 import { AiBadge, StatusBadge } from "@/components/proposals/status";
 
 // What a person can do with a proposal right now. The server decides every one of these again; this only offers what the status and the person's role allow, and says why
-// when something is not offered. Nothing here contacts the customer: sending marks a version as sent and makes the customer's link, which the team gives to the customer.
+// when something is not offered. Nothing here contacts the customer: marking a version as sent freezes it and makes the customer's link. Carrying the link to the customer is a
+// separate, confirmed step on the Delivery tab (src/components/proposals/delivery-send.tsx).
 
 export interface ProposalActionsProps {
   detail: ProposalDetail;
@@ -86,9 +87,9 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
             </>
           ) : can.send ? (
             <>
-              <p className="text-[12.5px] text-muted">Nothing here needs a second look, so you can send it yourself. It is recorded as approved by you.</p>
+              <p className="text-[12.5px] text-muted">Nothing here needs a second look, so you can mark it as sent yourself. It is recorded as approved by you.</p>
               <div className="flex flex-wrap gap-2">
-                <Button variant="brand" disabled={dirty || blockSend.length > 0} onClick={() => setConfirm("send")}>Send to the customer</Button>
+                <Button variant="brand" disabled={dirty || blockSend.length > 0} onClick={() => setConfirm("send")}>Mark as sent</Button>
                 <Button variant="secondary" loading={busy("submit")} disabled={dirty || blockSubmit.length > 0 || !can.create} onClick={() => run("submit", () => submitForApprovalAction(detail.id), "Sent for approval.")}>Ask for approval first</Button>
               </div>
               {fixFirst(blockSend)}
@@ -128,7 +129,7 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
         <div className="space-y-3 border-t border-line pt-4">
           {can.send && (mine || can.approve) ? (
             <>
-              <Button variant="brand" disabled={dirty || blockSend.length > 0 || detail.approvedVersion !== detail.version} onClick={() => setConfirm("send")}>Send to the customer</Button>
+              <Button variant="brand" disabled={dirty || blockSend.length > 0 || detail.approvedVersion !== detail.version} onClick={() => setConfirm("send")}>Mark as sent</Button>
               {fixFirst(blockSend)}
               {saveFirst}
             </>
@@ -139,7 +140,7 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
       {s === "sent" && (
         <div className="space-y-3 border-t border-line pt-4">
           <p className="text-[13px] text-ink-2">
-            The customer&apos;s link is on the <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("delivery")}>Delivery tab</button>. iAcquire has not sent it to anyone: copy it and give it to the customer yourself.
+            The customer&apos;s link, and any message sent with it, are on the <button type="button" className="font-medium text-primary-ink underline" onClick={() => onOpenTab("delivery")}>Delivery tab</button>. Marking a proposal as sent contacts no one: send the link from there, or copy it and give it to the customer yourself.
           </p>
           {detail.requiresSignature && (
             <p className="text-[13px] text-ink-2">
@@ -161,8 +162,8 @@ export function ProposalActions({ detail, can, twoPerson, dirty, tz, onOpenTab }
       {s === "accepted" && <p className="text-[12.5px] text-muted">An accepted proposal is final. To change what was agreed, duplicate it and start a new proposal.</p>}
 
       <ConfirmDialog
-        open={confirm === "send"} onOpenChange={(o) => !o && setConfirm(null)} title="Send this version to the customer?" confirmLabel="Mark as sent" loading={busy("send")}
-        description={<>This freezes version {detail.version} exactly as it is, makes the customer&apos;s link and marks the proposal as sent. iAcquire does not email it: you copy the link on the Delivery tab and give it to the customer.</>}
+        open={confirm === "send"} onOpenChange={(o) => !o && setConfirm(null)} title="Mark this version as sent?" confirmLabel="Mark as sent" loading={busy("send")}
+        description={<>This freezes version {detail.version} exactly as it is, makes the customer&apos;s link and marks the proposal as sent. It contacts no one. On the Delivery tab you can then send the customer their link by email, text message or WhatsApp after you have read the message, or copy it and give it to them yourself.</>}
         onConfirm={async () => { const ok = await run("send", () => sendProposalAction(detail.id, detail.version), "Marked as sent. The customer's link is on the Delivery tab."); setConfirm(null); if (ok) onOpenTab("delivery"); }}
       />
       <ConfirmDialog

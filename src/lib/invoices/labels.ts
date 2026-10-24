@@ -1,4 +1,6 @@
 import { formatMinor, toDecimalString, type CurrencyCode } from "@/lib/money";
+import { DELIVERY_CHANNEL_WORDS, type DeliveryChannel } from "@/lib/invoices/delivery-text";
+import { INVOICE_WITHDRAWN_REASON_TEXT, type InvoiceWithdrawReason } from "@/lib/invoices/delivery-state";
 
 // The words the invoice screens use for what the records say. Pure. A kind this file does not know is shown as plain words made from its name, never hidden: the
 // history is the record, and a record the screen cannot name is still a record.
@@ -32,11 +34,21 @@ export const amountText = (minor: number, currency: CurrencyCode) => toDecimalSt
 type Detail = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+
+/** The first line of the history of an invoice made from a proposal: where it came from and what was and was not copied. */
+function fromProposalSentence(d: Detail): string {
+  const copied = count(d.lines);
+  const left = count(d.recurringLines);
+  const from = str(d.proposalNumber) ? `proposal ${str(d.proposalNumber)}${count(d.proposalVersion) ? ` (version ${count(d.proposalVersion)})` : ""}` : "a proposal";
+  return `Draft made from ${from}: ${copied} ${copied === 1 ? "line" : "lines"} the customer pays once ${copied === 1 ? "was" : "were"} copied.${left ? ` ${left} monthly or yearly ${left === 1 ? "line was" : "lines were"} not copied.` : ""}`;
+}
+
 /** One sentence for an entry of an invoice's history. The detail holds ids, numbers, amounts and short labels only (never a customer's details), and so does the sentence. */
 export function eventSentence(kind: string, d: Detail): string {
   const amount = str(d.amount) && str(d.currency) ? `${str(d.currency)} ${str(d.amount)}` : "";
   switch (kind) {
-    case "created": return "Draft created.";
+    case "created": return d.via === "proposal" ? fromProposalSentence(d) : "Draft created.";
     case "edited": return "Draft edited.";
     case "submitted": return "Sent for approval.";
     case "withdrawn": return "Taken back to a draft.";
@@ -45,6 +57,15 @@ export function eventSentence(kind: string, d: Detail): string {
     case "issued": return `Issued${str(d.number) ? ` as ${str(d.number)}` : ""}${amount ? ` for ${amount}` : ""}.`;
     case "link_shown": return "The customer's link was shown to a team member.";
     case "link_rotated": return "The customer's link was replaced. The old link stopped working.";
+    case "delivery_queued": {
+      const word = Object.hasOwn(DELIVERY_CHANNEL_WORDS, str(d.channel)) ? DELIVERY_CHANNEL_WORDS[str(d.channel) as DeliveryChannel] : "a message";
+      return `A message with the customer's link was queued, to go by ${word}${str(d.waitingUntil) ? " when sending hours open" : ""}. The list of messages shows where it went and what became of it.`;
+    }
+    case "delivery_withdrawn": {
+      const n = Number(d.count) || 1;
+      const why = Object.hasOwn(INVOICE_WITHDRAWN_REASON_TEXT, str(d.reason)) ? INVOICE_WITHDRAWN_REASON_TEXT[str(d.reason) as InvoiceWithdrawReason] : "";
+      return `${n === 1 ? "A message that had not gone out was" : `${n} messages that had not gone out were`} stopped. ${why}`.trim();
+    }
     case "viewed": return "The customer opened the invoice.";
     case "checkout_started": return `A payment page was opened${amount ? ` for ${amount}` : ""}.`;
     case "payment_verified": return `${str(d.provider) === "simulated" ? "A test payment" : "A payment"} was confirmed by the payment provider${amount ? `: ${amount}` : ""}.${d.livemode === false ? " Test mode: no real money moved." : ""}`;

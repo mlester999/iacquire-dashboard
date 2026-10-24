@@ -11,6 +11,7 @@ import { getEmployeeInstructionOverview } from "@/server/workforce/instructions"
 import { listEmployeeKnowledge } from "@/server/workforce/knowledge";
 import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
 import { ACCEPTED_UPLOADS } from "@/server/knowledge/service";
+import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
 import { currentTime } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
@@ -137,6 +138,8 @@ export default async function EmployeePage({ params, searchParams }: { params: P
     listProactiveReports(ctx, { role: meta.key, limit: 5 }).catch(() => []),
     getProactiveMonitoringStatus(ctx).catch(() => null),
   ]);
+  // A client workspace's AI team starts after the setup payment is confirmed; the internal agency employee has no such step.
+  const paymentCleared = internalEmployee ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
 
   return (
     <EmployeeDetail
@@ -188,6 +191,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       canConfigure={canConfigure}
       canChat={ctx.can("agents.use")}
       isAgencyEmployee={internalEmployee}
+      paymentCleared={paymentCleared}
       acknowledgementCurrent={internalVerification.acknowledgementCurrent}
       identityCurrent={internalVerification.identityCurrent}
       adminManageHref={internalEmployee ? `/admin/employees/${meta.slug}` : null}

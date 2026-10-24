@@ -1,5 +1,6 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
+import { eraseInvoiceDeliveriesInTx } from "@/server/invoices/delivery";
 
 // A privacy request for one contact reaches their invoices here (called from redactContact in the same transaction).
 //
@@ -14,6 +15,8 @@ import type { Queryable } from "@/server/db";
 export interface InvoiceErasureResult {
   discardedDrafts: number;
   blankedInvoices: number;
+  /** Messages with an invoice's link that had not gone out and were stopped. */
+  stoppedDeliveries: number;
 }
 
 export async function eraseInvoiceCustomerDetails(db: Queryable, orgId: string, contactId: string): Promise<InvoiceErasureResult> {
@@ -28,8 +31,11 @@ export async function eraseInvoiceCustomerDetails(db: Queryable, orgId: string, 
     await db.query("insert into customer_invoice_events (org_id, invoice_id, kind, actor_kind, detail) values ($1, $2, 'customer_details_erased', 'system', '{}'::jsonb)", [orgId, r.id]);
   }
   // Nobody is left to remind: what was scheduled is cancelled. (A reminder already queued goes with the customer's messages, which the same erasure removes.)
+  // Nor is anyone left to send the invoice to: a message with its link that has not gone out is stopped, and the masked addresses kept on the messages that did are removed.
+  let stoppedDeliveries = 0;
   if (blanked.rows.length) {
     await db.query("update customer_invoice_reminders set status = 'cancelled', reason = 'no_customer' where org_id = $1 and invoice_id = any($2::uuid[]) and status = 'scheduled'", [orgId, blanked.rows.map((r) => r.id)]);
+    stoppedDeliveries = await eraseInvoiceDeliveriesInTx(db, orgId, blanked.rows.map((r) => r.id));
   }
-  return { discardedDrafts: gone.rows.length, blankedInvoices: blanked.rows.length };
+  return { discardedDrafts: gone.rows.length, blankedInvoices: blanked.rows.length, stoppedDeliveries };
 }

@@ -9,6 +9,7 @@ import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/l
 import { redactReviewText, type ReviewVersionView } from "@/lib/config-review";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 import { listHeldConfigReviewsForOrg } from "@/server/workforce/reviews";
+import { listClientPayments, type AgencyPaymentView } from "@/server/billing/payments-view";
 
 export interface TenantDetail {
   access: {
@@ -18,6 +19,8 @@ export interface TenantDetail {
     integrations: boolean;
     setup: boolean;
   };
+  /** billing.agency_view: sees the payments recorded for this client (the bank reference and the checking note are agency-only). */
+  canViewPayments: boolean;
   org: {
     id: string;
     name: string;
@@ -73,7 +76,16 @@ export interface TenantDetail {
   provisioning: Array<{ id: string; agent_role: AgentRoleKey; kind: string; status: string; detail: string | null; created_at: Date; attempt_count: number; next_retry_at: Date | null; lease_expires_at: Date | null }>;
   ghl: { location_id: string; location_name: string | null; pipeline_id: string | null; calendar_ids: string[]; status: string; verified_at: Date | null; has_credential: boolean } | null;
   integrations: Array<{ provider: string; status: string; detail: string | null; last_checked_at: Date | null }>;
-  billing: { setup_fee_cents: number; currency: string; setup_payment_status: string; activation_status: string; invoice_url: string | null; receipt_url: string | null; paid_at: Date | null; service_terms: string | null } | null;
+  billing: {
+    setup_fee_cents: number; currency: string; setup_payment_status: string; activation_status: string; invoice_url: string | null; receipt_url: string | null; paid_at: Date | null; service_terms: string | null;
+    /** Why the fee was waived, by whom and when; only for a waived fee, and only agency staff ever see it. */
+    waiver_reason: string | null; waived_at: Date | null; waived_by_name: string | null;
+    /** The payment that cleared the fee, when one did. A fee marked paid before payments were recorded has none. */
+    verified_payment_id: string | null;
+    cleared: boolean;
+  } | null;
+  /** iAcquire's own payments for this client (not the invoices it sends its customers). */
+  payments: AgencyPaymentView[];
   usage: UsageSummary;
   staff: Array<{ user_id: string; full_name: string; email: string; assigned: boolean }>;
   failedRuns: Array<{ id: string; agent_role: AgentRoleKey; error_code: string | null; error_message: string | null; finished_at: Date | null }>;
@@ -85,12 +97,13 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
   if (user.platformRole === "none") throw new AppError("not_found", "Client not found.");
   if (!(await agencyCanAccessOrg(user, orgId))) throw new AppError("not_found", "Client not found.");
   return withSystem(async (db) => {
-    const accessResult = await db.query<{ team: boolean; workforce: boolean; workforce_manage: boolean; integrations: boolean; setup: boolean }>(
+    const accessResult = await db.query<{ team: boolean; workforce: boolean; workforce_manage: boolean; integrations: boolean; setup: boolean; billing: boolean }>(
       `select coalesce(app.user_has_agency_permission($1,'agency.clients.invite_users'),false) as team,
               coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as workforce,
               coalesce(app.user_has_agency_permission($1,'agency.workforce.manage'),false) as workforce_manage,
               coalesce(app.user_has_agency_permission($1,'agency.integrations.health'),false) as integrations,
-              coalesce(app.user_has_agency_permission($1,'setup.manage'),false) as setup`,
+              coalesce(app.user_has_agency_permission($1,'setup.manage'),false) as setup,
+              coalesce(app.user_has_agency_permission($1,'billing.agency_view'),false) as billing`,
       [user.id],
     );
     const accessRow = accessResult.rows[0];
@@ -101,6 +114,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       integrations: accessRow?.integrations === true,
       setup: accessRow?.setup === true,
     };
+    const canViewPayments = accessRow?.billing === true;
     const { rows: org } = await db.query<TenantDetail["org"]>(
       "select id, name, slug, status, kind, is_demo, industry, website, timezone, created_at, onboarding_completed_at, suspended_reason from organizations where id = $1",
       [orgId],
@@ -168,9 +182,13 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       [orgId],
     );
     const billing = await db.query<NonNullable<TenantDetail["billing"]>>(
-      "select setup_fee_cents, currency, setup_payment_status, activation_status, invoice_url, receipt_url, paid_at, service_terms from billing_accounts where org_id = $1",
+      `select b.setup_fee_cents, b.currency, b.setup_payment_status, b.activation_status, b.invoice_url, b.receipt_url, b.paid_at, b.service_terms,
+              b.waiver_reason, b.waived_at, (select coalesce(nullif(u.full_name, ''), u.email::text) from users u where u.id = b.waived_by) as waived_by_name,
+              b.verified_payment_id, app.setup_payment_cleared(b.org_id) as cleared
+       from billing_accounts b where b.org_id = $1`,
       [orgId],
     );
+    const clientPayments = canViewPayments ? await listClientPayments(db, orgId) : [];
     const staff = await db.query<TenantDetail["staff"][number]>(
       `select u.id as user_id, u.full_name, u.email, exists (select 1 from staff_assignments s where s.org_id = $1 and s.user_id = u.id) as assigned
        from users u where u.platform_role = 'agency_staff' and u.status = 'active' order by u.full_name`,
@@ -196,6 +214,8 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       ghl: access.integrations ? ghl.rows[0] ?? null : null,
       integrations: access.integrations ? integrations.rows : [],
       billing: access.setup ? billing.rows[0] ?? null : null,
+      canViewPayments,
+      payments: clientPayments,
       usage: await usageSummary(db, orgId),
       staff: access.team ? staff.rows : [],
       failedRuns: access.workforce ? failedRuns.rows : [],

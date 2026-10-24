@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Flame, Inbox, LifeBuoy, MessageSquarePlus, Search, SlidersHorizontal, ThumbsUp, TriangleAlert, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Flame, Inbox, LifeBuoy, MessageSquarePlus, PencilRuler, Search, SlidersHorizontal, ThumbsUp, TriangleAlert, UserRound } from "lucide-react";
 import { Card, EmptyState, Input, Select } from "@/components/ui/primitives";
 import { AvatarTile, StatusPill } from "@/components/ui/status";
 import { PRIORITIES, REQUEST_TYPES, REQUEST_TYPE_LABELS, categoryLabel, statusLabelForAgency, ALL_CATEGORIES } from "@/lib/support/lifecycle";
@@ -13,7 +13,7 @@ import { SLA_TONE, VIEWS, queueHref, type QueueQuery } from "@/components/admin/
 import type { AgencyListItem, AgencyViewCounts } from "@/server/support/types";
 import type { FilterOptions } from "@/server/support/directory";
 
-const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp } as const;
+const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp, change: PencilRuler } as const;
 
 /**
  * The left pane of the Requests Management Center: saved views with live counts, search, filters, and the list. Everything here is a

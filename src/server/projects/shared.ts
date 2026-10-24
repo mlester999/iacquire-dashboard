@@ -1,6 +1,8 @@
 import "server-only";
 import crypto from "node:crypto";
 import type { ProjectStatus, MilestoneStatus } from "@/lib/projects";
+import type { ChangeOrderClassification, ChangeOrderStatus } from "@/lib/project-change-orders";
+import type { PrerequisiteBlocks, PrerequisiteKind, PrerequisiteStatus } from "@/lib/project-prerequisites";
 
 export interface RequestView {
   id: string;
@@ -98,6 +100,8 @@ export interface MessageView {
   body: string;
   internal: boolean;
   createdAt: string;
+  /** The change order this message is about, if any. */
+  changeOrderId?: string | null;
 }
 
 export interface DeliveryView {
@@ -112,6 +116,78 @@ export interface DeliveryView {
   expectedCompletionOn: string | null;
   completedAt: string | null;
   handoverNotes: string | null;
+  /** What the team recorded; null means no number was stated and the quote's own wording stands. */
+  warrantyDays: number | null;
+  warrantyEndsOn: string | null;
+  revisionsIncluded: number | null;
+  revisionsUsed: number;
+}
+
+export interface ChangeDecisionView {
+  quoteVersion: number;
+  decision: "accepted" | "declined";
+  note: string | null;
+  decidedAt: string;
+  decidedByName: string | null;
+}
+
+/** One change a client asked for after the project was agreed. Declined and withdrawn ones stay in the list for good. */
+export interface ChangeOrderView {
+  id: string;
+  ref: string;
+  title: string;
+  description: string;
+  status: ChangeOrderStatus;
+  classification: ChangeOrderClassification;
+  quoteVersion: number;
+  additionalCents: number | null;
+  currency: string | null;
+  weeksMin: number | null;
+  weeksMax: number | null;
+  termsText: string | null;
+  validUntil: string | null;
+  /** The quote is past its valid-until day in the workspace's calendar (the row still says quoted). */
+  expired: boolean;
+  ticketId: string | null;
+  requestedAt: string;
+  requestedByName: string | null;
+  quotedAt: string | null;
+  decidedAt: string | null;
+  appliedAt: string | null;
+  decisions: ChangeDecisionView[];
+  /** The team's own notes. Only ever selected for the agency. */
+  internalNotes?: string | null;
+}
+
+/** What an accepted change added. The agreed scope is the original scope plus these; the original is never rewritten. */
+export interface ScopeAmendmentView {
+  id: string;
+  changeOrderId: string;
+  changeRef: string;
+  changeTitle: string;
+  addedScope: string;
+  addedCents: number;
+  currency: string;
+  weeksMin: number | null;
+  weeksMax: number | null;
+  agreedAt: string;
+}
+
+export interface PrerequisiteView {
+  id: string;
+  kind: PrerequisiteKind;
+  label: string;
+  required: boolean;
+  blocks: PrerequisiteBlocks;
+  status: PrerequisiteStatus;
+  satisfiedAt: string | null;
+  waivedAt: string | null;
+  changeOrderId: string | null;
+  changeStatus: string | null;
+  /** What the person wrote down, and who. Only ever selected for the agency. */
+  evidenceNote?: string | null;
+  waivedReason?: string | null;
+  recordedByName?: string | null;
 }
 
 export interface ProjectDetail {
@@ -124,6 +200,9 @@ export interface ProjectDetail {
   files: FileView[];
   messages: MessageView[];
   tickets: Array<{ id: string; ref: string; subject: string; status: string }>;
+  changes: ChangeOrderView[];
+  amendments: ScopeAmendmentView[];
+  prerequisites: PrerequisiteView[];
 }
 
 // Date-only columns are selected `::text` so a server time zone can never shift the calendar day.
@@ -267,3 +346,6 @@ export const toQuoteView = (q: QuoteRow): QuoteView => ({
 });
 
 export const quoteHashFromRow = (q: QuoteRow) => quoteContentHash(toQuoteView(q));
+
+/** sha256 of the canonical text of a change quote (see changeQuoteCanonical in src/lib/project-change-orders.ts). */
+export const changeQuoteHash = (canonical: string) => crypto.createHash("sha256").update(canonical).digest("hex");

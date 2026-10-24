@@ -147,6 +147,13 @@ const schema = z.object({
   // workspace at once, before any database read, and nothing is recorded. Requests already sent, the team's Reviews screens and public reviews read from a review site are not
   // touched. Unset or false (the default) = the page works as usual.
   REVIEWS_PUBLIC_DISABLED: bool,
+  // The prospect demo (/demo, /api/public/demo/*) has two switches that must both agree. DEMO_ENABLED is the deployment's own permission to run it at all: unset or false (the
+  // default) the public pages answer "not available" and no email is sent. The Super Admin's own switch (demo_settings.enabled, also off by default) is the second. Nothing
+  // already stored is touched by either.
+  DEMO_ENABLED: bool,
+  // The emergency stop: true makes every public demo page and route answer "temporarily unavailable" before any database read, whatever the two switches above say. A prospect
+  // who already has a conversation keeps it; the agency's own Prospects screens are not touched. Unset or false (the default) = the two switches above decide.
+  DEMO_PUBLIC_DISABLED: bool,
   // The master switch for anything that creates or sends a signing request at a REAL signing service (PandaDoc): off (the default), a request for a real connection waits
   // untouched and nothing leaves the machine. Reading what a service reports (checking a pasted key, a request's status, fetching a signed copy) is not a write and is not
   // held by it. The simulated service reaches nothing and is not affected; it is refused in production. A founder-approved switch, like the other provider write switches.

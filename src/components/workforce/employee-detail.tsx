@@ -102,6 +102,8 @@ interface Props {
   acknowledgementCurrent: boolean | null;
   identityCurrent: boolean | null;
   isAgencyEmployee: boolean;
+  /** Whether the client's setup payment is confirmed; absent for an internal employee, where it does not apply. */
+  paymentCleared?: boolean;
   adminManageHref: string | null;
   initialTab: string;
   timeZone: string;
@@ -147,6 +149,7 @@ export function EmployeeDetail(props: Props) {
     isAgencyEmployee: props.isAgencyEmployee,
     taskExecuting: agent.taskExecuting,
     evaluatedAt: props.now,
+    paymentCleared: props.paymentCleared,
   });
   const goConfigure = () => setTab("configure");
   const showRequirements = () => {

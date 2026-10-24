@@ -43,10 +43,13 @@ const PUBLIC = [
   // A customer's invoice page and the page a payment provider sends them back to. The invoice's private link (or a checkout's reference) in the URL is the only authorization;
   // the page can start a payment for the invoice's balance and show where it stands, nothing else.
   /^\/pay\//,
+  // The prospect demo: asking for it, the emailed link's button and the demo room. A prospect is not a user; the emailed link (works once) and the demo's own cookie are the only
+  // credentials, and they open nothing but that prospect's own demo. Its API is already public through /api/public/ above.
+  /^\/demo(?:\/|$)/,
 ];
 
 /** Pages whose URL carries a customer's manage secret: never cached, indexed, or sent on as a referrer. */
-const SECRET_URL = /^(?:\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)|\/proposal\/|\/api\/public\/proposals\/|\/pay\/|\/api\/public\/invoices\/|\/api\/webhooks\/esign\/)/;
+const SECRET_URL = /^(?:\/book\/(?:manage\/|[^/]+\/[^/]+\/[^/]+\/confirmed\/?$)|\/proposal\/|\/api\/public\/proposals\/|\/pay\/|\/api\/public\/invoices\/|\/api\/webhooks\/esign\/|\/demo\/(?:verify|room)(?:\/|$)|\/api\/public\/demo\/)/;
 
 function contentSecurityPolicy(nonce: string, supabaseOrigin: string | null, framable = false) {
   const dev = process.env.NODE_ENV !== "production";

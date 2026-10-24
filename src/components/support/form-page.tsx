@@ -1,19 +1,24 @@
 import Link from "next/link";
-import { ArrowRight, BellRing, ClipboardCheck, Inbox, LifeBuoy, MessageSquareText, Sparkles, ThumbsUp, TriangleAlert, Wrench } from "lucide-react";
+import { ArrowRight, BellRing, ClipboardCheck, Inbox, LifeBuoy, MessageSquareText, PencilRuler, Scale, Sparkles, ThumbsUp, TriangleAlert, Wrench } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { listMyRequests } from "@/server/support/service";
 import { clientExpectationText, loadSupportSettings } from "@/server/support/settings";
+import { loadChangeFormContext } from "@/server/support/change-form";
+import { requestChangesEnabled } from "@/server/support/change-feature";
+import { linkableProject } from "@/server/projects/client";
 import { PageHero } from "@/components/ui/workspace";
 import { Card } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 import { RequestForm } from "@/components/support/request-form";
 import { REQUEST_TYPE_LABELS, statusLabelForClient, type FeedbackStage, type RequestType } from "@/lib/support/lifecycle";
+import { REQUEST_CHANGES_NOT_ENABLED_MESSAGE, allowanceSentence } from "@/lib/support/change";
 import { relativeTime } from "@/lib/utils";
 
 const HERO: Record<RequestType, { eyebrow: string; title: string; description: string; icon: React.ReactNode }> = {
   support: { eyebrow: "Requests · Get Support", title: "How can we help?", description: "Ask a question or tell us what you need. A person from the iAcquire team will reply right here, and you can follow everything in My Requests.", icon: <LifeBuoy className="size-5" /> },
   issue: { eyebrow: "Requests · Report an Issue", title: "What seems to be the problem?", description: "Tell us what happened and we'll look into it. The more you can tell us, the faster we can help.", icon: <TriangleAlert className="size-5" /> },
   feedback: { eyebrow: "Requests · Provide Feedback", title: "How can we make iAcquire better?", description: "Share an idea, an improvement, or what's working well. Every note is read by the team.", icon: <ThumbsUp className="size-5" /> },
+  change: { eyebrow: "Requests · Request a Change", title: "What would you like changed?", description: "Tell us what you want different in your setup or a custom project. The team will tell you whether it is covered, a small change, or needs a quote. Nothing is done or charged until you agree.", icon: <PencilRuler className="size-5" /> },
 };
 
 const STEPS: Record<RequestType, Array<{ icon: React.ReactNode; title: string; text: string }>> = {
@@ -32,27 +37,54 @@ const STEPS: Record<RequestType, Array<{ icon: React.ReactNode; title: string; t
     { icon: <Sparkles className="size-4" />, title: "The team reviews it", text: "It moves through Under review, Planned or Not planned." },
     { icon: <BellRing className="size-4" />, title: "You can follow it", text: "We don't promise every idea is built, but you'll see what happens." },
   ],
+  change: [
+    { icon: <ClipboardCheck className="size-4" />, title: "We log it", text: "Your request gets a reference number." },
+    { icon: <Scale className="size-4" />, title: "The team decides", text: "Covered, a small change, or a quote first. The team tells you which, in your own words and before anything is done." },
+    { icon: <BellRing className="size-4" />, title: "You agree before anything is charged", text: "If a change needs a price, the owner accepts or declines it here. We never start on a guess." },
+  ],
 };
 
-/** The shared page for Get Support, Report an Issue and Provide Feedback: hero, the real form, and a side column about what happens next. */
-export async function SupportFormPage({ kind, searchParams }: { kind: RequestType; searchParams: { from?: string; category?: string } }) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The shared page for Get Support, Report an Issue, Provide Feedback and Request a Change: hero, the real form, and a side column about what happens next. */
+export async function SupportFormPage({ kind, searchParams }: { kind: RequestType; searchParams: { from?: string; category?: string; project?: string } }) {
   const ctx = await requireOrgContext("support.use");
   const settings = await loadSupportSettings();
-  const recent = await listMyRequests(ctx, { pageSize: 3, scope: "mine", sort: "updated" });
   const hero = HERO[kind];
+  const changeContext = kind === "change" ? await loadChangeFormContext(ctx) : null;
+  // Request a Change is dormant until a Super Admin switches it on for the workspace; until then the page says so and shows no form.
+  if (kind === "change" && !changeContext?.enabled) {
+    return (
+      <div className="module-stack">
+        <PageHero eyebrow={hero.eyebrow} title={hero.title} description={hero.description} icon={hero.icon} tone="blue" />
+        <Card className="p-6" role="status">
+          <h2 className="text-[15px] font-semibold tracking-tight text-ink">Request a Change isn&apos;t switched on for your workspace yet</h2>
+          <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-muted">{REQUEST_CHANGES_NOT_ENABLED_MESSAGE}</p>
+          <Link href="/support" className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-[13px] font-medium text-primary-ink hover:underline">Get support <ArrowRight className="size-3" aria-hidden /></Link>
+        </Card>
+      </div>
+    );
+  }
+  const changeEnabled = kind === "change" ? true : await requestChangesEnabled(ctx.org.orgId);
+  const recent = await listMyRequests(ctx, { pageSize: 3, scope: "mine", sort: "updated" });
   // The page the person came from, as a path only. Anything else is ignored.
   const from = searchParams.from && /^\/[A-Za-z0-9/_-]{0,199}$/.test(searchParams.from) ? searchParams.from : null;
   const expectation = clientExpectationText(settings, "first", settings.defaultPriority[kind]);
   const appVersion = (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || "dev";
-  const others = (["support", "issue", "feedback"] as const).filter((k) => k !== kind);
-  const href = { support: "/support", issue: "/support/report-issue", feedback: "/support/feedback" } as const;
-  const linkLabel = { support: "Get support", issue: "Report an issue", feedback: "Provide feedback" } as const;
+  // A project the person came from (the link on a project's page), kept only if it is one of this workspace's.
+  const projectParam = searchParams.project && UUID.test(searchParams.project) ? searchParams.project : null;
+  const known = projectParam ? (kind === "change" ? changeContext?.projects.find((p) => p.id === projectParam) : await linkableProject(ctx, projectParam)) : null;
+  const aboutProject = known ? { id: known.id, label: `${known.ref} · ${known.title}` } : undefined;
+  const others = (["support", "issue", "feedback", "change"] as const).filter((k) => k !== kind && (k !== "change" || changeEnabled));
+  const href = { support: "/support", issue: "/support/report-issue", feedback: "/support/feedback", change: "/support/change" } as const;
+  const linkLabel = { support: "Get support", issue: "Report an issue", feedback: "Provide feedback", change: "Request a change" } as const;
   return (
     <div className="module-stack">
       <PageHero eyebrow={hero.eyebrow} title={hero.title} description={hero.description} icon={hero.icon} tone="blue" />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0" data-aqi-target={kind === "support" ? "support.new-ticket" : undefined}>
-          <RequestForm kind={kind} orgId={ctx.org.orgId} maxMb={settings.maxAttachmentMb} maxFiles={settings.maxAttachmentsPerMessage} expectation={expectation} appVersion={appVersion} fromPath={from} defaultCategory={searchParams.category} />
+          <RequestForm kind={kind} orgId={ctx.org.orgId} maxMb={settings.maxAttachmentMb} maxFiles={settings.maxAttachmentsPerMessage} expectation={expectation} appVersion={appVersion} fromPath={from} defaultCategory={searchParams.category}
+            aboutProject={aboutProject} change={changeContext ? { projects: changeContext.projects, allowanceNote: allowanceSentence(changeContext.allowance) } : undefined} />
         </div>
         <aside className="space-y-4" aria-label="About your request">
           <Card className="p-5">

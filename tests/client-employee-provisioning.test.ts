@@ -4,11 +4,14 @@ import { withSystem } from "@/server/db";
 import { getProvisioningBundle, requestProvisioning, updateProvisioningJob } from "@/server/workforce/provisioning";
 import { suggestedProfileName } from "@/server/workforce/service";
 import { addMember, createOrg, createUser } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 async function eligibleClient() {
   const org = await createOrg();
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
+  // Everything else a job needs; the setup payment condition has its own tests (tests/payment-gate.test.ts).
+  await clearSetupPayment(org.id);
   await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [org.id]));
   return { org, owner };
 }

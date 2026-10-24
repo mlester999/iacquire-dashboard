@@ -154,6 +154,10 @@ export const CRM_QA_ENV = {
   INVOICES_PUBLIC_DISABLED: "false",
   // And for the customer's review page: pinned off, so a run never looks at /r/<token> answering "temporarily unavailable".
   REVIEWS_PUBLIC_DISABLED: "false",
+  // And for the prospect demo: both switches pinned off, so a run never looks at /demo answering "not available" or "temporarily unavailable" by accident. The demo's own QA
+  // run (scripts/run-demo-qa-seed.mjs) turns it on in the database row it seeds, and its environment overrides DEMO_ENABLED for that run only.
+  DEMO_ENABLED: "false",
+  DEMO_PUBLIC_DISABLED: "false",
   // Electronic signatures: no real signing service is ever reached in a QA run; the simulated one is what QA uses.
   ESIGN_WRITES_ENABLED: "false",
   // Customers' payments: no payment provider is ever called and nothing live is open. The simulated provider and its testing checkout page are what QA uses.

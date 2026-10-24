@@ -17,7 +17,7 @@ import { env } from "../src/server/env";
 import { memberActor } from "../src/server/crm/actor";
 import { permissionsFor, roleHasPermission, type OrgRole } from "../src/lib/permissions";
 import type { Membership, OrgContext } from "../src/server/tenancy/context";
-import { seedProposalWorld, seedSigningWorld } from "./proposals-qa-world";
+import { seedDeliveryWorld, seedProposalWorld, seedSigningWorld } from "./proposals-qa-world";
 
 const ORG_NAME = "Harbor Home Services (Inbox QA)";
 const SUMMARY_FILE = path.resolve(".data/crm-qa/proposals-seed-summary.json");
@@ -47,10 +47,18 @@ async function seed() {
   const user = async (email: string) => (await q<{ id: string; email: string; full_name: string }>("select id, email, full_name from users where email = $1", [email]))[0];
   const as = async (email: string, role: OrgRole) => memberActor(ctxFor(await user(email), org, role));
   const actors = async () => ({ owner: await as("owner.harbor@example.test", "owner"), manager: await as("manager.harbor@example.test", "admin"), sales: await as("sales.harbor@example.test", "sales_rep") });
+  // Opt in with PROPOSALS_QA_DELIVERY=1: the workspace's email channel becomes a native one with a made-up credential, so the Delivery tab's "Send it to the customer" can be tried.
+  // Nothing can leave (RESEND_WRITES_ENABLED stays off in the QA environment). It replaces the workspace's email channel, which the Inbox QA data uses, so it is not the default.
+  const delivery = async () => {
+    if (process.env.PROPOSALS_QA_DELIVERY !== "1") return;
+    const out = await seedDeliveryWorld(await actors());
+    console.log(`Delivery QA data is ready. Consent to email is on record for ${out.ready.join(", ")}; ${out.refused.join(", ")} has none, so the preview says it cannot be sent.`);
+  };
   if ((await q("select 1 from proposals where org_id = $1", [org.id])).length) {
     // The workspace was seeded before electronic signing existed: add only the three signing stories, once.
     if ((await q("select 1 from esign_connections where org_id = $1", [org.id])).length) {
       console.log("The proposals QA data already exists; nothing added.");
+      await delivery();
       return;
     }
     const added = await seedSigningWorld(await actors());
@@ -63,6 +71,7 @@ async function seed() {
   fs.writeFileSync(SUMMARY_FILE, JSON.stringify({ orgId: org.id, proposals: rows }, null, 2));
   console.log(`Proposals QA data is ready (${rows.length} proposals). Customer addresses:`);
   for (const r of rows) console.log(`  ${r.number}  ${r.state}\n      ${r.url ?? "(no customer link)"}${r.email ? `\n      code email to ${r.email}` : ""}`);
+  await delivery();
 }
 
 it.skipIf(!qaDataDir().startsWith(".data/crm-qa/"))("seeds fictional proposals into the isolated QA database", async () => {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ArrowLeft, Ban, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, KeyRound, Link2, MessagesSquare, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
+import { ArrowLeft, Ban, Banknote, Building2, CheckCircle2, ChevronDown, ClipboardCheck, DoorClosed, Globe, Copy, FileCode2, HandCoins, KeyRound, Link2, MessagesSquare, PlayCircle, RefreshCw, ShieldAlert, Stethoscope, UserPlus } from "lucide-react";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, ProgressBar, Select, Textarea } from "@/components/ui/primitives";
@@ -30,6 +30,9 @@ import {
   updateUsageLimitsAction,
   verifyGhlAction,
 } from "@/app/(admin)/admin/actions";
+import { PaymentRow, RecordPaymentDialog, RefundDialog, WaiveFeeDialog } from "@/components/admin/payments-workspace";
+import { setupStatusCopy } from "@/lib/billing-clearance";
+import type { AgencyPaymentView } from "@/server/billing/payments-view";
 import type { TenantDetail } from "@/server/admin/queries";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
 import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
@@ -683,7 +686,78 @@ function UsageTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
   );
 }
 
+/** The billing tab: where the setup fee stands, the controls that change it (Super Admin only), the payments recorded for this client, and the invoice and terms form. */
 function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: boolean; timeZone: string }) {
+  const b = data.billing;
+  const copy = setupStatusCopy(b?.setup_payment_status);
+  const [recording, setRecording] = React.useState(false);
+  const [waiving, setWaiving] = React.useState(false);
+  const [refunding, setRefunding] = React.useState<AgencyPaymentView | null>(null);
+  const clientOption = [{ orgId: data.org.id, name: data.org.name, setupStatus: b?.setup_payment_status ?? "not_invoiced", setupFeeCents: b?.setup_fee_cents ?? 149900, cleared: b?.cleared === true }];
+  const clearingPayment = data.payments.find((p) => p.id === b?.verified_payment_id);
+  if (!b) return <Card className="max-w-3xl"><CardContent><p className="text-[13px] text-muted">Your role does not include this client&apos;s billing.</p></CardContent></Card>;
+  return (
+    <div className="space-y-6">
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <div>
+            <CardTitle>Setup payment</CardTitle>
+            <CardDescription>The AI team is set up, and the setup activated, only after the setup fee is confirmed. Core features are never held back by payment.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={copy.tone}>{copy.label}</Badge>
+            <span className="text-[13px] text-muted">{copy.detail}</span>
+          </div>
+          {b?.setup_payment_status === "waived" && (
+            <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px] text-ink-2">
+              Waived{b.waived_by_name ? ` by ${b.waived_by_name}` : ""}{b.waived_at ? ` on ${formatDate(b.waived_at, timeZone)}` : ""}. Reason: {b.waiver_reason}
+              <span className="mt-1 block text-[12px] text-muted">The client is told the fee was waived, not why.</span>
+            </p>
+          )}
+          {b?.setup_payment_status === "paid" && (
+            <p className="text-[13px] text-ink-2">
+              {clearingPayment ? `Cleared by the ${clearingPayment.provider === "manual" ? "payment recorded" : "payment confirmed"} ${clearingPayment.paidAt ? formatDate(clearingPayment.paidAt, timeZone) : ""}.` : b.verified_payment_id ? "Cleared by a verified payment." : "Marked paid before payments were recorded in the portal. No payment record is attached."}
+            </p>
+          )}
+          {superAdmin && !b?.cleared && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="brand" onClick={() => setRecording(true)}><Banknote className="size-4" aria-hidden /> Record a payment</Button>
+              <Button variant="secondary" onClick={() => setWaiving(true)}><HandCoins className="size-4" aria-hidden /> Waive the setup fee</Button>
+            </div>
+          )}
+          {!superAdmin && !b?.cleared && <p className="text-[12.5px] text-muted">Only a Super Admin can record a payment or waive the fee.</p>}
+        </CardContent>
+      </Card>
+      <Card className="max-w-3xl overflow-hidden">
+        <CardHeader>
+          <div>
+            <CardTitle>Payments</CardTitle>
+            <CardDescription>iAcquire&apos;s own setup fee and plan payments for this client. Payments recorded by hand are labelled as such.</CardDescription>
+          </div>
+          {superAdmin && <Button size="sm" variant="secondary" onClick={() => setRecording(true)}><Banknote className="size-3.5" aria-hidden /> Record a payment</Button>}
+        </CardHeader>
+        {!data.canViewPayments ? (
+          <CardContent><p className="text-[13px] text-muted">Your role does not include payment records.</p></CardContent>
+        ) : data.payments.length === 0 ? (
+          <CardContent><p className="text-[13px] text-muted">No payments recorded yet.</p></CardContent>
+        ) : (
+          <ul className="divide-y divide-line">
+            {data.payments.map((p) => <PaymentRow key={p.id} p={p} canManage={superAdmin} onRefund={setRefunding} timeZone={timeZone} showClient={false} />)}
+          </ul>
+        )}
+      </Card>
+      <BillingDetailsForm data={data} superAdmin={superAdmin} timeZone={timeZone} />
+      <RecordPaymentDialog open={recording} onOpenChange={setRecording} clients={clientOption} orgId={data.org.id} timeZone={timeZone} />
+      <WaiveFeeDialog open={waiving} onOpenChange={setWaiving} orgId={data.org.id} orgName={data.org.name} />
+      <RefundDialog payment={refunding} onClose={() => setRefunding(null)} timeZone={timeZone} />
+    </div>
+  );
+}
+
+/** Invoice and receipt links, terms and the activation label. The setup payment itself is changed only by the controls above. */
+function BillingDetailsForm({ data, superAdmin, timeZone }: { data: Detail; superAdmin: boolean; timeZone: string }) {
   const { run, pending } = useAction();
   const b = data.billing;
   const [form, setForm] = React.useState({
@@ -698,20 +772,23 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
       <CardHeader>
         <div>
           <CardTitle>Setup &amp; activation</CardTitle>
-          <CardDescription>One-time setup fee of ${((b?.setup_fee_cents ?? 149900) / 100).toLocaleString()} {b?.currency ?? "USD"}. Maintenance and custom projects are managed separately. No live payment collection in this view.</CardDescription>
+          <CardDescription>One-time setup fee of ${((b?.setup_fee_cents ?? 149900) / 100).toLocaleString()} {b?.currency ?? "USD"}. Maintenance and custom projects are managed separately. Invoice links and terms are kept here; this form does not collect or confirm payment.</CardDescription>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Setup payment" htmlFor="b-pay">
-            <Select id="b-pay" value={form.setupPaymentStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, setupPaymentStatus: e.target.value }))}>
-              {["not_invoiced", "invoiced", "paid", "waived", "refunded"].map((s) => (
-                <option key={s} value={s}>
-                  {sentenceCase(s)}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {["not_invoiced", "invoiced"].includes(form.setupPaymentStatus) ? (
+            <Field label="Setup invoice" htmlFor="b-pay" hint="Marking it invoiced does not confirm any payment.">
+              <Select id="b-pay" value={form.setupPaymentStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, setupPaymentStatus: e.target.value }))}>
+                <option value="not_invoiced">Not invoiced</option>
+                <option value="invoiced">Invoiced</option>
+              </Select>
+            </Field>
+          ) : (
+            <Field label="Setup payment" htmlFor="b-pay-ro" hint="Changed only by recording a payment, waiving the fee or recording a refund.">
+              <Input id="b-pay-ro" value={setupStatusCopy(form.setupPaymentStatus).label} readOnly />
+            </Field>
+          )}
           <Field label="Activation" htmlFor="b-act">
             <Select id="b-act" value={form.activationStatus} disabled={!superAdmin} onChange={(e) => setForm((f) => ({ ...f, activationStatus: e.target.value }))}>
               {["pending", "active", "suspended"].map((s) => (
@@ -736,7 +813,7 @@ function BillingTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: 
             Save billing
           </Button>
         )}
-        {b?.paid_at && <p className="text-[12.5px] text-muted">Marked paid {formatDateTime(b.paid_at, timeZone)}</p>}
+        {b?.paid_at && b.setup_payment_status === "paid" && <p className="text-[12.5px] text-muted">Confirmed paid {formatDateTime(b.paid_at, timeZone)}</p>}
       </CardContent>
     </Card>
   );

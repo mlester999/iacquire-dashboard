@@ -4,6 +4,7 @@ import { withSystem, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyAgency } from "@/server/notifications";
+import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import type { SessionUser } from "@/server/auth/service";
 import { runChecks } from "@/server/setup/automation";
 import {
@@ -435,8 +436,8 @@ export async function setResponsibleStaff(admin: SessionUser, orgId: string, use
 // ---------------------------------------------------------------------------
 
 async function readinessOf(db: Queryable, inst: InstanceRow) {
-  const [tasks, checks] = await Promise.all([loadRuleTasks(db, inst.org_id), loadCheckStatuses(db, inst.org_id)]);
-  return evaluateReadiness({ state: inst.state, tasks, checks });
+  const [tasks, checks, cleared] = await Promise.all([loadRuleTasks(db, inst.org_id), loadCheckStatuses(db, inst.org_id), isSetupPaymentCleared(db, inst.org_id)]);
+  return evaluateReadiness({ state: inst.state, tasks, checks, payment: { cleared } });
 }
 
 export async function markReadyForReview(admin: SessionUser, orgId: string) {

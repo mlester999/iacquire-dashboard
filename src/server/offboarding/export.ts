@@ -10,7 +10,7 @@ import { maskCustomerLinks } from "@/server/messaging/redact";
 const MAX_ROWS = 100_000;
 const MAX_FILE_BYTES = 150 * 1024 * 1024;
 
-interface TableSpec {
+export interface TableSpec {
   file: string;
   table: string;
   /** Extra SQL condition on the table alias "t". The organization filter is always applied. */
@@ -133,6 +133,9 @@ const TABLES: TableSpec[] = [
   { file: "proposals/answers.json", table: "proposal_decisions", omit: ["ip_hash", "ua_hash"], order: "decided_at" },
   { file: "proposals/history.json", table: "proposal_events", order: "id" },
   { file: "proposals/links.json", table: "proposal_share_links", pick: ["id", "proposal_id", "version", "recipient_email", "recipient_name", "expires_at", "revoked_at", "delivery_channel", "first_opened_at", "last_opened_at", "open_count", "first_viewed_at", "viewed_count", "verified_at", "downloaded_at", "created_at"], order: "created_at" },
+  // The messages that carried a customer's link to them: which version, channel and wording version, who asked, where it went (masked) and why one was stopped. The message text
+  // is in conversations/messages.json with the link written as words; the link itself is never kept anywhere.
+  { file: "proposals/deliveries.json", table: "proposal_deliveries", order: "created_at" },
   { file: "proposals/price-book.json", table: "proposal_catalog_items", order: "created_at" },
   { file: "proposals/tax-rates.json", table: "proposal_tax_rates", order: "created_at" },
   { file: "proposals/templates.json", table: "proposal_templates", order: "created_at" },
@@ -152,6 +155,7 @@ const TABLES: TableSpec[] = [
   { file: "invoices/lines.json", table: "customer_invoice_lines", order: "invoice_id, position" },
   { file: "invoices/history.json", table: "customer_invoice_events", order: "id" },
   { file: "invoices/reminders.json", table: "customer_invoice_reminders", order: "due_at" },
+  { file: "invoices/deliveries.json", table: "customer_invoice_deliveries", order: "created_at" },
   { file: "invoices/payments.json", table: "customer_payments", omit: ["idempotency_key"], order: "received_at" },
   { file: "invoices/refunds.json", table: "customer_refunds", omit: ["idempotency_key"], order: "created_at" },
   { file: "invoices/checkouts.json", table: "customer_payment_attempts", omit: ["checkout_url"], order: "created_at" },
@@ -173,8 +177,19 @@ const TABLES: TableSpec[] = [
   { file: "projects/quotes.json", table: "project_quotes", pick: ["id", "request_id", "org_id", "version", "status", "project_name", "scope", "deliverables", "included_integrations", "exclusions", "timeline_text", "estimated_weeks_min", "estimated_weeks_max", "one_time_cents", "ongoing_monthly_cents", "ongoing_description", "revision_terms", "payment_terms", "warranty_terms", "currency", "valid_until", "sent_at", "first_viewed_at", "created_at"], where: "t.status <> 'draft'" },
   { file: "projects/projects.json", table: "client_projects" },
   { file: "projects/milestones.json", table: "project_milestones" },
-  // verified_by, verified_at and verification_note are the agency's own record of checking a payment received outside a provider: staff-only, like internal notes.
-  { file: "billing/payments.json", table: "payments", omit: ["provider_checkout_id", "provider_payment_id", "checkout_url", "fee_minor", "fx_source", "verified_by", "verified_at", "verification_note"], order: "created_at" },
+  // Change requests on an agreed project, with the columns the client may read in the portal (migration 0098's grants) and no others: not the team's notes, who quoted or applied a
+  // change, or the retry key. A declined or withdrawn change is kept, so it is here too. The client's recorded answer to each quote has no hash of the address it came from.
+  { file: "projects/change-requests.json", table: "project_change_orders", pick: ["id", "ref", "org_id", "request_id", "ticket_id", "title", "description", "status", "classification", "quote_version", "additional_cents", "currency", "additional_weeks_min", "additional_weeks_max", "terms_text", "valid_until", "content_hash", "requested_by", "requested_at", "quoted_at", "decided_at", "applied_at", "created_at", "updated_at"], order: "created_at" },
+  { file: "projects/change-request-answers.json", table: "project_change_order_decisions", pick: ["id", "change_order_id", "org_id", "quote_version", "decision", "note", "decided_by", "decided_at", "content_hash", "acknowledgement"], order: "decided_at" },
+  { file: "projects/added-scope.json", table: "project_scope_amendments", order: "agreed_at" },
+  // What was asked before work starts and whether it is done: not the team's evidence, who confirmed or waived it, or why.
+  { file: "projects/prerequisites.json", table: "project_prerequisites", pick: ["id", "request_id", "org_id", "kind", "label", "required", "blocks", "status", "satisfied_at", "waived_at", "change_order_id", "created_at", "updated_at"], order: "created_at" },
+  // The progress feed and the conversation as the client saw them: the team's internal lines and notes are not here, and no team member's id.
+  { file: "projects/updates.json", table: "project_updates", where: "t.visibility = 'client'", omit: ["author_id"], order: "created_at" },
+  { file: "projects/messages.json", table: "project_messages", where: "t.internal = false", omit: ["author_id", "client_message_id"], order: "created_at" },
+  { file: "support/surveys.json", table: "support_surveys", order: "requested_at" },
+  // external_reference, verified_by, verified_at and verification_note are the agency's own record of checking a payment received outside a provider: staff-only, like internal notes.
+  { file: "billing/payments.json", table: "payments", omit: ["provider_checkout_id", "provider_payment_id", "checkout_url", "fee_minor", "fx_source", "external_reference", "verified_by", "verified_at", "verification_note"], order: "created_at" },
   { file: "billing/credit-ledger.json", table: "credit_ledger_entries", order: "created_at" },
   { file: "billing/usage.json", table: "metered_usage_events", omit: ["provider_reference", "rate_version_id"], order: "occurred_at" },
   { file: "billing/provider-fees.json", table: "provider_fees" },
@@ -182,6 +197,9 @@ const TABLES: TableSpec[] = [
   { file: "billing/balance.json", table: "credit_accounts" },
   { file: "records/activity-history.json", table: "audit_logs", pick: ["action", "actor_kind", "target_type", "result", "created_at"], order: "created_at" },
 ];
+
+/** The allow-list of tables, for the test that checks every column it exports is one the client may read. */
+export const EXPORT_TABLES: readonly TableSpec[] = TABLES;
 
 const NOT_EXPORTED = [
   "Passwords, access tokens and any other credential or secret",
@@ -316,11 +334,11 @@ Exported ${now.toISOString()}.
 - **sales/**, **appointments/**, **retention/**: leads, pipeline, appointments, reminders and customer programs, and the private feedback your customers gave you (with how your team followed it up).
 - **reputation/**: your reputation settings (what counts as low feedback, how long your team has to acknowledge it), your review request batches, the review sites you connected (never their sign-in), the public reviews they returned, and the replies your team wrote to them with their history.
 - **proposals/**: your proposals, every saved version of each, the answers customers gave and how each was recorded, each proposal's history, your price book, tax rates and templates, and your signing requests with their history (never your signing service's keys). The PDF of each version, and each signed copy, is in files/proposal-documents.
-- **invoices/**: the invoices you sent your customers with their lines and history, every payment and refund and how it was recorded, the checkouts your customers started, what your payment provider told us about each payment, your reminders, your invoice settings, and your payment account by name and status (never its keys or your customers' payment links).
+- **invoices/**: the invoices you sent your customers with their lines and history, every payment and refund and how it was recorded, the checkouts your customers started, what your payment provider told us about each payment, your reminders, the messages you sent from the product to give a customer the link to an invoice (who sent each, the channel and the address shortened, never the link or the text), your invoice settings, and your payment account by name and status (never its keys or your customers' payment links).
 - **website/**: your website's content, every published version, your domains and enquiries, and the images, as files.
 - **ai-team/**: how your AI employees were set up (names, modes, configuration versions) and every approval request and decision.
 - **billing/**: payments, your credit ledger, usage and fees.
-- **support/**, **projects/**, **records/**: support conversations, custom projects and the activity history.
+- **support/**, **projects/**, **records/**: support conversations and the satisfaction answers you gave, custom projects with their quotes, milestones, change requests (and what you answered to each), what had to be confirmed before work started, the project's progress feed and conversation, and the activity history.
 - **social/**: your Facebook and Instagram accounts (never their sign-in tokens), posts and their history, campaigns, media library records, the numbers the platforms returned for your posts, and your social media settings.
 - **files/**: documents, brand images and social media pictures and videos you uploaded.
 - **DOMAINS.md**: where your domains are and how to move them.

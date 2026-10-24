@@ -6,6 +6,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { readPrivateFile, removeStoredObjectTrusted, uploadPrivateFile, validPrivateFileSignature } from "@/server/storage/private";
 import { assertSocialWorkspace } from "@/server/social/workspace";
+import { workspaceEntitlements } from "@/server/entitlements";
 import type { OrgContext } from "@/server/tenancy/context";
 import { draftProblems, IMAGE_MIMES, MEDIA_MAX_BYTES, PLATFORMS, VIDEO_MIMES, type MediaFacts, type Platform } from "@/lib/social/rules";
 import { formatMetricValue } from "@/lib/fair-use";
@@ -32,8 +33,6 @@ export interface MediaView {
   createdAt: string;
 }
 
-const MANAGED_STATUSES = ["active", "past_due", "cancel_requested"];
-
 /** The most managed media one workspace may keep (SOCIAL_MEDIA_STORAGE_MB, 2 GB until the founder says otherwise). */
 const storageLimitBytes = () => env().SOCIAL_MEDIA_STORAGE_MB * 1024 * 1024;
 
@@ -52,8 +51,10 @@ function assertRoom(used: number, limit: number, adding: number) {
 export async function getMediaPolicy(ctx: OrgContext): Promise<StoragePolicy> {
   assertSocialWorkspace(ctx);
   if (!ctx.can("social.view")) throw new AppError("forbidden", "Your role can't see social media.");
+  // Managed storage follows the maintenance plan exactly as Automation Studio does (one answer for both, src/server/entitlements.ts): a plan past due keeps it through the grace
+  // period and not a day longer, whether or not the scheduler has marked the plan expired yet.
   const { managed, used } = await withSystem(async (db) => ({
-    managed: (await db.query("select 1 from maintenance_subscriptions where org_id = $1 and status = any($2::text[]) limit 1", [ctx.org.orgId, MANAGED_STATUSES])).rows.length > 0,
+    managed: (await workspaceEntitlements(db, ctx.org.orgId)).managedStorage,
     used: await usedBytes(db, ctx.org.orgId),
   }));
   // Google Drive and OneDrive connections are not built (they need an OAuth app registered with each provider), so they are never reported as connected.

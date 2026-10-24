@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { bytesLabel } from "@/components/projects/common";
 import { createProjectRequestAction } from "@/app/actions/projects";
+import { newIdempotencyKey } from "@/lib/support/content";
 import { BUDGET_BANDS, formatDelivery, formatPrice, suggestServices, type ServiceView } from "@/lib/projects";
 import { cn, sentenceCase } from "@/lib/utils";
 
@@ -49,6 +50,8 @@ export function RequestWizard({
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
+  // One key per form: sending it twice (a double click, a dropped connection) makes one request.
+  const retryKey = React.useRef(newIdempotencyKey());
 
   const selected = services.find((s) => s.slug === serviceSlug) ?? null;
   const suggestions = React.useMemo(
@@ -95,6 +98,7 @@ export function RequestWizard({
       preferredDeadline: deadline || null,
       budgetRange: (budget || null) as (typeof BUDGET_BANDS)[number] | null,
       serviceSlug,
+      idempotencyKey: retryKey.current,
     });
     if (!res.ok) {
       setPending(false);

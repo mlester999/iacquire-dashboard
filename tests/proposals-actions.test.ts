@@ -7,7 +7,7 @@ import { createContact } from "@/server/crm/contacts";
 import { createOpportunity } from "@/server/crm/opportunities";
 import { agencyPeople, CRM_ROLES, type CrmWho } from "./support/crm";
 import { ctxFor, uid } from "./support/fixtures";
-import { draftBy, enableAi, proposalOrg, rows, type ProposalOrg } from "./support/proposals";
+import { addDeliveryMessaging, customerFor, draftBy, enableAi, proposalOrg, rows, sentTo, type ProposalOrg } from "./support/proposals";
 
 const mocks = vi.hoisted(() => ({ ctx: null as unknown, user: null as unknown, revalidate: vi.fn() }));
 
@@ -26,6 +26,7 @@ import {
   createCatalogItemAction, createProposalAction, createTaxRateAction, createTemplateAction, decideProposalAction, draftWithAiAction, duplicateProposalAction, getShareUrlAction,
   recordOfflineDecisionAction, renewShareLinkAction, reviseProposalAction, saveProposalSettingsAction, searchDealsAction, sendProposalAction, submitForApprovalAction,
   updateProposalAction, updateTaxRateAction, withdrawProposalAction, approveTemplateAction, archiveTemplateAction, saveTemplateAction, updateCatalogItemAction,
+  previewDeliveryAction, sendDeliveryAction,
 } from "@/app/actions/proposals";
 
 const who = (p: ProposalOrg, w: CrmWho) => {
@@ -128,6 +129,61 @@ describe("which role each action needs", () => {
     expect(await approveTemplateAction(tplId, 2)).toMatchObject({ ok: true, data: { status: "approved", approvedVersion: 2 } });
     who(p, "manager");
     expect(await archiveTemplateAction(null, tplId)).toMatchObject({ ok: true, data: true });
+  });
+});
+
+describe("sending the customer their link", () => {
+  it("is for people who can send proposals, shows the exact message first, and queues what was read", async () => {
+    const p = await proposalOrg();
+    await addDeliveryMessaging(p);
+    const c = await customerFor(p);
+    const sent = await sentTo(p, c);
+    for (const w of ["viewer", "support", "setter"] as const) {
+      who(p, w);
+      expect(await previewDeliveryAction(sent.proposal.id, "email"), w).toMatchObject(FORBIDDEN);
+      expect(await sendDeliveryAction(sent.proposal.id, { channel: "email", version: 1, wordingHash: "a".repeat(64) }), w).toMatchObject(FORBIDDEN);
+    }
+    who(p, "sales");
+    mocks.revalidate.mockReset();
+    const preview = await previewDeliveryAction(sent.proposal.id, "email");
+    expect(preview).toMatchObject({ ok: true, data: { available: true, channel: "email", wordingHash: expect.stringMatching(/^[0-9a-f]{64}$/), verdict: { kind: "ready" } } });
+    // Reading the message changes nothing, so no screen is refreshed for it.
+    expect(mocks.revalidate).not.toHaveBeenCalled();
+    const hash = (preview as { data: { wordingHash: string } }).data.wordingHash;
+    const queued = await sendDeliveryAction(sent.proposal.id, { channel: "email", version: 1, wordingHash: hash });
+    expect(queued).toMatchObject({ ok: true, data: { status: "queued", delivery: { channel: "email", state: "queued" } } });
+    expect(mocks.revalidate.mock.calls.map((x) => x.join(":"))).toContain("/proposals:layout");
+    expect(JSON.stringify([preview, queued])).not.toContain(sent.token);
+    // The same confirmation again sends nothing more.
+    expect(await sendDeliveryAction(sent.proposal.id, { channel: "email", version: 1, wordingHash: hash })).toMatchObject({ ok: true, data: { status: "already" } });
+    expect(await rows("select 1 from proposal_deliveries where proposal_id = $1", [sent.proposal.id])).toHaveLength(1);
+  });
+
+  it("refuses what is not an id, a channel, a version or a fingerprint, in words, before the service is asked", async () => {
+    const p = await proposalOrg();
+    who(p, "sales");
+    expect(await previewDeliveryAction("nope", "email")).toEqual({ ok: false, error: "That item was not found.", code: "invalid_input" });
+    expect(await previewDeliveryAction(ID, "carrier_pigeon")).toEqual({ ok: false, error: "Choose email, text message or WhatsApp.", code: "invalid_input" });
+    expect(await sendDeliveryAction("nope", { channel: "email", version: 1, wordingHash: "a".repeat(64) })).toMatchObject({ ok: false, code: "invalid_input" });
+    expect(await sendDeliveryAction(ID, { channel: "fax", version: 1, wordingHash: "a".repeat(64) })).toMatchObject({ ok: false, code: "invalid_input" });
+    expect(await sendDeliveryAction(ID, { channel: "email", version: 0, wordingHash: "a".repeat(64) })).toMatchObject({ ok: false, code: "invalid_input" });
+    expect(await sendDeliveryAction(ID, { channel: "email", version: 1, wordingHash: "short" })).toEqual({ ok: false, error: "Read the message again before you send it.", code: "invalid_input" });
+    expect(await sendDeliveryAction(ID, null)).toMatchObject({ ok: false, code: "invalid_input" });
+    expect(await previewDeliveryAction(ID, "email")).toMatchObject({ ok: false, code: "not_found" });
+  });
+
+  it("is not reachable by an agency person, in a support session or out of one", async () => {
+    const p = await proposalOrg();
+    await addDeliveryMessaging(p);
+    const sent = await sentTo(p, await customerFor(p));
+    const agency = await agencyPeople();
+    mocks.ctx = null;
+    mocks.user = agency.superAdmin;
+    expect(await previewDeliveryAction(sent.proposal.id, "email")).toMatchObject(FORBIDDEN);
+    await startSupportSession(agency.superAdmin, p.org.id, { mode: "write", reason: "Looking at a delivery" });
+    expect(await previewDeliveryAction(sent.proposal.id, "email")).toMatchObject(FORBIDDEN);
+    expect(await sendDeliveryAction(sent.proposal.id, { channel: "email", version: 1, wordingHash: "a".repeat(64) })).toMatchObject(FORBIDDEN);
+    expect(await rows("select 1 from proposal_deliveries where proposal_id = $1", [sent.proposal.id])).toHaveLength(0);
   });
 });
 

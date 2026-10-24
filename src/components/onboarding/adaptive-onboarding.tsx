@@ -24,6 +24,7 @@ import {
   type ReviewModel,
 } from "@/lib/onboarding/engine";
 import { createSavePipeline, type PipelineState, type SavePipeline } from "@/lib/onboarding/save-pipeline";
+import { schedulingDraftMessage } from "@/lib/onboarding/scheduling-drafts";
 import { type AnswerSource, type AnswerValue, type QuestionDef, type SectionId, type StoredAnswers } from "@/lib/onboarding/types";
 import type { OnboardingSession, Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/service";
 import type { AssetView } from "@/server/assets/service";
@@ -343,7 +344,10 @@ export function AdaptiveOnboarding({
       setReviewError(res.error);
       return;
     }
-    toast.success("Your AI team is being prepared.");
+    // A draft booking calendar made from the answers is said out loud, with the fact that it is not live.
+    const drafted = res.data.scheduling ? schedulingDraftMessage(res.data.scheduling) : null;
+    if (drafted) toast.success("Your AI team is being prepared.", { description: drafted, duration: 12000 });
+    else toast.success("Your AI team is being prepared.");
     // Stay in the "submitting" state while the page navigates away.
     (onSubmitted ?? (() => router.push("/setup?onboarded=1")))();
   };

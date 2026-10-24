@@ -9,6 +9,8 @@ import { approvalReasons, isEditable, type ApprovalReason, type ProposalStatus }
 import { shareViewFor, type ShareView } from "@/server/proposals/share";
 import { checkProposal } from "@/server/proposals/versions";
 import { authorCanSend, iso, loadVersionRow, money, readSettings, rowDoc, type ProposalRow } from "@/server/proposals/core";
+import { deliveriesFor } from "@/server/proposals/delivery";
+import type { DeliveryView } from "@/lib/proposals/delivery-state";
 import { signatureTabIn, type SignatureTab } from "@/server/esign/requests";
 
 // What the screens read. A summary is a row of a list; a detail is one proposal with its problems, approval need, saved versions, recorded answers and history.
@@ -98,6 +100,8 @@ export interface ProposalDetail extends ProposalSummary {
   events: EventView[];
   /** The customer's link, once the proposal has been sent: how far it has been seen (opened, viewed in a browser, or opened with the emailed code) and whether it still works. */
   share: ShareView | null;
+  /** The messages that carried the link to the customer through the send chain, newest first, each in the words the database supports (never "delivered" or "read"). */
+  deliveries: DeliveryView[];
   /**
    * What the customer reads. For a proposal that can still be edited it is the working copy with its placeholders filled in (`frozen: false`: it is not what a reviewer approved
    * until a version is made); otherwise it is the saved version, exactly as frozen. Null when the figures cannot be worked out (the problems say why).
@@ -130,7 +134,11 @@ export function toSummary(r: ProposalRow, names: Map<string, string>): ProposalS
   };
 }
 
-export async function buildDetail(db: Queryable, actor: CrmActor, row: ProposalRow, now = new Date()): Promise<ProposalDetail> {
+/**
+ * `deliveries: false` leaves the messages out for a reader whose database access is limited by row-level security (a member's own read): the send chain's rows are not theirs to
+ * read, so the caller fills them in with trusted code afterwards (getProposal does).
+ */
+export async function buildDetail(db: Queryable, actor: CrmActor, row: ProposalRow, now = new Date(), opts: { deliveries?: boolean } = {}): Promise<ProposalDetail> {
   const [vs, ds, es] = await Promise.all([
     db.query<{ version: number; content_hash: string; created_by: string | null; created_at: Date; sent_at: Date | null; superseded_at: Date | null; has_pdf: boolean; pdf_file_id: string | null; a: string; b: string; c: string }>(
       `select version, content_hash, created_by, created_at, sent_at, superseded_at, pdf_file_id is not null as has_pdf, pdf_file_id::text as pdf_file_id, one_time_total_minor::text as a, monthly_total_minor::text as b, yearly_total_minor::text as c
@@ -194,6 +202,7 @@ export async function buildDetail(db: Queryable, actor: CrmActor, row: ProposalR
     })),
     events: es.rows.map((e) => ({ id: Number(e.id), at: new Date(e.at).toISOString(), kind: e.kind, version: e.version, actorKind: e.actor_kind, actorName: e.actor_id ? names.get(e.actor_id) ?? null : null, detail: e.detail })),
     share: await shareViewFor(db, actor, row, now),
+    deliveries: opts.deliveries === false ? [] : await deliveriesFor(db, row.org_id, row.id, now),
     preview,
     createdById: row.created_by,
     viewer,

@@ -37,7 +37,7 @@ const MODE_LABEL = { autonomous: "Autonomous", approval_required: "Approval requ
 const GROUPS = [{ key: "all", label: "Entire team" }, { key: "ready", label: "Ready to work" }, { key: "setup", label: "Needs attention" }, { key: "disabled", label: "Not included" }] as const;
 const ROLE_HEADLINE = { operations_manager: "Coordination", lead_hunter: "Lead research", appointment_setter: "Appointments", sales_assistant: "Sales support", crm_manager: "Customer records", performance_analyst: "Performance" } as const;
 
-export function WorkforceGallery({ agents, capabilities, companyName, canConfigure, canUse, evaluatedAt }: { agents: Employee[]; capabilities: Record<string, string[]>; companyName: string; canConfigure: boolean; canUse: boolean; evaluatedAt: number }) {
+export function WorkforceGallery({ agents, capabilities, companyName, canConfigure, canUse, evaluatedAt, paymentCleared }: { agents: Employee[]; capabilities: Record<string, string[]>; companyName: string; canConfigure: boolean; canUse: boolean; evaluatedAt: number; paymentCleared?: boolean }) {
   const reduced = useReducedMotion();
   const [filter, setFilter] = React.useState<string>("all");
   const [query, setQuery] = React.useState("");
@@ -56,6 +56,7 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
     inventoryToolCount: a.tool_inventory_tool_count ?? null,
     taskExecuting: a.active_run ?? false,
     evaluatedAt,
+    paymentCleared,
   });
   const ready = agents.filter((a) => readinessFor(a).chatAvailable);
   const preparing = agents.filter((a) => a.enabled && !readinessFor(a).chatAvailable);

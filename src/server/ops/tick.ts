@@ -49,9 +49,12 @@ import { processFormSubmissions } from "@/server/crm/forms/process";
 import { runSetupMaintenance } from "@/server/setup/startup";
 import { purgeExpiredAqiTutorialEvents } from "@/server/aqi/retention";
 import { sweepStudioEntitlements } from "@/server/automation-studio/lifecycle";
+import { runMaintenanceRenewalSweep } from "@/server/maintenance/renewal";
+import { RENEWAL_SWEEP_BUDGET_MS } from "@/lib/billing-renewal";
 import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefings";
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
+import { PROJECT_REVIEW_OVERDUE_BUDGET_MS, runProjectReviewOverdue } from "@/server/projects/jobs";
 import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
@@ -59,6 +62,9 @@ import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/wor
 import { RECONCILE_BUDGET_MS, runCustomerPaymentReconcile } from "@/server/customer-payments/reconcile";
 import { runInvoiceOverdueSweep } from "@/server/invoices/overdue";
 import { runInvoiceRemindersJob } from "@/server/invoices/reminders";
+import { runStaffMessagesMaintenance } from "@/server/staff-messages/maintenance";
+import { MAINTENANCE_BUDGET_MS as STAFF_MESSAGES_BUDGET_MS } from "@/lib/staff-messages/limits";
+import { DEMO_EXPIRY_BUDGET_MS, DEMO_RETENTION_BUDGET_MS, runDemoExpiry, runDemoRetention } from "@/server/demo/jobs";
 
 export interface ScheduledJob {
   name: string;
@@ -148,6 +154,13 @@ export const JOBS: ScheduledJob[] = [
   // in production. Every tick, not hourly: a request waits for a pass, and the service takes a few seconds to make a document, so a slower rhythm would stretch one signing request
   // over many minutes. Its polling and key checks keep their own, slower pace inside the job.
   { name: "esignSync", run: async () => { const r = await runEsignSync(); return r.claimed + r.recovered + r.reconciled + r.polled + r.copies + r.cancelled + r.checked; } },
+  // The prospect demo (src/server/demo). Neither job sends anything or calls a provider, and neither reads the demo switches: what prospects already have is kept in step whether the
+  // demo is open or not. demoExpiry records the end of demo windows (access is decided from the clock whenever a prospect is read, so a late job never gives anyone time), gives back
+  // messages whose process died, and removes spent links, ended sessions and the outbox copy of each link email an hour after it was sent. demoRetention removes the details and
+  // conversation of prospects past the retention period in the demo settings, and people who never confirmed their address after 7 days. Both are bounded by a time budget, and do
+  // nothing where nobody ever asked for a demo. Like every job here they run only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "demoExpiry", everyMinutes: 15, run: async () => { const r = await runDemoExpiry({ budgetMs: DEMO_EXPIRY_BUDGET_MS }); return r.expired + r.released + r.sessions + r.links + r.emails; } },
+  { name: "demoRetention", everyMinutes: 1440, run: async () => { const r = await runDemoRetention({ budgetMs: DEMO_RETENTION_BUDGET_MS }); return r.deleted + r.erased + r.usageDays; } },
   { name: "missedCallRecovery", run: async () => { const r = await processMissedCalls(); return r.claimed + r.swept; } },
   { name: "messagesDispatched", run: async () => (await dispatchDue()).attempted },
   // Signed outbound webhooks: event subscriptions and workflow webhook steps (three-phase delivery with retries; old history is pruned).
@@ -178,6 +191,10 @@ export const JOBS: ScheduledJob[] = [
   { name: "supportEmails", run: () => runSupportEmails() },
   { name: "supportAutoClose", everyMinutes: 60, run: () => autoCloseResolvedRequests() },
   { name: "supportAttachmentCleanup", everyMinutes: 60, run: () => runAttachmentCleanup() },
+  // Custom projects: a review task (the first look at a request, a reply owed, a quote to prepare) that went past its time is announced to the team once. It tells the person the project is
+  // assigned to, or the team members who manage that client's projects; it changes nothing, contacts no client, and spends at most PROJECT_REVIEW_OVERDUE_BUDGET_MS of the tick. Like every job
+  // here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "projectReviewOverdue", everyMinutes: 15, run: () => runProjectReviewOverdue({ budgetMs: PROJECT_REVIEW_OVERDUE_BUDGET_MS }) },
   // Slower rhythms: each runs only when `everyMinutes` have passed since its previous run started; the ticks in between record nothing.
   { name: "fairUseChecks", everyMinutes: 60, run: async () => (await runFairUseChecks()).checked },
   { name: "inactivityReview", everyMinutes: 360, run: async () => (await runInactivityReview()).notified },
@@ -188,6 +205,12 @@ export const JOBS: ScheduledJob[] = [
   // plan isn't active (nothing is deleted or failed; core CRM workflows and AI employees are never selected). Two indexed queries when
   // nothing in the portal uses the plan, so it runs on every tick.
   { name: "studioEntitlementSweep", run: async () => { const r = await sweepStudioEntitlements(); return r.expired + r.workflowsPaused; } },
+  // Maintenance plan renewals (iAcquire's own plan, not a client's invoices). Seven days and one day before a plan's paid-through day the team and the client's owner are
+  // reminded; when the day passes with no payment recorded the team is told; and ONLY while a Super Admin has switched "mark past due automatically" on (it is off) a plan whose
+  // paid period ended two or more days ago is marked past due, as the system, with the usual disclosed grace period. Checkouts nobody completed for 48 hours are closed. It
+  // sends nothing outside the portal, calls no payment provider, and never pauses, expires or revokes anything. It spends at most RENEWAL_SWEEP_BUDGET_MS of the tick (cut off
+  // at 120 seconds). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "maintenanceRenewalSweep", everyMinutes: 360, run: async () => { const r = await runMaintenanceRenewalSweep({ budgetMs: RENEWAL_SWEEP_BUDGET_MS }); return r.noticed + r.overdue + r.pastDue + r.checkoutsExpired; } },
   // WhatsApp templates are reviewed, paused and edited in Meta: mirror them every three hours (read-only towards Meta).
   { name: "whatsappTemplateSync", everyMinutes: 180, run: async () => (await syncAllWhatsappTemplates()).synced },
   // Setup Center evidence that changes inside the CRM (a Blueprint applied, a calendar activated, a sender's live test) completes the
@@ -241,6 +264,11 @@ export const JOBS: ScheduledJob[] = [
   // start only when named in SCHEDULER_JOBS_ONLY.
   { name: "invoiceOverdueSweep", everyMinutes: 60, run: async () => (await runInvoiceOverdueSweep()).marked },
   { name: "invoiceReminders", everyMinutes: 15, run: () => runInvoiceRemindersJob() },
+  // The agency's internal staff Messages. Hourly clean-up, and nothing at all while a Super Admin has the module switched off: staged files nobody sent are removed after a day,
+  // files of deleted messages are finished off, people who are no longer on the agency team are taken out of their conversations, and messages older than the retention period
+  // are deleted ONLY if a Super Admin chose a period (none by default). It sends nothing to anyone and calls no provider. It spends at most STAFF_MESSAGES_BUDGET_MS (the tick is
+  // cut off at 120 seconds and the jobs after it wait). Like every job here it runs only when the scheduler does, and in a staged start only when named in SCHEDULER_JOBS_ONLY.
+  { name: "staffMessagesMaintenance", everyMinutes: 60, run: () => runStaffMessagesMaintenance({ budgetMs: STAFF_MESSAGES_BUDGET_MS }) },
 ];
 
 /**

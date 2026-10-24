@@ -53,6 +53,38 @@ export function setupStatusCopy(status: string | null | undefined): SetupStatusC
 }
 
 // ---------------------------------------------------------------------------
+// How a payment is described on the agency screens
+// ---------------------------------------------------------------------------
+
+const PAYMENT_STATUS_COPY: Record<string, { label: string; tone: "success" | "warning" | "neutral" | "danger" }> = {
+  paid: { label: "Paid", tone: "success" },
+  partially_refunded: { label: "Partly refunded", tone: "warning" },
+  refunded: { label: "Refunded", tone: "neutral" },
+  pending: { label: "Waiting for the client", tone: "neutral" },
+  failed: { label: "Failed", tone: "danger" },
+  expired: { label: "Expired", tone: "neutral" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+  mismatch: { label: "Did not match the checkout", tone: "danger" },
+  disputed: { label: "Disputed", tone: "danger" },
+};
+
+export function paymentStatusCopy(status: string): { label: string; tone: "success" | "warning" | "neutral" | "danger" } {
+  return PAYMENT_STATUS_COPY[status] ?? { label: status.replace(/_/g, " "), tone: "neutral" };
+}
+
+/**
+ * Where the proof of a payment came from, said plainly: a person who saw the money arrive, or a provider whose signed notice the portal checked. A payment that is not
+ * paid yet is never described as confirmed.
+ */
+export function paymentWayLabel(p: { provider: string; method: string | null; status: string }): string {
+  const received = p.status === "paid" || p.status === "refunded" || p.status === "partially_refunded";
+  if (p.provider === "manual") return `Recorded by hand${p.method ? `: ${MANUAL_METHOD_LABEL[p.method as ManualPaymentMethod] ?? "other"}` : ""}`;
+  if (p.provider === "paymongo") return received ? "PayMongo, confirmed by its signed notice" : "PayMongo checkout";
+  if (p.provider === "paypal") return received ? "PayPal, confirmed by its signed notice" : "PayPal checkout";
+  return p.provider;
+}
+
+// ---------------------------------------------------------------------------
 // A payment received outside a provider
 // ---------------------------------------------------------------------------
 
@@ -73,6 +105,15 @@ export const MANUAL_METHOD_LABEL: Record<ManualPaymentMethod, string> = {
   other: "Other",
 };
 
+/** Whole cents to the text a person types: 149900 -> "1499.00". Integer arithmetic only; never a float. */
+export function centsToDollarText(cents: number): string {
+  const whole = Math.trunc(Math.abs(cents) / 100);
+  return `${cents < 0 ? "-" : ""}${whole}.${String(Math.abs(cents) % 100).padStart(2, "0")}`;
+}
+
+/** iAcquire's payments hold micro-dollars (1 USD = 1,000,000); whole cents are 10,000 of them. A payment is always a whole number of cents. */
+export const MICROS_PER_CENT = 10_000;
+
 /** A sanity ceiling for one recorded payment (US$100,000.00): a typo, not a policy. */
 export const MAX_MANUAL_PAYMENT_CENTS = 10_000_000;
 /** A payment date older than this many days is almost certainly a typo. */
@@ -82,6 +123,14 @@ export const MAX_REASON_CHARS = 500;
 export const MIN_NOTE_CHARS = 5;
 
 const DAY_MS = 86_400_000;
+
+/** A typed dollar amount to whole cents, exactly (src/lib/money, no floating point). The text is length-capped first so a long paste never reaches the pattern. */
+function parseAmountText(value: unknown): number {
+  const text = String(value ?? "").trim();
+  if (text.length > 24) throw new MoneyError("invalid_amount", "Enter the amount in US dollars, such as 1499.00.");
+  return parseAmount(text, "USD");
+}
+
 const dayNumber = (day: string) => Math.round(Date.parse(`${day}T00:00:00Z`) / DAY_MS);
 const validDay = (value: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -151,7 +200,7 @@ export function checkManualPayment(raw: ManualPaymentFields, ctx: { today: strin
   if (!kind) return fail("kind", "Choose what the payment was for.");
   let amountCents: number;
   try {
-    amountCents = parseAmount(String(raw.amount ?? ""), "USD");
+    amountCents = parseAmountText(raw.amount);
   } catch (e) {
     return fail("amount", e instanceof MoneyError ? e.message : "Enter the amount in US dollars, such as 1499.00.");
   }
@@ -193,7 +242,7 @@ export function checkWaiverReason(input: string): { ok: true; reason: string } |
 export function checkRefundFields(input: { amount: string; reason: string }): { ok: true; amountCents: number; reason: string } | { ok: false; field: "amount" | "reason"; error: string } {
   let amountCents: number;
   try {
-    amountCents = parseAmount(String(input.amount ?? ""), "USD");
+    amountCents = parseAmountText(input.amount);
   } catch (e) {
     return { ok: false, field: "amount", error: e instanceof MoneyError ? e.message : "Enter the refund amount in US dollars." };
   }

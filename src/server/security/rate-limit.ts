@@ -160,4 +160,23 @@ export const RATE_LIMITS = {
   esignWebhookByIp: { name: "esign:webhook:ip", limit: 300, windowSeconds: 60 },
   esignRequestByOrg: { name: "esign:request:org", limit: 20, windowSeconds: 3600 },
   esignConnectByOrg: { name: "esign:connect:org", limit: 10, windowSeconds: 3600 },
+  // The prospect demo (src/server/demo). Anyone on the internet can reach it, so every rule is checked before the database is asked anything about the person. The per-address rule
+  // counts every request; starting a demo and asking for a new link each send an email, so they are held per address AND per mailbox (a hash of the normalized address, so one
+  // mailbox is never flooded from many addresses); the message rules sit under the prospect's own limit of messages and only stop a burst. Keys are keyed hashes, never raw values.
+  demoPublicByIp: { name: "demo:public:ip", limit: 120, windowSeconds: 60 },
+  demoStartByIp: { name: "demo:start:ip", limit: 6, windowSeconds: 3600 },
+  demoStartByEmail: { name: "demo:start:email", limit: 3, windowSeconds: 3600 },
+  demoVerifyByIp: { name: "demo:verify:ip", limit: 20, windowSeconds: 600 },
+  demoReturnByProspect: { name: "demo:return:prospect", limit: 3, windowSeconds: 3600 },
+  demoMessageByProspect: { name: "demo:message:prospect", limit: 6, windowSeconds: 60 },
+  demoMessageByIp: { name: "demo:message:ip", limit: 40, windowSeconds: 3600 },
+  demoActionByProspect: { name: "demo:action:prospect", limit: 20, windowSeconds: 3600 },
+  // Staff Messages (src/server/staff-messages), per signed-in agency person. Sending, editing and deleting share one rule; reactions, marking read, searching, starting or changing a
+  // conversation and uploading a file each have their own, so a busy channel never uses up someone's search allowance. The numbers are proposals (docs/staff-messages.md).
+  staffMessageSendByUser: { name: "staffmsg:send:user", limit: 90, windowSeconds: 60 },
+  staffMessageReactByUser: { name: "staffmsg:react:user", limit: 120, windowSeconds: 60 },
+  staffMessageReadByUser: { name: "staffmsg:read:user", limit: 240, windowSeconds: 60 },
+  staffMessageSearchByUser: { name: "staffmsg:search:user", limit: 60, windowSeconds: 60 },
+  staffMessageManageByUser: { name: "staffmsg:manage:user", limit: 40, windowSeconds: 3600 },
+  staffMessageUploadByUser: { name: "staffmsg:upload:user", limit: 30, windowSeconds: 3600 },
 } satisfies Record<string, RateLimitRule>;

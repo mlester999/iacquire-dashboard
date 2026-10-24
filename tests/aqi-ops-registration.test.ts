@@ -120,13 +120,13 @@ describe("scheduled jobs", () => {
       "expiredReservations", "escalationsOpened", "followUpsPrepared", "repliesChecked", "approvalExpiry", "bookingHolds", "calendarBusySync", "calendarWriteBack",
       "appointmentReminders", "retentionPrograms", "crmEventDispatch", "crmWorkflowRuns", "crmFormSubmissions", "crmCampaigns", "messagesDispatched", "crmWebhookDeliveries",
       "websiteEnquiries", "crmImports", "crmProviderSwitches", "crmTaskReminders", "domainRenewals", "websiteHealth", "notificationEmails", "incidentChecks", "incidentEscalations",
-      "supportResponseTargets", "supportEmails", "supportAutoClose", "supportAttachmentCleanup", "fairUseChecks", "inactivityReview", "offboardingReminders",
+      "supportResponseTargets", "supportEmails", "supportAutoClose", "supportAttachmentCleanup", "projectReviewOverdue", "fairUseChecks", "inactivityReview", "offboardingReminders",
       "crmWorkflowRecovery", "whatsappTemplateSync", "setupEvidence", "aqiTutorialEventRetention",
     ];
-    // The Automation Studio plan sweep sits right after the workflow housekeeping it follows; the inbox attention scan right after the reply checks;
+    // The Automation Studio plan sweep sits right after the workflow housekeeping it follows, and the maintenance renewal sweep right after it; the inbox attention scan right after the reply checks;
     // lead re-scoring, the Phase 2 and website-chat clean-ups and missed-call recovery run just before the dispatcher, so what they queue goes out in the same run.
     // The reputation jobs (the low-feedback reminder, the appointment outcome nudge, the review request batches, the public review sync, the renewal reminders and the reputation clean-up) follow the retention programs.
-    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep"] : name === "retentionPrograms" ? [name, "feedbackSla", "appointmentOutcomeNudge", "reviewRequestBatches", "reviewSync", "renewalReminders", "reputationRetention"] : name === "repliesChecked" ? [name, "inboxAttention"] : name === "messagesDispatched" ? ["leadScoreReassessment", "phase2Retention", "webChatRetention", "socialPublisher", "socialAccountHealth", "socialMetrics", "socialCleanup", "proposalExpiry", "proposalHousekeeping", "esignSync", "missedCallRecovery", name] : [name]));
+    const withStudio = shipped.flatMap((name) => (name === "crmWorkflowRecovery" ? [name, "studioEntitlementSweep", "maintenanceRenewalSweep"] : name === "retentionPrograms" ? [name, "feedbackSla", "appointmentOutcomeNudge", "reviewRequestBatches", "reviewSync", "renewalReminders", "reputationRetention"] : name === "repliesChecked" ? [name, "inboxAttention"] : name === "messagesDispatched" ? ["leadScoreReassessment", "phase2Retention", "webChatRetention", "socialPublisher", "socialAccountHealth", "socialMetrics", "socialCleanup", "proposalExpiry", "proposalHousekeeping", "esignSync", "demoExpiry", "demoRetention", "missedCallRecovery", name] : [name]));
     expect(JOBS.map((job) => job.name)).toEqual([
       ...withStudio,
       "aqiOperationsBriefings",
@@ -139,6 +139,7 @@ describe("scheduled jobs", () => {
       "customerPaymentReconcile",
       "invoiceOverdueSweep",
       "invoiceReminders",
+      "staffMessagesMaintenance",
     ]);
   });
 });

@@ -409,8 +409,9 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0094_reputation_followthrough": ["0033_crm_growth", "0065_support_requests"],
   // 0093 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the
   // eight invoice and payment kinds). It also adds the 'billing' message scope by reading the live conversation_messages_scope_check (0024), and hangs invoices off
-  // contacts (0027), companies and deals (0028).
-  "0093_customer_invoices_payments": ["0028_crm_sales", "0065_support_requests"],
+  // contacts (0027), companies and deals (0028). An invoice made from a proposal points at it (composite keys to proposals and proposal_versions) and a message that delivers one
+  // uses the 'delivery' scope, both 0091's.
+  "0093_customer_invoices_payments": ["0028_crm_sales", "0065_support_requests", "0091_proposals"],
   // 0095 points at social_accounts (0089: a Facebook review connection reads through the Page connected for Social media) and relies on 0094's three reviews.* permissions and
   // six notification kinds. It extends no notification list and does not replace app.file_permission.
   "0095_external_reviews": ["0089_social_media_manager", "0094_reputation_followthrough"],
@@ -418,9 +419,19 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // lists) must already be in. It replaces app.notification_visible with 0067's definition plus one branch, so 0067 must be in. The staff-messages bucket, its file rule and the
   // use of the agency.messages.use permission in it are 0090's.
   "0096_staff_messages": ["0065_support_requests", "0067_notification_authorization", "0090_document_buckets"],
+  // 0098 extends the request-type, category and timeline-kind checks of 0065 and 0015 and the notification kinds from the live constraints, so 0065 must already be in (applied
+  // before it, 0065 would put its copied lists back and drop the new values). It hangs change orders and prerequisites off the custom-project tables, so 0015 must be in too.
+  "0098_requests_completion": ["0015_custom_projects", "0065_support_requests"],
   // 0099 backfills billing_accounts (0004) from client_setup_instances (0008), widens payments (0018), adds a column to maintenance_subscriptions (0015) and extends
   // notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the four billing kinds).
   "0099_payment_controls": ["0008_setup_center", "0015_custom_projects", "0018_billing_credits", "0065_support_requests"],
+  // 0100 extends notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the four demo kinds),
+  // and adds role_permissions rows for the agency_manager role, which 0038 (the last to widen that table's role check) makes valid. It points at access_requests (0001) and nothing
+  // that belongs to a workspace except the converted_org_id of a prospect a Super Admin made a client.
+  "0100_demo_funnel": ["0038_agency_team_and_hermes_policies", "0065_support_requests"],
+  // 0102 replaces the check on crm_calendars.origin that 0054 added, adds a column to onboarding_responses (0002, 0020) and adds a step to the default checklist (0008) and to
+  // the checklists that are not activated yet (0013 and 0056 added steps the same way, and 0056 gave the steps their provider column).
+  "0102_onboarding_snapshot": ["0020_onboarding_v2", "0054_crm_blueprints", "0056_crm_setup_native"],
 };
 
 /**

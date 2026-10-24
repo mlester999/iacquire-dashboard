@@ -11,7 +11,7 @@ const CHANNEL_SWITCHES: readonly EnvSwitch[] = [
   { name: "META_WHATSAPP_WRITES_ENABLED", wantOn: true, meaning: "WhatsApp messages leave only while this provider write switch is on." },
 ];
 
-export const MODULE_KEYS = ["proposals", "esign", "invoices", "reputation_surveys", "reputation_batches", "reputation_reviews"] as const;
+export const MODULE_KEYS = ["proposals", "esign", "invoices", "reputation_surveys", "reputation_batches", "reputation_reviews", "request_changes"] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
 /** Who has to do something before the module does anything. */
@@ -52,7 +52,7 @@ export const MODULES: readonly ModuleInfo[] = [
     whenOff: "Proposals leave their menu and no new proposal can be written. A link already given to a customer stops opening: the page says it is unavailable until the module is switched on again. Proposals already written, with their history, are kept.",
     needs: [
       { kind: "owner", text: "The owner sets the approval rules in Proposals > Settings and fills in the price book and tax rates. Nothing is priced for them." },
-      { kind: "owner", text: "The team copies the customer's link and gives it to the customer; sending a proposal does not email it." },
+      { kind: "owner", text: "Marking a proposal as sent contacts no one. The team then copies the customer's link and gives it over, or sends it from the Delivery tab by email, text message or WhatsApp after reading the message; that goes through the consent-gated send chain, so it needs the customer's consent on the channel and the provider's write switch (RESEND_WRITES_ENABLED, TWILIO_WRITES_ENABLED, META_WHATSAPP_WRITES_ENABLED)." },
       { kind: "customer", text: "The customer's emailed code leaves only through the email provider (EMAIL_PROVIDER, and RESEND_WRITES_ENABLED when it is resend); with capture it is stored, not sent." },
       { kind: "scheduler", text: "proposalExpiry and proposalHousekeeping close expired proposals and clear spent codes; they run only when the scheduler does." },
     ],
@@ -151,6 +151,20 @@ export const MODULES: readonly ModuleInfo[] = [
       { name: "META_REVIEWS_REPLIES_ENABLED", wantOn: true, meaning: "Lets a reply be posted to Facebook." },
     ],
     jobs: ["reviewSync", "renewalReminders", "reputationRetention"],
+    dependsOn: null,
+  },
+  {
+    key: "request_changes",
+    label: "Request a Change",
+    unlocks: "Request a Change in the client's Requests menu, and a Change requests list on each agreed custom project, where an owner or admin can ask for a change to what was agreed. The team decides whether it is a revision the agreement includes or something outside it that needs a quote; the owner accepts or declines a quote the team wrote.",
+    whenOff: "The Request a Change page leaves the menu and no new change request, or change to a project, can be made. Changes already asked for stay on the project, and a quote waiting for the owner can still be accepted, declined or withdrawn.",
+    needs: [
+      { kind: "approval", text: "The founder decides what the core system covers, what a managed maintenance plan covers and what is a paid change, and counsel confirms the wording of the acceptance line. Nothing is priced or promised by the system: staff write every quote." },
+      { kind: "owner", text: "Which prerequisites a project needs before work starts (the written agreement, a payment a person confirms) is a separate Super Admin switch in Support settings, off until the founder decides." },
+      { kind: "scheduler", text: "projectReviewOverdue tells the team when a project review passes its time; it runs only when the scheduler does." },
+    ],
+    env: [],
+    jobs: ["projectReviewOverdue"],
     dependsOn: null,
   },
 ];

@@ -274,7 +274,10 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
       ? await db.query<{ id: string; name: string }>("select id, coalesce(nullif(full_name, ''), email::text) as name from users where id = any($1::uuid[])", [ids])
       : { rows: [] as Array<{ id: string; name: string }> };
     const connectors = await connectorsFor(db, orgId);
-    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors };
+    const payment = await db.query<{ status: string | null; cleared: boolean }>(
+      "select (select b.setup_payment_status from billing_accounts b where b.org_id = $1) as status, app.setup_payment_cleared($1) as cleared", [orgId],
+    );
+    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors, payment: payment.rows[0] };
   });
   if (!d.org || !d.inst) throw new AppError("not_found", "Client not found.");
 
@@ -294,7 +297,7 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
   }));
   const byId = new Map(rule.map((r) => [r.id, r]));
   const checkStatus = Object.fromEntries(d.checks.map((c) => [c.check_key, c.status])) as Partial<Record<CheckKey, CheckStatus>>;
-  const readiness = evaluateReadiness({ state: d.inst.state, tasks: rule, checks: checkStatus });
+  const readiness = evaluateReadiness({ state: d.inst.state, tasks: rule, checks: checkStatus, payment: { cleared: d.payment.cleared === true } });
   if (d.jobs.length) {
     readiness.canActivate = false;
     readiness.blockers.push({ code: "job_needs_attention", message: `${d.jobs.length} preparation job${d.jobs.length === 1 ? " is" : "s are"} failed or running. Review the provisioning history before agency approval.` });
@@ -389,6 +392,7 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
     checks,
     staff: d.staff,
     canActivate: admin.platformRole === "agency_super_admin" && readiness.canActivate,
+    payment: { status: d.payment.status ?? "not_invoiced", cleared: d.payment.cleared === true },
   };
 }
 

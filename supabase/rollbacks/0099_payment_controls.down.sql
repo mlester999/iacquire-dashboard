@@ -1,7 +1,8 @@
 -- Rollback for 0099_payment_controls.sql. NOT a migration: review and run in one transaction.
 -- Refuses when the controls have been used: a payment recorded by hand (it cannot exist where the provider must be PayMongo), a waiver a person made (a backfilled
 -- waiver 'Activated before the payment gate' is not a person's decision and goes with its columns; its status stays 'waived', which is valid before 0099 too), a plan period
--- tied to a payment, or a notification of one of the four kinds. Export those deliberately first.
+-- tied to a payment, a plan that names a billing provider, the automatic past-due switch having been used, or a notification of one of the four kinds. Export those
+-- deliberately first.
 
 do $$
 begin
@@ -14,6 +15,12 @@ begin
   if exists (select 1 from maintenance_subscriptions where last_payment_id is not null) then
     raise exception 'Rollback refused: a maintenance plan period is tied to a payment. Export it first.';
   end if;
+  if exists (select 1 from maintenance_subscriptions where provider is not null) then
+    raise exception 'Rollback refused: a maintenance plan names a billing provider and subscription. Export them first.';
+  end if;
+  if exists (select 1 from agency_billing_settings where auto_past_due or auto_past_due_by is not null or auto_past_due_at is not null) then
+    raise exception 'Rollback refused: the automatic past-due switch was used. Record its setting first, then switch it off.';
+  end if;
   if exists (select 1 from notifications where kind in ('billing_setup_payment_required', 'billing_setup_cleared', 'billing_renewal_due', 'billing_refund_recorded')) then
     raise exception 'Rollback refused: billing notifications of the new kinds exist. Delete or archive them first.';
   end if;
@@ -24,6 +31,11 @@ revoke select on billing_accounts from iaq_app_user;
 grant select on billing_accounts to iaq_app_user;
 revoke select (provider, method, paid_on) on payments from iaq_app_user;
 
+drop index payments_pending_age_idx;
+alter table agency_billing_settings drop column auto_past_due, drop column auto_past_due_by, drop column auto_past_due_at;
+drop index maintenance_subscriptions_provider_sub_idx;
+alter table maintenance_subscriptions drop constraint maintenance_subscriptions_provider_pair_check;
+alter table maintenance_subscriptions drop column provider, drop column provider_subscription_id;
 alter table maintenance_subscriptions drop constraint maintenance_subscriptions_last_payment_fk;
 alter table maintenance_subscriptions drop column last_payment_id;
 

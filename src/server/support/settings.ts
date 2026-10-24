@@ -30,6 +30,12 @@ export interface SupportSettings {
   attachmentRetentionDays: number | null;
   defaultPriority: Record<RequestType, TicketPriority>;
   aiAssistEnabled: boolean;
+  /** Hours the team aims to take over the first look at a new custom project request. Null: no target is set (the review task is due in two days). */
+  projectReviewTargetHours: number | null;
+  /** Whether a client is told that target. Off until the Super Admin chooses to. */
+  showProjectTargetsToClients: boolean;
+  /** Whether accepting a quote asks for the written agreement and the payment before work starts. Off until the founder decides which items apply. */
+  projectPrerequisitesEnabled: boolean;
   revision: number;
   updatedAt: string | null;
 }
@@ -53,6 +59,9 @@ interface SettingsRow {
   attachment_retention_days: number | null;
   default_priority: Record<string, string>;
   ai_assist_enabled: boolean;
+  project_review_target_hours: number | null;
+  show_project_targets_to_clients: boolean;
+  project_prerequisites_enabled: boolean;
   revision: number;
   updated_at: Date | null;
 }
@@ -74,8 +83,11 @@ export const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
   maxAttachmentsPerMessage: DEFAULT_MAX_ATTACHMENTS,
   stagedUploadTtlHours: 24,
   attachmentRetentionDays: null,
-  defaultPriority: { support: "normal", issue: "normal", feedback: "low" },
+  defaultPriority: { support: "normal", issue: "normal", feedback: "low", change: "normal" },
   aiAssistEnabled: true,
+  projectReviewTargetHours: null,
+  showProjectTargetsToClients: false,
+  projectPrerequisitesEnabled: false,
   revision: 0,
   updatedAt: null,
 };
@@ -101,8 +113,11 @@ function fromRow(r: SettingsRow): SupportSettings {
     maxAttachmentsPerMessage: r.max_attachments_per_message,
     stagedUploadTtlHours: r.staged_upload_ttl_hours,
     attachmentRetentionDays: r.attachment_retention_days,
-    defaultPriority: { support: asPriority(r.default_priority?.support, d.support), issue: asPriority(r.default_priority?.issue, d.issue), feedback: asPriority(r.default_priority?.feedback, d.feedback) },
+    defaultPriority: { support: asPriority(r.default_priority?.support, d.support), issue: asPriority(r.default_priority?.issue, d.issue), feedback: asPriority(r.default_priority?.feedback, d.feedback), change: asPriority(r.default_priority?.change, d.change) },
     aiAssistEnabled: r.ai_assist_enabled,
+    projectReviewTargetHours: r.project_review_target_hours ?? null,
+    showProjectTargetsToClients: r.show_project_targets_to_clients === true,
+    projectPrerequisitesEnabled: r.project_prerequisites_enabled === true,
     revision: r.revision,
     updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
   };
@@ -180,6 +195,9 @@ export const supportSettingsPatchSchema = z.object({
   attachmentRetentionDays: z.number().int().min(30).max(3650).nullable().optional(),
   defaultPriority: z.record(z.string(), z.string()).optional(),
   aiAssistEnabled: z.boolean().optional(),
+  projectReviewTargetHours: z.number().int().min(1, "A review target is at least 1 hour.").max(720, "A review target can be up to 720 hours.").nullable().optional(),
+  showProjectTargetsToClients: z.boolean().optional(),
+  projectPrerequisitesEnabled: z.boolean().optional(),
 });
 export type SupportSettingsPatch = z.input<typeof supportSettingsPatchSchema>;
 
@@ -189,6 +207,13 @@ export async function updateSupportSettings(user: SessionUser, patch: SupportSet
   const parsed = supportSettingsPatchSchema.safeParse(patch);
   if (!parsed.success) throw new AppError("invalid_input", parsed.error.issues[0]?.message ?? "Check the settings and try again.");
   const p = parsed.data;
+  // The database refuses a target shown to clients with no target set; say so in words before it has to.
+  if (p.showProjectTargetsToClients !== undefined || p.projectReviewTargetHours !== undefined) {
+    const now = await loadSupportSettingsFresh();
+    const show = p.showProjectTargetsToClients ?? now.showProjectTargetsToClients;
+    const hours = p.projectReviewTargetHours !== undefined ? p.projectReviewTargetHours : now.projectReviewTargetHours;
+    if (show && hours === null) throw new AppError("invalid_input", "Set a review target in hours before showing it to clients.");
+  }
   const sets: string[] = [];
   const values: unknown[] = [];
   const add = (column: string, value: unknown, cast = "") => {
@@ -229,6 +254,7 @@ export async function updateSupportSettings(user: SessionUser, patch: SupportSet
     ["approachingPercent", "approaching_percent"], ["overdueEscalationMinutes", "overdue_escalation_minutes"], ["reopenWindowDays", "reopen_window_days"],
     ["autoCloseResolvedDays", "auto_close_resolved_days"], ["maxAttachmentMb", "max_attachment_mb"], ["maxAttachmentsPerMessage", "max_attachments_per_message"],
     ["stagedUploadTtlHours", "staged_upload_ttl_hours"], ["attachmentRetentionDays", "attachment_retention_days"], ["aiAssistEnabled", "ai_assist_enabled"],
+    ["projectReviewTargetHours", "project_review_target_hours"], ["showProjectTargetsToClients", "show_project_targets_to_clients"], ["projectPrerequisitesEnabled", "project_prerequisites_enabled"],
   ];
   for (const [key, column] of simple) if (p[key] !== undefined) add(column, p[key]);
   if (!sets.length) return loadSupportSettingsFresh();

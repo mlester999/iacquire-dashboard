@@ -242,8 +242,9 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if ((conv.channel as string) === "web_chat") return deny("channel_not_ready", "A website chat reply appears in the visitor's open chat window; it is not sent as a message.", { permanent: true });
   const channel = conv.channel;
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
-  // An invoice reminder is automatic and goes to the business's customer about money: a pause or a suspension of the workspace stops it, both when it is queued and right
-  // before it is sent. (Other system sends are held to the same rule by the caller that starts them; this one is held here so no caller can forget.)
+  // An invoice reminder is automatic and goes to the business's customer about money, and a document a person sent may wait for sending hours and go out later: a pause or a
+  // suspension of the workspace stops either, both when it is queued and right before it is sent. (Other system sends are held to the same rule by the caller that starts
+  // them; these are held here so no caller can forget.)
   if (req.scope === "billing" || req.scope === "delivery") {
     for (const gateScope of ["messaging", "outbound"] as const) {
       const gate = await checkOrgAutomation(db, req.orgId, gateScope);
@@ -863,25 +864,37 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
       }
       body = fillReviewLink(body, link);
     }
-    // An invoice reminder's link to the customer's invoice page is a bearer secret as well. It is derived again here, from the invoice the reminder belongs to, and only while that
-    // invoice can still be paid online (issued, owing, not written off). Any other message that carries the placeholder, or a reminder for an invoice paid in the meantime, is not sent.
+    // An invoice's link to the customer's invoice page is a bearer secret as well. It is derived again here, from the reminder (scope billing) or the delivery (scope delivery) the
+    // message belongs to, and only while that invoice can still be paid through it (issued, not a test, owing, not written off or disputed, its link not replaced). Any other message
+    // that carries the placeholder (one a person or an AI typed it into), or a message for an invoice paid in the meantime, is not sent.
     if (hasInvoiceLinkPlaceholder(body)) {
-      const { invoiceLinkForMessage } = await import("@/server/invoices/reminders");
-      const link = await invoiceLinkForMessage(db, m.org_id, m.id);
+      let link: string | null = null;
+      if (m.scope === "billing") {
+        const { invoiceLinkForMessage } = await import("@/server/invoices/reminders");
+        link = await invoiceLinkForMessage(db, m.org_id, m.id);
+      } else if (m.scope === "delivery") {
+        const { invoiceLinkForDelivery } = await import("@/server/invoices/delivery");
+        link = await invoiceLinkForDelivery(db, m.org_id, m.id, decision.address, decision.channel);
+      }
       if (!link) {
-        await finishBlocked(db, { ...m, reservation_id: reservationId }, "invoice_link_unavailable", "The invoice can no longer be paid online (it was paid, voided or written off), so the reminder was not sent.");
+        await finishBlocked(
+          db, { ...m, reservation_id: reservationId }, "invoice_link_unavailable",
+          m.scope === "delivery"
+            ? "The invoice's link had stopped working (it was paid, voided, disputed or written off, or the link was replaced), so the message was not sent."
+            : "The invoice can no longer be paid online (it was paid, voided or written off), so the reminder was not sent.",
+        );
         return { done: "blocked" };
       }
       body = fillInvoiceLink(body, link);
     }
     // A proposal's link to the customer's page is a bearer secret too. It is derived again here from the delivery this message belongs to, and only while that proposal version
-    // can still be answered through that link. Any other message that carries the placeholder, or a delivery whose proposal was answered, withdrawn, revised or whose link was
-    // replaced in the meantime, is not sent. The address is passed so the delivery records where the message actually went.
+    // can still be read through that link. Any other message that carries the placeholder (one a person or an AI typed it into), or a delivery whose proposal was answered,
+    // withdrawn, revised or expired, or whose link was replaced in the meantime, is not sent. The address is passed so the delivery records where the message actually went.
     if (hasProposalLinkPlaceholder(body)) {
       const { proposalLinkForMessage } = await import("@/server/proposals/delivery");
-      const link = await proposalLinkForMessage(db, m.org_id, m.id, decision.address, decision.channel, now);
+      const link = m.scope === "delivery" ? await proposalLinkForMessage(db, m.org_id, m.id, decision.address, decision.channel, now) : null;
       if (!link) {
-        await finishBlocked(db, { ...m, reservation_id: reservationId }, "proposal_link_unavailable", "The proposal can no longer be answered online (it was answered, withdrawn, replaced by a newer version or expired, or its link was closed), so the message was not sent.");
+        await finishBlocked(db, { ...m, reservation_id: reservationId }, "proposal_link_unavailable", "The proposal's link had stopped working (the proposal was answered, withdrawn, replaced by a newer version or expired, or its link was closed), so the message was not sent.");
         return { done: "blocked" };
       }
       body = fillProposalLink(body, link);

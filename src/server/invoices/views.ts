@@ -1,7 +1,7 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { formatQuantity, type CurrencyCode } from "@/lib/money";
-import { daysOverdue, isOverdue, type InvoicePaymentStatus, type InvoiceStatus } from "@/lib/invoices/state";
+import { daysOverdue, isOverdue, type InvoiceCreatedVia, type InvoicePaymentStatus, type InvoiceStatus } from "@/lib/invoices/state";
 import { iso, loadLines, toMinor, type InvoiceRow, type LineRow } from "@/server/invoices/core";
 
 // How an invoice looks to the screens: names resolved, amounts as integers in the currency's minor unit, dates as plain days or ISO instants. Nothing sealed, no
@@ -66,7 +66,10 @@ export interface InvoiceView {
   firstViewedAt: string | null;
   createdBy: string | null;
   createdByName: string | null;
-  createdVia: "manual" | "workflow" | "deal";
+  createdVia: InvoiceCreatedVia;
+  /** The proposal this invoice was made from and the saved version whose one-time lines were copied; both null for any other invoice. */
+  sourceProposalId: string | null;
+  sourceProposalVersion: number | null;
   createdAt: string;
   updatedAt: string;
   overdue: boolean;
@@ -103,7 +106,8 @@ export async function viewsFor(db: Queryable, orgId: string, rows: InvoiceRow[],
       paymentInstructions: r.payment_instructions, notes: r.notes, terms: r.terms, version: r.version, approvedVersion: r.approved_version,
       approvedByName: r.approved_by ? users.get(r.approved_by) ?? null : null, approvedAt: iso(r.approved_at), closesDeal: r.closes_deal, isTest: r.is_test, writtenOffAt: iso(r.written_off_at),
       writeOffReason: r.write_off_reason, issuedAt: iso(r.issued_at), voidedAt: iso(r.voided_at), voidReason: r.void_reason, firstViewedAt: iso(r.first_viewed_at), createdBy: r.created_by,
-      createdByName: r.created_by ? users.get(r.created_by) ?? null : null, createdVia: r.created_via, createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString(),
+      createdByName: r.created_by ? users.get(r.created_by) ?? null : null, createdVia: r.created_via, sourceProposalId: r.source_type === "proposal" ? r.source_id : null, sourceProposalVersion: r.source_type === "proposal" ? r.source_version : null,
+      createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString(),
       overdue, daysOverdue: overdue ? daysOverdue(r.due_on, now, tz) : 0,
     };
   });

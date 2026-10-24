@@ -1,7 +1,11 @@
 // Fixtures for the proposals tests. Synthetic workspaces only: nothing is sent to anyone and no provider is contacted.
+import crypto from "node:crypto";
 import { withSystem } from "@/server/db";
 import { memberActor, type CrmActor } from "@/server/crm/actor";
 import { adjustCredits } from "@/server/billing/ledger";
+import { publishUnitRate } from "@/server/billing/service";
+import { saveCredential } from "@/server/security/credentials";
+import { createContact, setContactConsent } from "@/server/crm/contacts";
 import type { LlmConfig } from "@/server/llm/client";
 import type { OrgRole } from "@/lib/permissions";
 import { createCatalogItem, createTaxRate, type CatalogItemView, type TaxRateView } from "@/server/proposals/catalog";
@@ -11,7 +15,8 @@ import { saveProposalSettings } from "@/server/proposals/settings";
 import { clearFeatureCache } from "@/server/proposals/features";
 import type { LineInput } from "@/server/proposals/doc-build";
 import { crmOrg, type CrmOrg } from "./crm";
-import { addMember, createUser, ctxFor } from "./fixtures";
+import { addMember, agencyUser, createUser, ctxFor } from "./fixtures";
+import { FIXTURE_RATES } from "./messaging";
 
 export interface ProposalOrg extends CrmOrg {
   /** A team member: may draft proposals but not send them, so what they write always needs approval. */
@@ -215,4 +220,68 @@ export async function connectionKeys(orgId: string) {
   const token = tokenForStoredConnection(row.id, row.webhook_token_hash);
   if (!creds || !token) throw new Error("the connection's keys cannot be opened");
   return { connectionId: row.id, token, creds };
+}
+
+// ---------------------------------------------------------------------------
+// Carrying the link to the customer. Messaging is the real send chain on embedded Postgres; every provider is a recording stand-in and nothing leaves the process.
+// ---------------------------------------------------------------------------
+
+let deliveryPhoneCounter = 3_000_000 + Math.floor(Math.random() * 4_000_000);
+export const deliveryPhone = () => `+1556${String(deliveryPhoneCounter++).padStart(7, "0")}`;
+export const deliveryEmail = () => `customer-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 6)}@example.test`;
+
+/**
+ * Messaging for a proposals workspace, the way a client has it once set up: email through Resend and text messages through Twilio (synthetic credentials in the test vault,
+ * a recorded passing capability test, published rates, credits), quiet hours off. Nothing is sent to anyone: tests dispatch through a recording transport.
+ */
+export async function addDeliveryMessaging(p: ProposalOrg, opts: { credits?: number; channels?: Array<"email" | "sms" | "whatsapp"> } = {}): Promise<void> {
+  const channels = opts.channels ?? ["email", "sms"];
+  const superUser = await createUser({ platformRole: "agency_super_admin", name: "Rates Admin" });
+  const superAdmin = agencyUser(superUser, "agency_super_admin");
+  const hex = (n: number) => crypto.randomBytes(n).toString("hex");
+  const providerOf = { email: "resend", sms: "twilio", whatsapp: "meta_whatsapp" } as const;
+  await withSystem(async (db) => {
+    await db.query("update messaging_policy set quiet_hours_start = '00:00', quiet_hours_end = '00:00'");
+    await db.query("insert into messaging_settings (org_id, auto_reply_enabled) values ($1, true) on conflict (org_id) do nothing", [p.org.id]);
+    for (const channel of channels) {
+      const provider = providerOf[channel];
+      const saved = await saveCredential(db, { orgId: p.org.id, provider, label: `${provider} (synthetic test)`, secret: `synthetic-${provider}-credential-${hex(12)}`, actorId: superUser.id });
+      const identity = channel === "email" ? `Proposal Fixture <hello-${hex(3)}@example.test>` : `+1555${String(1_000_000 + crypto.randomInt(8_000_000))}`;
+      const senderId = provider === "resend" ? crypto.randomUUID() : provider === "twilio" ? `MG${hex(16)}` : String(100000000000000 + crypto.randomInt(800000000));
+      const accountId = provider === "twilio" ? `AC${hex(16)}` : provider === "meta_whatsapp" ? String(100000000000000 + crypto.randomInt(800000000)) : null;
+      await db.query(
+        `insert into messaging_channels (org_id, channel, provider, enabled, sender_identity, sender_verified_at, registration_status, provider_sender_id, provider_account_id, credential_id, capability_test, capability_tested_at)
+         values ($1, $2, $3, true, $4, now(), $5, $6, $7, $8, $9::jsonb, now())`,
+        [p.org.id, channel, provider, identity, channel === "email" ? "not_required" : "approved", senderId, accountId, saved.id,
+          JSON.stringify({ ok: true, checkedAt: new Date().toISOString(), checks: [{ label: "Synthetic", ok: true, detail: "Test fixture." }] })],
+      );
+    }
+    const credit = Math.round((opts.credits ?? 20) * 1_000_000);
+    if (credit > 0) await adjustCredits(db, { orgId: p.org.id, deltaMicros: credit, reason: "seed credit for tests", userId: p.people.owner.id });
+  });
+  if (channels.includes("email")) await publishUnitRate(superAdmin, { provider: "resend", unitType: "email_send", wholesaleMicrosPerUnit: FIXTURE_RATES.resend.email_send });
+  if (channels.includes("sms")) await publishUnitRate(superAdmin, { provider: "twilio", unitType: "sms_segment", wholesaleMicrosPerUnit: FIXTURE_RATES.twilio.sms_segment });
+  if (channels.includes("whatsapp")) await publishUnitRate(superAdmin, { provider: "meta_whatsapp", unitType: "whatsapp_message", wholesaleMicrosPerUnit: FIXTURE_RATES.meta_whatsapp.whatsapp_message });
+}
+
+export interface Customer {
+  contactId: string;
+  email: string;
+  phone: string | null;
+}
+
+/** A customer in the CRM with an email address and a phone number, and the service consent the business recorded on the channels asked for (email by default). */
+export async function customerFor(p: ProposalOrg, opts: { firstName?: string; consent?: Array<"email" | "sms" | "whatsapp">; email?: string; phone?: string | null } = {}): Promise<Customer> {
+  const email = opts.email ?? deliveryEmail();
+  const phone = opts.phone === undefined ? deliveryPhone() : opts.phone;
+  const created = await createContact(p.actor("owner"), { firstName: opts.firstName ?? "Maria", lastName: "Santos", email, phone });
+  for (const channel of opts.consent ?? ["email"]) {
+    await setContactConsent(p.actor("owner"), created.id, { channel, purpose: "service", status: "granted", evidence: "Signed intake form on file, 12 Oct" });
+  }
+  return { contactId: created.id, email, phone };
+}
+
+/** A proposal for this customer (the address on the proposal is theirs), written, approved and sent, with the customer's link in hand. */
+export async function sentTo(p: ProposalOrg, c: Customer, over: CreateInput = {}, deps: { now?: Date } = {}) {
+  return sentWithLink(p, { contactId: c.contactId, clientEmail: c.email, clientName: "Maria Santos", ...over }, deps);
 }

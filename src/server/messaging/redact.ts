@@ -44,9 +44,9 @@ const INVOICE_PLACEHOLDER = /\{\{\s*invoice\.link\s*\}\}/g;
  * (src/server/proposals/delivery.ts).
  */
 export const PROPOSAL_LINK_LABEL = "[customer proposal link]";
-// The proposal page's link, with or without the PDF route that hangs off it: both are as good as the credential. The token is 43 characters; a longer run of token characters
-// or any other path after it isn't one. Linear: one fixed-length class run and bounded lookaheads, nothing that can backtrack on a long input.
-const PROPOSAL_LINK = /(?:https?:\/\/[^\s/<>"']+)?\/proposal\/[A-Za-z0-9_-]{43}(?:\/pdf)?(?![A-Za-z0-9_\-/])/g;
+// The proposal page's link, with or without the PDF route that hangs off it: both are as good as the credential, and so is the token followed by any other path. The token is 43
+// characters; a longer run of token characters isn't one. Linear: one host run that cannot cross a slash, one fixed-length class run and a one-character lookahead.
+const PROPOSAL_LINK = /(?:https?:\/\/[^\s/<>"']+)?\/proposal\/[A-Za-z0-9_-]{43}(?:\/pdf)?(?![A-Za-z0-9_-])/g;
 export { PROPOSAL_LINK_PLACEHOLDER } from "@/lib/proposals/delivery-text";
 const PROPOSAL_PLACEHOLDER = /\{\{\s*proposal\.link\s*\}\}/g;
 

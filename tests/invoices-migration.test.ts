@@ -58,9 +58,9 @@ async function rolledBack(fn: (db: Db) => Promise<void>) {
 }
 
 const quoted = (def: string) => [...def.matchAll(/'([A-Za-z0-9_]+)'::text/g)].map((m) => m[1]);
-const TABLES = ["customer_invoice_settings", "customer_payment_connections", "customer_invoices", "customer_invoice_lines", "customer_invoice_events", "customer_invoice_reminders", "customer_payment_attempts", "customer_payments", "customer_refunds", "customer_payment_events"];
+const TABLES = ["customer_invoice_settings", "customer_payment_connections", "customer_invoices", "customer_invoice_lines", "customer_invoice_events", "customer_invoice_reminders", "customer_invoice_deliveries", "customer_payment_attempts", "customer_payments", "customer_refunds", "customer_payment_events"];
 /** Children before parents, so everything but the settings can be deleted. */
-const CLEAR_ORDER = ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"];
+const CLEAR_ORDER = ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_deliveries", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"];
 
 describe("permissions, scope and kinds", () => {
   it("seeds the invoices permissions for exactly the roles the matrix names, and for no agency role", async () => {
@@ -90,14 +90,14 @@ describe("permissions, scope and kinds", () => {
     for (const d of defs) expect(quoted(d.d).sort(), d.t).toEqual([...CURRENCY_CODES].sort());
   });
 
-  it("accepts the billing message scope, keeps the earlier ones and refuses an unknown one", async () => {
+  it("accepts the billing and delivery message scopes, keeps the earlier ones and refuses an unknown one", async () => {
     const io = await invoiceOrg();
     const contact = (await rows<{ id: string }>("insert into contacts (org_id, display_name) values ($1, 'Scope Probe') returning id", [io.orgId]))[0].id;
     await rolledBack(async (db) => {
       const conv = (await db.query<{ id: string }>("insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'sms', 'open', 'unassigned') returning id", [io.orgId, contact])).rows[0].id;
       const insert = (scope: string) =>
         tries(db, "insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, failed_at, failure_kind, scope) values ($1, $2, 'outbound', 'human', 'x', 'failed', now(), 'rejected', $3)", [io.orgId, conv, scope]);
-      for (const ok of ["billing", "reply", "followup", "human", "reminder", "retention"]) expect(await insert(ok), ok).toBeNull();
+      for (const ok of ["billing", "delivery", "reply", "followup", "human", "reminder", "retention"]) expect(await insert(ok), ok).toBeNull();
       expect(await insert("nonsense")).toMatch(/scope_check/);
     });
   });
@@ -111,7 +111,7 @@ describe("permissions, scope and kinds", () => {
 });
 
 describe("who can read and write what", () => {
-  it("has row-level security on all ten tables and gives the application role select only, with the secrets withheld", async () => {
+  it("has row-level security on all eleven tables and gives the application role select only, with the secrets withheld", async () => {
     const meta = await rows<{ relname: string; rls: boolean; ins: boolean; upd: boolean; del: boolean; anon: boolean; auth: boolean; site: boolean }>(
       `select c.relname, c.relrowsecurity as rls, has_table_privilege('iaq_app_user', c.oid, 'insert') as ins, has_table_privilege('iaq_app_user', c.oid, 'update') as upd,
          has_table_privilege('iaq_app_user', c.oid, 'delete') as del, has_any_column_privilege('anon', c.oid, 'select, insert, update') as anon,
@@ -125,6 +125,7 @@ describe("who can read and write what", () => {
     expect(await can("customer_payment_connections", "public_key")).toBe(true);
     expect(await can("customer_invoices", "public_token_hash")).toBe(false);
     expect(await can("customer_invoices", "total_minor")).toBe(true);
+    expect(await can("customer_invoices", "source_version")).toBe(true);
     expect(await can("customer_payment_attempts", "checkout_url")).toBe(false);
     expect(await can("customer_payment_attempts", "reference")).toBe(true);
     // The webhook receipts are server-only: no column at all.
@@ -437,6 +438,171 @@ describe("payments must add up", () => {
       expect(await tries(db, "update customer_invoice_settings set reminders_enabled = true where org_id = $1", [io.orgId])).toMatch(/check|violates/);
       expect(await tries(db, "update customer_invoice_settings set reminders_enabled = true, reminders_authorized_at = now(), reminders_body_hash = repeat('a', 64) where org_id = $1", [io.orgId])).toBeNull();
       expect(await tries(db, "insert into customer_payment_connections (org_id, provider, mode, public_key) values ($1, 'simulated', 'live', 'cpk_aaaaaaaaaaaaaaaaaaaa')", [io.orgId])).toMatch(/check|violates/);
+    });
+  });
+});
+
+/** A proposal and one saved version of it, written straight to the tables (the migration is what is under test, not the proposals service). */
+async function proposalWithVersion(db: Db, orgId: string, number: string): Promise<string> {
+  const id = (await db.query<{ id: string }>("insert into proposals (org_id, number, title, currency) values ($1, $2, 'Probe proposal', 'PHP') returning id", [orgId, number])).rows[0].id;
+  await db.query("insert into proposal_versions (org_id, proposal_id, version, snapshot, content_hash, source_hash) values ($1, $2, 1, '{\"v\":1}'::jsonb, repeat('a', 64), repeat('b', 64))", [orgId, id]);
+  return id;
+}
+
+/** A message of the 'delivery' scope in a conversation of its own, the way the send chain makes one. */
+async function deliveryMessage(db: Db, orgId: string, contactId: string, scope = "delivery"): Promise<string> {
+  const conv = (await db.query<{ id: string }>("insert into conversations (org_id, contact_id, channel, thread_key) values ($1, $2, 'email', $3) returning id", [orgId, contactId, `probe-${uid()}`])).rows[0].id;
+  return (await db.query<{ id: string }>("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, scope) values ($1, $2, 'outbound', 'system', 'Invoice {{invoice.link}}', 'queued', $3) returning id", [orgId, conv, scope])).rows[0].id;
+}
+
+describe("the deliveries of an invoice", () => {
+  const insertDelivery = "insert into customer_invoice_deliveries (org_id, invoice_id, link_version, channel, message_id, wording_version, wording_hash, address_mask) values ($1, $2, $3, $4, $5, 'draft-test', $6, $7)";
+  const hash = "a".repeat(64);
+
+  it("hold the shape of a delivery: its channel, its link version, its fingerprint, its pair of stop columns, and a message of its own workspace and of the delivery scope", async () => {
+    const io = await invoiceOrg();
+    const other = await invoiceOrg();
+    const contact = (await rows<{ id: string }>("insert into contacts (org_id, display_name) values ($1, 'Delivery Probe') returning id", [io.orgId]))[0].id;
+    const otherContact = (await rows<{ id: string }>("insert into contacts (org_id, display_name) values ($1, 'Other Probe') returning id", [other.orgId]))[0].id;
+    const inv = (await issuedInvoice(io)).invoice;
+    const foreign = (await issuedInvoice(other)).invoice;
+    await rolledBack(async (db) => {
+      const good = await deliveryMessage(db, io.orgId, contact);
+      const r: Record<string, string | null> = {};
+      r.channel = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "carrier_pigeon", good, hash, null]);
+      r.hash = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "email", good, "not-a-hash", null]);
+      r.mask = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "email", good, hash, "x".repeat(81)]);
+      r.wording = await tries(db, "insert into customer_invoice_deliveries (org_id, invoice_id, link_version, channel, wording_version, wording_hash) values ($1, $2, 1, 'email', '', $3)", [io.orgId, inv.id, hash]);
+      r.linkVersion = await tries(db, insertDelivery, [io.orgId, inv.id, 0, "email", good, hash, null]);
+      // The invoice must be this workspace's own.
+      r.otherOrgsInvoice = await tries(db, insertDelivery, [io.orgId, foreign.id, 1, "email", good, hash, null]);
+      r.otherOrgsInvoiceAsTheirs = await tries(db, insertDelivery, [other.orgId, foreign.id, 1, "email", good, hash, null]);
+      // The message must be a delivery message of the same workspace.
+      const plain = await deliveryMessage(db, io.orgId, contact, "reply");
+      const alien = await deliveryMessage(db, other.orgId, otherContact);
+      r.notDelivery = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "email", plain, hash, null]);
+      r.foreignMessage = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "email", alien, hash, null]);
+      r.noMessage = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "email", "00000000-0000-4000-8000-000000000000", hash, null]);
+      expect(await tries(db, insertDelivery, [io.orgId, inv.id, 1, "email", good, hash, "m***@example.test"])).toBeNull();
+      // A reason goes with the time a delivery was stopped, and the time with the reason.
+      r.reasonAlone = await tries(db, "update customer_invoice_deliveries set withdrawn_reason = 'invoice_voided' where invoice_id = $1", [inv.id]);
+      r.timeAlone = await tries(db, "update customer_invoice_deliveries set withdrawn_at = now() where invoice_id = $1", [inv.id]);
+      r.longReason = await tries(db, "update customer_invoice_deliveries set withdrawn_at = now(), withdrawn_reason = $2 where invoice_id = $1", [inv.id, "x".repeat(41)]);
+      const pair = await tries(db, "update customer_invoice_deliveries set withdrawn_at = now(), withdrawn_reason = 'invoice_voided' where invoice_id = $1", [inv.id]);
+      // One delivery per message, and a delivery cannot be moved to a message the guard would have refused.
+      r.sameMessage = await tries(db, insertDelivery, [io.orgId, inv.id, 1, "sms", good, hash, null]);
+      r.moved = await tries(db, "update customer_invoice_deliveries set message_id = $2 where invoice_id = $1", [inv.id, plain]);
+      const { reasonAlone, timeAlone, ...rest } = r;
+      for (const [what, message] of Object.entries(rest)) expect(message, what).not.toBeNull();
+      expect(reasonAlone).not.toBeNull();
+      expect(timeAlone).not.toBeNull();
+      expect(pair, "a reason and a time together are fine").toBeNull();
+      expect(r.sameMessage).toMatch(/duplicate key/);
+      expect(r.notDelivery).toMatch(/must point at a delivery message of its own workspace/);
+      expect(r.foreignMessage).toMatch(/must point at a delivery message of its own workspace/);
+      expect(r.moved).toMatch(/must point at a delivery message of its own workspace/);
+    });
+  });
+
+  it("are for an issued invoice that is not a test invoice, and for no other: a test invoice, a draft, a submitted one and a void one are refused", async () => {
+    const io = await invoiceOrg();
+    const contact = (await rows<{ id: string }>("insert into contacts (org_id, display_name) values ($1, 'Delivery Probe') returning id", [io.orgId]))[0].id;
+    const real = (await issuedInvoice(io)).invoice;
+    const test = (await issuedInvoice(io, { isTest: true })).invoice;
+    const draft = (await draftBy(io)).invoice;
+    const submitted = (await submittedInvoice(io)).invoice;
+    const toVoid = (await issuedInvoice(io)).invoice;
+    await rolledBack(async (db) => {
+      await db.query("update customer_invoices set status = 'void', voided_at = now(), void_reason = 'probe' where id = $1", [toVoid.id]);
+      const attempt = async (invoiceId: string) => tries(db, insertDelivery, [io.orgId, invoiceId, 1, "email", await deliveryMessage(db, io.orgId, contact), hash, null]);
+      expect(await attempt(real.id)).toBeNull();
+      for (const [what, id] of [["a test invoice", test.id], ["a draft", draft.id], ["a submitted invoice", submitted.id], ["a void invoice", toVoid.id]] as const) {
+        expect(await attempt(id), what).toMatch(/only an issued invoice that is not a test invoice can be sent to a customer/);
+      }
+    });
+  });
+
+  it("are read by the people who can read invoices, in their own workspace, and by no one else; the application role can only select", async () => {
+    const a = await invoiceOrg();
+    const b = await invoiceOrg();
+    const contact = (await rows<{ id: string }>("insert into contacts (org_id, display_name) values ($1, 'Delivery Probe') returning id", [a.orgId]))[0].id;
+    const inv = (await issuedInvoice(a)).invoice;
+    await withSystem(async (db) => {
+      await db.query(insertDelivery, [a.orgId, inv.id, 1, "email", await deliveryMessage(db as Db, a.orgId, contact), hash, "m***@example.test"]);
+    });
+    const count = (who: Parameters<typeof a.ctx>[0], org: typeof a) => withUser(org.ctx(who).user.id, async (db) => Number((await db.query<{ n: string }>("select count(*)::text as n from customer_invoice_deliveries")).rows[0].n));
+    for (const who of ["owner", "manager", "sales"] as const) expect(await count(who, a), who).toBe(1);
+    for (const who of ["viewer", "support", "setter"] as const) expect(await count(who, a), who).toBe(0);
+    expect(await count("owner", b)).toBe(0);
+    const priv = (await rows<{ ins: boolean; upd: boolean; del: boolean; sel: boolean }>(
+      "select has_table_privilege('iaq_app_user', 'customer_invoice_deliveries', 'insert') as ins, has_table_privilege('iaq_app_user', 'customer_invoice_deliveries', 'update') as upd, has_table_privilege('iaq_app_user', 'customer_invoice_deliveries', 'delete') as del, has_table_privilege('iaq_app_user', 'customer_invoice_deliveries', 'select') as sel",
+    ))[0];
+    expect(priv).toEqual({ ins: false, upd: false, del: false, sel: true });
+  });
+
+  it("are deleted with a departed client's purge, and their message stays for the send chain's own record", async () => {
+    const io = await invoiceOrg();
+    const contact = (await rows<{ id: string }>("insert into contacts (org_id, display_name) values ($1, 'Delivery Probe') returning id", [io.orgId]))[0].id;
+    const inv = (await issuedInvoice(io)).invoice;
+    let messageId = "";
+    await withSystem(async (db) => {
+      messageId = await deliveryMessage(db as Db, io.orgId, contact);
+      await db.query(insertDelivery, [io.orgId, inv.id, 1, "email", messageId, hash, null]);
+    });
+    // An issued invoice is not deleted without the purge declaration, whatever hangs off it.
+    await expect(withSystem((db) => db.query("delete from customer_invoices where id = $1", [inv.id]))).rejects.toThrow();
+    await withSystem(async (db) => {
+      await db.query("select set_config('iaq.purge', 'on', true)");
+      await db.query("delete from customer_invoices where id = $1", [inv.id]);
+    });
+    expect(await rows("select 1 from customer_invoice_deliveries where invoice_id = $1", [inv.id])).toHaveLength(0);
+    expect(await rows("select 1 from conversation_messages where id = $1", [messageId])).toHaveLength(1);
+  });
+});
+
+describe("an invoice made from a proposal", () => {
+  const insertDraft = `insert into customer_invoices (org_id, currency, subtotal_minor, tax_minor, total_minor, created_via, source_type, source_id, source_version) values ($1, 'PHP', 0, 0, 0, $2, $3, $4, $5) returning id`;
+
+  it("names the proposal and the saved version it copied, all together, in its own workspace, and the proposal stays", async () => {
+    const io = await invoiceOrg();
+    const other = await invoiceOrg();
+    await rolledBack(async (db) => {
+      const mine = await proposalWithVersion(db, io.orgId, "P-0001");
+      const theirs = await proposalWithVersion(db, other.orgId, "P-0001");
+      expect(await tries(db, insertDraft, [io.orgId, "proposal", "proposal", mine, 1])).toBeNull();
+      const refused: Record<string, string | null> = {
+        typeAlone: await tries(db, insertDraft, [io.orgId, "manual", "proposal", null, null]),
+        idAlone: await tries(db, insertDraft, [io.orgId, "manual", null, mine, null]),
+        versionAlone: await tries(db, insertDraft, [io.orgId, "manual", null, null, 1]),
+        noVersion: await tries(db, insertDraft, [io.orgId, "proposal", "proposal", mine, null]),
+        zeroVersion: await tries(db, insertDraft, [io.orgId, "proposal", "proposal", mine, 0]),
+        aVersionThatWasNeverSaved: await tries(db, insertDraft, [io.orgId, "proposal", "proposal", mine, 2]),
+        anotherWorkspacesProposal: await tries(db, insertDraft, [io.orgId, "proposal", "proposal", theirs, 1]),
+        anUnknownKind: await tries(db, insertDraft, [io.orgId, "proposal", "estimate", mine, 1]),
+        // A source without the 'proposal' mark, and the mark without a source, are not an invoice made from a proposal.
+        sourceButManual: await tries(db, insertDraft, [io.orgId, "manual", "proposal", mine, 1]),
+        markButNoSource: await tries(db, insertDraft, [io.orgId, "proposal", null, null, null]),
+        anUnknownOrigin: await tries(db, insertDraft, [io.orgId, "estimate", null, null, null]),
+      };
+      for (const [what, message] of Object.entries(refused)) expect(message, what).not.toBeNull();
+      expect(refused.anotherWorkspacesProposal).toMatch(/violates foreign key/);
+      // The proposal cannot be deleted from under the invoice.
+      expect(await tries(db, "delete from proposals where id = $1", [mine])).toMatch(/foreign key|violates/);
+    });
+  });
+
+  it("keeps its source for good: the proposal, its version and the origin never change, on a draft or after", async () => {
+    const io = await invoiceOrg();
+    await rolledBack(async (db) => {
+      const p1 = await proposalWithVersion(db, io.orgId, "P-0001");
+      const p2 = await proposalWithVersion(db, io.orgId, "P-0002");
+      const id = (await db.query<{ id: string }>(insertDraft, [io.orgId, "proposal", "proposal", p1, 1])).rows[0].id;
+      expect(await tries(db, "update customer_invoices set source_id = $2 where id = $1", [id, p2])).toMatch(/identity of an invoice never changes/);
+      expect(await tries(db, "update customer_invoices set source_type = null, source_id = null, source_version = null, created_via = 'manual' where id = $1", [id])).toMatch(/identity of an invoice never changes/);
+      expect(await tries(db, "update customer_invoices set created_via = 'deal' where id = $1", [id])).toMatch(/identity of an invoice never changes/);
+      // An ordinary invoice cannot be given a source afterwards either.
+      const plain = (await db.query<{ id: string }>("insert into customer_invoices (org_id, currency) values ($1, 'PHP') returning id", [io.orgId])).rows[0].id;
+      expect(await tries(db, "update customer_invoices set source_type = 'proposal', source_id = $2, source_version = 1 where id = $1", [plain, p1])).not.toBeNull();
     });
   });
 });

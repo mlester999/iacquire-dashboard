@@ -242,6 +242,31 @@ export function ReviewPanel({
         <p className="text-[12.5px] text-muted">These are checked against your real workspace connections. Missing items don&apos;t block approval; they are tracked in your Setup Center.</p>
       </section>
 
+      {review.optionalConnections.length > 0 && (
+        <section aria-labelledby="rv-optional" className="space-y-2">
+          <h2 id="rv-optional" className="text-[15px] font-semibold">
+            Optional connections
+          </h2>
+          <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
+            {review.optionalConnections.map((o) => (
+              <li key={o.key} className="flex items-start gap-3 px-4 py-3">
+                <span aria-hidden className={cn("grid size-9 shrink-0 place-items-center rounded-xl", o.state === "connected" ? "bg-success-soft text-success-ink" : "bg-surface-2 text-muted")}>
+                  {o.state === "connected" ? <CheckCircle2 className="size-4" /> : <PlugZap className="size-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[14px] font-medium">{o.label}</p>
+                    <StatusPill tone={o.state === "connected" ? "success" : "neutral"} size="sm">{o.state === "connected" ? "Connected" : o.state === "waiting" ? "Waiting" : "Not connected"}</StatusPill>
+                  </div>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{o.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[12.5px] text-muted">These are optional. Approving your setup does not depend on any of them.</p>
+        </section>
+      )}
+
       <section aria-labelledby="rv-tasks" className="space-y-2">
         <h2 id="rv-tasks" className="text-[15px] font-semibold">
           What needs a person

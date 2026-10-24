@@ -1,5 +1,6 @@
 import type { AgentStatus } from "@/lib/agents";
 import { toolInventoryReady, toolInventoryRecorded } from "@/lib/hermes-tool-inventory";
+import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 
 export type ReadinessStage =
   | "disabled"
@@ -65,6 +66,12 @@ export interface EmployeeReadinessInput {
   isAgencyEmployee?: boolean;
   /** True only when a persisted `agent_runs` row is actually in `running` state. */
   taskExecuting?: boolean;
+  /**
+   * Whether the workspace's setup payment is confirmed (paid or waived). Only a client workspace passes it; `undefined` means "not asked" and changes nothing. `false`
+   * keeps an employee that is not yet working at "Setup required" with the reason. It never touches an employee that is already authorized: a refund stops new
+   * provisioning, it does not pause a running AI team.
+   */
+  paymentCleared?: boolean;
   /** Fixed per server render to avoid server/client clock drift at the two-minute expiry boundary. */
   evaluatedAt?: string | Date | number;
 }
@@ -212,6 +219,13 @@ export function deriveEmployeeReadiness(input: EmployeeReadinessInput): Employee
     label = "Paused";
     title = "This employee is paused";
     description = "Its configuration, knowledge and history are preserved. Re-enable it before starting new conversations.";
+    cta = "none";
+  } else if (input.paymentCleared === false && !authorized) {
+    stage = "setup";
+    tone = "warning";
+    label = "Setup required";
+    title = "Waiting for your setup payment";
+    description = `${PAYMENT_REQUIRED_SENTENCE}.`;
     cta = "none";
   } else if (hasPendingReview && !configured) {
     stage = "review";

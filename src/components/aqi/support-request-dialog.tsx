@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 import { AttachmentPicker, type PickerState } from "@/components/support/attachment-picker";
-import { CATEGORIES_BY_TYPE, REQUEST_TYPES, REQUEST_TYPE_LABELS, categoryLabel, type RequestType } from "@/lib/support/lifecycle";
+import { ASSISTANT_REQUEST_TYPES, CATEGORIES_BY_TYPE, REQUEST_TYPE_LABELS, categoryLabel, type RequestType } from "@/lib/support/lifecycle";
 import { newIdempotencyKey } from "@/lib/support/content";
 import { cn } from "@/lib/utils";
 
@@ -155,7 +155,7 @@ function SupportDialogBody({ conversationId, onClose }: { conversationId: string
                 {error && <p role="alert" className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft p-3 text-[12.5px] leading-relaxed text-danger-ink"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> <span>{error}<span className="mt-1 block text-[12px] opacity-90">No request has been created.</span></span></p>}
                 <Field label="Subject" htmlFor="aqi-support-subject"><Input ref={subjectRef} id="aqi-support-subject" maxLength={160} value={subject} onChange={(e) => setSubject(e.target.value)} disabled={phase === "sending"} /></Field>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="This is a" htmlFor="aqi-support-type"><Select id="aqi-support-type" value={requestType} onChange={(e) => changeType(e.target.value as RequestType)} disabled={phase === "sending"}>{REQUEST_TYPES.map((t) => <option key={t} value={t}>{REQUEST_TYPE_LABELS[t].label}</option>)}</Select></Field>
+                  <Field label="This is a" htmlFor="aqi-support-type"><Select id="aqi-support-type" value={requestType} onChange={(e) => changeType(e.target.value as RequestType)} disabled={phase === "sending"}>{ASSISTANT_REQUEST_TYPES.map((t) => <option key={t} value={t}>{REQUEST_TYPE_LABELS[t].label}</option>)}</Select></Field>
                   <Field label="Topic" htmlFor="aqi-support-category"><Select id="aqi-support-category" value={category} onChange={(e) => setCategory(e.target.value)} disabled={phase === "sending"}>{categories.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}</Select></Field>
                 </div>
                 <p className="-mt-1 text-[11.5px] text-muted">{draft.reason}</p>

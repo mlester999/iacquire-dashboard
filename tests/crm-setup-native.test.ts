@@ -52,6 +52,7 @@ import type { CapabilityTest } from "@/server/messaging/transports/types";
 import { applicableSteps, buildCrmSetupSteps, resolveGuideStep, type CrmSetupStep, type CrmSetupStepKey } from "@/lib/onboarding/crm-setup";
 import { createGuideAutosave, type GuidePatch, type GuideSaveResult } from "@/lib/onboarding/crm-setup-autosave";
 import { ctxFor } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 import { agencyPeople, crmOrg, type CrmOrg } from "./support/crm";
 import { confirmation, field, insertPublishedBlueprint, smallContent } from "./support/blueprints";
 import { createTag } from "@/server/crm/tags";
@@ -198,6 +199,8 @@ describe("a native CRM client in the Setup Center", () => {
     expect(snap.tasks.find((t) => t.templateKey === "ghl_subaccount")).toMatchObject({ serviceExcluded: true, crmProvider: "ghl" });
 
     await markReadyForReview(admin, c.org.id);
+    // Activation also needs the setup fee confirmed (paid or waived); the refusal and the way through are tested in tests/payment-gate.test.ts.
+    await clearSetupPayment(c.org.id);
     await activateSetup(admin, c.org.id, { note: "Native CRM verified on evidence." });
     expect((await getAgencySetupSnapshot(admin, c.org.id)).state).toBe("activated");
     expect(await q("select decision from activation_reviews where org_id = $1", [c.org.id])).toEqual([{ decision: "approved" }]);
@@ -224,6 +227,7 @@ describe("a native CRM client in the Setup Center", () => {
     expect(ok.out).toMatchObject({ status: "succeeded" });
     expect(ok.row).toMatchObject({ status: "succeeded", prepared_configuration: { optionalFailures: ["sms_sender"] }, last_error: expect.stringMatching(/Every required check is verified\. Optional checks that need attention: SMS sender/) });
     await markReadyForReview(admin, c.org.id);
+    await clearSetupPayment(c.org.id);
     await activateSetup(admin, c.org.id, { note: "Required checks verified; the optional SMS sender is being fixed separately." });
     expect((await getAgencySetupSnapshot(admin, c.org.id)).state).toBe("activated");
 

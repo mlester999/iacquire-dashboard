@@ -19,6 +19,7 @@ import { acknowledgeIfNew, applyStatusChange } from "@/server/support/lifecycle"
 import { agencyManagers, clientParticipants, dispatchSupportNotice, sendQueuedSupportEmails } from "@/server/support/notify";
 import { clearResponseClock, recomputeResponseClock, slaViewFor } from "@/server/support/response-clock";
 import { bindStagedAttachments } from "@/server/support/attachments";
+import { loadChangeForAgency, type AgencyChangeView } from "@/server/support/change";
 import type {
   AgencyListItem, AgencyListQuery, AgencyViewCounts, RequestPage, ThreadAttachment, ThreadMessage, TimelineEntry,
 } from "@/server/support/types";
@@ -174,6 +175,8 @@ export interface AgencyRequestDetail {
   caps: AgencySupportCaps;
   maxAttachmentMb: number;
   maxAttachments: number;
+  /** For a change request: what the team recorded about it, and the entry on the project's change list it was also filed as. Null for every other type. */
+  change: AgencyChangeView | null;
 }
 
 export async function getAgencyRequest(user: SessionUser, ticketId: string): Promise<AgencyRequestDetail | null> {
@@ -271,6 +274,7 @@ export async function getAgencyRequest(user: SessionUser, ticketId: string): Pro
     caps,
     maxAttachmentMb: settings.maxAttachmentMb,
     maxAttachments: settings.maxAttachmentsPerMessage,
+    change: t.request_type === "change" ? await loadChangeForAgency(user.id, ticketId) : null,
   };
 }
 

@@ -7,6 +7,7 @@ import { requireOrgContextOrThrow } from "@/server/tenancy/context";
 import { createConfigVersion, editableSettings, getAgentByRole, rollbackToVersion } from "@/server/workforce/service";
 import { interpretChangeRequest } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
+import { isSetupPaymentCleared } from "@/server/billing/clearance";
 import { prepareConfigPreview } from "@/server/workforce/preview";
 import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
 import { configAttribution } from "@/lib/config-review";
@@ -151,9 +152,9 @@ export async function rollbackAction(role: string, versionId: string) {
 export async function requestSetupAction() {
   try {
     const ctx = await requireOrgContextOrThrow("agents.configure");
-    const n = await withSystem((db) => requestProvisioning(db, ctx.org.orgId, ctx.user.id));
+    const { n, paymentCleared } = await withSystem(async (db) => ({ n: await requestProvisioning(db, ctx.org.orgId, ctx.user.id), paymentCleared: await isSetupPaymentCleared(db, ctx.org.orgId) }));
     revalidatePath("/employees");
-    return { ok: true as const, data: { requested: n } };
+    return { ok: true as const, data: { requested: n, paymentCleared } };
   } catch (err) {
     return actionError(err);
   }

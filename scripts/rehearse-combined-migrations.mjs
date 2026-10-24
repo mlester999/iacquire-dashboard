@@ -943,6 +943,16 @@ SEEDS["0093_customer_invoices_payments"] = async (db, ctx) => {
     await db.query("insert into customer_payment_events (org_id, connection_id, provider_event_id, event_type, livemode, outcome, payload_sha256) values ($1, $2, $3, 'payment.paid', false, 'processed', repeat('c', 64))", [org, connection, `evt_seed_${key}`]);
     await db.query("insert into customer_invoice_reminders (org_id, invoice_id, step_key, due_at, status) values ($1, $2, 'on_due:0', '2026-12-01T01:00:00Z', 'scheduled')", [org, real]);
     await db.query("insert into customer_invoice_events (org_id, invoice_id, kind, actor_kind, actor_id) select $1, i, 'issued', 'user', $3 from unnest($2::uuid[]) as i", [org, [invoice, real], owner]);
+    // A message that carried the customer's link (the 'delivery' message scope is 0091's) and the delivery row that names it, in a conversation of its own for the invoice. The real
+    // invoice is the one that is sent: the database refuses to send a test invoice.
+    const deliveryConversation = (await one(db, "insert into conversations (org_id, contact_id, channel, thread_key, status, subject, owner_kind) values ($1, $2, 'email', $3, 'open', 'Invoice SEED', 'unassigned') returning id", [org, contact, `invoice:${real}`])).id;
+    const deliveryMessage = (await one(db, "insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, scope) values ($1, $2, 'outbound', 'system', 'Invoice SEED is ready for you. {{invoice.link}}', 'queued', 'delivery') returning id", [org, deliveryConversation])).id;
+    await db.query("insert into customer_invoice_deliveries (org_id, invoice_id, link_version, channel, message_id, wording_version, wording_hash, address_mask, requested_by) values ($1, $2, 1, 'email', $3, 'draft-seed', repeat('d', 64), 's***@example.test', $4)", [org, real, deliveryMessage, owner]);
+    // A draft made from the proposal 0091 seeded, naming the saved version it copied.
+    const proposal = await one(db, "select id from proposals where org_id = $1 order by created_at limit 1", [org]);
+    if (proposal) {
+      await db.query("insert into customer_invoices (org_id, contact_id, currency, subtotal_minor, tax_minor, total_minor, created_by, created_via, source_type, source_id, source_version) values ($1, $2, 'PHP', 0, 0, 0, $3, 'proposal', 'proposal', $4, 1)", [org, contact, owner, proposal.id]);
+    }
     const conv = (await one(db, "insert into conversations (org_id, contact_id, channel, status, owner_kind) values ($1, $2, 'sms', 'open', 'unassigned') returning id", [org, contact])).id;
     await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, failed_at, failure_kind, scope) values ($1, $2, 'outbound', 'human', 'Seed invoice reminder', 'failed', now(), 'rejected', 'billing')", [org, conv]);
     await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'invoice_paid', 'Seed invoice paid')", [org, owner]);
@@ -955,11 +965,14 @@ CLEAN["0093_customer_invoices_payments"] = {
   guard: async (db) => {
     await db.query("select set_config('iaq.purge', 'on', false)");
     try {
-      for (const t of ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"]) await db.query(`delete from ${t}`);
+      for (const t of ["customer_payment_events", "customer_refunds", "customer_payments", "customer_payment_attempts", "customer_invoice_deliveries", "customer_invoice_reminders", "customer_invoice_events", "customer_invoice_lines", "customer_invoices", "customer_payment_connections"]) await db.query(`delete from ${t}`);
     } finally {
       await db.query("select set_config('iaq.purge', '', false)");
     }
     await db.query("delete from conversation_messages where scope = 'billing'");
+    // The messages that delivered an invoice outlive their delivery row (it only points at them).
+    await db.query("delete from conversation_messages where conversation_id in (select id from conversations where thread_key like 'invoice:%')");
+    await db.query("delete from conversations where thread_key like 'invoice:%'");
     await db.query("delete from notifications where kind = any($1::text[])", [INVOICE_KINDS]);
     await db.query("delete from conversations where contact_id in (select id from contacts where display_name like 'Seed-0093 %')");
     await db.query("delete from contacts where display_name like 'Seed-0093 %'");
@@ -981,8 +994,11 @@ SEEDS["0099_payment_controls"] = async (db, ctx) => {
     else if (key === "b") await db.query("insert into billing_accounts (org_id, setup_payment_status, waiver_reason, waived_by, waived_at) values ($1, 'waived', 'Seed waiver agreed with the founder', $2, now())", [org, ctx.users.staff]);
     else await db.query("insert into billing_accounts (org_id) values ($1)", [org]);
     // The plan period the second payment paid for.
-    await db.query(`insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_by, activated_at, billing_start_on, last_payment_id)
-      values ($1, 'active', 29900, 4, 'seed-0099', $2, $3, now(), current_date, $4)`, [org, owner, ctx.users.staff, plan]);
+    // The plan names a billing provider and the automatic past-due switch was used, so the rollback has to refuse for those two reasons as well.
+    await db.query(`insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_by, activated_at, billing_start_on, last_payment_id,
+        provider, provider_subscription_id)
+      values ($1, 'active', 29900, 4, 'seed-0099', $2, $3, now(), current_date, $4, 'paymongo', $5)`, [org, owner, ctx.users.staff, plan, `sub_seed_0099_${key}`]);
+    await db.query("update agency_billing_settings set auto_past_due = true, auto_past_due_by = $1, auto_past_due_at = now()", [ctx.users.staff]);
     for (const kind of BILLING_KINDS) await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, $3, 'Seed billing notice')", [org, owner, kind]);
   });
 };
@@ -991,6 +1007,7 @@ SEEDS["0099_payment_controls"] = async (db, ctx) => {
 CLEAN["0099_payment_controls"] = {
   guard: async (db) => {
     await db.query("delete from maintenance_subscriptions where terms_version = 'seed-0099'");
+    await db.query("update agency_billing_settings set auto_past_due = false, auto_past_due_by = null, auto_past_due_at = null");
     await db.query("delete from billing_accounts");
     await db.query("delete from payments where provider = 'manual'");
     await db.query("delete from notifications where kind = any($1::text[])", [BILLING_KINDS]);
@@ -1050,6 +1067,121 @@ CLEAN["0096_staff_messages"] = {
     await db.query("delete from users where id = any($1::uuid[])", [made.people]);
     if (made.createdAgency) await db.query("delete from organizations where id = $1 and kind = 'agency'", [made.agency]);
     ctx.staffMessages = null;
+  },
+};
+
+// Requests completion. Per workspace: an agreed project with a recorded warranty and revision count, a Request a Change request aimed at it with the team's classification,
+// two change orders (one out of scope that was quoted, accepted by its owner and added to the agreed scope, one revision that was applied), prerequisites (one waiting, one
+// confirmed), an internal note that mentions a team member, a triage record, a survey, a timeline entry and a delivery-log row of the new kinds, and one notice of each new kind.
+const REQUESTS_KINDS = ["support_mention", "support_survey", "project_change_order", "project_prerequisite", "project_review_overdue"];
+SEEDS["0098_requests_completion"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key, owner) => {
+    const staff = ctx.users.staff;
+    const project = (await one(db, "insert into client_project_requests (org_id, created_by, title, summary, status, idempotency_key) values ($1, $2, $3, 'Seed project', 'approved', $4) returning id", [org, owner, `Seed-0098 project ${key}`, `seed0098-request-${key}`])).id;
+    await db.query("insert into client_projects (request_id, org_id, agreed_price_cents, currency, scope, warranty_days, warranty_ends_on, revisions_included, revisions_used) values ($1, $2, 120000, 'USD', 'Seed scope', 30, current_date + 30, 2, 1)", [project, org]);
+    const ticket = (await one(db, "insert into support_tickets (org_id, created_by, subject, category, request_type, project_id) values ($1, $2, $3, 'change_project', 'change', $4) returning id", [org, owner, `Seed-0098 change ${key}`, project])).id;
+    await db.query("insert into support_ticket_change (ticket_id, org_id, target_kind, project_id, classification, classified_by, classified_at, resolution_note) values ($1, $2, 'project', $3, 'needs_quote', $4, now(), 'Seed note')", [ticket, org, project, staff]);
+    const hash = "a".repeat(64);
+    const order = (await one(db, "insert into project_change_orders (org_id, request_id, ticket_id, title, description, requested_by, idempotency_key) values ($1, $2, $3, 'Seed-0098 change', 'Add a second calendar', $4, $5) returning id", [org, project, ticket, owner, `seed0098-order-${key}`])).id;
+    await db.query("update project_change_orders set status = 'under_review', classification = 'out_of_scope' where id = $1", [order]);
+    await db.query(`update project_change_orders set status = 'quoted', quote_version = 1, quoted_by = $2, quoted_at = now(), additional_cents = 25000, currency = 'USD', additional_weeks_min = 1,
+      additional_weeks_max = 2, terms_text = 'Seed terms', content_hash = $3 where id = $1`, [order, staff, hash]);
+    await db.query("insert into project_change_order_decisions (change_order_id, org_id, quote_version, decision, decided_by, content_hash, acknowledgement) values ($1, $2, 1, 'accepted', $3, $4, 'I accept this change and its price.')", [order, org, owner, hash]);
+    await db.query("update project_change_orders set status = 'accepted', decided_at = now() where id = $1", [order]);
+    await db.query("insert into project_scope_amendments (org_id, request_id, change_order_id, added_scope, added_cents, currency, agreed_by) values ($1, $2, $3, 'Seed addition', 25000, 'USD', $4)", [org, project, order, owner]);
+    const revision = (await one(db, "insert into project_change_orders (org_id, request_id, title, description, requested_by) values ($1, $2, 'Seed-0098 revision', 'Soften the greeting', $3) returning id", [org, project, owner])).id;
+    await db.query("update project_change_orders set status = 'under_review', classification = 'in_scope_revision' where id = $1", [revision]);
+    await db.query("update project_change_orders set status = 'applied', applied_at = now(), applied_by = $2 where id = $1", [revision, staff]);
+    await db.query("insert into project_messages (request_id, org_id, author_id, author_kind, body, client_message_id, change_order_id) values ($1, $2, $3, 'client', 'Seed-0098 message', gen_random_uuid(), $4)", [project, org, owner, order]);
+    await db.query("insert into project_prerequisites (request_id, org_id, kind, label, created_by) values ($1, $2, 'agreement', 'Written agreement confirmed', $3)", [project, org, staff]);
+    await db.query(`insert into project_prerequisites (request_id, org_id, kind, label, status, evidence_note, satisfied_by, satisfied_at, created_by)
+      values ($1, $2, 'deposit', 'Deposit verified', 'satisfied', 'Seen on the bank statement', $3, now(), $3)`, [project, org, staff]);
+    const note = (await one(db, "insert into support_messages (ticket_id, org_id, author_id, author_kind, body, internal) values ($1, $2, $3, 'agency', 'Seed-0098 note for the team', true) returning id", [ticket, org, staff])).id;
+    await db.query("insert into support_message_mentions (message_id, ticket_id, org_id, mentioned_user_id, created_by) values ($1, $2, $3, $4, $4)", [note, ticket, org, staff]);
+    await db.query("insert into support_ticket_ai_triage (ticket_id, org_id, status, source, intent, suggested_request_type, suggested_priority, context_summary) values ($1, $2, 'ready', 'rules', 'change', 'change', 'normal', 'Seed summary')", [ticket, org]);
+    await db.query("insert into support_surveys (org_id, kind, ticket_id, requested_for_user_id) values ($1, 'ticket_resolution', $2, $3)", [org, ticket, owner]);
+    await db.query("insert into support_ticket_events (ticket_id, org_id, kind, visibility, actor_kind) values ($1, $2, 'change_classified', 'internal', 'agency')", [ticket, org]);
+    await db.query("insert into support_notification_log (ticket_id, org_id, event_kind, event_key, recipient_user_id, channel, status) values ($1, $2, 'staff_mention', $3, $4, 'in_app', 'delivered')", [ticket, org, `seed-0098-${key}`, staff]);
+    for (const kind of REQUESTS_KINDS) await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, $3, 'Seed requests notice')", [org, owner, kind]);
+  });
+};
+// A change request, its recorded answer, the scope it added and a confirmed prerequisite are history that only a purge of a departed client's data may delete; the clean-up
+// (what an operator exports first) declares the purge for the length of the removal, as 0093's does. The seeded requests, projects and notes in the existing tables go too.
+CLEAN["0098_requests_completion"] = {
+  guard: async (db) => {
+    await db.query("select set_config('iaq.purge', 'on', false)");
+    try {
+      for (const t of ["support_surveys", "support_ticket_ai_triage", "support_message_mentions", "project_prerequisites", "project_scope_amendments", "project_change_order_decisions", "project_change_orders"]) await db.query(`delete from ${t}`);
+    } finally {
+      await db.query("select set_config('iaq.purge', '', false)");
+    }
+    await db.query("delete from project_messages where body = 'Seed-0098 message'");
+    await db.query("delete from support_notification_log where event_key like 'seed-0098-%'");
+    await db.query("delete from support_tickets where subject like 'Seed-0098 %'");
+    await db.query("delete from client_projects where request_id in (select id from client_project_requests where title like 'Seed-0098 %')");
+    await db.query("delete from client_project_requests where title like 'Seed-0098 %'");
+    await db.query("delete from notifications where kind = any($1::text[])", [REQUESTS_KINDS]);
+  },
+};
+
+// The prospect demo funnel. Prospects belong to no workspace, so there is nothing per workspace: a settings row, one prospect who confirmed their address (with a session, a link
+// they came back by, an answered message and its answer, a message waiting for its answer, and a timeline) and one who has not (with the link that was emailed), the day's
+// counters, and one notice of each new kind. The two people are in the agency (the Super Admin of the baseline follows one up). None of it touches users, organizations,
+// memberships, invitations or sign-in rows, and the rollback refuses while any of it exists.
+const DEMO_KINDS = ["demo_prospect_verified", "demo_consultation_requested", "demo_purchase_started", "demo_budget_reached"];
+SEEDS["0100_demo_funnel"] = async (db, ctx) => {
+  const staff = ctx.users.staff;
+  await db.query("insert into demo_settings (id, enabled, ai_enabled, consultation_url, retention_days, blocked_email_domains, version, updated_by) values (true, false, false, 'https://example.test/consultation', 90, '{free-mail.test}', 1, $1)", [staff]);
+  const active = (await one(db, `insert into demo_prospects (name, work_email, email_normalized, business_name, industry, status, verified_at, window_ends_at, message_limit, messages_used, message_seq,
+      last_seen_at, consent_at, consent_version, owner_user_id, utm)
+    values ('Seed Prospect', 'seed.prospect@example.test', 'seed.prospect@example.test', 'Seed Roofing', 'home_services', 'active', now(), now() + interval '1 day', 10, 2, 3, now(), now(), 'draft-seed', $1, '{"utm_source":"seed"}'::jsonb)
+    returning id`, [staff])).id;
+  await db.query("insert into demo_messages (prospect_id, seq, role, employee_role, body, client_message_id, state, input_chars) values ($1, 1, 'user', 'sales_assistant', 'What does the Sales Assistant do?', 'seed-0100-message-1', 'answered', 33)", [active]);
+  const asked = (await one(db, "select id from demo_messages where prospect_id = $1 and seq = 1", [active])).id;
+  await db.query("insert into demo_messages (prospect_id, seq, role, employee_role, body, reply_to_id, output_chars) values ($1, 2, 'assistant', 'sales_assistant', 'It answers new enquiries, with sample data in this demo.', $2, 56)", [active, asked]);
+  await db.query("insert into demo_messages (prospect_id, seq, role, body, client_message_id, state, input_chars) values ($1, 3, 'user', 'And the Appointment Setter?', 'seed-0100-message-3', 'pending', 28)", [active]);
+  await db.query("insert into demo_sessions (prospect_id, token_hash, user_agent_hash, expires_at) values ($1, repeat('a', 64), repeat('b', 32), now() + interval '7 days')", [active]);
+  await db.query("insert into demo_verifications (prospect_id, purpose, token_hash, expires_at, consumed_at) values ($1, 'verify', repeat('c', 64), now() + interval '2 days', now())", [active]);
+  await db.query("insert into demo_verifications (prospect_id, purpose, token_hash, expires_at) values ($1, 'return', repeat('d', 64), now() + interval '2 days')", [active]);
+  for (const [kind, actor, detail] of [["registered", "prospect", "{}"], ["verified", "prospect", '{"windowHours":24,"messageLimit":10}'], ["accessed", "prospect", "{}"], ["note", "user", '{"note":"Seed note"}'], ["assigned", "user", "{}"]]) {
+    await db.query("insert into demo_events (prospect_id, kind, actor_kind, actor_id, detail) values ($1, $2, $3, $4, $5::jsonb)", [active, kind, actor, actor === "user" ? staff : null, detail]);
+  }
+  const waiting = (await one(db, `insert into demo_prospects (name, work_email, email_normalized, business_name, industry, consent_at, consent_version)
+    values ('Seed Waiting', 'seed.waiting@example.test', 'seed.waiting@example.test', 'Seed Dental', 'healthcare', now(), 'draft-seed') returning id`)).id;
+  await db.query("insert into demo_verifications (prospect_id, purpose, token_hash, expires_at) values ($1, 'verify', repeat('e', 64), now() + interval '2 days')", [waiting]);
+  await db.query("insert into demo_events (prospect_id, kind, actor_kind) values ($1, 'registered', 'prospect')", [waiting]);
+  await db.query("insert into demo_usage_days (day, starts, messages, blocked) values (current_date, 2, 3, 1)");
+  for (const kind of DEMO_KINDS) await db.query("insert into notifications (user_id, kind, title, audience) values ($1, $2, 'Seed demo notice', 'direct')", [staff, kind]);
+};
+// Removing a prospect removes its messages, sessions, links and timeline with it (the timeline refuses edits and deletes, except together with the prospect it belongs to).
+CLEAN["0100_demo_funnel"] = {
+  guard: async (db) => {
+    await db.query("delete from demo_prospects");
+    await db.query("delete from demo_usage_days");
+    await db.query("delete from notifications where kind = any($1::text[])", [DEMO_KINDS]);
+  },
+};
+
+// Onboarding completion. Every workspace has a submitted questionnaire with its snapshot, and workspace a also a calendar drafted from the answers with one appointment type
+// (a draft: no booking page, never the default, no host). The baseline has no onboarding_responses, so the clean-up may remove every row that holds a snapshot; the drafted
+// calendar takes its appointment type with it. The rollback also removes the media storage step from the default checklist, and there is no checklist instance here to refuse on.
+SEEDS["0102_onboarding_snapshot"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key) => {
+    await db.query(
+      `insert into onboarding_responses (org_id, status, submitted_at, completed_at, current_step, submitted_snapshot)
+       values ($1, 'submitted', now(), now(), 6, $2::jsonb) on conflict (org_id) do update set submitted_snapshot = excluded.submitted_snapshot`,
+      [org, JSON.stringify({ version: 1, fields: { name: `Seed ${key}` }, appliedThrough: new Date().toISOString() })],
+    );
+    if (key === "a") {
+      const calendar = await one(db, "insert into crm_calendars (org_id, name, slug, description, status, origin) values ($1, 'Appointments', 'appointments-seed0102', 'Seed', 'draft', 'onboarding') returning id", [org]);
+      await db.query("insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, location_kind) values ($1, $2, 'Seed visit', 'seed-visit', 30, 'in_person')", [org, calendar.id]);
+    }
+  });
+};
+CLEAN["0102_onboarding_snapshot"] = {
+  guard: async (db) => {
+    await db.query("delete from onboarding_responses where submitted_snapshot is not null");
+    await db.query("delete from crm_calendars where origin = 'onboarding'");
   },
 };
 

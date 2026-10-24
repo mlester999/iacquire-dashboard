@@ -4,7 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { FileText, Receipt, Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
+import { PencilRuler, FileText, Receipt, Share2, Activity, BarChart3, Boxes, Inbox as InboxIcon, Briefcase, ClipboardCheck, Contact, FolderKanban, BookOpen, CalendarDays, ChevronDown, Globe, HeartHandshake, KanbanSquare, LayoutDashboard, LifeBuoy, ListChecks, MessageSquare, MessageSquareText, PanelLeftClose, PanelLeftOpen, Radar, Settings, ShieldCheck, Sparkles, ThumbsUp, TriangleAlert, Waypoints, Workflow, Wrench, Lock } from "lucide-react";
 import { AgentAvatar, Logo, StatusDot } from "@/components/brand";
 import { Tooltip } from "@/components/ui/overlays";
 import { AvatarTile } from "@/components/ui/status";
@@ -56,6 +56,8 @@ const REQUESTS: NavItem[] = [
   { href: "/support/report-issue", label: "Report an Issue", icon: TriangleAlert, permission: "support.use" },
   { href: "/support", label: "Get Support", icon: LifeBuoy, permission: "support.use", match: (p) => p === "/support" },
   { href: "/support/feedback", label: "Provide Feedback", icon: ThumbsUp, permission: "support.use" },
+  // Dormant until a Super Admin switches Request a Change on for the workspace (org_features "request_changes").
+  { href: "/support/change", label: "Request a Change", icon: PencilRuler, permission: "support.use", feature: "request_changes" },
   { href: "/support/requests", label: "My Requests", icon: MessageSquareText, permission: "support.use", badge: "requests", match: (p) => p === "/support/requests" || p.startsWith("/support/requests/") || REQUEST_PATH.test(p) },
 ];
 const FOOTER: NavItem[] = [
@@ -103,6 +105,8 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
   const crmMode = shell.crmMode;
   // Native CRM pipelines replace the GoHighLevel pipeline view; a hybrid workspace keeps both while it migrates.
   const showMain = (i: NavItem) => can(i.permission) && !((i.href === "/sales" || i.href === "/appointments") && crmMode === "native") && !(i.clientOnly && shell.org.kind !== "client") && !(i.feature && !(shell.features ?? []).includes(i.feature));
+  // The Requests group: what the person may open, and (for a module a Super Admin switches on per workspace) only where it is on.
+  const requestItems = REQUESTS.filter((i) => can(i.permission) && !(i.feature && !(shell.features ?? []).includes(i.feature)));
   // Automation Studio builds on the iAcquire workflow engine, so it is offered wherever that engine runs (not in a GoHighLevel-only workspace).
   const crmItems = CRM.filter((i) => can(i.permission) && crmMode !== null && !((i.href === "/crm/pipelines" || i.href === "/crm/calendar" || i.href === "/automation-studio") && crmMode === "ghl"));
   // "All CRM tools" is highlighted only for CRM pages that have no entry of their own here.
@@ -124,13 +128,13 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
       {crmItems.length > 0 && <div className="space-y-1 pb-2">{!compact && <button type="button" onClick={() => setCrmOpen((s) => !s)} aria-expanded={crmOpen} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">CRM<ChevronDown className={cn("size-3 transition-transform", !crmOpen && "-rotate-90")} /></button>}{(crmOpen || compact) && crmItems.map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={crmActivePath(item)} onNavigate={onNavigate} compact={compact} locked={item.href === "/automation-studio" && shell.automationStudio?.entitled === false} />)}</div>}
       {!compact && <p className="workspace-nav-section px-3 pb-1 pt-2">Business operations</p>}
       {MAIN.slice(1).filter(showMain).map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "approvals" ? shell.pendingApprovals : item.badge === "inbox" ? shell.inboxAttention : undefined} />)}
-      {REQUESTS.some((i) => can(i.permission)) && <div data-tour="requests" className="space-y-1 pt-3">
+      {requestItems.length > 0 && <div data-tour="requests" className="space-y-1 pt-3">
         {!compact && <button type="button" id="nav-requests-toggle" onClick={() => setRequestsOpen((s) => !s)} aria-expanded={requestsOpen} aria-controls="nav-requests-list" className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">
           <span className="inline-flex items-center gap-2">Requests{!requestsOpen && shell.requestsAttention + shell.projectsAttention > 0 && <span className="flex min-w-4 items-center justify-center rounded-md bg-[#305ecb] px-1 py-px text-[9px] font-semibold normal-case tracking-normal text-white" aria-label={`${shell.requestsAttention + shell.projectsAttention} need attention`}>{shell.requestsAttention + shell.projectsAttention}</span>}</span>
           <ChevronDown className={cn("size-3 transition-transform duration-200", !requestsOpen && "-rotate-90")} />
         </button>}
         <AnimatePresence initial={false}>{(requestsOpen || compact) && <motion.div id="nav-requests-list" role="group" aria-labelledby={compact ? undefined : "nav-requests-toggle"} aria-label={compact ? "Requests" : undefined} initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: .2 }} className="space-y-1 overflow-hidden">
-          {REQUESTS.filter((i) => can(i.permission)).map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "projects" ? shell.projectsAttention : item.badge === "requests" ? shell.requestsAttention : undefined} />)}
+          {requestItems.map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} count={item.badge === "projects" ? shell.projectsAttention : item.badge === "requests" ? shell.requestsAttention : undefined} />)}
         </motion.div>}</AnimatePresence>
       </div>}
       {GROW.some((i) => can(i.permission)) && <div className="space-y-1 pt-3">{!compact && <button type="button" onClick={() => setGrowOpen((s) => !s)} aria-expanded={growOpen} className="workspace-nav-section flex min-h-8 w-full items-center justify-between px-3">Grow with iAcquire<ChevronDown className={cn("size-3 transition-transform", !growOpen && "-rotate-90")} /></button>}{(growOpen || compact) && GROW.filter((i) => can(i.permission)).map((item) => <NavLink onWarm={warmRoute} key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} compact={compact} />)}</div>}

@@ -309,6 +309,14 @@ export async function setTenantStatus(admin: SessionUser, orgId: string, status:
     if (status === "suspended") {
       // End client sessions' access immediately: memberships are ignored for suspended tenants.
       await db.query("update billing_accounts set activation_status = 'suspended' where org_id = $1", [orgId]);
+    } else if (org.status === "suspended") {
+      // Reactivating restores what the setup implies: active for a setup that was activated (whatever happened to the fee since: a refund never pauses a running client),
+      // pending for one that never was. Without this the billing page kept saying "Activation: Suspended" for a workspace that was back in use.
+      await db.query(
+        `update billing_accounts b set activation_status = case when exists (select 1 from client_setup_instances i where i.org_id = b.org_id and i.state = 'activated') then 'active' else 'pending' end,
+           updated_at = now() where b.org_id = $1 and b.activation_status = 'suspended'`,
+        [orgId],
+      );
     }
     await recordAudit(
       { orgId, actorUserId: admin.id, actorKind: "agency", action: status === "suspended" ? "tenant.suspended" : "tenant.reactivated", targetType: "organization", targetId: orgId, result: "success" },
@@ -367,14 +375,25 @@ export const billingSchema = z.object({
   serviceTerms: z.string().trim().max(4000).default(""),
 });
 
+/**
+ * Invoice and receipt links, the service terms and the activation label. It no longer moves the setup payment to "paid", "waived" or "refunded": those are a recorded
+ * payment (src/server/billing/manual.ts or a verified provider event), a waiver with a reason, or a recorded refund, each with its own audit entry. The only status change
+ * left here is between "not invoiced" and "invoiced", which clears nothing. "Active" activation also needs the setup payment cleared.
+ */
 export async function updateBilling(admin: SessionUser, orgId: string, input: z.input<typeof billingSchema>) {
   if (admin.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Only super admins can update billing.");
   const d = billingSchema.parse(input);
   await withSystem(async (db) => {
+    const cur = (await db.query<{ setup_payment_status: string; activation_status: string; cleared: boolean }>("select setup_payment_status, activation_status, app.setup_payment_cleared(org_id) as cleared from billing_accounts where org_id = $1 for update", [orgId])).rows[0];
+    if (!cur) throw new AppError("not_found", "This client has no billing account.");
+    const invoicing = ["not_invoiced", "invoiced"];
+    if (d.setupPaymentStatus !== cur.setup_payment_status && !(invoicing.includes(d.setupPaymentStatus) && invoicing.includes(cur.setup_payment_status))) {
+      throw new AppError("invalid_input", "The setup payment can't be changed by editing its status. Record the payment, waive the setup fee with a reason, or record a refund.");
+    }
+    if (d.activationStatus === "active" && cur.activation_status !== "active" && !cur.cleared) throw new AppError("invalid_input", "Activation can't be marked active while the setup payment is not confirmed.");
     await db.query(
       `update billing_accounts set setup_payment_status = $2, activation_status = $3, invoice_url = nullif($4, ''),
-         receipt_url = nullif($5, ''), service_terms = nullif($6, ''), updated_by = $7, updated_at = now(),
-         paid_at = case when $2 = 'paid' then coalesce(paid_at, now()) else paid_at end
+         receipt_url = nullif($5, ''), service_terms = nullif($6, ''), updated_by = $7, updated_at = now()
        where org_id = $1`,
       [orgId, d.setupPaymentStatus, d.activationStatus, d.invoiceUrl, d.receiptUrl, d.serviceTerms, admin.id],
     );

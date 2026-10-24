@@ -4,9 +4,12 @@ import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 async function onboard(name: string, description: string, service: string, customer: string) {
   const org = await createOrg({ name });
+  // Provisioning requests need the setup payment confirmed (tests/payment-gate.test.ts is about that); this test is about the workforce the flow builds.
+  await clearSetupPayment(org.id);
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   const ctx = ctxFor(owner, org, "owner");

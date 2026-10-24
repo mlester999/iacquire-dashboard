@@ -121,7 +121,8 @@ create table staff_conversations (
   -- The two people of a direct message, their ids sorted and joined by a colon: one direct message per pair, whoever opens it first.
   direct_key text check (direct_key is null or (
     direct_key ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    and split_part(direct_key, ':', 1) < split_part(direct_key, ':', 2))),
+    -- Compared as plain bytes (collate "C"), which is how the code sorts the two ids, whatever collation the database was created with.
+    and (split_part(direct_key, ':', 1) collate "C") < (split_part(direct_key, ':', 2) collate "C"))),
   created_by uuid references users(id) on delete set null,
   archived_at timestamptz,
   archived_by uuid references users(id) on delete set null,

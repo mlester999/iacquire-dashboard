@@ -6,6 +6,7 @@ import {
   addProgressUpdate, assignProject, deleteMilestone, getAgencyProject, postAgencyMessage, recordHandover, saveMilestone, saveQuoteDraft, sendQuote, setMilestoneStatus, updateProjectStatus,
 } from "@/server/projects/agency";
 import { createProjectRequest, decideQuote, getProject, listProjects, markQuoteViewed, postClientMessage, respondToMilestone } from "@/server/projects/client";
+import { addMember, agencyUser, createUser } from "./support/fixtures";
 import { notificationsFor, resetRateLimits } from "./support/support-world";
 import { approvedProject, fullQuote, projectInput, projectsWorld, quotedProject, type ProjectsWorld } from "./support/projects-world";
 
@@ -145,7 +146,8 @@ describe("project notices go to the people whose permission covers projects, onc
     try {
       const request = await createProjectRequest(w.ctx.owner, projectInput("Permission filtered request"));
       await postClientMessage(w.ctx.owner, request.id, "A question about the scope.");
-      const seen = (await notificationsFor(w.raw.watcher.id)).filter((n) => /Permission filtered request|PRJ-/.test(n.title) || n.link === `/admin/projects/${request.id}`);
+      // Earlier tests left notices from before the permission was withdrawn: only this request's own notices count.
+      const seen = (await notificationsFor(w.raw.watcher.id)).filter((n) => n.title.startsWith(`${request.ref}:`) || n.link === `/admin/projects/${request.id}`);
       expect(seen).toEqual([]);
       const colleague = (await notificationsFor(w.raw.staff2.id)).filter((n) => n.link === `/admin/projects/${request.id}`);
       expect(colleague.map((n) => n.kind).sort()).toEqual(["project_message", "project_submitted"]);
@@ -197,19 +199,36 @@ describe("project notices go to the people whose permission covers projects, onc
   });
 });
 
-describe("a client sees the iAcquire team by first name only", () => {
-  it("shows first names on messages and updates to the client and full names to the team", async () => {
-    const { id } = await approvedProject(w, "First names project");
+describe("a client never sees a full name of the iAcquire team", () => {
+  it("shows the team's lines to the client without their names, and in full to the team", async () => {
+    const { id } = await approvedProject(w, "Team names project");
     await postAgencyMessage(w.agency.staff, id, "We have started the build.");
     await addProgressUpdate(w.agency.staff, id, "The first workflow is running.", "client");
     const client = (await getProject(w.ctx.owner, id))!;
-    const names = [...client.messages.map((m) => m.authorName), ...client.updates.map((u) => u.authorName)].filter(Boolean);
-    expect(names).toContain("Stan");
-    expect(JSON.stringify(client)).not.toContain("Stan Staffer");
+    // A client's session cannot read the team's user rows at all (they share no workspace), so the lines arrive unnamed.
+    expect(client.messages.filter((m) => m.authorKind === "agency").map((m) => m.authorName)).toEqual([null]);
+    expect(client.updates.some((u) => u.body.includes("first workflow"))).toBe(true);
+    expect(JSON.stringify(client)).not.toContain("Staffer");
     const team = (await getAgencyProject(w.agency.staff, id))!;
     expect(team.messages.some((m) => m.authorName === "Stan Staffer")).toBe(true);
     // The client's own colleagues keep their full names.
     expect(client.updates.some((u) => u.authorName === "Olivia Owner")).toBe(true);
+  });
+
+  it("reduces a team member the client's session can read to a first name", async () => {
+    // A team member who also belongs to the client's workspace is readable by its members: the page still names them by first name only.
+    const visitor = await createUser({ platformRole: "agency_staff", name: "Vera Visiting" });
+    await addMember(w.org.id, visitor.id, "member");
+    await withSystem((db) => db.query("insert into staff_assignments (org_id, user_id, assigned_by) values ($1, $2, $3)", [w.org.id, visitor.id, w.raw.superAdmin.id]));
+    const { id } = await approvedProject(w, "Visitor names project");
+    await postAgencyMessage(agencyUser(visitor, "agency_staff"), id, "Hello from the team.");
+    await addProgressUpdate(agencyUser(visitor, "agency_staff"), id, "A visit is booked.", "client");
+    const client = (await getProject(w.ctx.owner, id))!;
+    expect(client.messages.filter((m) => m.authorKind === "agency").map((m) => m.authorName)).toEqual(["Vera"]);
+    expect(client.updates.filter((u) => u.body.includes("visit is booked")).map((u) => u.authorName)).toEqual(["Vera"]);
+    expect(JSON.stringify(client)).not.toContain("Vera Visiting");
+    const team = (await getAgencyProject(w.agency.staff, id))!;
+    expect(team.messages.some((m) => m.authorName === "Vera Visiting")).toBe(true);
   });
 });
 

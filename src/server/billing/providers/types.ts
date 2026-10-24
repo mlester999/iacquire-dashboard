@@ -20,7 +20,8 @@ export interface NormalizedPaymentEvent {
   id: string;
   /** The provider's own event name, kept for the ledger and the alarms. */
   type: string;
-  kind: "payment_paid" | "payment_failed" | "other";
+  /** A refund or dispute is reported, never applied: it is recorded, a person is told, and nothing is revoked (see applyReported in payments.ts). */
+  kind: "payment_paid" | "payment_failed" | "payment_refunded" | "payment_disputed" | "other";
   livemode: boolean;
   /** The provider's checkout or order id that OUR stored payment row names. */
   checkoutId: string | null;
@@ -30,6 +31,10 @@ export interface NormalizedPaymentEvent {
   paidPayments: NormalizedPaidPayment[];
   /** Free text that may carry our reference (a failed-payment event names no checkout). */
   description: string | null;
+  /** Refund and dispute events: the provider's id of the payment concerned, as it was reported when that payment was paid. Absent or null when the payload names none. */
+  providerPaymentId?: string | null;
+  /** Refund events: what the provider reported. Any part may be null when the payload did not carry it. */
+  refund?: { id: string | null; amountMinor: number | null; currency: string | null; status: string | null } | null;
 }
 
 export type VerifyResult = { ok: true; livemode: boolean } | { ok: false; reason: string };

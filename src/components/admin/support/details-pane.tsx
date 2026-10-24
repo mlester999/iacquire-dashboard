@@ -3,15 +3,16 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowUpRight, Building2, CalendarClock, CheckCircle2, Flame, GitMerge, History, Link2, Loader2, RotateCcw, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
+import { ArrowUpRight, Building2, CalendarClock, CheckCircle2, Flame, GitMerge, History, Link2, Loader2, PencilRuler, RotateCcw, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, Label, Select, Textarea } from "@/components/ui/primitives";
 import { Dialog } from "@/components/ui/overlays";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { Timeline } from "@/components/support/parts";
 import {
-  adviseAction, assignAction, changePriorityAction, changeStatusAction, clearEscalationAction, escalateAction, linkAction, mergeAction, setFeedbackStageAction, similarAction, summarizeAction,
+  adviseAction, assignAction, changePriorityAction, changeStatusAction, classifyChangeAction, clearEscalationAction, escalateAction, linkAction, mergeAction, setFeedbackStageAction, similarAction, summarizeAction,
 } from "@/app/actions/support-agency";
+import { CHANGE_CLASSIFICATIONS, CHANGE_CLASSIFICATION_LABELS, CHANGE_TARGET_LABELS, type ChangeClassification } from "@/lib/support/change";
 import {
   FEEDBACK_STAGES, FEEDBACK_STAGE_LABELS, PRIORITIES, REQUEST_TYPE_LABELS, STATUS_TRANSITIONS, categoryLabel, clientProgressSentence, featureLabel, statusLabelForAgency, CLIENT_URGENCY_LABELS,
   type ClientUrgency, type FeedbackStage, type TicketPriority, type TicketStatus,
@@ -50,6 +51,8 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
   const [mergeTarget, setMergeTarget] = React.useState<SimilarRequest | null>(null);
   const [summary, setSummary] = React.useState<{ text: string; at: string } | { reason: string } | null>(t.aiSummary);
   const [advice, setAdvice] = React.useState<EscalationAdvice | null>(null);
+  const [classification, setClassification] = React.useState<string>(detail.change?.classification ?? "");
+  const [classNote, setClassNote] = React.useState(detail.change?.resolutionNote ?? "");
   const finished = t.status === "resolved" || t.status === "closed";
   const canWrite = caps["agency.support.manage"];
 
@@ -170,6 +173,34 @@ export function DetailsPane({ detail, timeZone, meId, onChanged }: { detail: Age
           <Row label="Outside alert"><StatusPill status={t.externalNotification} size="sm" /></Row>
         </dl>
       </Card>
+
+      {detail.change && (
+        <Card className="p-4">
+          <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink"><PencilRuler className="size-4 text-muted" aria-hidden /> Change request</h3>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-muted">Only the team sees this. It is a working label: it prices nothing, promises no date and the client never reads it.</p>
+          <dl className="mt-3 divide-y divide-line">
+            <Row label="About">{CHANGE_TARGET_LABELS[detail.change.targetKind]}</Row>
+            {detail.change.project && <Row label="Project"><Link href={`/admin/projects/${detail.change.project.id}`} className="text-primary-ink hover:underline">{detail.change.project.ref} · {detail.change.project.title}</Link></Row>}
+            {detail.change.linked && <Row label="On the change list"><Link href={`/admin/projects/${detail.change.linked.projectId}#agency-project-changes`} className="text-primary-ink hover:underline">{detail.change.linked.ref} · {detail.change.linked.status.replace(/_/g, " ")}</Link></Row>}
+            {detail.change.classifiedAt && <Row label="Classified"><time dateTime={detail.change.classifiedAt}>{formatDateTime(detail.change.classifiedAt, timeZone)}</time>{detail.change.classifiedByName ? ` by ${detail.change.classifiedByName}` : ""}</Row>}
+          </dl>
+          <div className="mt-3 space-y-1.5">
+            <Label htmlFor="d-class">What kind of change is it?</Label>
+            <Select id="d-class" disabled={!canWrite || busy === "classify"} value={classification} onChange={(e) => setClassification(e.target.value)}>
+              <option value="">Not looked at yet</option>
+              {CHANGE_CLASSIFICATIONS.map((c) => <option key={c} value={c}>{CHANGE_CLASSIFICATION_LABELS[c].label}</option>)}
+            </Select>
+            {classification && <p className="text-[11.5px] leading-relaxed text-muted">{CHANGE_CLASSIFICATION_LABELS[classification as ChangeClassification].hint}</p>}
+          </div>
+          <div className="mt-3 space-y-1.5">
+            <Label htmlFor="d-class-note">Note for the team <span className="text-[12px] font-normal text-faint">Optional</span></Label>
+            <Textarea id="d-class-note" rows={2} maxLength={1000} disabled={!canWrite || busy === "classify"} value={classNote} onChange={(e) => setClassNote(e.target.value)} placeholder="Why you classified it this way." />
+          </div>
+          <Button className="mt-3" size="sm" variant="secondary" loading={busy === "classify"} disabled={!canWrite || !classification || (classification === (detail.change.classification ?? "") && classNote === (detail.change.resolutionNote ?? ""))}
+            onClick={() => void act("classify", () => classifyChangeAction(t.id, classification, classNote), "Classification saved")}>Save classification</Button>
+          {detail.change.project && !detail.change.linked && <p className="mt-3 text-[12px] leading-relaxed text-muted">To quote a change to what was agreed, the client files it from the project&apos;s Change requests, or ticks &ldquo;This changes what we agreed&rdquo; here. Nothing is priced from this request.</p>}
+        </Card>
+      )}
 
       {t.diagnostics && (
         <Card className="p-4">

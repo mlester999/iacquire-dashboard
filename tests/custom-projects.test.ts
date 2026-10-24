@@ -442,7 +442,8 @@ describe("quotes, approval and delivery", () => {
     await updateProjectStatus(staffAssigned, id, { resume: true });
     expect(await statusOf(id)).toBe("quote_sent");
     await updateProjectStatus(staffAssigned, id, { status: "cancelled", reason: "The client changed plans." });
-    await expect(decideQuote(ctx, q, "accepted")).rejects.toThrow(/no longer waiting/);
+    // Cancelling withdraws the quote that was still waiting, so the client is told it is no longer open (the status guard behind it is the backstop).
+    await expect(decideQuote(ctx, q, "accepted")).rejects.toThrow(/no longer open/);
     expect(await statusOf(id)).toBe("cancelled");
     expect(await rows("client_projects", id)).toBe(0);
     expect(await rows("quote_approvals", id)).toBe(0);

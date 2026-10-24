@@ -135,6 +135,23 @@ When AQi cannot resolve something it offers **Prepare support request**. That op
 
 **Super Admin.** The customer-facing *Prepare support request* flow is for clients. A Super Admin has no one to ask for help, so both routes (`requireClient` in `src/server/aqi/support.ts`) now refuse a Super Admin with a message pointing to AQi Operations. There, the same Support & Requests service backs four operator actions instead: **Create internal issue**, **Record platform bug**, **Propose engineering task** (each a request in the agency workspace, created only after the preview is confirmed and verified by reading it back) and **Review support queue** (read-only; permissions, SLA and escalation advice come from this module unchanged). See [aqi-operations.md](aqi-operations.md).
 
+## 9a. Request a Change (Phase 6, migration 0098)
+
+A fourth request type, `change`, with its own page (`/support/change`, "Request a Change" in the Requests menu) and six categories: an AI employee, the website, an automation or
+workflow, a connected service, a custom project, something else. It is **dormant until a Super Admin switches it on for the workspace** (`org_features` `request_changes` on the Module
+rollout page); until then the menu entry is hidden and the page says it is not switched on. Switching it off stops new change requests only. The assistant (AQi) and the help widget do
+not offer it (`ASSISTANT_REQUEST_TYPES`): a change needs a target and, for a project, a project.
+
+* The category says what the change is about, and the database keeps `support_ticket_change.target_kind` and the ticket's project equal. A change about a project names one of the workspace's
+  own agreed projects. An owner or admin can also file it as a change to what was agreed; the request and the entry on the project's change list are made together and linked (see
+  `docs/custom-projects.md`).
+* The team records, on the request, what kind of change it is: covered by the core system, belongs in the maintenance plan, needs a quote, or out of scope, with a note
+  (`support_ticket_change`, `agency.support.manage`). It is a working label: it prices nothing, promises no date, **is never shown to the client** (a team-only timeline line, no client
+  policy on the table) and does not use up a maintenance request. What the client reads is the team's reply and the status.
+* A client with an active maintenance plan sees the plan's own monthly allowance on the form and a pointer to Maintenance for small changes it covers. A client without a plan is told
+  nothing about an allowance and no figure is invented. Whether classifying a change as covered by the plan should create the maintenance request itself is open (see the Phase 6 report).
+* A starting priority comes from the Super Admin's defaults (`normal` until they set one for changes).
+
 ## 10. AI help (advisory only)
 
 Uses the connected provider (`resolveLlmConfig`), the support settings switch, a per-person hourly limit, short outputs with a timeout and, for client-side help, the workspace's monthly help-request allowance. Everything is wrapped as data, emails/phones/long numbers/keys are removed first, and **nothing is sent, closed, assigned, prioritised or promised by AI**.

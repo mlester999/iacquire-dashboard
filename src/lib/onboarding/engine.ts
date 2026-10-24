@@ -469,8 +469,21 @@ export interface ConnectionFacts {
   automationMapped: boolean;
   channels: Record<"sms" | "whatsapp" | "email", { enabled: boolean; registration: string }>;
   calendarConnected: boolean;
+  /** A website address of this workspace is verified or active in Website Studio. */
   websiteDomainVerified: boolean;
+  /** Where website chat stands, from install evidence only (src/lib/webchat/rules.ts installState). Absent: not asked, so the review says nothing about it. */
+  chatWidget?: "disabled" | "no_sites" | "waiting" | "installed";
+  /** A real (not simulated) social media account is connected. Absent: not asked. */
+  socialConnected?: boolean;
   invitedStaff: number;
+}
+
+/** A connection the review mentions but never requires: it is not a missing connection and never blocks approval. */
+export interface OptionalConnectionLine {
+  key: "website_domain" | "chat_widget" | "social";
+  label: string;
+  state: "connected" | "waiting" | "not_connected";
+  detail: string;
 }
 
 export interface ReviewRow {
@@ -487,6 +500,8 @@ export interface ReviewModel {
   messaging: Array<{ label: string; value: string }>;
   permissions: string[];
   missingConnections: Array<{ key: string; label: string; why: string }>;
+  /** Website address, website chat and social media: worth knowing, never required. */
+  optionalConnections: OptionalConnectionLine[];
   humanTasks: Array<{ key: string; label: string; owner: "you" | "iacquire" }>;
   blockers: string[];
   canSubmit: boolean;
@@ -568,6 +583,8 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
     });
   }
 
+  const optionalConnections = optionalConnectionLines(a, facts);
+
   const humanTasks: ReviewModel["humanTasks"] = [];
   const team = rows(a, "d.team");
   if (team.length && facts.invitedStaff < team.length) humanTasks.push({ key: "invite", label: `Review and send invitations to ${team.length} team member${team.length === 1 ? "" : "s"}`, owner: "you" });
@@ -581,7 +598,35 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
   humanTasks.push({ key: "test", label: "Run safe tests before anything customer-facing is activated", owner: "iacquire" });
 
   const check = submitCheck(storedAll);
-  return { sections, employees, messaging, permissions, missingConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
+  return { sections, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
+}
+
+/**
+ * The optional connections the review mentions, from what the server read. A line appears only when the server said something about it (or, for the website address, when the
+ * owner asked for a website or already has a verified one), and none of them is ever a requirement.
+ */
+export function optionalConnectionLines(a: Answers, facts: ConnectionFacts): OptionalConnectionLine[] {
+  const out: OptionalConnectionLine[] = [];
+  if (wantsWebsite(a) || facts.websiteDomainVerified) {
+    out.push(facts.websiteDomainVerified
+      ? { key: "website_domain", state: "connected", label: "Website address verified", detail: "A website address of yours is verified in Website Studio." }
+      : { key: "website_domain", state: "not_connected", label: "Website address not verified yet", detail: "Website Studio verifies your address once it points to iAcquire. Until then your site can be previewed, not published on your own address." });
+  }
+  if (facts.chatWidget !== undefined) {
+    const chat: Record<NonNullable<ConnectionFacts["chatWidget"]>, Omit<OptionalConnectionLine, "key">> = {
+      installed: { state: "connected", label: "Website chat is on your website", detail: "It has loaded from one of the websites you allowed." },
+      waiting: { state: "waiting", label: "Website chat is switched on, waiting for its first visit", detail: "Nobody has opened it on your website yet, so it is not confirmed as installed." },
+      no_sites: { state: "not_connected", label: "Website chat has no website to run on yet", detail: "Add the address of your website in the website chat settings." },
+      disabled: { state: "not_connected", label: "Website chat is switched off", detail: "Switch it on in the website chat settings when you want visitors to be able to write to you." },
+    };
+    out.push({ key: "chat_widget", ...chat[facts.chatWidget] });
+  }
+  if (facts.socialConnected !== undefined) {
+    out.push(facts.socialConnected
+      ? { key: "social", state: "connected", label: "A social media account is connected", detail: "Posts are still written, approved and scheduled by your team." }
+      : { key: "social", state: "not_connected", label: "No social media account is connected", detail: "Connect a Facebook Page or Instagram professional account in Social media when you want to publish from here." });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

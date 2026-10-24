@@ -17,6 +17,7 @@ import type { ProposalSnapshot } from "@/lib/proposals/snapshot";
 import { validityOn, type Validity } from "@/lib/proposals/validity";
 import { addEvent, loadProposalRow, loadVersionRow, readSettings, type ProposalRow, type VersionRow } from "@/server/proposals/core";
 import { applyEffects } from "@/server/proposals/crm-effects";
+import { withdrawDeliveriesInTx } from "@/server/proposals/delivery";
 import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 import { readVersionPdf, type PdfDeps } from "@/server/proposals/documents";
 import { ESIGN_FEATURE, featureOn, PROPOSALS_FEATURE, proposalsPublicDisabled } from "@/server/proposals/features";
@@ -462,6 +463,8 @@ export async function decideOnProposal(token: string, input: DecideInput, ctx: P
       await db.query("update proposals set status = $3, closed_at = $4::timestamptz where id = $1 and org_id = $2", [f.row.id, f.row.org_id, want, now.toISOString()]);
       // The customer's own answer replaces a signing request still out (they declined on the page): it ends, and a signature that arrives afterwards is not applied.
       await voidLiveRequestsInTx(db, f.row.org_id, f.row.id, "voided", `The customer ${want === "declined" ? "declined" : "answered"} on the proposal page.`, { userId: null, now });
+      // A message still waiting for sending hours would tell a customer who has answered that the proposal is ready for them.
+      await withdrawDeliveriesInTx(db, f.row.org_id, f.row.id, "proposal_answered");
     }
     await addEvent(db, f.row.org_id, f.row.id, f.link.version, want, { id: null, kind: "recipient" }, { method: "verified_acknowledgement", emailMasked: maskEmail(session.email), hasNote: Boolean(note) });
     await recordAudit({ orgId: f.row.org_id, actorKind: "system", actorUserId: null, agentInstanceId: null, action: `proposals.customer_${want}`, targetType: "proposal", targetId: f.row.id, result: "success", metadata: { version: f.link.version, method: "verified_acknowledgement" } }, db);

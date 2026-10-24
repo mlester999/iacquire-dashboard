@@ -18,32 +18,114 @@ export function maskAddress(channel: DeliveryChannel, address: string): string {
 export type DeliveryState = "waiting" | "queued" | "sending" | "sent" | "blocked" | "failed" | "withdrawn";
 export type DeliveryTone = "neutral" | "success" | "warning" | "danger";
 
-/** Why a message was stopped by the proposal's own changes, as recorded on the delivery. */
-export const WITHDRAWN_REASON_TEXT: Record<string, string> = {
-  proposal_withdrawn: "The proposal was withdrawn before the message went out.",
-  proposal_revised: "The proposal was revised, so the message for the earlier version was stopped.",
-  link_renewed: "The customer's link was replaced before the message went out, so the message was stopped.",
-  answer_recorded: "An answer was recorded by a person before the message went out.",
-  proposal_answered: "The customer answered before the message went out.",
-  proposal_expired: "The proposal expired before the message went out.",
-  privacy_request: "The customer asked for their data to be erased.",
-  held_by_person: "A person on your team excluded this customer from automatic messages.",
+/** The reasons a proposal's own changes stop a queued message with (stored on the delivery, and on the message as its blocked reason). */
+export type WithdrawReason = "proposal_withdrawn" | "proposal_revised" | "proposal_link_renewed" | "proposal_answered" | "proposal_expired" | "privacy_request";
+
+/** Why a message was stopped by the proposal's own changes. */
+export const WITHDRAWN_REASON_TEXT: Record<WithdrawReason, string> = {
+  proposal_withdrawn: "The proposal was withdrawn before the message went out, so it was stopped.",
+  proposal_revised: "The proposal was revised, so the message about the earlier version was stopped.",
+  proposal_link_renewed: "The customer's link was replaced before the message went out, so the message was stopped.",
+  proposal_answered: "The proposal was answered before the message went out, so it was stopped.",
+  proposal_expired: "The proposal expired before the message went out, so it was stopped.",
+  privacy_request: "The customer asked for their data to be erased, so the message was stopped.",
 };
 
-/** What the send chain recorded as the reason a message did not go, in the words the Delivery tab uses. */
-export const BLOCKED_REASON_TEXT: Record<string, string> = {
-  proposal_link_unavailable: "The proposal can no longer be answered online (it was answered, withdrawn, replaced by a newer version or expired, or its link was closed), so the message was not sent.",
-  proposal_changed: "The proposal changed before the message went out, so it was not sent.",
-  held_by_person: "A person on your team excluded this customer from automatic messages, so the message was not sent.",
-  no_consent: "There is no consent on record for this customer on this channel, so the message was not sent.",
-  suppressed: "This customer opted out or the address bounced, so the message was not sent.",
-  org_inactive: "The workspace was not active when the message was due, so it was not sent.",
-  automation_paused: "Customer messaging was paused when the message was due, so it was not sent.",
-  credits: "There were not enough service credits, so the message was not sent.",
-  budget: "The monthly spending limit was reached, so the message was not sent.",
-  channel_not_ready: "This channel is not set up and enabled, so the message was not sent.",
-  contact_unreachable: "There is no address for this customer on this channel, so the message was not sent.",
+/** What the send chain gave as the reason, without its ending: "There is no consent on record for this customer on this channel". */
+const REASON_CORE: Record<string, string> = {
+  no_consent: "There is no consent on record for this customer on this channel",
+  suppressed: "This customer opted out, or the address bounced",
+  held_by_person: "A person on your team excluded this customer from automatic messages",
+  org_inactive: "The workspace is not active",
+  automation_paused: "Customer messaging is paused",
+  credits: "There are not enough service credits",
+  budget: "The monthly spending limit has been reached",
+  channel_not_ready: "This channel is not set up and enabled",
+  contact_unreachable: "There is no address for this customer on this channel",
+  identity_unverified: "The customer typed this address or number into the website chat and nobody has confirmed it",
+  whatsapp_window_closed: "WhatsApp only allows a free-form message within a day of the customer's last message, and this one needs an approved template",
+  rate_not_published: "No usage rate has been published for this channel yet",
+  provider_not_enabled: "Sending through this channel's provider is not switched on",
 };
+
+/**
+ * What differs between the documents a message can carry (a proposal's link, an invoice's link): the words for what stopped a message before it went out, for a link that had
+ * stopped working when the message was due, and for the reasons only that document has. Everything else, and above all the rule that a state never says more than the database
+ * holds, is shared. A proposal's words are the default.
+ */
+export interface DeliveryVocab {
+  /** Why a message was stopped by the document's own changes, by the reason stored on the delivery. */
+  withdrawn: Record<string, string>;
+  /** The dispatcher's reason for a message whose link had stopped working when it was due, and what to say about it. */
+  linkUnavailable: { reason: string; text: string };
+  /** Reasons only this document has, in the same form as the send chain's. */
+  reasons: Record<string, string>;
+}
+
+const PROPOSAL_VOCAB: DeliveryVocab = {
+  withdrawn: WITHDRAWN_REASON_TEXT,
+  linkUnavailable: {
+    reason: "proposal_link_unavailable",
+    text: "The proposal's link had stopped working when the message was due (the proposal was answered, withdrawn, replaced by a newer version or expired, or its link was closed), so it was not sent.",
+  },
+  reasons: {
+    address_differs: "The email address on the proposal is not the one on the customer's record",
+    no_customer: "The proposal is not linked to a customer record, so there is no address to send to",
+  },
+};
+
+const stripEnd = (s: string) => s.replace(/[.!?\s]+$/, "");
+
+function reasonCore(reason: string | null | undefined, detail: string | null | undefined, vocab: DeliveryVocab): string | null {
+  if (reason && Object.hasOwn(vocab.reasons, reason)) return vocab.reasons[reason];
+  if (reason && Object.hasOwn(REASON_CORE, reason)) return REASON_CORE[reason];
+  if (detail && detail.trim()) return stripEnd(detail.trim());
+  if (reason && Object.hasOwn(BLOCK_REASON_LABELS, reason)) return BLOCK_REASON_LABELS[reason];
+  return null;
+}
+
+/** After the fact: why a message did not go. */
+export function blockedReasonText(reason: string | null | undefined, detail: string | null | undefined, vocab: DeliveryVocab = PROPOSAL_VOCAB): string {
+  if (reason === vocab.linkUnavailable.reason) return vocab.linkUnavailable.text;
+  if (reason && Object.hasOwn(vocab.withdrawn, reason)) return vocab.withdrawn[reason];
+  const core = reasonCore(reason, detail, vocab);
+  return core ? `${core}, so the message was not sent.` : "The message could not be sent.";
+}
+
+/** Before sending: why the message cannot be sent now. */
+export function refusalReasonText(reason: string | null | undefined, detail: string | null | undefined, vocab: DeliveryVocab = PROPOSAL_VOCAB): string {
+  const core = reasonCore(reason, detail, vocab);
+  return core ? `${core}, so it can't be sent.` : "It can't be sent right now.";
+}
+
+/** What the send chain would do with a message, as the sender is told before confirming. */
+export interface VerdictInput {
+  allow: boolean;
+  reason?: string | null;
+  detail?: string | null;
+  retryAt?: Date | string | null;
+  permanent?: boolean;
+}
+
+export interface DeliveryVerdict {
+  kind: "ready" | "waiting" | "refused";
+  reason: string | null;
+  /** One or two plain sentences. Nothing is sent until the sender confirms. */
+  text: string;
+  /** For "waiting": when sending hours open (ISO). */
+  waitingUntil: string | null;
+}
+
+export function deliveryVerdict(d: VerdictInput, channel: DeliveryChannel, mask: string | null, vocab: DeliveryVocab = PROPOSAL_VOCAB): DeliveryVerdict {
+  const word = DELIVERY_CHANNEL_WORDS[channel];
+  const to = mask ? ` to ${mask}` : "";
+  if (d.allow) return { kind: "ready", reason: null, text: `Nothing is sent until you confirm. Then it is queued to go by ${word}${to} on the next sending run.`, waitingUntil: null };
+  if (d.retryAt && !d.permanent) {
+    const until = new Date(d.retryAt).toISOString();
+    return { kind: "waiting", reason: d.reason ?? null, text: `Sending hours are closed for this customer right now. If you confirm, it is queued to go by ${word}${to} when they open. Nothing is sent until you confirm.`, waitingUntil: until };
+  }
+  return { kind: "refused", reason: d.reason ?? null, text: refusalReasonText(d.reason, d.detail, vocab), waitingUntil: null };
+}
 
 export interface DeliveryFacts {
   channel: DeliveryChannel;
@@ -54,6 +136,8 @@ export interface DeliveryFacts {
   statusDetail: string | null;
   failureKind: string | null;
   sendAfter: Date | string | null;
+  /** When the provider took the message, if it did. A message that fails after that was reported failed by the provider, not refused by it. */
+  sentAt?: Date | string | null;
   withdrawnAt: Date | string | null;
   withdrawnReason: string | null;
   now: Date;
@@ -73,10 +157,11 @@ export interface DeliveryDescription {
 const to = (mask: string | null) => (mask ? ` to ${mask}` : "");
 
 /** The state of one delivery, from the facts the send chain holds. */
-export function describeDelivery(f: DeliveryFacts): DeliveryDescription {
+export function describeDelivery(f: DeliveryFacts, vocab: DeliveryVocab = PROPOSAL_VOCAB): DeliveryDescription {
   const word = DELIVERY_CHANNEL_WORDS[f.channel];
   if (f.withdrawnAt) {
-    return { state: "withdrawn", label: "Stopped before it was sent", explain: WITHDRAWN_REASON_TEXT[f.withdrawnReason ?? ""] ?? "The message was stopped before it went out.", tone: "neutral", ended: true };
+    const why = f.withdrawnReason && Object.hasOwn(vocab.withdrawn, f.withdrawnReason) ? vocab.withdrawn[f.withdrawnReason] : "The message was stopped before it went out.";
+    return { state: "withdrawn", label: "Stopped before it was sent", explain: why, tone: "neutral", ended: true };
   }
   switch (f.messageStatus) {
     case null:
@@ -94,15 +179,16 @@ export function describeDelivery(f: DeliveryFacts): DeliveryDescription {
     case "read":
       // A provider may later report more than "accepted"; the team is still told no more than that the provider took it.
       return { state: "sent", label: `Sent by ${word}`, explain: `Handed to the ${word} provider${to(f.addressMask)}. That only means the provider accepted it: iAcquire cannot tell you it arrived or that the customer saw it.`, tone: "success", ended: false };
-    case "blocked": {
-      const why = BLOCKED_REASON_TEXT[f.blockedReason ?? ""] ?? (f.blockedReason ? BLOCK_REASON_LABELS[f.blockedReason] : null) ?? f.statusDetail ?? "The message could not be sent.";
-      return { state: "blocked", label: "Not sent", explain: why.endsWith(".") ? why : `${why}.`, tone: "warning", ended: true };
-    }
+    case "blocked":
+      return { state: "blocked", label: "Not sent", explain: blockedReasonText(f.blockedReason, f.statusDetail, vocab), tone: "warning", ended: true };
     case "failed":
       if (f.failureKind === "unconfirmed") {
         return { state: "failed", label: "Not confirmed", explain: `The ${word} provider did not answer, so the message may or may not have gone. Check with the customer before you send it again.`, tone: "danger", ended: true };
       }
-      return { state: "failed", label: "Not sent", explain: `The ${word} provider refused the message${f.statusDetail ? `: ${f.statusDetail.replace(/\.$/, "")}` : ""}. Nothing reached the customer.`, tone: "danger", ended: true };
+      if (f.sentAt) {
+        return { state: "failed", label: "Failed after it was sent", explain: `The ${word} provider took the message${to(f.addressMask)} and later reported that it failed${f.statusDetail ? `: ${stripEnd(f.statusDetail)}` : ""}. Check the customer's details before you send it again.`, tone: "danger", ended: true };
+      }
+      return { state: "failed", label: "Not sent", explain: `The ${word} provider refused the message${f.statusDetail ? `: ${stripEnd(f.statusDetail)}` : ""}. Nothing reached the customer.`, tone: "danger", ended: true };
     default:
       return { state: "queued", label: "Queued", explain: "The message is with the send chain.", tone: "neutral", ended: false };
   }

@@ -411,6 +411,8 @@ create table proposal_deliveries (
 );
 create unique index proposal_deliveries_message_idx on proposal_deliveries (message_id) where message_id is not null;
 create index proposal_deliveries_proposal_idx on proposal_deliveries (proposal_id, version, created_at);
+-- A link is deleted with its proposal, and a link's deliveries are looked up when the link is replaced.
+create index proposal_deliveries_link_idx on proposal_deliveries (link_id);
 
 -- conversation_messages has no (id, org_id) key to reference, so the workspace match is checked here: a delivery can only point at a delivery message of its own workspace.
 create or replace function app.proposal_deliveries_guard() returns trigger language plpgsql as $$

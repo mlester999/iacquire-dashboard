@@ -36,9 +36,12 @@ const MAX_NAME = 40;
 const MAX_BUSINESS = 60;
 const MAX_NUMBER = 40;
 
-/** {greeting}, {from}, {number} and {until} are filled in; nothing else is. */
-const EMAIL_TEMPLATE = "{greeting}\n\nProposal {number}{from} is ready for you.\n\nYou can read it and respond to it here:\n{{proposal.link}}{until}\n\nIf you did not expect this message, you can ignore it.";
-const SHORT_TEMPLATE = "{greeting} Proposal {number}{from} is ready for you. You can read it and respond to it here: {{proposal.link}}{until}";
+/**
+ * {greeting}, {from}, {number} and {until} are filled in; nothing else is. The wording does not say how the proposal is answered (a proposal that asks for a signature is answered at the
+ * signing service, not on its page): the page says that itself.
+ */
+const EMAIL_TEMPLATE = "{greeting}\n\nProposal {number}{from} is ready for you.\n\nYou can read it here:\n{{proposal.link}}{until}\n\nIf you did not expect this message, you can ignore it.";
+const SHORT_TEMPLATE = "{greeting} Proposal {number}{from} is ready for you. You can read it here: {{proposal.link}}{until}";
 export const DELIVERY_TEMPLATES: Record<DeliveryChannel, string> = { email: EMAIL_TEMPLATE, sms: SHORT_TEMPLATE, whatsapp: SHORT_TEMPLATE };
 export const DELIVERY_SUBJECT_TEMPLATE = "Proposal {number}{from}";
 
@@ -48,9 +51,19 @@ function plain(value: string | null | undefined, max: number): string {
   return v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v;
 }
 
-export interface DeliveryFacts {
+// One word made of letters, with an apostrophe or hyphen inside it. A name that is anything else (an email address a contact was filed under, a web address, a number) is not
+// used: the greeting falls back to "Hello,". One character class with one quantifier, so a long input cannot make it slow.
+const NAME_WORD = /^\p{L}[\p{L}\p{M}'-]*$/u;
+
+/** The word to greet a customer by, from a name as it was typed: its first word, when that is a plain name. Null otherwise. */
+export function greetingName(name: string | null | undefined): string | null {
+  const first = (name ?? "").trim().slice(0, 200).split(/\s+/, 1)[0] ?? "";
+  return first.length >= 1 && first.length <= MAX_NAME && NAME_WORD.test(first) ? first : null;
+}
+
+export interface DeliveryTextFacts {
   channel: DeliveryChannel;
-  /** The customer's first name, when there is one. */
+  /** The customer's first name, when there is one (greetingName has already checked it is a plain name). */
   firstName: string | null;
   business: string;
   number: string;
@@ -68,7 +81,7 @@ export interface RenderedDelivery {
 const fill = (template: string, values: Record<string, string>) => template.replace(/\{(greeting|from|number|until)\}/g, (_m, k: string) => values[k] ?? "");
 
 /** The message for a proposal as it is stored: the customer's link is the placeholder, never a link. */
-export function renderDelivery(f: DeliveryFacts): RenderedDelivery {
+export function renderDelivery(f: DeliveryTextFacts): RenderedDelivery {
   const name = plain(f.firstName, MAX_NAME);
   const business = plain(f.business, MAX_BUSINESS);
   const day = f.validUntil && /^\d{4}-\d{2}-\d{2}$/.test(f.validUntil) ? formatDay(f.validUntil) : null;
@@ -76,7 +89,7 @@ export function renderDelivery(f: DeliveryFacts): RenderedDelivery {
     greeting: name ? `Hi ${name},` : "Hello,",
     from: business ? ` from ${business}` : "",
     number: plain(f.number, MAX_NUMBER),
-    until: day ? (f.channel === "email" ? `\n\nIt is open for your answer until ${day}.` : ` It is open until ${day}.`) : "",
+    until: day ? (f.channel === "email" ? `\n\nIt is open until ${day}.` : ` It is open until ${day}.`) : "",
   };
   return { subject: f.channel === "email" ? fill(DELIVERY_SUBJECT_TEMPLATE, values).slice(0, 200) : null, body: fill(DELIVERY_TEMPLATES[f.channel], values) };
 }

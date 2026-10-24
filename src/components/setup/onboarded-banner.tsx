@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
+import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 import type { AgentInstanceRow } from "@/server/workforce/service";
 
 export interface EmployeeProvisioningState {
@@ -10,11 +11,13 @@ export interface EmployeeProvisioningState {
 }
 
 /** Reads persisted configuration, health, inventory and job evidence. No elapsed-time progress is inferred. */
-export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [] }: {
+export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared }: {
   nativeCrm: boolean;
   crmGuide: boolean;
   agents?: AgentInstanceRow[];
   provisioning?: EmployeeProvisioningState[];
+  /** Whether the setup payment is confirmed; employees do not start without it. */
+  paymentCleared?: boolean;
 }) {
   const jobs = new Map(provisioning.map((job) => [job.role, job]));
   const rows = AGENT_ROLE_KEYS.map((role) => {
@@ -29,8 +32,10 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
       inventoryVerifiedAt: agent.tool_inventory_verified_at?.toISOString() ?? null,
       inventoryExpiresAt: agent.tool_inventory_expires_at?.toISOString() ?? null,
       inventoryToolCount: agent.tool_inventory_tool_count, credentialCurrent: agent.credential_ready,
+      paymentCleared,
     });
     if (readiness.chatAvailable) return { role, label: "Ready", detail: "Verified for authorized chat. Connected workflows depend on their own setup.", ready: true };
+    if (paymentCleared === false && !job) return { role, label: "Waiting for setup payment", detail: `${PAYMENT_REQUIRED_SENTENCE}.`, ready: false };
     if (job?.status === "failed") return { role, label: "Failed · review needed", detail: "Profile setup failed. iAcquire can review the recorded error and retry safely.", ready: false };
     if (job?.status === "requested") return { role, label: "Provisioning requested", detail: "iAcquire has the setup request. A dedicated profile and runtime verification are still required.", ready: false };
     if (job?.status === "in_progress") return { role, label: "Provisioning", detail: "iAcquire has recorded a setup attempt. Runtime verification has not passed yet.", ready: false };

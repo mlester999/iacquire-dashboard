@@ -4,7 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Calendar, Check, CircleDollarSign, Download, FileText, FolderOpen, Lock, Plus, Receipt, Send, Trash2, MessageSquare, Flag, ClipboardCheck, UserRound, Clock, ListChecks, Megaphone, Paperclip, Inbox } from "lucide-react";
+import { Calendar, Check, CircleDollarSign, Download, FileText, FolderOpen, Lock, PencilRuler, Plus, Receipt, Send, Trash2, MessageSquare, Flag, ClipboardCheck, UserRound, Clock, ListChecks, Megaphone, Paperclip, Inbox } from "lucide-react";
+import { AdminChangePanel, AdminPrerequisitesPanel, AdminTermsCard } from "@/components/admin/admin-change-panel";
 import { MetricCard } from "@/components/ui/workspace";
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
@@ -44,17 +45,20 @@ export function AdminProjectWorkspace({ project: p, currentUserId }: { project: 
     <div className="space-y-5">
       <HeaderCard project={p} currentUserId={currentUserId} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard label="Delivery milestones" value={p.milestones.length?`${p.milestones.filter(m=>m.status==="completed").length}/${p.milestones.length}`:"Not set"} detail="Completed against agreed scope" tone="green" icon={<Flag className="size-4"/>}/><MetricCard label="Conversation" value={p.messages.length} detail="Client and internal messages" tone="blue" icon={<MessageSquare className="size-4"/>}/><MetricCard label="Agency tasks" value={p.tasks.length} detail="Outstanding work for this request" tone="amber" icon={<ClipboardCheck className="size-4"/>}/><MetricCard label="Assigned owner" value={<span className="text-lg">{p.assignedTo?.name??"Unassigned"}</span>} detail={p.orgName} tone="neutral" icon={<UserRound className="size-4"/>}/></div>
-      <nav aria-label="Project workspace sections" className="scrollbar-thin flex gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1.5 shadow-soft">{[{id:"conversation",label:"Conversation",icon:MessageSquare},{id:"quote",label:"Quote builder",icon:Receipt},{id:"milestones",label:"Milestones",icon:Flag},{id:"updates",label:"Progress updates",icon:Megaphone}].map(s=><a key={s.id} href={`#agency-project-${s.id}`} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink [&>svg]:size-3.5 [&>svg]:text-muted"><s.icon />{s.label}</a>)}</nav>
+      <nav aria-label="Project workspace sections" className="scrollbar-thin flex gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1.5 shadow-soft">{[{id:"conversation",label:"Conversation",icon:MessageSquare},{id:"quote",label:"Quote builder",icon:Receipt},{id:"changes",label:p.changes.length?`Changes (${p.changes.length})`:"Changes",icon:PencilRuler},{id:"prerequisites",label:"Before work starts",icon:ClipboardCheck},{id:"milestones",label:"Milestones",icon:Flag},{id:"updates",label:"Progress updates",icon:Megaphone}].map(s=><a key={s.id} href={`#agency-project-${s.id}`} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[13px] font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink [&>svg]:size-3.5 [&>svg]:text-muted"><s.icon />{s.label}</a>)}</nav>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
           <div id="agency-project-conversation" className="scroll-mt-24"><Conversation project={p} closed={closed}/></div>
           <div id="agency-project-quote" className="scroll-mt-24"><QuoteBuilder project={p}/></div>
+          <div id="agency-project-changes" className="scroll-mt-24"><AdminChangePanel project={p}/></div>
+          <div id="agency-project-prerequisites" className="scroll-mt-24"><AdminPrerequisitesPanel project={p}/></div>
           <div id="agency-project-milestones" className="scroll-mt-24"><MilestonesEditor project={p} closed={closed}/></div>
           <div id="agency-project-updates" className="scroll-mt-24"><UpdatesPanel project={p} closed={closed}/></div>
           {r.status === "ready_for_review" && <HandoverCard project={p} />}
         </div>
         <aside className="min-w-0 space-y-5">
           {p.tasks.length > 0 && <TasksCard project={p} />}
+          <AdminTermsCard project={p} />
           <RequestInfo project={p} />
           <NotesCard project={p} />
           <FilesPanel project={p} closed={closed} />
@@ -688,20 +692,26 @@ function HandoverCard({ project: p }: { project: AgencyProjectDetail }) {
   const router = useRouter();
   const { run, isPending } = useRunner();
   const [notes, setNotes] = React.useState("");
+  const [warranty, setWarranty] = React.useState(p.delivery?.warrantyDays != null ? String(p.delivery.warrantyDays) : "");
+  const [revisions, setRevisions] = React.useState(p.delivery?.revisionsIncluded != null ? String(p.delivery.revisionsIncluded) : "");
   return (
     <Card className="border-success/30">
       <CardHeader>
         <SectionTitle icon={<ClipboardCheck />} tone="success">Record completion &amp; handover</SectionTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-[13px] text-muted">Completes the project and shows these notes to the client: what was delivered, where it lives, and how to use it. All client-approval milestones must be complete first.</p>
+        <p className="text-[13px] text-muted">Completes the project and shows these notes to the client: what was delivered, where it lives, and how to use it. All client-approval milestones must be complete first, and so must anything asked for before the handover and every open change.</p>
         <Textarea aria-label="Handover notes" rows={5} value={notes} maxLength={4000} onChange={(e) => setNotes(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Support days after handover" htmlFor="ho-war" optional hint="The client sees the date it ends."><Input id="ho-war" type="number" inputMode="numeric" min={0} max={3650} value={warranty} onChange={(e) => setWarranty(e.target.value)} /></Field>
+          <Field label="Revisions included" htmlFor="ho-rev" optional hint="Fixed at handover."><Input id="ho-rev" type="number" inputMode="numeric" min={0} max={100} value={revisions} onChange={(e) => setRevisions(e.target.value)} /></Field>
+        </div>
         <Button
           variant="brand"
           loading={isPending("handover")}
           disabled={notes.trim().length < 10}
           onClick={async () => {
-            const ok = await run("handover", () => handoverAction(p.request.id, notes), "Project completed");
+            const ok = await run("handover", () => handoverAction(p.request.id, notes, { warrantyDays: warranty === "" ? null : Number(warranty), revisionsIncluded: revisions === "" ? null : Number(revisions) }), "Project completed");
             if (ok !== null) router.refresh();
           }}
         >

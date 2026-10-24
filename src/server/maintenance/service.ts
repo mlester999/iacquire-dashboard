@@ -17,6 +17,7 @@ import { MAINTENANCE_TERMS_VERSION, type MaintenanceStatus, type ServiceView } f
 import { paidThroughProblem } from "@/lib/automation-studio/plan";
 import { MAINTENANCE_PAYMENT_NOTE } from "@/lib/billing-clearance";
 import { applyVerifiedPayment } from "@/server/maintenance/payment";
+import { noticeCancelled, pauseWorkflowsForLapse } from "@/server/maintenance/lapse";
 import { iso } from "@/server/projects/shared";
 
 export interface MaintenanceSubscriptionView {
@@ -145,6 +146,21 @@ export async function getMaintenanceOverview(ctx: OrgContext): Promise<Maintenan
   };
 }
 
+/**
+ * This month's managed-request allowance, or null when the workspace has no active plan (or the person may not see it). Request a Change shows it so a client knows what
+ * their plan covers. The number is the plan's own setting, read as it was accepted; nothing is assumed for a workspace without one.
+ */
+export async function getMaintenanceAllowance(ctx: OrgContext): Promise<NonNullable<MaintenanceOverview["allowance"]> | null> {
+  return withUser(ctx.user.id, async (db) => {
+    const sub = (await db.query<{ id: string; monthly_request_allowance: number }>(
+      "select id, monthly_request_allowance from maintenance_subscriptions where org_id = $1 and status in ('active','past_due','cancel_requested') order by created_at desc limit 1", [ctx.org.orgId],
+    )).rows[0];
+    if (!sub) return null;
+    const used = (await db.query<{ n: number }>("select count(*)::int as n from maintenance_requests where subscription_id = $1 and kind = 'managed_change' and counts_against_allowance and status <> 'declined' and period_month = date_trunc('month', now())::date", [sub.id])).rows[0]?.n ?? 0;
+    return { total: sub.monthly_request_allowance, used, remaining: Math.max(0, sub.monthly_request_allowance - used), month: new Date().toISOString().slice(0, 7) };
+  });
+}
+
 /** The client explicitly accepts the plan's terms. Nothing is billed here: billing starts only once iAcquire activates the plan. */
 export async function requestMaintenanceEnrollment(ctx: OrgContext, input: { acceptTerms: boolean; note?: string }) {
   if (!ctx.can("maintenance.manage_plan")) throw new AppError("forbidden", "Only a workspace owner can enroll in managed maintenance.");
@@ -179,6 +195,8 @@ export async function requestMaintenanceCancellation(ctx: OrgContext, note?: str
     if (s.status === "requested" || s.status === "past_due") {
       // Never activated, or already unpaid (it would expire when its grace period ends): nothing more will be billed, so end it outright.
       await db.query("update maintenance_subscriptions set status = 'cancelled', cancelled_at = now(), cancel_note = $2, cancel_requested_by = $3, cancel_requested_at = now() where id = $1", [s.id, clean, ctx.user.id]);
+      // An unpaid plan that ends is a lapse like any other: its Automation Studio workflows are paused now, not at the next sweep. A plan that was only requested has none.
+      if (s.status === "past_due") await pauseWorkflowsForLapse(db, ctx.org.orgId);
     } else {
       await db.query("update maintenance_subscriptions set status = 'cancel_requested', cancel_note = $2, cancel_requested_by = $3, cancel_requested_at = now() where id = $1", [s.id, clean, ctx.user.id]);
     }
@@ -309,6 +327,8 @@ export async function listAgencyMaintenance(user: SessionUser) {
     return {
       subscriptions: subs.map((s) => ({
         ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" && s.cleared === true,
+        // Which of the two conditions holds the plan back, so the agency is sent to the right place (the setup, or the client's billing tab).
+        blockedBy: s.state !== "activated" ? ("setup" as const) : s.cleared !== true ? ("setup_payment" as const) : null,
         // What the agency needs to run the plan: where the money side stands (as recorded by people, never detected) and what a lapse would touch.
         lifecycle: {
           pastDueSince: iso(s.past_due_since), graceEndsAt: iso(s.grace_ends_at), expiredAt: iso(s.expired_at), paidThroughOn: s.paid_through_on,
@@ -357,15 +377,20 @@ export async function resolveMaintenanceSubscription(user: SessionUser, subscrip
   assertManage(user);
   await withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
+    let pausedWorkflows = 0;
     if (action === "decline") {
       if (s.status !== "requested") throw new AppError("conflict", "Only a requested plan can be declined.");
       await db.query("update maintenance_subscriptions set status = 'declined' where id = $1", [subscriptionId]);
+      await notifyOrgRoles(db, s.org_id, ["owner"], { kind: "maintenance_update", title: "Your maintenance request wasn't activated", link: "/maintenance" });
     } else {
       if (s.status !== "cancel_requested") throw new AppError("conflict", "There is no cancellation to confirm.");
       await db.query("update maintenance_subscriptions set status = 'cancelled', cancelled_at = now() where id = $1", [subscriptionId]);
+      // The plan has ended, so its Automation Studio workflows are paused now, exactly as when it expires, and the owner is told what that means. Without this they would keep
+      // showing as switched on until the scheduler's sweep (which has never run in production) found them; the engine refuses their runs either way.
+      pausedWorkflows = await pauseWorkflowsForLapse(db, s.org_id);
+      await noticeCancelled(db, s.org_id, subscriptionId);
     }
-    await notifyOrgRoles(db, s.org_id, ["owner"], { kind: "maintenance_update", title: action === "decline" ? "Your maintenance request wasn't activated" : "Your maintenance plan is cancelled", link: "/maintenance" });
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: `maintenance.${action}`, targetType: "maintenance_subscription", targetId: subscriptionId, result: "success" }, db);
+    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: `maintenance.${action}`, targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", ...(action === "confirm_cancellation" ? { metadata: { pausedWorkflows } } : {}) }, db);
   });
 }
 

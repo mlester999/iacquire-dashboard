@@ -1,6 +1,7 @@
 import "server-only";
 import type { Queryable } from "@/server/db";
 import { addEvent } from "@/server/proposals/core";
+import { eraseDeliveriesInTx } from "@/server/proposals/delivery";
 import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 
 // What a privacy request does to proposals (called from redactContact, inside its transaction). It is the part that can be done without a decision the founder has not made.
@@ -64,6 +65,9 @@ export async function eraseProposalsForContact(db: Queryable, orgId: string, con
     await addEvent(db, orgId, p.id, p.version, "withdrawn", { id: null, kind: "system" }, { reason: "privacy_request", wasSent: p.status === "sent" });
     withdrawn += 1;
   }
+  // A message that carries the link and has not gone out is stopped, and the masked address each delivery kept goes (the messages themselves are made unreadable with the
+  // customer's conversations). A delivery table that the migration has not created yet has nothing to stop.
+  if ((await db.query<{ t: string | null }>("select to_regclass('public.proposal_deliveries')::text as t")).rows[0]?.t) await eraseDeliveriesInTx(db, orgId, ids);
   // The link's address and name are the person's; the link itself is a credential and stops working.
   await db.query("update proposal_share_links set revoked_at = coalesce(revoked_at, now()), recipient_email = null, recipient_name = null where org_id = $1 and proposal_id = any($2::uuid[])", [orgId, ids]);
   await db.query("delete from proposal_link_challenges where org_id = $1 and link_id in (select id from proposal_share_links where org_id = $1 and proposal_id = any($2::uuid[]))", [orgId, ids]);

@@ -25,7 +25,7 @@ describe("a private note never tells the client that someone picked up their req
     const taken = (await teamEvents(id)).filter((e) => e.kind === "assigned");
     expect(taken).toHaveLength(1);
     expect(taken[0].detail).toMatch(/note/i);
-    expect(taken[0].to).toMatch(/Stan/);
+    expect(taken[0].to).toBe(w.agency.staff.fullName);
   });
 
   it("tells the client once, with the first public reply that follows a silent claim", async () => {

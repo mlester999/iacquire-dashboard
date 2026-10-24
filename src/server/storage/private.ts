@@ -8,7 +8,7 @@ import { AppError } from "@/server/errors";
 import { createSupabaseAdminClient } from "@/server/supabase/clients";
 import { assertStorageAllowed } from "@/server/fairuse/service";
 
-export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets" | "aqi-attachments" | "social-media" | "proposal-documents";
+export type PrivateBucket = "company-documents" | "support-attachments" | "project-files" | "project-uploads" | "portfolio-assets" | "brand-assets" | "aqi-attachments" | "social-media" | "proposal-documents" | "staff-messages";
 export interface PrivateFileInput { userId: string; orgId: string; bucket: PrivateBucket; path: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MIMES: Record<PrivateBucket, string[]> = {
@@ -19,6 +19,7 @@ const MIMES: Record<PrivateBucket, string[]> = {
   "portfolio-assets": ["image/png", "image/jpeg", "image/webp"],
   "brand-assets": ["image/png", "image/jpeg", "image/webp"],
   "social-media": ["image/png", "image/jpeg", "image/webp", "video/mp4"], "proposal-documents": ["application/pdf", "image/png", "image/jpeg"],
+  "staff-messages": ["application/pdf", "image/png", "image/jpeg", "image/webp", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   "aqi-attachments": [
     "image/png", "image/jpeg", "image/webp",
     "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

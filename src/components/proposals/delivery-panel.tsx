@@ -11,9 +11,11 @@ import { whenIn } from "@/lib/proposals/format";
 import { SEEN_LABELS } from "@/lib/proposals/share";
 import type { ProposalDetail } from "@/server/proposals/view";
 import { SeenBadge } from "@/components/proposals/status";
+import { DeliveryList, SendToCustomer } from "@/components/proposals/delivery-send";
 
-// How a sent proposal reaches the customer, what is known about it, and what the customer answered. Nothing here sends anything: the team copies the link. The three levels of
-// "seen" are shown in their own words, because a page request alone can be an email scanner.
+// How a sent proposal reaches the customer, what is known about it, and what the customer answered. The team either sends the customer their link through the consent-gated
+// send chain (delivery-send.tsx: a confirmed step, with the exact message shown first) or copies it and gives it over themselves. The three levels of "seen" are shown in their own
+// words, because a page request alone can be an email scanner.
 
 /** What stands in the way of, or follows from, a proposal that asks for a signature. The signing itself is on the Signature tab. */
 function SigningNote({ detail, onOpenTab }: { detail: ProposalDetail; onOpenTab?: (tab: string) => void }) {
@@ -29,7 +31,7 @@ function SigningNote({ detail, onOpenTab }: { detail: ProposalDetail; onOpenTab?
   return <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-[13px] text-ink-2">{text}</p>;
 }
 
-export function DeliveryPanel({ detail, canSend, tz, onOpenTab }: { detail: ProposalDetail; canSend: boolean; tz: string; onOpenTab?: (tab: string) => void }) {
+export function DeliveryPanel({ detail, canSend, tz, onOpenTab, active = true }: { detail: ProposalDetail; canSend: boolean; tz: string; onOpenTab?: (tab: string) => void; active?: boolean }) {
   const { run, busy } = useCrmAction();
   const [shown, setShown] = React.useState<{ url: string; expiresAt: string } | null>(null);
   const [copied, setCopied] = React.useState(false);
@@ -54,6 +56,9 @@ export function DeliveryPanel({ detail, canSend, tz, onOpenTab }: { detail: Prop
 
   return (
     <div className="space-y-6">
+      {canSend && live && <SendToCustomer detail={detail} tz={tz} active={active} />}
+      {(detail.deliveries.length > 0 || (canSend && live)) && <DeliveryList deliveries={detail.deliveries} tz={tz} />}
+
       <section aria-label="The customer's link" className="space-y-3 rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[15px] font-semibold text-ink">The customer&apos;s link</h2>
         {!share ? (
@@ -83,7 +88,7 @@ export function DeliveryPanel({ detail, canSend, tz, onOpenTab }: { detail: Prop
                       <Input id="dp-link" readOnly value={shown.url} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 text-[16px] sm:text-[13px]" />
                       <Button type="button" variant="secondary" onClick={copy}><Copy className="size-4" aria-hidden />Copy</Button>
                     </div>
-                    <p role="status" className="text-[12.5px] text-muted">{copied ? "Copied." : "Anyone with this link can open the proposal, but only someone who receives the code at the customer's address can answer it. iAcquire has not sent it to anyone."}</p>
+                    <p role="status" className="text-[12.5px] text-muted">{copied ? "Copied." : "Anyone with this link can open the proposal, but only someone who receives the code at the customer's address can answer it. Copying it sends nothing."}</p>
                   </div>
                 ) : (
                   <Button type="button" variant="secondary" loading={busy("link")} onClick={reveal}>Show the customer&apos;s link</Button>

@@ -18,6 +18,10 @@ import { agencyHandlers, dispatchSupportNotice, sendQueuedSupportEmails } from "
 import { ensureResponseClock } from "@/server/support/response-clock";
 import { applyStatusChange } from "@/server/support/lifecycle";
 import { bindStagedAttachments } from "@/server/support/attachments";
+import { requestChangesEnabled } from "@/server/support/change-feature";
+import { linkedChangeFor } from "@/server/support/change";
+import { createChangeOrderTx } from "@/server/projects/change-orders";
+import { REQUEST_CHANGES_NOT_ENABLED_MESSAGE, changeTargetFor, projectTakesChangeRequest } from "@/lib/support/change";
 import type { TicketCore } from "@/server/support/access";
 import type { ClientRequestDetail, RequestListItem, RequestPage, ThreadAttachment, ThreadMessage, TimelineEntry } from "@/server/support/types";
 
@@ -45,6 +49,8 @@ export const submitRequestSchema = z.object({
   clientUrgency: z.enum(CLIENT_URGENCIES).optional(),
   pageContext: z.string().max(200).regex(PAGE_PATH).optional().catch(undefined),
   projectId: z.string().uuid().optional(),
+  /** A change request about an agreed project can also be filed as a change to what was agreed (the project's change list), which the team then prices or declines. */
+  asChangeOrder: z.boolean().optional(),
   idempotencyKey: z.string().min(8).max(80).optional(),
   attachmentIds: z.array(z.string().uuid()).max(10).default([]),
   /** Must be true for any technical details to be stored. */
@@ -76,6 +82,8 @@ export interface SubmitResult {
   existing: boolean;
   externalNotification: string;
   expectation: string | null;
+  /** The change on the project's list this request was also filed as, if the person asked for that. */
+  changeOrderRef?: string | null;
 }
 
 function urgencyFromLegacy(priority: string | undefined) {
@@ -93,6 +101,20 @@ export async function submitRequest(ctx: OrgContext, input: z.input<typeof submi
   if (body.length < 5) throw new AppError("invalid_input", type === "issue" ? "Tell us what happened." : "Tell us a little more.");
   const subject = cleanText(data.subject, 160).replace(/\s*\n\s*/g, " ");
   if (subject.length < 3) throw new AppError("invalid_input", "Add a short title.");
+  // Request a Change: what it is about is read from the category, a project target needs a project, and every other target must not name one (the database keeps the two equal).
+  const changeTarget = type === "change" ? changeTargetFor(data.category) : null;
+  if (type === "change") {
+    if (!changeTarget) throw new AppError("invalid_input", "Choose what the change is about.");
+    if (changeTarget === "project" && !data.projectId) throw new AppError("invalid_input", "Choose the project the change is about.");
+    if (changeTarget !== "project" && data.projectId) throw new AppError("invalid_input", "Choose \"A custom project\" to ask for a change to a project.");
+    if (data.asChangeOrder && changeTarget !== "project") throw new AppError("invalid_input", "Only a change to a custom project can be filed as a change to what was agreed.");
+    if (data.asChangeOrder && !ctx.can("projects.request")) throw new AppError("forbidden", "Only a workspace owner or admin can ask for a change to what was agreed on a project.");
+    if (!(await requestChangesEnabled(ctx.org.orgId)) || ctx.org.kind !== "client") throw new AppError("not_enabled", REQUEST_CHANGES_NOT_ENABLED_MESSAGE);
+  } else {
+    // The change categories belong to a change request alone: another type never carries one, so a change is never filed as a plain question.
+    if (changeTargetFor(data.category)) throw new AppError("invalid_input", "Choose what this is about.");
+    if (data.asChangeOrder) throw new AppError("invalid_input", "Only a change request can be filed as a change to a project.");
+  }
   const settings = await loadSupportSettings();
 
   // A retry of the same submission (double click, dropped connection) returns the request that already exists.
@@ -115,8 +137,10 @@ export async function submitRequest(ctx: OrgContext, input: z.input<typeof submi
 
   const outcome = await withSystem(async (db) => {
     if (data.projectId) {
-      const own = await db.query("select 1 from client_project_requests where id = $1 and org_id = $2", [data.projectId, ctx.org.orgId]);
+      const own = await db.query<{ status: string }>("select status from client_project_requests where id = $1 and org_id = $2", [data.projectId, ctx.org.orgId]);
       if (!own.rows[0]) throw new AppError("not_found", "Project not found.");
+      // A change belongs to a project that was agreed (or finished); before that, the project's own conversation and quote are the place for it.
+      if (type === "change" && !projectTakesChangeRequest(own.rows[0].status)) throw new AppError("conflict", "Changes can be asked for once a project is agreed. Until then, use the project's conversation.");
     }
     const inserted = await db.query<{ id: string; ref: string }>(
       `insert into support_tickets (org_id, created_by, subject, category, priority, status, request_type, affected_feature, client_urgency, feedback_stage, diagnostics, page_context, project_id, idempotency_key)
@@ -131,13 +155,21 @@ export async function submitRequest(ctx: OrgContext, input: z.input<typeof submi
         "select id, ref, status, priority, external_notification from support_tickets where org_id = $1 and created_by = $2 and idempotency_key = $3",
         [ctx.org.orgId, ctx.user.id, data.idempotencyKey],
       );
-      return { existing: again.rows[0], created: null };
+      return { existing: again.rows[0], created: null, changeOrderRef: null };
     }
     const message = await db.query<{ id: string }>(
       "insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4) returning id",
       [t.id, ctx.org.orgId, ctx.user.id, body],
     );
     await bindStagedAttachments(db, { ticketId: t.id, orgId: ctx.org.orgId, messageId: message.rows[0].id, userId: ctx.user.id, ids: data.attachmentIds, visibility: "client", maxCount: settings.maxAttachmentsPerMessage });
+    // The team's own record of what kind of change this is (and, for a project, which). It is not shown to the client and says nothing about price or timing.
+    if (changeTarget) {
+      await db.query("insert into support_ticket_change (ticket_id, org_id, target_kind, project_id) values ($1, $2, $3, $4)", [t.id, ctx.org.orgId, changeTarget, data.projectId ?? null]);
+    }
+    // Filed as a change to what was agreed too: one request and one entry on the project's change list, linked, made in the same transaction.
+    const changeOrder = data.asChangeOrder && data.projectId
+      ? await createChangeOrderTx(db, { orgId: ctx.org.orgId, orgName: ctx.org.name, userId: ctx.user.id }, data.projectId, { title: subject, description: body.slice(0, 4000), idempotencyKey: data.idempotencyKey, ticketId: t.id })
+      : null;
     await recordTicketEvent(db, { ticketId: t.id, orgId: ctx.org.orgId, kind: "created", actorUserId: ctx.user.id, actorKind: "client" });
     await ensureResponseClock(db, { id: t.id, org_id: ctx.org.orgId, priority, status: "new", first_responded_at: null }, { settings });
     await dispatchSupportNotice(db, {
@@ -153,7 +185,7 @@ export async function submitRequest(ctx: OrgContext, input: z.input<typeof submi
       { orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "support.ticket_created", targetType: "support_ticket", targetId: t.id, result: "success", metadata: { ref: t.ref, type, category: data.category, attachments: data.attachmentIds.length, diagnostics: Boolean(diagnostics) } },
       db,
     );
-    return { existing: null, created: t };
+    return { existing: null, created: t, changeOrderRef: changeOrder?.ref ?? null };
   });
 
   if (!outcome.created) {
@@ -165,7 +197,7 @@ export async function submitRequest(ctx: OrgContext, input: z.input<typeof submi
   const external = await sendAgencySlackAlert(`New iAcquire ${REQUEST_TYPE_LABELS[type].label.toLowerCase()} ${ticket.ref} from ${ctx.org.name} (${data.category}).`);
   await withSystem((db) => db.query("update support_tickets set external_notification = $2 where id = $1", [ticket.id, external]));
   await sendQueuedSupportEmails(ticket.id);
-  return { id: ticket.id, ref: ticket.ref, status: "new", existing: false, externalNotification: external, expectation: clientExpectationText(settings, "first", priority) };
+  return { id: ticket.id, ref: ticket.ref, status: "new", existing: false, externalNotification: external, expectation: clientExpectationText(settings, "first", priority), changeOrderRef: outcome.changeOrderRef };
 }
 
 /** The earlier entry point, kept for existing callers (help widget, maintenance, CRM setup). */
@@ -366,6 +398,7 @@ export async function getRequestDetail(ctx: OrgContext, ticketId: string): Promi
     maxAttachmentMb: settings.maxAttachmentMb,
     maxAttachments: settings.maxAttachmentsPerMessage,
     reopenWindowDays: settings.reopenWindowDays,
+    linkedChange: t.request_type === "change" ? await linkedChangeFor(ctx.user.id, ticketId) : null,
   };
 }
 

@@ -20,10 +20,10 @@ export async function createProjectRequestAction(input: ProjectRequestInput) {
   });
 }
 
-export async function postProjectMessageAction(requestId: string, body: string) {
+export async function postProjectMessageAction(requestId: string, body: string, clientMessageId?: string) {
   return guard(async () => {
     const ctx = await requireOrgContextOrThrow("projects.request");
-    await postClientMessage(ctx, requestId, body);
+    await postClientMessage(ctx, requestId, body, clientMessageId);
     revalidatePath(`/projects/${requestId}`);
   });
 }

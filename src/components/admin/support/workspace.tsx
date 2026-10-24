@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Building2, Flame, Keyboard, LifeBuoy, MessageSquare, ThumbsUp, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Building2, Flame, Keyboard, LifeBuoy, MessageSquare, PencilRuler, ThumbsUp, TriangleAlert } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
 import { InfoChip, StatusPill } from "@/components/ui/status";
@@ -18,7 +18,7 @@ import type { AgencyRequestDetail } from "@/server/support/agency";
 import type { AgencyListItem, AgencyViewCounts } from "@/server/support/types";
 import type { FilterOptions } from "@/server/support/directory";
 
-const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp } as const;
+const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp, change: PencilRuler } as const;
 
 export interface WorkspaceList { items: AgencyListItem[]; total: number; page: number; pageSize: number; counts: AgencyViewCounts }
 

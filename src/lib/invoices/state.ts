@@ -9,6 +9,9 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export const PAYMENT_STATUSES = ["unpaid", "partially_paid", "paid", "disputed"] as const;
 export type InvoicePaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
+/** Where a draft came from: typed by a person, made by an automation, made from a deal, or made from an accepted proposal. Only a person's own typed draft can be issued without an approver. */
+export type InvoiceCreatedVia = "manual" | "workflow" | "deal" | "proposal";
+
 export const STATUS_LABELS: Record<InvoiceStatus, string> = {
   draft: "Draft",
   pending_approval: "Waiting for approval",
@@ -142,15 +145,15 @@ export interface IssueAuthorityFacts {
   canApprove: boolean;
   canCreate: boolean;
   isAuthor: boolean;
-  createdVia: "manual" | "workflow" | "deal";
+  createdVia: InvoiceCreatedVia;
   /** customer_invoice_settings.approval_required_for_creators. */
   approvalRequiredForCreators: boolean;
 }
 
 /**
  * Why this person cannot issue this invoice, or null when they can. The owner and managers (who may approve) issue any submitted or draft invoice. Somebody who
- * may only create invoices can issue their own draft only when the owner switched approval off for creators; an invoice a workflow made is never issued without
- * an approver, whatever the setting.
+ * may only create invoices can issue their own draft only when the owner switched approval off for creators; an invoice a workflow, a deal or an accepted proposal made is never
+ * issued without an approver, whatever the setting.
  */
 export function issueBlockedReason(f: IssueAuthorityFacts): string | null {
   if (f.status === "issued") return "This invoice is already issued.";

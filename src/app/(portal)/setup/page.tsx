@@ -5,6 +5,7 @@ import { SetupCenter } from "@/components/setup/setup-center";
 import { OnboardedBanner, type EmployeeProvisioningState } from "@/components/setup/onboarded-banner";
 import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
+import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
 import { crmOwners } from "@/server/setup/native-evidence";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, EmptyState } from "@/components/ui/primitives";
@@ -61,9 +62,10 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       return rows;
     }),
   ]) : [[], []];
+  const paymentCleared = onboarded === "1" ? await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId) : undefined;
   return (
     <>
-      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} />}
+      {onboarded === "1" && <OnboardedBanner nativeCrm={nativeCrm} crmGuide={ctx.can("crm.view")} agents={agents} provisioning={provisioning} paymentCleared={paymentCleared} />}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );

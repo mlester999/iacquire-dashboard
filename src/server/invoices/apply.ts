@@ -9,6 +9,7 @@ import type { DisputeOutcome } from "@/lib/invoices/payment-events";
 import { addInvoiceEvent, toMinor, type InvoiceActorKind } from "@/server/invoices/core";
 import { announcePaid, announcePaymentFailed, announcePaymentReceived, announceRefunded } from "@/server/invoices/crm-effects";
 import { stopReminders } from "@/server/invoices/reminders";
+import { withdrawInvoiceDeliveriesInTx } from "@/server/invoices/delivery";
 
 // The ONE place that decides how much of an invoice has been paid, refunded or disputed, and so what its payment status is. Everything else (the manual payment form,
 // the provider webhooks, the reconciliation job) records a payment or a refund by calling a function here; none of them writes the paid or refunded amount, the
@@ -220,8 +221,9 @@ export async function applyPaymentInTx(db: Queryable, input: ApplyPaymentInput):
         link: `/invoices/${input.invoiceId}`, dedupeKey: `invoice-paid:${input.invoiceId}`,
       });
       await announcePaid(db, input.orgId, input.invoiceId, input.actor, { paymentId, verification: input.verification });
-      // Nothing more is owed: a reminder that has not gone out yet is withdrawn at once.
+      // Nothing more is owed: a reminder, or a message with the invoice's link, that has not gone out yet is withdrawn at once.
       await stopReminders(db, input.orgId, "paid", input.invoiceId);
+      await withdrawInvoiceDeliveriesInTx(db, input.orgId, input.invoiceId, "invoice_paid");
     }
     if (after.overpaidMinor > Math.max(inv.paidMinor - inv.totalMinor, 0)) {
       await addInvoiceEvent(db, input.orgId, input.invoiceId, "overpaid", input.actor, { paymentId, overpaid: toDecimalString(after.overpaidMinor, inv.currency), currency: inv.currency });
@@ -278,6 +280,7 @@ export async function settlePaymentInTx(db: Queryable, input: { orgId: string; p
       });
       await announcePaid(db, input.orgId, inv.id, input.actor, { paymentId: input.paymentId, verification: pay.verification });
       await stopReminders(db, input.orgId, "paid", inv.id);
+      await withdrawInvoiceDeliveriesInTx(db, input.orgId, inv.id, "invoice_paid");
     }
   } else if (input.to === "failed") {
     await addInvoiceEvent(db, input.orgId, inv.id, "payment_failed", input.actor, detail);
@@ -450,6 +453,7 @@ export async function applyDisputeInTx(db: Queryable, input: DisputeInput): Prom
     await addInvoiceEvent(db, input.orgId, inv.id, "dispute_opened", input.actor, detail);
     // The customer has paid and is disputing it with their bank: asking them for the money again would be wrong, so reminders stop.
     await stopReminders(db, input.orgId, "disputed", inv.id);
+    await withdrawInvoiceDeliveriesInTx(db, input.orgId, inv.id, "invoice_disputed");
     await notifyOrgRoles(db, input.orgId, ["owner", "admin"], {
       kind: "payment_review_needed", severity: "warning", title: `A payment for ${label} is disputed`, body: `The customer disputed ${money(amount, inv.currency)} with their bank. Nothing about the deal changes while it is open.`,
       link: `/invoices/${inv.id}`, dedupeKey: `payment-dispute:${input.paymentId}:${await round()}`,

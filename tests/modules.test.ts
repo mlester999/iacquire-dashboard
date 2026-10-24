@@ -8,6 +8,7 @@ import { assertAssignableLocation, createClientTenant } from "@/server/admin/ten
 import { updateAgencyUserPermission } from "@/server/admin/team";
 import { saveKnowledgeSection, uploadKnowledgeDocument, readKnowledgeDocument } from "@/server/knowledge/service";
 import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { clearSetupPayment } from "./support/billing";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: { id: string; email: string };
@@ -121,6 +122,8 @@ describe("iAcquire Assistant", () => {
 describe("onboarding", () => {
   it("autosaves, validates and generates configurations without marking employees online", async () => {
     const tenantOrg = await createOrg({ name: "Onboard Co", status: "onboarding" });
+    // The provisioning request this test counts needs the setup payment confirmed (see tests/payment-gate.test.ts).
+    await clearSetupPayment(tenantOrg.id);
     const o = await createUser();
     await addMember(tenantOrg.id, o.id, "owner");
     const ctx = ctxFor(o, tenantOrg, "owner");

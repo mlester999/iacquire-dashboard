@@ -7,6 +7,7 @@ import { canTransition } from "@/lib/proposals/state";
 import { daysBetween, todayIn, validityOn } from "@/lib/proposals/validity";
 import { addEvent, loadProposalRow, readSettings } from "@/server/proposals/core";
 import { applyEffects } from "@/server/proposals/crm-effects";
+import { withdrawDeliveriesInTx } from "@/server/proposals/delivery";
 import { voidLiveRequestsInTx } from "@/server/esign/lifecycle";
 
 // The two background jobs of proposals. Both are idempotent and safe to run twice, run only when the scheduler does (and, in a staged start, only when named in
@@ -64,6 +65,8 @@ export async function expireDueProposals(opts: { now?: Date } = {}): Promise<Exp
           await db.query("update proposals set status = 'expired', closed_at = $3::timestamptz where id = $1 and org_id = $2 and status = 'sent'", [row.id, row.org_id, now.toISOString()]);
           // The link stops opening. The customer's page still says the proposal expired, because it reads the proposal's own status first.
           await db.query("update proposal_share_links set revoked_at = $3::timestamptz where proposal_id = $1 and org_id = $2 and revoked_at is null", [row.id, row.org_id, now.toISOString()]);
+          // A message that carries the link and is still waiting for sending hours is stopped: the customer would be sent a proposal that has expired.
+          await withdrawDeliveriesInTx(db, row.org_id, row.id, "proposal_expired");
           // A signing request still out for the version ends with it; a signature that arrives afterwards is kept as the service's fact and not applied.
           await voidLiveRequestsInTx(db, row.org_id, row.id, "voided", "The proposal expired.", { userId: null, now });
           await addEvent(db, row.org_id, row.id, row.version, "expired", { id: null, kind: "system" }, { validUntil: c.valid_until });

@@ -35,6 +35,7 @@ import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
 import { IconTile, Notice, Panel, SettingRow, type PanelTone } from "@/components/settings/panel";
 import { approveProviderFeeAction, startTopUpAction, updateBillingSettingsAction } from "@/app/actions/billing";
 import { UNIT_LABELS, formatUsd } from "@/lib/billing";
+import { setupStatusCopy } from "@/lib/billing-clearance";
 import { cn, formatDateTime, formatNumber, sentenceCase } from "@/lib/utils";
 import type { BillingOverview } from "@/server/billing/service";
 
@@ -86,6 +87,7 @@ export function BillingWorkspace({
   legacy: { setupFeeLabel: string; setupStatus: string; activation: string; invoiceUrl: string | null; receiptUrl: string | null; serviceTerms: string | null };
 }) {
   const o = overview;
+  const setupCopy = setupStatusCopy(legacy.setupStatus);
   const hasHistory = o.recentLedger.length > 0;
   const exhausted = o.availableMicros <= 0 && hasHistory;
   const noCreditsYet = o.availableMicros <= 0 && !hasHistory;
@@ -282,7 +284,7 @@ export function BillingWorkspace({
 
           <Panel icon={<ShieldCheck />} title="How you're charged" description="No monthly platform fee. You pay once for setup, then only for what you use." bodyClassName="space-y-4">
             <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
-              <ChargeRow icon={<Landmark />} title="Setup" aside={<><strong className="text-[14px] font-semibold tabular-nums text-ink">{legacy.setupFeeLabel}</strong><StatusPill tone={statusToneFor(legacy.setupStatus)}>{sentenceCase(legacy.setupStatus)}</StatusPill></>}>
+              <ChargeRow icon={<Landmark />} title="Setup" aside={<><strong className="text-[14px] font-semibold tabular-nums text-ink">{legacy.setupFeeLabel}</strong><StatusPill tone={statusToneFor(legacy.setupStatus)}>{setupCopy.label}</StatusPill></>}>
                 One time, paid once.
               </ChargeRow>
               <ChargeRow icon={<Percent />} title="Usage" aside={<InfoChip>Cost + {((o.rates.markupBps - 10000) / 100).toFixed(0)}%</InfoChip>}>
@@ -329,9 +331,10 @@ export function BillingWorkspace({
 
           <Panel icon={<FileText />} title="Setup invoice & terms" description="Shared by the iAcquire team when available." bodyClassName="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <StatusPill tone={legacy.setupStatus === "paid" || legacy.setupStatus === "waived" ? "success" : "warning"}>Setup: {sentenceCase(legacy.setupStatus)}</StatusPill>
+              <StatusPill tone={setupCopy.cleared ? "success" : "warning"}>Setup: {setupCopy.label}</StatusPill>
               <StatusPill tone={legacy.activation === "active" ? "success" : legacy.activation === "suspended" ? "danger" : "neutral"}>Activation: {sentenceCase(legacy.activation)}</StatusPill>
             </div>
+            <p role="status" className="text-[12.5px] leading-relaxed text-muted">{setupCopy.detail}</p>
             <div className="flex flex-wrap gap-2">
               {legacy.invoiceUrl ? (
                 <ButtonLink href={legacy.invoiceUrl} target="_blank" rel="noopener noreferrer" variant="secondary" size="sm">

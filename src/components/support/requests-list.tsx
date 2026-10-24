@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, ChevronLeft, ChevronRight, Inbox, LifeBuoy, MessageSquarePlus, Search, ThumbsUp, TriangleAlert, UserCheck } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Inbox, LifeBuoy, MessageSquarePlus, PencilRuler, Search, ThumbsUp, TriangleAlert, UserCheck } from "lucide-react";
 import { Card, EmptyState, Input, Select } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
 import { InfoChip, StatusPill } from "@/components/ui/status";
@@ -27,7 +27,7 @@ const TABS: Array<{ value: ClientStatusFilter; label: string }> = [
   { value: "waiting", label: "Waiting" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" },
 ];
 
-const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp } as const;
+const TYPE_ICON = { support: LifeBuoy, issue: TriangleAlert, feedback: ThumbsUp, change: PencilRuler } as const;
 const tone = (status: string) => (status === "resolved" ? "success" : status === "closed" ? "neutral" : status === "waiting_for_client" ? "warning" : "primary") as "success" | "neutral" | "warning" | "primary";
 
 export function hrefFor(query: ListQuery, patch: Partial<ListQuery>): string {

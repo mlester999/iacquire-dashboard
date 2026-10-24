@@ -8,6 +8,7 @@ import { AlertTriangle, BadgeCheck, Banknote, Building2, CalendarDays, Landmark,
 import {
   addFinanceEntryAction, addProviderFeeAction, adjustCreditsAction, confirmLiveReviewAction, publishUnitRateAction, saveFinanceSettingsAction, setExchangeRateAction, voidFinanceEntryAction,
 } from "@/app/(admin)/admin/finance-actions";
+import { setAutoPastDueAction } from "@/app/(admin)/admin/billing/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
@@ -16,14 +17,17 @@ import { MetricCard, SectionLabel } from "@/components/ui/workspace";
 import { rateFieldHint, rateFieldLabel, ratePlaceholder, rateSanityNote, rateUnitLabel } from "@/lib/billing";
 import { CATEGORIES, ENTRY_KINDS, KIND_HELP, KIND_LABEL, PERIOD_LABEL, signedUsd, type EntryKind, type PeriodKey } from "@/lib/finance";
 import { formatDate, formatDateTime, sentenceCase } from "@/lib/utils";
+import { PaymentsWorkspace } from "@/components/admin/payments-workspace";
+import type { AgencyPaymentView, PaymentClientOption } from "@/server/billing/payments-view";
 import type { FinancialReport } from "@/server/billing/finance";
 import type { AgencyBillingOverview } from "@/server/billing/service";
 import type { UnitRateRow } from "@/server/billing/rates";
 
-type Tab = "statement" | "entries" | "rates" | "clients";
+type Tab = "statement" | "entries" | "payments" | "rates" | "clients";
 const TABS: Array<{ value: Tab; label: string }> = [
   { value: "statement", label: "Statement" },
   { value: "entries", label: "Entries" },
+  { value: "payments", label: "Payments" },
   { value: "rates", label: "Rates & payments" },
   { value: "clients", label: "Clients" },
 ];
@@ -301,6 +305,29 @@ function Rates({ overview, rates, r, canManage }: { overview: AgencyBillingOverv
         </CardContent>
       </Card>
 
+      {overview.planRenewals && (
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Maintenance plan renewals</CardTitle>
+              <CardDescription>Plans are paid for and recorded by hand, so nothing renews itself. The team and the client&apos;s owner are reminded 7 days and 1 day before a plan&apos;s paid-through day, and the team is told when that day passes with no payment recorded.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <label className="flex items-start justify-between gap-4 rounded-2xl border border-line p-4">
+              <span>
+                <span className="block text-[14px] font-medium">Mark a plan past due automatically</span>
+                <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
+                  {overview.planRenewals.autoPastDue ? `On${overview.planRenewals.changedAt ? ` since ${formatDateTime(overview.planRenewals.changedAt, "UTC")}` : ""}.` : "Off, which is the default: the team is told, and nothing changes until someone records it."}{" "}
+                  When on, a plan whose paid period ended {overview.planRenewals.minDaysOver} or more days ago with no payment recorded is marked past due, and its owner is told Automation Studio keeps working for {overview.planRenewals.graceDays} more days. This never pauses, expires or deletes anything; recording a payment brings the plan back.
+                </span>
+              </span>
+              <Switch checked={overview.planRenewals.autoPastDue} disabled={!canManage || busy === "autopd"} aria-label="Mark a plan past due automatically" onCheckedChange={(v) => void act("autopd", () => setAutoPastDueAction(v), v ? "Switched on" : "Switched off")} />
+            </label>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><div><CardTitle>Usage rates</CardTitle><CardDescription>What each provider charges us per unit, and what clients are charged: wholesale × {(overview.markupBps / 10000).toFixed(2)} (a {((overview.markupBps - 10000) / 100).toFixed(0)}% markup on eligible metered usage, not a {((overview.markupBps - 10000) / 100).toFixed(0)}% profit margin). Nothing can be billed on a unit until its rate is published.</CardDescription></div></CardHeader>
         <CardContent className="space-y-4 px-0 pb-0">
@@ -396,7 +423,7 @@ function Clients({ r, overview }: { r: FinancialReport; overview: AgencyBillingO
   );
 }
 
-export function FinanceWorkspace({ report, overview, rates, canManage, tab, period }: { report: FinancialReport; overview: AgencyBillingOverview; rates: UnitRateRow[]; canManage: boolean; tab: Tab; period: PeriodKey }) {
+export function FinanceWorkspace({ report, overview, rates, canManage, tab, period, payments = [], paymentClients = [], timeZone = "UTC" }: { report: FinancialReport; overview: AgencyBillingOverview; rates: UnitRateRow[]; canManage: boolean; tab: Tab; period: PeriodKey; payments?: AgencyPaymentView[]; paymentClients?: PaymentClientOption[]; timeZone?: string }) {
   const router = useRouter();
   const r = report;
   const go = (t: Tab, p: PeriodKey) => router.push(`/admin/billing?tab=${t}&period=${p}`);
@@ -416,6 +443,7 @@ export function FinanceWorkspace({ report, overview, rates, canManage, tab, peri
       </div>
       {tab === "statement" && <Statement r={r} />}
       {tab === "entries" && <Entries r={r} canManage={canManage} />}
+      {tab === "payments" && <PaymentsWorkspace payments={payments} clients={paymentClients} canManage={canManage} timeZone={timeZone} />}
       {tab === "rates" && <Rates overview={overview} rates={rates} r={r} canManage={canManage} />}
       {tab === "clients" && <Clients r={r} overview={overview} />}
     </div>

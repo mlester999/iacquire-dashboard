@@ -9,6 +9,7 @@ import {
 } from "@/server/support/agency";
 import { adviseEscalation, draftReply, missingInformation, summarizeRequest } from "@/server/support/ai";
 import { findSimilarForAgency } from "@/server/support/duplicates";
+import { classifyChangeRequest } from "@/server/support/change";
 import { setNotificationRule, updateSupportSettings, type SupportSettingsPatch } from "@/server/support/settings";
 import { supportAnalytics, type AnalyticsFilters } from "@/server/support/analytics";
 import { actionError } from "@/server/errors";
@@ -52,6 +53,10 @@ export async function assignAction(ticketId: string, assigneeId: string | null) 
 }
 export async function escalateAction(ticketId: string, reason: string) {
   return run(ticketId, (user) => escalateRequest(user, ticketId, reason));
+}
+/** The team records what kind of change a change request is. Never shown to the client. */
+export async function classifyChangeAction(ticketId: string, classification: string, note?: string | null) {
+  return run(ticketId, (user) => classifyChangeRequest(user, ticketId, { classification, note }));
 }
 export async function clearEscalationAction(ticketId: string) {
   return run(ticketId, (user) => clearEscalation(user, ticketId));

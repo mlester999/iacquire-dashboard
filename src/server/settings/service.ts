@@ -1,12 +1,15 @@
 import "server-only";
 import { z } from "zod";
-import { withSystem, withUser } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { createInvitation, normalizeEmail } from "@/server/auth/service";
 import { createConfigVersion, currentSettings } from "@/server/workforce/service";
+import { sanitizeClientText } from "@/server/workforce/compiler";
+import { syncProfileToAnswers } from "@/server/onboarding/profile-sync";
 import { onRoleChanged } from "@/server/staff/service";
 import { aiPreferencesSchema } from "@/lib/agent-settings";
+import { PROFILE_KEYS, PROFILE_LIMITS, type ProfileKey, type ProfileValues } from "@/lib/onboarding/business-profile";
 import { configAttribution } from "@/lib/config-review";
 import { scanInstructionText } from "@/lib/instruction-risk";
 import { grantableRoles, type OrgRole } from "@/lib/permissions";
@@ -66,39 +69,14 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
   if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only owners and admins can edit the business profile.");
   const d = profileSchema.parse(input);
   if (!isValidTimeZone(d.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
-  // Business profile text reaches every AI prompt as quoted context. Reject instruction-like
-  // content here rather than letting it bypass the configuration review gate.
-  const profileFindings = [
-    ...scanInstructionText(d.name),
-    ...scanInstructionText(d.industry),
-    ...scanInstructionText(d.region),
-    ...scanInstructionText(d.description),
-    ...scanInstructionText(d.services),
-    ...scanInstructionText(d.idealCustomers),
-  ];
-  const blockedProfileFindings = profileFindings.filter((finding) => finding.severity === "block");
-  if (blockedProfileFindings.length) {
-    throw new AppError(
-      "invalid_input",
-      `The business profile can't include text that conflicts with AI safety policy (${blockedProfileFindings[0].code.replaceAll("_", " ")}). Remove or rephrase that sentence.`,
-    );
-  }
-  await withUser(ctx.user.id, async (db) => {
-    await db.query("update organizations set name = $2, industry = nullif($3, ''), website = nullif($4, ''), region = nullif($5, ''), timezone = $6 where id = $1", [
-      ctx.org.orgId,
-      d.name,
-      d.industry,
-      d.website,
-      d.region,
-      d.timezone,
-    ]);
-    await db.query(
-      `insert into company_profiles (org_id, description, services, ideal_customers, brand_color, updated_by)
-       values ($1, $2, $3, $4, nullif($5, ''), $6)
-       on conflict (org_id) do update set description = excluded.description, services = excluded.services,
-         ideal_customers = excluded.ideal_customers, brand_color = excluded.brand_color, updated_by = excluded.updated_by`,
-      [ctx.org.orgId, d.description, d.services, d.idealCustomers, d.brandColor, ctx.user.id],
-    );
+  // One writer for the business profile (also used by onboarding), then the questionnaire's answers follow in the same transaction so nobody is asked the same thing twice.
+  const written = await withUser(ctx.user.id, async (db) => {
+    const res = await writeBusinessProfile(db, ctx, {
+      name: d.name, industry: d.industry, website: d.website, region: d.region, timezone: d.timezone,
+      description: d.description, services: d.services, idealCustomers: d.idealCustomers, brandColor: d.brandColor,
+    });
+    await syncProfileToAnswers(db, ctx, { changed: res.changed, values: res.values });
+    return res;
   });
   await recordAudit({
     orgId: ctx.org.orgId,
@@ -106,8 +84,96 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
     actorKind: ctx.user.platformRole !== "none" ? "agency" : "user",
     action: "settings.profile_updated",
     result: "success",
-    metadata: { riskFlags: [...new Set(profileFindings.map((finding) => finding.code))] },
+    metadata: { riskFlags: written.riskFlags, changed: written.changed },
   });
+}
+
+/**
+ * The one place the business profile is written, for Settings and for onboarding. Writes only the facts it is given, and only those that differ from what the workspace has,
+ * in the caller's transaction (it runs as the signed-in person under row-level security, or as trusted server code). Text reaches every AI prompt as quoted context, so it is
+ * cleaned and checked here, whoever writes it: instruction-like text is refused rather than let past the configuration review gate. Returns the facts that changed, the codes of
+ * every risk the scan found (blocking ones throw), and the profile as it stands now.
+ */
+export async function writeBusinessProfile(
+  db: Queryable,
+  ctx: { org: { orgId: string }; user: { id: string } },
+  fields: Partial<ProfileValues>,
+): Promise<{ changed: ProfileKey[]; riskFlags: string[]; values: ProfileValues }> {
+  const clean: Partial<ProfileValues> = {};
+  for (const key of PROFILE_KEYS) {
+    const raw = fields[key];
+    if (raw === undefined) continue;
+    clean[key] = key === "timezone" || key === "brandColor" ? String(raw).trim() : sanitizeClientText(String(raw), PROFILE_LIMITS[key]);
+  }
+  if (clean.name !== undefined && !clean.name) throw new AppError("invalid_input", "Add your company name.");
+  if (clean.timezone !== undefined && !isValidTimeZone(clean.timezone)) throw new AppError("invalid_input", "Choose a valid time zone.");
+  if (clean.brandColor && !/^#[0-9a-fA-F]{6}$/.test(clean.brandColor)) throw new AppError("invalid_input", "Use a hex color like #2C5BFF.");
+  const findings = (["name", "industry", "region", "description", "services", "idealCustomers"] as const).flatMap((key) => scanInstructionText(clean[key]));
+  const blocked = findings.filter((finding) => finding.severity === "block");
+  if (blocked.length) {
+    throw new AppError("invalid_input", `The business profile can't include text that conflicts with AI safety policy (${blocked[0].code.replaceAll("_", " ")}). Remove or rephrase that sentence.`);
+  }
+
+  const orgId = ctx.org.orgId;
+  const { rows } = await db.query<{
+    name: string; industry: string | null; website: string | null; region: string | null; timezone: string;
+    description: string | null; services: string | null; ideal_customers: string | null; operating_area: string | null; brand_color: string | null;
+  }>(
+    `select o.name, o.industry, o.website, o.region, o.timezone, p.description, p.services, p.ideal_customers, p.operating_area, p.brand_color
+     from organizations o left join company_profiles p on p.org_id = o.id where o.id = $1`,
+    [orgId],
+  );
+  const cur = rows[0];
+  if (!cur) throw new AppError("not_found", "Workspace not found.");
+  const now: ProfileValues = {
+    name: cur.name, industry: cur.industry ?? "", website: cur.website ?? "", region: cur.operating_area || cur.region || "", timezone: cur.timezone,
+    description: cur.description ?? "", services: cur.services ?? "", idealCustomers: cur.ideal_customers ?? "", brandColor: cur.brand_color ?? "",
+  };
+  const changed = PROFILE_KEYS.filter((key) => {
+    const next = clean[key];
+    if (next === undefined) return false;
+    if (key === "brandColor") return next.toLowerCase() !== now.brandColor.toLowerCase();
+    // The area is kept in two columns (the short one on the workspace, the long one in the profile); either being out of step counts as a change.
+    if (key === "region") return next !== (cur.operating_area ?? "") || next.slice(0, 200) !== (cur.region ?? "");
+    return next !== now[key];
+  });
+  const has = (key: ProfileKey) => changed.includes(key);
+
+  const orgSets: string[] = [];
+  const orgParams: unknown[] = [orgId];
+  const setOrg = (fragment: string, value: unknown) => {
+    orgParams.push(value);
+    orgSets.push(fragment.replace("?", `$${orgParams.length}`));
+  };
+  if (has("name")) setOrg("name = ?", clean.name);
+  if (has("industry")) setOrg("industry = nullif(?, '')", clean.industry);
+  if (has("website")) setOrg("website = nullif(?, '')", clean.website);
+  if (has("region")) setOrg("region = nullif(?, '')", (clean.region ?? "").slice(0, 200));
+  if (has("timezone")) setOrg("timezone = ?", clean.timezone);
+  if (orgSets.length) await db.query(`update organizations set ${orgSets.join(", ")} where id = $1`, orgParams);
+
+  const cols: string[] = [];
+  const marks: string[] = [];
+  const values: unknown[] = [orgId];
+  const setProfile = (column: string, mark: string, value: unknown) => {
+    cols.push(column);
+    values.push(value);
+    marks.push(mark.replace("?", `$${values.length}`));
+  };
+  if (has("description")) setProfile("description", "?", clean.description);
+  if (has("services")) setProfile("services", "?", clean.services);
+  if (has("idealCustomers")) setProfile("ideal_customers", "?", clean.idealCustomers);
+  if (has("region")) setProfile("operating_area", "?", clean.region);
+  if (has("brandColor")) setProfile("brand_color", "nullif(?, '')", clean.brandColor);
+  if (cols.length) {
+    values.push(ctx.user.id);
+    await db.query(
+      `insert into company_profiles (org_id, ${cols.join(", ")}, updated_by) values ($1, ${marks.join(", ")}, $${values.length})
+       on conflict (org_id) do update set ${cols.map((c) => `${c} = excluded.${c}`).join(", ")}, updated_by = excluded.updated_by`,
+      values,
+    );
+  }
+  return { changed, riskFlags: [...new Set(findings.map((finding) => finding.code))], values: { ...now, ...Object.fromEntries(changed.map((key) => [key, clean[key]])) } as ProfileValues };
 }
 
 // ---------------------------------------------------------------------------

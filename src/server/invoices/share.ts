@@ -6,10 +6,12 @@ import type { OrgContext } from "@/server/tenancy/context";
 import { assertInvoicesAvailable } from "@/server/invoices/feature";
 import { invoiceLinkUrl, invoiceTokenHashFor, tokenForStoredHash } from "@/server/invoices/links";
 import { addInvoiceEvent } from "@/server/invoices/core";
+import { withdrawInvoiceDeliveriesInTx } from "@/server/invoices/delivery";
 
 // Handing the customer's link to a person on the team, and replacing it. The link is a bearer credential (whoever holds it can see the invoice and start a payment), so
 // only those who may send invoices get it, each time it is shown is a line in the invoice's history and the audit trail (the link itself is in neither), and a new link
-// kills the old one. Nothing here sends anything: copying the link into a message the business writes itself is the person's act.
+// kills the old one. Nothing here sends anything: copying the link into a message the business writes itself is the person's act. (Sending it through the consent-gated
+// send chain is src/server/invoices/delivery.ts.)
 
 interface LinkRow {
   status: "draft" | "pending_approval" | "issued" | "void";
@@ -49,6 +51,8 @@ export async function rotateInvoiceLink(ctx: OrgContext, id: string): Promise<vo
     const version = row.public_token_version + 1;
     await db.query("update customer_invoices set public_token_version = $3, public_token_hash = $4 where id = $1 and org_id = $2", [id, ctx.org.orgId, version, invoiceTokenHashFor(id, version)]);
     await addInvoiceEvent(db, ctx.org.orgId, id, "link_rotated", { id: ctx.user.id, kind: "user" }, { number: row.number, linkVersion: version });
+    // A message that has not gone out was about the old link: it is stopped, and the way to send the customer the new one is a new send.
+    await withdrawInvoiceDeliveriesInTx(db, ctx.org.orgId, id, "invoice_link_replaced");
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "invoice.link_rotated", targetType: "customer_invoice", targetId: id, result: "success", metadata: { number: row.number, linkVersion: version } }, db);
   });
 }

@@ -43,7 +43,7 @@ const mocks = vi.hoisted(() => ({
     updateProposalAction: vi.fn(), submitForApprovalAction: vi.fn(), decideProposalAction: vi.fn(), sendProposalAction: vi.fn(), withdrawProposalAction: vi.fn(), reviseProposalAction: vi.fn(),
     duplicateProposalAction: vi.fn(), recordOfflineDecisionAction: vi.fn(), getShareUrlAction: vi.fn(), renewShareLinkAction: vi.fn(), createProposalAction: vi.fn(), draftWithAiAction: vi.fn(),
     searchDealsAction: vi.fn(), saveProposalSettingsAction: vi.fn(), createCatalogItemAction: vi.fn(), updateCatalogItemAction: vi.fn(), createTaxRateAction: vi.fn(), updateTaxRateAction: vi.fn(),
-    createTemplateAction: vi.fn(), saveTemplateAction: vi.fn(), approveTemplateAction: vi.fn(), archiveTemplateAction: vi.fn(),
+    createTemplateAction: vi.fn(), saveTemplateAction: vi.fn(), approveTemplateAction: vi.fn(), archiveTemplateAction: vi.fn(), previewDeliveryAction: vi.fn(), sendDeliveryAction: vi.fn(),
   },
 }));
 
@@ -72,6 +72,8 @@ beforeEach(() => {
   mocks.toastSuccess.mockReset();
   mocks.toastError.mockReset();
   for (const m of Object.values(mocks.a)) m.mockReset();
+  // The Delivery tab reads the message when it opens. Tests of other things leave it reading; tests of the tab (proposals-delivery-ui.test.tsx) answer it.
+  mocks.a.previewDeliveryAction.mockImplementation(() => new Promise(() => {}));
 });
 afterEach(cleanup);
 
@@ -108,7 +110,7 @@ function detail(over: Partial<ProposalDetail> = {}): ProposalDetail {
     totals: { one_time: 168_000, monthly: 0, yearly: 0 }, validUntil: "2026-11-30", ownerId: ME, ownerName: "Alex Rivera", version: 1, requiresSignature: false, contactId: null, companyId: null,
     opportunityId: null, sentAt: null, closedAt: null, createdAt: "2026-10-20T10:00:00.000Z", updatedAt: "2026-10-21T10:00:00.000Z", doc, liveTotals: computeDocTotals(doc.lines).groups,
     clientEmail: "maria@example.test", internalNotes: null, templateId: null, templateVersion: null, approvedVersion: null, approvedByName: null, approvedAt: null, decisionNote: null,
-    sentVersion: null, sentByName: null, signatureState: "none", problems: [], approval: { required: false, reasons: [] }, versions: [], decisions: [], events: [], share: null, preview: null,
+    sentVersion: null, sentByName: null, signatureState: "none", problems: [], approval: { required: false, reasons: [] }, versions: [], decisions: [], events: [], share: null, deliveries: [], preview: null,
     createdById: ME, viewer: { userId: ME, canEdit: true, isAuthor: true }, ai: null, signature: NO_SIGNATURE, ...over,
   };
 }
@@ -328,13 +330,14 @@ describe("the proposal editor", () => {
 // ---------------------------------------------------------------------------
 
 describe("what is offered for a proposal right now", () => {
-  it("lets a sender send a draft that needs no second look, after a confirmation that says nothing is emailed", async () => {
+  it("lets a sender mark a draft that needs no second look as sent, after a confirmation that says it contacts no one", async () => {
     mocks.a.sendProposalAction.mockResolvedValue({ ok: true, data: detail({ status: "sent" }) });
     const { props } = actions();
     expect(screen.getByText(/Nothing here needs a second look/)).toBeTruthy();
-    fireEvent.click(button("Send to the customer"));
+    fireEvent.click(button("Mark as sent"));
     const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByText(/iAcquire does not email it/)).toBeTruthy();
+    expect(dialog.getByText(/It contacts no one/)).toBeTruthy();
+    expect(dialog.getByText(/send the customer their link by email, text message or WhatsApp after you have read the message/)).toBeTruthy();
     fireEvent.click(dialog.getByRole("button", { name: "Mark as sent" }));
     await waitFor(() => expect(mocks.a.sendProposalAction).toHaveBeenCalledWith(PID, 1));
     await waitFor(() => expect(props.onOpenTab).toHaveBeenCalledWith("delivery"));
@@ -346,7 +349,7 @@ describe("what is offered for a proposal right now", () => {
     expect(screen.getByText("AI-written draft")).toBeTruthy();
     expect(screen.getByText("An AI draft always needs a person's approval.")).toBeTruthy();
     expect(screen.getByText("It gives a discount or sets a price below the price book.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Send to the customer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mark as sent" })).toBeNull();
     fireEvent.click(button("Send for approval"));
     await waitFor(() => expect(mocks.a.submitForApprovalAction).toHaveBeenCalledWith(PID));
   });
@@ -354,12 +357,12 @@ describe("what is offered for a proposal right now", () => {
   it("holds everything back while there are unsaved edits or a problem that would stop it, and says so", () => {
     const onOpenTab = vi.fn();
     actions({ dirty: true, onOpenTab });
-    expect(button("Send to the customer").disabled).toBe(true);
+    expect(button("Mark as sent").disabled).toBe(true);
     expect(button("Ask for approval first").disabled).toBe(true);
     expect(screen.getByText(/You have unsaved changes. Save them first/)).toBeTruthy();
     cleanup();
     actions({ detail: detail({ problems: [{ level: "blocking", code: "no_lines", message: "Add at least one priced line.", stopsAt: "submit" }] }), onOpenTab });
-    expect(button("Send to the customer").disabled).toBe(true);
+    expect(button("Mark as sent").disabled).toBe(true);
     expect(screen.getByText("Add at least one priced line.")).toBeTruthy();
     fireEvent.click(button("Open the editor"));
     expect(onOpenTab).toHaveBeenCalledWith("edit");
@@ -369,7 +372,7 @@ describe("what is offered for a proposal right now", () => {
     actions({ can: { ...allCan, send: false } });
     expect(button("Send for approval")).toBeTruthy();
     expect(screen.getByText(/You can write proposals but not send them/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Send to the customer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mark as sent" })).toBeNull();
   });
 
   it("says who may send it on when the viewer did not write it", () => {
@@ -417,7 +420,7 @@ describe("what is offered for a proposal right now", () => {
   it("points a sent proposal at the Delivery tab for the link, and records an answer given outside the product as the person's word", async () => {
     mocks.a.recordOfflineDecisionAction.mockResolvedValue({ ok: true, data: detail({ status: "accepted" }) });
     const { props } = actions({ detail: detail({ status: "sent", sentVersion: 1 }) });
-    expect(screen.getByText(/iAcquire has not sent it to anyone/)).toBeTruthy();
+    expect(screen.getByText(/Marking a proposal as sent contacts no one: send the link from there, or copy it and give it to the customer yourself/)).toBeTruthy();
     fireEvent.click(button("Delivery tab"));
     expect(props.onOpenTab).toHaveBeenCalledWith("delivery");
     fireEvent.click(button("Record the customer's answer"));
@@ -509,7 +512,7 @@ describe("the delivery tab", () => {
     expect(screen.queryByDisplayValue(/proposal\/TOKEN/)).toBeNull();
     fireEvent.click(button("Show the customer's link"));
     expect(((await screen.findByLabelText("Link for the customer")) as HTMLInputElement).value).toBe("https://app.example.test/proposal/TOKEN-0123456789");
-    expect(screen.getByText(/iAcquire has not sent it to anyone/)).toBeTruthy();
+    expect(screen.getByText(/Copying it sends nothing/)).toBeTruthy();
     cleanup();
     render(<DeliveryPanel detail={sent()} canSend={false} tz="UTC" />);
     expect(screen.queryByRole("button", { name: "Show the customer's link" })).toBeNull();

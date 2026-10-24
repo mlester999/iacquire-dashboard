@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { BellRing, CalendarClock, Check, Clock3, FileUp, Plus, RotateCcw, Sparkles, Timer, Trash2 } from "lucide-react";
+import { BellRing, CalendarClock, Check, ClipboardCheck, Clock3, FileUp, Plus, RotateCcw, Sparkles, Timer, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/overlays";
@@ -37,6 +37,9 @@ interface Form {
   attachmentRetentionDays: string;
   defaultPriority: Record<RequestType, TicketPriority>;
   aiAssistEnabled: boolean;
+  projectReviewTargetHours: string;
+  showProjectTargetsToClients: boolean;
+  projectPrerequisitesEnabled: boolean;
 }
 
 const hoursOf = (b: BusinessHours): Record<Weekday, Windows> => Object.fromEntries(WEEKDAYS.map((d) => [d, (b[d] ?? []) as Windows])) as Record<Weekday, Windows>;
@@ -47,6 +50,7 @@ const toForm = (s: SupportSettings): Form => ({
   reopenWindowDays: String(s.reopenWindowDays), autoCloseResolvedDays: s.autoCloseResolvedDays ? String(s.autoCloseResolvedDays) : "", maxAttachmentMb: String(s.maxAttachmentMb),
   maxAttachmentsPerMessage: String(s.maxAttachmentsPerMessage), stagedUploadTtlHours: String(s.stagedUploadTtlHours), attachmentRetentionDays: s.attachmentRetentionDays ? String(s.attachmentRetentionDays) : "",
   defaultPriority: s.defaultPriority, aiAssistEnabled: s.aiAssistEnabled,
+  projectReviewTargetHours: s.projectReviewTargetHours ? String(s.projectReviewTargetHours) : "", showProjectTargetsToClients: s.showProjectTargetsToClients, projectPrerequisitesEnabled: s.projectPrerequisitesEnabled,
 });
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v));
@@ -104,6 +108,9 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
       attachmentRetentionDays: num(form.attachmentRetentionDays),
       defaultPriority: form.defaultPriority,
       aiAssistEnabled: form.aiAssistEnabled,
+      projectReviewTargetHours: num(form.projectReviewTargetHours),
+      showProjectTargetsToClients: form.showProjectTargetsToClients,
+      projectPrerequisitesEnabled: form.projectPrerequisitesEnabled,
     }, saved.revision);
     setPending(false);
     if (!res.ok) {
@@ -253,6 +260,19 @@ export function SettingsForm({ settings, rules, emailMode, canEdit }: {
           <div className="space-y-1.5"><Label htmlFor="s-files">Files per message</Label><Input id="s-files" type="number" min={1} max={10} className="w-24" disabled={!canEdit} value={form.maxAttachmentsPerMessage} onChange={(e) => set("maxAttachmentsPerMessage", e.target.value)} /></div>
           <div className="space-y-1.5"><Label htmlFor="s-ttl">Remove files that were never sent after</Label><div className="flex items-center gap-2"><Input id="s-ttl" type="number" min={1} max={168} className="w-24" disabled={!canEdit} value={form.stagedUploadTtlHours} onChange={(e) => set("stagedUploadTtlHours", e.target.value)} /><span className="text-[13px] text-muted">hours</span></div></div>
           <div className="space-y-1.5"><Label htmlFor="s-ret">Delete files of closed requests after</Label><div className="flex items-center gap-2"><Input id="s-ret" type="number" min={30} max={3650} className="w-28" disabled={!canEdit} placeholder="Keep" value={form.attachmentRetentionDays} onChange={(e) => set("attachmentRetentionDays", e.target.value)} /><span className="text-[13px] text-muted">days (empty = keep)</span></div></div>
+        </div>
+      </Panel>
+
+      <Panel icon={<ClipboardCheck />} tone="primary" title="Custom projects" description="Two switches for custom projects, both off until you choose. Nothing here prices a project, charges anyone or detects a payment: a person writes down what they checked."
+        footer={canEdit ? <SaveBar dirty={dirty} pending={pending} onSave={() => void save()} onReset={() => setForm(toForm(saved))} /> : undefined}>
+        <SettingRow as="label" icon={<ClipboardCheck />} title="Ask for the agreement and the payment before work starts" description="When a client accepts a quote, the project asks for the written agreement and, if the quote has payment terms, the payment to be confirmed by a person. Work can't start until they are confirmed or waived with a reason.">
+          <Switch checked={form.projectPrerequisitesEnabled} disabled={!canEdit} onCheckedChange={(v) => set("projectPrerequisitesEnabled", v)} aria-label="Ask for the agreement and the payment before work starts" />
+        </SettingRow>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5"><Label htmlFor="s-ptarget">Aim to look at a new project request within</Label><div className="flex items-center gap-2"><Input id="s-ptarget" type="number" min={1} max={720} className="w-24" disabled={!canEdit} placeholder="Two days" value={form.projectReviewTargetHours} onChange={(e) => set("projectReviewTargetHours", e.target.value)} /><span className="text-[13px] text-muted">hours</span></div><p className="text-[12px] text-muted">Leave empty for the default of two days. The team is told when a review passes its time.</p></div>
+          <SettingRow as="label" icon={<Clock3 />} title="Tell clients this target" description="Shows the sentence on a new project request. Needs a target above.">
+            <Switch checked={form.showProjectTargetsToClients} disabled={!canEdit} onCheckedChange={(v) => set("showProjectTargetsToClients", v)} aria-label="Tell clients the project review target" />
+          </SettingRow>
         </div>
       </Panel>
 

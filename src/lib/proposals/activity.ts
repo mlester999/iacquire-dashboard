@@ -2,6 +2,8 @@
 // an answer recorded by a person is "recorded by", never "signed"; and nothing here ever prints a link, a code or a session.
 import { DECISION_METHOD_LABELS } from "@/lib/proposals/ack";
 import { NOT_APPLIED_TEXT, type NotAppliedReason } from "@/lib/esign/state";
+import { DELIVERY_CHANNEL_WORDS, type DeliveryChannel } from "@/lib/proposals/delivery-text";
+import { WITHDRAWN_REASON_TEXT, type WithdrawReason } from "@/lib/proposals/delivery-state";
 
 export interface ActivityInput {
   kind: string;
@@ -57,6 +59,23 @@ export function describeEvent(e: ActivityInput): { text: string; tone: ActivityT
     case "rejected": return { text: `${who(e)} rejected the proposal${v}.`, tone: "bad" };
     case "sent": return { text: `${who(e)} marked${v} as sent and made the customer's link.`, tone: "good" };
     case "link_created": return { text: `${who(e)} made a link for the customer.`, tone: "neutral" };
+    case "delivery_queued": {
+      const word = Object.hasOwn(DELIVERY_CHANNEL_WORDS, str(e.detail.channel)) ? DELIVERY_CHANNEL_WORDS[str(e.detail.channel) as DeliveryChannel] : "a message";
+      return { text: `${who(e)} queued a message with the customer's link, to go by ${word}${str(e.detail.waitingUntil) ? " when sending hours open" : ""}${v}. The Delivery tab shows where it went and what became of it.`, tone: "neutral" };
+    }
+    case "delivery_withdrawn": {
+      const n = Number(e.detail.count) || 1;
+      const why = Object.hasOwn(WITHDRAWN_REASON_TEXT, str(e.detail.reason)) ? WITHDRAWN_REASON_TEXT[str(e.detail.reason) as WithdrawReason] : "";
+      return { text: `${n === 1 ? "A message that had not gone out was" : `${n} messages that had not gone out were`} stopped. ${why}`.trim(), tone: "warning" };
+    }
+    case "invoice_drafted": {
+      const copied = Number(e.detail.lines) || 0;
+      const left = Number(e.detail.recurringLines) || 0;
+      return {
+        text: `${who(e)} made a draft invoice from this proposal${v}: ${copied} ${copied === 1 ? "line" : "lines"} the customer pays once ${copied === 1 ? "was" : "were"} copied${left ? `, and ${left} monthly or yearly ${left === 1 ? "line was" : "lines were"} left for them to decide` : ""}. It is only a draft: nothing was issued or sent.`,
+        tone: "neutral",
+      };
+    }
     case "pdf_failed": return { text: "The PDF copy could not be saved. The customer can still download one made from the same version.", tone: "warning" };
     case "link_opened": return { text: "The link was requested. That can be an email scanner or a link preview, so it does not show that a person looked at the proposal.", tone: "neutral" };
     case "viewed": return { text: "The page stayed open in a browser and was used. That does not show who, or that it was read.", tone: "neutral" };

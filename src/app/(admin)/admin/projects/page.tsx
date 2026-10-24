@@ -97,6 +97,7 @@ export default async function AdminProjectsPage({ searchParams }: { searchParams
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5 pl-12 md:justify-end md:pl-0">
                     {p.openTasks > 0 && <StatusPill tone="warning" size="sm">{p.openTasks} to do</StatusPill>}
+                    {p.openChanges > 0 && <StatusPill tone="primary" size="sm">{p.openChanges} change{p.openChanges === 1 ? "" : "s"} open</StatusPill>}
                     {p.quoteStatus === "sent" && <StatusPill tone="primary" size="sm">Quote out</StatusPill>}
                     <StatusPill tone={PROJECT_STATUS_TONE[p.status]}>{PROJECT_STATUS_LABEL[p.status]}</StatusPill>
                   </span>

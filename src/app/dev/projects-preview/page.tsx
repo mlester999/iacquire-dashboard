@@ -86,6 +86,9 @@ const sampleProject: ProjectDetail = {
     { id: "ms2", authorKind: "client", authorName: "Jordan", kind: "info_response", body: "Google Calendar, and yes: transfer to the front desk if the caller asks for a person.", internal: false, createdAt: ago(75) },
   ],
   tickets: [],
+  changes: [],
+  amendments: [],
+  prerequisites: [],
 };
 
 const sampleAdmin: AgencyProjectDetail = {

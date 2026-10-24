@@ -11,7 +11,7 @@ begin
      or exists (select 1 from demo_verifications) then
     raise exception 'Rollback refused: demo prospects, their transcripts, sessions, links or timelines exist. Export them deliberately first (or let the retention job clear them).';
   end if;
-  if exists (select 1 from notifications where kind in ('demo_prospect_verified', 'demo_consultation_requested', 'demo_budget_reached')) then
+  if exists (select 1 from notifications where kind in ('demo_prospect_verified', 'demo_consultation_requested', 'demo_purchase_started', 'demo_budget_reached')) then
     raise exception 'Rollback refused: demo notifications exist. Delete or archive them first.';
   end if;
 end $$;
@@ -48,7 +48,7 @@ begin
   if kinds is null or cardinality(kinds) < 20 then
     raise exception 'could not read the current notification kinds (read %); refusing to rewrite them', coalesce(cardinality(kinds), 0);
   end if;
-  kinds := array(select distinct k from unnest(kinds) as k where k not in ('demo_prospect_verified', 'demo_consultation_requested', 'demo_budget_reached') order by k);
+  kinds := array(select distinct k from unnest(kinds) as k where k not in ('demo_prospect_verified', 'demo_consultation_requested', 'demo_purchase_started', 'demo_budget_reached') order by k);
   alter table notifications drop constraint notifications_kind_check;
   execute 'alter table notifications add constraint notifications_kind_check check (kind in (' || (select string_agg(quote_literal(k), ', ' order by k) from unnest(kinds) as k) || '))';
 end $$;

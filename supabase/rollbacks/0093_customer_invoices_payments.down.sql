@@ -1,7 +1,9 @@
 -- Rollback for 0093_customer_invoices_payments.sql. NOT a migration: stop the scheduler's invoice and payment jobs first, review, and run in one transaction.
 -- Refuses when invoicing has been used (an invoice, a payment, a refund, a payment attempt, a connection to a payment account, a webhook receipt or an invoice
--- reminder exists, or a message was queued with the billing scope), so a client's financial records and sealed provider credentials are never dropped by
--- accident. An unused settings row is configuration and goes with its table.
+-- reminder or a message that delivered an invoice to a customer exists, or a message was queued with the billing scope), so a client's financial records and sealed provider
+-- credentials are never dropped by accident. An unused settings row is configuration and goes with its table.
+-- The message scope 'delivery' belongs to 0091 (this migration adds it only if it is missing) and is left as it is: 0091's rollback takes it out, and refuses while any message with
+-- that scope exists.
 
 do $$
 begin
@@ -12,8 +14,9 @@ begin
      or exists (select 1 from customer_payment_connections)
      or exists (select 1 from customer_payment_events)
      or exists (select 1 from customer_invoice_reminders)
+     or exists (select 1 from customer_invoice_deliveries)
      or exists (select 1 from customer_invoice_events) then
-    raise exception 'Rollback refused: customer invoices, payments, refunds, payment connections, webhook receipts or invoice reminders exist. Export them deliberately first.';
+    raise exception 'Rollback refused: customer invoices, payments, refunds, payment connections, webhook receipts, invoice reminders or messages that delivered an invoice exist. Export them deliberately first.';
   end if;
   if exists (select 1 from conversation_messages where scope = 'billing') then
     raise exception 'Rollback refused: messages with the billing scope exist. Export or archive them first.';
@@ -27,6 +30,7 @@ drop policy if exists customer_payment_connections_select on customer_payment_co
 drop policy if exists customer_refunds_select on customer_refunds;
 drop policy if exists customer_payments_select on customer_payments;
 drop policy if exists customer_payment_attempts_select on customer_payment_attempts;
+drop policy if exists customer_invoice_deliveries_select on customer_invoice_deliveries;
 drop policy if exists customer_invoice_reminders_select on customer_invoice_reminders;
 drop policy if exists customer_invoice_events_select on customer_invoice_events;
 drop policy if exists customer_invoice_lines_select on customer_invoice_lines;
@@ -37,6 +41,7 @@ drop table customer_payment_events;
 drop table customer_refunds;
 drop table customer_payments;
 drop table customer_payment_attempts;
+drop table customer_invoice_deliveries;
 drop table customer_invoice_reminders;
 drop table customer_invoice_events;
 drop table customer_invoice_lines;
@@ -44,6 +49,7 @@ drop table customer_invoices;
 drop table customer_payment_connections;
 drop table customer_invoice_settings;
 
+drop function app.customer_invoice_deliveries_guard();
 drop function app.customer_invoice_reminder_guard();
 drop function app.customer_refund_guard();
 drop function app.customer_payment_event_guard();

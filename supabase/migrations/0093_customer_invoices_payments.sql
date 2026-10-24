@@ -17,7 +17,12 @@
 --   * customer_payment_connections + customer_payment_attempts + customer_payment_events: the client's own PayMongo / PayPal account, the checkouts started,
 --     and the durable receipt of every webhook. The credentials column is sealed and has no grant; the receipts have no grant at all.
 --   * customer_invoice_events (append-only), customer_invoice_reminders.
---   * Nine invoices.* permissions, eight notification kinds, and the message scope 'billing'.
+--   * customer_invoice_deliveries: a message that carried the customer's link to the customer, sent by a person through the consent-gated send chain (the message scope 'delivery',
+--     added by 0091 and added here too if it is not there). The link is never stored: the message holds {{invoice.link}} and the link is derived again when the message is sent.
+--     Only an issued invoice that is not a test invoice can be sent.
+--   * An invoice made from an accepted proposal says so (source_type, source_id, source_version: a composite key to that proposal and its saved version) and is marked created_via
+--     'proposal', which, like an invoice a workflow or a deal made, needs the owner's or a manager's approval before it is issued.
+--   * Nine invoices.* permissions, eight notification kinds, and the message scopes 'billing' and 'delivery'.
 --
 -- Additive. No existing row changes. Every table is workspace-keyed with composite foreign keys, has row-level security, and gives the application role SELECT
 -- only (column level where a column is a secret): every write runs in trusted server code after its own authorization check. Nothing here contacts a provider.
@@ -129,9 +134,10 @@ create table customer_invoices (
   contact_id uuid,
   company_id uuid,
   opportunity_id uuid,
-  -- Phase 5A: an invoice made from an accepted proposal says so. Nothing writes this yet.
+  -- An invoice made from an accepted proposal says so: the proposal and the saved version whose one-time lines it copied. All three or none, fixed for good once written.
   source_type text check (source_type is null or source_type in ('proposal')),
   source_id uuid,
+  source_version integer check (source_version is null or source_version >= 1),
   status text not null default 'draft' check (status in ('draft', 'pending_approval', 'issued', 'void')),
   -- Derived from the payment rows by a trigger: it can never say paid without payments that add up to the total.
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'partially_paid', 'paid', 'disputed')),
@@ -182,7 +188,7 @@ create table customer_invoices (
   -- A workflow that creates a draft names it, so a redelivered event makes one invoice.
   idempotency_key text check (char_length(idempotency_key) <= 120),
   created_by uuid references users(id) on delete set null,
-  created_via text not null default 'manual' check (created_via in ('manual', 'workflow', 'deal')),
+  created_via text not null default 'manual' check (created_via in ('manual', 'workflow', 'deal', 'proposal')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (id, org_id),
@@ -191,7 +197,12 @@ create table customer_invoices (
   foreign key (contact_id, org_id) references contacts (id, org_id) on delete set null (contact_id),
   foreign key (company_id, org_id) references crm_companies (id, org_id) on delete set null (company_id),
   foreign key (opportunity_id, org_id) references crm_opportunities (id, org_id) on delete set null (opportunity_id),
+  -- The proposal is of this workspace, and the version is one it saved. An invoice made from a proposal keeps pointing at it: the proposal is not deleted from under it.
+  foreign key (source_id, org_id) references proposals (id, org_id),
+  foreign key (source_id, source_version) references proposal_versions (proposal_id, version),
   check ((source_type is null) = (source_id is null)),
+  check ((source_type is null) = (source_version is null)),
+  check ((created_via = 'proposal') = (source_type is not null)),
   check (total_minor = subtotal_minor + tax_minor),
   check (refunded_minor <= paid_minor),
   check (due_on is null or issue_on is null or due_on >= issue_on),
@@ -276,6 +287,36 @@ create table customer_invoice_reminders (
 );
 create index customer_invoice_reminders_due_idx on customer_invoice_reminders (due_at) where status = 'scheduled';
 create trigger customer_invoice_reminders_touch before update on customer_invoice_reminders for each row execute function app.touch_updated_at();
+
+-- A message that carries the customer's link to the customer through the consent-gated send chain (conversation_messages, scope 'delivery'), sent by a person who read it first. One
+-- row per request to send. The message, its status and what became of it are the send chain's: this row says which invoice and which version of its link the message carried, who
+-- asked, the exact wording they read (a version and a fingerprint) and, masked, where it was addressed. It never holds the link, the text or a full address. The send chain's
+-- idempotency key for a delivery is invoice-delivery:<invoice>:<link version>:<channel>[:<n>], so a double click at the database still sends once; a request after one that ended
+-- without reaching the provider takes the next n.
+create table customer_invoice_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizations(id) on delete cascade,
+  invoice_id uuid not null,
+  -- customer_invoices.public_token_version when the message was queued. Replacing the link makes a new version, which ends a message about the old one and needs a new send.
+  link_version integer not null check (link_version >= 1),
+  channel text not null check (channel in ('email', 'sms', 'whatsapp')),
+  -- Set when the row is made; null only if the message record itself was removed later (a privacy request).
+  message_id uuid references conversation_messages(id) on delete set null,
+  wording_version text not null check (char_length(wording_version) between 1 and 40),
+  wording_hash text not null check (wording_hash ~ '^[0-9a-f]{64}$'),
+  -- "m***@example.com" or "***1234": enough to recognise the address, not enough to learn it. Removed by a privacy request.
+  address_mask text check (char_length(address_mask) <= 80),
+  requested_by uuid references users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  -- Stopped by a change to the invoice before it went out (it was paid, voided, disputed, written off, or its link was replaced). A reason always goes with the time.
+  withdrawn_at timestamptz,
+  withdrawn_reason text check (char_length(withdrawn_reason) between 1 and 40),
+  unique (id, org_id),
+  check ((withdrawn_at is null) = (withdrawn_reason is null)),
+  foreign key (invoice_id, org_id) references customer_invoices (id, org_id) on delete cascade
+);
+create unique index customer_invoice_deliveries_message_idx on customer_invoice_deliveries (message_id) where message_id is not null;
+create index customer_invoice_deliveries_invoice_idx on customer_invoice_deliveries (invoice_id, link_version, created_at);
 
 -- ---------------------------------------------------------------------------
 -- Payment attempts, payments, refunds, webhook receipts
@@ -431,7 +472,8 @@ begin
   end if;
   -- The people columns are foreign keys that go to null when a user is deleted; they never change to anyone else.
   if new.id <> old.id or new.org_id <> old.org_id or new.created_at <> old.created_at or (new.created_by is distinct from old.created_by and new.created_by is not null)
-     or new.created_via <> old.created_via or new.idempotency_key is distinct from old.idempotency_key then
+     or new.created_via <> old.created_via or new.idempotency_key is distinct from old.idempotency_key
+     or new.source_type is distinct from old.source_type or new.source_id is distinct from old.source_id or new.source_version is distinct from old.source_version then
     raise exception 'The identity of an invoice never changes' using errcode = '42501';
   end if;
   if new.status <> old.status and not (
@@ -472,7 +514,6 @@ begin
      or new.payment_instructions is distinct from old.payment_instructions or new.notes is distinct from old.notes or new.terms is distinct from old.terms
      or new.bill_from is distinct from old.bill_from or new.number is distinct from old.number or new.content_hash is distinct from old.content_hash
      or new.version <> old.version or new.closes_deal <> old.closes_deal
-     or new.source_type is distinct from old.source_type or new.source_id is distinct from old.source_id
      or new.issued_at is distinct from old.issued_at or (new.issued_by is distinct from old.issued_by and new.issued_by is not null)
      or new.approved_version is distinct from old.approved_version or (new.approved_by is distinct from old.approved_by and new.approved_by is not null)
      or new.approved_at is distinct from old.approved_at then
@@ -685,6 +726,20 @@ begin
 end $$;
 create trigger customer_invoice_reminders_guard before insert on customer_invoice_reminders for each row execute function app.customer_invoice_reminder_guard();
 
+-- conversation_messages has no (id, org_id) key to reference, so the workspace match is checked here: a delivery can only point at a delivery message of its own workspace. And a
+-- customer is only ever sent an invoice that is issued and real: a test invoice is never sent (nothing is owed on it), and neither is a draft or a void one.
+create or replace function app.customer_invoice_deliveries_guard() returns trigger language plpgsql as $$
+begin
+  if new.message_id is not null and not exists (select 1 from conversation_messages m where m.id = new.message_id and m.org_id = new.org_id and m.scope = 'delivery') then
+    raise exception 'an invoice delivery must point at a delivery message of its own workspace' using errcode = '23514';
+  end if;
+  if tg_op = 'INSERT' and not exists (select 1 from customer_invoices i where i.id = new.invoice_id and i.org_id = new.org_id and i.status = 'issued' and not i.is_test) then
+    raise exception 'only an issued invoice that is not a test invoice can be sent to a customer' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+create trigger customer_invoice_deliveries_guard before insert or update of message_id, org_id on customer_invoice_deliveries for each row execute function app.customer_invoice_deliveries_guard();
+
 -- ---------------------------------------------------------------------------
 -- Row-level security: read under the signed-in member's access, write only from trusted server code
 -- ---------------------------------------------------------------------------
@@ -695,17 +750,18 @@ alter table customer_invoices enable row level security;
 alter table customer_invoice_lines enable row level security;
 alter table customer_invoice_events enable row level security;
 alter table customer_invoice_reminders enable row level security;
+alter table customer_invoice_deliveries enable row level security;
 alter table customer_payment_attempts enable row level security;
 alter table customer_payments enable row level security;
 alter table customer_refunds enable row level security;
 alter table customer_payment_events enable row level security;
 
-revoke all on customer_invoice_settings, customer_payment_connections, customer_invoices, customer_invoice_lines, customer_invoice_events, customer_invoice_reminders,
+revoke all on customer_invoice_settings, customer_payment_connections, customer_invoices, customer_invoice_lines, customer_invoice_events, customer_invoice_reminders, customer_invoice_deliveries,
   customer_payment_attempts, customer_payments, customer_refunds, customer_payment_events from public, anon, authenticated;
 -- The webhook receipts are server-only: no grant at all.
-grant select on customer_invoice_settings, customer_invoice_lines, customer_invoice_events, customer_invoice_reminders, customer_payments, customer_refunds to iaq_app_user;
+grant select on customer_invoice_settings, customer_invoice_lines, customer_invoice_events, customer_invoice_reminders, customer_invoice_deliveries, customer_payments, customer_refunds to iaq_app_user;
 -- An invoice is readable except its link hash.
-grant select (id, org_id, contact_id, company_id, opportunity_id, source_type, source_id, status, payment_status, written_off_at, written_off_by, write_off_reason, number, currency,
+grant select (id, org_id, contact_id, company_id, opportunity_id, source_type, source_id, source_version, status, payment_status, written_off_at, written_off_by, write_off_reason, number, currency,
   tax_inclusive, subtotal_minor, tax_minor, total_minor, paid_minor, refunded_minor, balance_minor, overpaid_minor, issue_on, due_on, bill_to, bill_from, payment_instructions, notes,
   terms, content_hash, version, approved_version, approved_by, approved_at, closes_deal, is_test, public_token_version, first_viewed_at, issued_at, issued_by, voided_at, voided_by,
   void_reason, idempotency_key, created_by, created_via, created_at, updated_at) on customer_invoices to iaq_app_user;
@@ -720,6 +776,7 @@ create policy customer_invoices_select on customer_invoices for select to iaq_ap
 create policy customer_invoice_lines_select on customer_invoice_lines for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
 create policy customer_invoice_events_select on customer_invoice_events for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
 create policy customer_invoice_reminders_select on customer_invoice_reminders for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
+create policy customer_invoice_deliveries_select on customer_invoice_deliveries for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
 create policy customer_payment_attempts_select on customer_payment_attempts for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
 create policy customer_payments_select on customer_payments for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
 create policy customer_refunds_select on customer_refunds for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('invoices.view'::text))::uuid[]));
@@ -756,7 +813,8 @@ begin
 end $$;
 
 -- An invoice reminder is its own kind of message: a service message about a bill the customer already has, not a reply or a sales follow-up. The live list is read
--- back and 'billing' is added at the end, in the order the list already has, so the rollback restores it exactly.
+-- back and 'billing' is added at the end, in the order the list already has, so the rollback restores it exactly. 'delivery' (a message a person sends to carry a document to the
+-- customer) came with 0091, which this migration needs; it is added here only if that list does not have it, and the rollback of 0091, not this one, takes it out.
 do $$
 declare
   def text;
@@ -772,6 +830,9 @@ begin
   end if;
   if not ('billing' = any(scopes)) then
     scopes := scopes || array['billing'];
+  end if;
+  if not ('delivery' = any(scopes)) then
+    scopes := scopes || array['delivery'];
   end if;
   alter table conversation_messages drop constraint conversation_messages_scope_check;
   execute 'alter table conversation_messages add constraint conversation_messages_scope_check check (scope in (' || (select string_agg(quote_literal(k), ', ' order by o) from unnest(scopes) with ordinality as t(k, o)) || '))';

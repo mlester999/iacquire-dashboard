@@ -68,7 +68,7 @@ export function ProposalWorkspace({ detail, catalog, taxRates, can, twoPerson, t
           ),
           versions: <VersionsPanel detail={detail} tz={tz} />,
           activity: <ActivityPanel detail={detail} tz={tz} />,
-          delivery: <DeliveryPanel detail={detail} canSend={can.send} tz={tz} onOpenTab={setTab} />,
+          delivery: <DeliveryPanel detail={detail} canSend={can.send} tz={tz} onOpenTab={setTab} active={tab === "delivery"} />,
           ...(withSignature ? { signature: <SignaturePanel detail={detail} tz={tz} /> } : {}),
         }}
       />
