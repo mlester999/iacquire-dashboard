@@ -216,8 +216,19 @@ export const PERMISSION_MATRIX = {
   "agency.support.priority": row("agency_manager", "agency_super_admin"),
   "agency.support.analytics": row("agency_manager", "agency_super_admin"),
   "agency.support.settings": row("agency_super_admin"),
+  // Internal staff Messages (migration 0096). Agency roles only: no client role is ever in these rows. Everyone on the agency team can message; creating channels and groups of any
+  // kind and managing a channel's members is for managers; moderating (archiving any channel, deleting a message in a channel) is the Super Admin's, and gives no right to read
+  // anyone's direct messages or private groups.
+  "agency.messages.use": row(...STAFF),
+  "agency.messages.channels": row("agency_manager", "agency_super_admin"),
+  "agency.messages.moderate": row("agency_super_admin"),
   "agency.security.manage": row("agency_super_admin"),
   "agency.billing.manage": row("agency_super_admin"),
+  // The demo funnel's prospects (migration 0100). People who asked for a demo are not users and belong to no workspace: seeing them (their details, timeline and transcripts, each
+  // transcript read audited) is for managers and Super Admins; the demo's settings, extending a window, blocking, assigning, notes, erasing and converting a prospect into a
+  // client are the Super Admin's. Neither is delegable per person.
+  "agency.prospects.view": row("agency_manager", "agency_super_admin"),
+  "agency.prospects.manage": row("agency_super_admin"),
   "agency.settings.manage": row("agency_super_admin"),
   "agency.audit.view": row("agency_super_admin"),
   "agency.workforce.full_capabilities.acknowledge": row("agency_super_admin"),
@@ -269,8 +280,13 @@ export const AGENCY_PERMISSION_INFO = {
   "agency.support.priority": { label: "Change support request priority", group: "Client operations", delegable: true },
   "agency.support.analytics": { label: "View support analytics", group: "Client operations", delegable: true },
   "agency.support.settings": { label: "Configure support hours, response targets and notifications", group: "Agency security", delegable: false },
+  "agency.messages.use": { label: "Use the agency's internal Messages (direct messages, groups and channels)", group: "Agency Messages", delegable: true },
+  "agency.messages.channels": { label: "Create channels and groups of any kind and manage who is in a channel", group: "Agency Messages", delegable: true },
+  "agency.messages.moderate": { label: "Moderate channels: archive any channel and delete a message in a channel", group: "Agency Messages", delegable: false },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", delegable: false },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", delegable: false },
+  "agency.prospects.view": { label: "See demo prospects, their timelines and their demo conversations", group: "Sales", delegable: false },
+  "agency.prospects.manage": { label: "Run the demo funnel: its settings, extending a demo, blocking, assigning, erasing and converting a prospect", group: "Sales", delegable: false },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", delegable: false },
   "agency.audit.view": { label: "Review agency audit history", group: "Agency security", delegable: false },
   "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", delegable: false },
@@ -292,6 +308,8 @@ export const AGENCY_DELEGABLE_PERMISSIONS = [
   "agency.support.assign",
   "agency.support.priority",
   "agency.support.analytics",
+  "agency.messages.use",
+  "agency.messages.channels",
 ] as const satisfies readonly AgencyPermission[];
 
 /** Client actions that Agency Managers and Staff can have individually customized. */
@@ -541,8 +559,11 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "agency.integrations.health": { label: "View integration health", group: "Integrations", note: "Agency role control." },
   "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", note: "Super Admin only." },
   "agency.support.settings": { label: "Configure support hours, response targets and notifications", group: "Support", note: "Super Admin only." },
+  "agency.messages.moderate": { label: "Moderate channels in the agency's internal Messages", group: "Agency Messages", note: "Super Admin only. It does not allow reading anyone's direct messages or private groups." },
   "agency.security.manage": { label: "Change agency security settings", group: "Agency security", note: "Super Admin only." },
   "agency.billing.manage": { label: "Manage agency billing and pricing", group: "Agency security", note: "Super Admin only." },
+  "agency.prospects.view": { label: "See demo prospects, their timelines and their demo conversations", group: "Sales", note: "Agency Managers and Super Admins. Reading a prospect's conversation is recorded in the audit history." },
+  "agency.prospects.manage": { label: "Run the demo funnel: its settings, extending a demo, blocking, assigning, erasing and converting a prospect", group: "Sales", note: "Super Admin only. Converting a prospect also needs the permission to create client workspaces." },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", note: "Super Admin only." },
   "agency.audit.view": { label: "Review agency audit history", group: "Agency security", note: "Super Admin only." },
   "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", note: "Super Admin only." },

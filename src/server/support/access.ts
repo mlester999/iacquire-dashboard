@@ -79,7 +79,7 @@ export async function loadAgencySupportCaps(userId: string): Promise<AgencySuppo
  * Loads a request for an agency action after checking scope and permission. People without "see the full queue" reach only the
  * requests assigned to them; every other request reads as not found.
  */
-export async function loadTicketForAgency(user: SessionUser, ticketId: string, permission: AgencySupportPermission = "agency.support.view"): Promise<TicketCore> {
+export async function loadTicketForAgency(user: Pick<SessionUser, "id" | "platformRole">, ticketId: string, permission: AgencySupportPermission = "agency.support.view"): Promise<TicketCore> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ticketId)) throw new AppError("not_found", "Support request not found.");
   const { rows } = await withSystem((db) => db.query<TicketCore>(`select ${CORE_COLUMNS} from support_tickets where id = $1`, [ticketId]));
   const t = rows[0];

@@ -43,6 +43,15 @@ async function lock(db: Queryable, ticketId: string): Promise<TicketCore> {
   return rows[0];
 }
 
+/**
+ * The client is told only that someone picked their request up, no name, and only once. Whoever claims it, the first time the team does something the client
+ * can see (a public reply, or a person being assigned) writes the one line; a private note never does. Callers hold the request's row lock.
+ */
+async function announcePickedUp(db: Queryable, t: Pick<TicketCore, "id" | "org_id">, userId: string): Promise<void> {
+  const told = await db.query("select 1 from support_ticket_events where ticket_id = $1 and kind = 'assigned' and visibility = 'client'", [t.id]);
+  if (!told.rows[0]) await recordTicketEvent(db, { ticketId: t.id, orgId: t.org_id, kind: "assigned", visibility: "client", actorUserId: userId, actorKind: "agency" });
+}
+
 // ---------------------------------------------------------------------------
 // The queue
 // ---------------------------------------------------------------------------
@@ -315,11 +324,12 @@ export async function agencyPostMessage(user: SessionUser, ticketId: string, inp
       [ticketId, user.id, !internal],
     );
     if (claimed) {
-      await recordTicketEvent(db, { ticketId, orgId: cur.org_id, kind: "assigned", visibility: "client", actorUserId: user.id, actorKind: "agency" });
-      await recordTicketEvent(db, { ticketId, orgId: cur.org_id, kind: "assigned", visibility: "internal", actorUserId: user.id, actorKind: "agency", to: user.fullName ?? user.email, detail: "Took over by replying." });
+      await recordTicketEvent(db, { ticketId, orgId: cur.org_id, kind: "assigned", visibility: "internal", actorUserId: user.id, actorKind: "agency", to: user.fullName ?? user.email, detail: internal ? "Took over by adding a private note." : "Took over by replying." });
     }
+    // A private note claims the request without a word to the client: they hear that someone picked it up, and see it open, only from a public move.
+    if (!internal) await announcePickedUp(db, cur, user.id);
     let current: TicketCore = { ...cur, assigned_to: cur.assigned_to ?? user.id, first_responded_at: !internal ? cur.first_responded_at ?? new Date() : cur.first_responded_at };
-    const status = await acknowledgeIfNew(db, current, actorOf(user));
+    const status = internal ? current.status : await acknowledgeIfNew(db, current, actorOf(user));
     current = { ...current, status };
     // Legacy default: a public reply hands the next move to the client unless the person chose a status.
     // Feedback keeps its own stages, so a reply to feedback never changes its status on its own.
@@ -350,7 +360,8 @@ export async function agencyPostMessage(user: SessionUser, ticketId: string, inp
 // Status, feedback stage, priority, assignment, escalation
 // ---------------------------------------------------------------------------
 
-export async function changeRequestStatus(user: SessionUser, ticketId: string, to: TicketStatus, note?: string): Promise<void> {
+/** `clientNote` is shown to the client, on the status line and in their notification: write it for them. A private remark belongs in an internal note. */
+export async function changeRequestStatus(user: SessionUser, ticketId: string, to: TicketStatus, clientNote?: string): Promise<void> {
   if (!(TICKET_STATUSES as readonly string[]).includes(to) || to === "new") throw new AppError("invalid_input", "Unknown status.");
   const t = await loadTicketForAgency(user, ticketId, "agency.support.manage");
   if (t.request_type === "feedback") throw new AppError("invalid_input", "Use the feedback status control for feedback.");
@@ -361,7 +372,7 @@ export async function changeRequestStatus(user: SessionUser, ticketId: string, t
     const cur = await lock(db, ticketId);
     if (cur.status === to) return;
     if (!canTransition(cur.status, to)) throw new AppError("conflict", `A ${cur.status.replace(/_/g, " ")} request can't move to ${to.replace(/_/g, " ")}.`);
-    await applyStatusChange(db, cur, to, actorOf(user), { note: note ? cleanText(note, 300) : undefined });
+    await applyStatusChange(db, cur, to, actorOf(user), { note: clientNote ? cleanText(clientNote, 300) : undefined });
     await db.query("update support_tickets set agency_last_read_at = now() where id = $1", [ticketId]);
   });
   await sendQueuedSupportEmails(ticketId);
@@ -434,8 +445,7 @@ export async function assignRequest(user: SessionUser, ticketId: string, assigne
       ticketId, orgId: cur.org_id, kind: assigneeId ? (cur.assigned_to ? "assigned" : "assigned") : "unassigned", visibility: "internal", actorUserId: user.id, actorKind: "agency",
       from: nameOf(cur.assigned_to), to: nameOf(assigneeId),
     });
-    // The client is told only that someone picked it up, and only the first time.
-    if (assigneeId && !cur.assigned_to) await recordTicketEvent(db, { ticketId, orgId: cur.org_id, kind: "assigned", visibility: "client", actorUserId: user.id, actorKind: "agency" });
+    if (assigneeId) await announcePickedUp(db, cur, user.id);
     await acknowledgeIfNew(db, cur, actorOf(user));
     if (assigneeId && assigneeId !== user.id) {
       await dispatchSupportNotice(db, {

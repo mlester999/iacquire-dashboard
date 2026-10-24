@@ -47,9 +47,11 @@ async function closeTasks(db: Queryable, requestId: string, kinds: string[], use
   await db.query("update project_review_tasks set status = 'done', completed_at = now(), completed_by = $3 where request_id = $1 and status = 'open' and kind = any($2::text[])", [requestId, kinds, userId]);
 }
 
-async function addUpdate(db: Queryable, r: { id: string; org_id: string }, userId: string, kind: string, body: string, visibility: "client" | "internal" = "client") {
-  await db.query("insert into project_updates (request_id, org_id, author_id, kind, body, visibility) values ($1,$2,$3,$4,$5,$6)", [r.id, r.org_id, userId, kind, body.slice(0, 4000), visibility]);
+/** Writes a line on the project's progress feed and returns its id, which names the event for the notice that goes with it (so a replayed event is announced once). */
+async function addUpdate(db: Queryable, r: { id: string; org_id: string }, userId: string, kind: string, body: string, visibility: "client" | "internal" = "client"): Promise<string> {
+  const { rows } = await db.query<{ id: string }>("insert into project_updates (request_id, org_id, author_id, kind, body, visibility) values ($1,$2,$3,$4,$5,$6) returning id", [r.id, r.org_id, userId, kind, body.slice(0, 4000), visibility]);
   await db.query("update client_project_requests set last_activity_at = now() where id = $1", [r.id]);
+  return rows[0].id;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,9 +194,11 @@ export async function updateProjectStatus(user: SessionUser, requestId: string, 
       [requestId, next, holding, r.status, reason || null],
     );
     if (next === "in_development") await db.query("update client_projects set started_at = coalesce(started_at, now()) where request_id = $1", [requestId]);
+    // A quote still waiting for a decision on a project that is now closed would show the client a quote nobody can act on. A hold keeps it: the project can resume.
+    if (next === "cancelled") await db.query("update project_quotes set status = 'withdrawn' where request_id = $1 and status = 'sent'", [requestId]);
     if (r.status === "submitted") await closeTasks(db, requestId, ["initial_review"], user.id);
-    await addUpdate(db, r, user.id, "status_change", `Status changed to ${PROJECT_STATUS_LABEL[next]}.${next === "on_hold" && reason ? ` ${reason}` : ""}`);
-    await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", title: `${r.ref} is now ${PROJECT_STATUS_LABEL[next]}`, link: `/projects/${requestId}` });
+    const updateId = await addUpdate(db, r, user.id, "status_change", `Status changed to ${PROJECT_STATUS_LABEL[next]}.${next === "on_hold" && reason ? ` ${reason}` : ""}`);
+    await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", title: `${r.ref} is now ${PROJECT_STATUS_LABEL[next]}`, link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:update:${updateId}` });
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.status_changed", targetType: "project_request", targetId: requestId, result: "success", metadata: { from: r.status, to: next, ref: r.ref } }, db);
   });
 }
@@ -206,8 +210,11 @@ export async function assignProject(user: SessionUser, requestId: string, assign
       const ok = (await db.query("select 1 from users u where u.id = $1 and u.status = 'active' and u.platform_role in ('agency_super_admin','agency_manager','agency_staff') and app.user_can_access_org(u.id,$2)", [assigneeId, r.org_id])).rows[0];
       if (!ok) throw new AppError("invalid_input", "Choose a team member who works on this client.");
     }
-    await db.query("update client_project_requests set assigned_to = $2 where id = $1", [requestId, assigneeId]);
-    if (assigneeId && assigneeId !== user.id) await notifyUser(db, assigneeId, r.org_id, { kind: "project_update", title: `${r.ref} was assigned to you`, body: r.title, link: `/admin/projects/${requestId}` });
+    // Assigning the person who already has it changes nothing, so it announces nothing (a double click or a retry).
+    const { rows } = await db.query<{ updated_at: Date }>("update client_project_requests set assigned_to = $2 where id = $1 and assigned_to is distinct from $2 returning updated_at", [requestId, assigneeId]);
+    if (!rows[0]) return;
+    // The moment of the change names this assignment, so handing it back and forth is announced each time and only once each.
+    if (assigneeId && assigneeId !== user.id) await notifyUser(db, assigneeId, r.org_id, { kind: "project_update", title: `${r.ref} was assigned to you`, body: r.title, link: `/admin/projects/${requestId}`, dedupeKey: `project:${requestId}:assigned:${assigneeId}:${new Date(rows[0].updated_at).getTime()}` });
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.assigned", targetType: "project_request", targetId: requestId, result: "success", metadata: { assignee: assigneeId } }, db);
   });
 }
@@ -227,7 +234,7 @@ export async function postAgencyMessage(user: SessionUser, requestId: string, bo
   await withSystem(async (db) => {
     const r = await authorizeRequest(db, user, requestId);
     const internal = Boolean(opts.internal);
-    await db.query("insert into project_messages (request_id, org_id, author_id, author_kind, kind, body, internal) values ($1,$2,$3,'agency',$4,$5,$6)", [requestId, r.org_id, user.id, opts.infoRequest ? "info_request" : "message", text, internal]);
+    const message = (await db.query<{ id: string }>("insert into project_messages (request_id, org_id, author_id, author_kind, kind, body, internal) values ($1,$2,$3,'agency',$4,$5,$6) returning id", [requestId, r.org_id, user.id, opts.infoRequest ? "info_request" : "message", text, internal])).rows[0];
     await db.query("update client_project_requests set last_activity_at = now(), assigned_to = coalesce(assigned_to, $2) where id = $1", [requestId, user.id]);
     if (!internal) {
       await closeTasks(db, requestId, ["respond_to_client", ...(r.status === "submitted" ? ["initial_review"] : [])], user.id);
@@ -237,7 +244,7 @@ export async function postAgencyMessage(user: SessionUser, requestId: string, bo
       } else if (r.status === "submitted") {
         await db.query("update client_project_requests set status = 'under_review' where id = $1", [requestId]);
       }
-      await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_message", title: opts.infoRequest ? `${r.ref}: iAcquire needs more information` : `${r.ref}: new message from iAcquire`, body: text.slice(0, 140), link: `/projects/${requestId}` });
+      await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_message", title: opts.infoRequest ? `${r.ref}: iAcquire needs more information` : `${r.ref}: new message from iAcquire`, body: text.slice(0, 140), link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:message:${message.id}` });
     }
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: internal ? "project.internal_note" : opts.infoRequest ? "project.info_requested" : "project.agency_message", targetType: "project_request", targetId: requestId, result: "success" }, db);
   });
@@ -248,8 +255,8 @@ export async function addProgressUpdate(user: SessionUser, requestId: string, bo
   if (!text || text.length > 4000) throw new AppError("invalid_input", "Updates can be up to 4,000 characters.");
   await withSystem(async (db) => {
     const r = await authorizeRequest(db, user, requestId);
-    await addUpdate(db, r, user.id, "progress", text, visibility);
-    if (visibility === "client") await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", title: `${r.ref}: progress update`, body: text.slice(0, 140), link: `/projects/${requestId}` });
+    const updateId = await addUpdate(db, r, user.id, "progress", text, visibility);
+    if (visibility === "client") await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", title: `${r.ref}: progress update`, body: text.slice(0, 140), link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:update:${updateId}` });
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.progress_update", targetType: "project_request", targetId: requestId, result: "success", metadata: { visibility } }, db);
   });
 }
@@ -272,8 +279,17 @@ export async function saveMilestone(user: SessionUser, requestId: string, input:
   await withSystem(async (db) => {
     const r = await authorizeRequest(db, user, requestId);
     if (d.id) {
-      const x = await db.query("update project_milestones set title=$3, description=$4, due_on=$5, requires_client_approval=$6, sort_order=coalesce($7, sort_order) where id=$1 and request_id=$2 returning id", [d.id, requestId, d.title, d.description ?? null, d.dueOn ?? null, d.requiresClientApproval, d.sortOrder ?? null]);
-      if (!x.rows[0]) throw new AppError("not_found", "Milestone not found.");
+      const cur = (await db.query<{ title: string; description: string | null; requires_client_approval: boolean; status: MilestoneStatus; client_approved_at: Date | null }>(
+        "select title, description, requires_client_approval, status, client_approved_at from project_milestones where id = $1 and request_id = $2 for update", [d.id, requestId],
+      )).rows[0];
+      if (!cur) throw new AppError("not_found", "Milestone not found.");
+      // What a milestone says is what the client approved: once they approved it, or it is completed, only its date and place in the list can move.
+      if (cur.title !== d.title || (cur.description ?? "") !== (d.description ?? "") || cur.requires_client_approval !== d.requiresClientApproval) {
+        if (cur.client_approved_at) throw new AppError("conflict", "The client already approved this milestone, so what it says can't change. Add a new milestone for new work.");
+        if (cur.status === "completed") throw new AppError("conflict", "This milestone is completed, so what it says can't change. Add a new milestone for new work.");
+        if (cur.status === "awaiting_approval") throw new AppError("conflict", "This milestone is waiting for the client's approval. Wait for their answer before changing what it says.");
+      }
+      await db.query("update project_milestones set title=$3, description=$4, due_on=$5, requires_client_approval=$6, sort_order=coalesce($7, sort_order) where id=$1 and request_id=$2", [d.id, requestId, d.title, d.description ?? null, d.dueOn ?? null, d.requiresClientApproval, d.sortOrder ?? null]);
     } else {
       await db.query("insert into project_milestones (request_id, org_id, title, description, due_on, requires_client_approval, sort_order) values ($1,$2,$3,$4,$5,$6,coalesce($7,(select coalesce(max(sort_order),0)+10 from project_milestones where request_id = $1)))", [requestId, r.org_id, d.title, d.description ?? null, d.dueOn ?? null, d.requiresClientApproval, d.sortOrder ?? null]);
     }
@@ -285,8 +301,14 @@ export async function saveMilestone(user: SessionUser, requestId: string, input:
 export async function deleteMilestone(user: SessionUser, requestId: string, milestoneId: string) {
   await withSystem(async (db) => {
     const r = await authorizeRequest(db, user, requestId);
+    if (!z.string().uuid().safeParse(milestoneId).success) throw new AppError("not_found", "Milestone not found.");
+    const m = (await db.query<{ title: string; status: MilestoneStatus; client_approved_at: Date | null }>("select title, status, client_approved_at from project_milestones where id = $1 and request_id = $2 for update", [milestoneId, requestId])).rows[0];
+    if (!m) throw new AppError("not_found", "Milestone not found.");
+    // Deleting would destroy the client's recorded approval (who, when, their note), or erase work that was finished.
+    if (m.client_approved_at) throw new AppError("conflict", "The client already approved this milestone, so it can't be deleted. Its approval stays on the project's record.");
+    if (m.status === "completed") throw new AppError("conflict", "This milestone is completed, so it can't be deleted.");
     await db.query("delete from project_milestones where id = $1 and request_id = $2", [milestoneId, requestId]);
-    await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.milestone_removed", targetType: "project_request", targetId: requestId, result: "success" }, db);
+    await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.milestone_removed", targetType: "project_request", targetId: requestId, result: "success", metadata: { title: m.title } }, db);
   });
 }
 
@@ -300,8 +322,8 @@ export async function setMilestoneStatus(user: SessionUser, requestId: string, m
     if (status === "completed" && m.requires_client_approval && !m.client_approved_at) throw new AppError("conflict", "The client has to approve this milestone before it can be completed.");
     await db.query("update project_milestones set status = $2, completed_at = case when $2 = 'completed' then coalesce(completed_at, now()) else null end where id = $1", [milestoneId, status]);
     if (status === "awaiting_approval") {
-      await addUpdate(db, r, user.id, "milestone", `Ready for your review: ${m.title}`);
-      await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", severity: "warning", title: `${r.ref}: your approval is needed`, body: m.title, link: `/projects/${requestId}` });
+      const updateId = await addUpdate(db, r, user.id, "milestone", `Ready for your review: ${m.title}`);
+      await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", severity: "warning", title: `${r.ref}: your approval is needed`, body: m.title, link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:update:${updateId}` });
     } else if (status === "completed") {
       await addUpdate(db, r, user.id, "milestone", `Completed: ${m.title}`);
     }
@@ -403,7 +425,7 @@ export async function sendQuote(user: SessionUser, requestId: string, quoteId: s
     await db.query("update client_project_requests set status = 'quote_sent', last_activity_at = now(), assigned_to = coalesce(assigned_to, $2) where id = $1", [requestId, user.id]);
     await closeTasks(db, requestId, ["prepare_quote", "initial_review"], user.id);
     await addUpdate(db, r, user.id, "system", `Quote v${q.version} sent for your review.`);
-    await notifyOrgRoles(db, r.org_id, ["owner", "admin"], { kind: "project_quote", severity: "warning", title: `${r.ref}: your quote is ready`, body: q.project_name, link: `/projects/${requestId}` });
+    await notifyOrgRoles(db, r.org_id, ["owner", "admin"], { kind: "project_quote", severity: "warning", title: `${r.ref}: your quote is ready`, body: q.project_name, link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:quote:${quoteId}:sent` });
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.quote_sent", targetType: "project_quote", targetId: quoteId, result: "success", metadata: { ref: r.ref, version: q.version, oneTimeCents: q.one_time_cents, hash: hash.slice(0, 12) } }, db);
   });
 }
@@ -432,8 +454,8 @@ export async function uploadDeliverable(user: SessionUser, requestId: string, fi
   const stored = await storeProjectFile({ userId: user.id, orgId: r.org_id, requestId, file, by: "agency", kind: opts.kind ?? "deliverable", visibility: opts.visibility ?? "client", description: opts.description });
   if ((opts.visibility ?? "client") === "client") {
     await withSystem(async (db) => {
-      await addUpdate(db, r, user.id, "deliverable", `New file shared: ${stored.filename}`);
-      await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", title: `${r.ref}: a file was shared with you`, body: stored.filename, link: `/projects/${requestId}` });
+      const updateId = await addUpdate(db, r, user.id, "deliverable", `New file shared: ${stored.filename}`);
+      await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", title: `${r.ref}: a file was shared with you`, body: stored.filename, link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:update:${updateId}` });
     });
   }
   return stored;
@@ -450,8 +472,8 @@ export async function recordHandover(user: SessionUser, requestId: string, notes
     const cp = await db.query("update client_projects set completed_at = now(), handover_notes = $2, handover_recorded_by = $3 where request_id = $1 returning id", [requestId, text, user.id]);
     if (!cp.rows[0]) throw new AppError("conflict", "This project has no agreed quote to hand over.");
     await db.query("update client_project_requests set status = 'completed', closed_at = now(), last_activity_at = now() where id = $1", [requestId]);
-    await addUpdate(db, r, user.id, "handover", `Project completed and handed over. ${text}`);
-    await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", severity: "success", title: `${r.ref} is complete`, body: "Your handover notes are on the project page.", link: `/projects/${requestId}` });
+    const updateId = await addUpdate(db, r, user.id, "handover", `Project completed and handed over. ${text}`);
+    await notifyOrgRoles(db, r.org_id, CLIENT_ROLES, { kind: "project_update", severity: "success", title: `${r.ref} is complete`, body: "Your handover notes are on the project page.", link: `/projects/${requestId}`, dedupeKey: `project:${requestId}:update:${updateId}` });
     await recordAudit({ orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "project.handover_recorded", targetType: "project_request", targetId: requestId, result: "success", metadata: { ref: r.ref } }, db);
   });
 }

@@ -173,7 +173,8 @@ const TABLES: TableSpec[] = [
   { file: "projects/quotes.json", table: "project_quotes", pick: ["id", "request_id", "org_id", "version", "status", "project_name", "scope", "deliverables", "included_integrations", "exclusions", "timeline_text", "estimated_weeks_min", "estimated_weeks_max", "one_time_cents", "ongoing_monthly_cents", "ongoing_description", "revision_terms", "payment_terms", "warranty_terms", "currency", "valid_until", "sent_at", "first_viewed_at", "created_at"], where: "t.status <> 'draft'" },
   { file: "projects/projects.json", table: "client_projects" },
   { file: "projects/milestones.json", table: "project_milestones" },
-  { file: "billing/payments.json", table: "payments", omit: ["provider_checkout_id", "provider_payment_id", "checkout_url", "fee_minor", "fx_source"], order: "created_at" },
+  // verified_by, verified_at and verification_note are the agency's own record of checking a payment received outside a provider: staff-only, like internal notes.
+  { file: "billing/payments.json", table: "payments", omit: ["provider_checkout_id", "provider_payment_id", "checkout_url", "fee_minor", "fx_source", "verified_by", "verified_at", "verification_note"], order: "created_at" },
   { file: "billing/credit-ledger.json", table: "credit_ledger_entries", order: "created_at" },
   { file: "billing/usage.json", table: "metered_usage_events", omit: ["provider_reference", "rate_version_id"], order: "occurred_at" },
   { file: "billing/provider-fees.json", table: "provider_fees" },

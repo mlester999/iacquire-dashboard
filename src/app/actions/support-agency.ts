@@ -37,8 +37,9 @@ async function run<T>(ticketId: string | undefined, fn: (user: Awaited<ReturnTyp
 export async function agencyMessageAction(ticketId: string, input: z.input<typeof agencyMessageSchema>) {
   return run(ticketId, (user) => agencyPostMessage(user, ticketId, input));
 }
-export async function changeStatusAction(ticketId: string, status: TicketStatus, note?: string) {
-  return run(ticketId, (user) => changeRequestStatus(user, ticketId, status, note));
+/** `clientNote` is shown to the client; the screen sends none today, and a private remark must go in an internal note instead. */
+export async function changeStatusAction(ticketId: string, status: TicketStatus, clientNote?: string) {
+  return run(ticketId, (user) => changeRequestStatus(user, ticketId, status, clientNote));
 }
 export async function setFeedbackStageAction(ticketId: string, stage: FeedbackStage, note?: string) {
   return run(ticketId, (user) => setFeedbackStage(user, ticketId, stage, note));

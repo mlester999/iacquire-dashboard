@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { withSystem, withUser } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
@@ -402,6 +402,20 @@ async function loadOwnTicket(ctx: OrgContext, ticketId: string): Promise<TicketC
   return row;
 }
 
+/**
+ * Re-reads the request under a lock inside the write transaction. The earlier read decides what to tell a person quickly; what is written is decided
+ * here, so a reply that raced the team's resolve or close acts on what is true now (a closed request is never flipped open without being reopened).
+ */
+async function lockOwnTicket(db: Queryable, ctx: OrgContext, ticketId: string): Promise<TicketCore> {
+  const row = (await db.query<TicketCore>(
+    `select id, ref, org_id, created_by, subject, request_type, category, status, priority, assigned_to, feedback_stage, first_responded_at, resolved_at, reopened_count
+     from support_tickets where id = $1 and org_id = $2 for update`,
+    [ticketId, ctx.org.orgId],
+  )).rows[0];
+  if (!row) throw new AppError("not_found", "Support request not found.");
+  return row;
+}
+
 export async function postClientMessage(ctx: OrgContext, ticketId: string, input: z.input<typeof clientMessageSchema>): Promise<PostedMessage> {
   if (!ctx.can("support.use")) throw new AppError("forbidden", "Your role can't reply to support requests.");
   const parsed = clientMessageSchema.safeParse(input);
@@ -421,12 +435,13 @@ export async function postClientMessage(ctx: OrgContext, ticketId: string, input
   const limit = await consumeRateLimit(RATE_LIMITS.supportReplyByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You're sending replies quickly. Please wait a little and try again.");
   if (t.status === "closed") throw new AppError("conflict", "This request is closed. Open a new one if you still need help.");
-  const reopening = t.status === "resolved";
-  if (reopening && !clientCanReopen({ status: t.status, resolvedAt: t.resolved_at, windowDays: settings.reopenWindowDays })) {
+  if (t.status === "resolved" && !clientCanReopen({ status: t.status, resolvedAt: t.resolved_at, windowDays: settings.reopenWindowDays })) {
     throw new AppError("conflict", "This request was resolved a while ago. Open a new request if you still need help.");
   }
 
   const posted = await withSystem(async (db) => {
+    // What is written follows the request as it is now (locked), not the read above: the team may have resolved or closed it in between.
+    const cur = await lockOwnTicket(db, ctx, ticketId);
     const inserted = await db.query<{ id: string; created_at: Date }>(
       `insert into support_messages (ticket_id, org_id, author_id, author_kind, body, client_message_id) values ($1, $2, $3, 'client', $4, $5)
        on conflict (ticket_id, client_message_id) where client_message_id is not null do nothing returning id, created_at`,
@@ -436,26 +451,32 @@ export async function postClientMessage(ctx: OrgContext, ticketId: string, input
       const dup = await db.query<{ id: string; created_at: Date }>("select id, created_at from support_messages where ticket_id = $1 and client_message_id = $2", [ticketId, parsed.data.clientMessageId]);
       return { id: dup.rows[0].id, existing: true, createdAt: new Date(dup.rows[0].created_at).toISOString() };
     }
+    // Refusing here rolls the message back with everything else this transaction did.
+    if (cur.status === "closed") throw new AppError("conflict", "This request is closed. Open a new one if you still need help.");
+    const reopeningNow = cur.status === "resolved";
+    if (reopeningNow && !clientCanReopen({ status: cur.status, resolvedAt: cur.resolved_at, windowDays: settings.reopenWindowDays })) {
+      throw new AppError("conflict", "This request was resolved a while ago. Open a new request if you still need help.");
+    }
     const messageId = inserted.rows[0].id;
     await bindStagedAttachments(db, { ticketId, orgId: ctx.org.orgId, messageId, userId: ctx.user.id, ids: parsed.data.attachmentIds, visibility: "client", maxCount: settings.maxAttachmentsPerMessage });
     await db.query("update support_tickets set last_message_at = now() where id = $1", [ticketId]);
-    let status = t.status;
-    if (reopening) {
-      await applyStatusChange(db, t, "open", { userId: ctx.user.id, kind: "client" }, {});
+    let status = cur.status;
+    if (reopeningNow) {
+      await applyStatusChange(db, cur, "open", { userId: ctx.user.id, kind: "client" }, {});
       status = "open";
-    } else if (t.status === "waiting_for_client") {
-      await applyStatusChange(db, t, "open", { userId: ctx.user.id, kind: "client" }, { silent: true });
+    } else if (cur.status === "waiting_for_client") {
+      await applyStatusChange(db, cur, "open", { userId: ctx.user.id, kind: "client" }, { silent: true });
       status = "open";
     }
     await recordTicketEvent(db, { ticketId, orgId: ctx.org.orgId, kind: "reply", actorUserId: ctx.user.id, actorKind: "client" });
-    await ensureResponseClock(db, { id: ticketId, org_id: ctx.org.orgId, priority: t.priority, status, first_responded_at: t.first_responded_at }, { settings });
+    await ensureResponseClock(db, { id: ticketId, org_id: ctx.org.orgId, priority: cur.priority, status, first_responded_at: cur.first_responded_at }, { settings });
     // The notice carries the reference, workspace and subject; what the client wrote stays in the portal.
     await dispatchSupportNotice(db, {
-      event: "client_reply", ticket: { id: ticketId, org_id: ctx.org.orgId, ref: t.ref, subject: t.subject }, eventKey: `msg:${messageId}`,
-      recipients: await agencyHandlers(db, { org_id: ctx.org.orgId, assigned_to: t.assigned_to }),
-      title: `${t.ref}: new reply from ${ctx.org.name}`, body: t.subject,
+      event: "client_reply", ticket: { id: ticketId, org_id: ctx.org.orgId, ref: cur.ref, subject: cur.subject }, eventKey: `msg:${messageId}`,
+      recipients: await agencyHandlers(db, { org_id: ctx.org.orgId, assigned_to: cur.assigned_to }),
+      title: `${cur.ref}: new reply from ${ctx.org.name}`, body: cur.subject,
     });
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "support.client_reply", targetType: "support_ticket", targetId: ticketId, result: "success", metadata: { ref: t.ref, attachments: parsed.data.attachmentIds.length, reopened: reopening } }, db);
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "support.client_reply", targetType: "support_ticket", targetId: ticketId, result: "success", metadata: { ref: cur.ref, attachments: parsed.data.attachmentIds.length, reopened: reopeningNow } }, db);
     return { id: messageId, existing: false, createdAt: new Date(inserted.rows[0].created_at).toISOString() };
   });
   if (!posted.existing) await sendQueuedSupportEmails(ticketId);
@@ -478,13 +499,18 @@ export async function reopenRequest(ctx: OrgContext, ticketId: string, note?: st
   }
   const text = note ? cleanText(note, 1000) : "";
   await withSystem(async (db) => {
+    // Locked and re-read: if the team closed the request after the earlier read, this is refused instead of flipping it open.
+    const cur = await lockOwnTicket(db, ctx, ticketId);
+    if (cur.status !== "resolved") throw new AppError("conflict", "Only a resolved request can be reopened.");
+    if (!clientCanReopen({ status: cur.status, resolvedAt: cur.resolved_at, windowDays: settings.reopenWindowDays })) {
+      throw new AppError("conflict", "This request was resolved a while ago. Open a new request if you still need help.");
+    }
     if (text) {
-      const m = await db.query<{ id: string }>("insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4) returning id", [ticketId, ctx.org.orgId, ctx.user.id, text]);
+      await db.query("insert into support_messages (ticket_id, org_id, author_id, author_kind, body) values ($1, $2, $3, 'client', $4)", [ticketId, ctx.org.orgId, ctx.user.id, text]);
       await recordTicketEvent(db, { ticketId, orgId: ctx.org.orgId, kind: "reply", actorUserId: ctx.user.id, actorKind: "client", detail: null });
-      void m;
     }
     await db.query("update support_tickets set last_message_at = now() where id = $1", [ticketId]);
-    await applyStatusChange(db, t, "open", { userId: ctx.user.id, kind: "client" }, { note: text ? undefined : "Reopened by the client." });
+    await applyStatusChange(db, cur, "open", { userId: ctx.user.id, kind: "client" }, { note: text ? undefined : "Reopened by the client." });
   });
   await sendQueuedSupportEmails(ticketId);
 }

@@ -44,8 +44,9 @@ describe("optional managed maintenance", () => {
     // Defect corrections are available to everyone, with no plan.
     const defect = await createMaintenanceRequest(ctx(admin, "admin"), { kind: "core_defect", title: "Calendar sync broke", description: "The appointment setter stopped booking on Tuesday." });
     expect(defect.ref).toMatch(/^MNT-\d+$/);
-    const ticket = await withSystem((db) => db.query<{ category: string }>("select category from support_tickets where id = $1", [defect.ticketId]));
-    expect(ticket.rows[0].category).toBe("bug");
+    const ticket = await withSystem((db) => db.query<{ category: string; request_type: string }>("select category, request_type from support_tickets where id = $1", [defect.ticketId]));
+    // A defect is an issue report, so the Issue reports view and the analytics find it.
+    expect(ticket.rows[0]).toEqual({ category: "feature_not_working", request_type: "issue" });
     // Managed changes need an active plan.
     await expect(createMaintenanceRequest(ctx(), { kind: "managed_change", title: "Update the FAQ answers", description: "Please refresh the FAQ answers for the assistant." })).rejects.toThrow(/active maintenance plan/);
     await expect(createMaintenanceRequest(ctx(member, "member"), { kind: "core_defect", title: "Something odd", description: "It looks wrong on the overview page." })).rejects.toThrow(/can't open/);

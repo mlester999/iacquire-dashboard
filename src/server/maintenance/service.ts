@@ -1,17 +1,22 @@
 import "server-only";
 import { z } from "zod";
-import { withSystem, withUser } from "@/server/db";
+import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { notifyAgency, notifyOrgRoles } from "@/server/notifications";
 import { createTicket } from "@/server/support/service";
+import { applyStatusChange } from "@/server/support/lifecycle";
+import type { TicketCore } from "@/server/support/access";
+import { canTransition, isActiveStatus, isDoneStatus, type TicketStatus } from "@/lib/support/lifecycle";
 import { getMaintenancePlan } from "@/server/catalog/service";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { SessionUser } from "@/server/auth/service";
 import { roleHasPermission } from "@/lib/permissions";
 import { MAINTENANCE_TERMS_VERSION, type MaintenanceStatus, type ServiceView } from "@/lib/projects";
 import { paidThroughProblem } from "@/lib/automation-studio/plan";
+import { MAINTENANCE_PAYMENT_NOTE } from "@/lib/billing-clearance";
+import { applyVerifiedPayment } from "@/server/maintenance/payment";
 import { iso } from "@/server/projects/shared";
 
 export interface MaintenanceSubscriptionView {
@@ -94,17 +99,21 @@ const toSub = (r: SubRow): MaintenanceSubscriptionView => ({
   cancelRequestedAt: iso(r.cancel_requested_at),
 });
 
-/** Eligibility begins only after the core system is fully set up, verified and activated by iAcquire. */
+/**
+ * Eligibility begins only after the core system is fully set up, verified and activated by iAcquire, and the setup payment is confirmed (paid or waived). The two paid
+ * products are linked: a plan is never started for a client that never paid for, or was never waived from, the setup.
+ */
 export async function maintenanceEligibility(orgId: string): Promise<{ eligible: boolean; note: string | null }> {
   const { rows } = await withSystem((db) =>
-    db.query<{ kind: string; state: string | null }>(
-      "select o.kind, (select i.state from client_setup_instances i where i.org_id = o.id) as state from organizations o where o.id = $1",
+    db.query<{ kind: string; state: string | null; cleared: boolean }>(
+      "select o.kind, (select i.state from client_setup_instances i where i.org_id = o.id) as state, app.setup_payment_cleared(o.id) as cleared from organizations o where o.id = $1",
       [orgId],
     ),
   );
   const r = rows[0];
   if (!r || r.kind !== "client") return { eligible: false, note: "Managed maintenance is for client workspaces." };
   if (r.state !== "activated") return { eligible: false, note: "Maintenance becomes available after your core iAcquire system has been fully set up, verified and activated. You don't need it to use what's already included." };
+  if (r.cleared !== true) return { eligible: false, note: MAINTENANCE_PAYMENT_NOTE };
   return { eligible: true, note: null };
 }
 
@@ -193,32 +202,64 @@ export async function createMaintenanceRequest(ctx: OrgContext, input: z.input<t
   const d = maintenanceRequestSchema.parse(input);
   const limit = await consumeRateLimit(RATE_LIMITS.maintenanceByUser, ctx.user.id);
   if (!limit.allowed) throw new AppError("rate_limited", "You've sent several requests recently. Please add to an existing one.");
-  let subscriptionId: string | null = null;
-  if (d.kind === "managed_change") {
-    const sub = await withSystem(async (db) => {
-      const s = (await db.query<{ id: string; monthly_request_allowance: number }>("select id, monthly_request_allowance from maintenance_subscriptions where org_id = $1 and status in ('active','past_due','cancel_requested')", [ctx.org.orgId])).rows[0];
-      if (!s) return null;
+  // The slot is taken first, in one transaction under a lock on the plan's row: two requests made together are counted one after the other, so the
+  // plan's allowance (its own setting, never a constant here) cannot be passed. The ticket follows; if it cannot be made the slot is given back.
+  const reserved = await withSystem(async (db) => {
+    let subscriptionId: string | null = null;
+    if (d.kind === "managed_change") {
+      const s = (await db.query<{ id: string; monthly_request_allowance: number }>("select id, monthly_request_allowance from maintenance_subscriptions where org_id = $1 and status in ('active','past_due','cancel_requested') for update", [ctx.org.orgId])).rows[0];
+      if (!s) throw new AppError("conflict", "Managed maintenance requests need an active maintenance plan. Basic help is always available through Support.");
       const n = (await db.query<{ n: number }>("select count(*)::int as n from maintenance_requests where subscription_id = $1 and kind = 'managed_change' and counts_against_allowance and status <> 'declined' and period_month = date_trunc('month', now())::date", [s.id])).rows[0]?.n ?? 0;
-      return { id: s.id, full: n >= s.monthly_request_allowance, total: s.monthly_request_allowance };
-    });
-    if (!sub) throw new AppError("conflict", "Managed maintenance requests need an active maintenance plan. Basic help is always available through Support.");
-    if (sub.full) throw new AppError("conflict", `You've used all ${sub.total} maintenance requests for this month. Larger changes can be quoted as a custom project.`);
-    subscriptionId = sub.id;
-  }
-  const ticket = await createTicket(ctx, {
-    subject: `${d.kind === "core_defect" ? "Defect report" : "Maintenance request"}: ${d.title}`.slice(0, 160),
-    message: d.description,
-    category: d.kind === "core_defect" ? "bug" : "maintenance",
-    priority: "normal",
-  });
-  return withSystem(async (db) => {
+      if (n >= s.monthly_request_allowance) throw new AppError("conflict", `You've used all ${s.monthly_request_allowance} maintenance requests for this month. Larger changes can be quoted as a custom project.`);
+      subscriptionId = s.id;
+    }
     const r = await db.query<{ id: string; ref: string }>(
-      "insert into maintenance_requests (org_id, subscription_id, kind, title, description, ticket_id, counts_against_allowance, created_by) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id, ref",
-      [ctx.org.orgId, subscriptionId, d.kind, d.title, d.description, ticket.id, d.kind === "managed_change", ctx.user.id],
+      "insert into maintenance_requests (org_id, subscription_id, kind, title, description, counts_against_allowance, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning id, ref",
+      [ctx.org.orgId, subscriptionId, d.kind, d.title, d.description, d.kind === "managed_change", ctx.user.id],
     );
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "maintenance.request_created", targetType: "maintenance_request", targetId: r.rows[0].id, result: "success", metadata: { kind: d.kind, ref: r.rows[0].ref } }, db);
-    return { id: r.rows[0].id, ref: r.rows[0].ref, ticketId: ticket.id };
+    return r.rows[0];
   });
+  let ticket: Awaited<ReturnType<typeof createTicket>>;
+  try {
+    // A defect in the original setup is an issue report, so the Issue reports view and the analytics find it. A managed change is an ordinary request.
+    ticket = await createTicket(ctx, d.kind === "core_defect"
+      ? { requestType: "issue", subject: `Defect report: ${d.title}`.slice(0, 160), message: d.description, category: "feature_not_working", priority: "normal" }
+      : { subject: `Maintenance request: ${d.title}`.slice(0, 160), message: d.description, category: "maintenance", priority: "normal" });
+  } catch (error) {
+    await withSystem((db) => db.query("delete from maintenance_requests where id = $1", [reserved.id])).catch(() => undefined);
+    throw error;
+  }
+  return withSystem(async (db) => {
+    await db.query("update maintenance_requests set ticket_id = $2 where id = $1", [reserved.id, ticket.id]);
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "maintenance.request_created", targetType: "maintenance_request", targetId: reserved.id, result: "success", metadata: { kind: d.kind, ref: reserved.ref } }, db);
+    return { id: reserved.id, ref: reserved.ref, ticketId: ticket.id };
+  });
+}
+
+/** The ticket status a maintenance status stands for. */
+const TICKET_STATUS_FOR = { open: "open", in_progress: "in_progress", waiting_for_client: "waiting_for_client", completed: "resolved", declined: "closed" } as const;
+
+/**
+ * Keeps the request's ticket in step with the maintenance record, through the one place a request changes status. It is quiet (no thread line, no second
+ * notice: the maintenance update already tells the owner), and it never fails the maintenance update: a ticket the team already closed is left as it is.
+ */
+async function mirrorOntoTicket(db: Queryable, ticketId: string, target: TicketStatus, userId: string) {
+  const read = async () => (await db.query<TicketCore>(
+    `select id, ref, org_id, created_by, subject, request_type, category, status, priority, assigned_to, feedback_stage, first_responded_at, resolved_at, reopened_count
+     from support_tickets where id = $1 for update`, [ticketId],
+  )).rows[0];
+  const cur = await read();
+  if (!cur || cur.status === target) return;
+  const actor = { userId, kind: "agency" as const };
+  if (isDoneStatus(cur.status) && isActiveStatus(target)) {
+    // Work resumed on a finished request: it comes back through "open", the one move the lifecycle allows from there.
+    await applyStatusChange(db, cur, "open", actor, { silent: true });
+    const reread = await read();
+    if (reread && target !== "open" && canTransition("open", target)) await applyStatusChange(db, reread, target, actor, { silent: true });
+    return;
+  }
+  if (!canTransition(cur.status, target)) return;
+  await applyStatusChange(db, cur, target, actor, { silent: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +278,7 @@ export async function listAgencyMaintenance(user: SessionUser) {
   assertManage(user);
   return withSystem(async (db) => {
     const subs = (await db.query<SubRow & {
-      org_id: string; org_name: string; request_note: string | null; cancel_note: string | null; internal_notes: string | null; state: string | null; used: number;
+      org_id: string; org_name: string; request_note: string | null; cancel_note: string | null; internal_notes: string | null; state: string | null; cleared: boolean; used: number;
       past_due_since: Date | null; grace_ends_at: Date | null; expired_at: Date | null; paid_through_on: string | null; last_payment_verified_at: Date | null; verified_by_name: string | null;
       studio_workflows: number; studio_paused: number;
     }>(
@@ -248,7 +289,7 @@ export async function listAgencyMaintenance(user: SessionUser) {
          (select coalesce(nullif(u.full_name, ''), u.email::text) from users u where u.id = s.last_payment_verified_by) as verified_by_name,
          (select count(*)::int from crm_workflows w where w.org_id = s.org_id and w.origin = 'studio' and w.status <> 'archived') as studio_workflows,
          (select count(*)::int from crm_workflows w where w.org_id = s.org_id and w.status = 'paused' and w.entitlement_paused_at is not null) as studio_paused,
-         (select i.state from client_setup_instances i where i.org_id = s.org_id) as state,
+         (select i.state from client_setup_instances i where i.org_id = s.org_id) as state, app.setup_payment_cleared(s.org_id) as cleared,
          (select count(*)::int from maintenance_requests m where m.subscription_id = s.id and m.kind = 'managed_change' and m.counts_against_allowance and m.status <> 'declined' and m.period_month = date_trunc('month', now())::date) as used
        from maintenance_subscriptions s join organizations o on o.id = s.org_id
        where (s.status in ('requested','active','past_due','cancel_requested')
@@ -267,7 +308,7 @@ export async function listAgencyMaintenance(user: SessionUser) {
     )).rows;
     return {
       subscriptions: subs.map((s) => ({
-        ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated",
+        ...toSub(s), orgId: s.org_id, orgName: s.org_name, used: s.used, requestNote: s.request_note, cancelNote: s.cancel_note, eligible: s.state === "activated" && s.cleared === true,
         // What the agency needs to run the plan: where the money side stands (as recorded by people, never detected) and what a lapse would touch.
         lifecycle: {
           pastDueSince: iso(s.past_due_since), graceEndsAt: iso(s.grace_ends_at), expiredAt: iso(s.expired_at), paidThroughOn: s.paid_through_on,
@@ -308,16 +349,7 @@ export async function activateMaintenance(user: SessionUser, subscriptionId: str
   if (problem) throw new AppError("invalid_input", problem);
   await withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
-    if (s.status !== "requested") throw new AppError("conflict", "Only a requested plan can be activated.");
-    const st = (await db.query<{ state: string }>("select state from client_setup_instances where org_id = $1", [s.org_id])).rows[0];
-    if (st?.state !== "activated") throw new AppError("conflict", "The core system isn't activated yet, so the plan can't start.");
-    await db.query(
-      `update maintenance_subscriptions set status = 'active', activated_by = $2, activated_at = now(), billing_start_on = $3, renewal_on = null,
-         last_payment_verified_at = now(), last_payment_verified_by = $2, paid_through_on = $4 where id = $1`,
-      [subscriptionId, user.id, start, opts.payment.paidThroughOn],
-    );
-    await notifyOrgRoles(db, s.org_id, ["owner"], { kind: "maintenance_update", severity: "success", title: "Managed maintenance is active", body: `Billing starts ${start}.`, link: "/maintenance" });
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.activated", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { billingStartOn: start, paymentVerified: true, paidThroughOn: opts.payment.paidThroughOn } }, db);
+    await applyVerifiedPayment(db, { subscription: s, mode: "activate", actor: { kind: "agency", userId: user.id }, billingStartOn: start, paidThroughOn: opts.payment.paidThroughOn });
   });
 }
 
@@ -341,7 +373,7 @@ export async function updateMaintenanceRequest(user: SessionUser, requestId: str
   assertManage(user);
   const d = z.object({ status: z.enum(["open", "in_progress", "waiting_for_client", "completed", "declined"]).optional(), resolutionNote: z.string().trim().max(2000).optional(), waiveAllowance: z.boolean().optional(), internalNotes: z.string().trim().max(4000).optional() }).parse(changes);
   await withSystem(async (db) => {
-    const m = (await db.query<{ org_id: string; kind: string; title: string; ref: string }>("select org_id, kind, title, ref from maintenance_requests where id = $1 for update", [requestId])).rows[0];
+    const m = (await db.query<{ org_id: string; kind: string; title: string; ref: string; ticket_id: string | null }>("select org_id, kind, title, ref, ticket_id from maintenance_requests where id = $1 for update", [requestId])).rows[0];
     const ok = m && (await db.query<{ allowed: boolean }>("select app.user_can_access_org($1,$2) as allowed", [user.id, m.org_id])).rows[0]?.allowed === true;
     if (!m || !ok) throw new AppError("not_found", "Request not found.");
     if (d.waiveAllowance && m.kind !== "managed_change") throw new AppError("conflict", "Only managed requests use the allowance.");
@@ -351,6 +383,7 @@ export async function updateMaintenanceRequest(user: SessionUser, requestId: str
          closed_at = case when $2 in ('completed','declined') then now() when $2 is not null then null else closed_at end where id = $1`,
       [requestId, d.status ?? null, d.resolutionNote ?? null, d.internalNotes ?? null, Boolean(d.waiveAllowance), user.id],
     );
+    if (d.status && m.ticket_id) await mirrorOntoTicket(db, m.ticket_id, TICKET_STATUS_FOR[d.status], user.id);
     if (d.status && ["completed", "declined", "in_progress"].includes(d.status)) {
       await notifyOrgRoles(db, m.org_id, ["owner", "admin"], { kind: "maintenance_update", title: `${m.ref} is now ${d.status.replace("_", " ")}`, body: m.title, link: "/maintenance" });
     }

@@ -2,7 +2,8 @@ import "server-only";
 import crypto from "node:crypto";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
-import { recordAudit } from "@/server/audit";
+import type { PlatformRole } from "@/lib/permissions";
+import { loadTicketForAgency } from "@/server/support/access";
 import { uploadPrivateFile, signPrivateFile, removePrivateFile, removeStoredObjectTrusted } from "@/server/storage/private";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { mimeForFilename, safeFilename } from "@/lib/support/content";
@@ -123,39 +124,30 @@ export async function bindStagedAttachments(
   return rows.length;
 }
 
-/** Direct upload to an existing request (outside a message): the original behaviour, now with the wider file types and settings limits. */
-export async function attachSupportFile(userId: string, ticketId: string, file: StageInput, internal = false) {
-  const ticket = await withUser(userId, async (db) => (await db.query<{ org_id: string; status: string; staff: boolean }>(
-    "select org_id, status, app.staff_assigned(org_id) as staff from support_tickets where id = $1", [ticketId],
-  )).rows[0]);
-  if (!ticket) throw new AppError("not_found", "Support request not found.");
-  if (ticket.status === "closed") throw new AppError("conflict", "This request is closed.");
-  if (internal && !ticket.staff) throw new AppError("forbidden", "Internal attachments require assigned agency access.");
-  const settings = await loadSupportSettings();
-  const visibility = internal ? "internal" : "client";
-  const { stored, filename } = await save(userId, ticket.org_id, file, visibility, settings.maxAttachmentMb);
-  try {
-    return await withSystem(async (db) => {
-      const inserted = await db.query<{ id: string }>(
-        "insert into support_attachments (org_id, ticket_id, private_file_id, visibility, created_by, status) values ($1, $2, $3, $4, $5, 'attached') returning id",
-        [ticket.org_id, ticketId, stored.id, visibility, userId],
-      );
-      await recordAudit({ orgId: ticket.org_id, actorKind: ticket.staff ? "agency" : "user", actorUserId: userId, action: "support.attachment_added", targetType: "support_ticket", targetId: ticketId, result: "success", metadata: { visibility, size: file.bytes.length } }, db);
-      return { id: inserted.rows[0].id, filename };
-    });
-  } catch (error) {
-    await removePrivateFile({ userId, orgId: ticket.org_id, bucket: stored.bucket, path: stored.storageKey }).catch(() => undefined);
-    throw error;
-  }
-}
-
-/** A short-lived link, issued only if the person can see the attachment (row-level security) and the file is intact. */
+/**
+ * A short-lived link, issued only if the person can see the attachment (row-level security) and the file is intact. A client is held to row-level
+ * security alone. A team member also has to be able to open the request the file belongs to: row-level security knows the client's scope, not the
+ * support view permission or the queue they were limited to, so the same check every other team action uses runs here too.
+ */
 export async function supportAttachmentDownload(userId: string, id: string) {
-  const file = await withUser(userId, async (db) => (await db.query<{ org_id: string; storage_key: string }>(
-    `select a.org_id, f.storage_key from support_attachments a join private_files f on f.id = a.private_file_id and f.status = 'ready'
+  const file = await withUser(userId, async (db) => (await db.query<{ org_id: string; ticket_id: string | null; storage_key: string }>(
+    `select a.org_id, a.ticket_id, f.storage_key from support_attachments a join private_files f on f.id = a.private_file_id and f.status = 'ready'
      where a.id = $1 and a.status <> 'removed'`, [id],
   )).rows[0]);
   if (!file) throw new AppError("not_found", "Attachment not found.");
+  if (file.ticket_id) {
+    const who = (await withSystem((db) => db.query<{ platform_role: PlatformRole }>("select platform_role from users where id = $1 and status = 'active'", [userId]))).rows[0];
+    if (!who) throw new AppError("not_found", "Attachment not found.");
+    if (who.platform_role !== "none") {
+      try {
+        await loadTicketForAgency({ id: userId, platformRole: who.platform_role }, file.ticket_id);
+      } catch (error) {
+        // Whatever the reason, the file reads as absent: nothing says that it exists or why it is out of reach.
+        if (error instanceof AppError && (error.code === "forbidden" || error.code === "not_found")) throw new AppError("not_found", "Attachment not found.");
+        throw error;
+      }
+    }
+  }
   return signPrivateFile({ userId, orgId: file.org_id, bucket: "support-attachments", path: file.storage_key });
 }
 

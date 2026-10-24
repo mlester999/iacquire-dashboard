@@ -799,6 +799,10 @@ SEEDS["0091_proposals"] = async (db, ctx) => {
     await db.query("insert into proposal_decisions (org_id, proposal_id, version, content_hash, decision, method, decided_name, recorded_by) values ($1, $2, 1, repeat('e', 64), 'accepted', 'recorded_by_staff', 'Seed Customer', $3)", [org, proposal, owner]);
     await db.query("insert into private_files (org_id, bucket, storage_key, filename, mime_type, size_bytes, status) values ($1, 'proposal-documents', $2, 'p.pdf', 'application/pdf', 100, 'ready')", [org, `${org}/proposals/p.pdf`]);
     await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, 'proposal_accepted', 'Seed proposal accepted')", [org, owner]);
+    // A message that carried the customer's link (the 'delivery' message scope is added by 0091) and the delivery row that names it, in a conversation of its own for the proposal.
+    const conversation = (await one(db, "insert into conversations (org_id, contact_id, channel, thread_key, status, subject, owner_kind) values ($1, $2, 'email', $3, 'open', 'Proposal P-0001', 'unassigned') returning id", [org, contact, `proposal:${proposal}`])).id;
+    const message = (await one(db, "insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, scope) values ($1, $2, 'outbound', 'system', 'Proposal P-0001 is ready for you. {{proposal.link}}', 'queued', 'delivery') returning id", [org, conversation])).id;
+    await db.query("insert into proposal_deliveries (org_id, proposal_id, version, link_id, channel, message_id, wording_version, wording_hash, address_mask, requested_by) values ($1, $2, 1, $3, 'email', $4, 'draft-seed', repeat('d', 64), 's***@example.test', $5)", [org, proposal, link, message, owner]);
   });
 };
 // Decisions and events are append-only by design, so removing them (what an operator exports first) means switching their append-only triggers off for the clean-up.
@@ -814,6 +818,9 @@ CLEAN["0091_proposals"] = {
     for (const t of ["proposal_ai_runs", "proposal_templates", "proposal_catalog_items", "proposal_tax_rates"]) await db.query(`delete from ${t}`);
     await db.query("delete from private_files where bucket = 'proposal-documents'");
     await db.query("delete from notifications where kind = any($1::text[])", [PROPOSAL_KINDS]);
+    // The messages that delivered a proposal outlive their proposal (the delivery row only points at them), and the rollback refuses while any exists.
+    await db.query("delete from conversation_messages where scope = 'delivery'");
+    await db.query("delete from conversations where thread_key like 'proposal:%'");
   },
 };
 
@@ -956,6 +963,93 @@ CLEAN["0093_customer_invoices_payments"] = {
     await db.query("delete from notifications where kind = any($1::text[])", [INVOICE_KINDS]);
     await db.query("delete from conversations where contact_id in (select id from contacts where display_name like 'Seed-0093 %')");
     await db.query("delete from contacts where display_name like 'Seed-0093 %'");
+  },
+};
+
+const BILLING_KINDS = ["billing_setup_payment_required", "billing_setup_cleared", "billing_renewal_due", "billing_refund_recorded"];
+SEEDS["0099_payment_controls"] = async (db, ctx) => {
+  await forOrgs(ctx, async (org, key, owner) => {
+    // A setup fee recorded by hand and a maintenance payment recorded by hand. The database insists a manual payment names its reference, method, date, verifier and note.
+    const manual = async (kind, micros, cents) => (await one(db, `insert into payments (org_id, kind, description, usd_amount_micros, charged_currency, charged_amount_minor, livemode, provider, reference_number, status,
+        paid_at, verified_by, verified_at, verification_note, external_reference, method, paid_on)
+      values ($1, $2, 'Seed payment', $3, 'USD', $4, true, 'manual', $5, 'paid', now(), $6, now(), 'Seen in the bank statement', $7, 'bank_transfer', current_date) returning id`,
+      [org, kind, micros, cents, `IAQ-SEED99${key.toUpperCase()}${kind === "setup_fee" ? "S" : "M"}`, ctx.users.staff, `SEED-0099-${key}-${kind}`])).id;
+    const setup = await manual("setup_fee", 1499000000, 149900);
+    const plan = await manual("maintenance", 299000000, 29900);
+    // Workspace a cleared its setup fee with the payment; b was waived by a person; c keeps the defaults. The rehearsal workspaces have no billing account at the baseline.
+    if (key === "a") await db.query("insert into billing_accounts (org_id, setup_payment_status, paid_at, verified_payment_id) values ($1, 'paid', now(), $2)", [org, setup]);
+    else if (key === "b") await db.query("insert into billing_accounts (org_id, setup_payment_status, waiver_reason, waived_by, waived_at) values ($1, 'waived', 'Seed waiver agreed with the founder', $2, now())", [org, ctx.users.staff]);
+    else await db.query("insert into billing_accounts (org_id) values ($1)", [org]);
+    // The plan period the second payment paid for.
+    await db.query(`insert into maintenance_subscriptions (org_id, status, monthly_price_cents, monthly_request_allowance, terms_version, accepted_by, activated_by, activated_at, billing_start_on, last_payment_id)
+      values ($1, 'active', 29900, 4, 'seed-0099', $2, $3, now(), current_date, $4)`, [org, owner, ctx.users.staff, plan]);
+    for (const kind of BILLING_KINDS) await db.query("insert into notifications (org_id, user_id, kind, title) values ($1, $2, $3, 'Seed billing notice')", [org, owner, kind]);
+  });
+};
+// The seeded payments, accounts and plan periods are history the rollback refuses to drop; the operator exports them first, so the clean-up removes them (the accounts and
+// plans before the payments they name).
+CLEAN["0099_payment_controls"] = {
+  guard: async (db) => {
+    await db.query("delete from maintenance_subscriptions where terms_version = 'seed-0099'");
+    await db.query("delete from billing_accounts");
+    await db.query("delete from payments where provider = 'manual'");
+    await db.query("delete from notifications where kind = any($1::text[])", [BILLING_KINDS]);
+  },
+};
+
+// Internal staff Messages. Everything belongs to the ONE agency workspace, which the baseline does not have: it is made here when no other seed made it, together with two
+// agency people (a manager and a staff member), and removed again by the clean-up exactly as far as this seed made it, so the row counts of organizations and users after the
+// rollback are what they were before. The seed has a direct message, a group, a team-wide channel, a thread, a reaction, a staged attachment with its stored-file row, history
+// events, inbox revisions, a retention setting and a staff notification.
+const STAFF_MESSAGE_KINDS = ["staff_message_direct", "staff_message_mention", "staff_message_added", "staff_workload_alert", "staff_work_overdue"];
+SEEDS["0096_staff_messages"] = async (db, ctx) => {
+  const had = await one(db, "select id from organizations where kind = 'agency'");
+  const agency = had?.id ?? (await one(db, "insert into organizations (name, slug, kind, status, timezone) values ('Rehearsal Agency', 'rehearsal-agency', 'agency', 'active', 'UTC') returning id")).id;
+  const person = async (email, fullName, role) =>
+    (await one(db, "insert into users (email, full_name, email_verified_at, platform_role) values ($1::text, $2::text, now(), $3::text) returning id", [email, fullName, role])).id;
+  const manager = await person("staff-messages-manager@example.test", "Messages Manager", "agency_manager");
+  const staff = await person("staff-messages-staff@example.test", "Messages Staff", "agency_staff");
+  const admin = ctx.users.staff;
+  ctx.staffMessages = { agency, createdAgency: !had, people: [manager, staff] };
+  // A Super Admin switched Messages on for the agency workspace: the rollback must take the switch away with the tables, or applying 0096 again turns the module back on.
+  await db.query("insert into org_features (org_id, feature, enabled) values ($1, 'staff_messages', true) on conflict do nothing", [agency]);
+  await db.query("insert into staff_message_settings (org_id, retention_days) values ($1, 365)", [agency]);
+  const [lo, hi] = [manager, staff].sort();
+  const direct = (await one(db, "insert into staff_conversations (org_id, kind, direct_key, created_by) values ($1, 'direct', $2, $3) returning id", [agency, `${lo}:${hi}`, manager])).id;
+  const group = (await one(db, "insert into staff_conversations (org_id, kind, name, created_by) values ($1, 'group', 'Seed group', $2) returning id", [agency, manager])).id;
+  const channel = (await one(db, "insert into staff_conversations (org_id, kind, name, topic, visibility, created_by) values ($1, 'channel', 'seed-general', 'Seed channel', 'staff', $2) returning id", [agency, admin])).id;
+  for (const [conv, people] of [[direct, [manager, staff]], [group, [manager, staff, admin]], [channel, [admin, manager, staff]]]) {
+    for (const who of people) await db.query("insert into staff_conversation_members (conversation_id, user_id, org_id, role) values ($1, $2, $3, 'member')", [conv, who, agency]);
+    await db.query("insert into staff_conversation_events (org_id, conversation_id, kind, actor_id, subject_id) values ($1, $2, 'created', $3, null)", [agency, conv, manager]);
+  }
+  // Two messages take numbers 1 and 2 from the counter; the second is a reply in the first one's thread and mentions the staff member.
+  await db.query("update staff_conversations set last_seq = 2, last_message_at = now() where id = $1", [group]);
+  const first = (await one(db, "insert into staff_messages (org_id, conversation_id, seq, author_id, body, client_message_id) values ($1, $2, 1, $3, 'Seed message', gen_random_uuid()) returning id", [agency, group, manager])).id;
+  await db.query("insert into staff_messages (org_id, conversation_id, seq, thread_root_id, author_id, body, mentions, client_message_id) values ($1, $2, 2, $3, $4, $5, $6::uuid[], gen_random_uuid())",
+    [agency, group, first, staff, `Seed reply <@${manager}>`, [manager]]);
+  await db.query("insert into staff_message_reactions (message_id, user_id, reaction, conversation_id, org_id) values ($1, $2, 'thumbs_up', $3, $4)", [first, staff, group, agency]);
+  const file = (await one(db, "insert into private_files (org_id, bucket, storage_key, filename, mime_type, size_bytes, status) values ($1, 'staff-messages', $2::text || '/' || gen_random_uuid()::text || '/a.pdf', 'a.pdf', 'application/pdf', 100, 'ready') returning id", [agency, agency])).id;
+  await db.query("insert into staff_message_attachments (org_id, conversation_id, private_file_id, uploaded_by, expires_at, filename, mime_type, size_bytes) values ($1, $2, $3, $4, now() + interval '1 day', 'a.pdf', 'application/pdf', 100)", [agency, group, file, manager]);
+  for (const who of [manager, staff]) await db.query("insert into staff_inbox_state (user_id, org_id, revision) values ($1, $2, 2)", [who, agency]);
+  await db.query("insert into notifications (org_id, user_id, kind, title, audience) values (null, $1, 'staff_message_direct', 'Seed staff message', 'staff')", [staff]);
+};
+// Messages are never deleted by the product except by a retention period, so the clean-up (what an operator exports first) removes them directly: the history trail is
+// append-only, so its trigger is off for the removal. The conversations take their members, messages, reactions, attachments and history with them; the stored-file row
+// and the notification are removed by hand. The agency people and the agency workspace go after the rollback, if this seed made them.
+CLEAN["0096_staff_messages"] = {
+  guard: async (db) => {
+    await db.query("alter table staff_conversation_events disable trigger staff_conversation_events_immutable");
+    await db.query("delete from staff_conversations");
+    await db.query("alter table staff_conversation_events enable trigger staff_conversation_events_immutable");
+    await db.query("delete from private_files where bucket = 'staff-messages'");
+    await db.query("delete from notifications where audience = 'staff' or kind = any($1::text[])", [STAFF_MESSAGE_KINDS]);
+  },
+  rest: async (db, ctx) => {
+    const made = ctx.staffMessages;
+    if (!made) return;
+    await db.query("delete from users where id = any($1::uuid[])", [made.people]);
+    if (made.createdAgency) await db.query("delete from organizations where id = $1 and kind = 'agency'", [made.agency]);
+    ctx.staffMessages = null;
   },
 };
 
@@ -1684,7 +1778,7 @@ async function runF() {
     await runnerApply(early, scope("0064_aqi_feature_tours"));
     const before = (await applied(early)).size;
     const refused = [];
-    for (const v of ["0083_unified_inbox", "0085_missed_call_recovery", "0086_lead_scoring", "0087_website_chat", "0089_social_media_manager", "0091_proposals", "0094_reputation_followthrough"]) {
+    for (const v of ["0083_unified_inbox", "0085_missed_call_recovery", "0086_lead_scoring", "0087_website_chat", "0089_social_media_manager", "0091_proposals", "0094_reputation_followthrough", "0099_payment_controls"]) {
       if (!files.map(name).includes(v)) continue;
       try {
         await runnerApply(early, [v]);

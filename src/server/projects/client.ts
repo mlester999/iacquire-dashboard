@@ -9,6 +9,7 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { notifyAgency, notifyOrgRoles, sendAgencySlackAlert } from "@/server/notifications";
 import { uploadPrivateFile, signPrivateFile, removePrivateFile } from "@/server/storage/private";
 import type { OrgContext } from "@/server/tenancy/context";
+import { firstName } from "@/lib/utils";
 import { BUDGET_BANDS, QUOTE_ACKNOWLEDGEMENT, suggestServices, type ProjectStatus, type ServiceView } from "@/lib/projects";
 import {
   REQUEST_COLUMNS, iso, quoteContentHash, toQuoteView, toRequestView,
@@ -58,6 +59,12 @@ export async function listProjects(ctx: OrgContext): Promise<ProjectListItem[]> 
   });
 }
 
+/** The team shows to a client by first name only, as in Support; a colleague on the client's side shows by name, and the team sees everyone in full. */
+function shownName(name: string | null, platformRole: string | null, teamView: boolean): string | null {
+  if (teamView || !platformRole || platformRole === "none") return name;
+  return firstName(name) || "iAcquire team";
+}
+
 /**
  * Loads one project with everything the viewer is allowed to see. `internal` is true only for trusted agency
  * code; client calls run under row-level security and never receive internal notes, drafts or staff names.
@@ -88,8 +95,8 @@ export async function loadProjectDetail(db: Queryable, requestId: string, opts: 
     "select id, title, description, sort_order, status, due_on::text as due_on, requires_client_approval, client_approved_at, client_note, completed_at from project_milestones where request_id = $1 order by sort_order, created_at",
     [requestId],
   );
-  const updates = await db.query<{ id: string; kind: string; body: string; visibility: "client" | "internal"; author_name: string | null; created_at: Date }>(
-    `select u.id, u.kind, u.body, u.visibility, au.full_name as author_name, u.created_at from project_updates u left join users au on au.id = u.author_id
+  const updates = await db.query<{ id: string; kind: string; body: string; visibility: "client" | "internal"; author_name: string | null; author_role: string | null; created_at: Date }>(
+    `select u.id, u.kind, u.body, u.visibility, au.full_name as author_name, au.platform_role as author_role, u.created_at from project_updates u left join users au on au.id = u.author_id
      where u.request_id = $1 and ($2::boolean or u.visibility = 'client') order by u.created_at desc`,
     [requestId, internal],
   );
@@ -99,8 +106,8 @@ export async function loadProjectDetail(db: Queryable, requestId: string, opts: 
      where f.request_id = $1 and pf.status = 'ready' and ($2::boolean or f.visibility = 'client') order by f.created_at desc`,
     [requestId, internal],
   );
-  const messages = await db.query<{ id: string; author_kind: "client" | "agency" | "system"; author_name: string | null; kind: MessageView["kind"]; body: string; internal: boolean; created_at: Date }>(
-    `select m.id, m.author_kind, au.full_name as author_name, m.kind, m.body, m.internal, m.created_at from project_messages m left join users au on au.id = m.author_id
+  const messages = await db.query<{ id: string; author_kind: "client" | "agency" | "system"; author_name: string | null; author_role: string | null; kind: MessageView["kind"]; body: string; internal: boolean; created_at: Date }>(
+    `select m.id, m.author_kind, au.full_name as author_name, au.platform_role as author_role, m.kind, m.body, m.internal, m.created_at from project_messages m left join users au on au.id = m.author_id
      where m.request_id = $1 and ($2::boolean or not m.internal) order by m.created_at asc`,
     [requestId, internal],
   );
@@ -128,9 +135,9 @@ export async function loadProjectDetail(db: Queryable, requestId: string, opts: 
         } satisfies DeliveryView)
       : null,
     milestones: milestones.rows.map((m) => ({ id: m.id, title: m.title, description: m.description, sortOrder: m.sort_order, status: m.status, dueOn: m.due_on, requiresClientApproval: m.requires_client_approval, clientApprovedAt: iso(m.client_approved_at), clientNote: m.client_note, completedAt: iso(m.completed_at) }) satisfies MilestoneView),
-    updates: updates.rows.map((u) => ({ id: u.id, kind: u.kind, body: u.body, visibility: u.visibility, authorName: u.author_name, createdAt: iso(u.created_at)! }) satisfies UpdateView),
+    updates: updates.rows.map((u) => ({ id: u.id, kind: u.kind, body: u.body, visibility: u.visibility, authorName: shownName(u.author_name, u.author_role, internal), createdAt: iso(u.created_at)! }) satisfies UpdateView),
     files: files.rows.map((f) => ({ id: f.id, filename: f.filename, mimeType: f.mime_type, sizeBytes: f.size_bytes, kind: f.kind, visibility: f.visibility, description: f.description, uploadedByKind: f.uploaded_by_kind, createdAt: iso(f.created_at)! }) satisfies FileView),
-    messages: messages.rows.map((m) => ({ id: m.id, authorKind: m.author_kind, authorName: m.author_name, kind: m.kind, body: m.body, internal: m.internal, createdAt: iso(m.created_at)! }) satisfies MessageView),
+    messages: messages.rows.map((m) => ({ id: m.id, authorKind: m.author_kind, authorName: shownName(m.author_name, m.author_role, internal), kind: m.kind, body: m.body, internal: m.internal, createdAt: iso(m.created_at)! }) satisfies MessageView),
     tickets: tickets.rows,
   };
 }
@@ -203,7 +210,7 @@ export async function createProjectRequest(ctx: OrgContext, input: ProjectReques
     }
     await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'initial_review',$3, now() + interval '2 days')", [r.id, ctx.org.orgId, `Review ${r.ref}: ${d.title}`.slice(0, 200)]);
     await db.query("insert into project_updates (request_id, org_id, author_id, kind, body) values ($1,$2,$3,'system','Request submitted. The iAcquire team will review it and reply here.')", [r.id, ctx.org.orgId, ctx.user.id]);
-    await notifyAgency(db, ctx.org.orgId, { kind: "project_submitted", title: `${r.ref}: ${d.title}`, body: `${ctx.org.name} · ${serviceName ?? "Custom project"}`, link: `/admin/projects/${r.id}` });
+    await notifyAgency(db, ctx.org.orgId, { kind: "project_submitted", title: `${r.ref}: ${d.title}`, body: `${ctx.org.name} · ${serviceName ?? "Custom project"}`, link: `/admin/projects/${r.id}`, dedupeKey: `project:${r.id}:submitted` }, { permission: "projects.view" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "project.request_submitted", targetType: "project_request", targetId: r.id, result: "success", metadata: { ref: r.ref, service: d.serviceSlug ?? null } }, db);
     return { ...r, serviceName };
   });
@@ -232,11 +239,11 @@ export async function postClientMessage(ctx: OrgContext, requestId: string, body
     const r = await ownRequest(db, ctx, requestId);
     if (r.status === "cancelled" || r.status === "completed") throw new AppError("conflict", "This project is closed. Start a new request or open a support request.");
     const answering = r.status === "discovery_needed";
-    await db.query("insert into project_messages (request_id, org_id, author_id, author_kind, kind, body) values ($1,$2,$3,'client',$4,$5)", [requestId, ctx.org.orgId, ctx.user.id, answering ? "info_response" : "message", text]);
+    const message = (await db.query<{ id: string }>("insert into project_messages (request_id, org_id, author_id, author_kind, kind, body) values ($1,$2,$3,'client',$4,$5) returning id", [requestId, ctx.org.orgId, ctx.user.id, answering ? "info_response" : "message", text])).rows[0];
     // Answering a question moves the project back to the agency's review queue.
     await db.query("update client_project_requests set last_activity_at = now(), status = case when status = 'discovery_needed' then 'under_review' else status end where id = $1", [requestId]);
     await db.query("insert into project_review_tasks (request_id, org_id, kind, title, due_at) values ($1,$2,'respond_to_client',$3, now() + interval '1 day')", [requestId, ctx.org.orgId, `Reply to ${ctx.org.name} on ${r.ref}`.slice(0, 200)]);
-    await notifyAgency(db, ctx.org.orgId, { kind: "project_message", title: `${r.ref}: ${answering ? "information provided" : "new message"} from ${ctx.org.name}`, link: `/admin/projects/${requestId}` });
+    await notifyAgency(db, ctx.org.orgId, { kind: "project_message", title: `${r.ref}: ${answering ? "information provided" : "new message"} from ${ctx.org.name}`, link: `/admin/projects/${requestId}`, dedupeKey: `project:${requestId}:message:${message.id}` }, { permission: "projects.view" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "project.client_message", targetType: "project_request", targetId: requestId, result: "success", metadata: { answeringQuestion: answering } }, db);
   });
 }
@@ -321,9 +328,9 @@ export async function respondToMilestone(ctx: OrgContext, milestoneId: string, d
     } else {
       await db.query("update project_milestones set status='in_progress', client_note=$2 where id=$1", [milestoneId, clean]);
     }
-    await db.query("insert into project_updates (request_id, org_id, author_id, kind, body) values ($1,$2,$3,'milestone',$4)", [m.request_id, ctx.org.orgId, ctx.user.id, decision === "approve" ? `Approved: ${m.title}` : `Changes requested on: ${m.title}`]);
+    const update = (await db.query<{ id: string }>("insert into project_updates (request_id, org_id, author_id, kind, body) values ($1,$2,$3,'milestone',$4) returning id", [m.request_id, ctx.org.orgId, ctx.user.id, decision === "approve" ? `Approved: ${m.title}` : `Changes requested on: ${m.title}`])).rows[0];
     await db.query("update client_project_requests set last_activity_at = now() where id = $1", [m.request_id]);
-    await notifyAgency(db, ctx.org.orgId, { kind: "project_decision", severity: decision === "approve" ? "success" : "warning", title: `${m.ref}: ${decision === "approve" ? "deliverable approved" : "changes requested"} by ${ctx.org.name}`, body: m.title, link: `/admin/projects/${m.request_id}` });
+    await notifyAgency(db, ctx.org.orgId, { kind: "project_decision", severity: decision === "approve" ? "success" : "warning", title: `${m.ref}: ${decision === "approve" ? "deliverable approved" : "changes requested"} by ${ctx.org.name}`, body: m.title, link: `/admin/projects/${m.request_id}`, dedupeKey: `project:${m.request_id}:update:${update.id}` }, { permission: "projects.view" });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: decision === "approve" ? "project.milestone_approved" : "project.milestone_changes_requested", targetType: "project_milestone", targetId: milestoneId, result: "success" }, db);
   });
 }
@@ -393,8 +400,9 @@ export async function decideQuote(ctx: OrgContext, quoteId: string, decision: Qu
       await db.query("update client_project_requests set status = 'cancelled', cancel_reason = $2, closed_at = now(), last_activity_at = now() where id = $1", [q.request_id, clean || "Quote declined by the client."]);
     }
     await db.query("insert into project_updates (request_id, org_id, author_id, kind, body) values ($1,$2,$3,'system',$4)", [q.request_id, ctx.org.orgId, ctx.user.id, `Quote v${q.version} ${decision === "accepted" ? "accepted" : decision === "declined" ? "declined" : "returned with requested changes"}.`]);
-    await notifyAgency(db, ctx.org.orgId, { kind: "project_decision", severity: decision === "accepted" ? "success" : "warning", title: `${q.ref}: quote ${decision.replace("_", " ")} by ${ctx.org.name}`, body: q.project_name, link: `/admin/projects/${q.request_id}` });
-    await notifyOrgRoles(db, ctx.org.orgId, ["owner"], { kind: "project_decision", title: `Your decision on ${q.ref} was recorded`, body: decision === "accepted" ? "Next: iAcquire will confirm the written agreement and payment terms." : undefined, link: `/projects/${q.request_id}` });
+    // A quote is decided once (quote_approvals is unique per quote), so the quote and its decision name the event.
+    await notifyAgency(db, ctx.org.orgId, { kind: "project_decision", severity: decision === "accepted" ? "success" : "warning", title: `${q.ref}: quote ${decision.replace("_", " ")} by ${ctx.org.name}`, body: q.project_name, link: `/admin/projects/${q.request_id}`, dedupeKey: `project:${q.request_id}:quote:${quoteId}:${decision}` }, { permission: "projects.view" });
+    await notifyOrgRoles(db, ctx.org.orgId, ["owner"], { kind: "project_decision", title: `Your decision on ${q.ref} was recorded`, body: decision === "accepted" ? "Next: iAcquire will confirm the written agreement and payment terms." : undefined, link: `/projects/${q.request_id}`, dedupeKey: `project:${q.request_id}:quote:${quoteId}:${decision}:owner` });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "project.quote_decided", targetType: "project_quote", targetId: quoteId, result: "success", metadata: { decision, version: q.version, ref: q.ref, oneTimeCents: q.one_time_cents } }, db);
     return { decision, requestId: q.request_id };
   });

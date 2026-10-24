@@ -414,6 +414,13 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // 0095 points at social_accounts (0089: a Facebook review connection reads through the Page connected for Social media) and relies on 0094's three reviews.* permissions and
   // six notification kinds. It extends no notification list and does not replace app.file_permission.
   "0095_external_reviews": ["0089_social_media_manager", "0094_reputation_followthrough"],
+  // 0096 extends notifications_kind_check, notifications_audience_check and the two agency permission-override lists from the live constraints, so 0065 (the last to copy those
+  // lists) must already be in. It replaces app.notification_visible with 0067's definition plus one branch, so 0067 must be in. The staff-messages bucket, its file rule and the
+  // use of the agency.messages.use permission in it are 0090's.
+  "0096_staff_messages": ["0065_support_requests", "0067_notification_authorization", "0090_document_buckets"],
+  // 0099 backfills billing_accounts (0004) from client_setup_instances (0008), widens payments (0018), adds a column to maintenance_subscriptions (0015) and extends
+  // notifications_kind_check from the live constraint, so 0065 must already be in (applied before it, 0065 would put its copied list back and drop the four billing kinds).
+  "0099_payment_controls": ["0008_setup_center", "0015_custom_projects", "0018_billing_credits", "0065_support_requests"],
 };
 
 /**

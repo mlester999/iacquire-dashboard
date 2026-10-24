@@ -10,10 +10,10 @@ import { isSwitching } from "@/server/crm/workspace";
 import { nativeAutomationRefusal } from "@/server/crm/provider-guard";
 import { contactAddress, getConsent, isSuppressed, suppressAddress } from "@/server/messaging/contacts";
 import { identityFacts, latestConsentSource } from "@/server/messaging/consent-identity";
-import { dispatchGate } from "@/server/messaging/dispatch-gate";
+import { dispatchGate, HELD_BY_PERSON_DETAIL } from "@/server/messaging/dispatch-gate";
 import { TYPED_CONSENT_SOURCE, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
 import type { ChannelProvider } from "@/server/messaging/provider";
-import { fillInvoiceLink, fillManageLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
+import { fillInvoiceLink, fillManageLink, fillProposalLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasProposalLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
 import { buildUnsubscribeUrl } from "@/server/messaging/unsubscribe";
 import { transportFromProvider, type GhlTransportRequest } from "@/server/messaging/transports/ghl";
 import { isTransportName, transportFor } from "@/server/messaging/transports";
@@ -39,8 +39,11 @@ import type { UnitType } from "@/lib/billing";
  * limit, counted across every channel and program for the contact.
  * billing: a reminder about an invoice the business has already sent the customer (src/server/invoices/reminders.ts). A service message the owner authorized in its exact
  * wording; it stops at once for a paused or suspended workspace and waits out quiet hours like a reminder does.
+ * delivery: the message a person sends from the product to carry a document to the customer (a proposal's link, src/server/proposals/delivery.ts). Fixed wording the sender read
+ * first, no AI. Like a billing message it stops for a paused or suspended workspace and for a person's hold on the customer, and it waits out quiet hours; it still needs
+ * the consent every service message needs.
  */
-export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention" | "billing";
+export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention" | "billing" | "delivery";
 /** service: about something the customer has or asked for. marketing: promotional, and needs the customer's explicit marketing consent. */
 export type SendPurpose = "service" | "marketing";
 /**
@@ -241,11 +244,17 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
   // An invoice reminder is automatic and goes to the business's customer about money: a pause or a suspension of the workspace stops it, both when it is queued and right
   // before it is sent. (Other system sends are held to the same rule by the caller that starts them; this one is held here so no caller can forget.)
-  if (req.scope === "billing") {
+  if (req.scope === "billing" || req.scope === "delivery") {
     for (const gateScope of ["messaging", "outbound"] as const) {
       const gate = await checkOrgAutomation(db, req.orgId, gateScope);
       if (!gate.allowed) return deny(gate.reason === "org_inactive" ? "org_inactive" : "automation_paused", gate.detail, { permanent: true });
     }
+  }
+  // A document's delivery waits for a sending window, so it can go out hours after the person pressed Send. A person's hold on the customer (set during a dispute, say) therefore
+  // stops it, when it is queued and again right before it is sent: the same hold that stops an invoice reminder.
+  if (req.scope === "delivery") {
+    const held = await db.query<{ held: boolean }>("select retention_paused as held from contacts where id = $1 and org_id = $2", [conv.contact_id, req.orgId]);
+    if (held.rows[0]?.held) return deny("held_by_person", HELD_BY_PERSON_DETAIL, { permanent: true });
   }
   // A missed-call follow-up (its key starts with "mcc:") is automation sent by the system, and a person who has taken the conversation over wins: it is
   // refused when it is queued and again when it is about to be sent, so a takeover in between stops it.
@@ -388,7 +397,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
 
   // Time rules last: everything else is already known to pass, so waiting is meaningful.
   const tz = conv.contact_tz ?? conv.org_tz;
-  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention" || req.scope === "billing") {
+  if (req.scope === "followup" || req.scope === "reminder" || req.scope === "retention" || req.scope === "billing" || req.scope === "delivery") {
     const { rows: s } = await db.query<{ business_hours: unknown }>("select business_hours from messaging_settings where org_id = $1", [req.orgId]);
     const hours = validateBusinessHours(s[0]?.business_hours ?? {});
     // Follow-ups and program messages default to business hours. A reminder about a booked appointment is useful at any waking hour, so only quiet hours hold it back.
@@ -396,7 +405,7 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
     const quiet = isQuietHours(policy.quiet_hours_start, policy.quiet_hours_end, now, tz);
     const closed = bhOnly && !isWithinBusinessHours(hours, now, conv.org_tz);
     if (quiet || closed) {
-      return deny(quiet ? "quiet_hours" : "outside_business_hours", quiet ? "Follow-ups are not sent during quiet hours." : "Follow-ups are only sent during business hours.", {
+      return deny(quiet ? "quiet_hours" : "outside_business_hours", quiet ? (req.scope === "delivery" ? "Messages to customers are not sent during quiet hours." : "Follow-ups are not sent during quiet hours.") : "Follow-ups are only sent during business hours.", {
         retryAt: nextSendWindow({ from: now, timeZone: tz, quietStart: policy.quiet_hours_start, quietEnd: policy.quiet_hours_end, businessHours: hours as BusinessHours | null, businessHoursOnly: bhOnly }),
       });
     }
@@ -864,6 +873,18 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
         return { done: "blocked" };
       }
       body = fillInvoiceLink(body, link);
+    }
+    // A proposal's link to the customer's page is a bearer secret too. It is derived again here from the delivery this message belongs to, and only while that proposal version
+    // can still be answered through that link. Any other message that carries the placeholder, or a delivery whose proposal was answered, withdrawn, revised or whose link was
+    // replaced in the meantime, is not sent. The address is passed so the delivery records where the message actually went.
+    if (hasProposalLinkPlaceholder(body)) {
+      const { proposalLinkForMessage } = await import("@/server/proposals/delivery");
+      const link = await proposalLinkForMessage(db, m.org_id, m.id, decision.address, decision.channel, now);
+      if (!link) {
+        await finishBlocked(db, { ...m, reservation_id: reservationId }, "proposal_link_unavailable", "The proposal can no longer be answered online (it was answered, withdrawn, replaced by a newer version or expired, or its link was closed), so the message was not sent.");
+        return { done: "blocked" };
+      }
+      body = fillProposalLink(body, link);
     }
     // Billing follows what is actually sent: a filled-in link can add an SMS segment.
     const quantity = m.channel === "sms" ? Math.max(1, smsSegments(body)) : decision.quantity;

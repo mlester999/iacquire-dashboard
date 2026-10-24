@@ -6,6 +6,7 @@ import { notifyOrgRoles } from "@/server/notifications";
 import { env } from "@/server/env";
 import { assertManage, subscriptionForAgency } from "@/server/maintenance/service";
 import { studioEntitlement } from "@/server/automation-studio/entitlement";
+import { applyVerifiedPayment } from "@/server/maintenance/payment";
 import type { SessionUser } from "@/server/auth/service";
 import { GRACE_REMINDER_HOURS, MAX_GRACE_DAYS, STUDIO_LAPSE_POLICY, STUDIO_PLAN_NAME, canTransition, paidThroughProblem, type PlanStatus, type PlanTransition } from "@/lib/automation-studio/plan";
 
@@ -108,34 +109,9 @@ export async function recordVerifiedPayment(user: SessionUser, subscriptionId: s
   if (problem) throw new AppError("invalid_input", problem);
   return withSystem(async (db) => {
     const s = await subscriptionForAgency(db, user, subscriptionId);
-    allow(s.status, "payment_verified");
-    const reactivated = s.status === "past_due" || s.status === "expired";
-    if (s.status === "expired") {
-      // A workspace has one open plan. If the client enrolled again after this one expired, that request is the plan to activate.
-      const newer = await db.query("select 1 from maintenance_subscriptions where org_id = $1 and id <> $2 and status in ('requested', 'active', 'past_due', 'cancel_requested')", [s.org_id, subscriptionId]);
-      if (newer.rows[0]) throw new AppError("conflict", "This workspace already has a newer plan request. Activate that one instead of reactivating the expired plan.");
-    }
-    await db.query(
-      `update maintenance_subscriptions set status = case when status in ('past_due', 'expired') then 'active' else status end,
-         past_due_since = null, grace_ends_at = null, expired_at = null,
-         last_payment_verified_at = $2, last_payment_verified_by = $3, paid_through_on = $4 where id = $1`,
-      [subscriptionId, now.toISOString(), user.id, input.paidThroughOn],
-    );
-    const waiting = (await db.query<{ n: number }>("select count(*)::int as n from crm_workflows where org_id = $1 and status = 'paused' and entitlement_paused_at is not null", [s.org_id])).rows[0].n;
-    if (reactivated) {
-      await notifyOrgRoles(db, s.org_id, ["owner"], {
-        kind: "maintenance_update",
-        severity: "success",
-        title: "Your maintenance plan is active again",
-        body: waiting
-          ? `${waiting === 1 ? "One Automation Studio workflow is" : `${waiting} Automation Studio workflows are`} still paused. ${STUDIO_LAPSE_POLICY.resume}`
-          : "Automation Studio is available again.",
-        link: PLAN_LINK,
-        dedupeKey: `studio-reactivated:${subscriptionId}:${day(now)}`,
-      });
-    }
-    await recordAudit({ orgId: s.org_id, actorUserId: user.id, actorKind: "agency", action: "maintenance.payment_verified", targetType: "maintenance_subscription", targetId: subscriptionId, result: "success", metadata: { paidThroughOn: input.paidThroughOn, reactivated } }, db);
-    return { reactivated, workflowsWaiting: waiting };
+    // The transition itself (checks, dates, the owner's notice, the audit entry) is shared with a payment a Super Admin records outside a provider.
+    const out = await applyVerifiedPayment(db, { subscription: s, mode: "renew", actor: { kind: "agency", userId: user.id }, paidThroughOn: input.paidThroughOn, now });
+    return { reactivated: out.reactivated, workflowsWaiting: out.workflowsWaiting };
   });
 }
 

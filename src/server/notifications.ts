@@ -1,7 +1,7 @@
 import "server-only";
 import { withUser, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
-import type { OrgRole } from "@/lib/permissions";
+import type { OrgRole, Permission } from "@/lib/permissions";
 import { NOTIFICATION_GROUPS } from "@/lib/notification-groups";
 
 export type NotificationKind =
@@ -156,8 +156,10 @@ export async function notifyOrgRoles(db: Queryable, orgId: string, roles: OrgRol
  * Notifies agency users whose current client scope includes the tenant. The client organisation is
  * stored on the row even though the recipient is an agency user; read authorisation is re-evaluated
  * against the recipient's current scope, so revoking the assignment hides the history too.
+ * With `permission`, only recipients who also hold that permission right now are notified: a person whose access to a module was withdrawn
+ * does not keep hearing about it just because the client is still in their scope.
  */
-export async function notifyAgency(db: Queryable, orgId: string | null, n: NotificationInput) {
+export async function notifyAgency(db: Queryable, orgId: string | null, n: NotificationInput, filter: { permission?: Permission } = {}) {
   await db.query(
     `insert into notifications (audience, org_id, user_id, kind, severity, title, body, link, dedupe_key)
      select 'agency', $1, u.id, $2, $3, $4, $5, $6, $7 from users u
@@ -165,8 +167,9 @@ export async function notifyAgency(db: Queryable, orgId: string | null, n: Notif
        ($1::uuid is null and coalesce(app.user_has_agency_permission(u.id,'agency.security.manage'),false))
        or ($1::uuid is not null and app.user_can_access_org(u.id,$1::uuid))
      )
+     and ($8::text is null or coalesce(app.user_has_agency_permission(u.id, $8::text), false))
      on conflict (user_id, dedupe_key) where dedupe_key is not null do nothing`,
-    [orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null],
+    [orgId, n.kind, n.severity ?? "info", n.title.slice(0, 200), n.body?.slice(0, 1000) ?? null, safeLink(n.link), n.dedupeKey ?? null, filter.permission ?? null],
   );
 }
 

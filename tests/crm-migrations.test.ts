@@ -56,6 +56,13 @@ const CRM_MIGRATION_NAMES = [
   // Customer invoices and payments: ten tables with read policies on app.permitted_orgs, seventeen invoices.* permission rows, eight notification kinds and the 'billing' message
   // scope; its rollback refuses while an invoice, payment, refund, connection, receipt or reminder exists (none does here).
   "0093_customer_invoices_payments.sql",
+  // Internal staff Messages: eight agency-only tables with read policies on the caller's current standing (app.staff_conversation_ids), three agency.messages.* permission rows,
+  // two entries in the agency override lists, the 'staff' notification audience and five notification kinds; its rollback refuses while a conversation, message, attachment or
+  // staff notification exists (none does here).
+  "0096_staff_messages.sql",
+  // Payment controls for iAcquire's own billing: columns on billing_accounts, payments and maintenance_subscriptions, a function and four notification kinds; its rollback
+  // refuses while a payment recorded by hand, a waiver a person made or a plan period tied to a payment exists (none does here).
+  "0099_payment_controls.sql",
 ];
 const CRM_MIGRATIONS = readdirSync("supabase/migrations").filter((f) => CRM_MIGRATION_NAMES.includes(f)).sort();
 const downFor = (file: string) => readFileSync(`supabase/rollbacks/${file.replace(/\.sql$/, ".down.sql")}`, "utf8");

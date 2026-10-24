@@ -38,19 +38,47 @@ const INVOICE_LINK = /(?:https?:\/\/[^\s/<>"']+)?\/pay\/[A-Za-z0-9_-]{43}(?![A-Z
 export { INVOICE_LINK_PLACEHOLDER } from "@/lib/invoices/reminder-text";
 const INVOICE_PLACEHOLDER = /\{\{\s*invoice\.link\s*\}\}/g;
 
-/** Message text with every customer booking link, review-request link, invoice link and link placeholder replaced by a neutral label. */
+/**
+ * A proposal's link to the customer's page (/proposal/<token>, src/server/proposals/link-token.ts) is a bearer secret too: whoever holds it can read the proposal, download its
+ * PDF and, with the emailed code, answer it. The message that carries it to the customer stores {{proposal.link}} and the dispatcher fills the link in for the provider call only
+ * (src/server/proposals/delivery.ts).
+ */
+export const PROPOSAL_LINK_LABEL = "[customer proposal link]";
+// The proposal page's link, with or without the PDF route that hangs off it: both are as good as the credential. The token is 43 characters; a longer run of token characters
+// or any other path after it isn't one. Linear: one fixed-length class run and bounded lookaheads, nothing that can backtrack on a long input.
+const PROPOSAL_LINK = /(?:https?:\/\/[^\s/<>"']+)?\/proposal\/[A-Za-z0-9_-]{43}(?:\/pdf)?(?![A-Za-z0-9_\-/])/g;
+export { PROPOSAL_LINK_PLACEHOLDER } from "@/lib/proposals/delivery-text";
+const PROPOSAL_PLACEHOLDER = /\{\{\s*proposal\.link\s*\}\}/g;
+
+/** Substrings that can only be a link or a placeholder this file knows: a cheap check so the usual message text is returned untouched. */
+const LINK_HINTS = ["/book/manage/", "manage_link", "/r/", "review.link", "/pay/", "invoice.link", "/proposal/", "proposal.link"];
+
+/** Message text with every customer booking link, review-request link, invoice link, proposal link and link placeholder replaced by a neutral label. */
 export function maskCustomerLinks(text: string): string;
 export function maskCustomerLinks(text: string | null): string | null;
 export function maskCustomerLinks(text: string | null): string | null {
   if (!text) return text;
-  if (!text.includes("/book/manage/") && !text.includes("manage_link") && !text.includes("/r/") && !text.includes("review.link") && !text.includes("/pay/") && !text.includes("invoice.link")) return text;
+  if (!LINK_HINTS.some((h) => text.includes(h))) return text;
   return text
     .replace(PLACEHOLDER, CUSTOMER_LINK_LABEL)
     .replace(MANAGE_LINK, CUSTOMER_LINK_LABEL)
     .replace(REVIEW_PLACEHOLDER, REVIEW_LINK_LABEL)
     .replace(REVIEW_LINK, REVIEW_LINK_LABEL)
     .replace(INVOICE_PLACEHOLDER, INVOICE_LINK_LABEL)
-    .replace(INVOICE_LINK, INVOICE_LINK_LABEL);
+    .replace(INVOICE_LINK, INVOICE_LINK_LABEL)
+    .replace(PROPOSAL_PLACEHOLDER, PROPOSAL_LINK_LABEL)
+    .replace(PROPOSAL_LINK, PROPOSAL_LINK_LABEL);
+}
+
+/** True when the text carries the proposal-link placeholder. */
+export function hasProposalLinkPlaceholder(text: string): boolean {
+  PROPOSAL_PLACEHOLDER.lastIndex = 0;
+  return PROPOSAL_PLACEHOLDER.test(text);
+}
+
+/** Fills the proposal-link placeholder for the provider call (never written back). Callers send nothing when there is no link. */
+export function fillProposalLink(body: string, link: string): string {
+  return body.replace(PROPOSAL_PLACEHOLDER, () => link);
 }
 
 /** True when the text carries the invoice-link placeholder. */

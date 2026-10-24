@@ -8,6 +8,8 @@
 --   * proposal_share_links, proposal_link_challenges, proposal_link_sessions: the tokenized page for the customer, its emailed one-time code and the session that follows.
 --     The customer sees the frozen version on that page; asking for the emailed code is the only way to answer. Nothing on those three tables is readable by the application role
 --     except the link's own counters (never the token's hash).
+--   * proposal_deliveries: a message that carried the customer's link to the customer through the consent-gated send chain (the message scope 'delivery', added at the end of this
+--     file). The link is never stored: the message holds {{proposal.link}} and the link is derived again when the message is sent.
 --   * proposal_ai_runs: the record of an AI drafting request (the draft it produced is an ordinary draft a person must approve).
 --   * Eight permissions (proposals.*) and nine notification kinds. The private-file bucket `proposal-documents` and its access rule came with 0090.
 --
@@ -341,6 +343,8 @@ create table proposal_share_links (
   created_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now(),
   unique (id, org_id),
+  -- A delivery names the link it carried, and that link must be of the same proposal and version (proposal_deliveries).
+  unique (id, org_id, proposal_id, version),
   foreign key (proposal_id, org_id) references proposals (id, org_id) on delete cascade
 );
 -- One live link per proposal version.
@@ -377,6 +381,46 @@ create table proposal_link_sessions (
 );
 create index proposal_link_sessions_link_idx on proposal_link_sessions (link_id);
 create index proposal_link_sessions_expiry_idx on proposal_link_sessions (max_expires_at);
+
+-- A message that carries the customer's link to the customer through the consent-gated send chain (conversation_messages, scope 'delivery'). One row per request to send. The
+-- message, its status and what became of it are the send chain's: this row says which proposal version and link it carried, who asked, the exact wording they read (a version
+-- and a fingerprint) and, masked, where it was addressed. It never holds the link, the text or a full address. The send chain's idempotency key for a delivery is
+-- proposal-delivery:<proposal>:<version>:<channel>[:<n>], so a double click at the database still sends once; a request after one that ended without reaching the provider takes the next n.
+create table proposal_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizations(id) on delete cascade,
+  proposal_id uuid not null,
+  version integer not null check (version >= 1),
+  link_id uuid not null,
+  channel text not null check (channel in ('email', 'sms', 'whatsapp')),
+  -- Set when the row is made; null only if the message record itself was removed later (a privacy request).
+  message_id uuid references conversation_messages(id) on delete set null,
+  wording_version text not null check (char_length(wording_version) between 1 and 40),
+  wording_hash text not null check (wording_hash ~ '^[0-9a-f]{64}$'),
+  -- "m***@example.com" or "***1234": enough to recognise the address, not enough to learn it. Removed by a privacy request.
+  address_mask text check (char_length(address_mask) <= 80),
+  requested_by uuid references users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  -- Stopped by a change to the proposal before it went out (it was withdrawn, revised, answered, or its link was replaced). A reason always goes with the time.
+  withdrawn_at timestamptz,
+  withdrawn_reason text check (char_length(withdrawn_reason) between 1 and 40),
+  unique (id, org_id),
+  check ((withdrawn_at is null) = (withdrawn_reason is null)),
+  foreign key (proposal_id, org_id) references proposals (id, org_id) on delete cascade,
+  foreign key (link_id, org_id, proposal_id, version) references proposal_share_links (id, org_id, proposal_id, version) on delete cascade
+);
+create unique index proposal_deliveries_message_idx on proposal_deliveries (message_id) where message_id is not null;
+create index proposal_deliveries_proposal_idx on proposal_deliveries (proposal_id, version, created_at);
+
+-- conversation_messages has no (id, org_id) key to reference, so the workspace match is checked here: a delivery can only point at a delivery message of its own workspace.
+create or replace function app.proposal_deliveries_guard() returns trigger language plpgsql as $$
+begin
+  if new.message_id is not null and not exists (select 1 from conversation_messages m where m.id = new.message_id and m.org_id = new.org_id and m.scope = 'delivery') then
+    raise exception 'a proposal delivery must point at a delivery message of its own workspace' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+create trigger proposal_deliveries_guard before insert or update of message_id, org_id on proposal_deliveries for each row execute function app.proposal_deliveries_guard();
 
 -- ---------------------------------------------------------------------------
 -- Decisions
@@ -448,14 +492,15 @@ alter table proposal_events enable row level security;
 alter table proposal_share_links enable row level security;
 alter table proposal_link_challenges enable row level security;
 alter table proposal_link_sessions enable row level security;
+alter table proposal_deliveries enable row level security;
 alter table proposal_decisions enable row level security;
 
 revoke all on proposal_settings, proposal_counters, proposal_tax_rates, proposal_catalog_items, proposal_templates, proposal_template_versions, proposal_ai_runs, proposals,
-  proposal_versions, proposal_events, proposal_share_links, proposal_link_challenges, proposal_link_sessions, proposal_decisions
+  proposal_versions, proposal_events, proposal_share_links, proposal_link_challenges, proposal_link_sessions, proposal_deliveries, proposal_decisions
   from public, anon, authenticated, iaq_site_runtime;
 -- The counter, the emailed-code challenges and the customer sessions are server-only: no grant at all.
 grant select on proposal_settings, proposal_tax_rates, proposal_catalog_items, proposal_templates, proposal_template_versions, proposal_ai_runs, proposals, proposal_versions,
-  proposal_events, proposal_decisions to iaq_app_user;
+  proposal_events, proposal_deliveries, proposal_decisions to iaq_app_user;
 -- A share link is readable except the hash of its token.
 grant select (id, org_id, proposal_id, version, recipient_email, recipient_name, expires_at, revoked_at, delivery_channel, first_opened_at, last_opened_at, open_count, first_viewed_at,
   viewed_count, verified_at, downloaded_at, created_by, created_at) on proposal_share_links to iaq_app_user;
@@ -470,6 +515,7 @@ create policy proposals_select on proposals for select to iaq_app_user using (or
 create policy proposal_versions_select on proposal_versions for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('proposals.view'::text))::uuid[]));
 create policy proposal_events_select on proposal_events for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('proposals.view'::text))::uuid[]));
 create policy proposal_share_links_select on proposal_share_links for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('proposals.view'::text))::uuid[]));
+create policy proposal_deliveries_select on proposal_deliveries for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('proposals.view'::text))::uuid[]));
 create policy proposal_decisions_select on proposal_decisions for select to iaq_app_user using (org_id = ANY ((SELECT app.permitted_orgs('proposals.view'::text))::uuid[]));
 
 -- ---------------------------------------------------------------------------
@@ -500,4 +546,31 @@ begin
   kinds := array(select distinct k from unnest(kinds || array['proposal_approval_requested', 'proposal_approval_decided', 'proposal_viewed', 'proposal_accepted', 'proposal_declined', 'proposal_changes_requested', 'proposal_expiring', 'signature_completed', 'signature_failed']) as k order by k);
   alter table notifications drop constraint notifications_kind_check;
   execute 'alter table notifications add constraint notifications_kind_check check (kind in (' || (select string_agg(quote_literal(k), ', ' order by k) from unnest(kinds) as k) || '))';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- The message scope for delivering a document
+-- ---------------------------------------------------------------------------
+
+-- A message a person sends from the product to carry a document to the customer is its own kind of message ('delivery'): fixed wording the sender read first, held back by
+-- a person's hold on the customer and by a paused or suspended workspace, waiting out quiet hours, and still needing the consent every service message needs. The live list is read
+-- back and 'delivery' is added at the end, in the order the list already has, so the rollback restores it exactly (0093 adds 'billing' after it the same way).
+do $$
+declare
+  def text;
+  scopes text[];
+begin
+  select pg_get_constraintdef(c.oid) into def from pg_constraint c where c.conname = 'conversation_messages_scope_check' and c.conrelid = 'conversation_messages'::regclass;
+  if def is null then
+    raise exception 'conversation_messages_scope_check not found; cannot add the delivery scope';
+  end if;
+  scopes := array(select m[1] from regexp_matches(def, '''([a-z0-9_]+)''::text', 'g') as m);
+  if scopes is null or cardinality(scopes) < 5 then
+    raise exception 'could not read the current message scopes from conversation_messages_scope_check (read %); refusing to rewrite it', coalesce(cardinality(scopes), 0);
+  end if;
+  if not ('delivery' = any(scopes)) then
+    scopes := scopes || array['delivery'];
+  end if;
+  alter table conversation_messages drop constraint conversation_messages_scope_check;
+  execute 'alter table conversation_messages add constraint conversation_messages_scope_check check (scope in (' || (select string_agg(quote_literal(k), ', ' order by o) from unnest(scopes) with ordinality as t(k, o)) || '))';
 end $$;

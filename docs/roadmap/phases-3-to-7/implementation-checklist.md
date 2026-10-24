@@ -1,6 +1,6 @@
 # Implementation checklist
 
-States: Not Started, In Progress, Implemented, Verified Locally (tests on embedded Postgres), Browser-QA'd (isolated QA app, simulated model), Blocked, Needs Founder Approval, Production Verified. Nothing here is Production Verified; nothing is tested with a real provider.
+States: Not Started, In Progress, Implemented, Verified Locally (tests on embedded Postgres), Browser-QA'd (isolated QA app, simulated model), Blocked, Blocked-external (the local part is built and verified; the rest needs an account, an approval or counsel), Not built (noted or decided, no code), Needs Founder Approval, Production Verified. Nothing here is Production Verified; nothing is tested with a real provider.
 
 ## Phase 3: AI website acquisition and lead attribution
 
@@ -50,9 +50,105 @@ States: Not Started, In Progress, Implemented, Verified Locally (tests on embedd
 
 ## Phase 5: sales closing and customer retention
 
+Wave 1 (proposals and e-signature, customer invoices and payments, reputation and retention, AI cost control and consent) is built and verified locally; Waves 2 and 3 are not built. "Browser-QA'd" below means the lead's pass of 2026-10-24 (375 and 1024/1280 px, isolated app, simulated providers); the screens it did not reach are named in each row. Nothing is applied to a hosted database, switched on for a workspace, or run against a real provider. Report: `phase-5-wave1-checkpoint.md`.
+
+### 5A Proposals (migration 0091)
+
 | Id | Task | State |
 | --- | --- | --- |
-| 5.x | Everything (proposals, signatures, invoices, payments are not in the tree; reviews partial) | Not Started |
+| 5A.1 | Migration 0091: 14 tables, 8 permissions, 9 notification kinds, rollback | Verified Locally (combined rehearsal A to F) |
+| 5A.2 | Rules and services: frozen versions, version-bound approval, two-person option, money, append-only history and decisions | Verified Locally |
+| 5A.3 | Price book, tax rates, templates with owner-approved versions | Verified Locally; Browser-QA'd (price book, templates) |
+| 5A.4 | Staff screens: list, new, workspace (edit, preview, versions, activity, delivery), approvals, templates, price book, settings | Browser-QA'd (list, detail, approvals, templates, price book, settings); **editor interactions (add a line, save, conflict) not browser-checked** |
+| 5A.5 | AI drafting from the price book and approved knowledge, every sentence checked | Verified Locally (stub model); **the AI draft button not browser-checked; no real model evaluated** |
+| 5A.6 | PDF writer (own, no dependency), stored on send with its sha256 | Verified Locally (structure; text read back with `pdftotext`); no recorded visual check of a PDF |
+| 5A.7 | Customer page `/proposal/<token>`, emailed one-time code, three honest levels of "seen", accept, decline, request changes | Verified Locally; Browser-QA'd (every state and the whole code, confirm, accept flow); the code email went through the capture provider only |
+| 5A.8 | CRM effects, seven `proposal.*` Studio triggers, contact and deal tabs, jobs `proposalExpiry` and `proposalHousekeeping`, export, erasure, offboarding | Verified Locally; the Studio editor for the triggers not browser-checked; jobs never run live |
+| 5A.9 | Send a proposal by email or text through the consent chain | **Not built** (the team copies the link; needs counsel's first-delivery wording) |
+| 5A.10 | Counsel-approved acknowledgement wording; retention of accepted proposals; agency read of the tables (D24) | **Needs Founder Approval** / counsel (`blockers.md`) |
+
+### 5B E-signature (migration 0092)
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5B.1 | Migration 0092: 3 tables, `proposals.connect`, guards, rollback | Verified Locally |
+| 5B.2 | Provider seam, in-process stand-in (refused in production), request lifecycle (one live request per version, intent before the call, lost answers checked and never repeated), signed webhook, apply rules, signed-copy storage, job `esignSync` | Verified Locally |
+| 5B.3 | Signature tab, connection card, customer-page signing states | Verified Locally; Browser-QA'd (Signature tab through to a signed state with the stand-in) |
+| 5B.4 | PandaDoc adapter | **Blocked-external** (written from memory, replaced HTTP layer only; needs a sandbox account and a re-read of the API) |
+| 5B.5 | PandaDoc withdraw call and completion certificate; a platform-run master account | **Not built** (no remembered call; certificate not fetched; master account is a decision, D38) |
+
+### 5C Customer invoices (migration 0093)
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5C.1 | Migration 0093: 10 tables, 9 permissions, 8 notification kinds, the `billing` message scope, guards that keep paid and status equal to the rows, rollback | Verified Locally |
+| 5C.2 | Draft, approve and issue, void, write-off, numbering at issue, frozen content, hand-recorded payments and refunds (with evidence), eight currencies | Verified Locally; Browser-QA'd (list, detail, new, settings); **issue, record-payment, refund and void dialogs not browser-checked** |
+| 5C.3 | Customer invoice page `/pay/<token>` with its print layout | Verified Locally; Browser-QA'd (with the simulated provider); **print layout not browser-checked** |
+| 5C.4 | Reminders through the consent chain with the owner's exact-wording authorization; overdue sweep; receivables review by the Performance Analyst | Verified Locally (recording stand-ins); settings page Browser-QA'd; nothing sent through a real provider |
+| 5C.5 | Test invoices (owner-only, `TEST-` numbers, kept out of the books) | Verified Locally; Browser-QA'd |
+| 5C.6 | Create an invoice from an accepted proposal | **Not built** (prefill from a deal or contact works; `source_type` and `source_id` are never written) |
+| 5C.7 | Send an issued invoice to the customer through the consent chain | **Not built** (the team copies the link; only reminders are sent) |
+| 5C.8 | Credit notes | **Not built** (needs a founder and counsel decision) |
+| 5C.9 | Reminder, authorization and tax-invoice wording; retention of invoice records | **Needs Founder Approval** / counsel |
+
+### 5D Customer payments and verified revenue
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5D.1 | Provider seam, owner-only connection with sealed keys, one-open-checkout, per-tenant webhook route (receipt, apply, mark error), job `customerPaymentReconcile`, six go-live gates | Verified Locally |
+| 5D.2 | Settings > Customer payments (connect, replace keys, check, pause, going live) | Verified Locally; Browser-QA'd |
+| 5D.3 | Return page and the testing checkout (development only) | Verified Locally; Browser-QA'd |
+| 5D.4 | Refunds and disputes: provider events, closing outcomes (won, lost as a chargeback, unknown), the owner's by-hand actions, refund pairing | Verified Locally; Browser-QA'd (dispute dialog, a lost dispute becomes a chargeback); record-payment and refund dialogs not browser-checked |
+| 5D.5 | Verified revenue in the Lead Sources report (live, provider-confirmed, net of refunds and tax, per currency, as-of) | Verified Locally (SQL against rules over random payments); Lead Sources not in the recorded browser list |
+| 5D.6 | PayMongo adapter; PayPal adapter | **Blocked-external** (fixtures and a replaced HTTP layer only; `contractVerified: false`; need test keys and a sandbox app) |
+| 5D.7 | A scheduled capture of approved PayPal orders; a refund sent to a provider from the product | **Not built** (decisions; refunds are made in the provider's dashboard and recorded) |
+| 5D.8 | Credential store decision (sealed column or Vault); key rotation | **Needs Founder Approval** |
+
+### 5E Setup payment gate and clearance
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5E.1 | Setup payment checked before activation or AI-employee provisioning; manual payment evidence; refunds and manual receipts reaching `payments` (the plan's W2-C) | Not Started |
+
+### 5F Reputation (migrations 0094 and 0095)
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5F.1 | Migrations 0094 (3 tables and alters, 3 permissions, 6 notification kinds) and 0095 (5 tables), rollbacks | Verified Locally |
+| 5F.2 | Immediate fixes and follow-through for low feedback (task, notice, escalation, program stop, SLA reminder), settings, R8 hold | Verified Locally; Reviews tabs Browser-QA'd |
+| 5F.3 | Surveys (CSAT, NPS), the Satisfaction tab with sample gates, survey forms, the retention feedback-link step, two Studio triggers | Verified Locally; **the `/r/<token>` page with the 11-button scale not browser-checked** |
+| 5F.4 | Review request batches (owner approval bound to a hash, pace, drift handling, job `reviewRequestBatches`) | Verified Locally; Batches tab seen; **request dialog and batch approval not browser-checked** |
+| 5F.5 | Public review mirror and replies (approval by version and hash, intent before the call, lost answers never resent, jobs `reviewSync` and `reputationRetention`) | Verified Locally; Browser-QA'd (reply drawer through posting on the simulated site) |
+| 5F.6 | Google Business Profile and Facebook review adapters | **Blocked-external** (replaced HTTP layers and a simulated site only; need Google API approval and verification, Meta app review) |
+| 5F.7 | AI reply assist | Verified Locally (stub); no browser; no real model |
+| 5F.8 | Performance Analyst `reputation_review` capability (read only) | Verified Locally |
+| 5F.9 | Counsel wording for replies, word lists, thank-you sentence, bulk asks | **Needs Founder Approval** / counsel |
+
+### 5G Retention
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5G.1 | Retention non-customer search, contact merge reference list and erasure fixes; a person's hold honoured by every automatic review ask and reminder | Verified Locally |
+| 5G.2 | Internal renewal reminders (a task and a notice; off by default) and the daily appointment-outcome nudge | Verified Locally |
+| 5G.3 | Birthdays and anniversaries; customer-facing renewal notices | **Not built** (no date-of-birth field; a renewal notice to a customer needs a contact link and legal review) |
+
+### Cross-cutting (delivered in Wave 1)
+
+| Id | Task | State |
+| --- | --- | --- |
+| 5X.1 | AI cost meter (`src/server/llm/meter.ts`), every `llmComplete` caller metered or exempt with a reason, source-scan test | Verified Locally; zero cost until an `llm` rate is published; the gate-before-the-call is narrower than D29 says it should be |
+| 5X.2 | Website chat kill switch (`WEBCHAT_PUBLIC_DISABLED`) and daily AI reply cap (`WEBCHAT_DAILY_AI_REPLIES`, 500 proposed) | Verified Locally; widget under the switch and the cap not browser-checked |
+| 5X.3 | Consent rule for visitor-typed contact details (`typed_by_visitor` on the identity, staff confirmation, proven inbound) | Verified Locally; Inbox confirm form not browser-checked |
+| 5X.4 | Super Admin Module rollout page `/admin/module-rollout` and the six workspace switches | Verified Locally; Browser-QA'd |
+| 5X.5 | Public-page emergency stops: `PROPOSALS_PUBLIC_DISABLED`, `INVOICES_PUBLIC_DISABLED`, `REVIEWS_PUBLIC_DISABLED` | Verified Locally |
+| 5X.6 | Permissions, export, offboarding, erasure and contact-merge handling for every new table | Verified Locally |
+| 5X.7 | Twelve scheduler jobs registered and dormant, with time budgets | Verified Locally (injected clocks, real tick endpoint); never run live; worst-case budget 195 s against 120 s unmeasured |
+| 5X.8 | Module documents and the scheduler document, with drift tests | Done (`docs/proposals.md`, `esignature.md`, `invoices-and-payments.md`, `voice-and-reviews.md`, `production-scheduler.md`) |
+| 5X.9 | Adversarial review: 10 lenses and a coverage mapper, 114 agents, every finding checked by skeptics | Done: 43 confirmed (5 high, 22 medium, 16 low, none critical), 6 refuted |
+| 5X.10 | Fix wave: six chains and an integrator, decisions D21 to D31 and D32 | Verified Locally: 42 fixed, 1 partly (#12) |
+| 5X.11 | Gates: suite, typechecks, lint, clean build, rehearsal, line endings | Done at the first integrated tree and at the fixed tree (see `verification-evidence.md`); one slow test timed out in the last full run and was made faster |
+| 5X.12 | Browser QA | Partly done (see the rows above and `phase-5-wave1-checkpoint.md` section 6); four defects found only in the browser were fixed with guards |
+| 5X.13 | Hosted migrations 0087 to 0095, deploy, scheduler stages, switching any module on, any provider run | **Needs Founder Approval** (`blockers.md`); none done |
 
 ## Phase 6: requests center, internal messages and client operations
 
