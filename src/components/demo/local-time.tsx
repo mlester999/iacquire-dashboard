@@ -8,7 +8,23 @@ import * as React from "react";
 const noSubscribe = () => () => {};
 
 const inUtc = (iso: string) => `${new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(iso))} UTC`;
-const inLocal = (iso: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZoneName: "short" }).format(new Date(iso));
+
+/**
+ * The visitor's own date and time, with their zone. `dateStyle`/`timeStyle` cannot be combined with `timeZoneName` (Chrome throws "Invalid option"), so the fields are named.
+ * Exported for the regression test: this run only happens in the browser, after hydration.
+ */
+export function formatDemoLocalMoment(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(iso));
+}
+
+const inLocal = formatDemoLocalMoment;
 
 export function LocalTime({ iso }: { iso: string }) {
   const live = React.useSyncExternalStore(noSubscribe, () => true, () => false);
