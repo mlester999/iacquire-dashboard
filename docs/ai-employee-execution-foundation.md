@@ -227,10 +227,13 @@ proposals awaiting review; their frontend implementation remains behind that rev
 The server-side calendar data layer returns real jobs separately from sanitized schedule
 definitions, scopes jobs to the requesting member or workspace Activity permission, and only returns
 schedule definitions to people who can configure them. It omits saved assignment payloads and
-limits requested ranges to 62 days. The shared recurrence helper projects a bounded half-open date
-range from each saved next-run anchor; projected occurrences remain distinct from persisted jobs.
-`tests/workforce-calendar.test.ts` covers schedule-job timestamps, sanitized schedule data,
-permission and tenant scope, range boundaries and invalid ranges.
+limits requested ranges to 62 days. `GET /api/workforce/calendar` requires authenticated workspace
+context, accepts timezone-aware ISO instants and returns private no-store data. The shared recurrence
+helper projects a bounded half-open date range from each saved next-run anchor; projected occurrences
+remain distinct from persisted jobs. Calendar endpoint, schedule-job timestamps, sanitized schedule
+data, permission and tenant scope, range boundaries and invalid ranges are covered by
+`tests/workforce-calendar-route.test.ts`, `tests/workforce-calendar.test.ts` and
+`tests/workforce-schedule-recurrence.test.ts`.
 
 ## 10. Event-driven triggers (implemented, not activated)
 
