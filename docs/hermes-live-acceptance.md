@@ -1,11 +1,12 @@
 # Hermes live acceptance procedure and current blocker
 
-Status (2026-10-24): **complete tool inventory, profile identity and gateway authentication verified for all six existing internal profiles. The four employees without applied configurations remain blocked from Chat; effective SOUL instructions and the running application SHA are not verified.**
+Status (2026-10-25): **read-only GET checks verified gateway authentication, identity, reviewed tool exposure and the live inventory contract for all six existing internal profiles. The portal preflight still reports only Zeng and Lead Hunter available at 6/6; the four target employees have no applied configuration and remain blocked. Effective loaded SOUL instructions are not verified.**
 
 This page records what was actually observed against the configured gateway and the exact work required
 before a model run can be accepted. It deliberately contains no API keys, profile keys, Cloudflare
 secrets, customer data or organization names. Current employee and production evidence is in the
-[2026-10-24 internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md).
+[workforce completion checkpoint](verification-status.md#ai-workforce-completion-checkpoint-2026-10-25)
+and [2026-10-24 internal workforce preflight](internal-workforce-production-preflight-2026-10-24.md).
 
 ## Historical 2026-10-18 audit
 
@@ -59,7 +60,7 @@ Remember that `image_gen` and `skills` are separate from shell/file/browser. The
 not disable them; that gap is now fixed in `buildConfigYaml()`. The profiles still exposed them in
 the historical 2026-10-18 audit.
 
-At that time, the portal correctly refused to mark the employees online. The 2026-10-24 live audit
+At that time, the portal correctly refused to mark the employees online. The 2026-10-25 live audit
 verified the restricted tools were no longer enabled; do **not** add unreviewed tools to
 `REVIEWED_CLIENT_TOOLS` to bypass any future inventory failure.
 
@@ -130,9 +131,10 @@ Use a non-production tenant and a dedicated blank profile. Never use a client's 
 the first run. Never ask the model to send messages, write CRM records, book appointments or touch an
 external system.
 
-1. Apply the restricted tool policy and re-run the live audit; require `readyForControlledRun: true`
-   for the test profile.
-2. Confirm the employee is `online` only after a successful authenticated health check.
+1. Apply the restricted tool policy and re-run the live audit; require `runtimeProfileVerified: true`
+   for the test profile. This is the Hermes gateway/runtime check only.
+2. Confirm the portal preflight independently shows an applied configuration, current health and inventory,
+   identity verification and (for an internal profile) a current Super Admin acknowledgement before any run.
 3. Open the employee's chat and send a read-only prompt such as:
    `Without using any tools, reply with the single word READY.`
 4. Verify the real streamed answer, then verify the persisted message and run rows.

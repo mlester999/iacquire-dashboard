@@ -2,7 +2,7 @@
 // check noticing. Importing the script here proves it loads, and exercises the inventory step against the mock gateway.
 // (`npm run typecheck:scripts` type-checks the whole directory.)
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { auditInventory, safeError } from "../scripts/hermes-live-audit";
+import { auditInventory, hermesRuntimeProfileVerified, safeError } from "../scripts/hermes-live-audit";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
 const PROFILE = "c-audit-test";
@@ -48,5 +48,30 @@ describe("hermes live audit inventory step", () => {
     expect(JSON.stringify(audit)).not.toContain(wrong);
     expect(JSON.stringify(audit)).not.toContain(KEY);
     expect(safeError(new Error("x".repeat(500))).length).toBeLessThan(200);
+  });
+});
+
+describe("Hermes runtime audit gate", () => {
+  const compliant = {
+    authenticated: true,
+    capabilitiesContractVerified: true,
+    supportsRuns: true,
+    identityVerified: true,
+    restrictedCount: 0,
+    unauthorizedToolsets: [] as string[],
+    inventoryVerified: true,
+  };
+
+  it("reports runtime verification without claiming portal run readiness", () => {
+    expect(hermesRuntimeProfileVerified(compliant)).toBe(true);
+    expect(hermesRuntimeProfileVerified({ ...compliant, authenticated: false })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, capabilitiesContractVerified: false })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, supportsRuns: false })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, identityVerified: false })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, restrictedCount: null })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, restrictedCount: 1 })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, unauthorizedToolsets: null })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, unauthorizedToolsets: ["browser"] })).toBe(false);
+    expect(hermesRuntimeProfileVerified({ ...compliant, inventoryVerified: false })).toBe(false);
   });
 });

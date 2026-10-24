@@ -260,8 +260,10 @@ Do not write readiness flags directly or change the existing profile identities.
    gateway, profile, employee, configuration or inventory state, but it is not strictly zero-write: resolving each
    stored profile credential appends one `credential.resolved` audit-log row. Acceptance requires
    `completeInventoryVerified: true`, `restrictedCount: 0`, `unauthorizedToolsets: []` and
-   `readyForControlledRun: true` for every profile; the report also shows whether each employee has an applied
-   configuration and a recorded inventory digest.
+   `runtimeProfileVerified: true` for every profile. This proves only gateway authentication, profile identity,
+   safe tool exposure and the live inventory contract. Separately require the production activation preflight to
+   show an applied configuration, current health/inventory, identity and acknowledgement for each internal employee;
+   the Hermes audit does not combine those portal checks into a run-readiness claim.
 5. A successful audit still does not start a run. The controlled live-run acceptance in
    [hermes-live-acceptance.md](hermes-live-acceptance.md) remains a separate, explicit step.
 

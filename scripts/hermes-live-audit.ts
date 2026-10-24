@@ -10,14 +10,19 @@
  * `credential.resolved` audit-log row (one per mapped profile), and that audit row is the only write it makes. It
  * never prints a credential, API key, base URL path, profile identifier or organization name.
  *
- * A profile is ready for a controlled run only when:
+ * This audit verifies Hermes runtime identity and tool safety only; it does not claim portal run readiness.
+ * A controlled run also requires an applied portal configuration, successful/current health and inventory,
+ * valid credentials, and (for internal employees) a current Super Admin acknowledgement. Those gates are
+ * evaluated by the application's preflight and immediately before submission.
+ *
+ * A Hermes runtime profile passes this audit only when:
  *   - the gateway authenticates and returns the Hermes capabilities contract;
  *   - the intended profile identity is present in GET /v1/models;
  *   - no restricted or unreviewed tool is enabled;
  *   - verifyToolInventory accepts the live catalog: challenge echoed, explicit allowlist, exactly the five reviewed
  *     toolsets, the required reviewed tools, no MCP/plugin/Tool Search tool, and two stable reads.
- * This audit does not replace the employee's own health check: the report also shows whether the portal has an
- * applied configuration and a recorded inventory digest, both of which a live run needs.
+ * The report shows whether the portal has an applied configuration and a recorded inventory digest, but does
+ * not combine those values with runtime verification into a single readiness badge.
  */
 import { pathToFileURL } from "node:url";
 import { AGENT_ROLE_KEYS } from "../src/lib/agents";
@@ -46,6 +51,28 @@ export interface InventoryAudit {
   toolCount?: number;
   tools?: string[];
   digestPrefix?: string;
+}
+
+export interface HermesRuntimeAuditChecks {
+  authenticated: boolean;
+  capabilitiesContractVerified: boolean;
+  supportsRuns: boolean;
+  identityVerified: boolean;
+  restrictedCount: number | null;
+  unauthorizedToolsets: string[] | null;
+  inventoryVerified: boolean;
+}
+
+/** Only describes live Hermes runtime verification; portal configuration and approval are separate gates. */
+export function hermesRuntimeProfileVerified(checks: HermesRuntimeAuditChecks): boolean {
+  return checks.authenticated
+    && checks.capabilitiesContractVerified
+    && checks.supportsRuns
+    && checks.identityVerified
+    && checks.restrictedCount === 0
+    && checks.unauthorizedToolsets !== null
+    && checks.unauthorizedToolsets.length === 0
+    && checks.inventoryVerified;
 }
 
 /** Runs the portal's own two-read inventory verification (GET only) and reports the failure code instead of throwing. */
@@ -119,19 +146,26 @@ async function auditProfile(conn: HermesConnection, label: Record<string, unknow
   result.inventory = inventory;
   const caps = result.capabilities as Record<string, unknown>;
   const tools = result.toolsets as Record<string, unknown> | undefined;
-  const restrictedCount = Number(tools?.restrictedCount ?? -1);
-  const unauthorized = (tools?.unauthorizedToolsets as string[] | undefined) ?? [];
-  result.readyForControlledRun =
-    caps.authenticated === true &&
-    caps.supportsRuns === true &&
-    result.identityVerified === true &&
-    restrictedCount === 0 &&
-    unauthorized.length === 0 &&
-    result.completeInventoryVerified === true;
+  const restrictedCount = typeof tools?.restrictedCount === "number" ? tools.restrictedCount : null;
+  const unauthorized = Array.isArray(tools?.unauthorizedToolsets)
+    ? tools.unauthorizedToolsets as string[]
+    : null;
+  result.runtimeProfileVerified = hermesRuntimeProfileVerified({
+    authenticated: caps.authenticated === true,
+    capabilitiesContractVerified: caps.contract === "hermes.api_server.capabilities",
+    supportsRuns: caps.supportsRuns === true,
+    identityVerified: result.identityVerified === true,
+    restrictedCount,
+    unauthorizedToolsets: unauthorized,
+    inventoryVerified: result.completeInventoryVerified === true,
+  });
   result.blocker =
-    caps.authenticated !== true ? "Gateway did not authenticate."
+    caps.contract !== "hermes.api_server.capabilities" ? "Gateway did not verify the Hermes API capabilities contract."
+      : caps.authenticated !== true ? "Gateway did not authenticate."
+      : caps.supportsRuns !== true ? "Gateway does not advertise run submission."
       : result.identityVerified !== true ? "The intended profile identity was not verified."
-        : restrictedCount < 0 ? "GET /v1/toolsets failed, so tool exposure is unknown."
+        : restrictedCount === null ? "GET /v1/toolsets failed, so tool exposure is unknown."
+          : unauthorized === null ? "GET /v1/toolsets failed, so tool exposure is unknown."
           : unauthorized.length > 0 ? `Enabled toolsets outside the portal allowlist: ${unauthorized.join(", ")}. Disable them in the Hermes profile.`
             : restrictedCount > 0 ? `${restrictedCount} restricted or unreviewed tools are enabled; disable them in the Hermes profile.`
               : result.completeInventoryVerified !== true ? `The complete tool inventory was not verified (${inventory.failureCode}): ${inventory.failure}`
@@ -202,14 +236,14 @@ async function main() {
     }));
   }
   report.profiles = profiles;
-  report.readyProfiles = profiles.filter((p) => (p as Record<string, unknown>).readyForControlledRun === true).length;
-  report.liveRunGate = "This audit never starts a run. startAgentRun separately requires each employee to be online with a recorded inventory digest (and, for internal employees, a current Super Admin acknowledgement).";
+  report.runtimeVerifiedProfiles = profiles.filter((p) => (p as Record<string, unknown>).runtimeProfileVerified === true).length;
+  report.liveRunGate = "This audit never starts a run and does not claim application readiness. It verifies Hermes authentication, identity, tool policy and the live catalog only. The portal separately requires an applied configuration, current health/inventory, current internal identity and Super Admin acknowledgement before a run.";
   console.log(JSON.stringify(report, null, 2));
-  const blocked = profiles.filter((p) => (p as Record<string, unknown>).readyForControlledRun !== true);
+  const blocked = profiles.filter((p) => (p as Record<string, unknown>).runtimeProfileVerified !== true);
   if (blocked.length) {
-    console.log(`\n${blocked.length} mapped profile(s) are not ready for a controlled run. No run was started.`);
+    console.log(`\n${blocked.length} mapped profile(s) did not pass Hermes runtime verification. No run was started.`);
   } else {
-    console.log("\nAll mapped profiles passed the read-only checks. A controlled run still requires an explicit acceptance step; none was started.");
+    console.log("\nAll mapped profiles passed Hermes runtime verification. Portal readiness and controlled-run approval are separate; no run was started.");
   }
 }
 
