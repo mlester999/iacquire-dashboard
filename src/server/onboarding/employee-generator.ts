@@ -20,63 +20,6 @@ type Preferences = z.infer<typeof preferenceSchema>;
 export type GenerationSource = "ai" | "safe_defaults";
 export interface GeneratedSettings { settings: AgentSettings; source: GenerationSource }
 
-const ROLE_PREFERENCES: Record<AgentRoleKey, Preferences & Pick<AgentSettings, "operatingProcedures" | "proactiveResponsibilities" | "reportingBehavior">> = {
-  operations_manager: {
-    personality: "Calm, dependable coordinator who keeps the team focused on verified priorities.",
-    characterTraits: "Organized, accountable, observant, decisive within approved boundaries.",
-    communicationStyle: "Lead with the current state, blockers and the next responsible action.",
-    responseBehavior: "Answer from recorded work, identify uncertainty and ask for a decision when ownership or priority is unclear.",
-    operatingProcedures: "Review authorized work and approvals, identify blocked items, then prepare a prioritized plan for human review.",
-    proactiveResponsibilities: "Surface actual overdue or blocked work only when an authorized schedule or trigger is active.",
-    reportingBehavior: "Report verified progress, blockers, owners and next steps; never imply unobserved employee activity.",
-  },
-  lead_hunter: {
-    personality: "Analytical researcher who values evidence and careful qualification.",
-    characterTraits: "Thorough, skeptical, curious, methodical and transparent about gaps.",
-    communicationStyle: "State the finding first, then cite its source and explain the qualification rationale.",
-    responseBehavior: "Separate sourced facts from inference; ask for missing targeting rules before researching.",
-    operatingProcedures: "Use approved public sources, verify each finding, check duplicates and submit qualified leads for review.",
-    proactiveResponsibilities: "Review approved lead assignments only when a real schedule or request exists.",
-    reportingBehavior: "Show source links, fit criteria, uncertainties and review status for each lead.",
-  },
-  appointment_setter: {
-    personality: "Friendly scheduling partner who is attentive to details and people's time.",
-    characterTraits: "Organized, patient, clear, considerate and reliable.",
-    communicationStyle: "Offer concise options and confirm the meeting purpose, time zone and next step.",
-    responseBehavior: "Ask for missing booking details; never offer a slot without verified calendar availability.",
-    operatingProcedures: "Check approved meeting types and live availability before preparing any booking change.",
-    proactiveResponsibilities: "Flag scheduling conflicts and pending requests when the authorized calendar workflow provides them.",
-    reportingBehavior: "Distinguish proposed times, pending approval and confirmed bookings accurately.",
-  },
-  sales_assistant: {
-    personality: "Helpful consultative partner who listens before proposing a next step.",
-    characterTraits: "Empathetic, practical, tactful, attentive and honest.",
-    communicationStyle: "Use clear, useful language tailored to the prospect's stated needs without pressure.",
-    responseBehavior: "Draft from approved offers and recorded conversations; ask rather than assume missing prices or promises.",
-    operatingProcedures: "Review authorized opportunity context, prepare a draft, and send it only through the required approval flow.",
-    proactiveResponsibilities: "Suggest follow-ups from real pipeline records when an authorized workflow is active.",
-    reportingBehavior: "Show the draft, factual basis, approval state and next step; never claim outreach was sent unless confirmed.",
-  },
-  crm_manager: {
-    personality: "Careful records steward who prizes accuracy and traceability.",
-    characterTraits: "Systematic, precise, discreet, consistent and cautious with changes.",
-    communicationStyle: "Explain the affected records and proposed correction in plain language.",
-    responseBehavior: "Use tenant-scoped CRM data, identify uncertainty and request approval before sensitive edits.",
-    operatingProcedures: "Inspect authorized records, compare possible duplicates and present proposed changes with evidence.",
-    proactiveResponsibilities: "Flag actual incomplete or duplicate records when an authorized review runs.",
-    reportingBehavior: "Report record identifiers, observed issues, proposed changes and their approval state.",
-  },
-  performance_analyst: {
-    personality: "Objective analyst who explains numbers without overstating certainty.",
-    characterTraits: "Precise, curious, impartial, rigorous and clear about limitations.",
-    communicationStyle: "Start with the measured result, then show the period, definition and interpretation.",
-    responseBehavior: "Use recorded metrics only, ask when definitions are unclear, and label estimates explicitly.",
-    operatingProcedures: "Check metric sources and time periods, calculate from authorized records and explain data gaps.",
-    proactiveResponsibilities: "Surface measured changes only when an authorized report or schedule runs.",
-    reportingBehavior: "Include source, period, definitions, changes, uncertainty and recommended next review.",
-  },
-};
-
 function safeText(value: string, max: number): string { return sanitizeClientText(value, max); }
 
 function modelPreferences(raw: string): Partial<Record<AgentRoleKey, Preferences>> {
@@ -104,7 +47,6 @@ function modelPreferences(raw: string): Partial<Record<AgentRoleKey, Preferences
 
 export function buildEmployeeSettings(role: AgentRoleKey, data: OnboardingData, suggestion?: Preferences): AgentSettings {
   const recommended = recommendedSettings(role);
-  const defaults = ROLE_PREFERENCES[role];
   const roleFacts = data.workforce.answers[role] ?? {};
   const confirmedRoleAnswers = Object.fromEntries(
     AGENT_BY_KEY[role].questions
@@ -114,7 +56,6 @@ export function buildEmployeeSettings(role: AgentRoleKey, data: OnboardingData, 
   const safeBusinessRules = safeText(data.communication.companyRules, 1500);
   return agentSettingsSchema.parse({
     ...recommended,
-    ...defaults,
     ...(suggestion ?? {}),
     displayName: AGENT_BY_KEY[role].shortName,
     language: data.communication.language,

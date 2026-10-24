@@ -27,6 +27,13 @@ describe("role playbooks", () => {
       const settings = recommendedSettings(role);
       expect(agentSettingsSchema.safeParse(settings).success, role).toBe(true);
       expect(settings.displayName, role).toBeTruthy();
+      expect(settings.personality, role).toMatch(/.{12,}/);
+      expect(settings.characterTraits, role).toMatch(/.{8,}/);
+      expect(settings.communicationStyle, role).toMatch(/.{12,}/);
+      expect(settings.responseBehavior, role).toMatch(/.{12,}/);
+      expect(settings.operatingProcedures, role).toMatch(/.{12,}/);
+      expect(settings.proactiveResponsibilities, role).toMatch(/.{12,}/);
+      expect(settings.reportingBehavior, role).toMatch(/.{12,}/);
       expect(settings.responsibilities, role).toMatch(/\S{8,}/);
       expect(settings.goals, role).toMatch(/\S{8,}/);
       expect(settings.neverPromise, role).toMatch(/\S{8,}/);
@@ -35,6 +42,7 @@ describe("role playbooks", () => {
       expect(settings.approvalPreference, role).toBe("always");
       expect(auditRoleConfiguration(role, settings, confirmedAgency).ready, role).toBe(true);
     }
+    expect(new Set(AGENT_ROLE_KEYS.map((role) => recommendedSettings(role).personality)).size).toBe(AGENT_ROLE_KEYS.length);
   });
 
   it("provides a complete, valid Lead Hunter starting point without inventing company facts", () => {

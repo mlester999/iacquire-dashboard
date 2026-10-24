@@ -391,14 +391,29 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
     () => auditRoleConfiguration(meta.key, s, companyContext ?? { description: "", services: "", idealCustomers: "", operatingArea: "", industry: "" }),
     [s, meta.key, companyContext],
   );
+  const preparingFirstInternalConfig = isInternalWorkspace && agent.configVersion === null && draftVersion === null;
   const fillRecommended = () => {
     const recommended = recommendedSettings(meta.key);
     const next: AgentSettings = { ...s };
-    const textFields: Array<keyof Pick<AgentSettings, "responsibilities" | "goals" | "neverPromise" | "escalateWhen" | "customInstruction">> = [
+    const textFields: Array<keyof Pick<AgentSettings,
+      "responsibilities" | "goals" | "neverPromise" | "escalateWhen" | "customInstruction" |
+      "personality" | "characterTraits" | "communicationStyle" | "responseBehavior" |
+      "operatingProcedures" | "proactiveResponsibilities" | "reportingBehavior"
+    >> = [
       "responsibilities", "goals", "neverPromise", "escalateWhen", "customInstruction",
+      "personality", "characterTraits", "communicationStyle", "responseBehavior",
+      "operatingProcedures", "proactiveResponsibilities", "reportingBehavior",
     ];
     for (const field of textFields) {
       if (!next[field].trim()) next[field] = recommended[field];
+    }
+    if (preparingFirstInternalConfig) {
+      next.tone = recommended.tone;
+      next.replyLength = recommended.replyLength;
+      next.language = recommended.language;
+      if (!next.companyRules.trim()) {
+        next.companyRules = "Use the approved company profile and internal knowledge as sources for business facts. If a fact is missing or unclear, say so and ask a person; do not infer it.";
+      }
     }
     const mergedAnswers = { ...recommended.roleAnswers, ...s.roleAnswers };
     for (const [key, value] of Object.entries(mergedAnswers)) {
@@ -410,7 +425,9 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
     setResult(null);
     setCheck({ state: "checking" });
     toast.success("Recommended role fields added", {
-      description: "Only blank fields were filled. Company-specific facts are left for you to provide, then save to apply.",
+      description: preparingFirstInternalConfig
+        ? "Role-specific style and safe operating defaults are ready in this first internal draft. Review them before saving; unknown business details stay unfilled."
+        : "Only blank fields were filled. Company-specific facts are left for you to provide, then save to apply.",
     });
   };
   const regenerateStyle = async () => {
@@ -757,7 +774,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                   )}
                 </div>
                 <Button type="button" size="sm" variant="secondary" onClick={fillRecommended}>
-                  <Wand2 className="size-3.5" aria-hidden /> Fill blank fields
+                  <Wand2 className="size-3.5" aria-hidden /> {preparingFirstInternalConfig ? "Prepare first config" : "Fill blank fields"}
                 </Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">

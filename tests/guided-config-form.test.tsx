@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConfigureTab } from "@/components/workforce/employee-detail";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
 import type { AgentSettings } from "@/lib/agent-settings";
 import { defaultSettings } from "@/server/workforce/compiler";
 
@@ -38,14 +38,7 @@ vi.mock("@/components/workforce/config-test-dialog", () => ({
 }));
 
 const ROLE = "operations_manager" as const;
-const meta = AGENT_BY_KEY[ROLE];
-const seed = {
-  ...defaultSettings(ROLE),
-  displayName: "Ava",
-  responsibilities: "Existing responsibility",
-};
-
-function agent() {
+function agent(configVersion: number | null = 1) {
   return {
     id: "11111111-1111-4111-8111-111111111111",
     displayName: "Ava",
@@ -55,7 +48,7 @@ function agent() {
     lastHealthOk: true,
     lastHealthDetail: null,
     summary: "Keeps internal work moving.",
-    configVersion: 1,
+    configVersion,
     configAppliedAt: null,
     defaultTools: ["tasks.read", "summaries.write"],
     mode: "approval_required" as const,
@@ -85,11 +78,16 @@ function summary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderForm(settings: Partial<AgentSettings> = {}) {
-  const value = { ...seed, ...settings };
+function renderForm(
+  settings: Partial<AgentSettings> = {},
+  options: { internal?: boolean; configVersion?: number | null; role?: AgentRoleKey } = {},
+) {
+  const role = options.role ?? ROLE;
+  const meta = AGENT_BY_KEY[role];
+  const value = { ...defaultSettings(role), displayName: "Ava", responsibilities: "Existing responsibility", ...settings };
   const props = {
     meta,
-    agent: agent(),
+    agent: agent("configVersion" in options ? options.configVersion ?? null : 1),
     settings: value,
     draftVersion: null,
     draftStatus: null,
@@ -97,6 +95,7 @@ function renderForm(settings: Partial<AgentSettings> = {}) {
     onSaved: vi.fn(),
     onOpenHistory: vi.fn(),
     canConfigure: true,
+    isInternalWorkspace: options.internal ?? false,
   } as unknown as React.ComponentProps<typeof ConfigureTab>;
   return render(<ConfigureTab {...props} />);
 }
@@ -138,6 +137,57 @@ describe("guided AI employee configuration", () => {
 
     const goals = screen.getByRole("textbox", { name: /Goals for this employee/i });
     expect((goals as HTMLTextAreaElement).placeholder).toBe("Help the agency meet deadlines and reduce unresolved operational issues.");
+  });
+
+  it("prepares a complete role-specific first internal draft without saving it", async () => {
+    const user = userEvent.setup();
+    renderForm({}, { internal: true, configVersion: null });
+
+    await user.click(screen.getByRole("button", { name: "Prepare first config" }));
+
+    expect((screen.getByRole("textbox", { name: "Personality" }) as HTMLTextAreaElement).value).toContain("dependable coordinator");
+    expect((screen.getByRole("textbox", { name: "Character traits" }) as HTMLTextAreaElement).value).toContain("accountable");
+    expect((screen.getByRole("textbox", { name: "Communication style" }) as HTMLTextAreaElement).value).toContain("blockers");
+    expect((screen.getByRole("textbox", { name: "Response behavior" }) as HTMLTextAreaElement).value).toContain("recorded work");
+    expect((screen.getByRole("textbox", { name: "Operating procedures" }) as HTMLTextAreaElement).value).toContain("human review");
+    expect((screen.getByRole("textbox", { name: "Proactive responsibilities" }) as HTMLTextAreaElement).value).toContain("authorized schedule");
+    expect((screen.getByRole("textbox", { name: "Reporting behavior" }) as HTMLTextAreaElement).value).toContain("verified progress");
+    expect((screen.getByRole("textbox", { name: /Company rules/i }) as HTMLTextAreaElement).value).toContain("approved company profile");
+    expect(screen.getByRole("radio", { name: /Professional/ }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByRole("textbox", { name: /Main responsibilities/i }) as HTMLTextAreaElement).value).toBe("Existing responsibility");
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("fills missing role defaults without replacing a saved configuration or a custom draft", async () => {
+    const user = userEvent.setup();
+    renderForm({ personality: "Custom personality", tone: "casual" }, { internal: true, configVersion: 4 });
+
+    await user.click(screen.getByRole("button", { name: "Fill blank fields" }));
+
+    expect((screen.getByRole("textbox", { name: "Personality" }) as HTMLTextAreaElement).value).toBe("Custom personality");
+    expect(screen.getByRole("radio", { name: /Casual/ }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByRole("textbox", { name: "Character traits" }) as HTMLTextAreaElement).value).toContain("accountable");
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("prepares distinct first drafts for the four remaining internal employees", async () => {
+    const cases = [
+      { role: "appointment_setter", personality: "Friendly scheduling partner", tone: "Friendly" },
+      { role: "sales_assistant", personality: "Helpful consultative partner", tone: "Friendly" },
+      { role: "crm_manager", personality: "Careful records steward", tone: "Professional" },
+      { role: "performance_analyst", personality: "Objective analyst", tone: "Professional" },
+    ] as const;
+
+    for (const item of cases) {
+      const user = userEvent.setup();
+      const view = renderForm({}, { internal: true, configVersion: null, role: item.role });
+      await user.click(screen.getByRole("button", { name: "Prepare first config" }));
+      expect((screen.getByRole("textbox", { name: "Personality" }) as HTMLTextAreaElement).value).toContain(item.personality);
+      expect(screen.getByRole("radio", { name: new RegExp(item.tone) }).getAttribute("aria-checked")).toBe("true");
+      view.unmount();
+    }
+
+    expect(mocks.save).not.toHaveBeenCalled();
   });
 
   it("opens deeper field guidance from the keyboard and closes it with Escape", async () => {
