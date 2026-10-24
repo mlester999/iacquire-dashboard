@@ -144,7 +144,7 @@ export async function acquireEditLock(ctx: OrgContext, opts: { takeOver?: boolea
     const before = (await db.query<{ id: string; edit_lock_user: string | null; edit_lock_expires: Date | null }>("select id, edit_lock_user, edit_lock_expires from websites where org_id = $1 and kind = 'website'", [ctx.org.orgId])).rows[0];
     const got = await db.query<{ edit_lock_expires: Date }>(
       `update websites set edit_lock_user = $2, edit_lock_name = $3, edit_lock_expires = now() + ($4 || ' seconds')::interval
-       where org_id = $1 and kind = 'website' and (edit_lock_user is null or edit_lock_user = $2 or edit_lock_expires is null or edit_lock_expires < now() or $5::boolean)
+       where org_id = $1 and kind = 'website' and (edit_lock_user is null or edit_lock_user = $2 or edit_lock_expires is null or edit_lock_expires <= now() or $5::boolean)
        returning edit_lock_expires`, [ctx.org.orgId, ctx.user.id, name.slice(0, 120), String(LOCK_SECONDS), opts.takeOver === true]);
     if (got.rows[0]) {
       // An agency person starting to work in a client's editor is recorded once per visit (not on every keep-alive).
