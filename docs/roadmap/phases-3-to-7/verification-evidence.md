@@ -150,7 +150,7 @@ This section records what the resumed session measured; it does not replace a fu
 | --- | --- | --- |
 | Full suite, first run at the resumed tree | `vitest run` | 603 files; **10,235 passed, 9 failed, 8 skipped**, 836 s. The 9 are listed below with their fixes. |
 | Full suite before purchase intents | `vitest run` | **607 files passed, 10,255 tests passed, 8 skipped, 0 failed** (823 s), exit 0, at `b05c69e`. |
-| Full suite at the Phase 6 integration HEAD | `vitest run --testTimeout=120000` | **612 files passed, 10,274 tests passed, 8 skipped, 0 failed** (936 s), exit 0, at `b524d98`. The 120 s ceiling only gives this slow host headroom; nothing is skipped or weakened. |
+| Full suite at the Phase 6 integration HEAD | `vitest run --testTimeout=120000` | **612 files passed, 10,274 tests passed, 8 skipped, 0 failed** (936 s), exit 0, at `b524d98`. The 120 s ceiling only gives this slow host headroom; nothing is skipped or weakened. A later whole run at `3b1ed26` (after the demo LocalTime fix and its new test) had **one** failure: `chat-workspace-ui` asserted New chat before the mobile drawer's focus lock released; the test now waits for the drawer to close and passes alone (29 passed, 1 skipped). No product failure. |
 | Targeted Wave 2 new files | 24 files | 512 tests; 8 failed in invoice-from-proposal/delivery, fixed, then 27/27 in the two files. |
 | Staff Messages screens/routes/stream/snapshot | 5 files | 142 passed after fixing the around-window, thread-root and test-fixture defects. |
 | Workload rules, labels, migration, job, views, presentation, page renders | 8 files | The rules/labels/migration/job/views/screens/page tests pass. |
