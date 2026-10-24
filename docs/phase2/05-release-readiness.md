@@ -6,7 +6,7 @@ Branch `feat/phase2-lead-conversion`, from `origin/master` `447249d`. Date of th
 
 | Step | Result |
 | --- | --- |
-| Backup | `.data/backups/pre-phase2-0085-0086-20261022T140337.dump` (main checkout): custom-format dump of schemas `public` and `app`, `pg_restore --list` verified, 3,734 table-of-contents entries, 1.9 MB, taken from project `lkkiavjwxaeoqgsbjyso` (ref checked before dumping) |
+| Backup | `.data/backups/pre-phase2-0085-0086-20261022T140337.dump` (main checkout): custom-format dump of schemas `public` and `app`, `pg_restore --list` verified, 3,741 table-of-contents entries, 1.9 MB, taken from project `lkkiavjwxaeoqgsbjyso` (ref checked before dumping) |
 | Dry run | `scripts/migrate.ts --dry-run --only 0085_missed_call_recovery --only 0086_lead_scoring`: would apply exactly those two, in that order; nothing applied |
 | Migrations | `0085_missed_call_recovery` then `0086_lead_scoring` applied to production, one at a time. Ledger now 80 rows, latest `0086_lead_scoring` |
 | Production schema check (read-only) | 10 of 10 new tables with row-level security and a policy each; the application role has SELECT only, anon / authenticated / public nothing; six `contacts.priority_*` columns; `contacts_priority_idx` and `crm_call_records_inbound_created_idx`; notification kinds 69 (all earlier kinds kept, `missed_call_follow_up` and `hot_lead_detected` added); no case, policy, assessment or priority row exists yet |
@@ -14,6 +14,10 @@ Branch `feat/phase2-lead-conversion`, from `origin/master` `447249d`. Date of th
 | Deploy | Vercel production build of that commit: Ready. `GET /api/health` `{"status":"ok","database":"ok","scheduler":"never_ran"}`; signed-out `/crm/calls`, `/crm/settings/lead-scoring` and `/inbox` redirect to sign-in |
 
 **State after release: deployed and dormant.** Every workspace's recovery policy is off (there are no policy rows) and the scheduler has never run, so a missed call from a connected voice assistant creates a case and a timeline entry (as designed) but no task, notice, contact, conversation change or text; nothing is scored; and nothing is sent. The Phase 1 rollout is unchanged (the new Inbox is off for every workspace, so its Phase 2 cards are not shown anywhere yet).
+
+## Restore rehearsal follow-up (2026-10-25)
+
+The workstation has PostgreSQL 18 client/server tools at `C:\Program Files\PostgreSQL\18\bin` (they are not on `PATH`). The October 22 archive lists successfully, but an isolated loopback PostgreSQL 18 restore failed when `public.auth_recovery_sessions` added its foreign key to `auth.users`: the dump contains only `app` and `public`, not Supabase's managed `auth` schema. The restore ran in one transaction and rolled back. This archive also predates migrations 0085–0086, so it is not a current full-project backup. No backup restore is verified; a complete provider-supported backup and Supabase-compatible restore are still required before another production schema change.
 
 ## Decision
 

@@ -58,9 +58,15 @@ has not been exercised through the browser against the now-connected provider.
 
 ## Backup and restore procedure
 
-No `pg_dump`, `pg_restore`, PostgreSQL server binary, Docker or isolated database host is available
-in this environment. A full backup could therefore **not** be created or restore-verified here.
-This is a hard blocker; a logical JSON export is not a substitute for a full PostgreSQL backup.
+The 2026-10-18 environment observation below was accurate when this gate was written; on
+2026-10-25, PostgreSQL 18 client/server tools were found at `C:\Program Files\PostgreSQL\18\bin`
+(not on `PATH`). Docker is still unavailable. The latest archive,
+`pre-phase2-0085-0086-20261022T140337.dump`, lists successfully with 3,741 TOC entries but contains
+only the `app` and `public` schemas. A restore into a loopback-only PostgreSQL 18 database failed
+when `public.auth_recovery_sessions` referenced the omitted Supabase-managed `auth.users` table;
+the single-transaction restore rolled back. The archive also predates 0085–0086. PostgreSQL tooling
+is available, but a full current backup and successful Supabase-compatible restore are not verified.
+A logical JSON export is not a substitute for a full PostgreSQL backup.
 
 On an authorized host with PostgreSQL client tools:
 
@@ -137,8 +143,8 @@ They are not live-provider acceptance.
   recorded by the user-authorized push to master.
 - Migrations 0048 and 0049 are applied hosted; the private bucket, metadata table, RLS and policies
   were verified after application.
-- Full backup/restore: **BLOCKED** by missing PostgreSQL backup/restore tooling and no isolated
-  database host.
+- Full backup/restore: **BLOCKED** because the available app/public archive is stale and omits the
+  managed `auth` schema required by its foreign keys; a full current backup has not been restored.
 - Staging-first gate: **FAIL / bypassed by explicit production authorization.** Production was
   deployed and migrated before a staging environment existed; run the staging acceptance steps
   retroactively and freeze future auto-deployments.

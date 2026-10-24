@@ -104,7 +104,15 @@ and schema post-checks. The backups were inspected with `pg_restore --list`, but
 test-run. No further hosted migration is currently recorded as pending. For any future hosted write,
 all of these controls must be satisfied first:
 
-1. A current database backup is available and its restore has been tested.
+The 2026-10-25 restore rehearsal adds a concrete blocker: the latest available October 22 archive
+contains only `app` and `public` and predates migrations 0085–0086. It lists successfully with 3,741
+TOC entries, but restoring it into isolated PostgreSQL 18 fails at the foreign key from
+`public.auth_recovery_sessions` to the omitted managed `auth.users` table. The single-transaction
+restore rolled back. PostgreSQL 18 tools are available at `C:\Program Files\PostgreSQL\18\bin`,
+but the available archive is not a full backup and no restore has passed.
+
+1. A current full database backup is available and has been restored successfully into a
+   Supabase-compatible isolated environment, including its managed schemas and required extensions.
 2. Re-read and reconcile the full hosted migration ledger, including the AQi `0050`–`0052` entries
    and the renumbered CRM/Hermes/RLS files.
 3. Review the exact targeted order for any remaining migration, including its compatibility and
