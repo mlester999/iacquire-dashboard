@@ -20,6 +20,7 @@
  * applied configuration and a recorded inventory digest, both of which a live run needs.
  */
 import { pathToFileURL } from "node:url";
+import { AGENT_ROLE_KEYS } from "../src/lib/agents";
 import { withSystem } from "../src/server/db/index";
 import { loadConnection } from "../src/server/workforce/service";
 import { PORTAL_SAFE_TOOLSETS, unauthorizedToolsets } from "../src/server/workforce/tool-policies";
@@ -141,9 +142,10 @@ async function auditProfile(conn: HermesConnection, label: Record<string, unknow
 async function main() {
   if (!process.argv.includes("--live")) {
     console.log("Read-only Hermes audit. Re-run with --live to contact the configured gateway.");
-    console.log("Command: node --env-file=.env --conditions=react-server --import tsx scripts/hermes-live-audit.ts --live");
+    console.log("Command: node --env-file=.env --conditions=react-server --import tsx scripts/hermes-live-audit.ts --live --internal-agency-only");
     return;
   }
+  const internalAgencyOnly = process.argv.includes("--internal-agency-only");
   const rows = await withSystem(async (db) => {
     const gateways = await db.query<{ id: string; base_url: string; gateway_type: string; status: string; profile_creation_status: string }>(
       "select id, base_url, gateway_type, status, profile_creation_status from hermes_gateways order by created_at",
@@ -157,14 +159,17 @@ async function main() {
               (a.active_config_version_id is not null) as has_applied_config,
               (a.tool_inventory_digest is not null) as has_inventory_digest
        from agent_instances a join organizations o on o.id = a.org_id
-       where a.hermes_profile is not null or a.credential_id is not null
+       where (a.hermes_profile is not null or a.credential_id is not null)
+         and ($1::boolean = false or (o.kind = 'agency' and a.role_key = any($2::text[])))
        order by o.kind, a.role_key`,
+      [internalAgencyOnly, AGENT_ROLE_KEYS],
     );
     return { gateways: gateways.rows, agents: agents.rows };
   });
 
   const report: Record<string, unknown> = {
     checkedAt: new Date().toISOString(),
+    scope: internalAgencyOnly ? "internal-agency" : "all-mapped-profiles",
     gatewayCount: rows.gateways.length,
     mappedEmployeeCount: rows.agents.length,
     gateways: rows.gateways.map((g) => ({
