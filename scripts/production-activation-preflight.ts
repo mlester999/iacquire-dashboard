@@ -12,7 +12,16 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { closeDb, readSystem } from "../src/server/db";
+import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS, type AgentRoleKey } from "../src/lib/agents";
+import { agentSettingsSchema } from "../src/lib/agent-settings";
 import { auditRoleConfiguration, recommendedSettings } from "../src/lib/role-playbooks";
+import {
+  deriveEmployeeReadiness,
+  internalAcknowledgementIsCurrent,
+  internalIdentityIsCurrent,
+  readinessClockNow,
+} from "../src/lib/workforce-readiness";
+import { toolInventoryReady, toolInventoryRecorded } from "../src/lib/hermes-tool-inventory";
 import { OPTIONAL_INVENTORY_TOOLS, REQUIRED_INVENTORY_TOOLS } from "../src/server/integrations/hermes/inventory";
 
 if (!process.argv.includes("--live")) {
@@ -117,6 +126,89 @@ async function main() {
           [agency.id],
         )
       : { rows: [] as Array<{ description: string; services: string; ideal_customers: string; operating_area: string; industry: string | null }> };
+    const internalEmployees = agency
+      ? await db.query<{
+          id: string; role_key: AgentRoleKey; display_name: string; enabled: boolean; status: string;
+          active_config_version_id: string | null; config_version: number | null; config_applied_at: Date | null;
+          config_status: string | null; settings: unknown; last_health_check_at: Date | null; last_health_ok: boolean | null;
+          last_health_detail: string | null; tool_inventory_contract: string | null; tool_inventory_digest: string | null;
+          tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null; tool_inventory_tool_count: number | null;
+          hermes_profile: string | null; hermes_gateway_id: string | null; check_status: string | null;
+          check_profile: string | null; check_gateway_id: string | null; identity_verified: boolean | null;
+          api_contract_verified: boolean | null; tool_permissions_status: string | null; checked_at: Date | null;
+          credential_ready: boolean; acknowledged_profile: string | null; acknowledged_policy_id: string | null;
+          acknowledged_at: Date | null; acknowledged_config_version_id: string | null;
+          acknowledged_inventory_digest: string | null; has_agent_policy_override: boolean; expected_policy_id: string | null;
+        }>(
+          `select a.id,a.role_key,a.display_name,a.enabled,a.status,a.active_config_version_id,
+                  v.version as config_version,v.applied_at as config_applied_at,v.status as config_status,v.settings,
+                  a.last_health_check_at,a.last_health_ok,a.last_health_detail,
+                  a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,
+                  a.tool_inventory_expires_at,a.tool_inventory_tool_count,
+                  a.hermes_profile,a.hermes_gateway_id,
+                  c.status as check_status,c.profile_id as check_profile,c.gateway_id as check_gateway_id,
+                  c.identity_verified,c.api_contract_verified,c.tool_permissions_status,c.checked_at,
+                  (a.credential_id is not null and cred.revoked_at is null
+                    and cred.credential_reference_id is not null and cred_ref.revoked_at is null) as credential_ready,
+                  ack.verified_profile as acknowledged_profile,ack.policy_id as acknowledged_policy_id,ack.acknowledged_at,
+                  ack_history.policy_snapshot->>'activeConfigVersionId' as acknowledged_config_version_id,
+                  ack_history.policy_snapshot->>'inventoryDigest' as acknowledged_inventory_digest,
+                  exists(select 1 from hermes_tool_policies agent_policy
+                    where agent_policy.scope_kind='agent' and agent_policy.agent_id=a.id) as has_agent_policy_override,
+                  (select p.id from hermes_tool_policies p where p.scope_kind='internal_agency' order by p.created_at limit 1) as expected_policy_id
+             from agent_instances a
+             left join agent_config_versions v on v.id=a.active_config_version_id and v.org_id=a.org_id
+             left join agency_hermes_profile_checks c on c.agent_instance_id=a.id and c.org_id=a.org_id
+             left join integration_credentials cred on cred.id=a.credential_id
+             left join credential_references cred_ref on cred_ref.id=cred.credential_reference_id
+                  and cred_ref.org_id=a.org_id and cred_ref.provider='hermes'
+             left join hermes_tool_policy_acknowledgements ack on ack.agent_id=a.id
+             left join lateral (
+               select h.policy_snapshot from hermes_tool_policy_history h
+                where h.agent_id=a.id and h.action='full_capabilities_acknowledged'
+                order by h.occurred_at desc,h.id desc limit 1
+             ) ack_history on true
+            where a.org_id=$1 and a.role_key=any($2::text[])
+            order by array_position($2::text[],a.role_key)` ,
+          [agency.id, AGENT_ROLE_KEYS],
+        )
+      : { rows: [] as Array<{
+          id: string; role_key: AgentRoleKey; display_name: string; enabled: boolean; status: string;
+          active_config_version_id: string | null; config_version: number | null; config_applied_at: Date | null;
+          config_status: string | null; settings: unknown; last_health_check_at: Date | null; last_health_ok: boolean | null;
+          last_health_detail: string | null; tool_inventory_contract: string | null; tool_inventory_digest: string | null;
+          tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null; tool_inventory_tool_count: number | null;
+          hermes_profile: string | null; hermes_gateway_id: string | null; check_status: string | null;
+          check_profile: string | null; check_gateway_id: string | null; identity_verified: boolean | null;
+          api_contract_verified: boolean | null; tool_permissions_status: string | null; checked_at: Date | null;
+          credential_ready: boolean; acknowledged_profile: string | null; acknowledged_policy_id: string | null;
+          acknowledged_at: Date | null; acknowledged_config_version_id: string | null;
+          acknowledged_inventory_digest: string | null; has_agent_policy_override: boolean; expected_policy_id: string | null;
+        }> };
+    const workforceQueues = agency
+      ? await db.query<{ status: string; capability: string; count: number }>(
+          "select status,capability,count(*)::int as count from ai_work_jobs where org_id=$1 group by status,capability order by status,capability",
+          [agency.id],
+        )
+      : { rows: [] as Array<{ status: string; capability: string; count: number }> };
+    const scheduleState = agency
+      ? await db.query<{
+          schedules: number; enabled_schedules: number; triggers: number; enabled_triggers: number;
+          open_reports: number; open_approvals: number;
+        }>(
+          `select
+             (select count(*)::int from ai_work_schedules where org_id=$1) as schedules,
+             (select count(*)::int from ai_work_schedules where org_id=$1 and enabled) as enabled_schedules,
+             (select count(*)::int from ai_work_triggers where org_id=$1) as triggers,
+             (select count(*)::int from ai_work_triggers where org_id=$1 and enabled) as enabled_triggers,
+             (select count(*)::int from ai_work_reports where org_id=$1 and status='open') as open_reports,
+             (select count(*)::int from approval_requests where org_id=$1 and status='pending') as open_approvals`,
+          [agency.id],
+        )
+      : { rows: [] as Array<{
+          schedules: number; enabled_schedules: number; triggers: number; enabled_triggers: number;
+          open_reports: number; open_approvals: number;
+        }> };
     const hunters = agency
       ? await db.query<{
           display_name: string; role_key: string; status: string; enabled: boolean; hermes_profile: string | null;
@@ -143,6 +235,9 @@ async function main() {
       agencyCount: agencies.rows.length,
       agency,
       companyProfile: companyProfile.rows[0] ?? null,
+      internalEmployees: internalEmployees.rows,
+      workforceQueues: workforceQueues.rows,
+      scheduleState: scheduleState.rows[0] ?? null,
       leadHunter: hunters.rows[0] ?? null,
       zeng: zeng.rows[0] ?? null,
       appLedger: appLedger.rows.map((row) => ({ version: row.version, appliedAt: row.applied_at.toISOString() })),
@@ -198,8 +293,120 @@ async function main() {
     services: data.companyProfile?.services ?? "",
     idealCustomers: data.companyProfile?.ideal_customers ?? "",
     operatingArea: data.companyProfile?.operating_area ?? "",
+    industry: data.companyProfile?.industry ?? "",
   };
   const configPreview = auditRoleConfiguration("lead_hunter", recommendedSettings("lead_hunter"), companyFacts);
+  const evaluatedAt = new Date(readinessClockNow());
+  const internalEmployees = data.internalEmployees.map((employee) => {
+    const role = employee.role_key;
+    const parsedSettings = employee.settings === null ? null : agentSettingsSchema.safeParse(employee.settings);
+    const appliedSettings = parsedSettings?.success ? parsedSettings.data : null;
+    const defaultsAudit = auditRoleConfiguration(role, recommendedSettings(role), companyFacts);
+    const activeAudit = appliedSettings ? auditRoleConfiguration(role, appliedSettings, companyFacts) : null;
+    const identityEvidence = {
+      expectedProfile: AGENCY_HERMES_PROFILE_IDS[role],
+      savedProfile: employee.hermes_profile,
+      savedGatewayId: employee.hermes_gateway_id,
+      checkedProfile: employee.check_profile,
+      checkedGatewayId: employee.check_gateway_id,
+      checkStatus: employee.check_status,
+      identityVerified: employee.identity_verified,
+      apiContractVerified: employee.api_contract_verified,
+      toolPermissionsStatus: employee.tool_permissions_status,
+      checkedAt: employee.checked_at,
+      configAppliedAt: employee.config_applied_at,
+    };
+    const identityCurrent = internalIdentityIsCurrent(identityEvidence);
+    const inventoryEvidence = {
+      last_health_ok: employee.last_health_ok,
+      tool_inventory_contract: employee.tool_inventory_contract,
+      tool_inventory_digest: employee.tool_inventory_digest,
+      tool_inventory_verified_at: employee.tool_inventory_verified_at,
+      tool_inventory_expires_at: employee.tool_inventory_expires_at,
+      tool_inventory_tool_count: employee.tool_inventory_tool_count,
+    };
+    const inventoryRecorded = toolInventoryRecorded(inventoryEvidence);
+    const acknowledgementCurrent = internalAcknowledgementIsCurrent({
+      ...identityEvidence,
+      acknowledgedAt: employee.acknowledged_at,
+      acknowledgedProfile: employee.acknowledged_profile,
+      acknowledgedPolicyId: employee.acknowledged_policy_id,
+      expectedPolicyId: employee.expected_policy_id,
+      activeConfigVersionId: employee.active_config_version_id,
+      acknowledgedConfigVersionId: employee.acknowledged_config_version_id,
+      inventoryDigest: employee.tool_inventory_digest,
+      acknowledgedInventoryDigest: employee.acknowledged_inventory_digest,
+      credentialReady: employee.credential_ready,
+      hasAgentPolicyOverride: employee.has_agent_policy_override,
+    });
+    const readiness = deriveEmployeeReadiness({
+      displayName: employee.display_name,
+      enabled: employee.enabled,
+      status: employee.status as "online" | "busy" | "offline" | "setup_required" | "provisioning" | "error",
+      configVersion: employee.config_version,
+      lastHealthCheckAt: employee.last_health_check_at?.toISOString() ?? null,
+      lastHealthOk: employee.last_health_ok,
+      lastHealthDetail: employee.last_health_detail,
+      inventoryContract: employee.tool_inventory_contract,
+      inventoryDigest: employee.tool_inventory_digest,
+      inventoryVerifiedAt: employee.tool_inventory_verified_at?.toISOString() ?? null,
+      inventoryExpiresAt: employee.tool_inventory_expires_at?.toISOString() ?? null,
+      inventoryToolCount: employee.tool_inventory_tool_count,
+      credentialCurrent: employee.credential_ready,
+      identityCurrent,
+      acknowledgementCurrent,
+      isAgencyEmployee: true,
+      evaluatedAt,
+    });
+    return {
+      role,
+      displayName: employee.display_name,
+      enabled: employee.enabled,
+      status: employee.status,
+      expectedProfileMatches: employee.hermes_profile === AGENCY_HERMES_PROFILE_IDS[role],
+      appliedConfiguration: {
+        version: employee.config_version,
+        status: employee.config_status,
+        settingsValid: employee.active_config_version_id ? parsedSettings?.success === true : false,
+        roleFieldsComplete: activeAudit?.employeeComplete ?? null,
+        roleFieldsTotal: activeAudit?.employeeTotal ?? defaultsAudit.employeeTotal,
+        companyFactsComplete: activeAudit?.companyComplete ?? null,
+        companyFactsTotal: activeAudit?.companyTotal ?? defaultsAudit.companyTotal,
+        qualityReady: activeAudit?.ready ?? false,
+        missingRoleFields: activeAudit?.items.filter((item) => item.scope === "employee" && item.state === "missing").map((item) => item.label) ?? null,
+        missingCompanyFacts: activeAudit?.missingCompanyFacts ?? null,
+      },
+      recommendedConfigurationPreview: {
+        roleFieldsComplete: defaultsAudit.employeeComplete,
+        roleFieldsTotal: defaultsAudit.employeeTotal,
+        companyFactsComplete: defaultsAudit.companyComplete,
+        companyFactsTotal: defaultsAudit.companyTotal,
+        readyWithoutInventingFacts: defaultsAudit.ready,
+      },
+      credentialCurrent: employee.credential_ready,
+      lastHealthCheck: { at: employee.last_health_check_at?.toISOString() ?? null, passed: employee.last_health_ok },
+      inventoryRecorded,
+      inventoryCurrent: toolInventoryReady(inventoryEvidence, evaluatedAt),
+      identityCurrent,
+      acknowledgementCurrent,
+      readiness: {
+        score: `${readiness.completed}/${readiness.total}`,
+        chatAvailable: readiness.chatAvailable,
+        stage: readiness.stage,
+        blockedSteps: readiness.steps.filter((step) => step.state !== "done").map((step) => step.key),
+      },
+    };
+  });
+  const internalWorkforceSummary = {
+    rosterComplete: internalEmployees.length === AGENT_ROLE_KEYS.length,
+    employees: internalEmployees.length,
+    readyForAuthorizedChat: internalEmployees.filter((employee) => employee.readiness.chatAvailable).length,
+    fullyReady: internalEmployees.filter((employee) => employee.readiness.score === "6/6" && employee.readiness.chatAvailable).length,
+    byReadinessStage: Object.fromEntries(
+      [...new Set(internalEmployees.map((employee) => employee.readiness.stage))]
+        .map((stage) => [stage, internalEmployees.filter((employee) => employee.readiness.stage === stage).length]),
+    ),
+  };
 
   const prefixCollisions = TARGETS.flatMap((target) => {
     const prefix = target.version.slice(0, 4);
@@ -241,6 +448,13 @@ async function main() {
       missingCompanyFacts: configPreview.missingCompanyFacts,
       readyToApplyWithoutInventingFacts: configPreview.ready,
       note: "Built from recommendedSettings(lead_hunter) and the current saved company facts; nothing was saved.",
+    },
+    internalWorkforce: {
+      summary: internalWorkforceSummary,
+      employees: internalEmployees,
+      jobCountsByStatusAndCapability: data.workforceQueues,
+      scheduleState: data.scheduleState,
+      instructionDisclosure: "This report checks saved portal configuration and readiness evidence only. It does not claim Hermes SOUL.md contents were read or start a model run.",
     },
     leadHunter: data.leadHunter
       ? {

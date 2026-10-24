@@ -6,6 +6,10 @@ import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import type { Permission } from "@/lib/permissions";
 import { deleteSchedule, listSchedules, runDueSchedules, saveSchedule, setScheduleEnabled, schedulesOperatorEnabled } from "@/server/workforce/schedules";
+import { getWorkforceCalendarData } from "@/server/workforce/calendar";
+import { listWorkBoardJobs } from "@/server/workforce/work-board";
+import { resetEnvCache } from "@/server/env";
+import { POST as schedulerTick } from "@/app/api/internal/tick/route";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: { id: string; email: string };
@@ -149,6 +153,165 @@ describe("tenant AI workforce schedules", () => {
     expect(again.created).toBe(0);
   }, 30000);
 
+  it("runs the real cron tick through durable tenant-scoped jobs, Work Board and Calendar history", { timeout: 30000 }, async () => {
+    const otherOrg = await createOrg({ name: "Schedule Isolation Co" });
+    const otherOwner = await createUser();
+    await addMember(otherOrg.id, otherOwner.id, "owner");
+    const crmManagerId = await agentId(otherOrg.id, "crm_manager");
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: otherOrg.id,
+      agentId: crmManagerId,
+      settings: defaultSettings("crm_manager"),
+      source: "onboarding",
+      userId: otherOwner.id,
+      apply: true,
+    }));
+    await withSystem((db) => db.query(
+      "update agent_instances set status = 'online', last_health_ok = true, last_health_check_at = now() where id = $1 and org_id = $2",
+      [crmManagerId, otherOrg.id],
+    ));
+
+    const context = ctxFor(owner, org, "owner");
+    const otherContext = ctxFor(otherOwner, otherOrg, "owner");
+    const operationsSchedule = await saveSchedule(context, {
+      capability: "proactive_review",
+      cadence: "daily",
+      enabled: true,
+    });
+    const crmSchedule = await saveSchedule(otherContext, {
+      capability: "crm_quality_review",
+      cadence: "daily",
+      enabled: true,
+    });
+    const operationSlot = (await withSystem((db) => db.query<{ next_run_at: Date }>(
+      "update ai_work_schedules set next_run_at = date_trunc('minute', now()) - interval '5 minutes' where id = $1 returning next_run_at",
+      [operationsSchedule.id],
+    ))).rows[0].next_run_at;
+    const crmSlot = (await withSystem((db) => db.query<{ next_run_at: Date }>(
+      "update ai_work_schedules set next_run_at = date_trunc('minute', now()) - interval '5 minutes' where id = $1 returning next_run_at",
+      [crmSchedule.id],
+    ))).rows[0].next_run_at;
+
+    const envKeys = ["CRON_SECRET", "SCHEDULER_ENABLED", "SCHEDULER_JOBS_ONLY", "WORKFORCE_SCHEDULES_ENABLED"] as const;
+    const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]])) as Record<typeof envKeys[number], string | undefined>;
+    const testSecret = "local-workforce-cron-test-secret-2026";
+    try {
+      process.env.CRON_SECRET = testSecret;
+      process.env.SCHEDULER_ENABLED = "true";
+      process.env.SCHEDULER_JOBS_ONLY = "aiWorkSchedules";
+      process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
+      resetEnvCache();
+      await withSystem((db) => db.query(
+        "update worker_job_runs set last_started_at = now() - interval '5 minutes', last_finished_at = now() - interval '5 minutes' where job_name = any($1::text[])",
+        [["scheduler_tick", "aiWorkSchedules"]],
+      ));
+
+      const response = await schedulerTick(new Request("http://localhost/api/internal/tick", {
+        method: "POST",
+        headers: { authorization: `Bearer ${testSecret}` },
+      }));
+      expect(response.status).toBe(200);
+      const body = await response.json() as { ok: boolean; ran: Record<string, number | string> };
+      expect(body).toMatchObject({ ok: true, ran: { aiWorkSchedules: 2 } });
+
+      const [operationScheduleRow, crmScheduleRow] = await Promise.all([
+        withSystem((db) => db.query<{ last_job_id: string; next_run_at: Date }>(
+          "select last_job_id, next_run_at from ai_work_schedules where id = $1 and org_id = $2",
+          [operationsSchedule.id, org.id],
+        )),
+        withSystem((db) => db.query<{ last_job_id: string; next_run_at: Date }>(
+          "select last_job_id, next_run_at from ai_work_schedules where id = $1 and org_id = $2",
+          [crmSchedule.id, otherOrg.id],
+        )),
+      ]);
+      const operationJobId = operationScheduleRow.rows[0].last_job_id;
+      const crmJobId = crmScheduleRow.rows[0].last_job_id;
+      expect(operationJobId).toBeTruthy();
+      expect(crmJobId).toBeTruthy();
+      expect(operationJobId).not.toBe(crmJobId);
+      expect(new Date(operationScheduleRow.rows[0].next_run_at).getTime()).toBeGreaterThan(Date.now());
+      expect(new Date(crmScheduleRow.rows[0].next_run_at).getTime()).toBeGreaterThan(Date.now());
+
+      expect(await waitForJob(operationJobId)).toMatchObject({ status: "completed" });
+      expect(await waitForJob(crmJobId)).toMatchObject({ status: "completed" });
+      const storedJobs = await withSystem((db) => db.query<{ id: string; org_id: string; capability: string; input: Record<string, unknown>; result_summary: string | null }>(
+        "select id, org_id, capability, input, result_summary from ai_work_jobs where id = any($1::uuid[]) order by id",
+        [[operationJobId, crmJobId]],
+      ));
+      expect(storedJobs.rows).toHaveLength(2);
+      expect(storedJobs.rows.find((job) => job.id === operationJobId)).toMatchObject({
+        org_id: org.id,
+        capability: "proactive_review",
+        input: { scheduled: true, scheduleId: operationsSchedule.id, scheduledAt: operationSlot.toISOString() },
+      });
+      expect(storedJobs.rows.find((job) => job.id === crmJobId)).toMatchObject({
+        org_id: otherOrg.id,
+        capability: "crm_quality_review",
+        input: { scheduled: true, scheduleId: crmSchedule.id, scheduledAt: crmSlot.toISOString() },
+      });
+      expect(storedJobs.rows.every((job) => job.result_summary?.trim().length)).toBe(true);
+
+      const operationBoard = await listWorkBoardJobs(context, "completed");
+      const otherBoard = await listWorkBoardJobs(otherContext, "completed");
+      expect(operationBoard.map((job) => job.id)).toContain(operationJobId);
+      expect(operationBoard.map((job) => job.id)).not.toContain(crmJobId);
+      expect(otherBoard.map((job) => job.id)).toContain(crmJobId);
+      expect(otherBoard.map((job) => job.id)).not.toContain(operationJobId);
+
+      const calendarRange = (slot: Date) => ({
+        from: new Date(slot.getTime() - 1000),
+        to: new Date(slot.getTime() + 60_000),
+      });
+      const [operationCalendar, crmCalendar] = await Promise.all([
+        getWorkforceCalendarData(context, calendarRange(operationSlot)),
+        getWorkforceCalendarData(otherContext, calendarRange(crmSlot)),
+      ]);
+      expect(operationCalendar.jobs).toMatchObject([{
+        id: operationJobId,
+        source: "schedule",
+        scheduleId: operationsSchedule.id,
+        status: "completed",
+        employeeRole: "operations_manager",
+      }]);
+      expect(operationCalendar.jobs.map((job) => job.id)).not.toContain(crmJobId);
+      expect(operationCalendar.schedules.find((schedule) => schedule.id === operationsSchedule.id)).toMatchObject({
+        lastJobId: operationJobId,
+        lastRunAt: expect.any(String),
+        operatorEnabled: true,
+      });
+      expect(crmCalendar.jobs).toMatchObject([{
+        id: crmJobId,
+        source: "schedule",
+        scheduleId: crmSchedule.id,
+        status: "completed",
+        employeeRole: "crm_manager",
+      }]);
+      expect(crmCalendar.jobs.map((job) => job.id)).not.toContain(operationJobId);
+
+      await withSystem((db) => db.query(
+        "update worker_job_runs set last_started_at = now() - interval '5 minutes', last_finished_at = now() - interval '5 minutes' where job_name = 'scheduler_tick'",
+      ));
+      const repeat = await schedulerTick(new Request("http://localhost/api/internal/tick", {
+        method: "POST",
+        headers: { authorization: `Bearer ${testSecret}` },
+      }));
+      expect(repeat.status).toBe(200);
+      expect((await repeat.json() as { ran: Record<string, number | string> }).ran.aiWorkSchedules).toBe(0);
+      const repeatedJobs = await withSystem((db) => db.query<{ count: number }>(
+        "select count(*)::int as count from ai_work_jobs where org_id = any($1::uuid[]) and input->>'scheduleId' = any($2::text[]) and input->>'scheduledAt' = any($3::text[])",
+        [[org.id, otherOrg.id], [operationsSchedule.id, crmSchedule.id], [operationSlot.toISOString(), crmSlot.toISOString()]],
+      ));
+      expect(repeatedJobs.rows[0].count).toBe(2);
+    } finally {
+      for (const key of envKeys) {
+        const value = previousEnv[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetEnvCache();
+    }
+  });
+
   it("does not create a second job while the previous scheduled job is still active", async () => {
     process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
     const saved = await saveSchedule(ctxFor(owner, org, "owner"), { capability: "proactive_review", cadence: "hourly", enabled: true });
@@ -172,6 +335,9 @@ describe("tenant AI workforce schedules", () => {
     ).rejects.toMatchObject({ code: "forbidden" });
     await expect(
       saveSchedule(ctxFor(owner, org, "owner"), { capability: "lead_research", cadence: "daily", enabled: false }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      saveSchedule(ctxFor(owner, org, "owner"), { capability: "pipeline_followup_drafts", cadence: "daily", enabled: false }),
     ).rejects.toMatchObject({ code: "invalid_input" });
   });
 

@@ -75,6 +75,38 @@ describe("AI workforce migration renumbering", () => {
         "select table_name, column_name from information_schema.columns where table_schema = 'public' and ((table_name = 'hermes_gateways' and column_name = 'provisioner_isolation_verified_at') or (table_name = 'agent_instances' and column_name = 'hermes_profile_config_version_id') or (table_name = 'agent_provisioning_jobs' and column_name in ('config_version_id','source_job_id','manifest_soul_sha256','manifest_policy_config_sha256','manifest_challenge_sha256'))) order by table_name, column_name",
       );
       expect(provisionerColumns.rows).toHaveLength(7);
+
+      const workforceTail = [
+        "0087_workforce_local_recurrence",
+        "0088_workforce_chat_schedule_previews",
+        "0089_workforce_chat_booking_previews",
+        "0090_workforce_appointment_changes",
+      ];
+      expect(await runMigrations(driver as never, workforceTail)).toEqual(workforceTail);
+      const { rows: testOrgRows } = await driver.query<{ id: string }>(
+        "insert into organizations (name, slug, kind, status) values ('Rollback Fixture', 'rollback-fixture', 'client', 'active') returning id",
+      );
+      const testOrgId = testOrgRows[0].id;
+      await driver.query(
+        "insert into approval_requests (org_id, kind, title) values ($1, 'appointment_change', 'Rollback guard fixture')",
+        [testOrgId],
+      );
+
+      const appointmentRollback = fs.readFileSync(
+        path.resolve(process.cwd(), "supabase", "rollbacks", "0090_workforce_appointment_changes.down.sql"),
+        "utf8",
+      );
+      await expect(driver.execScript(appointmentRollback)).rejects.toThrow(/approval history/);
+      await driver.query("delete from approval_requests where org_id = $1 and kind = 'appointment_change'", [testOrgId]);
+      await driver.execScript(appointmentRollback);
+      const appointmentProposalColumn = await driver.query<{ count: string }>(
+        "select count(*)::text as count from information_schema.columns where table_schema = 'public' and table_name = 'chat_conversations' and column_name = 'pending_workforce_appointment_change'",
+      );
+      expect(appointmentProposalColumn.rows[0].count).toBe("0");
+      const approvalKindConstraint = await driver.query<{ definition: string }>(
+        "select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid = 'public.approval_requests'::regclass and conname = 'approval_requests_kind_check'",
+      );
+      expect(approvalKindConstraint.rows[0].definition).not.toContain("appointment_change");
     } finally {
       await db.close();
     }
