@@ -21,6 +21,7 @@ import { addCost } from "../src/server/attribution/costs";
 import { recordTouch } from "../src/server/attribution/touches";
 import type { OrgContext } from "../src/server/tenancy/context";
 import { CURRENT_AUTHORIZATION_VERSION } from "../src/lib/invoices/connection-rules";
+import { todayIn } from "../src/lib/invoices/state";
 import { applyDisputeInTx, applyPaymentInTx } from "../src/server/invoices/apply";
 import { createDraft, issueInvoice, submitForApproval, voidInvoice, writeOffInvoice } from "../src/server/invoices/invoices";
 import { recordManualPayment, recordRefund } from "../src/server/invoices/payments";
@@ -63,8 +64,10 @@ const line = (description: string, unitPrice: string, over: Partial<LineFormInpu
 export async function seedInvoiceWorld(a: InvoiceWorldPeople, opts: { now?: Date; revenueFiction?: boolean } = {}): Promise<InvoiceWorldRow[]> {
   const now = opts.now ?? new Date();
   const ago = (days: number) => new Date(now.getTime() - days * DAY);
-  const day = (offset: number) => new Date(now.getTime() + offset * DAY).toISOString().slice(0, 10);
   const orgId = a.owner.org.orgId;
+  // A date is the workspace's own: between about 18:00 and midnight in Chicago the UTC date is already tomorrow, and a payment dated by the UTC date would be "in the future".
+  const tz = (await withSystem((db) => db.query<{ timezone: string }>("select timezone from organizations where id = $1", [orgId]))).rows[0]?.timezone ?? "UTC";
+  const day = (offset: number) => todayIn(new Date(now.getTime() + offset * DAY), tz);
   const rows: InvoiceWorldRow[] = [];
 
   const settings = await getInvoiceSettings(a.owner);
