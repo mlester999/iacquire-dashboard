@@ -4,6 +4,7 @@ import { withSystem } from "@/server/db";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
+import type { Permission } from "@/lib/permissions";
 import { deleteSchedule, listSchedules, runDueSchedules, saveSchedule, setScheduleEnabled, schedulesOperatorEnabled } from "@/server/workforce/schedules";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -58,6 +59,36 @@ describe("tenant AI workforce schedules", () => {
     expect(schedulesOperatorEnabled()).toBe(false);
     const run = await runDueSchedules();
     expect(run).toMatchObject({ operatorEnabled: false, created: 0 });
+  });
+
+  it("keeps core employee schedules available without Automation Studio access or a maintenance plan", async () => {
+    const base = ctxFor(owner, org, "owner");
+    const withoutStudio = {
+      ...base,
+      permissions: base.permissions.filter((permission) => permission !== "workflows.view"),
+      can: (permission: Permission) => permission === "workflows.view" ? false : base.can(permission),
+    };
+    expect(withoutStudio.can("workflows.view")).toBe(false);
+    await withSystem((db) => db.query(
+      "delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",
+      [org.id, operationsManagerId],
+    ));
+    expect((await withSystem((db) => db.query(
+      "select id from maintenance_subscriptions where org_id = $1 and status = 'active'",
+      [org.id],
+    ))).rows).toHaveLength(0);
+
+    const saved = await saveSchedule(withoutStudio, {
+      capability: "proactive_review",
+      cadence: "daily",
+      enabled: false,
+    });
+    expect(saved.enabled).toBe(false);
+    expect((await listSchedules(withoutStudio)).find((schedule) => schedule.id === saved.id)).toMatchObject({
+      capability: "proactive_review",
+      enabled: false,
+      operatorEnabled: false,
+    });
   });
 
   it("persists a paused weekday rule and creates only the next local-time occurrence", async () => {
