@@ -12,7 +12,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 | B | Staff workload: engine, labels, permissions, history/alerts job, team overview, board with assignment suggestions, calendar, project health, person page and manage forms | 0097 | Implemented; targeted tests pass; **workload screens browser-QA'd at 1280/375, light/dark**; other Wave 2 screens not |
 | C | Requests completion: change orders and decisions, prerequisites, scope amendments, support mentions, surveys, AI triage | 0098 | Implemented; targeted tests pass; **support path browser-QA'd at 1280/375 px** (submit, internal note, public reply, assign, resolve, client view); change/survey branches test-only |
 | D | Payment clearance, manual payments, lifecycle and entitlement boundaries | 0099 | Implemented; targeted tests pass; no real provider |
-| E | Client onboarding completion: snapshot answers, employee status, media/storage step, setup payment line | 0102 | Implemented; targeted tests pass |
+| E | Client onboarding completion: snapshot answers, employee status, media/storage step, setup payment line | 0102 | Implemented; targeted tests pass; **browser-QA'd through questions 8–9 at 1280/375 px** (device time zone saved, Continue advanced, axe 0); the remaining 45 questions were not driven |
 | F | Demo funnel: verified prospect access, guided four-step room, ten-message limit, 24-hour window, admin, retention | 0100 | Implemented; targeted tests pass; **browser-QA'd end to end at 1280/375 px** (request → captured email → one-use verify → room → simulated reply → 10-message limit); found and fixed a room crash in `LocalTime` hydration |
 | G | Consent-aware proposal/invoice sending and invoice from an accepted proposal | 0091 edit, 0093 edit, delivery files | Implemented; targeted tests pass; no real email provider |
 | H | Purchase intents | 0101 | **Implemented, Verified Locally** — frozen $1,499/$299 snapshot, hashed expiring public link, buyer confirmation, Super Admin verified payment, idempotent workspace creation through `createClientTenant` + `recordManualPayment`; no online checkout or provider webhook yet |
@@ -47,7 +47,7 @@ Wave 2 is the Phase 5/6 foundation: staff Messages and staff workload (W2-A), Re
 
 ## Remaining Wave 2 work and next actions
 
-1. Browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: onboarding, invoice delivery, invoice-from-proposal, and the Requests change/survey branches.
+1. Browser-QA the remaining Wave 2 screens at 375/768/1280 px, light and dark: invoice delivery, invoice-from-proposal, the Requests change/survey branches, and the remaining onboarding questions through submit.
 2. Keep the purchase-intent, Messages and Requests browser QA evidence with the commit; rerun only if those pages change.
 3. Extend the Phase 6 cross-module scenario (`tests/phase6-client-operations.test.ts`) to surveys; the support path is browser-verified and the project/workload/staff-channel/change-order path is covered by that test.
 
