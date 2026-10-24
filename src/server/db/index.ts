@@ -391,7 +391,10 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   // conversation_events trail (the missed call is written to the conversation), and 0086 follows 0085 so the two never reach a database in the other order.
   "0085_missed_call_recovery": ["0065_support_requests", "0083_unified_inbox"],
   "0086_lead_scoring": ["0065_support_requests", "0085_missed_call_recovery"],
+  "0087_workforce_local_recurrence": ["0078_ai_work_schedules"],
+  "0088_workforce_chat_schedule_previews": ["0087_workforce_local_recurrence"],
   "0089_workforce_chat_booking_previews": ["0088_workforce_chat_schedule_previews"],
+  "0090_workforce_appointment_changes": ["0089_workforce_chat_booking_previews"],
 };
 
 /**

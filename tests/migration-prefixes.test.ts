@@ -45,6 +45,12 @@ describe("migration file numbers", () => {
     expect(MIGRATION_PREREQUISITES["0089_workforce_chat_booking_previews"]).toContain("0088_workforce_chat_schedule_previews");
   });
 
+  it("keeps the workforce schedule proposal chain behind its schema prerequisites", () => {
+    expect(MIGRATION_PREREQUISITES["0087_workforce_local_recurrence"]).toContain("0078_ai_work_schedules");
+    expect(MIGRATION_PREREQUISITES["0088_workforce_chat_schedule_previews"]).toContain("0087_workforce_local_recurrence");
+    expect(MIGRATION_PREREQUISITES["0090_workforce_appointment_changes"]).toContain("0089_workforce_chat_booking_previews");
+  });
+
   it("notices a shared number (the check itself works)", () => {
     expect(duplicates(["0082_client_employee_provisioning.sql", "0082_unified_inbox.sql", "0083_other.sql"])).toEqual(["0082: 0082_client_employee_provisioning.sql, 0082_unified_inbox.sql"]);
   });
