@@ -5,6 +5,7 @@ import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
 import { parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
+import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -322,6 +323,36 @@ describe("six employee chat to native workflow", () => {
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
       [org.id],
     ))).rows[0].count).toBe(beforeJobs);
+  });
+
+  it("rolls back the job and dispatch audit if handoff provenance cannot be saved", async () => {
+    let dispatchedJobId: string | null = null;
+    const idempotencyKey = `handoff-rollback-${crypto.randomUUID()}`;
+    await expect(dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
+      agentRole: "crm_manager",
+      capability: "crm_quality_review",
+      title: "Atomic handoff rollback check",
+      idempotencyKey,
+      deferKick: true,
+      onDispatch: async (db, job) => {
+        dispatchedJobId = job.jobId;
+        await db.query(
+          `insert into ai_work_events (job_id, org_id, kind, stage, message, data)
+           values ($1, $2, 'notice', null, 'Should be rolled back', '{}'::jsonb)`,
+          [job.jobId, org.id],
+        );
+        throw new Error("simulated handoff provenance failure");
+      },
+    })).rejects.toThrow("simulated handoff provenance failure");
+
+    expect(dispatchedJobId).toEqual(expect.any(String));
+    const persisted = await withSystem(async (db) => {
+      const jobs = await db.query("select id from ai_work_jobs where org_id = $1 and idempotency_key = $2", [org.id, idempotencyKey]);
+      const events = await db.query("select id from ai_work_events where org_id = $1 and job_id = $2", [org.id, dispatchedJobId]);
+      const audits = await db.query("select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.capability_dispatched'", [org.id, dispatchedJobId]);
+      return { jobs: jobs.rows, events: events.rows, audits: audits.rows };
+    });
+    expect(persisted).toEqual({ jobs: [], events: [], audits: [] });
   });
 
   it("prepares only a Sales Assistant-owned stale deal draft, and reuses it on retry", async () => {
