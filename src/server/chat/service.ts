@@ -29,6 +29,7 @@ import { createResearchRequest } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
+import { isAutomationBuilderRequest } from "@/lib/workforce-chat-routing";
 import { capabilityDefinition, isCapabilityKey, type CapabilityKey } from "@/lib/workforce-capabilities";
 import {
   isScheduleConfirmation,
@@ -701,6 +702,20 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
 
   // Guard clear external, out-of-role and unsupported write requests in application code. Do not
   // depend on an unenforced Hermes approval preference or let a generic run claim an action.
+  if (!input.regenerateMessageId && isAutomationBuilderRequest(prepared.userContent)) {
+    const content = ctx.can("workflows.view")
+      ? "Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from this employee chat. [Open Automation Studio](/automation-studio) to build a draft and test it, then follow the normal approval process before activation. No email was sent."
+      : "Building automations belongs in Automation Studio, but your workspace role can't open it. Ask an owner or admin for workflow access. No workflow was created and no email was sent.";
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      content,
+    });
+    return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+  }
+
   const refusal = !input.regenerateMessageId && input.content
     ? workforceChatRefusal(input.agentRole, input.content)
     : null;

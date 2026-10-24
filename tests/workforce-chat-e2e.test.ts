@@ -369,6 +369,40 @@ describe("six employee chat to native workflow", () => {
     expect(memberPreview.runId).toBeNull();
   });
 
+  it("routes automation-building requests to Automation Studio without starting employee work", async () => {
+    const requestStart = mock.requests.length;
+    const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    const ownerRequest = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "lead_hunter",
+      content: "Create an automation that sends an email when we receive a new lead.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(ownerRequest).toMatchObject({ runId: null, jobId: null });
+    const ownerReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [ownerRequest.assistantMessageId]))).rows[0].content;
+    expect(ownerReply).toContain("[Open Automation Studio](/automation-studio)");
+    expect(ownerReply).toContain("No email was sent");
+
+    const memberRequest = await sendChatMessage(ctxFor(member, org, "member"), {
+      agentRole: "lead_hunter",
+      content: "Help me create a workflow that sends an email when a new lead arrives.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(memberRequest).toMatchObject({ runId: null, jobId: null });
+    const memberReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [memberRequest.assistantMessageId]))).rows[0].content;
+    expect(memberReply).toContain("can't open it");
+    expect(memberReply).not.toContain("/automation-studio");
+
+    const afterJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    expect(afterJobs).toBe(beforeJobs);
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+  });
+
   it("does not overwrite a schedule that appeared after the preview", async () => {
     const preview = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "operations_manager",
