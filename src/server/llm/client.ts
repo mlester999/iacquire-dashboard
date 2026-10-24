@@ -50,20 +50,35 @@ export type LlmReply = { ok: true; text: string } | { ok: false; status: number 
 /** One non-streaming completion. Never throws and never includes the key or upstream body in its result. */
 export async function llmComplete(
   c: LlmConfig,
-  input: { system: string; user: string; maxTokens: number; temperature?: number; timeoutMs?: number },
+  input: { system: string; user: string; maxTokens: number; temperature?: number; timeoutMs?: number; responseFormat?: "json_object"; disableThinking?: boolean },
   signal?: AbortSignal,
 ): Promise<LlmReply> {
   const temperature = input.temperature ?? 0.2;
+  let deepSeekEndpoint = false;
+  try { deepSeekEndpoint = new URL(c.baseUrl).hostname === "api.deepseek.com"; } catch { /* invalid endpoints fail through the normal request path */ }
   const body =
     c.format === "anthropic"
       ? { model: c.model, max_tokens: input.maxTokens, temperature, system: input.system, messages: [{ role: "user", content: input.user }] }
-      : { model: c.model, max_tokens: input.maxTokens, temperature, messages: [{ role: "system", content: input.system }, { role: "user", content: input.user }] };
+      : {
+          model: c.model,
+          max_tokens: input.maxTokens,
+          temperature,
+          messages: [{ role: "system", content: input.system }, { role: "user", content: input.user }],
+          ...(input.responseFormat ? { response_format: { type: input.responseFormat } } : {}),
+          ...(input.disableThinking && deepSeekEndpoint ? { thinking: { type: "disabled" } } : {}),
+        };
   try {
     // Redirects are refused so the credential can never be forwarded to another host.
     const timeout = AbortSignal.timeout(input.timeoutMs ?? 20_000);
     const res = await fetch(llmChatUrl(c), { method: "POST", headers: llmHeaders(c.format, c.apiKey), body: JSON.stringify(body), redirect: "error", cache: "no-store", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     if (!res.ok) return { ok: false, status: res.status };
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; content?: Array<{ type?: string; text?: string }> };
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+      content?: Array<{ type?: string; text?: string }>;
+      stop_reason?: string;
+    };
+    if (c.format === "openai" && json.choices?.[0]?.finish_reason === "length") return { ok: false, status: 0 };
+    if (c.format === "anthropic" && json.stop_reason === "max_tokens") return { ok: false, status: 0 };
     const text = (c.format === "anthropic" ? json.content?.find((p) => p.type === "text")?.text : json.choices?.[0]?.message?.content)?.trim();
     return text ? { ok: true, text } : { ok: false, status: 0 };
   } catch {

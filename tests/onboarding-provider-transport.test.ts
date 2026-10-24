@@ -19,6 +19,33 @@ describe("shared provider transport for onboarding", () => {
     expect(JSON.stringify(await llmComplete({ ...config, format }, input))).not.toContain("server-secret");
   });
 
+  it("requests a JSON object only when the caller explicitly opts in", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: '{"value":"A draft"}' } }] })));
+    vi.stubGlobal("fetch", fetcher);
+    await llmComplete(config, { ...input, responseFormat: "json_object" });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body).response_format).toEqual({ type: "json_object" });
+
+    fetcher.mockClear();
+    await llmComplete({ ...config, format: "anthropic" }, { ...input, responseFormat: "json_object" });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty("response_format");
+  });
+
+  it("disables thinking only for an explicitly requested DeepSeek completion", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: '{"value":"A draft"}' }, finish_reason: "stop" }] })));
+    vi.stubGlobal("fetch", fetcher);
+    await llmComplete({ ...config, baseUrl: "https://api.deepseek.com" }, { ...input, responseFormat: "json_object", disableThinking: true });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ response_format: { type: "json_object" }, thinking: { type: "disabled" } });
+
+    fetcher.mockClear();
+    await llmComplete(config, { ...input, responseFormat: "json_object", disableThinking: true });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty("thinking");
+  });
+
+  it("rejects a truncated completion so callers can retry safely", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: '{"partial":' }, finish_reason: "length" }] }))));
+    expect(await llmComplete(config, input)).toEqual({ ok: false, status: 0 });
+  });
+
   it.each(["timeout", "cancel"])("aborts the provider request on %s without returning secrets", async (kind) => {
     let observed: AbortSignal | undefined;
     vi.stubGlobal("fetch", vi.fn((_url, options) => new Promise((_resolve, reject) => {

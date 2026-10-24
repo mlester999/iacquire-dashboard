@@ -763,6 +763,8 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
           ? "Synchronized confirmed business changes; existing employee style preserved."
           : v2?.generated?.[role]?.source === "safe_defaults"
             ? "Safe deterministic defaults used; AI preference generation was unavailable or invalid."
+            : v2?.generated?.[role]?.fallbackFields?.length
+              ? `AI generated safe role preferences; protected role-template defaults restored for ${v2.generated[role].fallbackFields.join(", ")}.`
             : "Generated from confirmed onboarding and protected role templates.",
         actorKind: ctx.org.kind === "agency" || ctx.user.platformRole !== "none" ? "agency" : "user",
         userId: ctx.user.id,
