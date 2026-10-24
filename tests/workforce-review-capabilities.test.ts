@@ -6,7 +6,7 @@ import { createConfigVersion } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { createFindingTask } from "@/server/workforce/finding-actions";
-import { capabilitiesForRole, roleMayUseCapability } from "@/lib/workforce-capabilities";
+import { capabilitiesForRole, roleMayUseCapability, WORKFORCE_CAPABILITIES } from "@/lib/workforce-capabilities";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: { id: string; email: string };
@@ -174,12 +174,18 @@ beforeAll(async () => {
   });
 }, 60000);
 
-describe("reusable read-only capabilities", () => {
+describe("reviewed workforce capabilities", () => {
   it("allows the intended role and permission for each reviewed capability", () => {
     expect(capabilitiesForRole("crm_manager").map((definition) => definition.key)).toEqual(["crm_quality_review"]);
-    expect(capabilitiesForRole("sales_assistant").map((definition) => definition.key)).toEqual(["pipeline_review", "lead_priority_review"]);
+    expect(capabilitiesForRole("sales_assistant").map((definition) => definition.key)).toEqual(["pipeline_review", "pipeline_followup_drafts", "lead_priority_review"]);
     expect(capabilitiesForRole("appointment_setter").map((definition) => definition.key)).toEqual(["appointment_review", "appointment_availability", "missed_call_review"]);
     expect(capabilitiesForRole("performance_analyst").map((definition) => definition.key)).toEqual(["performance_snapshot"]);
+    expect(WORKFORCE_CAPABILITIES.pipeline_followup_drafts).toMatchObject({
+      requiredPermission: "sales.view",
+      additionalPermissions: ["inbox.reply"],
+      risk: "approval_required",
+      workBoardAction: false,
+    });
     expect(roleMayUseCapability("crm_manager", "pipeline_review")).toBe(false);
     expect(roleMayUseCapability("sales_assistant", "crm_quality_review")).toBe(false);
     expect(roleMayUseCapability("appointment_setter", "appointment_review")).toBe(true);
@@ -383,6 +389,19 @@ describe("reusable read-only capabilities", () => {
         capability: "crm_quality_review",
         title: "Restricted CRM review",
         input: {},
+      }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+  });
+
+  it("requires Inbox reply permission before dispatching a customer-message draft capability", async () => {
+    const base = ctxFor(owner, org, "owner");
+    const withoutReply = { ...base, can: (permission: Parameters<typeof base.can>[0]) => permission !== "inbox.reply" && base.can(permission) };
+    await expect(
+      dispatchCapabilityJob(withoutReply, {
+        agentRole: "sales_assistant",
+        capability: "pipeline_followup_drafts",
+        title: "Prepare safe sales follow-up drafts",
+        input: { limit: 5 },
       }),
     ).rejects.toMatchObject({ code: "forbidden" });
   });

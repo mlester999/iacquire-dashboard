@@ -320,7 +320,7 @@ describe("conversation persistence", () => {
     await expect(sendChatMessage(ctx, { agentRole: "sales_assistant", conversationId, content: "Make it shorter", clientMessageId: "m-2" })).rejects.toThrow(/already sent/);
   });
 
-  it("starts one exact persisted native review from employee chat without submitting a Hermes model run", async () => {
+  it("starts native Sales Assistant follow-up work from chat without submitting a Hermes model run", async () => {
     const ctx = ctxFor(owner, org, "owner");
     const requestStart = mock.requests.length;
     const sent = await sendChatMessage(ctx, {
@@ -336,11 +336,11 @@ describe("conversation persistence", () => {
       [sent.assistantMessageId, org.id],
     ))).rows[0];
     expect(assistant.work_job_id).toBe(sent.jobId);
-    expect(assistant.content).toContain("does not prepare personalized message drafts");
+    expect(assistant.content).toContain("leave every draft unsent");
 
     const job = await waitForWorkJob(sent.jobId!);
     expect(job).toMatchObject({ status: "completed", stage: "completed" });
-    expect(job.result_summary).toContain("Pipeline review");
+    expect(job.result_summary?.toLowerCase()).toContain("pipeline review");
     const events = (await withSystem((db) => db.query<{ stage: string; kind: string }>(
       "select stage, kind from ai_work_events where job_id = $1 order by created_at, id",
       [sent.jobId],

@@ -7,7 +7,7 @@ describe("employee chat assignment routing", () => {
     ["operations_manager", "Review our operations, identify problems and tell me what needs my attention today", "proactive_review"],
     ["lead_hunter", "Review the lead generation pipeline and tell me what to research next", "lead_generation_review"],
     ["appointment_setter", "Check our calendar and schedule an appointment for an available time", "appointment_availability"],
-    ["sales_assistant", "Review our sales pipeline and prepare follow-ups for opportunities that need attention", "pipeline_review"],
+    ["sales_assistant", "Review our opportunities and prepare follow-ups for deals needing attention", "pipeline_followup_drafts"],
     ["crm_manager", "Check our CRM for duplicates and incomplete records, then prepare corrections", "crm_quality_review"],
     ["performance_analyst", "Analyze this month's performance and tell me what improved", "performance_snapshot"],
   ] as const)("routes a clear %s work request to %s", (role, prompt, capability) => {
@@ -23,6 +23,7 @@ describe("employee chat assignment routing", () => {
 
   it("states the real limits of each read-only assignment", () => {
     expect(parseWorkforceChatAssignment("sales_assistant", "Review the pipeline")?.acknowledgement).toContain("does not prepare personalized message drafts");
+    expect(parseWorkforceChatAssignment("sales_assistant", "Review our opportunities and prepare follow-ups for deals needing attention")?.acknowledgement).toContain("leave every draft unsent");
     expect(parseWorkforceChatAssignment("crm_manager", "Review duplicates in the CRM")?.acknowledgement).toContain("will not edit, merge, delete or import");
     expect(parseWorkforceChatAssignment("appointment_setter", "Check calendar availability")?.acknowledgement).toContain("does not hold a slot");
     expect(parseWorkforceChatAssignment("appointment_setter", "Check calendar availability")?.acknowledgement).toContain("continue in Appointments");

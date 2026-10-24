@@ -8,7 +8,7 @@ import type { Permission } from "@/lib/permissions";
  * Adding a capability here does not give any employee permission: the dispatcher also checks the
  * role allowlist, the caller permission, the tenant's agent instance and its readiness.
  */
-export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review";
+export type CapabilityKey = "lead_research" | "lead_generation_review" | "proactive_review" | "crm_quality_review" | "pipeline_review" | "pipeline_followup_drafts" | "appointment_review" | "appointment_availability" | "performance_snapshot" | "missed_call_review" | "lead_priority_review";
 
 export interface CapabilityDefinition {
   key: CapabilityKey;
@@ -16,6 +16,8 @@ export interface CapabilityDefinition {
   description: string;
   allowedRoles: readonly AgentRoleKey[];
   requiredPermission: Permission;
+  /** Additional caller permissions needed when a capability produces a guarded artifact. */
+  additionalPermissions?: readonly Permission[];
   /** read_only means the capability cannot change a business record; approval_required means it must not execute without a human decision. */
   risk: "read_only" | "approval_required" | "sensitive";
   produces: string;
@@ -75,6 +77,17 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
     risk: "read_only",
     produces: "Pipeline hygiene findings with opportunity counts, examples and a link to the pipeline.",
     workBoardAction: true,
+  },
+  pipeline_followup_drafts: {
+    key: "pipeline_followup_drafts",
+    label: "Sales follow-up drafts",
+    description: "Review stale open opportunities and prepare at most five unsent, neutral follow-up drafts only for open conversations this Sales Assistant already handles. A person must review each draft before any message can be sent.",
+    allowedRoles: ["sales_assistant"],
+    requiredPermission: "sales.view",
+    additionalPermissions: ["inbox.reply"],
+    risk: "approval_required",
+    produces: "At most five unsent drafts in the existing Inbox, linked to their conversations and associated with the source opportunities. It never contacts a customer.",
+    workBoardAction: false,
   },
   appointment_review: {
     key: "appointment_review",

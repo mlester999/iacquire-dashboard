@@ -66,6 +66,16 @@ export function parseWorkforceChatAssignment(role: AgentRoleKey, content: string
     };
   }
 
+  if (role === "sales_assistant" && reviewAction && /\b(?:sales pipeline|pipeline|opportunities|deals|stale deals|follow[\s-]*ups?)\b/.test(text)
+    && /\b(?:draft|prepare|write|compose)\b.{0,60}\b(?:follow[\s-]*ups?|messages?|emails?)\b/.test(text)) {
+    return {
+      capability: "pipeline_followup_drafts",
+      title: "Sales pipeline review and follow-up drafts",
+      input: { limit: 5 },
+      acknowledgement: "I’ll review stale opportunities, prepare up to five follow-up drafts only in open conversations I already handle, and leave every draft unsent for a person to review. I won’t contact anyone or invent prices, promises or deal activity.",
+    };
+  }
+
   if (role === "sales_assistant" && reviewAction && /\b(?:sales pipeline|pipeline|opportunities|stale deals|follow ups|followups)\b/.test(text)) {
     return {
       capability: "pipeline_review",

@@ -17,6 +17,7 @@ import { runLeadGenerationReviewJob } from "@/server/workforce/lead-generation-r
 import { runProactiveReviewJob } from "@/server/workforce/proactive-review";
 import { runCrmQualityReviewJob } from "@/server/workforce/crm-quality-review";
 import { runPipelineReviewJob } from "@/server/workforce/pipeline-review";
+import { runPipelineFollowUpDraftsJob } from "@/server/workforce/pipeline-followup-drafts";
 import { runAppointmentReviewJob } from "@/server/workforce/appointment-review";
 import { runPerformanceSnapshotJob } from "@/server/workforce/performance-snapshot";
 import { runAppointmentAvailabilityJob } from "@/server/workforce/appointment-availability";
@@ -37,6 +38,7 @@ const HANDLERS: Record<string, Handler> = {
   proactive_review: runProactiveReviewJob,
   crm_quality_review: runCrmQualityReviewJob,
   pipeline_review: runPipelineReviewJob,
+  pipeline_followup_drafts: runPipelineFollowUpDraftsJob,
   missed_call_review: runMissedCallReviewJob,
   lead_priority_review: runLeadPriorityReviewJob,
   appointment_review: runAppointmentReviewJob,

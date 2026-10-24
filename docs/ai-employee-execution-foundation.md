@@ -142,6 +142,7 @@ shows a synthetic percentage or an activity the worker did not record.
 | `proactive_review` | Operations Manager | `activity.view` | read-only review; no record writes, no provider calls, no schedule |
 | `crm_quality_review` | CRM Manager | `contacts.view` | read-only data-quality review |
 | `pipeline_review` | Sales Assistant | `sales.view` | read-only pipeline hygiene review |
+| `pipeline_followup_drafts` | Sales Assistant | `sales.view` + `inbox.reply` | approval-required, up to five unsent neutral follow-up drafts for stale opportunities and open Sales Assistant conversations |
 | `appointment_review` | Appointment Setter | `appointments.view` | read-only booking-risk review |
 | `appointment_availability` | Appointment Setter | `appointments.view` | real bookable slots; no hold, booking or provider write |
 | `performance_snapshot` | Performance Analyst | `analytics.view` | measured KPIs plus only stated-threshold anomalies |
@@ -152,12 +153,13 @@ unavailable or unconfigured employee, creates the durable job and records a
 `workforce.capability_dispatched` audit event. A capability without a registered handler becomes an
 honest blocked job.
 
-Employee chat also routes clear requests for these existing read-only workflows through
+Employee chat also routes clear requests for reviewed native workflows through
 `src/lib/workforce-chat-assignment.ts`. The route persists the assistant acknowledgement with the
 exact `work_job_id`, dispatches through the same role and permission checks, then kicks only that
-job ID. It never drains the shared queue or invokes Hermes for a native review. Acknowledgements
-state the real limits: reviews do not edit CRM records, send messages, book appointments or activate
-monitoring. `src/lib/workforce-chat-guardrail.ts` also refuses clear out-of-role public prospecting,
+job ID. It never drains the shared queue or invokes Hermes for a native review. Read-only review
+acknowledgements state that they do not edit CRM records, send messages, book appointments or activate
+monitoring. Sales follow-up drafting is the guarded exception: it creates unsent message drafts only.
+`src/lib/workforce-chat-guardrail.ts` also refuses clear out-of-role public prospecting,
 outbound communication, booking changes, approval bypasses, destructive/import CRM actions and
 unsupported Operations task assignment before Hermes submission; the refusal is persisted with a
 redacted audit reason. Lead Hunter's separate assignment parser still handles research requests.
@@ -177,6 +179,16 @@ reviews changes a record, contacts a provider or creates a schedule.
 (`nativeAvailability`) rather than a second slot algorithm. It returns the real bookable start/end
 times and time zone, or the exact reason the calendar cannot offer slots. It never holds a slot,
 creates a booking or writes to an external calendar.
+
+`pipeline_followup_drafts` is a separate Sales Assistant capability. It selects stale open
+opportunities linked to an open conversation still assigned to that employee, skips conversations
+with another outstanding outbound draft or queued send and conversations with a sent message newer
+than the inbound, and saves one deterministic, low-pressure draft per current inbound
+message. The wording uses only a simple CRM first name and does not use conversation text or infer
+pipeline activity. Drafts link to their Inbox conversations and record the source opportunity; they
+remain unsent until a person approves them through the normal Inbox flow, which rechecks consent,
+channel, quiet hours, ownership, credits and policy. The dispatcher requires `agents.use`,
+`sales.view` and `inbox.reply`; the worker rechecks those caller permissions before writing.
 
 The performance snapshot accepts either the last 30 days or the current calendar month. Calendar
 month boundaries use the workspace time zone. Comparable KPIs include the matching prior period and

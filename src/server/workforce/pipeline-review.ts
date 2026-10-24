@@ -119,13 +119,15 @@ const noContactLink: ReviewCheck = async (db, job) => {
   });
 };
 
+export const PIPELINE_REVIEW_CHECKS: readonly ReviewCheck[] = [staleDeals, missingValue, missingOwner, passedCloseDate, noContactLink];
+
 export async function runPipelineReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "pipeline_review",
     allowedRoles: ["sales_assistant"],
     scanningMessage: "Reading persisted sales opportunities and their recorded stage history…",
     analyzingMessage: "Assessing pipeline hygiene and preparing recommended next actions…",
-    checks: [staleDeals, missingValue, missingOwner, passedCloseDate, noContactLink],
+    checks: PIPELINE_REVIEW_CHECKS,
     limitations: "Only opportunities stored in this workspace were read. No provider was contacted and no deal, stage or owner was changed.",
     subject: "Pipeline",
   });
