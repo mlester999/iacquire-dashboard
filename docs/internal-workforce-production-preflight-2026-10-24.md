@@ -9,6 +9,7 @@ Checked: 2026-10-24 (Asia/Singapore). This is a read-only snapshot, not a produc
 - One existing multiplexed Hermes gateway is connected. Its six mapped internal profiles authenticate and match their intended identity. The read-only Hermes audit verified the complete six-tool inventory (`memory`, `session_search`, `todo_list`, `vision_analyze`, `web_extract`, `web_search`) across the five reviewed toolsets, with no restricted tools currently enabled. It did not start a model run or change a profile.
 - Gateway capabilities advertise runs, events, status, stop and approval. The API reports `admin_config_rw: false` and no memory write API, so it cannot verify or update the effective deployed SOUL instructions.
 - `WORKFORCE_SCHEDULES_ENABLED`, `WORKFORCE_TRIGGERS_ENABLED`, `WORKFORCE_BRIEFINGS_ENABLED` and `WORKFORCE_WORKER_ENABLED` were all false in the preflight process. No autonomous workforce processing was enabled.
+- A read-only Vercel recheck resolved `www.iacquire.online` to production deployment `dpl_J9rkGmZPTEbwsw24iB7bYsiyJzqR` (`READY`). Its Git metadata identifies `36bf78c40f73148fe1d25787a9eba5eb9709c64d` on `master`, matching `git ls-remote origin refs/heads/master`. The local workforce branch is not deployed.
 
 ## Internal employee state
 
@@ -29,7 +30,7 @@ The configuration previews used the existing role defaults and saved company fac
 2. After each configuration is applied, perform the application's profile-specific health and complete-inventory check, then the current profile identity check.
 3. Have an authorized Super Admin review and record the existing Full Hermes Capabilities acknowledgement for each profile. No acknowledgement was created by these checks.
 4. Obtain host-side verification of the effective role-specific SOUL instructions. The current Hermes API cannot attest to the loaded instructions, and no Hostinger configuration was read or changed during this preflight.
-5. Identify the exact running application SHA before proposing a production deployment. The repository's current `origin/master` is `36bf78c`, but this check did not establish that it is the deployed SHA.
+5. Recheck the running SHA when assembling any later production release package, and identify its exact target SHA. The current production SHA is now verified as `36bf78c40f73148fe1d25787a9eba5eb9709c64d`; local candidate commits remain undeployed.
 
 The existing six profile identities were preserved. No profiles were created, no employee configurations or readiness rows were changed, and no research, outreach, CRM mutation or appointment booking was started. The Hermes live audit appends its normal `credential.resolved` audit records while resolving credentials; the database readiness audit itself performs only `SELECT` queries.
 

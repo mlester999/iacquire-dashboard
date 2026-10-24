@@ -13,7 +13,7 @@ It supersedes the dated 2026-10-19 checkpoint and older Hermes inventory observa
 | Live Hermes profiles | All six existing internal identities authenticate and match; complete six-tool inventory verified across five reviewed toolsets, with no restricted tools enabled. |
 | Saved readiness evidence for new four | Stale/restricted; current live Hermes inventory has not been written into the app's readiness rows. |
 | Effective SOUL instructions | Unverified; current API has no admin configuration read endpoint. |
-| Production application SHA | Unverified; no deployment record or runtime SHA was available in the preflight. |
+| Production application SHA | Read-only Vercel inspection of `www.iacquire.online` resolved a `READY` production deployment whose Git metadata identifies commit `36bf78c40f73148fe1d25787a9eba5eb9709c64d` on `master`; this matches the current `git ls-remote origin refs/heads/master` result. Local workforce commits remain undeployed. |
 | Proactive operator switches | Schedules, triggers, briefings and worker all false; no autonomous workforce processing enabled. |
 | Prior Lead Hunter research | Targeted read-only query confirmed the supplied work job and Hermes run remain completed, with 10 saved leads. The eight historical web tool calls were not re-read from a separate event source. |
 | Client provisioner sandbox | GitHub Actions run [40059587299](https://github.com/mlester999/iacquire-dashboard/actions/runs/40059587299) passed at commit `85481852c5098044909ad96e87b273c59a720e65`, including isolated synthetic tenants, actual portal routes, provisioner runtime and cleanup. This is sandbox evidence, not production provisioning. |
